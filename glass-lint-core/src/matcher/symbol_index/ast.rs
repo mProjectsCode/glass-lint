@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use swc_ecma_ast::{
     BinaryOp, CallExpr, Callee, Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName,
-    ObjectPatProp, OptChainBase, Pat,
+    ObjectLit, ObjectPatProp, OptChainBase, Pat, Prop, PropOrSpread,
 };
 
 pub fn member_root_ident(member: &MemberExpr) -> Option<&Ident> {
@@ -201,6 +201,25 @@ pub fn member_prop_name(prop: &MemberProp) -> Option<String> {
         MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
         MemberProp::Computed(computed) => static_property_name(&computed.expr),
     }
+}
+
+pub fn object_keys(object: &ObjectLit) -> Option<Vec<String>> {
+    let mut keys = Vec::new();
+    for property in &object.props {
+        let key = match property {
+            PropOrSpread::Prop(property) => match &**property {
+                Prop::Shorthand(ident) => ident.sym.to_string(),
+                Prop::KeyValue(key_value) => prop_name(&key_value.key)?,
+                Prop::Method(method) => prop_name(&method.key)?,
+                Prop::Getter(getter) => prop_name(&getter.key)?,
+                Prop::Setter(setter) => prop_name(&setter.key)?,
+                Prop::Assign(assign) => assign.key.sym.to_string(),
+            },
+            PropOrSpread::Spread(_) => return None,
+        };
+        keys.push(key);
+    }
+    Some(keys)
 }
 
 pub fn is_function_constructor_member(member: &MemberExpr) -> bool {

@@ -70,35 +70,166 @@ mod tests {
             .confidence(Confidence::High)
     }
 
+    fn classify(source: &str, rules: &[ApiRule]) -> ApiClassificationResult {
+        let parsed = crate::parse(source, "input.js").unwrap();
+        classify_api_usage(Some(&parsed.program), rules)
+    }
+
+    fn evidence_count(result: &ApiClassificationResult, id: &str) -> u32 {
+        result
+            .capabilities()
+            .iter()
+            .find(|capability| capability.id() == id)
+            .map(|capability| {
+                capability
+                    .evidence()
+                    .iter()
+                    .map(|evidence| evidence.count())
+                    .sum()
+            })
+            .unwrap_or(0)
+    }
+
     #[test]
     fn resolves_module_provenance_and_rejects_local_lookalikes() {
-        let parsed = crate::parse(
-            "import { send as sdkSend } from 'example-sdk'; sdkSend(); function send() {} send();",
-            "input.js",
-        )
-        .unwrap();
         let rules = [rule("test.module")
             .module_calls("example-sdk", ["send"])
             .build()
             .unwrap()];
-        let result = classify_api_usage(Some(&parsed.program), &rules);
+        let result = classify(
+            "import { send as sdkSend } from 'example-sdk'; sdkSend(); function send() {} send();",
+            &rules,
+        );
         assert!(result.has_capability("test.module"));
-        assert_eq!(result.capabilities()[0].evidence()[0].count(), 1);
+        assert_eq!(evidence_count(&result, "test.module"), 1);
+    }
+
+    #[test]
+    fn resolves_commonjs_destructured_module_exports() {
+        let rules = [rule("test.module")
+            .module_calls("example-sdk", ["send"])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "const { send: sdkSend } = require('example-sdk'); sdkSend();",
+            &rules,
+        );
+        assert!(result.has_capability("test.module"));
+        assert_eq!(evidence_count(&result, "test.module"), 1);
     }
 
     #[test]
     fn follows_rooted_aliases_and_reassignment_order() {
-        let parsed = crate::parse(
-            "const files = host.files; files.read(); files = local; files.read();",
-            "input.js",
-        )
-        .unwrap();
         let rules = [rule("test.alias")
             .rooted_member_calls(["host.files.read"])
             .build()
             .unwrap()];
-        let result = classify_api_usage(Some(&parsed.program), &rules);
+        let result = classify(
+            "let files = host.files; files.read(); files = local; files.read();",
+            &rules,
+        );
         assert!(result.has_capability("test.alias"));
-        assert_eq!(result.capabilities()[0].evidence()[0].count(), 1);
+        assert_eq!(evidence_count(&result, "test.alias"), 1);
+    }
+
+    #[test]
+    fn rejects_aliases_after_shadowing_reassignment() {
+        let rules = [rule("test.fetch").global_calls(["fetch"]).build().unwrap()];
+        let result = classify(
+            "let send = fetch; send('/remote'); send = localFetch; send('/local');",
+            &rules,
+        );
+        assert!(result.has_capability("test.fetch"));
+        assert_eq!(evidence_count(&result, "test.fetch"), 1);
+    }
+
+    #[test]
+    fn matches_static_string_arguments_but_rejects_dynamic_strings() {
+        let rules = [rule("test.fetch-url")
+            .global_call("fetch")
+            .static_string_call_arg(0)
+            .build()
+            .unwrap()];
+        let result = classify("fetch('/literal'); fetch('/' + dynamic);", &rules);
+        assert!(result.has_capability("test.fetch-url"));
+        assert_eq!(evidence_count(&result, "test.fetch-url"), 1);
+    }
+
+    #[test]
+    fn tracks_rooted_expression_arguments_through_aliases() {
+        let rules = [rule("test.arg-flow")
+            .rooted_member_call("app.open")
+            .arg_rooted_exprs(0, ["vault.file"])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "const file = vault.file; const opener = app; opener.open(file);",
+            &rules,
+        );
+        assert!(result.has_capability("test.arg-flow"));
+        assert_eq!(evidence_count(&result, "test.arg-flow"), 1);
+    }
+
+    #[test]
+    fn tracks_simple_parameter_aliases_into_named_functions() {
+        let rules = [rule("test.fetch").global_calls(["fetch"]).build().unwrap()];
+        let result = classify(
+            "function invoke(callback) { callback('/remote'); } invoke(fetch);",
+            &rules,
+        );
+        assert!(result.has_capability("test.fetch"));
+        assert_eq!(evidence_count(&result, "test.fetch"), 1);
+    }
+
+    #[test]
+    fn target_tracks_parameter_aliases_into_arrow_functions() {
+        let rules = [rule("test.fetch").global_calls(["fetch"]).build().unwrap()];
+        let result = classify(
+            "const invoke = (callback) => callback('/remote'); invoke(fetch);",
+            &rules,
+        );
+        assert!(result.has_capability("test.fetch"));
+        assert_eq!(evidence_count(&result, "test.fetch"), 1);
+    }
+
+    #[test]
+    fn target_matches_optional_chained_calls_with_static_arguments() {
+        let rules = [rule("test.optional")
+            .rooted_member_call("app.commands.execute")
+            .arg_string(0, ["open"])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "const commands = app.commands; commands?.execute?.('open');",
+            &rules,
+        );
+        assert!(result.has_capability("test.optional"));
+        assert_eq!(evidence_count(&result, "test.optional"), 1);
+    }
+
+    #[test]
+    fn target_resolves_literal_computed_properties_through_constant_aliases() {
+        let rules = [rule("test.computed")
+            .rooted_member_calls(["window.fetch"])
+            .build()
+            .unwrap()];
+        let result = classify("const method = 'fetch'; window[method]('/remote');", &rules);
+        assert!(result.has_capability("test.computed"));
+        assert_eq!(evidence_count(&result, "test.computed"), 1);
+    }
+
+    #[test]
+    fn target_reuses_constant_object_arguments_for_key_matching() {
+        let rules = [rule("test.object-arg")
+            .rooted_member_call("client.request")
+            .arg_object_keys(0, ["url", "method"])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "const options = { url: '/remote', method: 'GET' }; client.request(options);",
+            &rules,
+        );
+        assert!(result.has_capability("test.object-arg"));
+        assert_eq!(evidence_count(&result, "test.object-arg"), 1);
     }
 }

@@ -9,7 +9,7 @@ use swc_ecma_visit::{Visit, VisitWith};
 
 use super::super::ast::{
     binding_ident_name, collect_pat_bindings, is_function_constructor_member, member_chain,
-    member_prop_name, module_export_name, require_module_name, static_string,
+    member_prop_name, module_export_name, object_keys, require_module_name, static_string,
 };
 use super::collector_helpers::{
     collect_assignment_aliases, collect_require_aliases, collect_value_aliases,
@@ -156,7 +156,10 @@ impl AliasCollector {
             Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
                 provenance @ (BindingProvenance::ModuleExport { .. }
                 | BindingProvenance::ModuleNamespace { .. }) => Some(provenance.clone()),
-                BindingProvenance::Local | BindingProvenance::ValueAlias { .. } => None,
+                BindingProvenance::Local
+                | BindingProvenance::ValueAlias { .. }
+                | BindingProvenance::StaticString(_)
+                | BindingProvenance::StaticObjectKeys(_) => None,
             },
             Expr::Member(member) => {
                 let Expr::Ident(root) = &*member.obj else {
@@ -178,6 +181,65 @@ impl AliasCollector {
                 .last()
                 .and_then(|expr| self.module_alias_provenance(expr)),
             _ => None,
+        }
+    }
+
+    fn const_provenance(&self, init: &Expr) -> Option<BindingProvenance> {
+        if let Some(value) = static_string(init) {
+            return Some(BindingProvenance::StaticString(value));
+        }
+        if let Expr::Object(object) = init
+            && let Some(keys) = object_keys(object)
+        {
+            return Some(BindingProvenance::StaticObjectKeys(keys));
+        }
+        None
+    }
+
+    fn function_parameters(function: &Function) -> Vec<String> {
+        function
+            .params
+            .iter()
+            .filter_map(|parameter| binding_ident_name(&parameter.pat))
+            .collect()
+    }
+
+    fn arrow_parameters(arrow: &ArrowExpr) -> Vec<String> {
+        arrow.params.iter().filter_map(binding_ident_name).collect()
+    }
+
+    fn register_function_expression(&mut self, name: String, expr: &Expr) -> bool {
+        match expr {
+            Expr::Arrow(arrow) => {
+                let parameters = Self::arrow_parameters(arrow);
+                self.push_scope(arrow.span, ScopeKind::Function);
+                let scope = self.current_scope();
+                for param in &arrow.params {
+                    self.insert_pat_locals(scope, param);
+                }
+                self.functions.insert(name, (scope, parameters));
+                arrow.body.visit_with(self);
+                self.pop_scope();
+                true
+            }
+            Expr::Fn(function_expr) => {
+                let parameters = Self::function_parameters(&function_expr.function);
+                self.push_scope(function_expr.function.span, ScopeKind::Function);
+                let scope = self.current_scope();
+                if let Some(ident) = &function_expr.ident {
+                    self.insert_local(scope, ident.sym.to_string());
+                }
+                for param in &function_expr.function.params {
+                    self.insert_pat_locals(scope, &param.pat);
+                }
+                self.functions.insert(name, (scope, parameters));
+                function_expr.function.decorators.visit_with(self);
+                function_expr.function.body.visit_with(self);
+                self.pop_scope();
+                true
+            }
+            Expr::Paren(paren) => self.register_function_expression(name, &paren.expr),
+            _ => false,
         }
     }
 
@@ -263,6 +325,13 @@ impl Visit for AliasCollector {
     fn visit_var_decl(&mut self, var_decl: &VarDecl) {
         let scope = self.binding_scope(var_decl.kind);
         for declarator in &var_decl.decls {
+            if let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref())
+                && self.register_function_expression(ident.id.sym.to_string(), init)
+            {
+                self.insert_local(scope, ident.id.sym.to_string());
+                continue;
+            }
+            let init = declarator.init.as_deref();
             let module_alias = declarator
                 .init
                 .as_deref()
@@ -276,13 +345,21 @@ impl Visit for AliasCollector {
                 && let Some(module) = require_module_name(init)
             {
                 collect_require_aliases(&declarator.name, module, scope, self);
+            } else if var_decl.kind == VarDeclKind::Const
+                && let (Pat::Ident(ident), Some(init)) =
+                    (&declarator.name, declarator.init.as_deref())
+                && let Some(provenance) = self.const_provenance(init)
+            {
+                self.insert(scope, ident.id.sym.to_string(), provenance);
             } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, module_alias) {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
             } else if let Some(target) = value_alias {
                 collect_value_aliases(&declarator.name, &target, scope, self);
             }
+            if let Some(init) = init {
+                init.visit_with(self);
+            }
         }
-        var_decl.visit_children_with(self);
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
@@ -369,12 +446,7 @@ impl Visit for AliasCollector {
         self.insert_local(parent, fn_decl.ident.sym.to_string());
         self.push_scope(fn_decl.function.span, ScopeKind::Function);
         let scope = self.current_scope();
-        let parameters = fn_decl
-            .function
-            .params
-            .iter()
-            .filter_map(|parameter| binding_ident_name(&parameter.pat))
-            .collect::<Vec<_>>();
+        let parameters = Self::function_parameters(&fn_decl.function);
         for parameter in &fn_decl.function.params {
             self.insert_pat_locals(scope, &parameter.pat);
         }

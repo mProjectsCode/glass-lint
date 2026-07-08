@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use swc_common::Spanned;
 use swc_ecma_ast::{
-    BinaryOp, CallExpr, Callee, ClassDecl, ClassExpr, ClassMethod, Expr, Ident, ImportDecl,
-    MemberExpr, NewExpr, ObjectLit, OptChainBase, OptChainExpr, Program, Prop, PropOrSpread, Str,
+    BinaryOp, CallExpr, Callee, ClassDecl, ClassExpr, ClassMethod, Expr, ExprOrSpread, Ident,
+    ImportDecl, MemberExpr, NewExpr, ObjectLit, OptCall, OptChainBase, OptChainExpr, Program, Str,
     Tpl,
 };
 use swc_ecma_visit::{Visit, VisitWith};
@@ -11,7 +11,7 @@ use swc_ecma_visit::{Visit, VisitWith};
 use super::alias::AliasInfo;
 use super::ast::{
     SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, expr_member, expr_name,
-    is_function_constructor_member, member_chain, prop_name, require_call_module_name,
+    is_function_constructor_member, member_chain, object_keys, prop_name, require_call_module_name,
     static_string,
 };
 use super::{
@@ -48,8 +48,32 @@ struct SymbolIndexVisitor<'a, 'rules> {
     argument_evidence: &'a mut [Vec<ApiEvidence>],
 }
 
+#[derive(Clone, Copy)]
+struct CallArgumentSource<'a> {
+    args: &'a [ExprOrSpread],
+    span: swc_common::Span,
+}
+
+impl<'a> From<&'a CallExpr> for CallArgumentSource<'a> {
+    fn from(call: &'a CallExpr) -> Self {
+        Self {
+            args: &call.args,
+            span: call.span,
+        }
+    }
+}
+
+impl<'a> From<&'a OptCall> for CallArgumentSource<'a> {
+    fn from(call: &'a OptCall) -> Self {
+        Self {
+            args: &call.args,
+            span: call.span,
+        }
+    }
+}
+
 impl SymbolIndexVisitor<'_, '_> {
-    fn record_identifier_call(&mut self, ident: &Ident, call: Option<&CallExpr>) {
+    fn record_identifier_call(&mut self, ident: &Ident, call: Option<CallArgumentSource<'_>>) {
         let name = ident.sym.to_string();
         self.index
             .record(ApiMatchKind::Call, name.clone(), ident.span);
@@ -80,7 +104,7 @@ impl SymbolIndexVisitor<'_, '_> {
 
     fn collect_call_argument_evidence(
         &mut self,
-        call: &CallExpr,
+        call: CallArgumentSource<'_>,
         ident: &Ident,
         found_provenance: &SymbolCallProvenance,
     ) {
@@ -121,7 +145,7 @@ impl SymbolIndexVisitor<'_, '_> {
         }
     }
 
-    fn record_member_call(&mut self, member: &MemberExpr, call: Option<&CallExpr>) {
+    fn record_member_call(&mut self, member: &MemberExpr, call: Option<CallArgumentSource<'_>>) {
         if is_function_constructor_member(member) {
             self.index
                 .record(ApiMatchKind::Call, "Function", member.span);
@@ -134,7 +158,8 @@ impl SymbolIndexVisitor<'_, '_> {
         let syntactic_chain = member_chain(member);
         let resolved_chain = syntactic_chain
             .as_deref()
-            .and_then(|chain| self.aliases.resolve_member_chain(member, chain));
+            .and_then(|chain| self.aliases.resolve_member_chain(member, chain))
+            .or_else(|| self.aliases.rooted_member_chain(member));
         let module_member = syntactic_chain
             .as_deref()
             .and_then(|chain| self.aliases.member_call_provenance_for_chain(member, chain));
@@ -210,7 +235,7 @@ impl SymbolIndexVisitor<'_, '_> {
 
     fn collect_argument_evidence(
         &mut self,
-        call: &CallExpr,
+        call: CallArgumentSource<'_>,
         syntactic_chain: Option<&str>,
         resolved_chain: Option<&str>,
         module_member: Option<&SymbolMemberProvenance>,
@@ -242,12 +267,16 @@ impl SymbolIndexVisitor<'_, '_> {
                 && matcher.arg_object_keys.iter().all(|key_matcher| {
                     call.args
                         .get(key_matcher.index)
-                        .and_then(|argument| object_literal(&argument.expr))
-                        .is_some_and(|object| {
+                        .and_then(|argument| {
+                            self.aliases
+                                .object_keys_expr(&argument.expr)
+                                .or_else(|| object_literal(&argument.expr).and_then(object_keys))
+                        })
+                        .is_some_and(|keys| {
                             key_matcher
                                 .keys
                                 .iter()
-                                .all(|expected| object_has_key(object, expected))
+                                .all(|expected| keys.iter().any(|key| key == expected))
                         })
                 })
                 && matcher.arg_rooted_exprs.iter().all(|root_matcher| {
@@ -338,10 +367,10 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
         match &call.callee {
             Callee::Expr(callee) => match effective_callee_expr(callee) {
                 Expr::Ident(ident) => {
-                    self.record_identifier_call(ident, Some(call));
+                    self.record_identifier_call(ident, Some(CallArgumentSource::from(call)));
                 }
                 Expr::Member(member) => {
-                    self.record_member_call(member, Some(call));
+                    self.record_member_call(member, Some(CallArgumentSource::from(call)));
                 }
                 _ => {}
             },
@@ -355,24 +384,39 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
     fn visit_opt_chain_expr(&mut self, chain: &OptChainExpr) {
         match &*chain.base {
             OptChainBase::Call(call) => match &*call.callee {
-                Expr::Ident(ident) => self.record_identifier_call(ident, None),
-                Expr::Member(member) => self.record_member_call(member, None),
+                Expr::Ident(ident) => {
+                    self.record_identifier_call(ident, Some(CallArgumentSource::from(call)))
+                }
+                Expr::Member(member) => {
+                    self.record_member_call(member, Some(CallArgumentSource::from(call)))
+                }
                 _ => {
-                    if let Some(raw) = expr_name(&call.callee) {
+                    let raw = expr_name(&call.callee);
+                    let rooted = self
+                        .aliases
+                        .rooted_expr_chain(&call.callee)
+                        .map(|chain| canonical_rooted_chain(&chain).to_string());
+                    let module_member = expr_member(&call.callee)
+                        .and_then(|member| self.aliases.member_call_provenance(member));
+                    self.collect_argument_evidence(
+                        CallArgumentSource::from(call),
+                        raw.as_deref(),
+                        rooted.as_deref(),
+                        module_member.as_ref(),
+                    );
+                    if let Some(raw) = raw {
                         self.index
                             .record(ApiMatchKind::MemberCall, raw, call.callee.span());
                     }
-                    if let Some(rooted) = self.aliases.rooted_expr_chain(&call.callee) {
-                        let rooted = canonical_rooted_chain(&rooted).to_string();
+                    if let Some(rooted) = rooted {
                         self.index
                             .rooted_member_calls
                             .entry(rooted.clone())
                             .or_default()
                             .push(call.callee.span());
                     }
-                    if let Some(member) = expr_member(&call.callee)
-                        && let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
-                            self.aliases.member_call_provenance(member)
+                    if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
+                        module_member
                     {
                         self.index
                             .module_member_calls
@@ -514,18 +558,4 @@ fn object_literal(expr: &Expr) -> Option<&ObjectLit> {
         Expr::Paren(paren) => object_literal(&paren.expr),
         _ => None,
     }
-}
-
-fn object_has_key(object: &ObjectLit, expected: &str) -> bool {
-    object.props.iter().any(|property| match property {
-        PropOrSpread::Prop(property) => match &**property {
-            Prop::Shorthand(ident) => ident.sym == *expected,
-            Prop::KeyValue(key_value) => prop_name(&key_value.key).as_deref() == Some(expected),
-            Prop::Method(method) => prop_name(&method.key).as_deref() == Some(expected),
-            Prop::Getter(getter) => prop_name(&getter.key).as_deref() == Some(expected),
-            Prop::Setter(setter) => prop_name(&setter.key).as_deref() == Some(expected),
-            Prop::Assign(assign) => assign.key.sym == *expected,
-        },
-        PropOrSpread::Spread(_) => false,
-    })
 }
