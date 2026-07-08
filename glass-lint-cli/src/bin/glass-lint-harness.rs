@@ -1,6 +1,8 @@
 use anyhow::{Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
-use glass_lint_harness::{Adapter, ExternalAdapter, GlassLintAdapter, markdown, run_suite};
+use glass_lint_harness::{
+    Adapter, ExternalAdapter, GlassLintAdapter, failure_details, markdown, run_suite, summary,
+};
 use std::{path::PathBuf, process::ExitCode};
 
 #[derive(Parser)]
@@ -67,15 +69,11 @@ fn run() -> Result<bool> {
             Format::Markdown => print!("{}", markdown(&report)),
             Format::Json => println!("{}", serde_json::to_string_pretty(&report)?),
         }
+    } else {
+        println!("{}", summary(&report));
     }
     if verify && !report.passed() {
-        for case in &report.cases {
-            for (tool, result) in &case.tools {
-                for error in &result.errors {
-                    eprintln!("{} [{}]: {}", case.id, tool, error);
-                }
-            }
-        }
+        eprint!("{}", failure_details(&report));
     }
     if report.cases.is_empty() {
         bail!("no JavaScript harness cases found in {}", path.display());
