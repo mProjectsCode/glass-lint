@@ -7,7 +7,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("dependency")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_reads([
+            .rooted_member_reads([
                 "app.plugins",
                 "app.plugins.enabledPlugins",
                 "app.plugins.manifests",
@@ -37,6 +37,23 @@ pub(super) fn rules() -> Vec<Rule> {
                     "Platform.isSafari",
                 ],
             )
+            .module_member_reads(
+                "obsidian",
+                [
+                    "Platform.isMobile",
+                    "Platform.isDesktop",
+                    "Platform.isMobileApp",
+                    "Platform.isDesktopApp",
+                    "Platform.isIosApp",
+                    "Platform.isAndroidApp",
+                    "Platform.isPhone",
+                    "Platform.isTablet",
+                    "Platform.isMacOS",
+                    "Platform.isWin",
+                    "Platform.isLinux",
+                    "Platform.isSafari",
+                ],
+            )
             .member_reads([
                 "Platform.isMobile",
                 "Platform.isDesktop",
@@ -50,18 +67,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "Platform.isWin",
                 "Platform.isLinux",
                 "Platform.isSafari",
-                "obsidian.Platform.isMobile",
-                "obsidian.Platform.isDesktop",
-                "obsidian.Platform.isMobileApp",
-                "obsidian.Platform.isDesktopApp",
-                "obsidian.Platform.isIosApp",
-                "obsidian.Platform.isAndroidApp",
-                "obsidian.Platform.isPhone",
-                "obsidian.Platform.isTablet",
-                "obsidian.Platform.isMacOS",
-                "obsidian.Platform.isWin",
-                "obsidian.Platform.isLinux",
-                "obsidian.Platform.isSafari",
             ])
             .implies(["disclosure.platform_branching"])
             .build(),
@@ -94,7 +99,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
             .imports(["child_process", "node:child_process"])
-            .member_reads(["process.env", "process.platform"])
+            .rooted_member_reads(["process.env", "process.platform"])
             .implies(["disclosure.process_or_shell_access"])
             .build(),
         ApiRule::builder("electron.desktop")

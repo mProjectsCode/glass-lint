@@ -2,7 +2,7 @@
 // @tool glass-lint rules=obsidian:network.obsidian
 
 var obsidian = require("obsidian");
-obsidian.requestUrl("https://example.com"); // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected
+obsidian.requestUrl("https://example.com"); // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected count=8 line=any
 (0, obsidian["requestUrl"])("https://example.com");
 
 var { requestUrl: r } = require("obsidian");

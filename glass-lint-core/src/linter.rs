@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use swc_common::{SourceMap, Span, sync::Lrc};
+
 use crate::matcher::{ApiRule, ApiSeverity, classify_api_usage, validate_catalog};
 use crate::{
     Evidence, Finding, LintConfigError, LintReport, Position, RegistryError, RuleId, RuleMetadata,
@@ -108,7 +110,7 @@ impl Linter {
             let mut ranges: Vec<_> = capability
                 .evidence()
                 .iter()
-                .flat_map(|evidence| evidence_ranges(source, evidence.symbol(), evidence.count()))
+                .flat_map(|evidence| evidence_ranges(&parsed.source_map, &evidence.spans))
                 .collect();
             ranges.sort_by_key(|range| (range.start.line, range.start.column));
             ranges.dedup();
@@ -168,20 +170,27 @@ fn severity(value: ApiSeverity) -> Severity {
     }
 }
 
-fn evidence_ranges(source: &str, symbol: &str, count: u32) -> Vec<SourceRange> {
-    let semantic_value = symbol.rsplit(':').next().unwrap_or(symbol);
-    let tail = semantic_value.rsplit('.').next().unwrap_or(semantic_value);
-    [semantic_value, tail]
-        .into_iter()
-        .find_map(|needle| {
-            let ranges: Vec<_> = source
-                .match_indices(needle)
-                .take(count as usize)
-                .map(|(offset, value)| source_range(source, offset, value.len()))
-                .collect();
-            (!ranges.is_empty()).then_some(ranges)
-        })
-        .unwrap_or_default()
+fn evidence_ranges(source_map: &Lrc<SourceMap>, spans: &[Span]) -> Vec<SourceRange> {
+    spans
+        .iter()
+        .filter(|span| !span.is_dummy())
+        .map(|span| source_range_from_span(source_map, *span))
+        .collect()
+}
+
+fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) -> SourceRange {
+    let start = source_map.lookup_char_pos(span.lo());
+    let end = source_map.lookup_char_pos(span.hi());
+    SourceRange {
+        start: Position {
+            line: start.line as u32,
+            column: start.col_display as u32 + 1,
+        },
+        end: Position {
+            line: end.line as u32,
+            column: end.col_display as u32 + 1,
+        },
+    }
 }
 
 fn position(source: &str, offset: usize) -> Position {

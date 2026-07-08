@@ -1,3 +1,5 @@
+use swc_common::Span;
+
 use super::rule::{ApiCategory, ApiSeverity, Confidence};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -21,6 +23,8 @@ pub struct ApiEvidence {
     pub kind: ApiMatchKind,
     pub symbol: String,
     pub count: u32,
+    #[serde(skip)]
+    pub spans: Vec<Span>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]

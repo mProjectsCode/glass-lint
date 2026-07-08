@@ -14,7 +14,10 @@ use super::super::ast::{
 use super::collector_helpers::{
     collect_assignment_aliases, collect_require_aliases, collect_value_aliases,
 };
-use super::{AliasAssignment, AliasScope, BindingProvenance, PropertyAliasAssignment, ScopeKind};
+use super::{
+    AliasAssignment, AliasScope, BindingProvenance, PropertyAliasAssignment, RootedExprContext,
+    ScopeKind, rooted_expr_chain_with,
+};
 
 pub struct AliasCollector {
     pub scopes: Vec<AliasScope>,
@@ -145,27 +148,7 @@ impl AliasCollector {
     }
 
     fn rooted_expr_name(&self, expr: &Expr) -> Option<String> {
-        match expr {
-            Expr::This(_) => Some("this".to_string()),
-            Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref()) {
-                Some(BindingProvenance::ValueAlias { target }) => Some(target.clone()),
-                Some(_) => None,
-                None => Some(ident.sym.to_string()),
-            },
-            Expr::Member(member) => {
-                let object = self.rooted_expr_name(&member.obj)?;
-                let property = member_prop_name(&member.prop)?;
-                Some(format!("{object}.{property}"))
-            }
-            Expr::Call(call) => {
-                let Callee::Expr(callee) = &call.callee else {
-                    return None;
-                };
-                self.rooted_expr_name(callee)
-            }
-            Expr::Paren(paren) => self.rooted_expr_name(&paren.expr),
-            _ => None,
-        }
+        rooted_expr_chain_with(self, expr)
     }
 
     fn module_alias_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
@@ -219,6 +202,22 @@ impl AliasCollector {
                 target.map(|target| (key, BindingProvenance::ValueAlias { target }))
             })
             .collect()
+    }
+}
+
+impl RootedExprContext for AliasCollector {
+    fn rooted_ident_chain(&self, ident: &swc_ecma_ast::Ident) -> Option<String> {
+        match self.visible_binding(ident.sym.as_ref()) {
+            Some(BindingProvenance::ValueAlias { target }) => Some(target.clone()),
+            Some(_) => None,
+            None => Some(ident.sym.to_string()),
+        }
+    }
+
+    fn rooted_member_chain(&self, member: &swc_ecma_ast::MemberExpr) -> Option<String> {
+        let object = self.rooted_expr_name(&member.obj)?;
+        let property = member_prop_name(&member.prop)?;
+        Some(format!("{object}.{property}"))
     }
 }
 

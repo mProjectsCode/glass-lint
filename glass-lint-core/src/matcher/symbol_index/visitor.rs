@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use swc_common::Spanned;
 use swc_ecma_ast::{
     BinaryOp, CallExpr, Callee, ClassDecl, ClassExpr, ClassMethod, Expr, Ident, ImportDecl,
     MemberExpr, NewExpr, ObjectLit, OptChainBase, OptChainExpr, Program, Prop, PropOrSpread, Str,
@@ -43,18 +44,23 @@ struct SymbolIndexVisitor<'a, 'rules> {
 impl SymbolIndexVisitor<'_, '_> {
     fn record_identifier_call(&mut self, ident: &Ident) {
         let name = ident.sym.to_string();
-        self.index.increment(ApiMatchKind::Call, name.clone());
+        self.index
+            .record(ApiMatchKind::Call, name.clone(), ident.span);
 
         match self.aliases.call_provenance(&name, ident.span) {
             SymbolCallProvenance::Global => {
-                *self.index.global_calls.entry(name).or_insert(0) += 1;
+                self.index
+                    .global_calls
+                    .entry(name)
+                    .or_default()
+                    .push(ident.span);
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
-                *self
-                    .index
+                self.index
                     .module_calls
                     .entry((module.clone(), export.clone()))
-                    .or_insert(0) += 1;
+                    .or_default()
+                    .push(ident.span);
             }
             SymbolCallProvenance::Local => {}
         }
@@ -79,23 +85,62 @@ impl SymbolIndexVisitor<'_, '_> {
         }
         if let Some(chain) = syntactic_chain {
             self.index
-                .increment(ApiMatchKind::MemberCall, chain.clone());
+                .record(ApiMatchKind::MemberCall, chain.clone(), member.span);
             *self.pending_callee_reads.entry(chain.clone()).or_insert(0) += 1;
         }
         if let Some(chain) = resolved_chain {
             let chain = canonical_rooted_chain(&chain).to_string();
-            *self
-                .index
+            self.index
                 .rooted_member_calls
                 .entry(chain.clone())
-                .or_insert(0) += 1;
+                .or_default()
+                .push(member.span);
         }
-        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
-            *self
-                .index
+        if let Some(SymbolMemberProvenance::ModuleNamespace {
+            module,
+            member: member_name,
+        }) = module_member
+        {
+            self.index
                 .module_member_calls
-                .entry((module.clone(), member.clone()))
-                .or_insert(0) += 1;
+                .entry((module.clone(), member_name.clone()))
+                .or_default()
+                .push(member.span);
+        }
+    }
+
+    fn record_member_read(&mut self, member: &MemberExpr) {
+        let syntactic_chain = member_chain(member);
+        if let Some(chain) = syntactic_chain.as_ref() {
+            let chain = canonical_rooted_chain(chain).to_string();
+            self.index
+                .record(ApiMatchKind::MemberRead, chain, member.span);
+        }
+        if let Some(resolved_chain) = syntactic_chain
+            .as_deref()
+            .and_then(|chain| self.aliases.resolve_member_chain(member, chain))
+        {
+            self.index
+                .rooted_member_reads
+                .entry(canonical_rooted_chain(&resolved_chain).to_string())
+                .or_default()
+                .push(member.span);
+        }
+        let module_member = syntactic_chain
+            .as_deref()
+            .and_then(|chain| self.aliases.member_call_provenance_for_chain(member, chain));
+        if let Some(SymbolMemberProvenance::ModuleNamespace {
+            module,
+            member: member_name,
+        }) = module_member
+        {
+            self.index
+                .module_member_reads
+                .entry((module.clone(), member_name.clone()))
+                .or_default()
+                .push(member.span);
+            self.index
+                .record(ApiMatchKind::Class, member_name, member.span);
         }
     }
 
@@ -174,6 +219,7 @@ impl SymbolIndexVisitor<'_, '_> {
                     kind: ApiMatchKind::CallArgument,
                     symbol,
                     count: 1,
+                    spans: vec![call.span],
                 });
             }
         }
@@ -186,7 +232,12 @@ impl SymbolIndexVisitor<'_, '_> {
                     self.aliases.call_provenance(ident.sym.as_ref(), ident.span)
                 {
                     self.index
-                        .increment(ApiMatchKind::Class, format!("{module}.{export}"));
+                        .record(ApiMatchKind::Class, export.clone(), ident.span);
+                    self.index
+                        .module_classes
+                        .entry((module.clone(), export.clone()))
+                        .or_default()
+                        .push(ident.span);
                 }
             }
             Expr::Member(member) => {
@@ -194,7 +245,12 @@ impl SymbolIndexVisitor<'_, '_> {
                     self.aliases.member_call_provenance(member)
                 {
                     self.index
-                        .increment(ApiMatchKind::Class, format!("{module}.{member}"));
+                        .record(ApiMatchKind::Class, member.clone(), expr.span());
+                    self.index
+                        .module_classes
+                        .entry((module.clone(), member.clone()))
+                        .or_default()
+                        .push(expr.span());
                 }
             }
             Expr::Paren(paren) => self.record_module_class_expr(&paren.expr),
@@ -206,12 +262,13 @@ impl SymbolIndexVisitor<'_, '_> {
 impl Visit for SymbolIndexVisitor<'_, '_> {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         let module = import.src.value.to_string_lossy().to_string();
-        self.index.increment(ApiMatchKind::Import, module);
+        self.index
+            .record(ApiMatchKind::Import, module, import.src.span);
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
         if let Some(module) = require_call_module_name(call) {
-            self.index.increment(ApiMatchKind::Import, module);
+            self.index.record(ApiMatchKind::Import, module, call.span);
         }
 
         match &call.callee {
@@ -224,78 +281,62 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
                 }
                 _ => {}
             },
-            Callee::Super(_) => self.index.increment(ApiMatchKind::Call, "super"),
-            Callee::Import(_) => self.index.increment(ApiMatchKind::Call, "import"),
+            Callee::Super(_) => self.index.record(ApiMatchKind::Call, "super", call.span),
+            Callee::Import(_) => self.index.record(ApiMatchKind::Call, "import", call.span),
         }
 
         call.visit_children_with(self);
     }
 
     fn visit_opt_chain_expr(&mut self, chain: &OptChainExpr) {
-        if let OptChainBase::Call(call) = &*chain.base {
-            match &*call.callee {
+        match &*chain.base {
+            OptChainBase::Call(call) => match &*call.callee {
                 Expr::Ident(ident) => self.record_identifier_call(ident),
                 Expr::Member(member) => self.record_member_call(member, None),
                 _ => {
                     if let Some(raw) = expr_name(&call.callee) {
-                        self.index.increment(ApiMatchKind::MemberCall, raw);
+                        self.index
+                            .record(ApiMatchKind::MemberCall, raw, call.callee.span());
                     }
                     if let Some(rooted) = self.aliases.rooted_expr_chain(&call.callee) {
                         let rooted = canonical_rooted_chain(&rooted).to_string();
-                        *self
-                            .index
+                        self.index
                             .rooted_member_calls
                             .entry(rooted.clone())
-                            .or_insert(0) += 1;
+                            .or_default()
+                            .push(call.callee.span());
                     }
                     if let Some(member) = expr_member(&call.callee)
                         && let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
                             self.aliases.member_call_provenance(member)
                     {
-                        *self
-                            .index
+                        self.index
                             .module_member_calls
                             .entry((module.clone(), member.clone()))
-                            .or_insert(0) += 1;
+                            .or_default()
+                            .push(call.callee.span());
                     }
                 }
-            }
+            },
+            OptChainBase::Member(member) => self.record_member_read(member),
         }
         chain.visit_children_with(self);
     }
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
         let syntactic_chain = member_chain(member);
-        if let Some(chain) = syntactic_chain.as_ref() {
-            if let Some(skip_count) = self.pending_callee_reads.get_mut(chain.as_str()) {
-                *skip_count -= 1;
-                if *skip_count == 0 {
-                    self.pending_callee_reads.remove(chain.as_str());
-                }
-
-                member.visit_children_with(self);
-                return;
+        if let Some(chain) = syntactic_chain.as_ref()
+            && let Some(skip_count) = self.pending_callee_reads.get_mut(chain.as_str())
+        {
+            *skip_count -= 1;
+            if *skip_count == 0 {
+                self.pending_callee_reads.remove(chain.as_str());
             }
 
-            let chain = canonical_rooted_chain(chain).to_string();
-            self.index.increment(ApiMatchKind::MemberRead, chain);
+            member.visit_children_with(self);
+            return;
         }
-        if let Some(resolved_chain) = syntactic_chain
-            .as_deref()
-            .and_then(|chain| self.aliases.resolve_member_chain(member, chain))
-        {
-            self.index.increment(
-                ApiMatchKind::MemberRead,
-                canonical_rooted_chain(&resolved_chain).to_string(),
-            );
-        }
-        let module_member = syntactic_chain
-            .as_deref()
-            .and_then(|chain| self.aliases.member_call_provenance_for_chain(member, chain));
-        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
-            self.index
-                .increment(ApiMatchKind::Class, format!("{module}.{member}"));
-        }
+        self.record_member_read(member);
 
         member.visit_children_with(self);
     }
@@ -305,14 +346,25 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
             Expr::Ident(ident) => {
                 match self.aliases.call_provenance(ident.sym.as_ref(), ident.span) {
                     SymbolCallProvenance::Global => {
+                        self.index.record(
+                            ApiMatchKind::Constructor,
+                            ident.sym.to_string(),
+                            ident.span,
+                        );
                         self.index
-                            .increment(ApiMatchKind::Constructor, ident.sym.to_string());
+                            .global_constructors
+                            .entry(ident.sym.to_string())
+                            .or_default()
+                            .push(ident.span);
                     }
                     SymbolCallProvenance::ModuleExport { module, export } => {
                         self.index
-                            .increment(ApiMatchKind::Constructor, export.clone());
+                            .record(ApiMatchKind::Constructor, export.clone(), ident.span);
                         self.index
-                            .increment(ApiMatchKind::Constructor, format!("{module}.{export}"));
+                            .module_constructors
+                            .entry((module.clone(), export.clone()))
+                            .or_default()
+                            .push(ident.span);
                     }
                     SymbolCallProvenance::Local => {}
                 }
@@ -321,10 +373,16 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
                 if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
                     self.aliases.member_call_provenance(member)
                 {
+                    self.index.record(
+                        ApiMatchKind::Constructor,
+                        member.clone(),
+                        new_expr.callee.span(),
+                    );
                     self.index
-                        .increment(ApiMatchKind::Constructor, member.clone());
-                    self.index
-                        .increment(ApiMatchKind::Constructor, format!("{module}.{member}"));
+                        .module_constructors
+                        .entry((module.clone(), member.clone()))
+                        .or_default()
+                        .push(new_expr.callee.span());
                 }
             }
             _ => {}
@@ -351,7 +409,8 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
 
     fn visit_class_method(&mut self, method: &ClassMethod) {
         if let Some(name) = prop_name(&method.key) {
-            self.index.increment(ApiMatchKind::MemberRead, name);
+            self.index
+                .record(ApiMatchKind::MemberRead, name, method.key.span());
         }
 
         method.visit_children_with(self);
@@ -367,7 +426,8 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
 
     fn visit_str(&mut self, value: &Str) {
         let literal = value.value.to_string_lossy().to_string();
-        self.index.increment(ApiMatchKind::StringLiteral, literal);
+        self.index
+            .record(ApiMatchKind::StringLiteral, literal, value.span);
 
         value.visit_children_with(self);
     }
@@ -379,7 +439,8 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
                 .as_ref()
                 .map(|value| value.to_string_lossy().to_string())
                 .unwrap_or_else(|| quasi.raw.to_string());
-            self.index.increment(ApiMatchKind::StringLiteral, literal);
+            self.index
+                .record(ApiMatchKind::StringLiteral, literal, quasi.span);
         }
 
         template.visit_children_with(self);

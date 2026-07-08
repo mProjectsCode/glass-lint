@@ -7,7 +7,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("workspace")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_reads(["app.workspace"])
+            .rooted_member_reads(["app.workspace"])
             .build(),
         ApiRule::builder("workspace.views")
             .label("Registers or manipulates workspace views and panes")
@@ -27,7 +27,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("workspace")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_reads(["app.workspace.activeEditor"])
+            .rooted_member_reads(["app.workspace.activeEditor"])
             .rooted_member_calls(["app.workspace.getActiveFile"])
             .build(),
         ApiRule::builder("workspace.editor_commands")

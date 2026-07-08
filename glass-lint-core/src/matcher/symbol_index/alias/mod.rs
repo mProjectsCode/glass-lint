@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use swc_common::{Span, Spanned};
-use swc_ecma_ast::{Expr, MemberExpr, OptChainBase, Program};
+use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase, Program};
 use swc_ecma_visit::VisitWith;
 
 use super::ast::{SymbolCallProvenance, SymbolMemberProvenance, member_chain, member_root_ident};
@@ -226,27 +226,7 @@ impl AliasInfo {
     }
 
     pub fn rooted_expr_chain(&self, expr: &Expr) -> Option<String> {
-        match expr {
-            Expr::This(_) => Some("this".to_string()),
-            Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span) {
-                Some(BindingProvenance::ValueAlias { target }) => Some(target.clone()),
-                Some(_) => None,
-                None => Some(ident.sym.to_string()),
-            },
-            Expr::Member(member) => self.rooted_member_chain(member),
-            Expr::Call(call) => {
-                let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
-                    return None;
-                };
-                self.rooted_expr_chain(callee)
-            }
-            Expr::OptChain(chain) => match &*chain.base {
-                OptChainBase::Member(member) => self.rooted_member_chain(member),
-                OptChainBase::Call(call) => self.rooted_expr_chain(&call.callee),
-            },
-            Expr::Paren(paren) => self.rooted_expr_chain(&paren.expr),
-            _ => None,
-        }
+        rooted_expr_chain_with(self, expr)
     }
 
     pub fn has_later_static_property_write(
@@ -295,5 +275,47 @@ impl AliasInfo {
             scope = parent;
         }
         scope
+    }
+}
+
+pub(super) trait RootedExprContext {
+    fn rooted_ident_chain(&self, ident: &Ident) -> Option<String>;
+    fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String>;
+}
+
+impl RootedExprContext for AliasInfo {
+    fn rooted_ident_chain(&self, ident: &Ident) -> Option<String> {
+        match self.binding_at(ident.sym.as_ref(), ident.span) {
+            Some(BindingProvenance::ValueAlias { target }) => Some(target.clone()),
+            Some(_) => None,
+            None => Some(ident.sym.to_string()),
+        }
+    }
+
+    fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String> {
+        AliasInfo::rooted_member_chain(self, member)
+    }
+}
+
+pub(super) fn rooted_expr_chain_with(
+    context: &impl RootedExprContext,
+    expr: &Expr,
+) -> Option<String> {
+    match expr {
+        Expr::This(_) => Some("this".to_string()),
+        Expr::Ident(ident) => context.rooted_ident_chain(ident),
+        Expr::Member(member) => context.rooted_member_chain(member),
+        Expr::Call(call) => {
+            let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
+                return None;
+            };
+            rooted_expr_chain_with(context, callee)
+        }
+        Expr::OptChain(chain) => match &*chain.base {
+            OptChainBase::Member(member) => context.rooted_member_chain(member),
+            OptChainBase::Call(call) => rooted_expr_chain_with(context, &call.callee),
+        },
+        Expr::Paren(paren) => rooted_expr_chain_with(context, &paren.expr),
+        _ => None,
     }
 }

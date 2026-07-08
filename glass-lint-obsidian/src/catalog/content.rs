@@ -7,7 +7,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_reads(["app.vault"])
+            .rooted_member_reads(["app.vault"])
             .build(),
         ApiRule::builder("vault.read")
             .label("Reads vault files")
@@ -88,7 +88,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_reads(["app.vault.adapter"])
+            .rooted_member_reads(["app.vault.adapter"])
             .implies(["disclosure.adapter_file_access"])
             .build(),
         ApiRule::builder("vault.obsidian_config")
@@ -119,7 +119,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_reads([
+            .rooted_member_reads([
                 "app.metadataCache",
                 "app.metadataCache.resolvedLinks",
                 "app.metadataCache.unresolvedLinks",
@@ -136,7 +136,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_reads(["app.metadataCache.getFileCache.frontmatter"])
+            .rooted_member_reads(["app.metadataCache.getFileCache.frontmatter"])
             .implies(["disclosure.metadata_access"])
             .build(),
         ApiRule::builder("metadata.frontmatter_write")
@@ -190,7 +190,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_reads([
+            .rooted_member_reads([
                 "app.metadataCache.getFileCache.tags",
                 "app.metadataCache.getFileCache.links",
                 "app.metadataCache.getFileCache.embeds",

@@ -5,7 +5,8 @@ mod taxonomy;
 pub use error::{ApiCatalogError, ApiRuleBuildError};
 pub use matcher::{
     ApiMatcher, ArgObjectKeyMatcher, ArgRootedExprMatcher, ArgStringMatcher,
-    AssignedPropertyMatcher, CallMatcher, CallProvenance, MemberCallMatcher, MemberCallProvenance,
+    AssignedPropertyMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
+    MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
     canonical_rooted_chain,
 };
 pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
@@ -231,9 +232,41 @@ impl ApiRuleBuilder {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.matcher
-            .member_reads
-            .extend(member_reads.into_iter().map(Into::into));
+        self.matcher.member_reads.extend(
+            member_reads
+                .into_iter()
+                .map(Into::into)
+                .map(MemberReadMatcher::chain),
+        );
+        self
+    }
+
+    pub fn rooted_member_reads<I, S>(mut self, member_reads: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.matcher.member_reads.extend(
+            member_reads
+                .into_iter()
+                .map(Into::into)
+                .map(MemberReadMatcher::rooted_chain),
+        );
+        self
+    }
+
+    pub fn module_member_reads<I, S>(mut self, module: impl Into<String>, members: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let module = module.into();
+        self.matcher.member_reads.extend(
+            members
+                .into_iter()
+                .map(Into::into)
+                .map(|member| MemberReadMatcher::module_member(module.clone(), member)),
+        );
         self
     }
 
@@ -266,7 +299,7 @@ impl ApiRuleBuilder {
     {
         self.matcher
             .classes
-            .extend(classes.into_iter().map(Into::into));
+            .extend(classes.into_iter().map(Into::into).map(class_matcher));
         self
     }
 
@@ -275,9 +308,12 @@ impl ApiRuleBuilder {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.matcher
-            .constructors
-            .extend(constructors.into_iter().map(Into::into));
+        self.matcher.constructors.extend(
+            constructors
+                .into_iter()
+                .map(Into::into)
+                .map(constructor_matcher),
+        );
         self
     }
 
@@ -317,6 +353,22 @@ impl ApiRuleBuilder {
             matcher,
             implies,
         })
+    }
+}
+
+fn class_matcher(value: String) -> ClassMatcher {
+    if let Some((module, export)) = value.split_once('.') {
+        ClassMatcher::module_export(module.to_string(), export.to_string())
+    } else {
+        ClassMatcher::unqualified(value)
+    }
+}
+
+fn constructor_matcher(value: String) -> ConstructorMatcher {
+    if let Some((module, export)) = value.split_once('.') {
+        ConstructorMatcher::module_export(module.to_string(), export.to_string())
+    } else {
+        ConstructorMatcher::unqualified(value)
     }
 }
 

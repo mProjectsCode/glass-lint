@@ -1,9 +1,13 @@
 use std::collections::BTreeMap;
 
+use swc_common::Span;
 use swc_ecma_ast::Program;
 
 use super::result::{ApiEvidence, ApiMatchKind};
-use super::rule::{ApiRule, CallMatcher, CallProvenance, MemberCallMatcher, MemberCallProvenance};
+use super::rule::{
+    ApiRule, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, MemberCallMatcher,
+    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+};
 
 mod alias;
 mod ast;
@@ -11,19 +15,27 @@ mod visitor;
 
 pub use alias::AliasInfo;
 
+type Occurrences = BTreeMap<String, Vec<Span>>;
+type ModuleOccurrences = BTreeMap<(String, String), Vec<Span>>;
+
 #[derive(Debug, Default)]
 pub struct SymbolIndex {
-    calls: BTreeMap<String, u32>,
-    global_calls: BTreeMap<String, u32>,
-    module_calls: BTreeMap<(String, String), u32>,
-    member_calls: BTreeMap<String, u32>,
-    rooted_member_calls: BTreeMap<String, u32>,
-    module_member_calls: BTreeMap<(String, String), u32>,
-    member_reads: BTreeMap<String, u32>,
-    imports: BTreeMap<String, u32>,
-    string_literals: BTreeMap<String, u32>,
-    classes: BTreeMap<String, u32>,
-    constructors: BTreeMap<String, u32>,
+    calls: Occurrences,
+    global_calls: Occurrences,
+    module_calls: ModuleOccurrences,
+    member_calls: Occurrences,
+    rooted_member_calls: Occurrences,
+    module_member_calls: ModuleOccurrences,
+    member_reads: Occurrences,
+    rooted_member_reads: Occurrences,
+    module_member_reads: ModuleOccurrences,
+    imports: Occurrences,
+    string_literals: Occurrences,
+    classes: Occurrences,
+    module_classes: ModuleOccurrences,
+    constructors: Occurrences,
+    global_constructors: Occurrences,
+    module_constructors: ModuleOccurrences,
 }
 
 impl SymbolIndex {
@@ -79,12 +91,8 @@ impl SymbolIndex {
         self.collect_member_read_evidence(&rule.matcher.member_reads, &mut evidence);
         self.collect_evidence(ApiMatchKind::Import, &rule.matcher.imports, &mut evidence);
         self.collect_string_literal_evidence(&rule.matcher.string_literals, &mut evidence);
-        self.collect_evidence(ApiMatchKind::Class, &rule.matcher.classes, &mut evidence);
-        self.collect_evidence(
-            ApiMatchKind::Constructor,
-            &rule.matcher.constructors,
-            &mut evidence,
-        );
+        self.collect_class_evidence(&rule.matcher.classes, &mut evidence);
+        self.collect_constructor_evidence(&rule.matcher.constructors, &mut evidence);
 
         evidence.truncate(ApiRule::EVIDENCE_LIMIT);
         evidence
@@ -92,53 +100,52 @@ impl SymbolIndex {
 
     fn collect_call_evidence(&self, calls: &[CallMatcher], evidence: &mut Vec<ApiEvidence>) {
         for call in calls {
-            let count = match &call.provenance {
-                CallProvenance::Any => self.calls.get(&call.name).copied(),
-                CallProvenance::Global => self.global_calls.get(&call.name).copied(),
-                CallProvenance::ModuleExport { module } => self
-                    .module_calls
-                    .get(&(module.clone(), call.name.clone()))
-                    .copied(),
+            let spans = match &call.provenance {
+                CallProvenance::Any => self.calls.get(&call.name),
+                CallProvenance::Global => self.global_calls.get(&call.name),
+                CallProvenance::ModuleExport { module } => {
+                    self.module_calls.get(&(module.clone(), call.name.clone()))
+                }
             };
-
-            if let Some(count) = count {
-                evidence.push(ApiEvidence {
-                    kind: ApiMatchKind::Call,
-                    symbol: call.evidence_symbol(),
-                    count,
-                });
-            }
+            push_evidence(evidence, ApiMatchKind::Call, call.evidence_symbol(), spans);
         }
     }
 
     fn collect_member_read_evidence(
         &self,
-        member_reads: &[String],
+        member_reads: &[MemberReadMatcher],
         evidence: &mut Vec<ApiEvidence>,
     ) {
-        for symbol in member_reads {
-            let count = if symbol.contains('.') {
-                self.member_reads.get(symbol).copied().unwrap_or(0)
-            } else {
-                let suffix = format!(".{symbol}");
-                self.member_reads
-                    .iter()
-                    .fold(0u32, |count, (member_read, member_read_count)| {
-                        if member_read == symbol || member_read.ends_with(&suffix) {
-                            count.saturating_add(*member_read_count)
-                        } else {
-                            count
-                        }
-                    })
+        for read in member_reads {
+            let spans = match &read.provenance {
+                MemberReadProvenance::Any => {
+                    if read.chain.contains('.') {
+                        self.member_reads.get(&read.chain).cloned()
+                    } else {
+                        let suffix = format!(".{}", read.chain);
+                        let spans = self
+                            .member_reads
+                            .iter()
+                            .filter(|(member_read, _)| {
+                                *member_read == &read.chain || member_read.ends_with(&suffix)
+                            })
+                            .flat_map(|(_, spans)| spans.iter().copied())
+                            .collect::<Vec<_>>();
+                        (!spans.is_empty()).then_some(spans)
+                    }
+                }
+                MemberReadProvenance::Rooted => self.rooted_member_reads.get(&read.chain).cloned(),
+                MemberReadProvenance::ModuleNamespace { module } => self
+                    .module_member_reads
+                    .get(&(module.clone(), read.chain.clone()))
+                    .cloned(),
             };
-
-            if count > 0 {
-                evidence.push(ApiEvidence {
-                    kind: ApiMatchKind::MemberRead,
-                    symbol: symbol.clone(),
-                    count,
-                });
-            }
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::MemberRead,
+                read.evidence_symbol(),
+                spans,
+            );
         }
     }
 
@@ -155,22 +162,58 @@ impl SymbolIndex {
             {
                 continue;
             }
-            let count = match &call.provenance {
-                MemberCallProvenance::Any => self.member_calls.get(&call.chain).copied(),
-                MemberCallProvenance::Rooted => self.rooted_member_calls.get(&call.chain).copied(),
+            let spans = match &call.provenance {
+                MemberCallProvenance::Any => self.member_calls.get(&call.chain),
+                MemberCallProvenance::Rooted => self.rooted_member_calls.get(&call.chain),
                 MemberCallProvenance::ModuleNamespace { module } => self
                     .module_member_calls
-                    .get(&(module.clone(), call.chain.clone()))
-                    .copied(),
+                    .get(&(module.clone(), call.chain.clone())),
             };
+            push_evidence(
+                evidence,
+                ApiMatchKind::MemberCall,
+                call.evidence_symbol(),
+                spans,
+            );
+        }
+    }
 
-            if let Some(count) = count {
-                evidence.push(ApiEvidence {
-                    kind: ApiMatchKind::MemberCall,
-                    symbol: call.evidence_symbol(),
-                    count,
-                });
-            }
+    fn collect_class_evidence(&self, classes: &[ClassMatcher], evidence: &mut Vec<ApiEvidence>) {
+        for class in classes {
+            let spans = match &class.provenance {
+                CallProvenance::Any | CallProvenance::Global => self.classes.get(&class.name),
+                CallProvenance::ModuleExport { module } => self
+                    .module_classes
+                    .get(&(module.clone(), class.name.clone())),
+            };
+            push_evidence(
+                evidence,
+                ApiMatchKind::Class,
+                class.evidence_symbol(),
+                spans,
+            );
+        }
+    }
+
+    fn collect_constructor_evidence(
+        &self,
+        constructors: &[ConstructorMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for constructor in constructors {
+            let spans = match &constructor.provenance {
+                CallProvenance::Any => self.constructors.get(&constructor.name),
+                CallProvenance::Global => self.global_constructors.get(&constructor.name),
+                CallProvenance::ModuleExport { module } => self
+                    .module_constructors
+                    .get(&(module.clone(), constructor.name.clone())),
+            };
+            push_evidence(
+                evidence,
+                ApiMatchKind::Constructor,
+                constructor.evidence_symbol(),
+                spans,
+            );
         }
     }
 
@@ -181,54 +224,32 @@ impl SymbolIndex {
         evidence: &mut Vec<ApiEvidence>,
     ) {
         for symbol in symbols {
-            if let Some(count) = self.count(kind, symbol) {
-                evidence.push(ApiEvidence {
-                    kind,
-                    symbol: symbol.clone(),
-                    count,
-                });
-            }
+            let spans = match kind {
+                ApiMatchKind::Import => self.imports.get(symbol),
+                _ => None,
+            };
+            push_evidence(evidence, kind, symbol.clone(), spans);
         }
     }
 
     fn collect_string_literal_evidence(&self, markers: &[String], evidence: &mut Vec<ApiEvidence>) {
         for marker in markers {
-            let count =
-                self.string_literals
-                    .iter()
-                    .fold(0u32, |count, (literal, literal_count)| {
-                        if literal.contains(marker) {
-                            count.saturating_add(*literal_count)
-                        } else {
-                            count
-                        }
-                    });
-
-            if count > 0 {
-                evidence.push(ApiEvidence {
-                    kind: ApiMatchKind::StringLiteral,
-                    symbol: marker.clone(),
-                    count,
-                });
-            }
+            let spans = self
+                .string_literals
+                .iter()
+                .filter(|(literal, _)| literal.contains(marker))
+                .flat_map(|(_, spans)| spans.iter().copied())
+                .collect::<Vec<_>>();
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::StringLiteral,
+                marker.clone(),
+                (!spans.is_empty()).then_some(spans),
+            );
         }
     }
 
-    fn count(&self, kind: ApiMatchKind, symbol: &str) -> Option<u32> {
-        match kind {
-            ApiMatchKind::Call => self.calls.get(symbol),
-            ApiMatchKind::MemberCall => self.member_calls.get(symbol),
-            ApiMatchKind::MemberRead => self.member_reads.get(symbol),
-            ApiMatchKind::Import => self.imports.get(symbol),
-            ApiMatchKind::StringLiteral => self.string_literals.get(symbol),
-            ApiMatchKind::Class => self.classes.get(symbol),
-            ApiMatchKind::Constructor => self.constructors.get(symbol),
-            ApiMatchKind::CallArgument => None,
-        }
-        .copied()
-    }
-
-    fn increment(&mut self, kind: ApiMatchKind, symbol: impl Into<String>) {
+    fn record(&mut self, kind: ApiMatchKind, symbol: impl Into<String>, span: Span) {
         let target = match kind {
             ApiMatchKind::Call => &mut self.calls,
             ApiMatchKind::MemberCall => &mut self.member_calls,
@@ -240,6 +261,35 @@ impl SymbolIndex {
             ApiMatchKind::CallArgument => return,
         };
 
-        *target.entry(symbol.into()).or_insert(0) += 1;
+        target.entry(symbol.into()).or_default().push(span);
     }
+}
+
+fn push_evidence(
+    evidence: &mut Vec<ApiEvidence>,
+    kind: ApiMatchKind,
+    symbol: String,
+    spans: Option<&Vec<Span>>,
+) {
+    push_owned_evidence(evidence, kind, symbol, spans.cloned());
+}
+
+fn push_owned_evidence(
+    evidence: &mut Vec<ApiEvidence>,
+    kind: ApiMatchKind,
+    symbol: String,
+    spans: Option<Vec<Span>>,
+) {
+    let Some(spans) = spans else {
+        return;
+    };
+    if spans.is_empty() {
+        return;
+    }
+    evidence.push(ApiEvidence {
+        kind,
+        symbol,
+        count: spans.len() as u32,
+        spans,
+    });
 }

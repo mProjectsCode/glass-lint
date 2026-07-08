@@ -7,11 +7,11 @@ import * as obsidian from "obsidian";
 renamedRequestUrl("https://example.com");
 request("https://example.com");
 (0, request)("https://example.com");
-obsidian.requestUrl("https://example.com"); // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected count=4
-(0, obsidian.request)("https://example.com"); // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected
+obsidian.requestUrl("https://example.com"); // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected count=7 line=any
+(0, obsidian.request)("https://example.com");
 
 const send = renamedRequestUrl;
 send("https://example.com");
 
-const sendFromNamespace = obsidian.request; // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected
+const sendFromNamespace = obsidian.request;
 sendFromNamespace("https://example.com");

@@ -1,7 +1,7 @@
 // @case description Ported old classifier case: representative Obsidian API groups
 // @tool glass-lint rules=obsidian:network.obsidian,obsidian:vault.read,obsidian:vault.enumerate,obsidian:metadata.read,obsidian:metadata.frontmatter,obsidian:workspace.active_file,obsidian:ui.commands,obsidian:editor.extension,obsidian:editor.markdown_processing,obsidian:lifecycle.events
 
-import { requestUrl, MarkdownRenderer } from "obsidian"; // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected
+import { requestUrl, MarkdownRenderer } from "obsidian"; // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected line=12
 
 class Plugin {
   async onload() {

@@ -135,6 +135,7 @@ pub struct RuleMetadata {
 
 pub(crate) struct ParsedSource {
     pub program: Program,
+    pub source_map: Lrc<SourceMap>,
 }
 
 pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
@@ -160,7 +161,10 @@ pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseD
     );
     Parser::new_from(lexer)
         .parse_program()
-        .map(|program| ParsedSource { program })
+        .map(|program| ParsedSource {
+            program,
+            source_map,
+        })
         .map_err(|error| ParseDiagnostic {
             message: format!("JavaScript parse error: {error:?}"),
         })
