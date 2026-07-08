@@ -112,6 +112,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
             .rooted_member_calls(["app.workspace.openLinkText"])
+            .rooted_member_calls(["app.workspace.getLeaf.openFile"])
             .member_calls(["leaf.openFile"])
             .build(),
         ApiRule::builder("metadata.read")

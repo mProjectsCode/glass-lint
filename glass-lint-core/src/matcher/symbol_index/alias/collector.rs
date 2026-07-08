@@ -8,8 +8,8 @@ use swc_ecma_ast::{
 use swc_ecma_visit::{Visit, VisitWith};
 
 use super::super::ast::{
-    binding_ident_name, collect_pat_bindings, member_chain, member_prop_name, module_export_name,
-    require_module_name, static_string,
+    binding_ident_name, collect_pat_bindings, is_function_constructor_member, member_chain,
+    member_prop_name, module_export_name, require_module_name, static_string,
 };
 use super::collector_helpers::{
     collect_assignment_aliases, collect_require_aliases, collect_value_aliases,
@@ -215,6 +215,9 @@ impl RootedExprContext for AliasCollector {
     }
 
     fn rooted_member_chain(&self, member: &swc_ecma_ast::MemberExpr) -> Option<String> {
+        if is_function_constructor_member(member) {
+            return Some("Function".to_string());
+        }
         let object = self.rooted_expr_name(&member.obj)?;
         let property = member_prop_name(&member.prop)?;
         Some(format!("{object}.{property}"))

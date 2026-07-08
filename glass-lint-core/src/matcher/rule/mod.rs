@@ -95,6 +95,21 @@ impl ApiRuleBuilder {
         self
     }
 
+    pub fn global_call(mut self, call: impl Into<String>) -> Self {
+        self.matcher.calls.push(CallMatcher::global(call.into()));
+        self
+    }
+
+    pub fn static_string_call_arg(mut self, index: usize) -> Self {
+        if let Some(call) = self.matcher.calls.last_mut() {
+            call.arg_strings.push(ArgStringMatcher {
+                index,
+                values: Vec::new(),
+            });
+        }
+        self
+    }
+
     pub fn module_calls<I, S>(mut self, module: impl Into<String>, exports: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -135,6 +150,13 @@ impl ApiRuleBuilder {
                 .map(Into::into)
                 .map(MemberCallMatcher::rooted_chain),
         );
+        self
+    }
+
+    pub fn rooted_member_call(mut self, member_call: impl Into<String>) -> Self {
+        self.matcher
+            .member_calls
+            .push(MemberCallMatcher::rooted_chain(member_call.into()));
         self
     }
 

@@ -37,6 +37,7 @@ pub struct AssignedPropertyMatcher {
 pub struct CallMatcher {
     pub name: String,
     pub provenance: CallProvenance,
+    pub arg_strings: Vec<ArgStringMatcher>,
 }
 
 impl CallMatcher {
@@ -44,6 +45,7 @@ impl CallMatcher {
         Self {
             name,
             provenance: CallProvenance::Any,
+            arg_strings: Vec::new(),
         }
     }
 
@@ -51,6 +53,7 @@ impl CallMatcher {
         Self {
             name,
             provenance: CallProvenance::Global,
+            arg_strings: Vec::new(),
         }
     }
 
@@ -58,6 +61,7 @@ impl CallMatcher {
         Self {
             name: export,
             provenance: CallProvenance::ModuleExport { module },
+            arg_strings: Vec::new(),
         }
     }
 
@@ -300,6 +304,9 @@ impl ApiMatcher {
             match &mut call.provenance {
                 CallProvenance::Any | CallProvenance::Global => {}
                 CallProvenance::ModuleExport { module } => *module = module.trim().to_string(),
+            }
+            for matcher in &mut call.arg_strings {
+                normalize_strings(&mut matcher.values);
             }
         }
         self.calls.retain(|call| {

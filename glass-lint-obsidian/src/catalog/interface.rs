@@ -19,6 +19,7 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.workspace.getLeavesOfType",
                 "app.workspace.detachLeavesOfType",
                 "app.workspace.revealLeaf",
+                "app.workspace.getLeaf.openFile",
             ])
             .implies(["disclosure.workspace_layout"])
             .build(),

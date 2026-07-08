@@ -47,7 +47,7 @@ pub fn effective_callee_expr(expr: &Expr) -> &Expr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolCallProvenance {
-    Global,
+    Global { name: String },
     Local,
     ModuleExport { module: String, export: String },
 }
@@ -169,6 +169,12 @@ pub fn expr_name(expr: &Expr) -> Option<String> {
     match expr {
         Expr::Ident(ident) => Some(ident.sym.to_string()),
         Expr::Member(member) => member_chain(member),
+        Expr::Call(call) => {
+            let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
+                return None;
+            };
+            expr_name(callee)
+        }
         Expr::This(_) => Some("this".to_string()),
         Expr::OptChain(chain) => match &*chain.base {
             OptChainBase::Member(member) => member_chain(member),
@@ -194,6 +200,19 @@ pub fn member_prop_name(prop: &MemberProp) -> Option<String> {
         MemberProp::Ident(ident) => Some(ident.sym.to_string()),
         MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
         MemberProp::Computed(computed) => static_property_name(&computed.expr),
+    }
+}
+
+pub fn is_function_constructor_member(member: &MemberExpr) -> bool {
+    member_prop_name(&member.prop).as_deref() == Some("constructor")
+        && is_function_like_expr(&member.obj)
+}
+
+fn is_function_like_expr(expr: &Expr) -> bool {
+    match expr {
+        Expr::Fn(_) | Expr::Arrow(_) => true,
+        Expr::Paren(paren) => is_function_like_expr(&paren.expr),
+        _ => false,
     }
 }
 

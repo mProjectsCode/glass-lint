@@ -135,12 +135,31 @@ impl AliasInfo {
                     export: export.clone(),
                 }
             }
+            Some(BindingProvenance::ValueAlias { target }) if !target.contains('.') => {
+                SymbolCallProvenance::Global {
+                    name: target.clone(),
+                }
+            }
+            Some(BindingProvenance::ValueAlias { target })
+                if target
+                    .strip_suffix(".bind")
+                    .is_some_and(|root| !root.contains('.')) =>
+            {
+                SymbolCallProvenance::Global {
+                    name: target
+                        .strip_suffix(".bind")
+                        .expect("suffix was checked")
+                        .to_string(),
+                }
+            }
             Some(
                 BindingProvenance::Local
                 | BindingProvenance::ValueAlias { .. }
                 | BindingProvenance::ModuleNamespace { .. },
             ) => SymbolCallProvenance::Local,
-            None => SymbolCallProvenance::Global,
+            None => SymbolCallProvenance::Global {
+                name: name.to_string(),
+            },
         }
     }
 

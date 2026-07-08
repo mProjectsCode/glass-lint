@@ -44,7 +44,7 @@ impl SymbolIndex {
         aliases: &AliasInfo,
         rules: &[ApiRule],
     ) -> (Self, Vec<Vec<ApiEvidence>>) {
-        let matchers = rules
+        let member_matchers = rules
             .iter()
             .enumerate()
             .flat_map(|(rule_index, rule)| {
@@ -61,13 +61,32 @@ impl SymbolIndex {
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
-        Self::collect_with_argument_matchers(program, aliases, &matchers, rules.len())
+        let call_matchers = rules
+            .iter()
+            .enumerate()
+            .flat_map(|(rule_index, rule)| {
+                rule.matcher
+                    .calls
+                    .iter()
+                    .filter(|matcher| !matcher.arg_strings.is_empty())
+                    .cloned()
+                    .map(move |matcher| (rule_index, matcher))
+            })
+            .collect::<Vec<_>>();
+        Self::collect_with_argument_matchers(
+            program,
+            aliases,
+            &member_matchers,
+            &call_matchers,
+            rules.len(),
+        )
     }
 
     fn collect_with_argument_matchers(
         program: Option<&Program>,
         aliases: &AliasInfo,
-        argument_matchers: &[(usize, MemberCallMatcher)],
+        member_argument_matchers: &[(usize, MemberCallMatcher)],
+        call_argument_matchers: &[(usize, CallMatcher)],
         rule_count: usize,
     ) -> (Self, Vec<Vec<ApiEvidence>>) {
         let mut index = Self::default();
@@ -76,7 +95,8 @@ impl SymbolIndex {
             visitor::collect(
                 program,
                 aliases,
-                argument_matchers,
+                member_argument_matchers,
+                call_argument_matchers,
                 &mut index,
                 &mut argument_evidence,
             );
@@ -100,6 +120,9 @@ impl SymbolIndex {
 
     fn collect_call_evidence(&self, calls: &[CallMatcher], evidence: &mut Vec<ApiEvidence>) {
         for call in calls {
+            if !call.arg_strings.is_empty() {
+                continue;
+            }
             let spans = match &call.provenance {
                 CallProvenance::Any => self.calls.get(&call.name),
                 CallProvenance::Global => self.global_calls.get(&call.name),

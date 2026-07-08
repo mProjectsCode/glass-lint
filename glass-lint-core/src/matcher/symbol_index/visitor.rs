@@ -11,15 +11,20 @@ use swc_ecma_visit::{Visit, VisitWith};
 use super::alias::AliasInfo;
 use super::ast::{
     SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, expr_member, expr_name,
-    member_chain, prop_name, require_call_module_name, static_string,
+    is_function_constructor_member, member_chain, prop_name, require_call_module_name,
+    static_string,
 };
-use super::{ApiEvidence, ApiMatchKind, MemberCallMatcher, MemberCallProvenance, SymbolIndex};
+use super::{
+    ApiEvidence, ApiMatchKind, CallMatcher, CallProvenance, MemberCallMatcher,
+    MemberCallProvenance, SymbolIndex,
+};
 use crate::matcher::rule::canonical_rooted_chain;
 
 pub fn collect(
     program: &Program,
     aliases: &AliasInfo,
-    argument_matchers: &[(usize, MemberCallMatcher)],
+    member_argument_matchers: &[(usize, MemberCallMatcher)],
+    call_argument_matchers: &[(usize, CallMatcher)],
     index: &mut SymbolIndex,
     argument_evidence: &mut [Vec<ApiEvidence>],
 ) {
@@ -27,7 +32,8 @@ pub fn collect(
         index,
         aliases,
         pending_callee_reads: BTreeMap::new(),
-        argument_matchers,
+        member_argument_matchers,
+        call_argument_matchers,
         argument_evidence,
     };
     program.visit_with(&mut visitor);
@@ -37,18 +43,24 @@ struct SymbolIndexVisitor<'a, 'rules> {
     index: &'a mut SymbolIndex,
     aliases: &'a AliasInfo,
     pending_callee_reads: BTreeMap<String, u32>,
-    argument_matchers: &'rules [(usize, MemberCallMatcher)],
+    member_argument_matchers: &'rules [(usize, MemberCallMatcher)],
+    call_argument_matchers: &'rules [(usize, CallMatcher)],
     argument_evidence: &'a mut [Vec<ApiEvidence>],
 }
 
 impl SymbolIndexVisitor<'_, '_> {
-    fn record_identifier_call(&mut self, ident: &Ident) {
+    fn record_identifier_call(&mut self, ident: &Ident, call: Option<&CallExpr>) {
         let name = ident.sym.to_string();
         self.index
             .record(ApiMatchKind::Call, name.clone(), ident.span);
 
-        match self.aliases.call_provenance(&name, ident.span) {
-            SymbolCallProvenance::Global => {
+        let provenance = self.aliases.call_provenance(&name, ident.span);
+        if let Some(call) = call {
+            self.collect_call_argument_evidence(call, ident, &provenance);
+        }
+
+        match provenance {
+            SymbolCallProvenance::Global { name } => {
                 self.index
                     .global_calls
                     .entry(name)
@@ -66,7 +78,59 @@ impl SymbolIndexVisitor<'_, '_> {
         }
     }
 
+    fn collect_call_argument_evidence(
+        &mut self,
+        call: &CallExpr,
+        ident: &Ident,
+        found_provenance: &SymbolCallProvenance,
+    ) {
+        for (rule_index, matcher) in self.call_argument_matchers {
+            let call_matches = match &matcher.provenance {
+                CallProvenance::Any => ident.sym == *matcher.name,
+                CallProvenance::Global => matches!(
+                    found_provenance,
+                    SymbolCallProvenance::Global { name } if name == &matcher.name
+                ),
+                CallProvenance::ModuleExport { module } => matches!(
+                    found_provenance,
+                    SymbolCallProvenance::ModuleExport {
+                        module: found_module,
+                        export
+                    } if found_module == module && export == &matcher.name
+                ),
+            };
+
+            if call_matches
+                && matcher.arg_strings.iter().all(|arg_matcher| {
+                    call.args
+                        .get(arg_matcher.index)
+                        .and_then(|argument| static_string(&argument.expr))
+                        .is_some_and(|value| {
+                            arg_matcher.values.is_empty()
+                                || arg_matcher.values.iter().any(|expected| expected == &value)
+                        })
+                })
+            {
+                self.argument_evidence[*rule_index].push(ApiEvidence {
+                    kind: ApiMatchKind::CallArgument,
+                    symbol: matcher.evidence_symbol(),
+                    count: 1,
+                    spans: vec![call.span],
+                });
+            }
+        }
+    }
+
     fn record_member_call(&mut self, member: &MemberExpr, call: Option<&CallExpr>) {
+        if is_function_constructor_member(member) {
+            self.index
+                .record(ApiMatchKind::Call, "Function", member.span);
+            self.index
+                .global_calls
+                .entry("Function".to_string())
+                .or_default()
+                .push(member.span);
+        }
         let syntactic_chain = member_chain(member);
         let resolved_chain = syntactic_chain
             .as_deref()
@@ -151,7 +215,7 @@ impl SymbolIndexVisitor<'_, '_> {
         resolved_chain: Option<&str>,
         module_member: Option<&SymbolMemberProvenance>,
     ) {
-        for (rule_index, matcher) in self.argument_matchers {
+        for (rule_index, matcher) in self.member_argument_matchers {
             let member_matches = match &matcher.provenance {
                 MemberCallProvenance::Any => syntactic_chain == Some(&matcher.chain),
                 MemberCallProvenance::Rooted => resolved_chain
@@ -274,7 +338,7 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
         match &call.callee {
             Callee::Expr(callee) => match effective_callee_expr(callee) {
                 Expr::Ident(ident) => {
-                    self.record_identifier_call(ident);
+                    self.record_identifier_call(ident, Some(call));
                 }
                 Expr::Member(member) => {
                     self.record_member_call(member, Some(call));
@@ -291,7 +355,7 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
     fn visit_opt_chain_expr(&mut self, chain: &OptChainExpr) {
         match &*chain.base {
             OptChainBase::Call(call) => match &*call.callee {
-                Expr::Ident(ident) => self.record_identifier_call(ident),
+                Expr::Ident(ident) => self.record_identifier_call(ident, None),
                 Expr::Member(member) => self.record_member_call(member, None),
                 _ => {
                     if let Some(raw) = expr_name(&call.callee) {
@@ -345,15 +409,12 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
         match &*new_expr.callee {
             Expr::Ident(ident) => {
                 match self.aliases.call_provenance(ident.sym.as_ref(), ident.span) {
-                    SymbolCallProvenance::Global => {
-                        self.index.record(
-                            ApiMatchKind::Constructor,
-                            ident.sym.to_string(),
-                            ident.span,
-                        );
+                    SymbolCallProvenance::Global { name } => {
+                        self.index
+                            .record(ApiMatchKind::Constructor, name.clone(), ident.span);
                         self.index
                             .global_constructors
-                            .entry(ident.sym.to_string())
+                            .entry(name)
                             .or_default()
                             .push(ident.span);
                     }
