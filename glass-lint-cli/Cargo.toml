@@ -1,0 +1,23 @@
+[package]
+name = "glass-lint-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+glass-lint-core = { path = "../glass-lint-core" }
+glass-lint-obsidian = { path = "../glass-lint-obsidian" }
+glass-lint-harness = { path = "../glass-lint-harness" }
+serde_json.workspace = true
+walkdir.workspace = true
+
+[[bin]]
+name = "glass-lint"
+path = "src/bin/glass-lint.rs"
+
+[[bin]]
+name = "glass-lint-harness"
+path = "src/bin/glass-lint-harness.rs"
+

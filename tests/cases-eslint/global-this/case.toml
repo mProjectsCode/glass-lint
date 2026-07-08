@@ -1,0 +1,19 @@
+id = "eslint-global-this-timer"
+description = "Cross-tool timer behavior"
+language = "javascript"
+filename = "main.js"
+source = "globalThis.setTimeout('run()', 10);"
+
+[tools.glass-lint]
+rules = ["obsidian:dynamic_code"]
+[[tools.glass-lint.expect]]
+rule = "obsidian:dynamic_code"
+message_id = "detected"
+count = 1
+
+[tools.eslint-obsidianmd]
+rules = ["obsidianmd/no-global-this"]
+[[tools.eslint-obsidianmd.expect]]
+rule = "eslint-obsidianmd:no-global-this"
+message_id = "avoidGlobal"
+count = 1

@@ -1,0 +1,26 @@
+[workspace]
+members = [
+    "glass-lint-core",
+    "glass-lint-obsidian",
+    "glass-lint-harness",
+    "glass-lint-cli",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+
+[workspace.dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.9"
+walkdir = "2.5"
+regex = "1.11.1"
+swc_common = "23.0.0"
+swc_ecma_ast = "25.0.0"
+swc_ecma_parser = "41.0.0"
+swc_ecma_visit = "25.0.0"

@@ -1,0 +1,15 @@
+id = "dynamic-string-timer"
+description = "String timer callbacks are dynamic code"
+tags = ["timers", "dynamic-code"]
+language = "javascript"
+filename = "main.js"
+source = "globalThis.setTimeout('run()', 10);"
+
+[tools.glass-lint]
+rules = ["obsidian:dynamic_code"]
+
+[[tools.glass-lint.expect]]
+rule = "obsidian:dynamic_code"
+message_id = "detected"
+severity = "warning"
+count = 1

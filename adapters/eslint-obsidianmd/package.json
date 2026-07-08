@@ -1,0 +1,11 @@
+{
+  "name": "glass-lint-eslint-obsidianmd-adapter",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@typescript-eslint/rule-tester": "^8.0.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-obsidianmd": "0.4.1"
+  }
+}
+
