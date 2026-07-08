@@ -1,8 +1,0 @@
-id = "selected-rule-zero-findings"
-description = "Unselected network rule produces no diagnostics"
-language = "javascript"
-filename = "main.js"
-source = "fetch('/api/data');"
-
-[tools.glass-lint]
-rules = ["obsidian:vault.read"]

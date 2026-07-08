@@ -78,7 +78,7 @@ fn run() -> Result<bool> {
         }
     }
     if report.cases.is_empty() {
-        bail!("no case.toml files found in {}", path.display());
+        bail!("no JavaScript harness cases found in {}", path.display());
     }
     Ok(report.passed())
 }

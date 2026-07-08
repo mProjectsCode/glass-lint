@@ -4,8 +4,9 @@ mod taxonomy;
 
 pub use error::{ApiCatalogError, ApiRuleBuildError};
 pub use matcher::{
-    ApiMatcher, ArgStringMatcher, CallMatcher, CallProvenance, MemberCallMatcher,
-    MemberCallProvenance, canonical_rooted_chain,
+    ApiMatcher, ArgObjectKeyMatcher, ArgRootedExprMatcher, ArgStringMatcher,
+    AssignedPropertyMatcher, CallMatcher, CallProvenance, MemberCallMatcher, MemberCallProvenance,
+    canonical_rooted_chain,
 };
 pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
 
@@ -163,6 +164,48 @@ impl ApiRuleBuilder {
             call.arg_strings.push(ArgStringMatcher {
                 index,
                 values: Vec::new(),
+            });
+        }
+        self
+    }
+
+    pub fn arg_object_keys<I, S>(mut self, index: usize, keys: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        if let Some(call) = self.matcher.member_calls.last_mut() {
+            call.arg_object_keys.push(ArgObjectKeyMatcher {
+                index,
+                keys: keys.into_iter().map(Into::into).collect(),
+            });
+        }
+        self
+    }
+
+    pub fn arg_rooted_exprs<I, S>(mut self, index: usize, chains: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        if let Some(call) = self.matcher.member_calls.last_mut() {
+            call.arg_rooted_exprs.push(ArgRootedExprMatcher {
+                index,
+                chains: chains.into_iter().map(Into::into).collect(),
+            });
+        }
+        self
+    }
+
+    pub fn assigned_property<I, S>(mut self, property: impl Into<String>, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        if let Some(call) = self.matcher.member_calls.last_mut() {
+            call.assigned_properties.push(AssignedPropertyMatcher {
+                property: property.into(),
+                values: values.into_iter().map(Into::into).collect(),
             });
         }
         self

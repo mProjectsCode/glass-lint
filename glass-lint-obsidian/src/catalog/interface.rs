@@ -35,7 +35,10 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("workspace")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_calls(["this.addCommand", "app.workspace.on"])
+            .member_call("this.addCommand")
+            .arg_object_keys(0, ["editorCallback"])
+            .member_call("app.workspace.on")
+            .arg_string(0, ["file-menu", "editor-menu"])
             .build(),
         ApiRule::builder("workspace.layout_persistence")
             .label("Reads or writes workspace layout persistence")
@@ -106,6 +109,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .member_calls(["dialog.showOpenDialog", "dialog.showSaveDialog"])
             .member_call("document.createElement")
             .arg_string(0, ["input"])
+            .assigned_property("type", ["file"])
             .build(),
         ApiRule::builder("editor.extension")
             .label("Registers editor extensions")
@@ -189,6 +193,7 @@ pub(super) fn rules() -> Vec<Rule> {
                 "obsidian.PluginSettingTab",
                 "obsidian.Setting",
             ])
+            .classes(["obsidian.PluginSettingTab", "obsidian.Setting"])
             .member_calls(["this.loadData", "this.saveData"])
             .build(),
         ApiRule::builder("lifecycle.methods")

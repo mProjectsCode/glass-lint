@@ -1,0 +1,10 @@
+// @case description Ported old classifier cases: metadata frontmatter, traversal, and extraction flow
+// @tool glass-lint rules=obsidian:metadata.frontmatter,obsidian:metadata.traversal,obsidian:metadata.extraction
+
+const cache = this.app.metadataCache.getFileCache(file);
+console.log(cache.frontmatter); // @expect-error glass-lint rule=obsidian:metadata.frontmatter message_id=detected
+cache.tags; // @expect-error glass-lint rule=obsidian:metadata.extraction message_id=detected
+cache.links; // @expect-error glass-lint rule=obsidian:metadata.extraction message_id=detected
+
+const links = this.app.metadataCache.resolvedLinks;
+Object.entries(links); // @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected

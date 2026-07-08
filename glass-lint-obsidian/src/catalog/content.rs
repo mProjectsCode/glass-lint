@@ -136,7 +136,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_reads(["frontmatter"])
+            .member_reads(["app.metadataCache.getFileCache.frontmatter"])
             .implies(["disclosure.metadata_access"])
             .build(),
         ApiRule::builder("metadata.frontmatter_write")
@@ -160,18 +160,44 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_reads([
-                "app.metadataCache.resolvedLinks",
-                "app.metadataCache.unresolvedLinks",
-                "app.metadataCache.fileCache",
-            ])
+            .member_call("Object.entries")
+            .arg_rooted_exprs(
+                0,
+                [
+                    "app.metadataCache.resolvedLinks",
+                    "app.metadataCache.unresolvedLinks",
+                ],
+            )
+            .member_call("Object.keys")
+            .arg_rooted_exprs(
+                0,
+                [
+                    "app.metadataCache.resolvedLinks",
+                    "app.metadataCache.unresolvedLinks",
+                ],
+            )
+            .member_call("Object.values")
+            .arg_rooted_exprs(
+                0,
+                [
+                    "app.metadataCache.resolvedLinks",
+                    "app.metadataCache.unresolvedLinks",
+                ],
+            )
             .build(),
         ApiRule::builder("metadata.extraction")
             .label("Extracts tags, links, embeds, blocks, or headings from metadata")
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_reads(["tags", "links", "embeds", "blocks", "headings", "sections"])
+            .member_reads([
+                "app.metadataCache.getFileCache.tags",
+                "app.metadataCache.getFileCache.links",
+                "app.metadataCache.getFileCache.embeds",
+                "app.metadataCache.getFileCache.blocks",
+                "app.metadataCache.getFileCache.headings",
+                "app.metadataCache.getFileCache.sections",
+            ])
             .implies(["disclosure.metadata_access"])
             .build(),
         ApiRule::builder("dependency.dataview")

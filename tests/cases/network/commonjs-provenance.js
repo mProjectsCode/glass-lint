@@ -1,0 +1,24 @@
+// @case description Ported old classifier case: CommonJS Obsidian require provenance
+// @tool glass-lint rules=obsidian:network.obsidian
+
+var obsidian = require("obsidian");
+obsidian.requestUrl("https://example.com"); // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected
+(0, obsidian["requestUrl"])("https://example.com");
+
+var { requestUrl: r } = require("obsidian");
+r("https://example.com");
+
+var wrapped = __toESM(require("obsidian"));
+wrapped.requestUrl("https://example.com");
+
+const wrappedStar = __importStar(require("obsidian"));
+wrappedStar.requestUrl("https://example.com");
+
+const wrappedDefault = __importDefault(require("obsidian"));
+wrappedDefault.requestUrl("https://example.com");
+
+const wildcard = _interopRequireWildcard(require("obsidian"));
+wildcard.requestUrl("https://example.com");
+
+const defaultInterop = _interopRequireDefault(require("obsidian"));
+defaultInterop.requestUrl("https://example.com");

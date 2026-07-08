@@ -16,6 +16,24 @@ pub struct ArgStringMatcher {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArgObjectKeyMatcher {
+    pub index: usize,
+    pub keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArgRootedExprMatcher {
+    pub index: usize,
+    pub chains: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssignedPropertyMatcher {
+    pub property: String,
+    pub values: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallMatcher {
     pub name: String,
     pub provenance: CallProvenance,
@@ -71,6 +89,9 @@ pub struct MemberCallMatcher {
     pub chain: String,
     pub provenance: MemberCallProvenance,
     pub arg_strings: Vec<ArgStringMatcher>,
+    pub arg_object_keys: Vec<ArgObjectKeyMatcher>,
+    pub arg_rooted_exprs: Vec<ArgRootedExprMatcher>,
+    pub assigned_properties: Vec<AssignedPropertyMatcher>,
 }
 
 impl MemberCallMatcher {
@@ -79,6 +100,9 @@ impl MemberCallMatcher {
             chain,
             provenance: MemberCallProvenance::Any,
             arg_strings: Vec::new(),
+            arg_object_keys: Vec::new(),
+            arg_rooted_exprs: Vec::new(),
+            assigned_properties: Vec::new(),
         }
     }
 
@@ -87,6 +111,9 @@ impl MemberCallMatcher {
             chain,
             provenance: MemberCallProvenance::Rooted,
             arg_strings: Vec::new(),
+            arg_object_keys: Vec::new(),
+            arg_rooted_exprs: Vec::new(),
+            assigned_properties: Vec::new(),
         }
     }
 
@@ -95,6 +122,9 @@ impl MemberCallMatcher {
             chain: member,
             provenance: MemberCallProvenance::ModuleNamespace { module },
             arg_strings: Vec::new(),
+            arg_object_keys: Vec::new(),
+            arg_rooted_exprs: Vec::new(),
+            assigned_properties: Vec::new(),
         }
     }
 
@@ -180,6 +210,19 @@ impl ApiMatcher {
             for matcher in &mut member_call.arg_strings {
                 normalize_strings(&mut matcher.values);
             }
+            for matcher in &mut member_call.arg_object_keys {
+                normalize_strings(&mut matcher.keys);
+            }
+            for matcher in &mut member_call.arg_rooted_exprs {
+                normalize_member_chains(&mut matcher.chains);
+            }
+            for matcher in &mut member_call.assigned_properties {
+                matcher.property = matcher.property.trim().to_string();
+                normalize_strings(&mut matcher.values);
+            }
+            member_call
+                .assigned_properties
+                .retain(|matcher| !matcher.property.is_empty());
         }
         self
     }

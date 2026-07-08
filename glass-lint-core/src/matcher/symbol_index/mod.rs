@@ -39,7 +39,12 @@ impl SymbolIndex {
                 rule.matcher
                     .member_calls
                     .iter()
-                    .filter(|matcher| !matcher.arg_strings.is_empty())
+                    .filter(|matcher| {
+                        !matcher.arg_strings.is_empty()
+                            || !matcher.arg_object_keys.is_empty()
+                            || !matcher.arg_rooted_exprs.is_empty()
+                            || !matcher.assigned_properties.is_empty()
+                    })
                     .cloned()
                     .map(move |matcher| (rule_index, matcher))
             })
@@ -143,7 +148,11 @@ impl SymbolIndex {
         evidence: &mut Vec<ApiEvidence>,
     ) {
         for call in member_calls {
-            if !call.arg_strings.is_empty() {
+            if !call.arg_strings.is_empty()
+                || !call.arg_object_keys.is_empty()
+                || !call.arg_rooted_exprs.is_empty()
+                || !call.assigned_properties.is_empty()
+            {
                 continue;
             }
             let count = match &call.provenance {

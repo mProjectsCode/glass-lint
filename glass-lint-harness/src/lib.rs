@@ -20,47 +20,33 @@ fn default_filename() -> String {
     "main.js".into()
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug)]
 pub struct Case {
     pub id: String,
     pub description: String,
-    #[serde(default)]
     pub tags: Vec<String>,
-    #[serde(default = "default_language")]
     pub language: String,
-    #[serde(default = "default_filename")]
     pub filename: String,
     pub source: String,
     pub tools: BTreeMap<String, ToolExpectation>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug)]
 pub struct ToolExpectation {
-    #[serde(default)]
     pub rules: Vec<String>,
-    #[serde(default, rename = "expect")]
     pub required: Vec<DiagnosticExpectation>,
-    #[serde(default, rename = "forbid")]
     pub forbidden: Vec<DiagnosticExpectation>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug)]
 pub struct DiagnosticExpectation {
-    #[serde(rename = "rule")]
     pub rule_id: String,
     pub message_id: Option<String>,
     pub severity: Option<Severity>,
-    #[serde(default = "one")]
-    pub count: usize,
+    pub count: Option<usize>,
     pub line: Option<u32>,
     pub column: Option<u32>,
     pub message: Option<String>,
-}
-fn one() -> usize {
-    1
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -186,6 +172,8 @@ pub struct CaseResult {
 #[derive(Clone, Debug, Serialize)]
 pub struct ToolResult {
     pub version: String,
+    pub skipped: bool,
+    pub skip_reason: Option<String>,
     pub passed: bool,
     pub findings: Vec<Finding>,
     pub errors: Vec<String>,
@@ -208,7 +196,13 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
         .into_iter()
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
-        .filter(|entry| entry.file_type().is_file() && entry.file_name() == "case.toml")
+        .filter(|entry| {
+            entry.file_type().is_file()
+                && entry
+                    .path()
+                    .extension()
+                    .is_some_and(|extension| extension == "js")
+        })
         .map(|entry| entry.into_path())
         .collect();
     paths.sort();
@@ -216,10 +210,10 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
     paths
         .into_iter()
         .map(|path| {
-            let text =
+            let source =
                 fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
-            let case: Case =
-                toml::from_str(&text).with_context(|| format!("parse {}", path.display()))?;
+            let case = parse_case(root, &path, source)
+                .with_context(|| format!("parse {}", path.display()))?;
             if case.language != "javascript" {
                 bail!(
                     "{}: unsupported language `{}`",
@@ -235,31 +229,254 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
         .collect()
 }
 
+fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let id = relative
+        .with_extension("")
+        .to_string_lossy()
+        .replace(std::path::MAIN_SEPARATOR, "/");
+    let filename = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(default_filename);
+    let mut case = Case {
+        id: id.clone(),
+        description: id,
+        tags: vec![],
+        language: default_language(),
+        filename,
+        source,
+        tools: BTreeMap::new(),
+    };
+
+    let lines: Vec<_> = case.source.lines().map(str::to_owned).collect();
+    for line in &lines {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some(comment) = trimmed.strip_prefix("//") else {
+            break;
+        };
+        let directive = comment.trim();
+        if let Some(rest) = directive.strip_prefix("@case ") {
+            parse_case_directive(&mut case, rest)?;
+        } else if let Some(rest) = directive.strip_prefix("@tool ") {
+            parse_tool_directive(&mut case, rest)?;
+        }
+    }
+
+    for (index, line) in lines.iter().enumerate() {
+        let Some(comment_start) = line.find("// @") else {
+            continue;
+        };
+        let directive = line[comment_start + 3..].trim();
+        if let Some(rest) = directive.strip_prefix("@expect-error-after ") {
+            let line_number = previous_code_line(&lines, index)
+                .with_context(|| format!("{}:{} has no previous code line", case.id, index + 1))?;
+            add_expectation(&mut case, rest, line_number)?;
+        } else if let Some(rest) = directive.strip_prefix("@expect-error ") {
+            let line_number = if line[..comment_start].trim().is_empty() {
+                (index + 2) as u32
+            } else {
+                (index + 1) as u32
+            };
+            add_expectation(&mut case, rest, line_number)?;
+        }
+    }
+
+    case.source = strip_harness_comments(&case.source);
+    Ok(case)
+}
+
+fn strip_harness_comments(source: &str) -> String {
+    source
+        .lines()
+        .map(|line| {
+            let Some(comment_start) = line.find("// @") else {
+                return line.to_owned();
+            };
+            let directive = line[comment_start + 3..].trim();
+            if directive.starts_with("@case ")
+                || directive.starts_with("@tool ")
+                || directive.starts_with("@expect-error ")
+                || directive.starts_with("@expect-error-after ")
+            {
+                format!(
+                    "{}{}",
+                    &line[..comment_start],
+                    " ".repeat(line.len() - comment_start)
+                )
+            } else {
+                line.to_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn previous_code_line(lines: &[String], assertion_index: usize) -> Option<u32> {
+    lines[..assertion_index]
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, line)| {
+            let trimmed = line.trim();
+            !trimmed.is_empty()
+                && !trimmed.starts_with("//")
+                && !trimmed.starts_with("@expect-error")
+                && !trimmed.starts_with("@expect-error-after")
+        })
+        .map(|(index, _)| (index + 1) as u32)
+}
+
+fn parse_case_directive(case: &mut Case, rest: &str) -> Result<()> {
+    let (key, value) = rest
+        .split_once(' ')
+        .with_context(|| format!("invalid @case directive `{rest}`"))?;
+    match key {
+        "id" => case.id = value.trim().into(),
+        "description" => case.description = value.trim().into(),
+        "tags" => {
+            case.tags = value
+                .split(',')
+                .map(str::trim)
+                .filter(|tag| !tag.is_empty())
+                .map(str::to_owned)
+                .collect();
+        }
+        "filename" => case.filename = value.trim().into(),
+        "language" => case.language = value.trim().into(),
+        _ => bail!("unknown @case key `{key}`"),
+    }
+    Ok(())
+}
+
+fn parse_tool_directive(case: &mut Case, rest: &str) -> Result<()> {
+    let (name, fields) = rest
+        .split_once(' ')
+        .with_context(|| format!("invalid @tool directive `{rest}`"))?;
+    let mut expectation = ToolExpectation {
+        rules: vec![],
+        required: vec![],
+        forbidden: vec![],
+    };
+    for (key, value) in parse_fields(fields)? {
+        match key.as_str() {
+            "rules" => {
+                expectation.rules = value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|rule| !rule.is_empty())
+                    .map(str::to_owned)
+                    .collect();
+            }
+            _ => bail!("unknown @tool field `{key}`"),
+        }
+    }
+    if expectation.rules.is_empty() {
+        bail!("@tool {name} must specify rules=");
+    }
+    case.tools.insert(name.into(), expectation);
+    Ok(())
+}
+
+fn add_expectation(case: &mut Case, rest: &str, line: u32) -> Result<()> {
+    let (tool, fields) = rest
+        .split_once(' ')
+        .with_context(|| format!("invalid @expect-error directive `{rest}`"))?;
+    let expectation = case
+        .tools
+        .get_mut(tool)
+        .with_context(|| format!("@expect-error references unconfigured tool `{tool}`"))?;
+    let mut diagnostic = DiagnosticExpectation {
+        rule_id: String::new(),
+        message_id: None,
+        severity: None,
+        count: Some(1),
+        line: Some(line),
+        column: None,
+        message: None,
+    };
+    for (key, value) in parse_fields(fields)? {
+        match key.as_str() {
+            "rule" => diagnostic.rule_id = value,
+            "message_id" => diagnostic.message_id = Some(value),
+            "severity" => diagnostic.severity = Some(parse_severity(&value)?),
+            "count" => diagnostic.count = parse_optional_usize(&value)?,
+            "line" => diagnostic.line = parse_optional_u32(&value)?,
+            "column" => diagnostic.column = parse_optional_u32(&value)?,
+            "message" => diagnostic.message = Some(value),
+            _ => bail!("unknown @expect-error field `{key}`"),
+        }
+    }
+    if diagnostic.rule_id.is_empty() {
+        bail!("@expect-error for {tool} must specify rule=");
+    }
+    expectation.required.push(diagnostic);
+    Ok(())
+}
+
+fn parse_fields(fields: &str) -> Result<Vec<(String, String)>> {
+    fields
+        .split_whitespace()
+        .map(|field| {
+            let (key, value) = field
+                .split_once('=')
+                .with_context(|| format!("expected key=value, found `{field}`"))?;
+            Ok((key.to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
+fn parse_severity(value: &str) -> Result<Severity> {
+    match value {
+        "info" => Ok(Severity::Info),
+        "warning" => Ok(Severity::Warning),
+        "error" => Ok(Severity::Error),
+        _ => bail!("unknown severity `{value}`"),
+    }
+}
+
+fn parse_optional_u32(value: &str) -> Result<Option<u32>> {
+    if value == "any" {
+        Ok(None)
+    } else {
+        Ok(Some(value.parse()?))
+    }
+}
+
+fn parse_optional_usize(value: &str) -> Result<Option<usize>> {
+    if value == "any" {
+        Ok(None)
+    } else {
+        Ok(Some(value.parse()?))
+    }
+}
+
 pub fn run_suite(root: &Path, adapters: &[Box<dyn Adapter>]) -> Result<SuiteReport> {
     let cases = load_cases(root)?;
-    let registered: BTreeSet<_> = adapters
-        .iter()
-        .map(|adapter| adapter.name().to_owned())
-        .collect();
     let mut results = Vec::new();
     for case in cases {
-        let configured: BTreeSet<_> = case.tools.keys().cloned().collect();
-        if configured != registered {
-            let missing: Vec<_> = registered.difference(&configured).cloned().collect();
-            let unknown: Vec<_> = configured.difference(&registered).cloned().collect();
-            bail!(
-                "case `{}` tool coverage mismatch (missing: {:?}, unknown: {:?})",
-                case.id,
-                missing,
-                unknown
-            );
-        }
         let mut tools = BTreeMap::new();
         for adapter in adapters {
-            let expectation = &case.tools[adapter.name()];
             let version = adapter
                 .version()
                 .unwrap_or_else(|error| format!("unknown ({error})"));
+            let Some(expectation) = case.tools.get(adapter.name()) else {
+                tools.insert(
+                    adapter.name().into(),
+                    ToolResult {
+                        version,
+                        skipped: true,
+                        skip_reason: Some("tool not configured for this case".into()),
+                        passed: true,
+                        findings: vec![],
+                        errors: vec![],
+                    },
+                );
+                continue;
+            };
             let (findings, errors) = match adapter.run(&case, expectation) {
                 Ok(findings) => {
                     let errors = compare(&findings, expectation);
@@ -271,6 +488,8 @@ pub fn run_suite(root: &Path, adapters: &[Box<dyn Adapter>]) -> Result<SuiteRepo
                 adapter.name().into(),
                 ToolResult {
                     version,
+                    skipped: false,
+                    skip_reason: None,
                     passed: errors.is_empty(),
                     findings,
                     errors,
@@ -318,10 +537,12 @@ fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
             .iter()
             .filter(|finding| matches(finding, expected))
             .count();
-        if actual != expected.count {
+        if expected.count.is_some_and(|count| actual != count) {
             errors.push(format!(
                 "expected {} × {}, found {}",
-                expected.count, expected.rule_id, actual
+                expected.count.unwrap(),
+                expected.rule_id,
+                actual
             ));
         }
     }
@@ -363,7 +584,13 @@ pub fn markdown(report: &SuiteReport) -> String {
                 case.id,
                 name,
                 result.version,
-                if result.passed { "pass" } else { "fail" },
+                if result.skipped {
+                    "skip"
+                } else if result.passed {
+                    "pass"
+                } else {
+                    "fail"
+                },
                 result.findings.len()
             ));
         }
@@ -378,6 +605,9 @@ pub fn markdown(report: &SuiteReport) -> String {
             case.id, case.source
         ));
         for (tool, result) in &case.tools {
+            if let Some(reason) = &result.skip_reason {
+                out.push_str(&format!("- `{tool}` skipped: {reason}\n"));
+            }
             for error in &result.errors {
                 out.push_str(&format!("- `{tool}`: {error}\n"));
             }
@@ -414,7 +644,7 @@ mod tests {
                 rule_id: "test:a.b".into(),
                 message_id: None,
                 severity: None,
-                count: 2,
+                count: Some(2),
                 line: None,
                 column: None,
                 message: None,
@@ -431,5 +661,23 @@ mod tests {
             forbidden: vec![],
         };
         assert_eq!(compare(&[finding()], &expected).len(), 1);
+    }
+    #[test]
+    fn parses_comment_case() {
+        let source = "\
+// @case description Dynamic code
+// @tool glass-lint rules=obsidian:dynamic_code
+// @expect-error glass-lint rule=obsidian:dynamic_code message_id=detected
+globalThis.setTimeout('run()', 10);
+";
+        let case = parse_case(
+            Path::new("tests/cases"),
+            Path::new("tests/cases/system/timer.js"),
+            source.into(),
+        )
+        .unwrap();
+        assert_eq!(case.id, "system/timer");
+        assert_eq!(case.description, "Dynamic code");
+        assert_eq!(case.tools["glass-lint"].required[0].line, Some(4));
     }
 }
