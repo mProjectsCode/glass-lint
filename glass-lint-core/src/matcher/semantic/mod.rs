@@ -11,18 +11,21 @@ use super::{result::ApiEvidence, rule::ApiRule};
 
 mod ast;
 mod calls;
+mod events;
 mod index;
 mod object_flow;
+mod resolver;
 mod scope;
+mod value;
 
 use index::MatcherFacts;
 
 /// The matcher-oriented facts derived from one parsed JavaScript file.
 ///
 /// Construction is deliberately private to the matcher module: callers supply
-/// a parsed program and rules, then query the immutable facts.  The next
-/// migration steps replace the internal compatibility collector with the
-/// resolver/event implementation without changing this boundary.
+/// a parsed program and rules, then query immutable, rule-independent facts.
+/// This keeps rule evaluation free of ad-hoc AST traversal and ensures every
+/// matcher observes the same resolution decisions.
 #[derive(Debug)]
 pub(super) struct SemanticModel {
     index: MatcherFacts,
@@ -31,8 +34,12 @@ pub(super) struct SemanticModel {
 
 impl SemanticModel {
     pub(super) fn analyze(program: Option<&Program>, rules: &[ApiRule]) -> Self {
-        let aliases = program.map(scope::ScopeGraph::collect).unwrap_or_default();
-        let (index, argument_evidence) = MatcherFacts::collect_for_rules(program, &aliases, rules);
+        let resolver = program.map(resolver::Resolver::collect).unwrap_or_default();
+        // The event log is not matcher policy.  It is an invariant checked at
+        // the analysis boundary so later position-sensitive consumers can rely
+        // on one canonical source order.
+        debug_assert!(resolver.events_are_source_ordered());
+        let (index, argument_evidence) = MatcherFacts::collect_for_rules(program, &resolver, rules);
         Self {
             index,
             argument_evidence,

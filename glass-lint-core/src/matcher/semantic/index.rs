@@ -1,3 +1,10 @@
+//! Rule-independent indexes built from one semantic model.
+//!
+//! Collection is intentionally separated from `evidence_for`: the AST is
+//! walked once, then each rule selects from deterministic occurrence maps.
+//! Argument and flow evidence remain per-rule because their matchers carry
+//! rule-specific predicates that cannot be represented as a shared key.
+
 use std::collections::BTreeMap;
 
 use swc_common::Span;
@@ -9,13 +16,16 @@ use super::super::rule::{
     FlowMatcher, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
 };
 
-use super::scope::ScopeGraph;
+use super::resolver::Resolver;
 
 type Occurrences = BTreeMap<String, Vec<Span>>;
 type ModuleOccurrences = BTreeMap<(String, String), Vec<Span>>;
 
 #[derive(Debug, Default)]
 pub struct MatcherFacts {
+    // Each map represents a different confidence/provenance level. Do not
+    // collapse these into one index: a global spelling, rooted alias, and
+    // imported member have intentionally different matching semantics.
     pub(super) calls: Occurrences,
     pub(super) global_calls: Occurrences,
     pub(super) module_calls: ModuleOccurrences,
@@ -37,9 +47,11 @@ pub struct MatcherFacts {
 impl MatcherFacts {
     pub fn collect_for_rules(
         program: Option<&Program>,
-        aliases: &ScopeGraph,
+        resolver: &Resolver,
         rules: &[ApiRule],
     ) -> (Self, Vec<Vec<ApiEvidence>>) {
+        // Pre-filtering avoids evaluating argument predicates during evidence
+        // lookup for matchers that only care about a callee occurrence.
         let member_matchers = rules
             .iter()
             .enumerate()
@@ -79,7 +91,7 @@ impl MatcherFacts {
             .collect::<Vec<_>>();
         Self::collect_with_argument_matchers(
             program,
-            aliases,
+            resolver,
             &member_matchers,
             &call_matchers,
             &flow_matchers,
@@ -89,7 +101,7 @@ impl MatcherFacts {
 
     fn collect_with_argument_matchers(
         program: Option<&Program>,
-        aliases: &ScopeGraph,
+        resolver: &Resolver,
         member_argument_matchers: &[(usize, MemberCallMatcher)],
         call_argument_matchers: &[(usize, CallMatcher)],
         flow_matchers: &[(usize, usize, FlowMatcher)],
@@ -100,14 +112,14 @@ impl MatcherFacts {
         if let Some(program) = program {
             super::calls::collect(
                 program,
-                aliases,
+                resolver,
                 member_argument_matchers,
                 call_argument_matchers,
                 &mut index,
                 &mut argument_evidence,
             );
             let flow_evidence =
-                super::object_flow::collect(program, aliases, flow_matchers, rule_count);
+                super::object_flow::collect(program, resolver, flow_matchers, rule_count);
             for (rule_index, evidence) in flow_evidence.into_iter().enumerate() {
                 argument_evidence[rule_index].extend(evidence);
             }
@@ -126,6 +138,8 @@ impl MatcherFacts {
         self.collect_class_evidence(&matcher.classes, &mut evidence);
         self.collect_constructor_evidence(&matcher.constructors, &mut evidence);
 
+        // All occurrence maps are ordered, so truncation remains stable across
+        // runs and does not depend on hash-map iteration order.
         evidence.truncate(ApiRule::EVIDENCE_LIMIT);
         evidence
     }

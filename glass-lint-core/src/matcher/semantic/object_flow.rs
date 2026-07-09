@@ -1,3 +1,10 @@
+//! Bounded, intra-function object flow for declarative flow matchers.
+//!
+//! A flow state begins at a configured source call, follows direct aliases,
+//! accumulates configuration requirements, and is emitted only at a matching
+//! sink. The analysis deliberately does not merge control-flow branches: that
+//! conservative choice avoids turning an uncertain value into a report.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use swc_common::Span;
@@ -12,17 +19,17 @@ use super::super::rule::{
     ArgStringMatcher, FlowMatcher, FlowRequirement, FlowSinkArgs, FlowValueMatcher,
 };
 use super::ast::{binding_ident_name, member_chain, member_prop_name};
-use super::scope::ScopeGraph;
+use super::resolver::Resolver;
 
 pub fn collect(
     program: &Program,
-    aliases: &ScopeGraph,
+    resolver: &Resolver,
     rules: &[(usize, usize, FlowMatcher)],
     rule_count: usize,
 ) -> Vec<Vec<ApiEvidence>> {
-    let helpers = HelperCollector::collect(program, aliases, rules);
+    let helpers = HelperCollector::collect(program, resolver, rules);
     let mut visitor = ObjectFlowCollector {
-        aliases,
+        resolver,
         rules,
         helpers,
         evidence: vec![Vec::new(); rule_count],
@@ -51,11 +58,13 @@ struct HelperSink {
 }
 
 struct ObjectFlowCollector<'a> {
-    aliases: &'a ScopeGraph,
+    resolver: &'a Resolver,
     rules: &'a [(usize, usize, FlowMatcher)],
     helpers: BTreeMap<String, Vec<HelperSink>>,
     evidence: Vec<Vec<ApiEvidence>>,
     states: BTreeMap<String, Vec<FlowState>>,
+    /// Flow keys are qualified by a synthetic function id. This prevents a
+    /// reused local name in a nested or sibling function from inheriting state.
     function_stack: Vec<usize>,
     next_function_id: usize,
 }
@@ -73,7 +82,7 @@ impl ObjectFlowCollector<'_> {
     }
 
     fn expr_key(&self, expr: &Expr) -> Option<String> {
-        self.aliases
+        self.resolver
             .rooted_expr_chain(expr)
             .map(|chain| self.scoped_key(&chain))
     }
@@ -83,7 +92,7 @@ impl ObjectFlowCollector<'_> {
     }
 
     fn source_match(&self, call: &CallExpr) -> Vec<FlowState> {
-        let Some(callee) = call_member_chain(call, self.aliases) else {
+        let Some(callee) = call_member_chain(call, self.resolver) else {
             return Vec::new();
         };
 
@@ -95,7 +104,7 @@ impl ObjectFlowCollector<'_> {
                         && source
                             .arg_strings
                             .iter()
-                            .all(|matcher| static_arg_matches(matcher, &call.args, self.aliases))
+                            .all(|matcher| static_arg_matches(matcher, &call.args, self.resolver))
                 })
             })
             .map(|(rule_index, flow_index, _)| FlowState {
@@ -119,6 +128,9 @@ impl ObjectFlowCollector<'_> {
                 return;
             }
         }
+        // Only copy a state through a direct identifier alias. Following
+        // arbitrary expressions here would require control-flow and mutation
+        // reasoning that this intentionally small analysis does not provide.
         if matches!(value, Expr::Ident(_))
             && let Some(source_key) = self.expr_key(value)
             && let Some(states) = self.states.get(&source_key).cloned()
@@ -136,7 +148,7 @@ impl ObjectFlowCollector<'_> {
         let Some(property) = member_prop_name(&member.prop) else {
             return;
         };
-        let static_value = self.aliases.static_string_expr(value);
+        let static_value = self.resolver.static_string_expr(value);
         self.update_requirements(&key, |_flow, requirement| match requirement {
             FlowRequirement::PropertyWrite {
                 property: expected,
@@ -158,7 +170,7 @@ impl ObjectFlowCollector<'_> {
                 member == &called_member
                     && args.iter().all(|matcher| {
                         call.args.get(matcher.index).is_some_and(|arg| {
-                            let value = self.aliases.static_string_expr(&arg.expr);
+                            let value = self.resolver.static_string_expr(&arg.expr);
                             flow_value_matches(&matcher.value, value.as_deref(), true)
                         })
                     })
@@ -197,7 +209,7 @@ impl ObjectFlowCollector<'_> {
     }
 
     fn record_member_sink(&mut self, member: &MemberExpr, call: &CallExpr) {
-        let Some(callee) = call_member_chain(call, self.aliases) else {
+        let Some(callee) = call_member_chain(call, self.resolver) else {
             return;
         };
         for (argument_index, argument) in call.args.iter().enumerate() {
@@ -355,7 +367,7 @@ impl Visit for ObjectFlowCollector<'_> {
                 }
                 Expr::Ident(ident) => {
                     self.record_helper_sink(ident.sym.as_ref(), call);
-                    if let Some(callee) = self.aliases.callable_member_chain(ident) {
+                    if let Some(callee) = self.resolver.resolve_ident(ident).rooted_chain {
                         self.record_identifier_sink(&callee, call);
                     }
                 }
@@ -368,7 +380,7 @@ impl Visit for ObjectFlowCollector<'_> {
 
     fn visit_opt_chain_expr(&mut self, chain: &OptChainExpr) {
         if let OptChainBase::Call(call) = &*chain.base
-            && let Some(callee) = self.aliases.rooted_expr_chain(&call.callee)
+            && let Some(callee) = self.resolver.rooted_expr_chain(&call.callee)
         {
             self.record_sink_arguments(&callee, &call.args, call.span);
         }
@@ -383,7 +395,7 @@ impl Visit for ObjectFlowCollector<'_> {
 }
 
 struct HelperCollector<'a> {
-    aliases: &'a ScopeGraph,
+    resolver: &'a Resolver,
     rules: &'a [(usize, usize, FlowMatcher)],
     helpers: BTreeMap<String, Vec<HelperSink>>,
 }
@@ -391,11 +403,11 @@ struct HelperCollector<'a> {
 impl<'a> HelperCollector<'a> {
     fn collect(
         program: &Program,
-        aliases: &'a ScopeGraph,
+        resolver: &'a Resolver,
         rules: &'a [(usize, usize, FlowMatcher)],
     ) -> BTreeMap<String, Vec<HelperSink>> {
         let mut collector = Self {
-            aliases,
+            resolver,
             rules,
             helpers: BTreeMap::new(),
         };
@@ -417,7 +429,7 @@ impl<'a> HelperCollector<'a> {
         visit_body: impl FnOnce(&mut HelperBodyVisitor<'_>),
     ) {
         let mut visitor = HelperBodyVisitor {
-            aliases: self.aliases,
+            resolver: self.resolver,
             rules: self.rules,
             parameters,
             sinks: Vec::new(),
@@ -481,7 +493,7 @@ impl Visit for HelperCollector<'_> {
 }
 
 struct HelperBodyVisitor<'a> {
-    aliases: &'a ScopeGraph,
+    resolver: &'a Resolver,
     rules: &'a [(usize, usize, FlowMatcher)],
     parameters: Vec<String>,
     sinks: Vec<HelperSink>,
@@ -489,7 +501,7 @@ struct HelperBodyVisitor<'a> {
 
 impl HelperBodyVisitor<'_> {
     fn record_member_sink(&mut self, call: &CallExpr) {
-        let Some(callee) = call_member_chain(call, self.aliases) else {
+        let Some(callee) = call_member_chain(call, self.resolver) else {
             return;
         };
         for (argument_index, argument) in call.args.iter().enumerate() {
@@ -533,15 +545,16 @@ impl Visit for HelperBodyVisitor<'_> {
     }
 }
 
-fn call_member_chain(call: &CallExpr, aliases: &ScopeGraph) -> Option<String> {
+fn call_member_chain(call: &CallExpr, resolver: &Resolver) -> Option<String> {
     let Callee::Expr(callee) = &call.callee else {
         return None;
     };
     let Expr::Member(member) = &**callee else {
         return None;
     };
-    aliases
-        .rooted_member_chain(member)
+    resolver
+        .resolve_member(member)
+        .rooted_chain
         .or_else(|| member_chain(member))
 }
 
@@ -560,10 +573,10 @@ fn flow_for_state<'a>(
 fn static_arg_matches(
     matcher: &ArgStringMatcher,
     args: &[ExprOrSpread],
-    aliases: &ScopeGraph,
+    resolver: &Resolver,
 ) -> bool {
     args.get(matcher.index).is_some_and(|argument| {
-        aliases
+        resolver
             .static_string_expr(&argument.expr)
             .is_some_and(|value| matcher.values.is_empty() || matcher.values.contains(&value))
     })

@@ -1,3 +1,9 @@
+//! Single-pass collection of conservative lexical and alias facts.
+//!
+//! The visitor records declarations as it enters scopes and assignments in
+//! source order. It deliberately models only callback forms whose argument-to-
+//! parameter mapping is unambiguous; uncertain calls leave parameters local.
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use swc_common::{BytePos, Span};
@@ -70,6 +76,8 @@ impl AliasCollector {
         if kind != VarDeclKind::Var {
             return self.current_scope();
         }
+        // `var` is function-scoped, unlike `let` and `const`, so skip nested
+        // blocks until the enclosing function or program scope is reached.
         self.stack
             .iter()
             .rev()
@@ -136,6 +144,9 @@ impl AliasCollector {
     }
 
     fn visible_binding(&self, name: &str) -> Option<&BindingProvenance> {
+        // Prefer assignments over declarations inside each scope: while
+        // collecting source order, `latest_assignments` is exactly the state
+        // visible at the current AST position.
         for scope in self.stack.iter().rev().copied() {
             if let Some(assignment) = self
                 .latest_assignments
@@ -437,6 +448,9 @@ impl AliasCollector {
         parameters: impl IntoIterator<Item = &'a Pat>,
         arguments: impl IntoIterator<Item = Option<BindingProvenance>>,
     ) {
+        // Inline callbacks are visited after their call expression is seen.
+        // Stash the proven argument facts by span so they can be installed when
+        // the callback's lexical scope is entered.
         let mut bindings = BTreeMap::new();
         for (parameter, argument) in parameters.into_iter().zip(arguments) {
             if let Some(argument) = argument {
@@ -590,6 +604,9 @@ impl AliasCollector {
 
     pub fn parameter_aliases(&self) -> BTreeMap<(usize, String), BindingProvenance> {
         let mut aliases = BTreeMap::<(usize, String), Option<BindingProvenance>>::new();
+        // A named helper can have many call sites. Retain a parameter alias
+        // only when every modeled invocation agrees, avoiding false positives
+        // from joining incompatible values.
         for (callee, arguments) in &self.calls {
             let Some((scope, parameters)) = self.functions.get(callee) else {
                 continue;

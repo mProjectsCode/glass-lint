@@ -1,9 +1,14 @@
+//! Lexical scopes plus the narrow alias facts needed by semantic matching.
+//!
+//! This is not a general JavaScript interpreter. It records only stable facts
+//! that can be followed without speculation: imports, unshadowed globals,
+//! direct aliases, selected static shapes, and prior assignments. Unknown or
+//! mutable cases intentionally resolve to local/absent provenance.
+
 use std::collections::BTreeMap;
 
 use swc_common::{Span, Spanned};
-use swc_ecma_ast::{
-    AssignTarget, Expr, Ident, MemberExpr, OptChainBase, Program, SimpleAssignTarget,
-};
+use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase, Program};
 use swc_ecma_visit::VisitWith;
 
 use super::ast::{SymbolCallProvenance, SymbolMemberProvenance, member_root_ident, object_keys};
@@ -72,6 +77,8 @@ impl ScopeGraph {
         let mut collector = AliasCollector::new(program.span());
         program.visit_children_with(&mut collector);
         let parameter_aliases = collector.parameter_aliases();
+        // Scope lookup starts from the latest opening delimiter, then walks to
+        // parents only when the candidate does not contain the queried span.
         let mut scopes_by_start = (0..collector.scopes.len()).collect::<Vec<_>>();
         scopes_by_start.sort_by_key(|index| {
             let scope = &collector.scopes[*index];
@@ -149,24 +156,6 @@ impl ScopeGraph {
             None => SymbolCallProvenance::Global {
                 name: name.to_string(),
             },
-        }
-    }
-
-    pub fn expr_call_provenance(&self, expr: &Expr) -> Option<SymbolCallProvenance> {
-        match expr {
-            Expr::Ident(ident) => Some(self.call_provenance(ident.sym.as_ref(), ident.span)),
-            Expr::Assign(assign) => match &assign.left {
-                AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
-                    Some(self.call_provenance(ident.id.sym.as_ref(), assign.span))
-                }
-                _ => self.expr_call_provenance(&assign.right),
-            },
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.expr_call_provenance(expr)),
-            Expr::Paren(paren) => self.expr_call_provenance(&paren.expr),
-            _ => None,
         }
     }
 
@@ -258,11 +247,6 @@ impl ScopeGraph {
         }
     }
 
-    pub fn member_call_provenance(&self, member: &MemberExpr) -> Option<SymbolMemberProvenance> {
-        let chain = self.member_chain(member)?;
-        self.member_call_provenance_for_chain(member, &chain)
-    }
-
     pub fn member_chain(&self, member: &MemberExpr) -> Option<String> {
         let object = super::ast::expr_name(&member.obj)?;
         Some(format!("{object}.{}", self.member_prop_name(member)?))
@@ -332,6 +316,9 @@ impl ScopeGraph {
 
     fn binding_at(&self, name: &str, span: Span) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
+        // A declaration is the fallback. The last assignment at or before the
+        // read wins, which is why assignments are sorted once during collection
+        // and selected with `partition_point` here.
         self.assignments
             .get(&scope)
             .and_then(|assignments| assignments.get(name))
@@ -359,6 +346,9 @@ impl ScopeGraph {
         member: &MemberExpr,
         syntactic_chain: &str,
     ) -> Option<String> {
+        // A write to `table.api` may alias an entire prefix of a later chain
+        // (`table.api.call`). Resolve the longest applicable prior write before
+        // falling back to the root binding.
         for prefix_end in member_prefix_ends(syntactic_chain) {
             let property = &syntactic_chain[..prefix_end];
             let Some(assignments) = self.property_assignments.get(property) else {
@@ -413,7 +403,7 @@ impl ScopeGraph {
         }
     }
 
-    fn scope_at(&self, span: Span) -> usize {
+    pub(super) fn scope_at(&self, span: Span) -> usize {
         let position = self
             .scopes_by_start
             .partition_point(|index| self.scopes[*index].span.lo <= span.lo);
@@ -424,6 +414,9 @@ impl ScopeGraph {
             return 0;
         };
 
+        // Source ranges can overlap in non-nesting ways for synthetic nodes;
+        // walking parents makes containment, rather than start position alone,
+        // the final authority.
         while !contains(self.scopes[scope].span, span) {
             let Some(parent) = self.scopes[scope].parent else {
                 return 0;

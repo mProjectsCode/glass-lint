@@ -1,3 +1,10 @@
+//! AST collection for call, member, and constructor facts.
+//!
+//! The collector records three views of a call: its source spelling, any
+//! canonical rooted chain, and module provenance. Keeping all three is what
+//! lets `Any`, rooted, and module-qualified matchers remain precise without
+//! each matcher revisiting the AST.
+
 use std::collections::BTreeMap;
 
 use swc_common::Spanned;
@@ -14,12 +21,12 @@ use super::ast::{
     SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, expr_member, expr_name,
     is_function_constructor_member, object_keys, prop_name, require_call_module_name,
 };
-use super::{index::MatcherFacts, scope::ScopeGraph};
+use super::{index::MatcherFacts, resolver::Resolver};
 use crate::matcher::rule::canonical_rooted_chain;
 
 pub fn collect(
     program: &Program,
-    aliases: &ScopeGraph,
+    resolver: &Resolver,
     member_argument_matchers: &[(usize, MemberCallMatcher)],
     call_argument_matchers: &[(usize, CallMatcher)],
     index: &mut MatcherFacts,
@@ -27,7 +34,7 @@ pub fn collect(
 ) {
     let mut visitor = ResolvedCallCollector {
         index,
-        aliases,
+        resolver,
         pending_callee_reads: BTreeMap::new(),
         member_argument_matchers,
         call_argument_matchers,
@@ -38,7 +45,9 @@ pub fn collect(
 
 struct ResolvedCallCollector<'a, 'rules> {
     index: &'a mut MatcherFacts,
-    aliases: &'a ScopeGraph,
+    resolver: &'a Resolver,
+    /// A member expression is visited both as the callee and as a child node.
+    /// Count callee visits so the child visit does not become a false read.
     pending_callee_reads: BTreeMap<String, u32>,
     member_argument_matchers: &'rules [(usize, MemberCallMatcher)],
     call_argument_matchers: &'rules [(usize, CallMatcher)],
@@ -75,20 +84,14 @@ impl ResolvedCallCollector<'_, '_> {
         self.index
             .record(ApiMatchKind::Call, name.clone(), ident.span);
 
-        let provenance = self.aliases.call_provenance(&name, ident.span);
-        let aliased_member = self.aliases.callable_member_chain(ident);
+        let resolved = self.resolver.resolve_ident(ident);
+        debug_assert_ne!(resolved.id, super::value::ValueId::UNKNOWN);
+        let provenance = resolved.call;
+        let aliased_member = resolved.rooted_chain;
         if let Some(call) = call {
             self.collect_call_argument_evidence(call, ident, &provenance);
             if let Some(chain) = aliased_member.as_deref() {
-                let module_member = match &provenance {
-                    SymbolCallProvenance::ModuleExport { module, export } => {
-                        Some(SymbolMemberProvenance::ModuleNamespace {
-                            module: module.clone(),
-                            member: export.clone(),
-                        })
-                    }
-                    _ => None,
-                };
+                let module_member = resolved.module_member;
                 self.collect_argument_evidence(
                     call,
                     Some(chain),
@@ -155,7 +158,7 @@ impl ResolvedCallCollector<'_, '_> {
             if call_matches
                 && matcher.arg_strings.iter().all(|arg_matcher| {
                     call.args.get(arg_matcher.index).is_some_and(|argument| {
-                        self.aliases
+                        self.resolver
                             .static_string_expr(&argument.expr)
                             .is_some_and(|value| {
                                 arg_matcher.values.is_empty()
@@ -184,14 +187,11 @@ impl ResolvedCallCollector<'_, '_> {
                 .or_default()
                 .push(member.span);
         }
-        let syntactic_chain = self.aliases.member_chain(member);
-        let resolved_chain = syntactic_chain
-            .as_deref()
-            .and_then(|chain| self.aliases.resolve_member_chain(member, chain))
-            .or_else(|| self.aliases.rooted_member_chain(member));
-        let module_member = syntactic_chain
-            .as_deref()
-            .and_then(|chain| self.aliases.member_call_provenance_for_chain(member, chain));
+        let syntactic_chain = self.resolver.member_chain(member);
+        let resolved = self.resolver.resolve_member(member);
+        debug_assert_ne!(resolved.id, super::value::ValueId::UNKNOWN);
+        let resolved_chain = resolved.rooted_chain;
+        let module_member = resolved.module_member;
 
         self.record_static_callable_wrapper(member);
 
@@ -235,29 +235,24 @@ impl ResolvedCallCollector<'_, '_> {
     }
 
     fn record_member_read(&mut self, member: &MemberExpr) {
-        let syntactic_chain = self.aliases.member_chain(member);
+        let syntactic_chain = self.resolver.member_chain(member);
         if let Some(chain) = syntactic_chain.as_ref() {
             let chain = canonical_rooted_chain(chain).to_string();
             self.index
                 .record(ApiMatchKind::MemberRead, chain, member.span);
         }
-        if let Some(resolved_chain) = syntactic_chain
-            .as_deref()
-            .and_then(|chain| self.aliases.resolve_member_chain(member, chain))
-        {
+        let resolved = self.resolver.resolve_member(member);
+        if let Some(resolved_chain) = resolved.rooted_chain {
             self.index
                 .rooted_member_reads
                 .entry(canonical_rooted_chain(&resolved_chain).to_string())
                 .or_default()
                 .push(member.span);
         }
-        let module_member = syntactic_chain
-            .as_deref()
-            .and_then(|chain| self.aliases.member_call_provenance_for_chain(member, chain));
         if let Some(SymbolMemberProvenance::ModuleNamespace {
             module,
             member: member_name,
-        }) = module_member
+        }) = resolved.module_member
         {
             self.index
                 .module_member_reads
@@ -293,7 +288,7 @@ impl ResolvedCallCollector<'_, '_> {
             if member_matches
                 && matcher.arg_strings.iter().all(|arg_matcher| {
                     call.args.get(arg_matcher.index).is_some_and(|argument| {
-                        self.aliases
+                        self.resolver
                             .static_string_expr(&argument.expr)
                             .is_some_and(|value| {
                                 arg_matcher.values.is_empty()
@@ -305,7 +300,7 @@ impl ResolvedCallCollector<'_, '_> {
                     call.args
                         .get(key_matcher.index)
                         .and_then(|argument| {
-                            self.aliases
+                            self.resolver
                                 .object_keys_expr(&argument.expr)
                                 .or_else(|| object_literal(&argument.expr).and_then(object_keys))
                         })
@@ -319,7 +314,7 @@ impl ResolvedCallCollector<'_, '_> {
                 && matcher.arg_rooted_exprs.iter().all(|root_matcher| {
                     call.args
                         .get(root_matcher.index)
-                        .and_then(|argument| self.aliases.rooted_expr_chain(&argument.expr))
+                        .and_then(|argument| self.resolver.rooted_expr_chain(&argument.expr))
                         .map(|chain| canonical_rooted_chain(&chain).to_string())
                         .is_some_and(|chain| {
                             root_matcher
@@ -349,7 +344,7 @@ impl ResolvedCallCollector<'_, '_> {
         match expr {
             Expr::Ident(ident) => {
                 if let SymbolCallProvenance::ModuleExport { module, export } =
-                    self.aliases.call_provenance(ident.sym.as_ref(), ident.span)
+                    self.resolver.resolve_ident(ident).call
                 {
                     self.index
                         .record(ApiMatchKind::Class, export.clone(), ident.span);
@@ -362,7 +357,7 @@ impl ResolvedCallCollector<'_, '_> {
             }
             Expr::Member(member) => {
                 if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
-                    self.aliases.member_call_provenance(member)
+                    self.resolver.resolve_member(member).module_member
                 {
                     self.index
                         .record(ApiMatchKind::Class, member.clone(), expr.span());
@@ -385,7 +380,7 @@ impl ResolvedCallCollector<'_, '_> {
         if property != "call" && property != "apply" {
             return;
         }
-        let Some(provenance) = self.aliases.expr_call_provenance(&member.obj) else {
+        let Some(provenance) = self.resolver.expr_call_provenance(&member.obj) else {
             return;
         };
         match provenance {
@@ -431,7 +426,7 @@ impl Visit for ResolvedCallCollector<'_, '_> {
                     self.record_member_call(member, Some(CallArgumentSource::from(call)));
                 }
                 other => {
-                    if let Some(provenance) = self.aliases.expr_call_provenance(other) {
+                    if let Some(provenance) = self.resolver.expr_call_provenance(other) {
                         match provenance {
                             SymbolCallProvenance::Global { name } => {
                                 self.index
@@ -473,11 +468,11 @@ impl Visit for ResolvedCallCollector<'_, '_> {
                 _ => {
                     let raw = expr_name(&call.callee);
                     let rooted = self
-                        .aliases
+                        .resolver
                         .rooted_expr_chain(&call.callee)
                         .map(|chain| canonical_rooted_chain(&chain).to_string());
                     let module_member = expr_member(&call.callee)
-                        .and_then(|member| self.aliases.member_call_provenance(member));
+                        .and_then(|member| self.resolver.resolve_member(member).module_member);
                     self.collect_argument_evidence(
                         CallArgumentSource::from(call),
                         raw.as_deref(),
@@ -512,7 +507,7 @@ impl Visit for ResolvedCallCollector<'_, '_> {
     }
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
-        let syntactic_chain = self.aliases.member_chain(member);
+        let syntactic_chain = self.resolver.member_chain(member);
         if let Some(chain) = syntactic_chain.as_ref()
             && let Some(skip_count) = self.pending_callee_reads.get_mut(chain.as_str())
         {
@@ -531,32 +526,30 @@ impl Visit for ResolvedCallCollector<'_, '_> {
 
     fn visit_new_expr(&mut self, new_expr: &NewExpr) {
         match &*new_expr.callee {
-            Expr::Ident(ident) => {
-                match self.aliases.call_provenance(ident.sym.as_ref(), ident.span) {
-                    SymbolCallProvenance::Global { name } => {
-                        self.index
-                            .record(ApiMatchKind::Constructor, name.clone(), ident.span);
-                        self.index
-                            .global_constructors
-                            .entry(name)
-                            .or_default()
-                            .push(ident.span);
-                    }
-                    SymbolCallProvenance::ModuleExport { module, export } => {
-                        self.index
-                            .record(ApiMatchKind::Constructor, export.clone(), ident.span);
-                        self.index
-                            .module_constructors
-                            .entry((module.clone(), export.clone()))
-                            .or_default()
-                            .push(ident.span);
-                    }
-                    SymbolCallProvenance::Local => {}
+            Expr::Ident(ident) => match self.resolver.resolve_ident(ident).call {
+                SymbolCallProvenance::Global { name } => {
+                    self.index
+                        .record(ApiMatchKind::Constructor, name.clone(), ident.span);
+                    self.index
+                        .global_constructors
+                        .entry(name)
+                        .or_default()
+                        .push(ident.span);
                 }
-            }
+                SymbolCallProvenance::ModuleExport { module, export } => {
+                    self.index
+                        .record(ApiMatchKind::Constructor, export.clone(), ident.span);
+                    self.index
+                        .module_constructors
+                        .entry((module.clone(), export.clone()))
+                        .or_default()
+                        .push(ident.span);
+                }
+                SymbolCallProvenance::Local => {}
+            },
             Expr::Member(member) => {
                 if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
-                    self.aliases.member_call_provenance(member)
+                    self.resolver.resolve_member(member).module_member
                 {
                     self.index.record(
                         ApiMatchKind::Constructor,

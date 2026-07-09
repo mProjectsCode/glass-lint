@@ -1,3 +1,9 @@
+//! Pattern projection helpers shared by declaration and assignment collection.
+//!
+//! Destructuring is followed only when every traversed segment has an explicit,
+//! static provenance. Rest elements and dynamic property forms intentionally
+//! stop the projection rather than guessing about the remaining value.
+
 use swc_common::Span;
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
@@ -101,6 +107,8 @@ pub fn contains(outer: Span, inner: Span) -> bool {
 }
 
 pub fn member_prefix_ends(chain: &str) -> impl Iterator<Item = usize> + '_ {
+    // Visit the complete chain first, then progressively shorter prefixes so a
+    // direct write to `a.b.c` takes precedence over an older `a.b` write.
     std::iter::once(chain.len()).chain(chain.rmatch_indices('.').map(|(index, _)| index))
 }
 
