@@ -94,37 +94,6 @@ pub fn binding_ident_name(pat: &Pat) -> Option<String> {
     }
 }
 
-pub fn require_module_name(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Call(call) => require_call_module_name(call).or_else(|| {
-            let Callee::Expr(callee) = &call.callee else {
-                return None;
-            };
-            let Expr::Ident(wrapper) = &**callee else {
-                return None;
-            };
-            is_module_interop_wrapper(wrapper.sym.as_ref())
-                .then(|| call.args.first())
-                .flatten()
-                .and_then(|arg| require_module_name(&arg.expr))
-        }),
-        Expr::Member(member) => require_module_name(&member.obj),
-        Expr::Paren(paren) => require_module_name(&paren.expr),
-        _ => None,
-    }
-}
-
-fn is_module_interop_wrapper(name: &str) -> bool {
-    matches!(
-        name,
-        "__toESM"
-            | "__importStar"
-            | "__importDefault"
-            | "_interopRequireWildcard"
-            | "_interopRequireDefault"
-    )
-}
-
 pub fn require_call_module_name(call: &CallExpr) -> Option<String> {
     let Callee::Expr(callee) = &call.callee else {
         return None;

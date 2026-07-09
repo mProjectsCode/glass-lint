@@ -12,7 +12,6 @@ use super::alias::AliasInfo;
 use super::ast::{
     SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, expr_member, expr_name,
     is_function_constructor_member, member_chain, object_keys, prop_name, require_call_module_name,
-    static_string,
 };
 use super::{
     ApiEvidence, ApiMatchKind, CallMatcher, CallProvenance, MemberCallMatcher,
@@ -126,13 +125,14 @@ impl SymbolIndexVisitor<'_, '_> {
 
             if call_matches
                 && matcher.arg_strings.iter().all(|arg_matcher| {
-                    call.args
-                        .get(arg_matcher.index)
-                        .and_then(|argument| static_string(&argument.expr))
-                        .is_some_and(|value| {
-                            arg_matcher.values.is_empty()
-                                || arg_matcher.values.iter().any(|expected| expected == &value)
-                        })
+                    call.args.get(arg_matcher.index).is_some_and(|argument| {
+                        self.aliases
+                            .static_string_expr(&argument.expr)
+                            .is_some_and(|value| {
+                                arg_matcher.values.is_empty()
+                                    || arg_matcher.values.iter().any(|expected| expected == &value)
+                            })
+                    })
                 })
             {
                 self.argument_evidence[*rule_index].push(ApiEvidence {
@@ -163,6 +163,8 @@ impl SymbolIndexVisitor<'_, '_> {
         let module_member = syntactic_chain
             .as_deref()
             .and_then(|chain| self.aliases.member_call_provenance_for_chain(member, chain));
+
+        self.record_static_callable_wrapper(member);
 
         if let Some(call) = call {
             self.collect_argument_evidence(
@@ -256,13 +258,14 @@ impl SymbolIndexVisitor<'_, '_> {
             };
             if member_matches
                 && matcher.arg_strings.iter().all(|arg_matcher| {
-                    call.args
-                        .get(arg_matcher.index)
-                        .and_then(|argument| static_string(&argument.expr))
-                        .is_some_and(|value| {
-                            arg_matcher.values.is_empty()
-                                || arg_matcher.values.iter().any(|expected| expected == &value)
-                        })
+                    call.args.get(arg_matcher.index).is_some_and(|argument| {
+                        self.aliases
+                            .static_string_expr(&argument.expr)
+                            .is_some_and(|value| {
+                                arg_matcher.values.is_empty()
+                                    || arg_matcher.values.iter().any(|expected| expected == &value)
+                            })
+                    })
                 })
                 && matcher.arg_object_keys.iter().all(|key_matcher| {
                     call.args
@@ -350,6 +353,37 @@ impl SymbolIndexVisitor<'_, '_> {
             _ => {}
         }
     }
+
+    fn record_static_callable_wrapper(&mut self, member: &MemberExpr) {
+        let Some(property) = super::ast::member_prop_name(&member.prop) else {
+            return;
+        };
+        if property != "call" && property != "apply" {
+            return;
+        }
+        let Some(provenance) = self.aliases.expr_call_provenance(&member.obj) else {
+            return;
+        };
+        match provenance {
+            SymbolCallProvenance::Global { name } => {
+                self.index
+                    .global_calls
+                    .entry(name.clone())
+                    .or_default()
+                    .push(member.span);
+                self.index.record(ApiMatchKind::Call, name, member.span);
+            }
+            SymbolCallProvenance::ModuleExport { module, export } => {
+                self.index
+                    .module_calls
+                    .entry((module.clone(), export.clone()))
+                    .or_default()
+                    .push(member.span);
+                self.index.record(ApiMatchKind::Call, export, member.span);
+            }
+            SymbolCallProvenance::Local => {}
+        }
+    }
 }
 
 impl Visit for SymbolIndexVisitor<'_, '_> {
@@ -372,7 +406,29 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
                 Expr::Member(member) => {
                     self.record_member_call(member, Some(CallArgumentSource::from(call)));
                 }
-                _ => {}
+                other => {
+                    if let Some(provenance) = self.aliases.expr_call_provenance(other) {
+                        match provenance {
+                            SymbolCallProvenance::Global { name } => {
+                                self.index
+                                    .global_calls
+                                    .entry(name.clone())
+                                    .or_default()
+                                    .push(call.span);
+                                self.index.record(ApiMatchKind::Call, name, call.span);
+                            }
+                            SymbolCallProvenance::ModuleExport { module, export } => {
+                                self.index
+                                    .module_calls
+                                    .entry((module.clone(), export.clone()))
+                                    .or_default()
+                                    .push(call.span);
+                                self.index.record(ApiMatchKind::Call, export, call.span);
+                            }
+                            SymbolCallProvenance::Local => {}
+                        }
+                    }
+                }
             },
             Callee::Super(_) => self.index.record(ApiMatchKind::Call, "super", call.span),
             Callee::Import(_) => self.index.record(ApiMatchKind::Call, "import", call.span),

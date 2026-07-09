@@ -6,6 +6,9 @@ mod result;
 mod rule;
 mod symbol_index;
 
+#[cfg(test)]
+mod minified_tests;
+
 pub use result::{ApiCapability, ApiClassificationResult, Disclosure};
 pub use rule::{ApiCatalogError, ApiCategory, ApiRule, ApiRuleBuildError, ApiSeverity, Confidence};
 

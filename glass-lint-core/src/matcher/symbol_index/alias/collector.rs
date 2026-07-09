@@ -3,13 +3,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use swc_common::Span;
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CatchClause, ClassDecl, Expr,
-    FnDecl, Function, ImportDecl, ImportSpecifier, Pat, SimpleAssignTarget, VarDecl, VarDeclKind,
+    FnDecl, Function, ImportDecl, ImportSpecifier, Lit, Pat, SimpleAssignTarget, VarDecl,
+    VarDeclKind,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
 use super::super::ast::{
     binding_ident_name, collect_pat_bindings, is_function_constructor_member, member_chain,
-    member_prop_name, module_export_name, object_keys, require_module_name, static_string,
+    member_prop_name, module_export_name, object_keys, static_string,
 };
 use super::collector_helpers::{
     collect_assignment_aliases, collect_require_aliases, collect_value_aliases,
@@ -27,7 +28,18 @@ pub struct AliasCollector {
     pub property_assignments: Vec<PropertyAliasAssignment>,
     pub static_property_writes: Vec<StaticPropertyWrite>,
     functions: BTreeMap<String, (usize, Vec<String>)>,
-    calls: Vec<(String, Vec<Option<String>>)>,
+    calls: Vec<(String, Vec<Option<BindingProvenance>>)>,
+}
+
+fn is_module_interop_wrapper(name: &str) -> bool {
+    matches!(
+        name,
+        "__toESM"
+            | "__importStar"
+            | "__importDefault"
+            | "_interopRequireWildcard"
+            | "_interopRequireDefault"
+    )
 }
 
 pub struct StaticPropertyWrite {
@@ -147,6 +159,10 @@ impl AliasCollector {
         None
     }
 
+    fn is_unbound(&self, name: &str) -> bool {
+        self.visible_binding(name).is_none()
+    }
+
     fn rooted_expr_name(&self, expr: &Expr) -> Option<String> {
         rooted_expr_chain_with(self, expr)
     }
@@ -159,14 +175,12 @@ impl AliasCollector {
                 BindingProvenance::Local
                 | BindingProvenance::ValueAlias { .. }
                 | BindingProvenance::StaticString(_)
+                | BindingProvenance::StaticStringArray(_)
                 | BindingProvenance::StaticObjectKeys(_) => None,
             },
             Expr::Member(member) => {
-                let Expr::Ident(root) = &*member.obj else {
-                    return None;
-                };
                 let BindingProvenance::ModuleNamespace { module } =
-                    self.visible_binding(root.sym.as_ref())?
+                    self.module_alias_provenance(&member.obj)?
                 else {
                     return None;
                 };
@@ -175,6 +189,9 @@ impl AliasCollector {
                     export: member_prop_name(&member.prop)?,
                 })
             }
+            Expr::Call(call) => self
+                .require_module_name(call)
+                .map(|module| BindingProvenance::ModuleNamespace { module }),
             Expr::Paren(paren) => self.module_alias_provenance(&paren.expr),
             Expr::Seq(sequence) => sequence
                 .exprs
@@ -184,9 +201,62 @@ impl AliasCollector {
         }
     }
 
+    fn require_module_name(&self, call: &CallExpr) -> Option<String> {
+        self.direct_require_module_name(call).or_else(|| {
+            let Callee::Expr(callee) = &call.callee else {
+                return None;
+            };
+            let Expr::Ident(wrapper) = &**callee else {
+                return None;
+            };
+            (is_module_interop_wrapper(wrapper.sym.as_ref())
+                && self.is_unbound(wrapper.sym.as_ref()))
+            .then(|| call.args.first())
+            .flatten()
+            .and_then(|arg| self.require_module_expr_name(&arg.expr))
+        })
+    }
+
+    fn require_module_expr_name(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Call(call) => self.require_module_name(call),
+            Expr::Member(member) => self.require_module_expr_name(&member.obj),
+            Expr::Paren(paren) => self.require_module_expr_name(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.require_module_expr_name(expr)),
+            _ => None,
+        }
+    }
+
+    fn direct_require_module_name(&self, call: &CallExpr) -> Option<String> {
+        let Callee::Expr(callee) = &call.callee else {
+            return None;
+        };
+        let Expr::Ident(ident) = &**callee else {
+            return None;
+        };
+        if ident.sym != *"require" || !self.is_unbound("require") {
+            return None;
+        }
+        call.args.first().and_then(|arg| match &*arg.expr {
+            Expr::Lit(Lit::Str(value)) => Some(value.value.to_string_lossy().to_string()),
+            _ => None,
+        })
+    }
+
     fn const_provenance(&self, init: &Expr) -> Option<BindingProvenance> {
         if let Some(value) = static_string(init) {
             return Some(BindingProvenance::StaticString(value));
+        }
+        if let Expr::Array(array) = init {
+            let values = array
+                .elems
+                .iter()
+                .map(|elem| elem.as_ref().and_then(|elem| static_string(&elem.expr)))
+                .collect::<Option<Vec<_>>>()?;
+            return Some(BindingProvenance::StaticStringArray(values));
         }
         if let Expr::Object(object) = init
             && let Some(keys) = object_keys(object)
@@ -244,7 +314,7 @@ impl AliasCollector {
     }
 
     pub fn parameter_aliases(&self) -> BTreeMap<(usize, String), BindingProvenance> {
-        let mut aliases = BTreeMap::<(usize, String), Option<String>>::new();
+        let mut aliases = BTreeMap::<(usize, String), Option<BindingProvenance>>::new();
         for (callee, arguments) in &self.calls {
             let Some((scope, parameters)) = self.functions.get(callee) else {
                 continue;
@@ -260,9 +330,7 @@ impl AliasCollector {
         }
         aliases
             .into_iter()
-            .filter_map(|(key, target)| {
-                target.map(|target| (key, BindingProvenance::ValueAlias { target }))
-            })
+            .filter_map(|(key, target)| target.map(|target| (key, target)))
             .collect()
     }
 }
@@ -340,18 +408,18 @@ impl Visit for AliasCollector {
                 .init
                 .as_deref()
                 .and_then(|init| self.rooted_expr_name(init));
+            let const_value = declarator
+                .init
+                .as_deref()
+                .and_then(|init| self.const_provenance(init));
             self.insert_pat_locals(scope, &declarator.name);
-            if let Some(init) = declarator.init.as_deref()
-                && let Some(module) = require_module_name(init)
+            if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, module_alias) {
+                self.insert(scope, ident.id.sym.to_string(), provenance);
+            } else if let Some(init) = declarator.init.as_deref()
+                && let Some(module) = self.require_module_expr_name(init)
             {
                 collect_require_aliases(&declarator.name, module, scope, self);
-            } else if var_decl.kind == VarDeclKind::Const
-                && let (Pat::Ident(ident), Some(init)) =
-                    (&declarator.name, declarator.init.as_deref())
-                && let Some(provenance) = self.const_provenance(init)
-            {
-                self.insert(scope, ident.id.sym.to_string(), provenance);
-            } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, module_alias) {
+            } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, const_value) {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
             } else if let Some(target) = value_alias {
                 collect_value_aliases(&declarator.name, &target, scope, self);
@@ -365,6 +433,7 @@ impl Visit for AliasCollector {
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
         let provenance = self
             .module_alias_provenance(&assignment.right)
+            .or_else(|| self.const_provenance(&assignment.right))
             .or_else(|| {
                 self.rooted_expr_name(&assignment.right)
                     .map(|target| BindingProvenance::ValueAlias { target })
@@ -434,7 +503,14 @@ impl Visit for AliasCollector {
                 callee.sym.to_string(),
                 call.args
                     .iter()
-                    .map(|argument| self.rooted_expr_name(&argument.expr))
+                    .map(|argument| {
+                        self.module_alias_provenance(&argument.expr)
+                            .or_else(|| self.const_provenance(&argument.expr))
+                            .or_else(|| {
+                                self.rooted_expr_name(&argument.expr)
+                                    .map(|target| BindingProvenance::ValueAlias { target })
+                            })
+                    })
                     .collect(),
             ));
         }

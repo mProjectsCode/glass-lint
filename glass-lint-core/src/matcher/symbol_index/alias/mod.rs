@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use swc_common::{Span, Spanned};
-use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase, Program};
+use swc_ecma_ast::{
+    AssignTarget, Expr, Ident, MemberExpr, OptChainBase, Program, SimpleAssignTarget,
+};
 use swc_ecma_visit::VisitWith;
 
 use super::ast::{
@@ -39,13 +41,14 @@ enum ScopeKind {
     Block,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum BindingProvenance {
     Local,
     ValueAlias { target: String },
     ModuleExport { module: String, export: String },
     ModuleNamespace { module: String },
     StaticString(String),
+    StaticStringArray(Vec<String>),
     StaticObjectKeys(Vec<String>),
 }
 
@@ -161,12 +164,32 @@ impl AliasInfo {
                 | BindingProvenance::ValueAlias { .. }
                 | BindingProvenance::ModuleNamespace { .. },
             )
-            | Some(BindingProvenance::StaticString(_) | BindingProvenance::StaticObjectKeys(_)) => {
-                SymbolCallProvenance::Local
-            }
+            | Some(
+                BindingProvenance::StaticString(_)
+                | BindingProvenance::StaticStringArray(_)
+                | BindingProvenance::StaticObjectKeys(_),
+            ) => SymbolCallProvenance::Local,
             None => SymbolCallProvenance::Global {
                 name: name.to_string(),
             },
+        }
+    }
+
+    pub fn expr_call_provenance(&self, expr: &Expr) -> Option<SymbolCallProvenance> {
+        match expr {
+            Expr::Ident(ident) => Some(self.call_provenance(ident.sym.as_ref(), ident.span)),
+            Expr::Assign(assign) => match &assign.left {
+                AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
+                    Some(self.call_provenance(ident.id.sym.as_ref(), assign.span))
+                }
+                _ => self.expr_call_provenance(&assign.right),
+            },
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.expr_call_provenance(expr)),
+            Expr::Paren(paren) => self.expr_call_provenance(&paren.expr),
+            _ => None,
         }
     }
 
@@ -177,14 +200,46 @@ impl AliasInfo {
                 BindingProvenance::StaticObjectKeys(keys) => Some(keys.clone()),
                 _ => None,
             },
+            Expr::Assign(assign) => self.object_keys_expr(&assign.right),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.object_keys_expr(expr)),
             Expr::Paren(paren) => self.object_keys_expr(&paren.expr),
             _ => None,
         }
     }
 
-    fn static_string_at(&self, ident: &Ident) -> Option<String> {
+    pub fn static_string_expr(&self, expr: &Expr) -> Option<String> {
+        super::ast::static_string(expr).or_else(|| match expr {
+            Expr::Ident(ident) => self.static_string_at(ident),
+            Expr::Member(member) => self.static_string_member(member),
+            Expr::Assign(assign) => self.static_string_expr(&assign.right),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.static_string_expr(expr)),
+            Expr::Paren(paren) => self.static_string_expr(&paren.expr),
+            _ => None,
+        })
+    }
+
+    pub(super) fn static_string_at(&self, ident: &Ident) -> Option<String> {
         match self.binding_at(ident.sym.as_ref(), ident.span)? {
             BindingProvenance::StaticString(value) => Some(value.clone()),
+            _ => None,
+        }
+    }
+
+    fn static_string_member(&self, member: &MemberExpr) -> Option<String> {
+        let Expr::Ident(root) = &*member.obj else {
+            return None;
+        };
+        let index = super::ast::member_prop_name(&member.prop)?
+            .parse::<usize>()
+            .ok()?;
+        match self.binding_at(root.sym.as_ref(), root.span)? {
+            BindingProvenance::StaticStringArray(values) => values.get(index).cloned(),
             _ => None,
         }
     }
@@ -193,16 +248,16 @@ impl AliasInfo {
         match &member.prop {
             swc_ecma_ast::MemberProp::Ident(ident) => Some(ident.sym.to_string()),
             swc_ecma_ast::MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
-            swc_ecma_ast::MemberProp::Computed(computed) => {
-                super::ast::static_string(&computed.expr).or_else(|| match &*computed.expr {
+            swc_ecma_ast::MemberProp::Computed(computed) => self
+                .static_string_expr(&computed.expr)
+                .or_else(|| match &*computed.expr {
                     Expr::Ident(ident) => self.static_string_at(ident),
                     Expr::Paren(paren) => match &*paren.expr {
                         Expr::Ident(ident) => self.static_string_at(ident),
                         _ => None,
                     },
                     _ => None,
-                })
-            }
+                }),
         }
     }
 
@@ -287,9 +342,11 @@ impl AliasInfo {
                 | BindingProvenance::ModuleExport { .. }
                 | BindingProvenance::ModuleNamespace { .. },
             )
-            | Some(BindingProvenance::StaticString(_) | BindingProvenance::StaticObjectKeys(_)) => {
-                None
-            }
+            | Some(
+                BindingProvenance::StaticString(_)
+                | BindingProvenance::StaticStringArray(_)
+                | BindingProvenance::StaticObjectKeys(_),
+            ) => None,
             None => Some(syntactic_chain.to_string()),
         }
     }

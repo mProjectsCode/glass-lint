@@ -31,7 +31,7 @@ harness:
 harness-regressions:
 	$(HARNESS) verify $(REGRESSION_SUITE)
 
-ci: fmt-check check clippy test harness
+ci: fmt-check check clippy test harness harness-regressions
 
 clean:
 	$(CARGO) clean
