@@ -7,6 +7,7 @@ pub struct ApiMatcher {
     pub string_literals: Vec<String>,
     pub classes: Vec<ClassMatcher>,
     pub constructors: Vec<ConstructorMatcher>,
+    pub value_flows: Vec<ValueFlowMatcher>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,6 +32,76 @@ pub struct ArgRootedExprMatcher {
 pub struct AssignedPropertyMatcher {
     pub property: String,
     pub values: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FlowValueMatcher {
+    Any,
+    StaticExact(Vec<String>),
+    StaticPrefix(Vec<String>),
+    StaticContainsAny(Vec<String>),
+    StaticContainsAll(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowCallArgMatcher {
+    pub index: usize,
+    pub value: FlowValueMatcher,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueFlowSource {
+    pub member_call: String,
+    pub arg_strings: Vec<ArgStringMatcher>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ValueFlowConfiguration {
+    PropertyWrite {
+        property: String,
+        value: FlowValueMatcher,
+    },
+    MemberCall {
+        member: String,
+        args: Vec<FlowCallArgMatcher>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FlowSinkArgs {
+    Any,
+    Indices(Vec<usize>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueFlowSink {
+    pub member_calls: Vec<String>,
+    pub args: FlowSinkArgs,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueFlowMatcher {
+    pub symbol: String,
+    pub sources: Vec<ValueFlowSource>,
+    pub configurations: Vec<ValueFlowConfiguration>,
+    pub sinks: Vec<ValueFlowSink>,
+    pub all_configurations_required: bool,
+}
+
+impl ValueFlowMatcher {
+    pub fn new(symbol: String) -> Self {
+        Self {
+            symbol,
+            sources: Vec::new(),
+            configurations: Vec::new(),
+            sinks: Vec::new(),
+            all_configurations_required: false,
+        }
+    }
+
+    pub fn evidence_symbol(&self) -> String {
+        self.symbol.clone()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -296,6 +367,7 @@ impl ApiMatcher {
             && self.string_literals.is_empty()
             && self.classes.is_empty()
             && self.constructors.is_empty()
+            && self.value_flows.is_empty()
     }
 
     pub fn normalized(mut self) -> Self {
@@ -363,6 +435,7 @@ impl ApiMatcher {
         normalize_strings(&mut self.string_literals);
         normalize_class_matchers(&mut self.classes);
         normalize_constructor_matchers(&mut self.constructors);
+        normalize_value_flows(&mut self.value_flows);
         for member_call in &mut self.member_calls {
             for matcher in &mut member_call.arg_strings {
                 normalize_strings(&mut matcher.values);
@@ -382,6 +455,96 @@ impl ApiMatcher {
                 .retain(|matcher| !matcher.property.is_empty());
         }
         self
+    }
+}
+
+fn normalize_value_flows(values: &mut Vec<ValueFlowMatcher>) {
+    for flow in values.iter_mut() {
+        flow.symbol = flow.symbol.trim().to_string();
+        for source in &mut flow.sources {
+            source.member_call = normalize_member_chain(&source.member_call);
+            for matcher in &mut source.arg_strings {
+                normalize_strings(&mut matcher.values);
+            }
+        }
+        flow.sources.retain(|source| !source.member_call.is_empty());
+        flow.sources
+            .sort_by(|left, right| left.member_call.cmp(&right.member_call));
+        flow.sources.dedup();
+
+        for configuration in &mut flow.configurations {
+            match configuration {
+                ValueFlowConfiguration::PropertyWrite { property, value } => {
+                    *property = property.trim().to_string();
+                    normalize_flow_value(value);
+                }
+                ValueFlowConfiguration::MemberCall { member, args } => {
+                    *member = member.trim().to_string();
+                    for arg in args.iter_mut() {
+                        normalize_flow_value(&mut arg.value);
+                    }
+                    args.sort_by_key(|arg| arg.index);
+                    args.dedup();
+                }
+            }
+        }
+        flow.configurations
+            .retain(|configuration| match configuration {
+                ValueFlowConfiguration::PropertyWrite { property, .. } => !property.is_empty(),
+                ValueFlowConfiguration::MemberCall { member, .. } => !member.is_empty(),
+            });
+        flow.configurations.sort_by(|left, right| {
+            configuration_sort_key(left).cmp(&configuration_sort_key(right))
+        });
+        flow.configurations.dedup();
+
+        for sink in &mut flow.sinks {
+            normalize_member_chains(&mut sink.member_calls);
+            if let FlowSinkArgs::Indices(indices) = &mut sink.args {
+                indices.sort_unstable();
+                indices.dedup();
+            }
+        }
+        flow.sinks.retain(|sink| !sink.member_calls.is_empty());
+        flow.sinks.sort_by(|left, right| {
+            (left.member_calls.as_slice(), sink_args_sort_key(&left.args)).cmp(&(
+                right.member_calls.as_slice(),
+                sink_args_sort_key(&right.args),
+            ))
+        });
+        flow.sinks.dedup();
+    }
+    values.retain(|flow| {
+        !flow.symbol.is_empty()
+            && !flow.sources.is_empty()
+            && !flow.configurations.is_empty()
+            && !flow.sinks.is_empty()
+    });
+    values.sort_by(|left, right| left.symbol.cmp(&right.symbol));
+    values.dedup();
+}
+
+fn normalize_flow_value(value: &mut FlowValueMatcher) {
+    match value {
+        FlowValueMatcher::Any => {}
+        FlowValueMatcher::StaticExact(values)
+        | FlowValueMatcher::StaticPrefix(values)
+        | FlowValueMatcher::StaticContainsAny(values)
+        | FlowValueMatcher::StaticContainsAll(values) => normalize_strings(values),
+    }
+}
+
+fn configuration_sort_key(configuration: &ValueFlowConfiguration) -> (&str, &str) {
+    match configuration {
+        ValueFlowConfiguration::PropertyWrite { property, .. } => ("property", property),
+        ValueFlowConfiguration::MemberCall { member, .. } => ("member", member),
+    }
+}
+
+fn sink_args_sort_key(args: &FlowSinkArgs) -> (&str, &[usize]) {
+    match args {
+        FlowSinkArgs::Any => ("any", &[]),
+        FlowSinkArgs::Indices(indices) => ("indices", indices.as_slice()),
     }
 }
 

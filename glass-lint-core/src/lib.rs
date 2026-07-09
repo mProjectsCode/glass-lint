@@ -16,7 +16,7 @@ pub use linter::{Linter, RuleCatalog};
 pub mod rules {
     pub use crate::matcher::{
         ApiCategory as Category, ApiRule as Rule, ApiRuleBuildError as BuildError,
-        ApiSeverity as Severity, Confidence,
+        ApiSeverity as Severity, Confidence, FlowValueMatcher,
     };
 }
 

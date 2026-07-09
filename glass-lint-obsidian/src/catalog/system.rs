@@ -1,4 +1,6 @@
-use glass_lint_core::rules::{Confidence, Rule, Rule as ApiRule, Severity as ApiSeverity};
+use glass_lint_core::rules::{
+    Confidence, FlowValueMatcher, Rule, Rule as ApiRule, Severity as ApiSeverity,
+};
 
 pub(super) fn rules() -> Vec<Rule> {
     vec![
@@ -260,6 +262,35 @@ pub(super) fn rules() -> Vec<Rule> {
             .static_string_arg(0)
             .rooted_member_call("window.setInterval")
             .static_string_arg(0)
+            .value_flow("script insertion")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["script"])
+            .flow_property_write("src", FlowValueMatcher::Any)
+            .flow_property_write("textContent", FlowValueMatcher::Any)
+            .flow_member_call_config(
+                "setAttribute",
+                [
+                    (0, FlowValueMatcher::StaticExact(vec!["src".to_string()])),
+                    (1, FlowValueMatcher::Any),
+                ],
+            )
+            .flow_member_call_config("append", [])
+            .flow_sink_member_call_arg_indices(
+                [
+                    "document.head.appendChild",
+                    "document.body.appendChild",
+                    "document.documentElement.appendChild",
+                    "document.documentElement.insertBefore",
+                ],
+                [0],
+            )
+            .flow_sink_member_call_any_arg([
+                "document.head.append",
+                "document.body.append",
+                "document.body.prepend",
+                "document.documentElement.append",
+                "document.documentElement.prepend",
+            ])
             .implies(["disclosure.dynamic_code_or_remote_code"])
             .build(),
     ]

@@ -6,11 +6,12 @@ use swc_ecma_ast::Program;
 use super::result::{ApiEvidence, ApiMatchKind};
 use super::rule::{
     ApiRule, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, MemberCallMatcher,
-    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, ValueFlowMatcher,
 };
 
 mod alias;
 mod ast;
+mod value_flow;
 mod visitor;
 
 pub use alias::AliasInfo;
@@ -73,11 +74,24 @@ impl SymbolIndex {
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
+        let value_flow_matchers = rules
+            .iter()
+            .enumerate()
+            .flat_map(|(rule_index, rule)| {
+                rule.matcher
+                    .value_flows
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(move |(flow_index, matcher)| (rule_index, flow_index, matcher))
+            })
+            .collect::<Vec<_>>();
         Self::collect_with_argument_matchers(
             program,
             aliases,
             &member_matchers,
             &call_matchers,
+            &value_flow_matchers,
             rules.len(),
         )
     }
@@ -87,6 +101,7 @@ impl SymbolIndex {
         aliases: &AliasInfo,
         member_argument_matchers: &[(usize, MemberCallMatcher)],
         call_argument_matchers: &[(usize, CallMatcher)],
+        value_flow_matchers: &[(usize, usize, ValueFlowMatcher)],
         rule_count: usize,
     ) -> (Self, Vec<Vec<ApiEvidence>>) {
         let mut index = Self::default();
@@ -100,6 +115,11 @@ impl SymbolIndex {
                 &mut index,
                 &mut argument_evidence,
             );
+            let flow_evidence =
+                value_flow::collect(program, aliases, value_flow_matchers, rule_count);
+            for (rule_index, evidence) in flow_evidence.into_iter().enumerate() {
+                argument_evidence[rule_index].extend(evidence);
+            }
         }
         (index, argument_evidence)
     }

@@ -13,11 +13,18 @@ const tags = cache.tags; // @expect-error glass-lint rule=obsidian:metadata.extr
 const links = cache.links; // @expect-error glass-lint rule=obsidian:metadata.extraction message_id=detected
 const embeds = cache.embeds; // @expect-error glass-lint rule=obsidian:metadata.extraction message_id=detected
 document.addEventListener("keydown", () => {}); // @expect-error glass-lint rule=obsidian:browser.broad_input_hooks message_id=detected
-const script = document.createElement("script");
+const script = document.createElement("script"); // @expect-error glass-lint rule=obsidian:network.remote_dom_loading message_id=detected
 script.src = "https://cdn.example.com/plugin.js";
 document.head.appendChild(script);
-const img = document.createElement("img");
+const img = document.createElement("img"); // @expect-error glass-lint rule=obsidian:network.remote_dom_loading message_id=detected
 img.src = "https://cdn.example.com/logo.png";
 document.body.appendChild(img);
+const link = document.createElement("link"); // @expect-error glass-lint rule=obsidian:network.remote_dom_loading message_id=detected
+link.rel = "stylesheet";
+link.href = "https://cdn.example.com/theme.css";
+document.head.appendChild(link);
+const style = document.createElement("style"); // @expect-error glass-lint rule=obsidian:network.remote_dom_loading message_id=detected
+style.textContent = "@import url('https://cdn.example.com/theme.css')";
+document.head.appendChild(style);
 await requestUrl("https://example.com");
 this.app.vault.getFiles(); // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected

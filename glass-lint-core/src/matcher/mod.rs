@@ -10,7 +10,10 @@ mod symbol_index;
 mod minified_tests;
 
 pub use result::{ApiCapability, ApiClassificationResult, Disclosure};
-pub use rule::{ApiCatalogError, ApiCategory, ApiRule, ApiRuleBuildError, ApiSeverity, Confidence};
+pub use rule::{
+    ApiCatalogError, ApiCategory, ApiRule, ApiRuleBuildError, ApiSeverity, Confidence,
+    FlowValueMatcher,
+};
 
 use symbol_index::SymbolIndex;
 
@@ -234,5 +237,135 @@ mod tests {
         );
         assert!(result.has_capability("test.object-arg"));
         assert_eq!(evidence_count(&result, "test.object-arg"), 1);
+    }
+
+    #[test]
+    fn tracks_configured_values_into_later_member_sinks() {
+        let rules = [rule("test.flow")
+            .value_flow("script insertion")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["script"])
+            .flow_property_write("src", FlowValueMatcher::Any)
+            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "const script = document.createElement('script'); script.src = getUrl(); document.head.appendChild(script);",
+            &rules,
+        );
+        assert!(result.has_capability("test.flow"));
+        assert_eq!(evidence_count(&result, "test.flow"), 1);
+    }
+
+    #[test]
+    fn value_flow_respects_reassignment_and_order() {
+        let rules = [rule("test.flow")
+            .value_flow("script insertion")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["script"])
+            .flow_property_write("src", FlowValueMatcher::Any)
+            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "let script = document.createElement('script'); script.src = getUrl(); script = document.createElement('div'); document.head.appendChild(script);
+             const future = document.createElement('script'); document.head.appendChild(future); future.src = getUrl();",
+            &rules,
+        );
+        assert_eq!(evidence_count(&result, "test.flow"), 0);
+    }
+
+    #[test]
+    fn value_flow_supports_member_call_configuration_and_helper_sinks() {
+        let rules = [rule("test.flow")
+            .value_flow("script insertion")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["script"])
+            .flow_member_call_config(
+                "setAttribute",
+                [
+                    (0, FlowValueMatcher::StaticExact(vec!["src".into()])),
+                    (1, FlowValueMatcher::Any),
+                ],
+            )
+            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "function appendToHead(node) { document.head.appendChild(node); }
+             const script = document.createElement('script'); script.setAttribute('src', getUrl()); appendToHead(script);",
+            &rules,
+        );
+        assert!(result.has_capability("test.flow"));
+        assert_eq!(evidence_count(&result, "test.flow"), 1);
+    }
+
+    #[test]
+    fn value_flow_supports_const_arrow_helper_sinks() {
+        let rules = [rule("test.flow")
+            .value_flow("script insertion")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["script"])
+            .flow_property_write("src", FlowValueMatcher::Any)
+            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "const appendToHead = node => document.head.appendChild(node);
+             const script = document.createElement('script'); script.src = getUrl(); appendToHead(script);",
+            &rules,
+        );
+        assert!(result.has_capability("test.flow"));
+        assert_eq!(evidence_count(&result, "test.flow"), 1);
+    }
+
+    #[test]
+    fn value_flow_static_prefix_requires_static_values() {
+        let rules = [rule("test.flow")
+            .value_flow("remote element")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["img"])
+            .flow_property_write(
+                "src",
+                FlowValueMatcher::StaticPrefix(vec!["https://".into(), "http://".into()]),
+            )
+            .flow_sink_member_call_arg_indices(["document.body.appendChild"], [0])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "const remote = document.createElement('img'); remote.src = 'https://example.com/a.png'; document.body.appendChild(remote);
+             const local = document.createElement('img'); local.src = '/a.png'; document.body.appendChild(local);
+             const dynamic = document.createElement('img'); dynamic.src = getUrl(); document.body.appendChild(dynamic);",
+            &rules,
+        );
+        assert!(result.has_capability("test.flow"));
+        assert_eq!(evidence_count(&result, "test.flow"), 1);
+    }
+
+    #[test]
+    fn value_flow_can_require_all_configurations() {
+        let rules = [rule("test.flow")
+            .value_flow("remote stylesheet")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["link"])
+            .flow_property_write(
+                "rel",
+                FlowValueMatcher::StaticExact(vec!["stylesheet".into()]),
+            )
+            .flow_property_write(
+                "href",
+                FlowValueMatcher::StaticPrefix(vec!["https://".into()]),
+            )
+            .flow_requires_all_configurations()
+            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
+            .build()
+            .unwrap()];
+        let result = classify(
+            "const good = document.createElement('link'); good.rel = 'stylesheet'; good.href = 'https://example.com/a.css'; document.head.appendChild(good);
+             const missing = document.createElement('link'); missing.href = 'https://example.com/a.css'; document.head.appendChild(missing);",
+            &rules,
+        );
+        assert!(result.has_capability("test.flow"));
+        assert_eq!(evidence_count(&result, "test.flow"), 1);
     }
 }

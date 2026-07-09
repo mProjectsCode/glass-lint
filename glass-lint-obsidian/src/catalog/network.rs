@@ -1,4 +1,6 @@
-use glass_lint_core::rules::{Confidence, Rule, Rule as ApiRule, Severity as ApiSeverity};
+use glass_lint_core::rules::{
+    Confidence, FlowValueMatcher, Rule, Rule as ApiRule, Severity as ApiSeverity,
+};
 
 pub(super) fn rules() -> Vec<Rule> {
     vec![
@@ -197,10 +199,125 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::Medium)
             .member_calls(["appendChild", "append"])
+            .value_flow("remote script element")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["script"])
+            .flow_property_write("src", remote_url_prefixes())
+            .flow_member_call_config(
+                "setAttribute",
+                [
+                    (0, FlowValueMatcher::StaticExact(vec!["src".to_string()])),
+                    (1, remote_url_prefixes()),
+                ],
+            )
+            .flow_sink_member_call_arg_indices(
+                [
+                    "document.head.appendChild",
+                    "document.body.appendChild",
+                    "document.documentElement.appendChild",
+                    "document.documentElement.insertBefore",
+                ],
+                [0],
+            )
+            .flow_sink_member_call_any_arg([
+                "document.head.append",
+                "document.body.append",
+                "document.body.prepend",
+                "document.documentElement.append",
+                "document.documentElement.prepend",
+            ])
+            .value_flow("remote image element")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["img"])
+            .flow_property_write("src", remote_url_prefixes())
+            .flow_member_call_config(
+                "setAttribute",
+                [
+                    (0, FlowValueMatcher::StaticExact(vec!["src".to_string()])),
+                    (1, remote_url_prefixes()),
+                ],
+            )
+            .flow_sink_member_call_arg_indices(
+                [
+                    "document.head.appendChild",
+                    "document.body.appendChild",
+                    "document.documentElement.appendChild",
+                    "document.documentElement.insertBefore",
+                ],
+                [0],
+            )
+            .flow_sink_member_call_any_arg([
+                "document.head.append",
+                "document.body.append",
+                "document.body.prepend",
+                "document.documentElement.append",
+                "document.documentElement.prepend",
+            ])
+            .value_flow("remote stylesheet link")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["link"])
+            .flow_property_write(
+                "rel",
+                FlowValueMatcher::StaticExact(vec!["stylesheet".to_string()]),
+            )
+            .flow_property_write("href", remote_url_prefixes())
+            .flow_requires_all_configurations()
+            .flow_sink_member_call_arg_indices(
+                [
+                    "document.head.appendChild",
+                    "document.body.appendChild",
+                    "document.documentElement.appendChild",
+                    "document.documentElement.insertBefore",
+                ],
+                [0],
+            )
+            .flow_sink_member_call_any_arg([
+                "document.head.append",
+                "document.body.append",
+                "document.body.prepend",
+                "document.documentElement.append",
+                "document.documentElement.prepend",
+            ])
+            .value_flow("remote style element")
+            .flow_source_member_call("document.createElement")
+            .flow_source_arg_string(0, ["style"])
+            .flow_property_write("textContent", remote_url_markers())
+            .flow_sink_member_call_arg_indices(
+                [
+                    "document.head.appendChild",
+                    "document.body.appendChild",
+                    "document.documentElement.appendChild",
+                    "document.documentElement.insertBefore",
+                ],
+                [0],
+            )
+            .flow_sink_member_call_any_arg([
+                "document.head.append",
+                "document.body.append",
+                "document.body.prepend",
+                "document.documentElement.append",
+                "document.documentElement.prepend",
+            ])
             .implies(["disclosure.network_access"])
             .build(),
     ]
     .into_iter()
     .map(|rule| rule.expect("built-in Obsidian rule should be valid"))
     .collect()
+}
+
+fn remote_url_prefixes() -> FlowValueMatcher {
+    FlowValueMatcher::StaticPrefix(vec![
+        "http://".to_string(),
+        "https://".to_string(),
+        "//".to_string(),
+    ])
+}
+
+fn remote_url_markers() -> FlowValueMatcher {
+    FlowValueMatcher::StaticContainsAny(vec![
+        "http://".to_string(),
+        "https://".to_string(),
+        "//".to_string(),
+    ])
 }

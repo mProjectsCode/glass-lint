@@ -4,6 +4,6 @@
 function appendToHead(node) {
   document.head.appendChild(node);
 }
-const script = document.createElement("script");
+const script = document.createElement("script"); // @expect-error glass-lint rule=obsidian:dynamic_code message_id=detected
 script.src = "https://cdn.example.com/plugin.js";
 appendToHead(script);
