@@ -1,5 +1,8 @@
+use super::ObsidianRuleBuilderExt;
+
 use glass_lint_core::rules::{
-    Confidence, MemberCallMatcher, Rule, Rule as ApiRule, Severity as ApiSeverity,
+    Confidence, FlowMatcher, FlowValueMatcher, Matcher, MemberCallMatcher, Rule, Rule as ApiRule,
+    Severity as ApiSeverity,
 };
 
 pub(super) fn rules() -> Vec<Rule> {
@@ -9,14 +12,14 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("workspace")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_reads(["app.workspace"])
+            .with_rooted_member_reads(["app.workspace"])
             .build(),
         ApiRule::builder("workspace.views")
             .label("Registers or manipulates workspace views and panes")
             .category("workspace")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "this.registerView",
                 "app.workspace.getLeavesOfType",
                 "app.workspace.detachLeavesOfType",
@@ -30,28 +33,29 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("workspace")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_reads(["app.workspace.activeEditor"])
-            .rooted_member_calls(["app.workspace.getActiveFile"])
+            .with_rooted_member_reads(["app.workspace.activeEditor"])
+            .with_rooted_member_calls(["app.workspace.getActiveFile"])
             .build(),
         ApiRule::builder("workspace.editor_commands")
             .label("Registers editor callbacks, menus, or command palette integrations")
             .category("workspace")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .matcher(
-                MemberCallMatcher::chain("this.addCommand").arg_object_keys(0, ["editorCallback"]),
-            )
-            .matcher(
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::syntactic_heuristic("this.addCommand")
+                    .arg_object_keys(0, ["editorCallback"]),
+            ))
+            .matcher(Matcher::member_call(
                 MemberCallMatcher::rooted_chain("app.workspace.on")
                     .arg_string(0, ["file-menu", "editor-menu"]),
-            )
+            ))
             .build(),
         ApiRule::builder("workspace.layout_persistence")
             .label("Reads or writes workspace layout persistence")
             .category("workspace")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "app.workspace.getLayout",
                 "app.workspace.changeLayout",
                 "app.workspace.requestSaveLayout",
@@ -63,7 +67,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("ui")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_calls([
+            .with_heuristic_member_calls([
                 "this.addCommand",
                 "this.addRibbonIcon",
                 "this.addStatusBarItem",
@@ -74,7 +78,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("ui")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .constructors([
+            .with_heuristic_constructors([
                 "Modal",
                 "Notice",
                 "SuggestModal",
@@ -84,7 +88,7 @@ pub(super) fn rules() -> Vec<Rule> {
                 "obsidian.SuggestModal",
                 "obsidian.FuzzySuggestModal",
             ])
-            .classes([
+            .with_heuristic_classes([
                 "obsidian.Modal",
                 "obsidian.Notice",
                 "obsidian.SuggestModal",
@@ -96,7 +100,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("ui")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_calls([
+            .with_heuristic_member_calls([
                 "document.createElement",
                 "document.querySelector",
                 "document.querySelectorAll",
@@ -104,27 +108,32 @@ pub(super) fn rules() -> Vec<Rule> {
                 "document.head.appendChild",
                 "document.documentElement.appendChild",
             ])
-            .calls(["createEl"])
-            .constructors(["MutationObserver"])
+            .with_heuristic_calls(["createEl"])
+            .with_heuristic_constructors(["MutationObserver"])
             .build(),
         ApiRule::builder("ui.file_dialog")
             .label("Uses file dialogs or DOM file inputs")
             .category("ui")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_calls(["dialog.showOpenDialog", "dialog.showSaveDialog"])
-            .matcher(
-                MemberCallMatcher::chain("document.createElement")
-                    .arg_string(0, ["input"])
-                    .assigned_property("type", ["file"]),
-            )
+            .with_heuristic_member_calls(["dialog.showOpenDialog", "dialog.showSaveDialog"])
+            .matcher(Matcher::flow(
+                FlowMatcher::new("file input element")
+                    .source_member_call("document.createElement")
+                    .source_arg_string(0, ["input"])
+                    .property_write(
+                        "type",
+                        FlowValueMatcher::StaticExact(vec!["file".to_string()]),
+                    )
+                    .emit_when_requirements_met(),
+            ))
             .build(),
         ApiRule::builder("editor.extension")
             .label("Registers editor extensions")
             .category("editor")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_calls(["this.registerEditorExtension"])
+            .with_heuristic_member_calls(["this.registerEditorExtension"])
             .implies(["disclosure.editor_behavior"])
             .build(),
         ApiRule::builder("editor.markdown_processing")
@@ -132,7 +141,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("editor")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_calls([
+            .with_heuristic_member_calls([
                 "this.registerMarkdownPostProcessor",
                 "this.registerMarkdownCodeBlockProcessor",
                 "MarkdownRenderer.render",
@@ -145,17 +154,17 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("editor")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_calls([
+            .with_heuristic_member_calls([
                 "editor.getValue",
                 "editor.replaceRange",
                 "editor.transaction",
             ])
-            .classes(["obsidian.MarkdownView", "obsidian.Editor"])
-            .module_calls(
+            .with_heuristic_classes(["obsidian.MarkdownView", "obsidian.Editor"])
+            .with_module_calls(
                 "obsidian",
                 ["parseLinktext", "normalizePath", "getLinkpath"],
             )
-            .module_member_calls(
+            .with_module_member_calls(
                 "obsidian",
                 ["parseLinktext", "normalizePath", "getLinkpath"],
             )
@@ -165,7 +174,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("editor")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .imports([
+            .with_imports([
                 "@codemirror/state",
                 "@codemirror/view",
                 "@codemirror/language",
@@ -178,8 +187,8 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("editor")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_calls(["this.registerEditorSuggest"])
-            .classes(["obsidian.EditorSuggest"])
+            .with_heuristic_member_calls(["this.registerEditorSuggest"])
+            .with_heuristic_classes(["obsidian.EditorSuggest"])
             .implies(["disclosure.editor_behavior"])
             .build(),
         ApiRule::builder("settings.persistence")
@@ -187,41 +196,41 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("settings")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_calls(["this.loadData", "this.saveData"])
+            .with_heuristic_member_calls(["this.loadData", "this.saveData"])
             .build(),
         ApiRule::builder("settings.ui")
             .label("Registers plugin settings UI")
             .category("settings")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_calls(["this.addSettingTab"])
-            .constructors([
+            .with_heuristic_member_calls(["this.addSettingTab"])
+            .with_heuristic_constructors([
                 "PluginSettingTab",
                 "Setting",
                 "obsidian.PluginSettingTab",
                 "obsidian.Setting",
             ])
-            .classes(["obsidian.PluginSettingTab", "obsidian.Setting"])
-            .member_calls(["this.loadData", "this.saveData"])
+            .with_heuristic_classes(["obsidian.PluginSettingTab", "obsidian.Setting"])
+            .with_heuristic_member_calls(["this.loadData", "this.saveData"])
             .build(),
         ApiRule::builder("lifecycle.methods")
             .label("Defines plugin lifecycle methods")
             .category("lifecycle")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_reads(["onload", "onunload"])
+            .with_heuristic_member_reads(["onload", "onunload"])
             .build(),
         ApiRule::builder("lifecycle.events")
             .label("Registers events, DOM handlers, or intervals")
             .category("lifecycle")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_calls([
+            .with_heuristic_member_calls([
                 "this.registerEvent",
                 "this.registerDomEvent",
                 "this.registerInterval",
             ])
-            .global_calls(["setInterval", "setTimeout", "requestAnimationFrame"])
+            .with_global_calls(["setInterval", "setTimeout", "requestAnimationFrame"])
             .implies(["disclosure.global_handlers_or_timers"])
             .build(),
     ]

@@ -5,9 +5,8 @@ mod taxonomy;
 pub use error::{ApiCatalogError, ApiRuleBuildError};
 pub use matcher::{
     ApiMatcher, ArgStringMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
-    FlowSinkArgs, FlowValueMatcher, Matcher, MemberCallMatcher, MemberCallProvenance,
-    MemberReadMatcher, MemberReadProvenance, ValueFlowConfiguration, ValueFlowMatcher,
-    canonical_rooted_chain,
+    FlowMatcher, FlowRequirement, FlowSinkArgs, FlowValueMatcher, Matcher, MemberCallMatcher,
+    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, canonical_rooted_chain,
 };
 pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
 
@@ -18,7 +17,7 @@ pub struct ApiRule {
     pub category: ApiCategory,
     pub severity: ApiSeverity,
     pub confidence: Confidence,
-    pub matcher: ApiMatcher,
+    pub matchers: Vec<Matcher>,
     pub implies: Vec<String>,
 }
 
@@ -32,7 +31,7 @@ impl ApiRule {
             category: None,
             severity: None,
             confidence: None,
-            matcher: ApiMatcher::default(),
+            matchers: Vec::new(),
             implies: Vec::new(),
         }
     }
@@ -45,13 +44,13 @@ pub struct ApiRuleBuilder {
     category: Option<ApiCategory>,
     severity: Option<ApiSeverity>,
     confidence: Option<Confidence>,
-    matcher: ApiMatcher,
+    matchers: Vec<Matcher>,
     implies: Vec<String>,
 }
 
 impl ApiRuleBuilder {
     pub fn matcher(mut self, matcher: impl Into<Matcher>) -> Self {
-        self.matcher.push(matcher.into());
+        self.matchers.push(matcher.into());
         self
     }
 
@@ -72,179 +71,6 @@ impl ApiRuleBuilder {
 
     pub fn confidence(mut self, confidence: Confidence) -> Self {
         self.confidence = Some(confidence);
-        self
-    }
-
-    pub fn calls<I, S>(mut self, calls: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher.calls.extend(
-            calls
-                .into_iter()
-                .map(Into::into)
-                .map(CallMatcher::unqualified),
-        );
-        self
-    }
-
-    pub fn global_calls<I, S>(mut self, calls: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher
-            .calls
-            .extend(calls.into_iter().map(Into::into).map(CallMatcher::global));
-        self
-    }
-
-    pub fn module_calls<I, S>(mut self, module: impl Into<String>, exports: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        let module = module.into();
-        self.matcher.calls.extend(
-            exports
-                .into_iter()
-                .map(Into::into)
-                .map(|name| CallMatcher::module_export(module.clone(), name)),
-        );
-        self
-    }
-
-    pub fn member_calls<I, S>(mut self, member_calls: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher.member_calls.extend(
-            member_calls
-                .into_iter()
-                .map(Into::into)
-                .map(MemberCallMatcher::chain),
-        );
-        self
-    }
-
-    pub fn rooted_member_calls<I, S>(mut self, member_calls: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher.member_calls.extend(
-            member_calls
-                .into_iter()
-                .map(Into::into)
-                .map(MemberCallMatcher::rooted_chain),
-        );
-        self
-    }
-
-    pub fn module_member_calls<I, S>(mut self, module: impl Into<String>, members: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        let module = module.into();
-        self.matcher.member_calls.extend(
-            members
-                .into_iter()
-                .map(Into::into)
-                .map(|member| MemberCallMatcher::module_member(module.clone(), member)),
-        );
-        self
-    }
-
-    pub fn member_reads<I, S>(mut self, member_reads: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher.member_reads.extend(
-            member_reads
-                .into_iter()
-                .map(Into::into)
-                .map(MemberReadMatcher::chain),
-        );
-        self
-    }
-
-    pub fn rooted_member_reads<I, S>(mut self, member_reads: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher.member_reads.extend(
-            member_reads
-                .into_iter()
-                .map(Into::into)
-                .map(MemberReadMatcher::rooted_chain),
-        );
-        self
-    }
-
-    pub fn module_member_reads<I, S>(mut self, module: impl Into<String>, members: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        let module = module.into();
-        self.matcher.member_reads.extend(
-            members
-                .into_iter()
-                .map(Into::into)
-                .map(|member| MemberReadMatcher::module_member(module.clone(), member)),
-        );
-        self
-    }
-
-    pub fn imports<I, S>(mut self, imports: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher
-            .imports
-            .extend(imports.into_iter().map(Into::into));
-        self
-    }
-
-    pub fn string_literals<I, S>(mut self, string_literals: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher
-            .string_literals
-            .extend(string_literals.into_iter().map(Into::into));
-        self
-    }
-
-    pub fn classes<I, S>(mut self, classes: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher
-            .classes
-            .extend(classes.into_iter().map(Into::into).map(class_matcher));
-        self
-    }
-
-    pub fn constructors<I, S>(mut self, constructors: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.matcher.constructors.extend(
-            constructors
-                .into_iter()
-                .map(Into::into)
-                .map(constructor_matcher),
-        );
         self
     }
 
@@ -270,36 +96,21 @@ impl ApiRuleBuilder {
             return Err(ApiRuleBuildError::MissingId);
         }
 
-        let matcher = self.matcher.normalized();
+        let matcher = ApiMatcher::from_matchers(self.matchers).normalized();
         let implies = normalized_strings(self.implies);
         if matcher.is_empty() {
             return Err(ApiRuleBuildError::MissingMatcher);
         }
+        let matchers = matcher.into_matchers();
         Ok(ApiRule {
             id,
             label,
             category,
             severity,
             confidence,
-            matcher,
+            matchers,
             implies,
         })
-    }
-}
-
-fn class_matcher(value: String) -> ClassMatcher {
-    if let Some((module, export)) = value.split_once('.') {
-        ClassMatcher::module_export(module.to_string(), export.to_string())
-    } else {
-        ClassMatcher::unqualified(value)
-    }
-}
-
-fn constructor_matcher(value: String) -> ConstructorMatcher {
-    if let Some((module, export)) = value.split_once('.') {
-        ConstructorMatcher::module_export(module.to_string(), export.to_string())
-    } else {
-        ConstructorMatcher::unqualified(value)
     }
 }
 

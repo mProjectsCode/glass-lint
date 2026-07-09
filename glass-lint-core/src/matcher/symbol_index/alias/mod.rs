@@ -21,7 +21,6 @@ pub struct AliasInfo {
     scopes_by_start: Vec<usize>,
     assignments: BTreeMap<usize, BTreeMap<String, Vec<AliasAssignment>>>,
     property_assignments: BTreeMap<String, Vec<PropertyAliasAssignment>>,
-    static_property_writes: BTreeMap<(String, String), Vec<StaticPropertyWrite>>,
     parameter_aliases: BTreeMap<(usize, String), BindingProvenance>,
 }
 
@@ -68,13 +67,6 @@ struct PropertyAliasAssignment {
     target: Option<String>,
 }
 
-#[derive(Debug, Clone)]
-struct StaticPropertyWrite {
-    span: Span,
-    scope: usize,
-    value: String,
-}
-
 impl AliasInfo {
     pub fn collect(program: &Program) -> Self {
         let mut collector = AliasCollector::new(program.span());
@@ -109,27 +101,11 @@ impl AliasInfo {
         for assignments in property_assignments.values_mut() {
             assignments.sort_by_key(|assignment| assignment.span.lo);
         }
-        let mut static_property_writes =
-            BTreeMap::<(String, String), Vec<StaticPropertyWrite>>::new();
-        for write in collector.static_property_writes {
-            static_property_writes
-                .entry((write.object, write.property))
-                .or_default()
-                .push(StaticPropertyWrite {
-                    span: write.span,
-                    scope: write.scope,
-                    value: write.value,
-                });
-        }
-        for writes in static_property_writes.values_mut() {
-            writes.sort_by_key(|write| write.span.lo);
-        }
         Self {
             scopes: collector.scopes,
             scopes_by_start,
             assignments,
             property_assignments,
-            static_property_writes,
             parameter_aliases,
         }
     }
@@ -353,24 +329,6 @@ impl AliasInfo {
 
     pub fn rooted_expr_chain(&self, expr: &Expr) -> Option<String> {
         rooted_expr_chain_with(self, expr)
-    }
-
-    pub fn has_later_static_property_write(
-        &self,
-        object: &str,
-        property: &str,
-        values: &[String],
-        span: Span,
-    ) -> bool {
-        self.static_property_writes
-            .get(&(object.to_string(), property.to_string()))
-            .is_some_and(|writes| {
-                writes.iter().any(|write| {
-                    write.span.lo >= span.lo
-                        && contains(self.scopes[write.scope].span, span)
-                        && (values.is_empty() || values.iter().any(|value| value == &write.value))
-                })
-            })
     }
 
     fn binding_with_scope_at(&self, name: &str, span: Span) -> Option<(usize, &BindingProvenance)> {

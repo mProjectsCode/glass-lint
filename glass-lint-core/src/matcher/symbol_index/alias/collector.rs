@@ -26,7 +26,6 @@ pub struct AliasCollector {
     pub assignments: Vec<AliasAssignment>,
     latest_assignments: BTreeMap<usize, BTreeMap<String, BindingProvenance>>,
     pub property_assignments: Vec<PropertyAliasAssignment>,
-    pub static_property_writes: Vec<StaticPropertyWrite>,
     functions: BTreeMap<String, (usize, Vec<String>)>,
     calls: Vec<(String, Vec<Option<BindingProvenance>>)>,
 }
@@ -40,14 +39,6 @@ fn is_module_interop_wrapper(name: &str) -> bool {
             | "_interopRequireWildcard"
             | "_interopRequireDefault"
     )
-}
-
-pub struct StaticPropertyWrite {
-    pub span: Span,
-    pub scope: usize,
-    pub object: String,
-    pub property: String,
-    pub value: String,
 }
 
 impl AliasCollector {
@@ -64,7 +55,6 @@ impl AliasCollector {
             assignments: Vec::new(),
             latest_assignments: BTreeMap::new(),
             property_assignments: Vec::new(),
-            static_property_writes: Vec::new(),
             functions: BTreeMap::new(),
             calls: Vec::new(),
         }
@@ -462,19 +452,6 @@ impl Visit for AliasCollector {
                         scope: self.current_scope(),
                         property,
                         target: self.rooted_expr_name(&assignment.right),
-                    });
-                }
-                if let (Some(object), Some(property), Some(value)) = (
-                    self.rooted_expr_name(&member.obj),
-                    member_prop_name(&member.prop),
-                    static_string(&assignment.right),
-                ) {
-                    self.static_property_writes.push(StaticPropertyWrite {
-                        span: assignment.span,
-                        scope: self.current_scope(),
-                        object,
-                        property,
-                        value,
                     });
                 }
             }

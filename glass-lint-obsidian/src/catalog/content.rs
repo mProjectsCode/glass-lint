@@ -1,5 +1,7 @@
+use super::ObsidianRuleBuilderExt;
+
 use glass_lint_core::rules::{
-    Confidence, MemberCallMatcher, Rule, Rule as ApiRule, Severity as ApiSeverity,
+    Confidence, Matcher, MemberCallMatcher, Rule, Rule as ApiRule, Severity as ApiSeverity,
 };
 
 pub(super) fn rules() -> Vec<Rule> {
@@ -9,14 +11,14 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_reads(["app.vault"])
+            .with_rooted_member_reads(["app.vault"])
             .build(),
         ApiRule::builder("vault.read")
             .label("Reads vault files")
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "app.vault.read",
                 "app.vault.cachedRead",
                 "app.vault.readBinary",
@@ -28,7 +30,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "app.vault.create",
                 "app.vault.createBinary",
                 "app.vault.modify",
@@ -45,7 +47,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "app.vault.delete",
                 "app.vault.trash",
                 "app.vault.rename",
@@ -60,7 +62,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "app.vault.getFiles",
                 "app.vault.getMarkdownFiles",
                 "app.vault.getAllLoadedFiles",
@@ -73,14 +75,14 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_calls(["app.vault.getFolderByPath", "app.vault.getRoot"])
+            .with_rooted_member_calls(["app.vault.getFolderByPath", "app.vault.getRoot"])
             .build(),
         ApiRule::builder("vault.resources")
             .label("Accesses attachment resource paths")
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "app.vault.getResourcePath",
                 "app.vault.adapter.getResourcePath",
             ])
@@ -90,7 +92,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_reads(["app.vault.adapter"])
+            .with_rooted_member_reads(["app.vault.adapter"])
             .implies(["disclosure.adapter_file_access"])
             .build(),
         ApiRule::builder("vault.obsidian_config")
@@ -98,7 +100,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .string_literals([".obsidian/", ".obsidian\\"])
+            .with_string_literals([".obsidian/", ".obsidian\\"])
             .implies(["disclosure.obsidian_config_access"])
             .build(),
         ApiRule::builder("vault.uri")
@@ -106,28 +108,28 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .string_literals(["obsidian://"])
+            .with_string_literals(["obsidian://"])
             .build(),
         ApiRule::builder("vault.open_create_flows")
             .label("Opens or creates files through workspace or file manager APIs")
             .category("vault")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_calls(["app.workspace.openLinkText"])
-            .rooted_member_calls(["app.workspace.getLeaf.openFile"])
-            .member_calls(["leaf.openFile"])
+            .with_rooted_member_calls(["app.workspace.openLinkText"])
+            .with_rooted_member_calls(["app.workspace.getLeaf.openFile"])
+            .with_heuristic_member_calls(["leaf.openFile"])
             .build(),
         ApiRule::builder("metadata.read")
             .label("Reads Obsidian metadata cache")
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_reads([
+            .with_rooted_member_reads([
                 "app.metadataCache",
                 "app.metadataCache.resolvedLinks",
                 "app.metadataCache.unresolvedLinks",
             ])
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "app.metadataCache.getFileCache",
                 "app.metadataCache.getCache",
                 "app.metadataCache.getFirstLinkpathDest",
@@ -139,7 +141,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .rooted_member_reads(["app.metadataCache.getFileCache.frontmatter"])
+            .with_rooted_member_reads(["app.metadataCache.getFileCache.frontmatter"])
             .implies(["disclosure.metadata_access"])
             .build(),
         ApiRule::builder("metadata.frontmatter_write")
@@ -147,7 +149,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_calls(["app.fileManager.processFrontMatter"])
+            .with_rooted_member_calls(["app.fileManager.processFrontMatter"])
             .implies(["disclosure.metadata_access", "disclosure.vault_file_write"])
             .build(),
         ApiRule::builder("metadata.events")
@@ -155,36 +157,42 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .matcher(
+            .matcher(Matcher::member_call(
                 MemberCallMatcher::rooted_chain("app.metadataCache.on")
                     .arg_string(0, ["changed", "deleted", "resolved"]),
-            )
+            ))
             .build(),
         ApiRule::builder("metadata.traversal")
             .label("Traverses metadata cache maps or cached metadata for many files")
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .matcher(MemberCallMatcher::chain("Object.entries").arg_rooted_exprs(
-                0,
-                [
-                    "app.metadataCache.resolvedLinks",
-                    "app.metadataCache.unresolvedLinks",
-                ],
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::syntactic_heuristic("Object.entries").arg_rooted_exprs(
+                    0,
+                    [
+                        "app.metadataCache.resolvedLinks",
+                        "app.metadataCache.unresolvedLinks",
+                    ],
+                ),
             ))
-            .matcher(MemberCallMatcher::chain("Object.keys").arg_rooted_exprs(
-                0,
-                [
-                    "app.metadataCache.resolvedLinks",
-                    "app.metadataCache.unresolvedLinks",
-                ],
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::syntactic_heuristic("Object.keys").arg_rooted_exprs(
+                    0,
+                    [
+                        "app.metadataCache.resolvedLinks",
+                        "app.metadataCache.unresolvedLinks",
+                    ],
+                ),
             ))
-            .matcher(MemberCallMatcher::chain("Object.values").arg_rooted_exprs(
-                0,
-                [
-                    "app.metadataCache.resolvedLinks",
-                    "app.metadataCache.unresolvedLinks",
-                ],
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::syntactic_heuristic("Object.values").arg_rooted_exprs(
+                    0,
+                    [
+                        "app.metadataCache.resolvedLinks",
+                        "app.metadataCache.unresolvedLinks",
+                    ],
+                ),
             ))
             .build(),
         ApiRule::builder("metadata.extraction")
@@ -192,7 +200,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .rooted_member_reads([
+            .with_rooted_member_reads([
                 "app.metadataCache.getFileCache.tags",
                 "app.metadataCache.getFileCache.links",
                 "app.metadataCache.getFileCache.embeds",
@@ -207,7 +215,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("dependency")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .string_literals(["dataview", "dataviewapi", "data-core", "datacore"])
+            .with_string_literals(["dataview", "dataviewapi", "data-core", "datacore"])
             .build(),
     ]
     .into_iter()

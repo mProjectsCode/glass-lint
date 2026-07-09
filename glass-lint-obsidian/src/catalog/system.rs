@@ -1,6 +1,8 @@
+use super::ObsidianRuleBuilderExt;
+
 use glass_lint_core::rules::{
-    CallMatcher, Confidence, FlowValueMatcher, MemberCallMatcher, Rule, Rule as ApiRule,
-    Severity as ApiSeverity, ValueFlowMatcher,
+    CallMatcher, Confidence, FlowMatcher, FlowValueMatcher, Matcher, MemberCallMatcher, Rule,
+    Rule as ApiRule, Severity as ApiSeverity,
 };
 
 pub(super) fn rules() -> Vec<Rule> {
@@ -10,12 +12,12 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("dependency")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .rooted_member_reads([
+            .with_rooted_member_reads([
                 "app.plugins",
                 "app.plugins.enabledPlugins",
                 "app.plugins.manifests",
             ])
-            .rooted_member_calls(["app.plugins.getPlugin"])
+            .with_rooted_member_calls(["app.plugins.getPlugin"])
             .implies(["disclosure.plugin_internals"])
             .build(),
         ApiRule::builder("platform.branching")
@@ -23,7 +25,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("dependency")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .module_member_calls(
+            .with_module_member_calls(
                 "obsidian",
                 [
                     "Platform.isMobile",
@@ -40,7 +42,7 @@ pub(super) fn rules() -> Vec<Rule> {
                     "Platform.isSafari",
                 ],
             )
-            .module_member_reads(
+            .with_module_member_reads(
                 "obsidian",
                 [
                     "Platform.isMobile",
@@ -57,7 +59,7 @@ pub(super) fn rules() -> Vec<Rule> {
                     "Platform.isSafari",
                 ],
             )
-            .member_reads([
+            .with_heuristic_member_reads([
                 "Platform.isMobile",
                 "Platform.isDesktop",
                 "Platform.isMobileApp",
@@ -78,7 +80,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("filesystem")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
-            .imports([
+            .with_imports([
                 "fs",
                 "fs/promises",
                 "node:fs",
@@ -101,8 +103,8 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("filesystem")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
-            .imports(["child_process", "node:child_process"])
-            .rooted_member_reads(["process.env", "process.platform"])
+            .with_imports(["child_process", "node:child_process"])
+            .with_rooted_member_reads(["process.env", "process.platform"])
             .implies(["disclosure.process_or_shell_access"])
             .build(),
         ApiRule::builder("electron.desktop")
@@ -110,8 +112,8 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("electron")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
-            .imports(["electron"])
-            .member_calls([
+            .with_imports(["electron"])
+            .with_heuristic_member_calls([
                 "shell.openExternal",
                 "ipcRenderer.send",
                 "ipcRenderer.invoke",
@@ -122,7 +124,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("electron")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
-            .member_calls([
+            .with_heuristic_member_calls([
                 "shell.openExternal",
                 "shell.openPath",
                 "ipcRenderer.send",
@@ -136,7 +138,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("browser")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "navigator.clipboard.read",
                 "navigator.clipboard.readText",
                 "navigator.clipboard.write",
@@ -149,8 +151,8 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("browser")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .member_reads(["localStorage", "sessionStorage", "indexedDB", "caches"])
-            .member_calls([
+            .with_heuristic_member_reads(["localStorage", "sessionStorage", "indexedDB", "caches"])
+            .with_heuristic_member_calls([
                 "localStorage.getItem",
                 "localStorage.setItem",
                 "sessionStorage.getItem",
@@ -164,7 +166,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("browser")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
-            .rooted_member_calls([
+            .with_rooted_member_calls([
                 "navigator.geolocation.getCurrentPosition",
                 "navigator.mediaDevices.getUserMedia",
                 "Notification.requestPermission",
@@ -177,7 +179,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("browser")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_reads([
+            .with_heuristic_member_reads([
                 "navigator.geolocation",
                 "navigator.mediaDevices",
                 "Notification",
@@ -190,7 +192,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("browser")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_reads([
+            .with_heuristic_member_reads([
                 "navigator.userAgent",
                 "navigator.platform",
                 "navigator.language",
@@ -205,15 +207,15 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("browser")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .matcher(
-                MemberCallMatcher::chain("document.addEventListener")
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::syntactic_heuristic("document.addEventListener")
                     .arg_string(0, ["keydown", "keyup", "paste", "copy", "cut"]),
-            )
-            .matcher(
-                MemberCallMatcher::chain("window.addEventListener")
+            ))
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::syntactic_heuristic("window.addEventListener")
                     .arg_string(0, ["keydown", "keyup", "paste", "copy", "cut"]),
-            )
-            .member_calls([
+            ))
+            .with_heuristic_member_calls([
                 "navigator.clipboard.readText",
                 "navigator.clipboard.writeText",
             ])
@@ -224,42 +226,60 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("filesystem")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .imports(["jszip", "tar", "zlib", "node:zlib", "fflate"])
-            .string_literals(["gzip", "zip"])
+            .with_imports(["jszip", "tar", "zlib", "node:zlib", "fflate"])
+            .with_string_literals(["gzip", "zip"])
             .build(),
         ApiRule::builder("crypto.hashing")
             .label("Uses cryptography or hashing APIs")
             .category("filesystem")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .imports(["crypto", "node:crypto", "crypto-js"])
-            .member_calls([
+            .with_imports(["crypto", "node:crypto", "crypto-js"])
+            .with_heuristic_member_calls([
                 "crypto.subtle.digest",
                 "crypto.subtle.encrypt",
                 "crypto.subtle.decrypt",
             ])
-            .string_literals(["sha256", "SHA-256", "AES-GCM"])
+            .with_string_literals(["sha256", "SHA-256", "AES-GCM"])
             .build(),
         ApiRule::builder("dynamic_code")
             .label("Evaluates dynamic code or injects scripts")
             .category("dynamic_code")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
-            .calls(["import"])
-            .global_calls(["eval"])
-            .global_calls(["Function"])
-            .constructors(["Function"])
-            .matcher(MemberCallMatcher::chain("eval.call").static_string_arg(1))
-            .matcher(MemberCallMatcher::rooted_chain("globalThis.eval").static_string_arg(0))
-            .matcher(MemberCallMatcher::rooted_chain("window.eval").static_string_arg(0))
-            .matcher(CallMatcher::global("setTimeout").static_string_arg(0))
-            .matcher(CallMatcher::global("setInterval").static_string_arg(0))
-            .matcher(MemberCallMatcher::rooted_chain("globalThis.setTimeout").static_string_arg(0))
-            .matcher(MemberCallMatcher::rooted_chain("globalThis.setInterval").static_string_arg(0))
-            .matcher(MemberCallMatcher::rooted_chain("window.setTimeout").static_string_arg(0))
-            .matcher(MemberCallMatcher::rooted_chain("window.setInterval").static_string_arg(0))
-            .matcher(
-                ValueFlowMatcher::new("script insertion".to_string())
+            .with_heuristic_calls(["import"])
+            .with_global_calls(["eval"])
+            .with_global_calls(["Function"])
+            .with_heuristic_constructors(["Function"])
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::syntactic_heuristic("eval.call").static_string_arg(1),
+            ))
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::rooted_chain("globalThis.eval").static_string_arg(0),
+            ))
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::rooted_chain("window.eval").static_string_arg(0),
+            ))
+            .matcher(Matcher::call(
+                CallMatcher::global("setTimeout").static_string_arg(0),
+            ))
+            .matcher(Matcher::call(
+                CallMatcher::global("setInterval").static_string_arg(0),
+            ))
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::rooted_chain("globalThis.setTimeout").static_string_arg(0),
+            ))
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::rooted_chain("globalThis.setInterval").static_string_arg(0),
+            ))
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::rooted_chain("window.setTimeout").static_string_arg(0),
+            ))
+            .matcher(Matcher::member_call(
+                MemberCallMatcher::rooted_chain("window.setInterval").static_string_arg(0),
+            ))
+            .matcher(Matcher::flow(
+                FlowMatcher::new("script insertion".to_string())
                     .source_member_call("document.createElement")
                     .source_arg_string(0, ["script"])
                     .property_write("src", FlowValueMatcher::Any)
@@ -288,7 +308,7 @@ pub(super) fn rules() -> Vec<Rule> {
                         "document.documentElement.append",
                         "document.documentElement.prepend",
                     ]),
-            )
+            ))
             .implies(["disclosure.dynamic_code_or_remote_code"])
             .build(),
     ]

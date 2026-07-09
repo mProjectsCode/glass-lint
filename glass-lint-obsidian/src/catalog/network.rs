@@ -1,5 +1,8 @@
+use super::ObsidianRuleBuilderExt;
+
 use glass_lint_core::rules::{
-    Confidence, FlowValueMatcher, Rule, Rule as ApiRule, Severity as ApiSeverity, ValueFlowMatcher,
+    Confidence, FlowMatcher, FlowValueMatcher, Matcher, Rule, Rule as ApiRule,
+    Severity as ApiSeverity,
 };
 
 pub(super) fn rules() -> Vec<Rule> {
@@ -9,9 +12,9 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("network")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .global_calls(["fetch"])
-            .rooted_member_calls(["navigator.sendBeacon"])
-            .constructors(["XMLHttpRequest", "WebSocket", "EventSource"])
+            .with_global_calls(["fetch"])
+            .with_rooted_member_calls(["navigator.sendBeacon"])
+            .with_heuristic_constructors(["XMLHttpRequest", "WebSocket", "EventSource"])
             .implies(["disclosure.network_access"])
             .build(),
         ApiRule::builder("network.obsidian")
@@ -19,8 +22,8 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("network")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .module_calls("obsidian", ["request", "requestUrl"])
-            .module_member_calls("obsidian", ["request", "requestUrl"])
+            .with_module_calls("obsidian", ["request", "requestUrl"])
+            .with_module_member_calls("obsidian", ["request", "requestUrl"])
             .implies([
                 "disclosure.network_access",
                 "disclosure.cors_free_network_access",
@@ -31,7 +34,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("network")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .imports(["http", "https", "node:http", "node:https"])
+            .with_imports(["http", "https", "node:http", "node:https"])
             .implies(["disclosure.network_access"])
             .build(),
         ApiRule::builder("network.url_construction")
@@ -39,15 +42,15 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("network")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
-            .constructors(["URL", "URLSearchParams"])
-            .string_literals(["http://", "https://"])
+            .with_heuristic_constructors(["URL", "URLSearchParams"])
+            .with_string_literals(["http://", "https://"])
             .build(),
         ApiRule::builder("network.private")
             .label("References localhost or private-network addresses")
             .category("network")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::Medium)
-            .string_literals([
+            .with_string_literals([
                 "localhost",
                 "127.0.0.1",
                 "0.0.0.0",
@@ -95,7 +98,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("network")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .imports([
+            .with_imports([
                 "openai",
                 "@anthropic-ai/sdk",
                 "@google/generative-ai",
@@ -104,7 +107,7 @@ pub(super) fn rules() -> Vec<Rule> {
                 "replicate",
                 "@huggingface/inference",
             ])
-            .string_literals([
+            .with_string_literals([
                 "api.openai.com",
                 "anthropic.com",
                 "generativelanguage.googleapis.com",
@@ -123,7 +126,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("network")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .imports([
+            .with_imports([
                 "@supabase/supabase-js",
                 "firebase",
                 "firebase-admin",
@@ -132,7 +135,7 @@ pub(super) fn rules() -> Vec<Rule> {
                 "aws-sdk",
                 "@aws-sdk/client-s3",
             ])
-            .string_literals([
+            .with_string_literals([
                 "api.github.com",
                 "gitlab.com",
                 "dropboxapi.com",
@@ -159,7 +162,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("network")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .imports([
+            .with_imports([
                 "@sentry/browser",
                 "@sentry/node",
                 "posthog-js",
@@ -168,7 +171,7 @@ pub(super) fn rules() -> Vec<Rule> {
                 "@segment/analytics-node",
                 "@datadog/browser-rum",
             ])
-            .string_literals([
+            .with_string_literals([
                 "sentry.io",
                 "app.posthog.com",
                 "us.i.posthog.com",
@@ -191,28 +194,27 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("network")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .string_literals(["User-Agent", "user-agent", "Authorization"])
+            .with_string_literals(["User-Agent", "user-agent", "Authorization"])
             .build(),
         ApiRule::builder("network.remote_dom_loading")
             .label("Loads remote image, script, or style elements")
             .category("network")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::Medium)
-            .member_calls(["appendChild", "append"])
-            .matcher(remote_dom_element_flow(
+            .matcher(Matcher::flow(remote_dom_element_flow(
                 "remote script element",
                 "script",
                 "src",
                 remote_url_prefixes(),
-            ))
-            .matcher(remote_dom_element_flow(
+            )))
+            .matcher(Matcher::flow(remote_dom_element_flow(
                 "remote image element",
                 "img",
                 "src",
                 remote_url_prefixes(),
-            ))
-            .matcher(
-                ValueFlowMatcher::new("remote stylesheet link".to_string())
+            )))
+            .matcher(Matcher::flow(
+                FlowMatcher::new("remote stylesheet link".to_string())
                     .source_member_call("document.createElement")
                     .source_arg_string(0, ["link"])
                     .property_write(
@@ -220,18 +222,18 @@ pub(super) fn rules() -> Vec<Rule> {
                         FlowValueMatcher::StaticExact(vec!["stylesheet".to_string()]),
                     )
                     .property_write("href", remote_url_prefixes())
-                    .require_all_configurations()
+                    .require_all()
                     .sink_member_call_arg_indices(dom_insertion_indexed_sinks(), [0])
                     .sink_member_call_any_arg(dom_insertion_any_arg_sinks()),
-            )
-            .matcher(
-                ValueFlowMatcher::new("remote style element".to_string())
+            ))
+            .matcher(Matcher::flow(
+                FlowMatcher::new("remote style element".to_string())
                     .source_member_call("document.createElement")
                     .source_arg_string(0, ["style"])
                     .property_write("textContent", remote_url_markers())
                     .sink_member_call_arg_indices(dom_insertion_indexed_sinks(), [0])
                     .sink_member_call_any_arg(dom_insertion_any_arg_sinks()),
-            )
+            ))
             .implies(["disclosure.network_access"])
             .build(),
     ]
@@ -245,8 +247,8 @@ fn remote_dom_element_flow(
     tag: &str,
     url_property: &str,
     url_matcher: FlowValueMatcher,
-) -> ValueFlowMatcher {
-    ValueFlowMatcher::new(symbol.to_string())
+) -> FlowMatcher {
+    FlowMatcher::new(symbol.to_string())
         .source_member_call("document.createElement")
         .source_arg_string(0, [tag])
         .property_write(url_property, url_matcher.clone())

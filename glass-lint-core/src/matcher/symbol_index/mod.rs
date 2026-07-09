@@ -5,8 +5,8 @@ use swc_ecma_ast::Program;
 
 use super::result::{ApiEvidence, ApiMatchKind};
 use super::rule::{
-    ApiRule, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, MemberCallMatcher,
-    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, ValueFlowMatcher,
+    ApiMatcher, ApiRule, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
+    FlowMatcher, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
 };
 
 mod alias;
@@ -49,16 +49,14 @@ impl SymbolIndex {
             .iter()
             .enumerate()
             .flat_map(|(rule_index, rule)| {
-                rule.matcher
+                ApiMatcher::from_matchers(rule.matchers.clone())
                     .member_calls
-                    .iter()
+                    .into_iter()
                     .filter(|matcher| {
                         !matcher.arg_strings.is_empty()
                             || !matcher.arg_object_keys.is_empty()
                             || !matcher.arg_rooted_exprs.is_empty()
-                            || !matcher.assigned_properties.is_empty()
                     })
-                    .cloned()
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
@@ -66,22 +64,20 @@ impl SymbolIndex {
             .iter()
             .enumerate()
             .flat_map(|(rule_index, rule)| {
-                rule.matcher
+                ApiMatcher::from_matchers(rule.matchers.clone())
                     .calls
-                    .iter()
+                    .into_iter()
                     .filter(|matcher| !matcher.arg_strings.is_empty())
-                    .cloned()
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
-        let value_flow_matchers = rules
+        let flow_matchers = rules
             .iter()
             .enumerate()
             .flat_map(|(rule_index, rule)| {
-                rule.matcher
-                    .value_flows
-                    .iter()
-                    .cloned()
+                ApiMatcher::from_matchers(rule.matchers.clone())
+                    .flows
+                    .into_iter()
                     .enumerate()
                     .map(move |(flow_index, matcher)| (rule_index, flow_index, matcher))
             })
@@ -91,7 +87,7 @@ impl SymbolIndex {
             aliases,
             &member_matchers,
             &call_matchers,
-            &value_flow_matchers,
+            &flow_matchers,
             rules.len(),
         )
     }
@@ -101,7 +97,7 @@ impl SymbolIndex {
         aliases: &AliasInfo,
         member_argument_matchers: &[(usize, MemberCallMatcher)],
         call_argument_matchers: &[(usize, CallMatcher)],
-        value_flow_matchers: &[(usize, usize, ValueFlowMatcher)],
+        flow_matchers: &[(usize, usize, FlowMatcher)],
         rule_count: usize,
     ) -> (Self, Vec<Vec<ApiEvidence>>) {
         let mut index = Self::default();
@@ -115,8 +111,7 @@ impl SymbolIndex {
                 &mut index,
                 &mut argument_evidence,
             );
-            let flow_evidence =
-                value_flow::collect(program, aliases, value_flow_matchers, rule_count);
+            let flow_evidence = value_flow::collect(program, aliases, flow_matchers, rule_count);
             for (rule_index, evidence) in flow_evidence.into_iter().enumerate() {
                 argument_evidence[rule_index].extend(evidence);
             }
@@ -126,13 +121,14 @@ impl SymbolIndex {
 
     pub fn evidence_for(&self, rule: &ApiRule) -> Vec<ApiEvidence> {
         let mut evidence = Vec::new();
-        self.collect_call_evidence(&rule.matcher.calls, &mut evidence);
-        self.collect_member_call_evidence(&rule.matcher.member_calls, &mut evidence);
-        self.collect_member_read_evidence(&rule.matcher.member_reads, &mut evidence);
-        self.collect_evidence(ApiMatchKind::Import, &rule.matcher.imports, &mut evidence);
-        self.collect_string_literal_evidence(&rule.matcher.string_literals, &mut evidence);
-        self.collect_class_evidence(&rule.matcher.classes, &mut evidence);
-        self.collect_constructor_evidence(&rule.matcher.constructors, &mut evidence);
+        let matcher = ApiMatcher::from_matchers(rule.matchers.clone());
+        self.collect_call_evidence(&matcher.calls, &mut evidence);
+        self.collect_member_call_evidence(&matcher.member_calls, &mut evidence);
+        self.collect_member_read_evidence(&matcher.member_reads, &mut evidence);
+        self.collect_evidence(ApiMatchKind::Import, &matcher.imports, &mut evidence);
+        self.collect_string_literal_evidence(&matcher.string_literals, &mut evidence);
+        self.collect_class_evidence(&matcher.classes, &mut evidence);
+        self.collect_constructor_evidence(&matcher.constructors, &mut evidence);
 
         evidence.truncate(ApiRule::EVIDENCE_LIMIT);
         evidence
@@ -201,7 +197,6 @@ impl SymbolIndex {
             if !call.arg_strings.is_empty()
                 || !call.arg_object_keys.is_empty()
                 || !call.arg_rooted_exprs.is_empty()
-                || !call.assigned_properties.is_empty()
             {
                 continue;
             }

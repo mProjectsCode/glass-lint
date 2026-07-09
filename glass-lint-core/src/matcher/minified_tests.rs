@@ -1,6 +1,6 @@
 use super::{
-    ApiClassificationResult, ApiRule, ApiSeverity, CallMatcher, Confidence, MemberCallMatcher,
-    classify_api_usage, rule::ApiRuleBuilder,
+    ApiClassificationResult, ApiRule, ApiSeverity, CallMatcher, Confidence, Matcher,
+    MemberCallMatcher, classify_api_usage, rule::ApiRuleBuilder,
 };
 
 fn rule(id: &str) -> ApiRuleBuilder {
@@ -43,7 +43,7 @@ fn minified_commonjs_namespace_export_aliases_preserve_module_calls() {
     assert_count(
         r#"var r=require("sdk"),s=r.send;s();"#,
         rule("test.module")
-            .module_calls("sdk", ["send"])
+            .matcher(Matcher::module_call("sdk", "send"))
             .build()
             .unwrap(),
         1,
@@ -55,7 +55,7 @@ fn minified_commonjs_interop_namespace_calls_preserve_module_members() {
     assert_count(
         r#"var e=__toESM(require("sdk"));e.send();"#,
         rule("test.module-member")
-            .module_member_calls("sdk", ["send"])
+            .matcher(Matcher::module_member_call("sdk", "send"))
             .build()
             .unwrap(),
         1,
@@ -67,7 +67,7 @@ fn minified_assignment_expression_aliases_preserve_module_exports() {
     assert_count(
         r#"var s;(s=require("sdk").send)();"#,
         rule("test.assignment-module")
-            .module_calls("sdk", ["send"])
+            .matcher(Matcher::module_call("sdk", "send"))
             .build()
             .unwrap(),
         1,
@@ -84,8 +84,8 @@ fn minified_module_provenance_rejects_local_require_and_wrapper_lookalikes() {
         e.send();send();
         "#,
         rule("test.module-negative")
-            .module_calls("sdk", ["send"])
-            .module_member_calls("sdk", ["send"])
+            .matcher(Matcher::module_call("sdk", "send"))
+            .matcher(Matcher::module_member_call("sdk", "send"))
             .build()
             .unwrap(),
         0,
@@ -97,7 +97,7 @@ fn minified_rooted_member_aliases_follow_one_letter_bindings() {
     assert_count(
         r#"var v=host.files;v.read();"#,
         rule("test.rooted")
-            .rooted_member_calls(["host.files.read"])
+            .matcher(Matcher::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -109,7 +109,7 @@ fn minified_nested_rooted_aliases_follow_cached_subobjects() {
     assert_count(
         r#"var a=host,b=a.files,c=b;c.read();"#,
         rule("test.nested-rooted")
-            .rooted_member_calls(["host.files.read"])
+            .matcher(Matcher::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -121,7 +121,7 @@ fn minified_this_root_aliases_canonicalize_to_rooted_members() {
     assert_count(
         r#"var a=this.app.files;a.read();"#,
         rule("test.this-root")
-            .rooted_member_calls(["app.files.read"])
+            .matcher(Matcher::rooted_member_call("app.files.read"))
             .build()
             .unwrap(),
         1,
@@ -133,7 +133,7 @@ fn minified_reassignment_order_keeps_only_pre_reassignment_rooted_calls() {
     assert_count(
         r#"var v=host.files;v.read();v=local.files;v.read();"#,
         rule("test.reassignment")
-            .rooted_member_calls(["host.files.read"])
+            .matcher(Matcher::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -148,7 +148,7 @@ fn minified_sibling_scope_reuse_does_not_leak_rooted_aliases() {
         function b(){var x=local.files;x.read()}
         "#,
         rule("test.scope-reuse")
-            .rooted_member_calls(["host.files.read"])
+            .matcher(Matcher::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -160,7 +160,7 @@ fn minified_literal_computed_member_chains_are_rooted() {
     assert_count(
         r#"host["files"]["read"]();"#,
         rule("test.literal-computed")
-            .rooted_member_calls(["host.files.read"])
+            .matcher(Matcher::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -172,7 +172,7 @@ fn minified_concatenated_static_property_names_are_rooted() {
     assert_count(
         r#"window["fet"+"ch"]("/x");"#,
         rule("test.concatenated-computed")
-            .rooted_member_calls(["window.fetch"])
+            .matcher(Matcher::rooted_member_call("window.fetch"))
             .build()
             .unwrap(),
         1,
@@ -184,7 +184,7 @@ fn minified_constant_property_aliases_are_rooted() {
     assert_count(
         r#"const k="read";host.files[k]();"#,
         rule("test.constant-computed")
-            .rooted_member_calls(["host.files.read"])
+            .matcher(Matcher::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -196,7 +196,7 @@ fn minified_static_string_table_property_aliases_are_rooted() {
     assert_count(
         r#"const k=["read"];host.files[k[0]]();"#,
         rule("test.string-table-computed")
-            .rooted_member_calls(["host.files.read"])
+            .matcher(Matcher::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -208,7 +208,7 @@ fn minified_dynamic_computed_properties_do_not_match_rooted_members() {
     assert_count(
         r#"var k=Date.now()>0?"read":"write";host.files[k]();"#,
         rule("test.dynamic-computed-negative")
-            .rooted_member_calls(["host.files.read"])
+            .matcher(Matcher::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         0,
@@ -220,7 +220,7 @@ fn minified_sequence_global_calls_preserve_global_provenance() {
     assert_count(
         r#"(0,fetch)("/x");"#,
         rule("test.sequence-global")
-            .global_calls(["fetch"])
+            .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap(),
         1,
@@ -232,7 +232,7 @@ fn minified_bound_global_calls_preserve_global_provenance() {
     assert_count(
         r#"var f=fetch.bind(null);f("/x");"#,
         rule("test.bound-global")
-            .global_calls(["fetch"])
+            .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap(),
         1,
@@ -244,7 +244,7 @@ fn minified_call_and_apply_preserve_global_provenance_when_receiver_is_static() 
     assert_count(
         r#"var f=fetch;f.call(null,"/x");f.apply(null,["/y"]);"#,
         rule("test.call-apply-global")
-            .global_calls(["fetch"])
+            .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap(),
         2,
@@ -270,7 +270,7 @@ fn minified_shadowed_globals_do_not_match_global_calls() {
     assert_count(
         r#"function a(fetch){fetch("/local")}a(function(){});"#,
         rule("test.shadowed-global-negative")
-            .global_calls(["fetch"])
+            .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap(),
         0,
@@ -353,7 +353,7 @@ fn minified_named_helper_parameter_aliases_preserve_global_calls() {
     assert_count(
         r#"function n(t){t("/x")}n(fetch);"#,
         rule("test.named-helper")
-            .global_calls(["fetch"])
+            .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap(),
         1,
@@ -365,7 +365,7 @@ fn minified_arrow_helper_parameter_aliases_preserve_global_calls() {
     assert_count(
         r#"var n=t=>t("/x");n(fetch);"#,
         rule("test.arrow-helper")
-            .global_calls(["fetch"])
+            .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap(),
         1,
@@ -392,7 +392,7 @@ fn minified_inconsistent_helper_calls_do_not_infer_parameter_aliases() {
     assert_count(
         r#"function n(t){t("/x")}n(fetch);n(localFetch);"#,
         rule("test.inconsistent-helper-negative")
-            .global_calls(["fetch"])
+            .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap(),
         0,
@@ -404,7 +404,7 @@ fn minified_module_constructor_aliases_preserve_constructor_provenance() {
     assert_count(
         r#"var M=require("sdk").Modal;new M();"#,
         rule("test.module-constructor")
-            .constructors(["sdk.Modal"])
+            .matcher(Matcher::module_constructor("sdk", "Modal"))
             .build()
             .unwrap(),
         1,
@@ -416,7 +416,7 @@ fn minified_module_class_references_preserve_class_provenance() {
     assert_count(
         r#"var s=require("sdk");class X extends s.Modal{};x instanceof s.Modal;"#,
         rule("test.module-class")
-            .classes(["sdk.Modal"])
+            .matcher(Matcher::module_class("sdk", "Modal"))
             .build()
             .unwrap(),
         2,
@@ -428,8 +428,8 @@ fn minified_local_class_lookalikes_do_not_match_module_class_or_constructor() {
     assert_count(
         r#"class Modal{};new Modal();x instanceof Modal;"#,
         rule("test.local-class-negative")
-            .classes(["sdk.Modal"])
-            .constructors(["sdk.Modal"])
+            .matcher(Matcher::module_class("sdk", "Modal"))
+            .matcher(Matcher::module_constructor("sdk", "Modal"))
             .build()
             .unwrap(),
         0,

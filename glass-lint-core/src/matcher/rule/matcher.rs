@@ -7,7 +7,7 @@ pub struct ApiMatcher {
     pub string_literals: Vec<String>,
     pub classes: Vec<ClassMatcher>,
     pub constructors: Vec<ConstructorMatcher>,
-    pub value_flows: Vec<ValueFlowMatcher>,
+    pub flows: Vec<FlowMatcher>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,7 +19,97 @@ pub enum Matcher {
     StringLiteral(String),
     Class(ClassMatcher),
     Constructor(ConstructorMatcher),
-    ValueFlow(ValueFlowMatcher),
+    Flow(FlowMatcher),
+}
+
+impl Matcher {
+    pub fn call(value: CallMatcher) -> Self {
+        Self::Call(value)
+    }
+
+    pub fn heuristic_call(name: impl Into<String>) -> Self {
+        Self::Call(CallMatcher::heuristic(name))
+    }
+
+    pub fn global_call(name: impl Into<String>) -> Self {
+        Self::Call(CallMatcher::global(name))
+    }
+
+    pub fn module_call(module: impl Into<String>, export: impl Into<String>) -> Self {
+        Self::Call(CallMatcher::module_export(module, export))
+    }
+
+    pub fn member_call(value: MemberCallMatcher) -> Self {
+        Self::MemberCall(value)
+    }
+
+    pub fn heuristic_member_call(chain: impl Into<String>) -> Self {
+        Self::MemberCall(MemberCallMatcher::syntactic_heuristic(chain))
+    }
+
+    pub fn rooted_member_call(chain: impl Into<String>) -> Self {
+        Self::MemberCall(MemberCallMatcher::rooted_chain(chain))
+    }
+
+    pub fn module_member_call(module: impl Into<String>, member: impl Into<String>) -> Self {
+        Self::MemberCall(MemberCallMatcher::module_member(module, member))
+    }
+
+    pub fn member_read(value: MemberReadMatcher) -> Self {
+        Self::MemberRead(value)
+    }
+
+    pub fn heuristic_member_read(chain: impl Into<String>) -> Self {
+        Self::MemberRead(MemberReadMatcher::syntactic_heuristic(chain))
+    }
+
+    pub fn rooted_member_read(chain: impl Into<String>) -> Self {
+        Self::MemberRead(MemberReadMatcher::rooted_chain(chain))
+    }
+
+    pub fn module_member_read(module: impl Into<String>, member: impl Into<String>) -> Self {
+        Self::MemberRead(MemberReadMatcher::module_member(module, member))
+    }
+
+    pub fn import(module: impl Into<String>) -> Self {
+        Self::Import(module.into())
+    }
+
+    pub fn string_literal(value: impl Into<String>) -> Self {
+        Self::StringLiteral(value.into())
+    }
+
+    pub fn class(value: ClassMatcher) -> Self {
+        Self::Class(value)
+    }
+
+    pub fn heuristic_class(name: impl Into<String>) -> Self {
+        Self::Class(ClassMatcher::heuristic(name))
+    }
+
+    pub fn module_class(module: impl Into<String>, export: impl Into<String>) -> Self {
+        Self::Class(ClassMatcher::module_export(module, export))
+    }
+
+    pub fn constructor(value: ConstructorMatcher) -> Self {
+        Self::Constructor(value)
+    }
+
+    pub fn heuristic_constructor(name: impl Into<String>) -> Self {
+        Self::Constructor(ConstructorMatcher::heuristic(name))
+    }
+
+    pub fn global_constructor(name: impl Into<String>) -> Self {
+        Self::Constructor(ConstructorMatcher::global(name))
+    }
+
+    pub fn module_constructor(module: impl Into<String>, export: impl Into<String>) -> Self {
+        Self::Constructor(ConstructorMatcher::module_export(module, export))
+    }
+
+    pub fn flow(value: FlowMatcher) -> Self {
+        Self::Flow(value)
+    }
 }
 
 impl From<CallMatcher> for Matcher {
@@ -52,9 +142,9 @@ impl From<ConstructorMatcher> for Matcher {
     }
 }
 
-impl From<ValueFlowMatcher> for Matcher {
-    fn from(value: ValueFlowMatcher) -> Self {
-        Self::ValueFlow(value)
+impl From<FlowMatcher> for Matcher {
+    fn from(value: FlowMatcher) -> Self {
+        Self::Flow(value)
     }
 }
 
@@ -77,12 +167,6 @@ pub struct ArgRootedExprMatcher {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AssignedPropertyMatcher {
-    pub property: String,
-    pub values: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FlowValueMatcher {
     Any,
     StaticExact(Vec<String>),
@@ -98,13 +182,13 @@ pub struct FlowCallArgMatcher {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValueFlowSource {
+pub struct FlowSource {
     pub member_call: String,
     pub arg_strings: Vec<ArgStringMatcher>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ValueFlowConfiguration {
+pub enum FlowRequirement {
     PropertyWrite {
         property: String,
         value: FlowValueMatcher,
@@ -122,33 +206,35 @@ pub enum FlowSinkArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValueFlowSink {
+pub struct FlowSink {
     pub member_calls: Vec<String>,
     pub args: FlowSinkArgs,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValueFlowMatcher {
+pub struct FlowMatcher {
     pub symbol: String,
-    pub sources: Vec<ValueFlowSource>,
-    pub configurations: Vec<ValueFlowConfiguration>,
-    pub sinks: Vec<ValueFlowSink>,
-    pub all_configurations_required: bool,
+    pub sources: Vec<FlowSource>,
+    pub requirements: Vec<FlowRequirement>,
+    pub sinks: Vec<FlowSink>,
+    pub all_requirements_required: bool,
+    pub emit_on_requirements: bool,
 }
 
-impl ValueFlowMatcher {
+impl FlowMatcher {
     pub fn new(symbol: impl Into<String>) -> Self {
         Self {
             symbol: symbol.into(),
             sources: Vec::new(),
-            configurations: Vec::new(),
+            requirements: Vec::new(),
             sinks: Vec::new(),
-            all_configurations_required: false,
+            all_requirements_required: false,
+            emit_on_requirements: false,
         }
     }
 
     pub fn source_member_call(mut self, member_call: impl Into<String>) -> Self {
-        self.sources.push(ValueFlowSource {
+        self.sources.push(FlowSource {
             member_call: member_call.into(),
             arg_strings: Vec::new(),
         });
@@ -171,11 +257,10 @@ impl ValueFlowMatcher {
     }
 
     pub fn property_write(mut self, property: impl Into<String>, value: FlowValueMatcher) -> Self {
-        self.configurations
-            .push(ValueFlowConfiguration::PropertyWrite {
-                property: property.into(),
-                value,
-            });
+        self.requirements.push(FlowRequirement::PropertyWrite {
+            property: property.into(),
+            value,
+        });
         self
     }
 
@@ -183,19 +268,23 @@ impl ValueFlowMatcher {
     where
         I: IntoIterator<Item = (usize, FlowValueMatcher)>,
     {
-        self.configurations
-            .push(ValueFlowConfiguration::MemberCall {
-                member: member.into(),
-                args: args
-                    .into_iter()
-                    .map(|(index, value)| FlowCallArgMatcher { index, value })
-                    .collect(),
-            });
+        self.requirements.push(FlowRequirement::MemberCall {
+            member: member.into(),
+            args: args
+                .into_iter()
+                .map(|(index, value)| FlowCallArgMatcher { index, value })
+                .collect(),
+        });
         self
     }
 
-    pub fn require_all_configurations(mut self) -> Self {
-        self.all_configurations_required = true;
+    pub fn require_all(mut self) -> Self {
+        self.all_requirements_required = true;
+        self
+    }
+
+    pub fn emit_when_requirements_met(mut self) -> Self {
+        self.emit_on_requirements = true;
         self
     }
 
@@ -205,7 +294,7 @@ impl ValueFlowMatcher {
         S: Into<String>,
         J: IntoIterator<Item = usize>,
     {
-        self.sinks.push(ValueFlowSink {
+        self.sinks.push(FlowSink {
             member_calls: member_calls.into_iter().map(Into::into).collect(),
             args: FlowSinkArgs::Indices(indices.into_iter().collect()),
         });
@@ -217,7 +306,7 @@ impl ValueFlowMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.sinks.push(ValueFlowSink {
+        self.sinks.push(FlowSink {
             member_calls: member_calls.into_iter().map(Into::into).collect(),
             args: FlowSinkArgs::Any,
         });
@@ -237,7 +326,7 @@ pub struct CallMatcher {
 }
 
 impl CallMatcher {
-    pub fn unqualified(name: impl Into<String>) -> Self {
+    pub fn heuristic(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             provenance: CallProvenance::Any,
@@ -313,7 +402,7 @@ pub struct ConstructorMatcher {
 }
 
 impl ConstructorMatcher {
-    pub fn unqualified(name: impl Into<String>) -> Self {
+    pub fn heuristic(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
             provenance: CallProvenance::Any,
@@ -359,18 +448,16 @@ pub struct MemberCallMatcher {
     pub arg_strings: Vec<ArgStringMatcher>,
     pub arg_object_keys: Vec<ArgObjectKeyMatcher>,
     pub arg_rooted_exprs: Vec<ArgRootedExprMatcher>,
-    pub assigned_properties: Vec<AssignedPropertyMatcher>,
 }
 
 impl MemberCallMatcher {
-    pub fn chain(chain: impl Into<String>) -> Self {
+    pub fn syntactic_heuristic(chain: impl Into<String>) -> Self {
         Self {
             chain: chain.into(),
             provenance: MemberCallProvenance::Any,
             arg_strings: Vec::new(),
             arg_object_keys: Vec::new(),
             arg_rooted_exprs: Vec::new(),
-            assigned_properties: Vec::new(),
         }
     }
 
@@ -381,7 +468,6 @@ impl MemberCallMatcher {
             arg_strings: Vec::new(),
             arg_object_keys: Vec::new(),
             arg_rooted_exprs: Vec::new(),
-            assigned_properties: Vec::new(),
         }
     }
 
@@ -394,7 +480,6 @@ impl MemberCallMatcher {
             arg_strings: Vec::new(),
             arg_object_keys: Vec::new(),
             arg_rooted_exprs: Vec::new(),
-            assigned_properties: Vec::new(),
         }
     }
 
@@ -442,18 +527,6 @@ impl MemberCallMatcher {
         self
     }
 
-    pub fn assigned_property<I, S>(mut self, property: impl Into<String>, values: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.assigned_properties.push(AssignedPropertyMatcher {
-            property: property.into(),
-            values: values.into_iter().map(Into::into).collect(),
-        });
-        self
-    }
-
     pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             MemberCallProvenance::Any | MemberCallProvenance::Rooted => self.chain.clone(),
@@ -484,24 +557,26 @@ pub struct MemberReadMatcher {
 }
 
 impl MemberReadMatcher {
-    pub fn chain(chain: String) -> Self {
+    pub fn syntactic_heuristic(chain: impl Into<String>) -> Self {
         Self {
-            chain,
+            chain: chain.into(),
             provenance: MemberReadProvenance::Any,
         }
     }
 
-    pub fn rooted_chain(chain: String) -> Self {
+    pub fn rooted_chain(chain: impl Into<String>) -> Self {
         Self {
-            chain,
+            chain: chain.into(),
             provenance: MemberReadProvenance::Rooted,
         }
     }
 
-    pub fn module_member(module: String, member: String) -> Self {
+    pub fn module_member(module: impl Into<String>, member: impl Into<String>) -> Self {
         Self {
-            chain: member,
-            provenance: MemberReadProvenance::ModuleNamespace { module },
+            chain: member.into(),
+            provenance: MemberReadProvenance::ModuleNamespace {
+                module: module.into(),
+            },
         }
     }
 
@@ -535,17 +610,19 @@ pub struct ClassMatcher {
 }
 
 impl ClassMatcher {
-    pub fn unqualified(name: String) -> Self {
+    pub fn heuristic(name: impl Into<String>) -> Self {
         Self {
-            name,
+            name: name.into(),
             provenance: CallProvenance::Any,
         }
     }
 
-    pub fn module_export(module: String, export: String) -> Self {
+    pub fn module_export(module: impl Into<String>, export: impl Into<String>) -> Self {
         Self {
-            name: export,
-            provenance: CallProvenance::ModuleExport { module },
+            name: export.into(),
+            provenance: CallProvenance::ModuleExport {
+                module: module.into(),
+            },
         }
     }
 
@@ -566,6 +643,28 @@ impl ClassMatcher {
 }
 
 impl ApiMatcher {
+    pub fn from_matchers(matchers: Vec<Matcher>) -> Self {
+        let mut api_matcher = Self::default();
+        for matcher in matchers {
+            api_matcher.push(matcher);
+        }
+        api_matcher
+    }
+
+    pub fn into_matchers(self) -> Vec<Matcher> {
+        self.calls
+            .into_iter()
+            .map(Matcher::Call)
+            .chain(self.member_calls.into_iter().map(Matcher::MemberCall))
+            .chain(self.member_reads.into_iter().map(Matcher::MemberRead))
+            .chain(self.imports.into_iter().map(Matcher::Import))
+            .chain(self.string_literals.into_iter().map(Matcher::StringLiteral))
+            .chain(self.classes.into_iter().map(Matcher::Class))
+            .chain(self.constructors.into_iter().map(Matcher::Constructor))
+            .chain(self.flows.into_iter().map(Matcher::Flow))
+            .collect()
+    }
+
     pub fn push(&mut self, matcher: Matcher) {
         match matcher {
             Matcher::Call(value) => self.calls.push(value),
@@ -575,7 +674,7 @@ impl ApiMatcher {
             Matcher::StringLiteral(value) => self.string_literals.push(value),
             Matcher::Class(value) => self.classes.push(value),
             Matcher::Constructor(value) => self.constructors.push(value),
-            Matcher::ValueFlow(value) => self.value_flows.push(value),
+            Matcher::Flow(value) => self.flows.push(value),
         }
     }
 
@@ -587,7 +686,7 @@ impl ApiMatcher {
             && self.string_literals.is_empty()
             && self.classes.is_empty()
             && self.constructors.is_empty()
-            && self.value_flows.is_empty()
+            && self.flows.is_empty()
     }
 
     pub fn normalized(mut self) -> Self {
@@ -655,7 +754,7 @@ impl ApiMatcher {
         normalize_strings(&mut self.string_literals);
         normalize_class_matchers(&mut self.classes);
         normalize_constructor_matchers(&mut self.constructors);
-        normalize_value_flows(&mut self.value_flows);
+        normalize_flows(&mut self.flows);
         for member_call in &mut self.member_calls {
             for matcher in &mut member_call.arg_strings {
                 normalize_strings(&mut matcher.values);
@@ -666,19 +765,12 @@ impl ApiMatcher {
             for matcher in &mut member_call.arg_rooted_exprs {
                 normalize_member_chains(&mut matcher.chains);
             }
-            for matcher in &mut member_call.assigned_properties {
-                matcher.property = matcher.property.trim().to_string();
-                normalize_strings(&mut matcher.values);
-            }
-            member_call
-                .assigned_properties
-                .retain(|matcher| !matcher.property.is_empty());
         }
         self
     }
 }
 
-fn normalize_value_flows(values: &mut Vec<ValueFlowMatcher>) {
+fn normalize_flows(values: &mut Vec<FlowMatcher>) {
     for flow in values.iter_mut() {
         flow.symbol = flow.symbol.trim().to_string();
         for source in &mut flow.sources {
@@ -692,13 +784,13 @@ fn normalize_value_flows(values: &mut Vec<ValueFlowMatcher>) {
             .sort_by(|left, right| left.member_call.cmp(&right.member_call));
         flow.sources.dedup();
 
-        for configuration in &mut flow.configurations {
-            match configuration {
-                ValueFlowConfiguration::PropertyWrite { property, value } => {
+        for requirement in &mut flow.requirements {
+            match requirement {
+                FlowRequirement::PropertyWrite { property, value } => {
                     *property = property.trim().to_string();
                     normalize_flow_value(value);
                 }
-                ValueFlowConfiguration::MemberCall { member, args } => {
+                FlowRequirement::MemberCall { member, args } => {
                     *member = member.trim().to_string();
                     for arg in args.iter_mut() {
                         normalize_flow_value(&mut arg.value);
@@ -708,15 +800,13 @@ fn normalize_value_flows(values: &mut Vec<ValueFlowMatcher>) {
                 }
             }
         }
-        flow.configurations
-            .retain(|configuration| match configuration {
-                ValueFlowConfiguration::PropertyWrite { property, .. } => !property.is_empty(),
-                ValueFlowConfiguration::MemberCall { member, .. } => !member.is_empty(),
-            });
-        flow.configurations.sort_by(|left, right| {
-            configuration_sort_key(left).cmp(&configuration_sort_key(right))
+        flow.requirements.retain(|requirement| match requirement {
+            FlowRequirement::PropertyWrite { property, .. } => !property.is_empty(),
+            FlowRequirement::MemberCall { member, .. } => !member.is_empty(),
         });
-        flow.configurations.dedup();
+        flow.requirements
+            .sort_by(|left, right| requirement_sort_key(left).cmp(&requirement_sort_key(right)));
+        flow.requirements.dedup();
 
         for sink in &mut flow.sinks {
             normalize_member_chains(&mut sink.member_calls);
@@ -737,8 +827,8 @@ fn normalize_value_flows(values: &mut Vec<ValueFlowMatcher>) {
     values.retain(|flow| {
         !flow.symbol.is_empty()
             && !flow.sources.is_empty()
-            && !flow.configurations.is_empty()
-            && !flow.sinks.is_empty()
+            && !flow.requirements.is_empty()
+            && (flow.emit_on_requirements || !flow.sinks.is_empty())
     });
     values.sort_by(|left, right| left.symbol.cmp(&right.symbol));
     values.dedup();
@@ -754,10 +844,10 @@ fn normalize_flow_value(value: &mut FlowValueMatcher) {
     }
 }
 
-fn configuration_sort_key(configuration: &ValueFlowConfiguration) -> (&str, &str) {
-    match configuration {
-        ValueFlowConfiguration::PropertyWrite { property, .. } => ("property", property),
-        ValueFlowConfiguration::MemberCall { member, .. } => ("member", member),
+fn requirement_sort_key(requirement: &FlowRequirement) -> (&str, &str) {
+    match requirement {
+        FlowRequirement::PropertyWrite { property, .. } => ("property", property),
+        FlowRequirement::MemberCall { member, .. } => ("member", member),
     }
 }
 

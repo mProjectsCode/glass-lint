@@ -11,9 +11,9 @@ mod minified_tests;
 
 pub use result::{ApiCapability, ApiClassificationResult, Disclosure};
 pub use rule::{
-    ApiCatalogError, ApiCategory, ApiRule, ApiRuleBuildError, ApiSeverity, CallMatcher,
-    ClassMatcher, Confidence, ConstructorMatcher, FlowValueMatcher, Matcher, MemberCallMatcher,
-    MemberReadMatcher, ValueFlowMatcher,
+    ApiCatalogError, ApiCategory, ApiRule, ApiRuleBuildError, ApiRuleBuilder, ApiSeverity,
+    CallMatcher, ClassMatcher, Confidence, ConstructorMatcher, FlowMatcher, FlowValueMatcher,
+    Matcher, MemberCallMatcher, MemberReadMatcher,
 };
 
 use symbol_index::SymbolIndex;
@@ -100,7 +100,7 @@ mod tests {
     #[test]
     fn resolves_module_provenance_and_rejects_local_lookalikes() {
         let rules = [rule("test.module")
-            .module_calls("example-sdk", ["send"])
+            .matcher(Matcher::module_call("example-sdk", "send"))
             .build()
             .unwrap()];
         let result = classify(
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn resolves_commonjs_destructured_module_exports() {
         let rules = [rule("test.module")
-            .module_calls("example-sdk", ["send"])
+            .matcher(Matcher::module_call("example-sdk", "send"))
             .build()
             .unwrap()];
         let result = classify(
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn follows_rooted_aliases_and_reassignment_order() {
         let rules = [rule("test.alias")
-            .rooted_member_calls(["host.files.read"])
+            .matcher(Matcher::rooted_member_call("host.files.read"))
             .build()
             .unwrap()];
         let result = classify(
@@ -141,7 +141,10 @@ mod tests {
 
     #[test]
     fn rejects_aliases_after_shadowing_reassignment() {
-        let rules = [rule("test.fetch").global_calls(["fetch"]).build().unwrap()];
+        let rules = [rule("test.fetch")
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap()];
         let result = classify(
             "let send = fetch; send('/remote'); send = localFetch; send('/local');",
             &rules,
@@ -179,7 +182,10 @@ mod tests {
 
     #[test]
     fn tracks_simple_parameter_aliases_into_named_functions() {
-        let rules = [rule("test.fetch").global_calls(["fetch"]).build().unwrap()];
+        let rules = [rule("test.fetch")
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap()];
         let result = classify(
             "function invoke(callback) { callback('/remote'); } invoke(fetch);",
             &rules,
@@ -190,7 +196,10 @@ mod tests {
 
     #[test]
     fn target_tracks_parameter_aliases_into_arrow_functions() {
-        let rules = [rule("test.fetch").global_calls(["fetch"]).build().unwrap()];
+        let rules = [rule("test.fetch")
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap()];
         let result = classify(
             "const invoke = (callback) => callback('/remote'); invoke(fetch);",
             &rules,
@@ -218,7 +227,7 @@ mod tests {
     #[test]
     fn target_resolves_literal_computed_properties_through_constant_aliases() {
         let rules = [rule("test.computed")
-            .rooted_member_calls(["window.fetch"])
+            .matcher(Matcher::rooted_member_call("window.fetch"))
             .build()
             .unwrap()];
         let result = classify("const method = 'fetch'; window[method]('/remote');", &rules);
@@ -247,7 +256,7 @@ mod tests {
     fn tracks_configured_values_into_later_member_sinks() {
         let rules = [rule("test.flow")
             .matcher(
-                ValueFlowMatcher::new("script insertion".to_string())
+                FlowMatcher::new("script insertion".to_string())
                     .source_member_call("document.createElement")
                     .source_arg_string(0, ["script"])
                     .property_write("src", FlowValueMatcher::Any)
@@ -267,7 +276,7 @@ mod tests {
     fn value_flow_respects_reassignment_and_order() {
         let rules = [rule("test.flow")
             .matcher(
-                ValueFlowMatcher::new("script insertion".to_string())
+                FlowMatcher::new("script insertion".to_string())
                     .source_member_call("document.createElement")
                     .source_arg_string(0, ["script"])
                     .property_write("src", FlowValueMatcher::Any)
@@ -287,7 +296,7 @@ mod tests {
     fn value_flow_supports_member_call_configuration_and_helper_sinks() {
         let rules = [rule("test.flow")
             .matcher(
-                ValueFlowMatcher::new("script insertion".to_string())
+                FlowMatcher::new("script insertion".to_string())
                     .source_member_call("document.createElement")
                     .source_arg_string(0, ["script"])
                     .member_call_config(
@@ -314,7 +323,7 @@ mod tests {
     fn value_flow_supports_const_arrow_helper_sinks() {
         let rules = [rule("test.flow")
             .matcher(
-                ValueFlowMatcher::new("script insertion".to_string())
+                FlowMatcher::new("script insertion".to_string())
                     .source_member_call("document.createElement")
                     .source_arg_string(0, ["script"])
                     .property_write("src", FlowValueMatcher::Any)
@@ -335,7 +344,7 @@ mod tests {
     fn value_flow_static_prefix_requires_static_values() {
         let rules = [rule("test.flow")
             .matcher(
-                ValueFlowMatcher::new("remote element".to_string())
+                FlowMatcher::new("remote element".to_string())
                     .source_member_call("document.createElement")
                     .source_arg_string(0, ["img"])
                     .property_write(
@@ -357,10 +366,10 @@ mod tests {
     }
 
     #[test]
-    fn value_flow_can_require_all_configurations() {
+    fn flow_can_require_all_requirements() {
         let rules = [rule("test.flow")
             .matcher(
-                ValueFlowMatcher::new("remote stylesheet".to_string())
+                FlowMatcher::new("remote stylesheet".to_string())
                     .source_member_call("document.createElement")
                     .source_arg_string(0, ["link"])
                     .property_write(
@@ -371,7 +380,7 @@ mod tests {
                         "href",
                         FlowValueMatcher::StaticPrefix(vec!["https://".into()]),
                     )
-                    .require_all_configurations()
+                    .require_all()
                     .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
             )
             .build()

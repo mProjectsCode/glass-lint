@@ -294,16 +294,6 @@ impl SymbolIndexVisitor<'_, '_> {
                                 .any(|expected| expected == &chain)
                         })
                 })
-                && matcher.assigned_properties.iter().all(|property_matcher| {
-                    resolved_chain.or(syntactic_chain).is_some_and(|object| {
-                        self.aliases.has_later_static_property_write(
-                            canonical_rooted_chain(object),
-                            &property_matcher.property,
-                            &property_matcher.values,
-                            call.span,
-                        )
-                    })
-                })
             {
                 let symbol = match matcher.provenance {
                     MemberCallProvenance::Any => matcher.evidence_symbol(),

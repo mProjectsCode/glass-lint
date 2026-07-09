@@ -240,7 +240,7 @@ fn source_range(source: &str, start: usize, length: usize) -> SourceRange {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::matcher::{ApiRule, Confidence};
+    use crate::matcher::{ApiRule, Confidence, Matcher};
 
     fn catalog() -> RuleCatalog {
         let rule = ApiRule::builder("network.fetch")
@@ -248,7 +248,7 @@ mod tests {
             .category("network")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
-            .global_calls(["fetch"])
+            .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap();
         RuleCatalog::new("test", vec![rule]).unwrap()
@@ -278,8 +278,10 @@ mod tests {
             .category("metadata")
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
-            .rooted_member_reads(["app.metadataCache"])
-            .rooted_member_calls(["app.metadataCache.getFileCache"])
+            .matcher(Matcher::rooted_member_read("app.metadataCache"))
+            .matcher(Matcher::rooted_member_call(
+                "app.metadataCache.getFileCache",
+            ))
             .build()
             .unwrap();
         let catalog = RuleCatalog::new("test", vec![rule]).unwrap();

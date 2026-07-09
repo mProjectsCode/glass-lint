@@ -11,17 +11,17 @@ use super::alias::AliasInfo;
 use super::ast::{binding_ident_name, member_chain, member_prop_name};
 use super::{ApiEvidence, ApiMatchKind};
 use crate::matcher::rule::{
-    ArgStringMatcher, FlowSinkArgs, FlowValueMatcher, ValueFlowConfiguration, ValueFlowMatcher,
+    ArgStringMatcher, FlowMatcher, FlowRequirement, FlowSinkArgs, FlowValueMatcher,
 };
 
 pub fn collect(
     program: &Program,
     aliases: &AliasInfo,
-    rules: &[(usize, usize, ValueFlowMatcher)],
+    rules: &[(usize, usize, FlowMatcher)],
     rule_count: usize,
 ) -> Vec<Vec<ApiEvidence>> {
     let helpers = HelperCollector::collect(program, aliases, rules);
-    let mut visitor = ValueFlowVisitor {
+    let mut visitor = FlowVisitor {
         aliases,
         rules,
         helpers,
@@ -39,7 +39,8 @@ struct FlowState {
     rule_index: usize,
     flow_index: usize,
     source_span: Span,
-    configurations: BTreeSet<usize>,
+    requirements: BTreeSet<usize>,
+    emitted: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -49,9 +50,9 @@ struct HelperSink {
     param_index: usize,
 }
 
-struct ValueFlowVisitor<'a> {
+struct FlowVisitor<'a> {
     aliases: &'a AliasInfo,
-    rules: &'a [(usize, usize, ValueFlowMatcher)],
+    rules: &'a [(usize, usize, FlowMatcher)],
     helpers: BTreeMap<String, Vec<HelperSink>>,
     evidence: Vec<Vec<ApiEvidence>>,
     states: BTreeMap<String, Vec<FlowState>>,
@@ -59,7 +60,7 @@ struct ValueFlowVisitor<'a> {
     next_function_id: usize,
 }
 
-impl ValueFlowVisitor<'_> {
+impl FlowVisitor<'_> {
     fn current_function(&self) -> usize {
         *self
             .function_stack
@@ -101,7 +102,8 @@ impl ValueFlowVisitor<'_> {
                 rule_index: *rule_index,
                 flow_index: *flow_index,
                 source_span: call.span,
-                configurations: BTreeSet::new(),
+                requirements: BTreeSet::new(),
+                emitted: false,
             })
             .collect()
     }
@@ -128,12 +130,12 @@ impl ValueFlowVisitor<'_> {
             return;
         };
         let static_value = self.aliases.static_string_expr(value);
-        self.update_configurations(&key, |_flow, configuration| match configuration {
-            ValueFlowConfiguration::PropertyWrite {
+        self.update_requirements(&key, |_flow, requirement| match requirement {
+            FlowRequirement::PropertyWrite {
                 property: expected,
                 value,
             } => expected == &property && flow_value_matches(value, static_value.as_deref(), true),
-            ValueFlowConfiguration::MemberCall { .. } => false,
+            FlowRequirement::MemberCall { .. } => false,
         });
     }
 
@@ -144,8 +146,8 @@ impl ValueFlowVisitor<'_> {
         let Some(called_member) = member_prop_name(&member.prop) else {
             return;
         };
-        self.update_configurations(&key, |_flow, configuration| match configuration {
-            ValueFlowConfiguration::MemberCall { member, args } => {
+        self.update_requirements(&key, |_flow, requirement| match requirement {
+            FlowRequirement::MemberCall { member, args } => {
                 member == &called_member
                     && args.iter().all(|matcher| {
                         call.args.get(matcher.index).is_some_and(|arg| {
@@ -154,28 +156,36 @@ impl ValueFlowVisitor<'_> {
                         })
                     })
             }
-            ValueFlowConfiguration::PropertyWrite { .. } => false,
+            FlowRequirement::PropertyWrite { .. } => false,
         });
     }
 
-    fn update_configurations(
+    fn update_requirements(
         &mut self,
         key: &str,
-        mut matches_configuration: impl FnMut(&ValueFlowMatcher, &ValueFlowConfiguration) -> bool,
+        mut matches_requirement: impl FnMut(&FlowMatcher, &FlowRequirement) -> bool,
     ) {
         let rules = self.rules;
         let Some(states) = self.states.get_mut(key) else {
             return;
         };
-        for state in states {
+        let mut ready = Vec::new();
+        for state in states.iter_mut() {
             let Some(flow) = flow_for_state(rules, state) else {
                 continue;
             };
-            for (configuration_index, configuration) in flow.configurations.iter().enumerate() {
-                if matches_configuration(flow, configuration) {
-                    state.configurations.insert(configuration_index);
+            for (requirement_index, requirement) in flow.requirements.iter().enumerate() {
+                if matches_requirement(flow, requirement) {
+                    state.requirements.insert(requirement_index);
                 }
             }
+            if flow.emit_on_requirements && state_is_ready(state, flow) && !state.emitted {
+                state.emitted = true;
+                ready.push((state.clone(), flow.clone()));
+            }
+        }
+        for (state, flow) in ready {
+            self.emit_state(&state, &flow);
         }
     }
 
@@ -254,15 +264,14 @@ impl ValueFlowVisitor<'_> {
         }
     }
 
-    fn emit_state_if_ready(&mut self, state: &FlowState, flow: &ValueFlowMatcher, _span: Span) {
-        let ready = if flow.all_configurations_required {
-            state.configurations.len() == flow.configurations.len()
-        } else {
-            !state.configurations.is_empty()
-        };
-        if !ready {
+    fn emit_state_if_ready(&mut self, state: &FlowState, flow: &FlowMatcher, _span: Span) {
+        if !state_is_ready(state, flow) {
             return;
         }
+        self.emit_state(state, flow);
+    }
+
+    fn emit_state(&mut self, state: &FlowState, flow: &FlowMatcher) {
         self.evidence[state.rule_index].push(ApiEvidence {
             kind: ApiMatchKind::CallArgument,
             symbol: flow.evidence_symbol(),
@@ -282,7 +291,15 @@ impl ValueFlowVisitor<'_> {
     }
 }
 
-impl Visit for ValueFlowVisitor<'_> {
+fn state_is_ready(state: &FlowState, flow: &FlowMatcher) -> bool {
+    if flow.all_requirements_required {
+        state.requirements.len() == flow.requirements.len()
+    } else {
+        !state.requirements.is_empty()
+    }
+}
+
+impl Visit for FlowVisitor<'_> {
     fn visit_var_declarator(&mut self, declarator: &VarDeclarator) {
         if let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref()) {
             self.assign_source_or_clear(&Expr::Ident(ident.id.clone()), init);
@@ -330,7 +347,7 @@ impl Visit for ValueFlowVisitor<'_> {
 
 struct HelperCollector<'a> {
     aliases: &'a AliasInfo,
-    rules: &'a [(usize, usize, ValueFlowMatcher)],
+    rules: &'a [(usize, usize, FlowMatcher)],
     helpers: BTreeMap<String, Vec<HelperSink>>,
 }
 
@@ -338,7 +355,7 @@ impl<'a> HelperCollector<'a> {
     fn collect(
         program: &Program,
         aliases: &'a AliasInfo,
-        rules: &'a [(usize, usize, ValueFlowMatcher)],
+        rules: &'a [(usize, usize, FlowMatcher)],
     ) -> BTreeMap<String, Vec<HelperSink>> {
         let mut collector = Self {
             aliases,
@@ -428,7 +445,7 @@ impl Visit for HelperCollector<'_> {
 
 struct HelperBodyVisitor<'a> {
     aliases: &'a AliasInfo,
-    rules: &'a [(usize, usize, ValueFlowMatcher)],
+    rules: &'a [(usize, usize, FlowMatcher)],
     parameters: Vec<String>,
     sinks: Vec<HelperSink>,
 }
@@ -492,9 +509,9 @@ fn call_member_chain(call: &CallExpr, aliases: &AliasInfo) -> Option<String> {
 }
 
 fn flow_for_state<'a>(
-    rules: &'a [(usize, usize, ValueFlowMatcher)],
+    rules: &'a [(usize, usize, FlowMatcher)],
     state: &FlowState,
-) -> Option<&'a ValueFlowMatcher> {
+) -> Option<&'a FlowMatcher> {
     rules
         .iter()
         .find(|(rule_index, flow_index, _)| {
