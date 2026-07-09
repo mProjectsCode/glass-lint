@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use swc_ecma_ast::{
-    BinaryOp, CallExpr, Callee, Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName,
-    ObjectLit, ObjectPatProp, OptChainBase, Pat, Prop, PropOrSpread,
+    BinaryOp, Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectLit, ObjectPatProp,
+    OptChainBase, Pat, Prop, PropOrSpread,
 };
 
 pub fn member_root_ident(member: &MemberExpr) -> Option<&Ident> {
@@ -92,23 +92,6 @@ pub fn binding_ident_name(pat: &Pat) -> Option<String> {
         Pat::Assign(assign) => binding_ident_name(&assign.left),
         _ => None,
     }
-}
-
-pub fn require_call_module_name(call: &CallExpr) -> Option<String> {
-    let Callee::Expr(callee) = &call.callee else {
-        return None;
-    };
-    let Expr::Ident(ident) = &**callee else {
-        return None;
-    };
-    if ident.sym != *"require" {
-        return None;
-    }
-
-    call.args.first().and_then(|arg| match &*arg.expr {
-        Expr::Lit(Lit::Str(value)) => Some(value.value.to_string_lossy().to_string()),
-        _ => None,
-    })
 }
 
 pub fn module_export_name(name: &ModuleExportName) -> String {

@@ -6,11 +6,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use swc_common::{BytePos, Span};
+use swc_common::{BytePos, Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CatchClause, ClassDecl, Expr,
-    FnDecl, Function, ImportDecl, ImportSpecifier, Lit, ObjectPatProp, Pat, SimpleAssignTarget,
-    VarDecl, VarDeclKind,
+    FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, ImportDecl, ImportSpecifier, Lit,
+    ObjectPatProp, Pat, SimpleAssignTarget, SwitchStmt, VarDecl, VarDeclKind, WithStmt,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
@@ -32,6 +32,7 @@ pub struct AliasCollector {
     pub assignments: Vec<AliasAssignment>,
     latest_assignments: BTreeMap<usize, BTreeMap<String, BindingProvenance>>,
     pub property_assignments: Vec<PropertyAliasAssignment>,
+    pub dynamic_evals: Vec<(usize, Span)>,
     functions: BTreeMap<String, (usize, Vec<Pat>)>,
     calls: Vec<(String, Vec<Option<BindingProvenance>>)>,
     inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
@@ -62,6 +63,7 @@ impl AliasCollector {
             assignments: Vec::new(),
             latest_assignments: BTreeMap::new(),
             property_assignments: Vec::new(),
+            dynamic_evals: Vec::new(),
             functions: BTreeMap::new(),
             calls: Vec::new(),
             inline_parameters: BTreeMap::new(),
@@ -815,11 +817,15 @@ impl Visit for AliasCollector {
             }
             AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
                 self.invalidate_member_root(member, assignment.span);
-                if let Some(property) = member_chain(member) {
+                if let (Some(property), Some(root)) =
+                    (member_chain(member), member_root_ident(member))
+                {
                     self.property_assignments.push(PropertyAliasAssignment {
                         span: assignment.span,
                         scope: self.current_scope(),
                         property,
+                        receiver_root: root.sym.to_string(),
+                        receiver_span: root.span,
                         target: self.rooted_expr_name(&assignment.right),
                     });
                 }
@@ -846,6 +852,10 @@ impl Visit for AliasCollector {
         if let Callee::Expr(callee) = &call.callee
             && let Expr::Ident(callee) = &**callee
         {
+            if callee.sym == *"eval" {
+                self.dynamic_evals
+                    .push((self.binding_scope(VarDeclKind::Var), call.span));
+            }
             self.calls.push((
                 callee.sym.to_string(),
                 call.args
@@ -913,6 +923,45 @@ impl Visit for AliasCollector {
     fn visit_block_stmt(&mut self, block: &BlockStmt) {
         self.push_scope(block.span, ScopeKind::Block);
         block.stmts.visit_with(self);
+        self.pop_scope();
+    }
+
+    fn visit_for_stmt(&mut self, for_stmt: &ForStmt) {
+        self.push_scope(for_stmt.span, ScopeKind::Block);
+        for_stmt.init.visit_with(self);
+        for_stmt.test.visit_with(self);
+        for_stmt.update.visit_with(self);
+        for_stmt.body.visit_with(self);
+        self.pop_scope();
+    }
+
+    fn visit_for_in_stmt(&mut self, for_stmt: &ForInStmt) {
+        self.push_scope(for_stmt.span, ScopeKind::Block);
+        for_stmt.left.visit_with(self);
+        for_stmt.right.visit_with(self);
+        for_stmt.body.visit_with(self);
+        self.pop_scope();
+    }
+
+    fn visit_for_of_stmt(&mut self, for_stmt: &ForOfStmt) {
+        self.push_scope(for_stmt.span, ScopeKind::Block);
+        for_stmt.left.visit_with(self);
+        for_stmt.right.visit_with(self);
+        for_stmt.body.visit_with(self);
+        self.pop_scope();
+    }
+
+    fn visit_switch_stmt(&mut self, switch: &SwitchStmt) {
+        switch.discriminant.visit_with(self);
+        self.push_scope(switch.span, ScopeKind::Block);
+        switch.cases.visit_with(self);
+        self.pop_scope();
+    }
+
+    fn visit_with_stmt(&mut self, with: &WithStmt) {
+        with.obj.visit_with(self);
+        self.push_scope(with.body.span(), ScopeKind::Dynamic);
+        with.body.visit_with(self);
         self.pop_scope();
     }
 

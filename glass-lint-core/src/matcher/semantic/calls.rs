@@ -19,7 +19,7 @@ use super::super::result::{ApiEvidence, ApiMatchKind};
 use super::super::rule::{CallMatcher, CallProvenance, MemberCallMatcher, MemberCallProvenance};
 use super::ast::{
     SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, expr_member, expr_name,
-    is_function_constructor_member, object_keys, prop_name, require_call_module_name,
+    is_function_constructor_member, object_keys, prop_name,
 };
 use super::{index::MatcherFacts, resolver::Resolver};
 use crate::matcher::rule::canonical_rooted_chain;
@@ -413,7 +413,7 @@ impl Visit for ResolvedCallCollector<'_, '_> {
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
-        if let Some(module) = require_call_module_name(call) {
+        if let Some(module) = self.resolver.require_module_name(call) {
             self.index.record(ApiMatchKind::Import, module, call.span);
         }
 

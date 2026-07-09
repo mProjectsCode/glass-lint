@@ -112,8 +112,6 @@ impl Linter {
                 .iter()
                 .flat_map(|evidence| evidence_ranges(&parsed.source_map, &evidence.spans))
                 .collect();
-            ranges.sort_by_key(|range| (range.start.line, range.start.column));
-            ranges.dedup();
             remove_contained_ranges(&mut ranges);
             if ranges.is_empty() {
                 ranges.push(source_range(source, 0, 0));
@@ -180,28 +178,23 @@ fn evidence_ranges(source_map: &Lrc<SourceMap>, spans: &[Span]) -> Vec<SourceRan
 }
 
 fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
-    let mut keep = vec![true; ranges.len()];
-    for (index, range) in ranges.iter().enumerate() {
-        if ranges
-            .iter()
-            .enumerate()
-            .any(|(other_index, other)| other_index != index && contains_range(other, range))
-        {
-            keep[index] = false;
-        }
-    }
-
-    let mut index = 0;
-    ranges.retain(|_| {
-        let keep_range = keep[index];
-        index += 1;
-        keep_range
+    // Sorting longer same-start intervals first means a single running end is
+    // enough to recognize every contained interval. This preserves the prior
+    // outermost-range behavior without comparing every pair of occurrences.
+    ranges.sort_by(|left, right| {
+        (left.start.line, left.start.column)
+            .cmp(&(right.start.line, right.start.column))
+            .then_with(|| (right.end.line, right.end.column).cmp(&(left.end.line, left.end.column)))
     });
-}
-
-fn contains_range(outer: &SourceRange, inner: &SourceRange) -> bool {
-    (outer.start.line, outer.start.column) <= (inner.start.line, inner.start.column)
-        && (outer.end.line, outer.end.column) >= (inner.end.line, inner.end.column)
+    let mut enclosing_end = None;
+    ranges.retain(|range| {
+        let end = (range.end.line, range.end.column);
+        if enclosing_end.is_some_and(|outer_end| end <= outer_end) {
+            return false;
+        }
+        enclosing_end = Some(end);
+        true
+    });
 }
 
 fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) -> SourceRange {
@@ -291,6 +284,25 @@ mod tests {
         assert_eq!(report.findings.len(), 1);
         assert_eq!(report.findings[0].range.start.column, 1);
         assert_eq!(report.findings[0].range.end.column, 36);
+    }
+
+    #[test]
+    fn range_sweep_removes_large_nested_and_duplicate_sets() {
+        let mut ranges = (0..5_000)
+            .map(|column| SourceRange {
+                start: Position { line: 1, column },
+                end: Position {
+                    line: 2,
+                    column: 5_000 - column,
+                },
+            })
+            .collect::<Vec<_>>();
+        ranges.push(ranges[0].clone());
+
+        remove_contained_ranges(&mut ranges);
+
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].start.column, 0);
     }
 
     #[test]

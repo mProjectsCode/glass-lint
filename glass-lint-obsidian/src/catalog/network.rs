@@ -15,7 +15,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .with_global_calls(["fetch"])
             .with_rooted_member_calls(["navigator.sendBeacon"])
             .with_heuristic_constructors(["XMLHttpRequest", "WebSocket", "EventSource"])
-            .implies(["disclosure.network_access"])
             .build(),
         ApiRule::builder("network.obsidian")
             .label("Uses Obsidian request APIs")
@@ -24,10 +23,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .confidence(Confidence::High)
             .with_module_calls("obsidian", ["request", "requestUrl"])
             .with_module_member_calls("obsidian", ["request", "requestUrl"])
-            .implies([
-                "disclosure.network_access",
-                "disclosure.cors_free_network_access",
-            ])
             .build(),
         ApiRule::builder("network.node")
             .label("Uses Node HTTP modules")
@@ -35,7 +30,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
             .with_imports(["http", "https", "node:http", "node:https"])
-            .implies(["disclosure.network_access"])
             .build(),
         ApiRule::builder("network.url_construction")
             .label("References URLs or constructs URL objects")
@@ -91,7 +85,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "http://172.31.",
                 "https://172.31.",
             ])
-            .implies(["disclosure.private_network_access"])
             .build(),
         ApiRule::builder("network.ai_provider")
             .label("References AI provider endpoints or SDKs")
@@ -115,10 +108,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "replicate.com",
                 "huggingface.co",
                 "localhost:11434",
-            ])
-            .implies([
-                "disclosure.network_access",
-                "disclosure.third_party_services",
             ])
             .build(),
         ApiRule::builder("network.sync_storage_provider")
@@ -152,10 +141,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "discord.com/api",
                 "hooks.slack.com",
             ])
-            .implies([
-                "disclosure.network_access",
-                "disclosure.third_party_services",
-            ])
             .build(),
         ApiRule::builder("network.telemetry")
             .label("References telemetry or analytics SDKs")
@@ -183,10 +168,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "segment.com",
                 "amplitude.com",
                 "datadoghq.com",
-            ])
-            .implies([
-                "disclosure.network_access",
-                "disclosure.telemetry_or_error_reporting",
             ])
             .build(),
         ApiRule::builder("network.headers")
@@ -234,7 +215,6 @@ pub(super) fn rules() -> Vec<Rule> {
                     .sink_member_call_arg_indices(dom_insertion_indexed_sinks(), [0])
                     .sink_member_call_any_arg(dom_insertion_any_arg_sinks()),
             ))
-            .implies(["disclosure.network_access"])
             .build(),
     ]
     .into_iter()

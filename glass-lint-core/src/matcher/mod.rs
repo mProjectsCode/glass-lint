@@ -6,7 +6,7 @@ mod result;
 mod rule;
 mod semantic;
 
-pub use result::{ApiCapability, ApiClassificationResult, Disclosure};
+pub use result::{ApiCapability, ApiClassificationResult};
 pub use rule::{
     ApiCatalogError, ApiCategory, ApiRule, ApiRuleBuildError, ApiRuleBuilder, ApiSeverity,
     CallMatcher, ClassMatcher, Confidence, ConstructorMatcher, FlowMatcher, FlowValueMatcher,
@@ -32,12 +32,6 @@ pub fn classify_api_usage(program: Option<&Program>, rules: &[ApiRule]) -> ApiCl
             confidence: rule.confidence,
             evidence,
         });
-        result
-            .disclosures
-            .extend(rule.implies.iter().map(|id| Disclosure {
-                id: id.clone(),
-                from_capability: rule.id.clone(),
-            }));
     }
 
     result

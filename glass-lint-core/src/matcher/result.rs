@@ -13,12 +13,6 @@ pub struct ApiCapability {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct Disclosure {
-    pub id: String,
-    pub from_capability: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ApiEvidence {
     pub kind: ApiMatchKind,
     pub symbol: String,
@@ -43,7 +37,6 @@ pub enum ApiMatchKind {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 pub struct ApiClassificationResult {
     pub capabilities: Vec<ApiCapability>,
-    pub disclosures: Vec<Disclosure>,
 }
 
 impl ApiClassificationResult {

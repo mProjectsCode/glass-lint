@@ -3,6 +3,7 @@ use std::sync::OnceLock;
 use glass_lint_core::rules::{Builder as RuleBuilder, Matcher, Rule};
 
 mod content;
+mod disclosures;
 mod interface;
 mod network;
 mod system;
@@ -232,4 +233,8 @@ pub(crate) fn obsidian_api_rules() -> &'static [Rule] {
         .flatten()
         .collect()
     })
+}
+
+pub(crate) fn disclosures_for_rule(rule_id: &str) -> &'static [&'static str] {
+    disclosures::for_rule(rule_id)
 }

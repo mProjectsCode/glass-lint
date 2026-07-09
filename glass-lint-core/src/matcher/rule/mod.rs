@@ -18,7 +18,6 @@ pub struct ApiRule {
     pub severity: ApiSeverity,
     pub confidence: Confidence,
     pub matchers: Vec<Matcher>,
-    pub implies: Vec<String>,
 }
 
 impl ApiRule {
@@ -32,7 +31,6 @@ impl ApiRule {
             severity: None,
             confidence: None,
             matchers: Vec::new(),
-            implies: Vec::new(),
         }
     }
 }
@@ -45,7 +43,6 @@ pub struct ApiRuleBuilder {
     severity: Option<ApiSeverity>,
     confidence: Option<Confidence>,
     matchers: Vec<Matcher>,
-    implies: Vec<String>,
 }
 
 impl ApiRuleBuilder {
@@ -74,15 +71,6 @@ impl ApiRuleBuilder {
         self
     }
 
-    pub fn implies<I, S>(mut self, implies: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.implies.extend(implies.into_iter().map(Into::into));
-        self
-    }
-
     pub fn build(self) -> Result<ApiRule, ApiRuleBuildError> {
         let label = required_string(self.label, ApiRuleBuildError::MissingLabel)?;
         let category = self.category.ok_or(ApiRuleBuildError::MissingCategory)?;
@@ -97,7 +85,6 @@ impl ApiRuleBuilder {
         }
 
         let matcher = ApiMatcher::from_matchers(self.matchers).normalized();
-        let implies = normalized_strings(self.implies);
         if matcher.is_empty() {
             return Err(ApiRuleBuildError::MissingMatcher);
         }
@@ -109,7 +96,6 @@ impl ApiRuleBuilder {
             severity,
             confidence,
             matchers,
-            implies,
         })
     }
 }
@@ -124,15 +110,4 @@ fn required_string(
     }
 
     Ok(value.trim().to_string())
-}
-
-fn normalized_strings(values: Vec<String>) -> Vec<String> {
-    let mut values = values
-        .into_iter()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .collect::<Vec<_>>();
-    values.sort();
-    values.dedup();
-    values
 }

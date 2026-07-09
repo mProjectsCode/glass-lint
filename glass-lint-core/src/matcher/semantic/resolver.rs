@@ -7,7 +7,7 @@
 
 use std::cell::RefCell;
 
-use swc_ecma_ast::{Callee, Expr, Ident, Lit, MemberExpr, Program};
+use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
 
 use super::{
     ast::{SymbolCallProvenance, SymbolMemberProvenance},
@@ -59,6 +59,29 @@ impl Resolver {
 
     pub(super) fn events_are_source_ordered(&self) -> bool {
         self.events.is_source_ordered()
+    }
+
+    /// Returns a CommonJS module only when the callee is proven to be the
+    /// unshadowed global loader. Import collection and alias provenance both
+    /// depend on this conservative distinction.
+    pub(super) fn require_module_name(&self, call: &CallExpr) -> Option<String> {
+        let Callee::Expr(callee) = &call.callee else {
+            return None;
+        };
+        let Expr::Ident(ident) = &**callee else {
+            return None;
+        };
+        if !matches!(
+            self.resolve_ident(ident).call,
+            SymbolCallProvenance::Global { ref name } if name == "require"
+        ) {
+            return None;
+        }
+        let argument = call.args.first()?;
+        let Expr::Lit(Lit::Str(module)) = &*argument.expr else {
+            return None;
+        };
+        Some(module.value.to_string_lossy().to_string())
     }
 
     pub(super) fn resolve_ident(&self, ident: &Ident) -> ResolvedValue {
@@ -150,9 +173,7 @@ impl Resolver {
                 self.static_value(Value::StaticArray(values))
             }
             Expr::Call(call) => self.resolve_call_expression(call),
-            Expr::New(_) => {
-                self.static_value(Value::Object(self.values.borrow_mut().allocate_object_id()))
-            }
+            Expr::New(_) => self.fresh_object_value(),
             _ => self.unknown(),
         }
     }
@@ -214,10 +235,10 @@ impl Resolver {
             return self.unknown();
         };
         let Expr::Member(member) = &**callee else {
-            return self.static_value(Value::Object(self.values.borrow_mut().allocate_object_id()));
+            return self.fresh_object_value();
         };
         if super::ast::member_prop_name(&member.prop).as_deref() != Some("bind") {
-            return self.static_value(Value::Object(self.values.borrow_mut().allocate_object_id()));
+            return self.fresh_object_value();
         }
         let target = self.resolve_expr(&member.obj).id;
         let receiver = call
@@ -249,6 +270,11 @@ impl Resolver {
         let id = self.values.borrow_mut().intern(value);
         debug_assert!(!matches!(self.values.borrow().get(id), Value::Unknown));
         id
+    }
+
+    fn fresh_object_value(&self) -> ResolvedValue {
+        let object = self.values.borrow_mut().allocate_object_id();
+        self.static_value(Value::Object(object))
     }
 }
 

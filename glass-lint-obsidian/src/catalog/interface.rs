@@ -26,7 +26,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.workspace.revealLeaf",
                 "app.workspace.getLeaf.openFile",
             ])
-            .implies(["disclosure.workspace_layout"])
             .build(),
         ApiRule::builder("workspace.active_file")
             .label("Accesses the active file or editor")
@@ -60,7 +59,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.workspace.changeLayout",
                 "app.workspace.requestSaveLayout",
             ])
-            .implies(["disclosure.workspace_layout"])
             .build(),
         ApiRule::builder("ui.commands")
             .label("Registers commands, ribbon icons, or status bar items")
@@ -134,7 +132,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
             .with_heuristic_member_calls(["this.registerEditorExtension"])
-            .implies(["disclosure.editor_behavior"])
             .build(),
         ApiRule::builder("editor.markdown_processing")
             .label("Registers markdown processors or renderers")
@@ -147,7 +144,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "MarkdownRenderer.render",
                 "obsidian.MarkdownRenderer.render",
             ])
-            .implies(["disclosure.markdown_processing"])
             .build(),
         ApiRule::builder("editor.markdown_api")
             .label("Uses markdown view, editor, or link helper APIs")
@@ -180,7 +176,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "@codemirror/language",
                 "@codemirror/commands",
             ])
-            .implies(["disclosure.editor_behavior"])
             .build(),
         ApiRule::builder("editor.suggest")
             .label("Registers editor suggestions")
@@ -189,7 +184,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .confidence(Confidence::Medium)
             .with_heuristic_member_calls(["this.registerEditorSuggest"])
             .with_heuristic_classes(["obsidian.EditorSuggest"])
-            .implies(["disclosure.editor_behavior"])
             .build(),
         ApiRule::builder("settings.persistence")
             .label("Persists plugin settings or data")
@@ -231,7 +225,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "this.registerInterval",
             ])
             .with_global_calls(["setInterval", "setTimeout", "requestAnimationFrame"])
-            .implies(["disclosure.global_handlers_or_timers"])
             .build(),
     ]
     .into_iter()

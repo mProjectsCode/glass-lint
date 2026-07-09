@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use swc_common::{Span, Spanned};
+use swc_common::{BytePos, Span, Spanned};
 use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase, Program};
 use swc_ecma_visit::VisitWith;
 
@@ -25,6 +25,7 @@ pub struct ScopeGraph {
     assignments: BTreeMap<usize, BTreeMap<String, Vec<AliasAssignment>>>,
     property_assignments: BTreeMap<String, Vec<PropertyAliasAssignment>>,
     parameter_aliases: BTreeMap<(usize, String), BindingProvenance>,
+    dynamic_evals: Vec<(usize, Span)>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +42,7 @@ enum ScopeKind {
     Program,
     Function,
     Block,
+    Dynamic,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,7 +71,24 @@ struct PropertyAliasAssignment {
     span: Span,
     scope: usize,
     property: String,
+    receiver_root: String,
+    receiver_span: Span,
     target: Option<String>,
+}
+
+/// A property write is meaningful only for the exact binding (and value
+/// version) of its receiver. Textual chains alone cannot distinguish a
+/// parameter or block-local `table` from an outer `table`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ReceiverIdentity {
+    Binding {
+        scope: usize,
+        name: String,
+        version: Option<BytePos>,
+    },
+    Global {
+        name: String,
+    },
 }
 
 impl ScopeGraph {
@@ -108,16 +127,26 @@ impl ScopeGraph {
         for assignments in property_assignments.values_mut() {
             assignments.sort_by_key(|assignment| assignment.span.lo);
         }
-        Self {
+        let mut graph = Self {
             scopes: collector.scopes,
             scopes_by_start,
             assignments,
             property_assignments,
             parameter_aliases,
-        }
+            dynamic_evals: Vec::new(),
+        };
+        graph.dynamic_evals = collector
+            .dynamic_evals
+            .into_iter()
+            .filter(|(_, span)| graph.binding_at("eval", *span).is_none())
+            .collect();
+        graph
     }
 
     pub fn call_provenance(&self, name: &str, span: Span) -> SymbolCallProvenance {
+        if self.has_dynamic_lookup_at(span) {
+            return SymbolCallProvenance::Local;
+        }
         match self.binding_at(name, span) {
             Some(BindingProvenance::ModuleExport { module, export }) => {
                 SymbolCallProvenance::ModuleExport {
@@ -180,6 +209,9 @@ impl ScopeGraph {
     }
 
     pub fn static_string_expr(&self, expr: &Expr) -> Option<String> {
+        if self.has_dynamic_lookup_at(expr.span()) {
+            return None;
+        }
         super::ast::static_string(expr).or_else(|| match expr {
             Expr::Ident(ident) => self.static_string_at(ident),
             Expr::Member(member) => self.static_string_member(member),
@@ -209,6 +241,9 @@ impl ScopeGraph {
     }
 
     pub(super) fn static_string_at(&self, ident: &Ident) -> Option<String> {
+        if self.has_dynamic_lookup_at(ident.span) {
+            return None;
+        }
         match self.binding_at(ident.sym.as_ref(), ident.span)? {
             BindingProvenance::StaticString(value) => Some(value.clone()),
             _ => None,
@@ -253,6 +288,9 @@ impl ScopeGraph {
     }
 
     pub fn callable_member_chain(&self, ident: &Ident) -> Option<String> {
+        if self.has_dynamic_lookup_at(ident.span) {
+            return None;
+        }
         let BindingProvenance::ValueAlias { target } =
             self.binding_at(ident.sym.as_ref(), ident.span)?
         else {
@@ -301,6 +339,9 @@ impl ScopeGraph {
         member: &MemberExpr,
         chain: &str,
     ) -> Option<SymbolMemberProvenance> {
+        if self.has_dynamic_lookup_at(member.span) {
+            return None;
+        }
         let root = member_root_ident(member)?;
         let member = chain.strip_prefix(root.sym.as_ref())?.strip_prefix('.')?;
         match self.binding_at(root.sym.as_ref(), root.span) {
@@ -346,6 +387,14 @@ impl ScopeGraph {
         member: &MemberExpr,
         syntactic_chain: &str,
     ) -> Option<String> {
+        if self.has_dynamic_lookup_at(member.span) {
+            return None;
+        }
+        let Some(root) = member_root_ident(member) else {
+            return syntactic_chain
+                .starts_with("this.")
+                .then(|| syntactic_chain.to_string());
+        };
         // A write to `table.api` may alias an entire prefix of a later chain
         // (`table.api.call`). Resolve the longest applicable prior write before
         // falling back to the root binding.
@@ -356,20 +405,16 @@ impl ScopeGraph {
             };
             let prior_count =
                 assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
-            if let Some(assignment) = assignments[..prior_count]
-                .iter()
-                .rev()
-                .find(|assignment| contains(self.scopes[assignment.scope].span, member.span))
-            {
+            if let Some(assignment) = assignments[..prior_count].iter().rev().find(|assignment| {
+                contains(self.scopes[assignment.scope].span, member.span)
+                    && self
+                        .receiver_identity_at(&assignment.receiver_root, assignment.receiver_span)
+                        == self.receiver_identity_at(root.sym.as_ref(), root.span)
+            }) {
                 let target = assignment.target.as_ref()?;
                 return Some(format!("{target}{}", &syntactic_chain[prefix_end..]));
             }
         }
-        let Some(root) = member_root_ident(member) else {
-            return syntactic_chain
-                .starts_with("this.")
-                .then(|| syntactic_chain.to_string());
-        };
         let suffix = syntactic_chain.strip_prefix(root.sym.as_ref())?;
         match self.binding_at(root.sym.as_ref(), root.span) {
             Some(BindingProvenance::ValueAlias { target }) => Some(format!("{target}{suffix}")),
@@ -400,6 +445,61 @@ impl ScopeGraph {
                 return Some((scope, binding));
             }
             scope = self.scopes[scope].parent?;
+        }
+    }
+
+    fn receiver_identity_at(&self, name: &str, span: Span) -> ReceiverIdentity {
+        let Some((scope, _)) = self.binding_with_scope_at(name, span) else {
+            return ReceiverIdentity::Global {
+                name: name.to_string(),
+            };
+        };
+        let version = self
+            .assignments
+            .get(&scope)
+            .and_then(|assignments| assignments.get(name))
+            .and_then(|assignments| {
+                assignments
+                    .partition_point(|assignment| assignment.span.lo <= span.lo)
+                    .checked_sub(1)
+                    .map(|index| assignments[index].span.lo)
+            });
+        ReceiverIdentity::Binding {
+            scope,
+            name: name.to_string(),
+            version,
+        }
+    }
+
+    fn has_dynamic_lookup_at(&self, span: Span) -> bool {
+        let scope = self.scope_at(span);
+        self.scope_or_ancestor_has_kind(scope, ScopeKind::Dynamic)
+            || self.dynamic_evals.iter().any(|(eval_scope, eval_span)| {
+                span.lo > eval_span.hi && self.scope_is_within(scope, *eval_scope)
+            })
+    }
+
+    fn scope_or_ancestor_has_kind(&self, mut scope: usize, kind: ScopeKind) -> bool {
+        loop {
+            if self.scopes[scope].kind == kind {
+                return true;
+            }
+            let Some(parent) = self.scopes[scope].parent else {
+                return false;
+            };
+            scope = parent;
+        }
+    }
+
+    fn scope_is_within(&self, mut scope: usize, ancestor: usize) -> bool {
+        loop {
+            if scope == ancestor {
+                return true;
+            }
+            let Some(parent) = self.scopes[scope].parent else {
+                return false;
+            };
+            scope = parent;
         }
     }
 
@@ -434,6 +534,9 @@ pub(super) trait RootedExprContext {
 
 impl RootedExprContext for ScopeGraph {
     fn rooted_ident_chain(&self, ident: &Ident) -> Option<String> {
+        if self.has_dynamic_lookup_at(ident.span) {
+            return None;
+        }
         match self.binding_at(ident.sym.as_ref(), ident.span) {
             Some(BindingProvenance::ValueAlias { target }) => Some(target.clone()),
             Some(_) => None,

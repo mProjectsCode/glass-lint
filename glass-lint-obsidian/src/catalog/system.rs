@@ -18,7 +18,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.plugins.manifests",
             ])
             .with_rooted_member_calls(["app.plugins.getPlugin"])
-            .implies(["disclosure.plugin_internals"])
             .build(),
         ApiRule::builder("platform.branching")
             .label("Checks desktop, mobile, or OS platform flags")
@@ -73,7 +72,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "Platform.isLinux",
                 "Platform.isSafari",
             ])
-            .implies(["disclosure.platform_branching"])
             .build(),
         ApiRule::builder("filesystem.node")
             .label("Uses direct Node filesystem-related modules")
@@ -96,7 +94,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "zlib",
                 "node:zlib",
             ])
-            .implies(["disclosure.node_filesystem_access"])
             .build(),
         ApiRule::builder("process.node")
             .label("Uses Node process or subprocess APIs")
@@ -105,7 +102,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .confidence(Confidence::High)
             .with_imports(["child_process", "node:child_process"])
             .with_rooted_member_reads(["process.env", "process.platform"])
-            .implies(["disclosure.process_or_shell_access"])
             .build(),
         ApiRule::builder("electron.desktop")
             .label("Uses Electron desktop APIs")
@@ -131,7 +127,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "ipcRenderer.invoke",
                 "remote.require",
             ])
-            .implies(["disclosure.process_or_shell_access"])
             .build(),
         ApiRule::builder("browser.clipboard")
             .label("Reads or writes clipboard data")
@@ -144,7 +139,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "navigator.clipboard.write",
                 "navigator.clipboard.writeText",
             ])
-            .implies(["disclosure.clipboard_access"])
             .build(),
         ApiRule::builder("browser.storage")
             .label("Uses persistent browser storage")
@@ -172,7 +166,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "Notification.requestPermission",
                 "navigator.bluetooth.requestDevice",
             ])
-            .implies(["disclosure.permission_sensitive_browser_api"])
             .build(),
         ApiRule::builder("browser.permission_availability")
             .label("Checks permission-sensitive browser API availability")
@@ -200,7 +193,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "screen.width",
                 "screen.height",
             ])
-            .implies(["disclosure.browser_environment_access"])
             .build(),
         ApiRule::builder("browser.broad_input_hooks")
             .label("Registers broad keyboard handlers or clipboard hooks")
@@ -219,7 +211,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "navigator.clipboard.readText",
                 "navigator.clipboard.writeText",
             ])
-            .implies(["disclosure.global_handlers_or_timers"])
             .build(),
         ApiRule::builder("archive.compression")
             .label("Uses compression or archive handling")
@@ -309,7 +300,6 @@ pub(super) fn rules() -> Vec<Rule> {
                         "document.documentElement.prepend",
                     ]),
             ))
-            .implies(["disclosure.dynamic_code_or_remote_code"])
             .build(),
     ]
     .into_iter()

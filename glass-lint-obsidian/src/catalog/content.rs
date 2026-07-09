@@ -23,7 +23,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.vault.cachedRead",
                 "app.vault.readBinary",
             ])
-            .implies(["disclosure.note_content_access"])
             .build(),
         ApiRule::builder("vault.write")
             .label("Writes vault files")
@@ -40,7 +39,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.vault.process",
                 "app.vault.createFolder",
             ])
-            .implies(["disclosure.vault_file_write"])
             .build(),
         ApiRule::builder("vault.destructive")
             .label("Renames, deletes, trashes, or copies vault files")
@@ -55,7 +53,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.fileManager.renameFile",
                 "app.fileManager.trashFile",
             ])
-            .implies(["disclosure.vault_file_write"])
             .build(),
         ApiRule::builder("vault.enumerate")
             .label("Enumerates vault files")
@@ -68,7 +65,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.vault.getAllLoadedFiles",
                 "app.vault.getAllFolders",
             ])
-            .implies(["disclosure.full_vault_access"])
             .build(),
         ApiRule::builder("vault.folder_ops")
             .label("Accesses vault folders")
@@ -93,7 +89,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
             .with_rooted_member_reads(["app.vault.adapter"])
-            .implies(["disclosure.adapter_file_access"])
             .build(),
         ApiRule::builder("vault.obsidian_config")
             .label("References .obsidian configuration paths")
@@ -101,7 +96,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
             .with_string_literals([".obsidian/", ".obsidian\\"])
-            .implies(["disclosure.obsidian_config_access"])
             .build(),
         ApiRule::builder("vault.uri")
             .label("References Obsidian URI links")
@@ -134,7 +128,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.metadataCache.getCache",
                 "app.metadataCache.getFirstLinkpathDest",
             ])
-            .implies(["disclosure.metadata_access"])
             .build(),
         ApiRule::builder("metadata.frontmatter")
             .label("Reads cached frontmatter")
@@ -142,7 +135,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
             .with_rooted_member_reads(["app.metadataCache.getFileCache.frontmatter"])
-            .implies(["disclosure.metadata_access"])
             .build(),
         ApiRule::builder("metadata.frontmatter_write")
             .label("Updates frontmatter through Obsidian APIs")
@@ -150,7 +142,6 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Info)
             .confidence(Confidence::High)
             .with_rooted_member_calls(["app.fileManager.processFrontMatter"])
-            .implies(["disclosure.metadata_access", "disclosure.vault_file_write"])
             .build(),
         ApiRule::builder("metadata.events")
             .label("Registers metadata cache event listeners")
@@ -208,7 +199,6 @@ pub(super) fn rules() -> Vec<Rule> {
                 "app.metadataCache.getFileCache.headings",
                 "app.metadataCache.getFileCache.sections",
             ])
-            .implies(["disclosure.metadata_access"])
             .build(),
         ApiRule::builder("dependency.dataview")
             .label("References Dataview or DataCore plugin APIs")
