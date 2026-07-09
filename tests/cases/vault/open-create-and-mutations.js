@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: file mutations
+// @case description Vault file mutations are detected
 // @tool glass-lint rules=obsidian:vault.open_create_flows,obsidian:vault.write,obsidian:vault.destructive,obsidian:metadata.frontmatter_write,obsidian:workspace.views
 
 this.app.workspace.getLeaf(false).openFile(file); // @expect-error glass-lint rule=obsidian:vault.open_create_flows message_id=detected

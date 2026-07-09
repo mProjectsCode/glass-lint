@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: Obsidian request imports, aliases, namespaces, and bundler wrappers
+// @case description Obsidian request imports, aliases, namespaces, and bundler wrappers preserve provenance
 // @tool glass-lint rules=obsidian:network.obsidian
 
 import { requestUrl as renamedRequestUrl, request } from "obsidian";

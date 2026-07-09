@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: network string matchers ignore comments, identifiers, and version-like literals
+// @case description Network string matchers ignore comments, identifiers, and version-like literals
 // @tool glass-lint rules=obsidian:network.ai_provider,obsidian:vault.obsidian_config,obsidian:network.private
 
 // api.openai.com should not classify a provider by itself.

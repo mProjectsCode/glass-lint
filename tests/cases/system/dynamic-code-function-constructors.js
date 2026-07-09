@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: Function constructor variants
+// @case description Function constructor variants are detected as dynamic code
 // @tool glass-lint rules=obsidian:dynamic_code
 
 Function("return 1")(); // @expect-error glass-lint rule=obsidian:dynamic_code message_id=detected

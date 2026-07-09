@@ -1,4 +1,4 @@
-// @case description Ported classifier regression: module and global provenance respect lexical shadowing
+// @case description Module and global provenance respect lexical shadowing
 // @tool glass-lint rules=obsidian:network.browser,obsidian:network.obsidian
 
 import { requestUrl } from "obsidian";

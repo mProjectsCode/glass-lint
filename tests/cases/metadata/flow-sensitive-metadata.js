@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: metadata frontmatter, traversal, and extraction flow
+// @case description Metadata frontmatter, traversal, and extraction follow connected flow
 // @tool glass-lint rules=obsidian:metadata.frontmatter,obsidian:metadata.traversal,obsidian:metadata.extraction
 
 const cache = this.app.metadataCache.getFileCache(file);

@@ -1,4 +1,4 @@
-// @case description Ported old classifier case: eval alias dynamic code
+// @case description Eval aliases are detected as dynamic code
 // @tool glass-lint rules=obsidian:dynamic_code
 
 const run = eval; run("code"); // @expect-error glass-lint rule=obsidian:dynamic_code message_id=detected

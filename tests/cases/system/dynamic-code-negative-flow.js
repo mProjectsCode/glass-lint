@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: dynamic code flow respects shadowing, reassignment, callback values, and ordering
+// @case description Dynamic-code flow respects shadowing, reassignment, callback values, and ordering
 // @tool glass-lint rules=obsidian:dynamic_code
 
 function localOnly(eval, Function, setTimeout) {

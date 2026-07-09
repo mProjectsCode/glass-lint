@@ -1,4 +1,4 @@
-// @case description Ported old classifier case: CommonJS Obsidian require provenance
+// @case description CommonJS Obsidian imports preserve module provenance
 // @tool glass-lint rules=obsidian:network.obsidian
 
 var obsidian = require("obsidian");

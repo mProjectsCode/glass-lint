@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: rooted vault aliases, assignments, destructuring, and argument flow
+// @case description Rooted vault aliases, assignments, destructuring, and argument flow preserve provenance
 // @tool glass-lint rules=obsidian:vault.read,obsidian:vault.write,obsidian:vault.enumerate
 
 let late;

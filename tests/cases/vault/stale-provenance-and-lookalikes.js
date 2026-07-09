@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: obsolete provenance and local API lookalikes are rejected
+// @case description Stale provenance and local API lookalikes are rejected
 // @tool glass-lint rules=obsidian:vault.read,obsidian:vault.write
 
 let vault = this.app.vault;

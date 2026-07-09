@@ -1,4 +1,4 @@
-// @case description Ported classifier regression: an Obsidian namespace import is unavailable through a shadowing binding
+// @case description An Obsidian namespace import is unavailable through a shadowing binding
 // @tool glass-lint rules=obsidian:network.obsidian
 
 import * as obsidian from "obsidian";

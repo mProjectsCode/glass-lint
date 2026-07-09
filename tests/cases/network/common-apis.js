@@ -1,4 +1,4 @@
-// @case description Ported old classifier case: common browser and Obsidian network APIs
+// @case description Common browser and Obsidian network APIs are detected
 // @tool glass-lint rules=obsidian:network.browser,obsidian:network.obsidian
 
 import { requestUrl } from "obsidian"; // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected line=6

@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: adapter access is detected by reference and by future operations
+// @case description Adapter access is detected by reference and later operations
 // @tool glass-lint rules=obsidian:vault.adapter
 
 const adapter = this.app.vault.adapter; // @expect-error glass-lint rule=obsidian:vault.adapter message_id=detected

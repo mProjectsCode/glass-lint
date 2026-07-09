@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: connected remote, nonliteral, and inline script injection
+// @case description Connected remote, nonliteral, and inline script injection is detected
 // @tool glass-lint rules=obsidian:dynamic_code
 
 const script = document.createElement("script"); // @expect-error glass-lint rule=obsidian:dynamic_code message_id=detected

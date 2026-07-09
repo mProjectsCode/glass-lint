@@ -1,4 +1,4 @@
-// @case description Ported old classifier case: minified CommonJS requires count as node and Electron imports
+// @case description Compact CommonJS imports count as Node and Electron imports
 // @tool glass-lint rules=obsidian:filesystem.node,obsidian:electron.desktop
 
 var f = require("fs"), e = __toESM(require("electron")); // @expect-error glass-lint rule=obsidian:filesystem.node message_id=detected

@@ -1,4 +1,4 @@
-//! Regression coverage for compact and bundled JavaScript.
+//! Matcher coverage for compact and bundled JavaScript.
 //!
 //! These tests exercise the public linting API so matcher behavior is verified
 //! exactly as provider crates consume it.
@@ -26,7 +26,7 @@ fn assert_count(source: &str, rule: Rule, expected: usize) {
 }
 
 #[test]
-fn minified_commonjs_namespace_export_aliases_preserve_module_calls() {
+fn commonjs_namespace_export_aliases_preserve_module_calls() {
     assert_count(
         r#"var r=require("sdk"),s=r.send;s();"#,
         rule("test.module")
@@ -38,7 +38,7 @@ fn minified_commonjs_namespace_export_aliases_preserve_module_calls() {
 }
 
 #[test]
-fn minified_commonjs_interop_namespace_calls_preserve_module_members() {
+fn commonjs_interop_namespace_calls_preserve_module_members() {
     assert_count(
         r#"var e=__toESM(require("sdk"));e.send();"#,
         rule("test.module-member")
@@ -50,7 +50,7 @@ fn minified_commonjs_interop_namespace_calls_preserve_module_members() {
 }
 
 #[test]
-fn minified_assignment_expression_aliases_preserve_module_exports() {
+fn assignment_expression_aliases_preserve_module_exports() {
     assert_count(
         r#"var s;(s=require("sdk").send)();"#,
         rule("test.assignment-module")
@@ -62,7 +62,7 @@ fn minified_assignment_expression_aliases_preserve_module_exports() {
 }
 
 #[test]
-fn minified_module_provenance_rejects_local_require_and_wrapper_lookalikes() {
+fn module_provenance_rejects_local_require_and_wrapper_lookalikes() {
     assert_count(
         r#"
         function require(){return {send(){}}}
@@ -80,7 +80,7 @@ fn minified_module_provenance_rejects_local_require_and_wrapper_lookalikes() {
 }
 
 #[test]
-fn minified_rooted_member_aliases_follow_one_letter_bindings() {
+fn rooted_member_aliases_follow_one_letter_bindings() {
     assert_count(
         r#"var v=host.files;v.read();"#,
         rule("test.rooted")
@@ -92,7 +92,7 @@ fn minified_rooted_member_aliases_follow_one_letter_bindings() {
 }
 
 #[test]
-fn minified_nested_rooted_aliases_follow_cached_subobjects() {
+fn nested_rooted_aliases_follow_cached_subobjects() {
     assert_count(
         r#"var a=host,b=a.files,c=b;c.read();"#,
         rule("test.nested-rooted")
@@ -104,7 +104,7 @@ fn minified_nested_rooted_aliases_follow_cached_subobjects() {
 }
 
 #[test]
-fn minified_this_root_aliases_canonicalize_to_rooted_members() {
+fn this_root_aliases_canonicalize_to_rooted_members() {
     assert_count(
         r#"var a=this.app.files;a.read();"#,
         rule("test.this-root")
@@ -116,7 +116,7 @@ fn minified_this_root_aliases_canonicalize_to_rooted_members() {
 }
 
 #[test]
-fn minified_reassignment_order_keeps_only_pre_reassignment_rooted_calls() {
+fn reassignment_order_keeps_only_pre_reassignment_rooted_calls() {
     assert_count(
         r#"var v=host.files;v.read();v=local.files;v.read();"#,
         rule("test.reassignment")
@@ -128,7 +128,7 @@ fn minified_reassignment_order_keeps_only_pre_reassignment_rooted_calls() {
 }
 
 #[test]
-fn minified_sibling_scope_reuse_does_not_leak_rooted_aliases() {
+fn sibling_scope_reuse_does_not_leak_rooted_aliases() {
     assert_count(
         r#"
         function a(){var x=host.files;x.read()}
@@ -143,7 +143,7 @@ fn minified_sibling_scope_reuse_does_not_leak_rooted_aliases() {
 }
 
 #[test]
-fn minified_literal_computed_member_chains_are_rooted() {
+fn literal_computed_member_chains_are_rooted() {
     assert_count(
         r#"host["files"]["read"]();"#,
         rule("test.literal-computed")
@@ -155,7 +155,7 @@ fn minified_literal_computed_member_chains_are_rooted() {
 }
 
 #[test]
-fn minified_concatenated_static_property_names_are_rooted() {
+fn concatenated_static_property_names_are_rooted() {
     assert_count(
         r#"window["fet"+"ch"]("/x");"#,
         rule("test.concatenated-computed")
@@ -167,7 +167,7 @@ fn minified_concatenated_static_property_names_are_rooted() {
 }
 
 #[test]
-fn minified_constant_property_aliases_are_rooted() {
+fn constant_property_aliases_are_rooted() {
     assert_count(
         r#"const k="read";host.files[k]();"#,
         rule("test.constant-computed")
@@ -179,7 +179,7 @@ fn minified_constant_property_aliases_are_rooted() {
 }
 
 #[test]
-fn minified_static_string_table_property_aliases_are_rooted() {
+fn static_string_table_property_aliases_are_rooted() {
     assert_count(
         r#"const k=["read"];host.files[k[0]]();"#,
         rule("test.string-table-computed")
@@ -191,7 +191,7 @@ fn minified_static_string_table_property_aliases_are_rooted() {
 }
 
 #[test]
-fn minified_dynamic_computed_properties_do_not_match_rooted_members() {
+fn dynamic_computed_properties_do_not_match_rooted_members() {
     assert_count(
         r#"var k=Date.now()>0?"read":"write";host.files[k]();"#,
         rule("test.dynamic-computed-negative")
@@ -203,7 +203,7 @@ fn minified_dynamic_computed_properties_do_not_match_rooted_members() {
 }
 
 #[test]
-fn minified_sequence_global_calls_preserve_global_provenance() {
+fn sequence_global_calls_preserve_global_provenance() {
     assert_count(
         r#"(0,fetch)("/x");"#,
         rule("test.sequence-global")
@@ -215,7 +215,7 @@ fn minified_sequence_global_calls_preserve_global_provenance() {
 }
 
 #[test]
-fn minified_bound_global_calls_preserve_global_provenance() {
+fn bound_global_calls_preserve_global_provenance() {
     assert_count(
         r#"var f=fetch.bind(null);f("/x");"#,
         rule("test.bound-global")
@@ -227,7 +227,7 @@ fn minified_bound_global_calls_preserve_global_provenance() {
 }
 
 #[test]
-fn minified_call_and_apply_preserve_global_provenance_when_receiver_is_static() {
+fn call_and_apply_preserve_global_provenance_when_receiver_is_static() {
     assert_count(
         r#"var f=fetch;f.call(null,"/x");f.apply(null,["/y"]);"#,
         rule("test.call-apply-global")
@@ -239,7 +239,7 @@ fn minified_call_and_apply_preserve_global_provenance_when_receiver_is_static() 
 }
 
 #[test]
-fn minified_optional_chained_aliases_preserve_rooted_member_arguments() {
+fn optional_chained_aliases_preserve_rooted_member_arguments() {
     assert_count(
         r#"var c=app.commands;c?.execute?.("open");"#,
         rule("test.optional")
@@ -253,7 +253,7 @@ fn minified_optional_chained_aliases_preserve_rooted_member_arguments() {
 }
 
 #[test]
-fn minified_shadowed_globals_do_not_match_global_calls() {
+fn shadowed_globals_do_not_match_global_calls() {
     assert_count(
         r#"function a(fetch){fetch("/local")}a(function(){});"#,
         rule("test.shadowed-global-negative")
@@ -265,7 +265,7 @@ fn minified_shadowed_globals_do_not_match_global_calls() {
 }
 
 #[test]
-fn minified_static_string_arguments_follow_aliases_but_reject_dynamic_strings() {
+fn static_string_arguments_follow_aliases_but_reject_dynamic_strings() {
     assert_count(
         r#"var f=fetch,u="/x";f(u);f("/"+name);"#,
         rule("test.static-string-arg")
@@ -277,7 +277,7 @@ fn minified_static_string_arguments_follow_aliases_but_reject_dynamic_strings() 
 }
 
 #[test]
-fn minified_static_object_arguments_are_reused_for_key_matching() {
+fn static_object_arguments_are_reused_for_key_matching() {
     assert_count(
         r#"var o={url:"/x",method:"GET"};client.request(o);"#,
         rule("test.object-arg")
@@ -292,7 +292,7 @@ fn minified_static_object_arguments_are_reused_for_key_matching() {
 }
 
 #[test]
-fn minified_sequence_object_arguments_are_reused_for_key_matching() {
+fn sequence_object_arguments_are_reused_for_key_matching() {
     assert_count(
         r#"var o;(o={url:"/x",method:"GET"},client.request(o));"#,
         rule("test.sequence-object-arg")
@@ -307,7 +307,7 @@ fn minified_sequence_object_arguments_are_reused_for_key_matching() {
 }
 
 #[test]
-fn minified_rooted_expression_arguments_follow_one_letter_aliases() {
+fn rooted_expression_arguments_follow_one_letter_aliases() {
     assert_count(
         r#"var f=vault.file,o=app;o.open(f);"#,
         rule("test.rooted-arg")
@@ -321,7 +321,7 @@ fn minified_rooted_expression_arguments_follow_one_letter_aliases() {
 }
 
 #[test]
-fn minified_spread_object_arguments_do_not_satisfy_exact_key_matching() {
+fn spread_object_arguments_do_not_satisfy_exact_key_matching() {
     assert_count(
         r#"var b={url:"/x"};client.request({...b,method:"GET"});"#,
         rule("test.spread-object-negative")
@@ -336,7 +336,7 @@ fn minified_spread_object_arguments_do_not_satisfy_exact_key_matching() {
 }
 
 #[test]
-fn minified_named_helper_parameter_aliases_preserve_global_calls() {
+fn named_helper_parameter_aliases_preserve_global_calls() {
     assert_count(
         r#"function n(t){t("/x")}n(fetch);"#,
         rule("test.named-helper")
@@ -348,7 +348,7 @@ fn minified_named_helper_parameter_aliases_preserve_global_calls() {
 }
 
 #[test]
-fn minified_arrow_helper_parameter_aliases_preserve_global_calls() {
+fn arrow_helper_parameter_aliases_preserve_global_calls() {
     assert_count(
         r#"var n=t=>t("/x");n(fetch);"#,
         rule("test.arrow-helper")
@@ -360,7 +360,7 @@ fn minified_arrow_helper_parameter_aliases_preserve_global_calls() {
 }
 
 #[test]
-fn minified_helper_argument_objects_flow_to_member_call_key_matching() {
+fn helper_argument_objects_flow_to_member_call_key_matching() {
     assert_count(
         r#"function n(x){client.request(x)}n({url:"/x",method:"GET"});"#,
         rule("test.helper-object-flow")
@@ -375,7 +375,7 @@ fn minified_helper_argument_objects_flow_to_member_call_key_matching() {
 }
 
 #[test]
-fn minified_inconsistent_helper_calls_do_not_infer_parameter_aliases() {
+fn inconsistent_helper_calls_do_not_infer_parameter_aliases() {
     assert_count(
         r#"function n(t){t("/x")}n(fetch);n(localFetch);"#,
         rule("test.inconsistent-helper-negative")
@@ -387,7 +387,7 @@ fn minified_inconsistent_helper_calls_do_not_infer_parameter_aliases() {
 }
 
 #[test]
-fn minified_module_constructor_aliases_preserve_constructor_provenance() {
+fn module_constructor_aliases_preserve_constructor_provenance() {
     assert_count(
         r#"var M=require("sdk").Modal;new M();"#,
         rule("test.module-constructor")
@@ -399,7 +399,7 @@ fn minified_module_constructor_aliases_preserve_constructor_provenance() {
 }
 
 #[test]
-fn minified_module_class_references_preserve_class_provenance() {
+fn module_class_references_preserve_class_provenance() {
     assert_count(
         r#"var s=require("sdk");class X extends s.Modal{};x instanceof s.Modal;"#,
         rule("test.module-class")
@@ -411,7 +411,7 @@ fn minified_module_class_references_preserve_class_provenance() {
 }
 
 #[test]
-fn minified_local_class_lookalikes_do_not_match_module_class_or_constructor() {
+fn local_class_lookalikes_do_not_match_module_class_or_constructor() {
     assert_count(
         r#"class Modal{};new Modal();x instanceof Modal;"#,
         rule("test.local-class-negative")

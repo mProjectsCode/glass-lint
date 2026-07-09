@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: platform branching and markdown class references
+// @case description Platform branching and Markdown API class references are detected
 // @tool glass-lint rules=obsidian:platform.branching,obsidian:editor.markdown_api,obsidian:vault.read
 
 import * as obsidian from "obsidian";

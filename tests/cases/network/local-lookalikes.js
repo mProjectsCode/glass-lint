@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: local network lookalikes do not count
+// @case description Local network lookalikes do not report network capability use
 // @tool glass-lint rules=obsidian:network.obsidian,obsidian:network.browser
 
 function requestUrl(url) {

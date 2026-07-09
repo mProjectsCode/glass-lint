@@ -1,4 +1,4 @@
-//! Regression coverage for the precision failures identified in `review.md`.
+//! Scope and provenance precision coverage.
 //!
 //! Every case uses the public linting API so it covers parsing, scope
 //! collection, semantic resolution, and matcher execution together.
@@ -18,7 +18,7 @@ fn rule(id: &str) -> Builder {
 
 fn assert_count(source: &str, rule: Rule, expected: usize) {
     let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-    let report = Linter::new(catalog).lint(source, "review-regression.js");
+    let report = Linter::new(catalog).lint(source, "scope-precision.js");
     assert!(report.parse_diagnostics.is_empty(), "{source}");
     assert_eq!(report.findings.len(), expected, "{source}");
 }

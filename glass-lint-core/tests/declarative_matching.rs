@@ -1,4 +1,4 @@
-//! Established matcher behavior exercised through the public provider API.
+//! Declarative matcher behavior exercised through the public provider API.
 
 use std::collections::BTreeSet;
 
@@ -42,8 +42,9 @@ fn classify(source: &str, rules: &[Rule]) -> Classification {
     }
 }
 
-fn evidence_count(result: &Classification, _id: &str) -> u32 {
-    result.finding_count as u32
+fn assert_capability_count(result: &Classification, id: &str, expected: usize) {
+    assert!(result.has_capability(id));
+    assert_eq!(result.finding_count, expected);
 }
 #[test]
 fn resolves_module_provenance_and_rejects_local_lookalikes() {
@@ -55,8 +56,7 @@ fn resolves_module_provenance_and_rejects_local_lookalikes() {
         "import { send as sdkSend } from 'example-sdk'; sdkSend(); function send() {} send();",
         &rules,
     );
-    assert!(result.has_capability("test.module"));
-    assert_eq!(evidence_count(&result, "test.module"), 1);
+    assert_capability_count(&result, "test.module", 1);
 }
 
 #[test]
@@ -69,8 +69,7 @@ fn resolves_commonjs_destructured_module_exports() {
         "const { send: sdkSend } = require('example-sdk'); sdkSend();",
         &rules,
     );
-    assert!(result.has_capability("test.module"));
-    assert_eq!(evidence_count(&result, "test.module"), 1);
+    assert_capability_count(&result, "test.module", 1);
 }
 
 #[test]
@@ -83,8 +82,7 @@ fn follows_rooted_aliases_and_reassignment_order() {
         "let files = host.files; files.read(); files = local; files.read();",
         &rules,
     );
-    assert!(result.has_capability("test.alias"));
-    assert_eq!(evidence_count(&result, "test.alias"), 1);
+    assert_capability_count(&result, "test.alias", 1);
 }
 
 #[test]
@@ -97,8 +95,7 @@ fn rejects_aliases_after_shadowing_reassignment() {
         "let send = fetch; send('/remote'); send = localFetch; send('/local');",
         &rules,
     );
-    assert!(result.has_capability("test.fetch"));
-    assert_eq!(evidence_count(&result, "test.fetch"), 1);
+    assert_capability_count(&result, "test.fetch", 1);
 }
 
 #[test]
@@ -108,8 +105,7 @@ fn matches_static_string_arguments_but_rejects_dynamic_strings() {
         .build()
         .unwrap()];
     let result = classify("fetch('/literal'); fetch('/' + dynamic);", &rules);
-    assert!(result.has_capability("test.fetch-url"));
-    assert_eq!(evidence_count(&result, "test.fetch-url"), 1);
+    assert_capability_count(&result, "test.fetch-url", 1);
 }
 
 #[test]
@@ -122,8 +118,7 @@ fn tracks_rooted_expression_arguments_through_aliases() {
         "const file = vault.file; const opener = app; opener.open(file);",
         &rules,
     );
-    assert!(result.has_capability("test.arg-flow"));
-    assert_eq!(evidence_count(&result, "test.arg-flow"), 1);
+    assert_capability_count(&result, "test.arg-flow", 1);
 }
 
 #[test]
@@ -136,12 +131,11 @@ fn tracks_simple_parameter_aliases_into_named_functions() {
         "function invoke(callback) { callback('/remote'); } invoke(fetch);",
         &rules,
     );
-    assert!(result.has_capability("test.fetch"));
-    assert_eq!(evidence_count(&result, "test.fetch"), 1);
+    assert_capability_count(&result, "test.fetch", 1);
 }
 
 #[test]
-fn target_tracks_parameter_aliases_into_arrow_functions() {
+fn tracks_parameter_aliases_into_arrow_functions() {
     let rules = [rule("test.fetch")
         .matcher(Matcher::global_call("fetch"))
         .build()
@@ -150,12 +144,11 @@ fn target_tracks_parameter_aliases_into_arrow_functions() {
         "const invoke = (callback) => callback('/remote'); invoke(fetch);",
         &rules,
     );
-    assert!(result.has_capability("test.fetch"));
-    assert_eq!(evidence_count(&result, "test.fetch"), 1);
+    assert_capability_count(&result, "test.fetch", 1);
 }
 
 #[test]
-fn target_matches_optional_chained_calls_with_static_arguments() {
+fn matches_optional_chained_calls_with_static_arguments() {
     let rules = [rule("test.optional")
         .matcher(MemberCallMatcher::rooted_chain("app.commands.execute").arg_string(0, ["open"]))
         .build()
@@ -164,23 +157,21 @@ fn target_matches_optional_chained_calls_with_static_arguments() {
         "const commands = app.commands; commands?.execute?.('open');",
         &rules,
     );
-    assert!(result.has_capability("test.optional"));
-    assert_eq!(evidence_count(&result, "test.optional"), 1);
+    assert_capability_count(&result, "test.optional", 1);
 }
 
 #[test]
-fn target_resolves_literal_computed_properties_through_constant_aliases() {
+fn resolves_literal_computed_properties_through_constant_aliases() {
     let rules = [rule("test.computed")
         .matcher(Matcher::rooted_member_call("window.fetch"))
         .build()
         .unwrap()];
     let result = classify("const method = 'fetch'; window[method]('/remote');", &rules);
-    assert!(result.has_capability("test.computed"));
-    assert_eq!(evidence_count(&result, "test.computed"), 1);
+    assert_capability_count(&result, "test.computed", 1);
 }
 
 #[test]
-fn target_reuses_constant_object_arguments_for_key_matching() {
+fn reuses_constant_object_arguments_for_key_matching() {
     let rules = [rule("test.object-arg")
         .matcher(
             MemberCallMatcher::rooted_chain("client.request").arg_object_keys(0, ["url", "method"]),
@@ -191,8 +182,7 @@ fn target_reuses_constant_object_arguments_for_key_matching() {
         "const options = { url: '/remote', method: 'GET' }; client.request(options);",
         &rules,
     );
-    assert!(result.has_capability("test.object-arg"));
-    assert_eq!(evidence_count(&result, "test.object-arg"), 1);
+    assert_capability_count(&result, "test.object-arg", 1);
 }
 
 #[test]
@@ -268,8 +258,7 @@ fn tracks_configured_values_into_later_member_sinks() {
         "const script = document.createElement('script'); script.src = getUrl(); document.head.appendChild(script);",
         &rules,
     );
-    assert!(result.has_capability("test.flow"));
-    assert_eq!(evidence_count(&result, "test.flow"), 1);
+    assert_capability_count(&result, "test.flow", 1);
 }
 
 #[test]
@@ -289,7 +278,7 @@ fn value_flow_respects_reassignment_and_order() {
          const future = document.createElement('script'); document.head.appendChild(future); future.src = getUrl();",
         &rules,
     );
-    assert_eq!(evidence_count(&result, "test.flow"), 0);
+    assert_eq!(result.finding_count, 0);
 }
 
 #[test]
@@ -315,8 +304,7 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
          const script = document.createElement('script'); script.setAttribute('src', getUrl()); appendToHead(script);",
         &rules,
     );
-    assert!(result.has_capability("test.flow"));
-    assert_eq!(evidence_count(&result, "test.flow"), 1);
+    assert_capability_count(&result, "test.flow", 1);
 }
 
 #[test]
@@ -336,8 +324,7 @@ fn value_flow_supports_const_arrow_helper_sinks() {
          const script = document.createElement('script'); script.src = getUrl(); appendToHead(script);",
         &rules,
     );
-    assert!(result.has_capability("test.flow"));
-    assert_eq!(evidence_count(&result, "test.flow"), 1);
+    assert_capability_count(&result, "test.flow", 1);
 }
 
 #[test]
@@ -361,8 +348,7 @@ fn value_flow_static_prefix_requires_static_values() {
          const dynamic = document.createElement('img'); dynamic.src = getUrl(); document.body.appendChild(dynamic);",
         &rules,
     );
-    assert!(result.has_capability("test.flow"));
-    assert_eq!(evidence_count(&result, "test.flow"), 1);
+    assert_capability_count(&result, "test.flow", 1);
 }
 
 #[test]
@@ -390,6 +376,5 @@ fn flow_can_require_all_requirements() {
          const missing = document.createElement('link'); missing.href = 'https://example.com/a.css'; document.head.appendChild(missing);",
         &rules,
     );
-    assert!(result.has_capability("test.flow"));
-    assert_eq!(evidence_count(&result, "test.flow"), 1);
+    assert_capability_count(&result, "test.flow", 1);
 }

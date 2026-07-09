@@ -1,4 +1,4 @@
-// @case description Ported old classifier cases: local shadowing only hides calls in its lexical scope
+// @case description Local shadowing hides calls only in its lexical scope
 // @tool glass-lint rules=obsidian:network.browser,obsidian:network.obsidian
 
 import { requestUrl } from "obsidian"; // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected line=6

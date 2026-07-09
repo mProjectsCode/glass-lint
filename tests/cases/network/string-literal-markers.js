@@ -1,4 +1,4 @@
-// @case description Ported old classifier case: string literal markers in literals and templates
+// @case description String literal markers are detected in literals and templates
 // @tool glass-lint rules=obsidian:vault.uri,obsidian:vault.obsidian_config,obsidian:network.ai_provider
 
 const callback = "obsidian://open?vault=demo"; // @expect-error glass-lint rule=obsidian:vault.uri message_id=detected
