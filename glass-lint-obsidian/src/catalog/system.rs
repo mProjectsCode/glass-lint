@@ -1,5 +1,6 @@
 use glass_lint_core::rules::{
-    Confidence, FlowValueMatcher, Rule, Rule as ApiRule, Severity as ApiSeverity,
+    CallMatcher, Confidence, FlowValueMatcher, MemberCallMatcher, Rule, Rule as ApiRule,
+    Severity as ApiSeverity, ValueFlowMatcher,
 };
 
 pub(super) fn rules() -> Vec<Rule> {
@@ -204,10 +205,14 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("browser")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_call("document.addEventListener")
-            .arg_string(0, ["keydown", "keyup", "paste", "copy", "cut"])
-            .member_call("window.addEventListener")
-            .arg_string(0, ["keydown", "keyup", "paste", "copy", "cut"])
+            .matcher(
+                MemberCallMatcher::chain("document.addEventListener")
+                    .arg_string(0, ["keydown", "keyup", "paste", "copy", "cut"]),
+            )
+            .matcher(
+                MemberCallMatcher::chain("window.addEventListener")
+                    .arg_string(0, ["keydown", "keyup", "paste", "copy", "cut"]),
+            )
             .member_calls([
                 "navigator.clipboard.readText",
                 "navigator.clipboard.writeText",
@@ -244,53 +249,46 @@ pub(super) fn rules() -> Vec<Rule> {
             .global_calls(["eval"])
             .global_calls(["Function"])
             .constructors(["Function"])
-            .member_call("eval.call")
-            .static_string_arg(1)
-            .rooted_member_call("globalThis.eval")
-            .static_string_arg(0)
-            .rooted_member_call("window.eval")
-            .static_string_arg(0)
-            .global_call("setTimeout")
-            .static_string_call_arg(0)
-            .global_call("setInterval")
-            .static_string_call_arg(0)
-            .rooted_member_call("globalThis.setTimeout")
-            .static_string_arg(0)
-            .rooted_member_call("globalThis.setInterval")
-            .static_string_arg(0)
-            .rooted_member_call("window.setTimeout")
-            .static_string_arg(0)
-            .rooted_member_call("window.setInterval")
-            .static_string_arg(0)
-            .value_flow("script insertion")
-            .flow_source_member_call("document.createElement")
-            .flow_source_arg_string(0, ["script"])
-            .flow_property_write("src", FlowValueMatcher::Any)
-            .flow_property_write("textContent", FlowValueMatcher::Any)
-            .flow_member_call_config(
-                "setAttribute",
-                [
-                    (0, FlowValueMatcher::StaticExact(vec!["src".to_string()])),
-                    (1, FlowValueMatcher::Any),
-                ],
+            .matcher(MemberCallMatcher::chain("eval.call").static_string_arg(1))
+            .matcher(MemberCallMatcher::rooted_chain("globalThis.eval").static_string_arg(0))
+            .matcher(MemberCallMatcher::rooted_chain("window.eval").static_string_arg(0))
+            .matcher(CallMatcher::global("setTimeout").static_string_arg(0))
+            .matcher(CallMatcher::global("setInterval").static_string_arg(0))
+            .matcher(MemberCallMatcher::rooted_chain("globalThis.setTimeout").static_string_arg(0))
+            .matcher(MemberCallMatcher::rooted_chain("globalThis.setInterval").static_string_arg(0))
+            .matcher(MemberCallMatcher::rooted_chain("window.setTimeout").static_string_arg(0))
+            .matcher(MemberCallMatcher::rooted_chain("window.setInterval").static_string_arg(0))
+            .matcher(
+                ValueFlowMatcher::new("script insertion".to_string())
+                    .source_member_call("document.createElement")
+                    .source_arg_string(0, ["script"])
+                    .property_write("src", FlowValueMatcher::Any)
+                    .property_write("textContent", FlowValueMatcher::Any)
+                    .member_call_config(
+                        "setAttribute",
+                        [
+                            (0, FlowValueMatcher::StaticExact(vec!["src".to_string()])),
+                            (1, FlowValueMatcher::Any),
+                        ],
+                    )
+                    .member_call_config("append", [])
+                    .sink_member_call_arg_indices(
+                        [
+                            "document.head.appendChild",
+                            "document.body.appendChild",
+                            "document.documentElement.appendChild",
+                            "document.documentElement.insertBefore",
+                        ],
+                        [0],
+                    )
+                    .sink_member_call_any_arg([
+                        "document.head.append",
+                        "document.body.append",
+                        "document.body.prepend",
+                        "document.documentElement.append",
+                        "document.documentElement.prepend",
+                    ]),
             )
-            .flow_member_call_config("append", [])
-            .flow_sink_member_call_arg_indices(
-                [
-                    "document.head.appendChild",
-                    "document.body.appendChild",
-                    "document.documentElement.appendChild",
-                    "document.documentElement.insertBefore",
-                ],
-                [0],
-            )
-            .flow_sink_member_call_any_arg([
-                "document.head.append",
-                "document.body.append",
-                "document.body.prepend",
-                "document.documentElement.append",
-                "document.documentElement.prepend",
-            ])
             .implies(["disclosure.dynamic_code_or_remote_code"])
             .build(),
     ]

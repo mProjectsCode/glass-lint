@@ -1,4 +1,6 @@
-use glass_lint_core::rules::{Confidence, Rule, Rule as ApiRule, Severity as ApiSeverity};
+use glass_lint_core::rules::{
+    Confidence, MemberCallMatcher, Rule, Rule as ApiRule, Severity as ApiSeverity,
+};
 
 pub(super) fn rules() -> Vec<Rule> {
     vec![
@@ -36,10 +38,13 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("workspace")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_call("this.addCommand")
-            .arg_object_keys(0, ["editorCallback"])
-            .rooted_member_call("app.workspace.on")
-            .arg_string(0, ["file-menu", "editor-menu"])
+            .matcher(
+                MemberCallMatcher::chain("this.addCommand").arg_object_keys(0, ["editorCallback"]),
+            )
+            .matcher(
+                MemberCallMatcher::rooted_chain("app.workspace.on")
+                    .arg_string(0, ["file-menu", "editor-menu"]),
+            )
             .build(),
         ApiRule::builder("workspace.layout_persistence")
             .label("Reads or writes workspace layout persistence")
@@ -108,9 +113,11 @@ pub(super) fn rules() -> Vec<Rule> {
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
             .member_calls(["dialog.showOpenDialog", "dialog.showSaveDialog"])
-            .member_call("document.createElement")
-            .arg_string(0, ["input"])
-            .assigned_property("type", ["file"])
+            .matcher(
+                MemberCallMatcher::chain("document.createElement")
+                    .arg_string(0, ["input"])
+                    .assigned_property("type", ["file"]),
+            )
             .build(),
         ApiRule::builder("editor.extension")
             .label("Registers editor extensions")

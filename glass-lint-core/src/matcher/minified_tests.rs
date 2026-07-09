@@ -1,6 +1,6 @@
 use super::{
-    ApiClassificationResult, ApiRule, ApiSeverity, Confidence, classify_api_usage,
-    rule::ApiRuleBuilder,
+    ApiClassificationResult, ApiRule, ApiSeverity, CallMatcher, Confidence, MemberCallMatcher,
+    classify_api_usage, rule::ApiRuleBuilder,
 };
 
 fn rule(id: &str) -> ApiRuleBuilder {
@@ -256,8 +256,9 @@ fn minified_optional_chained_aliases_preserve_rooted_member_arguments() {
     assert_count(
         r#"var c=app.commands;c?.execute?.("open");"#,
         rule("test.optional")
-            .rooted_member_call("app.commands.execute")
-            .arg_string(0, ["open"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("app.commands.execute").arg_string(0, ["open"]),
+            )
             .build()
             .unwrap(),
         1,
@@ -281,8 +282,7 @@ fn minified_static_string_arguments_follow_aliases_but_reject_dynamic_strings() 
     assert_count(
         r#"var f=fetch,u="/x";f(u);f("/"+name);"#,
         rule("test.static-string-arg")
-            .global_call("fetch")
-            .static_string_call_arg(0)
+            .matcher(CallMatcher::global("fetch").static_string_arg(0))
             .build()
             .unwrap(),
         1,
@@ -294,8 +294,10 @@ fn minified_static_object_arguments_are_reused_for_key_matching() {
     assert_count(
         r#"var o={url:"/x",method:"GET"};client.request(o);"#,
         rule("test.object-arg")
-            .rooted_member_call("client.request")
-            .arg_object_keys(0, ["url", "method"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("client.request")
+                    .arg_object_keys(0, ["url", "method"]),
+            )
             .build()
             .unwrap(),
         1,
@@ -307,8 +309,10 @@ fn minified_sequence_object_arguments_are_reused_for_key_matching() {
     assert_count(
         r#"var o;(o={url:"/x",method:"GET"},client.request(o));"#,
         rule("test.sequence-object-arg")
-            .rooted_member_call("client.request")
-            .arg_object_keys(0, ["url", "method"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("client.request")
+                    .arg_object_keys(0, ["url", "method"]),
+            )
             .build()
             .unwrap(),
         1,
@@ -320,8 +324,9 @@ fn minified_rooted_expression_arguments_follow_one_letter_aliases() {
     assert_count(
         r#"var f=vault.file,o=app;o.open(f);"#,
         rule("test.rooted-arg")
-            .rooted_member_call("app.open")
-            .arg_rooted_exprs(0, ["vault.file"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("app.open").arg_rooted_exprs(0, ["vault.file"]),
+            )
             .build()
             .unwrap(),
         1,
@@ -333,8 +338,10 @@ fn minified_spread_object_arguments_do_not_satisfy_exact_key_matching() {
     assert_count(
         r#"var b={url:"/x"};client.request({...b,method:"GET"});"#,
         rule("test.spread-object-negative")
-            .rooted_member_call("client.request")
-            .arg_object_keys(0, ["url", "method"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("client.request")
+                    .arg_object_keys(0, ["url", "method"]),
+            )
             .build()
             .unwrap(),
         0,
@@ -370,8 +377,10 @@ fn minified_helper_argument_objects_flow_to_member_call_key_matching() {
     assert_count(
         r#"function n(x){client.request(x)}n({url:"/x",method:"GET"});"#,
         rule("test.helper-object-flow")
-            .rooted_member_call("client.request")
-            .arg_object_keys(0, ["url", "method"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("client.request")
+                    .arg_object_keys(0, ["url", "method"]),
+            )
             .build()
             .unwrap(),
         1,

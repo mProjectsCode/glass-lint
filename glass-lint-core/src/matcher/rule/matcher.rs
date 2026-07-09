@@ -11,6 +11,54 @@ pub struct ApiMatcher {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Matcher {
+    Call(CallMatcher),
+    MemberCall(MemberCallMatcher),
+    MemberRead(MemberReadMatcher),
+    Import(String),
+    StringLiteral(String),
+    Class(ClassMatcher),
+    Constructor(ConstructorMatcher),
+    ValueFlow(ValueFlowMatcher),
+}
+
+impl From<CallMatcher> for Matcher {
+    fn from(value: CallMatcher) -> Self {
+        Self::Call(value)
+    }
+}
+
+impl From<MemberCallMatcher> for Matcher {
+    fn from(value: MemberCallMatcher) -> Self {
+        Self::MemberCall(value)
+    }
+}
+
+impl From<MemberReadMatcher> for Matcher {
+    fn from(value: MemberReadMatcher) -> Self {
+        Self::MemberRead(value)
+    }
+}
+
+impl From<ClassMatcher> for Matcher {
+    fn from(value: ClassMatcher) -> Self {
+        Self::Class(value)
+    }
+}
+
+impl From<ConstructorMatcher> for Matcher {
+    fn from(value: ConstructorMatcher) -> Self {
+        Self::Constructor(value)
+    }
+}
+
+impl From<ValueFlowMatcher> for Matcher {
+    fn from(value: ValueFlowMatcher) -> Self {
+        Self::ValueFlow(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArgStringMatcher {
     pub index: usize,
     pub values: Vec<String>,
@@ -89,14 +137,91 @@ pub struct ValueFlowMatcher {
 }
 
 impl ValueFlowMatcher {
-    pub fn new(symbol: String) -> Self {
+    pub fn new(symbol: impl Into<String>) -> Self {
         Self {
-            symbol,
+            symbol: symbol.into(),
             sources: Vec::new(),
             configurations: Vec::new(),
             sinks: Vec::new(),
             all_configurations_required: false,
         }
+    }
+
+    pub fn source_member_call(mut self, member_call: impl Into<String>) -> Self {
+        self.sources.push(ValueFlowSource {
+            member_call: member_call.into(),
+            arg_strings: Vec::new(),
+        });
+        self
+    }
+
+    pub fn source_arg_string<I, S>(mut self, index: usize, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let Some(source) = self.sources.last_mut() else {
+            return self;
+        };
+        source.arg_strings.push(ArgStringMatcher {
+            index,
+            values: values.into_iter().map(Into::into).collect(),
+        });
+        self
+    }
+
+    pub fn property_write(mut self, property: impl Into<String>, value: FlowValueMatcher) -> Self {
+        self.configurations
+            .push(ValueFlowConfiguration::PropertyWrite {
+                property: property.into(),
+                value,
+            });
+        self
+    }
+
+    pub fn member_call_config<I>(mut self, member: impl Into<String>, args: I) -> Self
+    where
+        I: IntoIterator<Item = (usize, FlowValueMatcher)>,
+    {
+        self.configurations
+            .push(ValueFlowConfiguration::MemberCall {
+                member: member.into(),
+                args: args
+                    .into_iter()
+                    .map(|(index, value)| FlowCallArgMatcher { index, value })
+                    .collect(),
+            });
+        self
+    }
+
+    pub fn require_all_configurations(mut self) -> Self {
+        self.all_configurations_required = true;
+        self
+    }
+
+    pub fn sink_member_call_arg_indices<I, S, J>(mut self, member_calls: I, indices: J) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+        J: IntoIterator<Item = usize>,
+    {
+        self.sinks.push(ValueFlowSink {
+            member_calls: member_calls.into_iter().map(Into::into).collect(),
+            args: FlowSinkArgs::Indices(indices.into_iter().collect()),
+        });
+        self
+    }
+
+    pub fn sink_member_call_any_arg<I, S>(mut self, member_calls: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.sinks.push(ValueFlowSink {
+            member_calls: member_calls.into_iter().map(Into::into).collect(),
+            args: FlowSinkArgs::Any,
+        });
+        self
     }
 
     pub fn evidence_symbol(&self) -> String {
@@ -112,28 +237,50 @@ pub struct CallMatcher {
 }
 
 impl CallMatcher {
-    pub fn unqualified(name: String) -> Self {
+    pub fn unqualified(name: impl Into<String>) -> Self {
         Self {
-            name,
+            name: name.into(),
             provenance: CallProvenance::Any,
             arg_strings: Vec::new(),
         }
     }
 
-    pub fn global(name: String) -> Self {
+    pub fn global(name: impl Into<String>) -> Self {
         Self {
-            name,
+            name: name.into(),
             provenance: CallProvenance::Global,
             arg_strings: Vec::new(),
         }
     }
 
-    pub fn module_export(module: String, export: String) -> Self {
+    pub fn module_export(module: impl Into<String>, export: impl Into<String>) -> Self {
         Self {
-            name: export,
-            provenance: CallProvenance::ModuleExport { module },
+            name: export.into(),
+            provenance: CallProvenance::ModuleExport {
+                module: module.into(),
+            },
             arg_strings: Vec::new(),
         }
+    }
+
+    pub fn static_string_arg(mut self, index: usize) -> Self {
+        self.arg_strings.push(ArgStringMatcher {
+            index,
+            values: Vec::new(),
+        });
+        self
+    }
+
+    pub fn arg_string<I, S>(mut self, index: usize, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.arg_strings.push(ArgStringMatcher {
+            index,
+            values: values.into_iter().map(Into::into).collect(),
+        });
+        self
     }
 
     pub fn evidence_symbol(&self) -> String {
@@ -166,24 +313,26 @@ pub struct ConstructorMatcher {
 }
 
 impl ConstructorMatcher {
-    pub fn unqualified(name: String) -> Self {
+    pub fn unqualified(name: impl Into<String>) -> Self {
         Self {
-            name,
+            name: name.into(),
             provenance: CallProvenance::Any,
         }
     }
 
-    pub fn global(name: String) -> Self {
+    pub fn global(name: impl Into<String>) -> Self {
         Self {
-            name,
+            name: name.into(),
             provenance: CallProvenance::Global,
         }
     }
 
-    pub fn module_export(module: String, export: String) -> Self {
+    pub fn module_export(module: impl Into<String>, export: impl Into<String>) -> Self {
         Self {
-            name: export,
-            provenance: CallProvenance::ModuleExport { module },
+            name: export.into(),
+            provenance: CallProvenance::ModuleExport {
+                module: module.into(),
+            },
         }
     }
 
@@ -214,9 +363,9 @@ pub struct MemberCallMatcher {
 }
 
 impl MemberCallMatcher {
-    pub fn chain(chain: String) -> Self {
+    pub fn chain(chain: impl Into<String>) -> Self {
         Self {
-            chain,
+            chain: chain.into(),
             provenance: MemberCallProvenance::Any,
             arg_strings: Vec::new(),
             arg_object_keys: Vec::new(),
@@ -225,9 +374,9 @@ impl MemberCallMatcher {
         }
     }
 
-    pub fn rooted_chain(chain: String) -> Self {
+    pub fn rooted_chain(chain: impl Into<String>) -> Self {
         Self {
-            chain,
+            chain: chain.into(),
             provenance: MemberCallProvenance::Rooted,
             arg_strings: Vec::new(),
             arg_object_keys: Vec::new(),
@@ -236,15 +385,73 @@ impl MemberCallMatcher {
         }
     }
 
-    pub fn module_member(module: String, member: String) -> Self {
+    pub fn module_member(module: impl Into<String>, member: impl Into<String>) -> Self {
         Self {
-            chain: member,
-            provenance: MemberCallProvenance::ModuleNamespace { module },
+            chain: member.into(),
+            provenance: MemberCallProvenance::ModuleNamespace {
+                module: module.into(),
+            },
             arg_strings: Vec::new(),
             arg_object_keys: Vec::new(),
             arg_rooted_exprs: Vec::new(),
             assigned_properties: Vec::new(),
         }
+    }
+
+    pub fn arg_string<I, S>(mut self, index: usize, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.arg_strings.push(ArgStringMatcher {
+            index,
+            values: values.into_iter().map(Into::into).collect(),
+        });
+        self
+    }
+
+    pub fn static_string_arg(mut self, index: usize) -> Self {
+        self.arg_strings.push(ArgStringMatcher {
+            index,
+            values: Vec::new(),
+        });
+        self
+    }
+
+    pub fn arg_object_keys<I, S>(mut self, index: usize, keys: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.arg_object_keys.push(ArgObjectKeyMatcher {
+            index,
+            keys: keys.into_iter().map(Into::into).collect(),
+        });
+        self
+    }
+
+    pub fn arg_rooted_exprs<I, S>(mut self, index: usize, chains: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.arg_rooted_exprs.push(ArgRootedExprMatcher {
+            index,
+            chains: chains.into_iter().map(Into::into).collect(),
+        });
+        self
+    }
+
+    pub fn assigned_property<I, S>(mut self, property: impl Into<String>, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.assigned_properties.push(AssignedPropertyMatcher {
+            property: property.into(),
+            values: values.into_iter().map(Into::into).collect(),
+        });
+        self
     }
 
     pub fn evidence_symbol(&self) -> String {
@@ -359,6 +566,19 @@ impl ClassMatcher {
 }
 
 impl ApiMatcher {
+    pub fn push(&mut self, matcher: Matcher) {
+        match matcher {
+            Matcher::Call(value) => self.calls.push(value),
+            Matcher::MemberCall(value) => self.member_calls.push(value),
+            Matcher::MemberRead(value) => self.member_reads.push(value),
+            Matcher::Import(value) => self.imports.push(value),
+            Matcher::StringLiteral(value) => self.string_literals.push(value),
+            Matcher::Class(value) => self.classes.push(value),
+            Matcher::Constructor(value) => self.constructors.push(value),
+            Matcher::ValueFlow(value) => self.value_flows.push(value),
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.calls.is_empty()
             && self.member_calls.is_empty()

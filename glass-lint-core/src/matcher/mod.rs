@@ -11,8 +11,9 @@ mod minified_tests;
 
 pub use result::{ApiCapability, ApiClassificationResult, Disclosure};
 pub use rule::{
-    ApiCatalogError, ApiCategory, ApiRule, ApiRuleBuildError, ApiSeverity, Confidence,
-    FlowValueMatcher,
+    ApiCatalogError, ApiCategory, ApiRule, ApiRuleBuildError, ApiSeverity, CallMatcher,
+    ClassMatcher, Confidence, ConstructorMatcher, FlowValueMatcher, Matcher, MemberCallMatcher,
+    MemberReadMatcher, ValueFlowMatcher,
 };
 
 use symbol_index::SymbolIndex;
@@ -152,8 +153,7 @@ mod tests {
     #[test]
     fn matches_static_string_arguments_but_rejects_dynamic_strings() {
         let rules = [rule("test.fetch-url")
-            .global_call("fetch")
-            .static_string_call_arg(0)
+            .matcher(CallMatcher::global("fetch").static_string_arg(0))
             .build()
             .unwrap()];
         let result = classify("fetch('/literal'); fetch('/' + dynamic);", &rules);
@@ -164,8 +164,9 @@ mod tests {
     #[test]
     fn tracks_rooted_expression_arguments_through_aliases() {
         let rules = [rule("test.arg-flow")
-            .rooted_member_call("app.open")
-            .arg_rooted_exprs(0, ["vault.file"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("app.open").arg_rooted_exprs(0, ["vault.file"]),
+            )
             .build()
             .unwrap()];
         let result = classify(
@@ -201,8 +202,9 @@ mod tests {
     #[test]
     fn target_matches_optional_chained_calls_with_static_arguments() {
         let rules = [rule("test.optional")
-            .rooted_member_call("app.commands.execute")
-            .arg_string(0, ["open"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("app.commands.execute").arg_string(0, ["open"]),
+            )
             .build()
             .unwrap()];
         let result = classify(
@@ -227,8 +229,10 @@ mod tests {
     #[test]
     fn target_reuses_constant_object_arguments_for_key_matching() {
         let rules = [rule("test.object-arg")
-            .rooted_member_call("client.request")
-            .arg_object_keys(0, ["url", "method"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("client.request")
+                    .arg_object_keys(0, ["url", "method"]),
+            )
             .build()
             .unwrap()];
         let result = classify(
@@ -242,11 +246,13 @@ mod tests {
     #[test]
     fn tracks_configured_values_into_later_member_sinks() {
         let rules = [rule("test.flow")
-            .value_flow("script insertion")
-            .flow_source_member_call("document.createElement")
-            .flow_source_arg_string(0, ["script"])
-            .flow_property_write("src", FlowValueMatcher::Any)
-            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
+            .matcher(
+                ValueFlowMatcher::new("script insertion".to_string())
+                    .source_member_call("document.createElement")
+                    .source_arg_string(0, ["script"])
+                    .property_write("src", FlowValueMatcher::Any)
+                    .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+            )
             .build()
             .unwrap()];
         let result = classify(
@@ -260,11 +266,13 @@ mod tests {
     #[test]
     fn value_flow_respects_reassignment_and_order() {
         let rules = [rule("test.flow")
-            .value_flow("script insertion")
-            .flow_source_member_call("document.createElement")
-            .flow_source_arg_string(0, ["script"])
-            .flow_property_write("src", FlowValueMatcher::Any)
-            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
+            .matcher(
+                ValueFlowMatcher::new("script insertion".to_string())
+                    .source_member_call("document.createElement")
+                    .source_arg_string(0, ["script"])
+                    .property_write("src", FlowValueMatcher::Any)
+                    .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+            )
             .build()
             .unwrap()];
         let result = classify(
@@ -278,17 +286,19 @@ mod tests {
     #[test]
     fn value_flow_supports_member_call_configuration_and_helper_sinks() {
         let rules = [rule("test.flow")
-            .value_flow("script insertion")
-            .flow_source_member_call("document.createElement")
-            .flow_source_arg_string(0, ["script"])
-            .flow_member_call_config(
-                "setAttribute",
-                [
-                    (0, FlowValueMatcher::StaticExact(vec!["src".into()])),
-                    (1, FlowValueMatcher::Any),
-                ],
+            .matcher(
+                ValueFlowMatcher::new("script insertion".to_string())
+                    .source_member_call("document.createElement")
+                    .source_arg_string(0, ["script"])
+                    .member_call_config(
+                        "setAttribute",
+                        [
+                            (0, FlowValueMatcher::StaticExact(vec!["src".into()])),
+                            (1, FlowValueMatcher::Any),
+                        ],
+                    )
+                    .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
             )
-            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
             .build()
             .unwrap()];
         let result = classify(
@@ -303,11 +313,13 @@ mod tests {
     #[test]
     fn value_flow_supports_const_arrow_helper_sinks() {
         let rules = [rule("test.flow")
-            .value_flow("script insertion")
-            .flow_source_member_call("document.createElement")
-            .flow_source_arg_string(0, ["script"])
-            .flow_property_write("src", FlowValueMatcher::Any)
-            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
+            .matcher(
+                ValueFlowMatcher::new("script insertion".to_string())
+                    .source_member_call("document.createElement")
+                    .source_arg_string(0, ["script"])
+                    .property_write("src", FlowValueMatcher::Any)
+                    .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+            )
             .build()
             .unwrap()];
         let result = classify(
@@ -322,14 +334,16 @@ mod tests {
     #[test]
     fn value_flow_static_prefix_requires_static_values() {
         let rules = [rule("test.flow")
-            .value_flow("remote element")
-            .flow_source_member_call("document.createElement")
-            .flow_source_arg_string(0, ["img"])
-            .flow_property_write(
-                "src",
-                FlowValueMatcher::StaticPrefix(vec!["https://".into(), "http://".into()]),
+            .matcher(
+                ValueFlowMatcher::new("remote element".to_string())
+                    .source_member_call("document.createElement")
+                    .source_arg_string(0, ["img"])
+                    .property_write(
+                        "src",
+                        FlowValueMatcher::StaticPrefix(vec!["https://".into(), "http://".into()]),
+                    )
+                    .sink_member_call_arg_indices(["document.body.appendChild"], [0]),
             )
-            .flow_sink_member_call_arg_indices(["document.body.appendChild"], [0])
             .build()
             .unwrap()];
         let result = classify(
@@ -345,19 +359,21 @@ mod tests {
     #[test]
     fn value_flow_can_require_all_configurations() {
         let rules = [rule("test.flow")
-            .value_flow("remote stylesheet")
-            .flow_source_member_call("document.createElement")
-            .flow_source_arg_string(0, ["link"])
-            .flow_property_write(
-                "rel",
-                FlowValueMatcher::StaticExact(vec!["stylesheet".into()]),
+            .matcher(
+                ValueFlowMatcher::new("remote stylesheet".to_string())
+                    .source_member_call("document.createElement")
+                    .source_arg_string(0, ["link"])
+                    .property_write(
+                        "rel",
+                        FlowValueMatcher::StaticExact(vec!["stylesheet".into()]),
+                    )
+                    .property_write(
+                        "href",
+                        FlowValueMatcher::StaticPrefix(vec!["https://".into()]),
+                    )
+                    .require_all_configurations()
+                    .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
             )
-            .flow_property_write(
-                "href",
-                FlowValueMatcher::StaticPrefix(vec!["https://".into()]),
-            )
-            .flow_requires_all_configurations()
-            .flow_sink_member_call_arg_indices(["document.head.appendChild"], [0])
             .build()
             .unwrap()];
         let result = classify(

@@ -1,4 +1,6 @@
-use glass_lint_core::rules::{Confidence, Rule, Rule as ApiRule, Severity as ApiSeverity};
+use glass_lint_core::rules::{
+    Confidence, MemberCallMatcher, Rule, Rule as ApiRule, Severity as ApiSeverity,
+};
 
 pub(super) fn rules() -> Vec<Rule> {
     vec![
@@ -153,38 +155,37 @@ pub(super) fn rules() -> Vec<Rule> {
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .rooted_member_calls(["app.metadataCache.on"])
-            .arg_string(0, ["changed", "deleted", "resolved"])
+            .matcher(
+                MemberCallMatcher::rooted_chain("app.metadataCache.on")
+                    .arg_string(0, ["changed", "deleted", "resolved"]),
+            )
             .build(),
         ApiRule::builder("metadata.traversal")
             .label("Traverses metadata cache maps or cached metadata for many files")
             .category("metadata")
             .severity(ApiSeverity::Info)
             .confidence(Confidence::Medium)
-            .member_call("Object.entries")
-            .arg_rooted_exprs(
+            .matcher(MemberCallMatcher::chain("Object.entries").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
                     "app.metadataCache.unresolvedLinks",
                 ],
-            )
-            .member_call("Object.keys")
-            .arg_rooted_exprs(
+            ))
+            .matcher(MemberCallMatcher::chain("Object.keys").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
                     "app.metadataCache.unresolvedLinks",
                 ],
-            )
-            .member_call("Object.values")
-            .arg_rooted_exprs(
+            ))
+            .matcher(MemberCallMatcher::chain("Object.values").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
                     "app.metadataCache.unresolvedLinks",
                 ],
-            )
+            ))
             .build(),
         ApiRule::builder("metadata.extraction")
             .label("Extracts tags, links, embeds, blocks, or headings from metadata")

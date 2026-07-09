@@ -4,11 +4,10 @@ mod taxonomy;
 
 pub use error::{ApiCatalogError, ApiRuleBuildError};
 pub use matcher::{
-    ApiMatcher, ArgObjectKeyMatcher, ArgRootedExprMatcher, ArgStringMatcher,
-    AssignedPropertyMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
-    FlowCallArgMatcher, FlowSinkArgs, FlowValueMatcher, MemberCallMatcher, MemberCallProvenance,
+    ApiMatcher, ArgStringMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
+    FlowSinkArgs, FlowValueMatcher, Matcher, MemberCallMatcher, MemberCallProvenance,
     MemberReadMatcher, MemberReadProvenance, ValueFlowConfiguration, ValueFlowMatcher,
-    ValueFlowSink, ValueFlowSource, canonical_rooted_chain,
+    canonical_rooted_chain,
 };
 pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
 
@@ -51,6 +50,11 @@ pub struct ApiRuleBuilder {
 }
 
 impl ApiRuleBuilder {
+    pub fn matcher(mut self, matcher: impl Into<Matcher>) -> Self {
+        self.matcher.push(matcher.into());
+        self
+    }
+
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
@@ -96,21 +100,6 @@ impl ApiRuleBuilder {
         self
     }
 
-    pub fn global_call(mut self, call: impl Into<String>) -> Self {
-        self.matcher.calls.push(CallMatcher::global(call.into()));
-        self
-    }
-
-    pub fn static_string_call_arg(mut self, index: usize) -> Self {
-        if let Some(call) = self.matcher.calls.last_mut() {
-            call.arg_strings.push(ArgStringMatcher {
-                index,
-                values: Vec::new(),
-            });
-        }
-        self
-    }
-
     pub fn module_calls<I, S>(mut self, module: impl Into<String>, exports: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -151,191 +140,6 @@ impl ApiRuleBuilder {
                 .map(Into::into)
                 .map(MemberCallMatcher::rooted_chain),
         );
-        self
-    }
-
-    pub fn rooted_member_call(mut self, member_call: impl Into<String>) -> Self {
-        self.matcher
-            .member_calls
-            .push(MemberCallMatcher::rooted_chain(member_call.into()));
-        self
-    }
-
-    pub fn member_call(mut self, member_call: impl Into<String>) -> Self {
-        self.matcher
-            .member_calls
-            .push(MemberCallMatcher::chain(member_call.into()));
-        self
-    }
-
-    pub fn arg_string<I, S>(mut self, index: usize, values: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        if let Some(call) = self.matcher.member_calls.last_mut() {
-            call.arg_strings.push(ArgStringMatcher {
-                index,
-                values: values.into_iter().map(Into::into).collect(),
-            });
-        }
-        self
-    }
-
-    /// Requires the selected member call argument to be any statically known string.
-    pub fn static_string_arg(mut self, index: usize) -> Self {
-        if let Some(call) = self.matcher.member_calls.last_mut() {
-            call.arg_strings.push(ArgStringMatcher {
-                index,
-                values: Vec::new(),
-            });
-        }
-        self
-    }
-
-    pub fn arg_object_keys<I, S>(mut self, index: usize, keys: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        if let Some(call) = self.matcher.member_calls.last_mut() {
-            call.arg_object_keys.push(ArgObjectKeyMatcher {
-                index,
-                keys: keys.into_iter().map(Into::into).collect(),
-            });
-        }
-        self
-    }
-
-    pub fn arg_rooted_exprs<I, S>(mut self, index: usize, chains: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        if let Some(call) = self.matcher.member_calls.last_mut() {
-            call.arg_rooted_exprs.push(ArgRootedExprMatcher {
-                index,
-                chains: chains.into_iter().map(Into::into).collect(),
-            });
-        }
-        self
-    }
-
-    pub fn assigned_property<I, S>(mut self, property: impl Into<String>, values: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        if let Some(call) = self.matcher.member_calls.last_mut() {
-            call.assigned_properties.push(AssignedPropertyMatcher {
-                property: property.into(),
-                values: values.into_iter().map(Into::into).collect(),
-            });
-        }
-        self
-    }
-
-    pub fn value_flow(mut self, symbol: impl Into<String>) -> Self {
-        self.matcher
-            .value_flows
-            .push(ValueFlowMatcher::new(symbol.into()));
-        self
-    }
-
-    pub fn flow_source_member_call(mut self, member_call: impl Into<String>) -> Self {
-        if let Some(flow) = self.matcher.value_flows.last_mut() {
-            flow.sources.push(ValueFlowSource {
-                member_call: member_call.into(),
-                arg_strings: Vec::new(),
-            });
-        }
-        self
-    }
-
-    pub fn flow_source_arg_string<I, S>(mut self, index: usize, values: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        if let Some(source) = self
-            .matcher
-            .value_flows
-            .last_mut()
-            .and_then(|flow| flow.sources.last_mut())
-        {
-            source.arg_strings.push(ArgStringMatcher {
-                index,
-                values: values.into_iter().map(Into::into).collect(),
-            });
-        }
-        self
-    }
-
-    pub fn flow_property_write(
-        mut self,
-        property: impl Into<String>,
-        value: FlowValueMatcher,
-    ) -> Self {
-        if let Some(flow) = self.matcher.value_flows.last_mut() {
-            flow.configurations
-                .push(ValueFlowConfiguration::PropertyWrite {
-                    property: property.into(),
-                    value,
-                });
-        }
-        self
-    }
-
-    pub fn flow_requires_all_configurations(mut self) -> Self {
-        if let Some(flow) = self.matcher.value_flows.last_mut() {
-            flow.all_configurations_required = true;
-        }
-        self
-    }
-
-    pub fn flow_member_call_config<I>(mut self, member: impl Into<String>, args: I) -> Self
-    where
-        I: IntoIterator<Item = (usize, FlowValueMatcher)>,
-    {
-        if let Some(flow) = self.matcher.value_flows.last_mut() {
-            flow.configurations
-                .push(ValueFlowConfiguration::MemberCall {
-                    member: member.into(),
-                    args: args
-                        .into_iter()
-                        .map(|(index, value)| FlowCallArgMatcher { index, value })
-                        .collect(),
-                });
-        }
-        self
-    }
-
-    pub fn flow_sink_member_call_arg_indices<I, S, J>(mut self, member_calls: I, indices: J) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-        J: IntoIterator<Item = usize>,
-    {
-        if let Some(flow) = self.matcher.value_flows.last_mut() {
-            flow.sinks.push(ValueFlowSink {
-                member_calls: member_calls.into_iter().map(Into::into).collect(),
-                args: FlowSinkArgs::Indices(indices.into_iter().collect()),
-            });
-        }
-        self
-    }
-
-    pub fn flow_sink_member_call_any_arg<I, S>(mut self, member_calls: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        if let Some(flow) = self.matcher.value_flows.last_mut() {
-            flow.sinks.push(ValueFlowSink {
-                member_calls: member_calls.into_iter().map(Into::into).collect(),
-                args: FlowSinkArgs::Any,
-            });
-        }
         self
     }
 
