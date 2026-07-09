@@ -13,7 +13,7 @@ class Plugin {
     const file = this.app.workspace.getActiveFile(); // @expect-error glass-lint rule=obsidian:workspace.active_file message_id=detected
     const text = await this.app.vault.read(file); // @expect-error glass-lint rule=obsidian:vault.read message_id=detected
     this.app.vault.getMarkdownFiles(); // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
-    const cache = this.app.metadataCache.getFileCache(file); // @expect-error glass-lint rule=obsidian:metadata.read message_id=detected count=2
+    const cache = this.app.metadataCache.getFileCache(file); // @expect-error glass-lint rule=obsidian:metadata.read message_id=detected
     cache.frontmatter; // @expect-error glass-lint rule=obsidian:metadata.frontmatter message_id=detected
     MarkdownRenderer.render(this.app, text, this.containerEl, "", this); // @expect-error glass-lint rule=obsidian:editor.markdown_processing message_id=detected
   }

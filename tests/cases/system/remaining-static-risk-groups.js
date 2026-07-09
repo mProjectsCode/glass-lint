@@ -5,7 +5,7 @@ import { dialog } from "electron";
 import { requestUrl } from "obsidian";
 dialog.showOpenDialog({ properties: ["openFile"] }); // @expect-error glass-lint rule=obsidian:ui.file_dialog message_id=detected
 this.app.workspace.requestSaveLayout(); // @expect-error glass-lint rule=obsidian:workspace.layout_persistence message_id=detected
-this.app.plugins.getPlugin("dataview"); // @expect-error glass-lint rule=obsidian:plugins.internal_access message_id=detected count=2
+this.app.plugins.getPlugin("dataview"); // @expect-error glass-lint rule=obsidian:plugins.internal_access message_id=detected
 this.app.metadataCache.on("changed", () => {}); // @expect-error glass-lint rule=obsidian:metadata.events message_id=detected
 const file = this.app.workspace.getActiveFile();
 const cache = this.app.metadataCache.getFileCache(file);

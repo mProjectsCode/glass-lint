@@ -114,6 +114,7 @@ impl Linter {
                 .collect();
             ranges.sort_by_key(|range| (range.start.line, range.start.column));
             ranges.dedup();
+            remove_contained_ranges(&mut ranges);
             if ranges.is_empty() {
                 ranges.push(source_range(source, 0, 0));
             }
@@ -176,6 +177,31 @@ fn evidence_ranges(source_map: &Lrc<SourceMap>, spans: &[Span]) -> Vec<SourceRan
         .filter(|span| !span.is_dummy())
         .map(|span| source_range_from_span(source_map, *span))
         .collect()
+}
+
+fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
+    let mut keep = vec![true; ranges.len()];
+    for (index, range) in ranges.iter().enumerate() {
+        if ranges
+            .iter()
+            .enumerate()
+            .any(|(other_index, other)| other_index != index && contains_range(other, range))
+        {
+            keep[index] = false;
+        }
+    }
+
+    let mut index = 0;
+    ranges.retain(|_| {
+        let keep_range = keep[index];
+        index += 1;
+        keep_range
+    });
+}
+
+fn contains_range(outer: &SourceRange, inner: &SourceRange) -> bool {
+    (outer.start.line, outer.start.column) <= (inner.start.line, inner.start.column)
+        && (outer.end.line, outer.end.column) >= (inner.end.line, inner.end.column)
 }
 
 fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) -> SourceRange {
@@ -243,6 +269,26 @@ mod tests {
             "input.js",
         );
         assert_eq!(report.findings.len(), 1);
+    }
+
+    #[test]
+    fn collapses_contained_ranges_for_same_rule() {
+        let rule = ApiRule::builder("metadata.read")
+            .label("Reads metadata")
+            .category("metadata")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .rooted_member_reads(["app.metadataCache"])
+            .rooted_member_calls(["app.metadataCache.getFileCache"])
+            .build()
+            .unwrap();
+        let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+        let report =
+            Linter::new(catalog).lint("this.app.metadataCache.getFileCache(file);", "input.js");
+
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].range.start.column, 1);
+        assert_eq!(report.findings[0].range.end.column, 36);
     }
 
     #[test]

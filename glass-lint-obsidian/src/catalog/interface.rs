@@ -38,7 +38,7 @@ pub(super) fn rules() -> Vec<Rule> {
             .confidence(Confidence::Medium)
             .member_call("this.addCommand")
             .arg_object_keys(0, ["editorCallback"])
-            .member_call("app.workspace.on")
+            .rooted_member_call("app.workspace.on")
             .arg_string(0, ["file-menu", "editor-menu"])
             .build(),
         ApiRule::builder("workspace.layout_persistence")
