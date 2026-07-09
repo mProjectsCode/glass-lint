@@ -50,13 +50,6 @@ impl ApiClassificationResult {
     pub fn capabilities(&self) -> &[ApiCapability] {
         &self.capabilities
     }
-
-    #[cfg(test)]
-    pub fn has_capability(&self, id: &str) -> bool {
-        self.capabilities
-            .iter()
-            .any(|capability| capability.id == id)
-    }
 }
 
 impl ApiMatchKind {

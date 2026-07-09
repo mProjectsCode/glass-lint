@@ -102,14 +102,25 @@ fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
         if let Some(rest) = directive.strip_prefix("@expect-error-after ") {
             let line_number = previous_code_line(&lines, index)
                 .with_context(|| format!("{}:{} has no previous code line", case.id, index + 1))?;
-            add_expectation(&mut case, rest, line_number)?;
+            add_expectation(&mut case, rest, line_number, true)?;
         } else if let Some(rest) = directive.strip_prefix("@expect-error ") {
             let line_number = if line[..comment_start].trim().is_empty() {
                 (index + 2) as u32
             } else {
                 (index + 1) as u32
             };
-            add_expectation(&mut case, rest, line_number)?;
+            add_expectation(&mut case, rest, line_number, true)?;
+        } else if let Some(rest) = directive.strip_prefix("@expect-no-error-after ") {
+            let line_number = previous_code_line(&lines, index)
+                .with_context(|| format!("{}:{} has no previous code line", case.id, index + 1))?;
+            add_expectation(&mut case, rest, line_number, false)?;
+        } else if let Some(rest) = directive.strip_prefix("@expect-no-error ") {
+            let line_number = if line[..comment_start].trim().is_empty() {
+                (index + 2) as u32
+            } else {
+                (index + 1) as u32
+            };
+            add_expectation(&mut case, rest, line_number, false)?;
         }
     }
 
@@ -129,6 +140,8 @@ fn strip_harness_comments(source: &str) -> String {
                 || directive.starts_with("@tool ")
                 || directive.starts_with("@expect-error ")
                 || directive.starts_with("@expect-error-after ")
+                || directive.starts_with("@expect-no-error ")
+                || directive.starts_with("@expect-no-error-after ")
             {
                 format!(
                     "{}{}",
@@ -209,7 +222,7 @@ fn parse_tool_directive(case: &mut Case, rest: &str) -> Result<()> {
     Ok(())
 }
 
-fn add_expectation(case: &mut Case, rest: &str, line: u32) -> Result<()> {
+fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Result<()> {
     let (tool, fields) = rest
         .split_once(' ')
         .with_context(|| format!("invalid @expect-error directive `{rest}`"))?;
@@ -241,7 +254,11 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32) -> Result<()> {
     if diagnostic.rule_id.is_empty() {
         bail!("@expect-error for {tool} must specify rule=");
     }
-    expectation.required.push(diagnostic);
+    if required {
+        expectation.required.push(diagnostic);
+    } else {
+        expectation.forbidden.push(diagnostic);
+    }
     Ok(())
 }
 
@@ -303,5 +320,23 @@ globalThis.setTimeout('run()', 10);
         assert_eq!(case.id, "system/timer");
         assert_eq!(case.description, "Dynamic code");
         assert_eq!(case.tools["glass-lint"].required[0].line, Some(4));
+    }
+
+    #[test]
+    fn parses_forbidden_diagnostic() {
+        let source = "\
+// @tool glass-lint rules=obsidian:network.browser
+fetch('/remote'); // @expect-error glass-lint rule=obsidian:network.browser
+function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=obsidian:network.browser
+";
+        let case = parse_case(
+            Path::new("tests/cases"),
+            Path::new("tests/cases/network/precision.js"),
+            source.into(),
+        )
+        .unwrap();
+
+        assert_eq!(case.tools["glass-lint"].forbidden.len(), 1);
+        assert_eq!(case.tools["glass-lint"].forbidden[0].line, Some(3));
     }
 }

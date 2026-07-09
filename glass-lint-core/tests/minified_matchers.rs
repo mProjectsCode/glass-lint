@@ -1,41 +1,28 @@
-use super::{
-    ApiClassificationResult, ApiRule, ApiSeverity, CallMatcher, Confidence, Matcher,
-    MemberCallMatcher, classify_api_usage, rule::ApiRuleBuilder,
+//! Regression coverage for compact and bundled JavaScript.
+//!
+//! These tests exercise the public linting API so matcher behavior is verified
+//! exactly as provider crates consume it.
+
+use glass_lint_core::{
+    Linter, RuleCatalog,
+    rules::{Builder, CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity},
 };
 
-fn rule(id: &str) -> ApiRuleBuilder {
-    ApiRule::builder(id)
+fn rule(id: &str) -> Builder {
+    Rule::builder(id)
         .label(id)
         .category("test")
-        .severity(ApiSeverity::Info)
+        .severity(Severity::Info)
         .confidence(Confidence::High)
 }
 
-fn classify(source: &str, rules: &[ApiRule]) -> ApiClassificationResult {
-    let parsed = crate::parse(source, "input.js").unwrap();
-    classify_api_usage(Some(&parsed.program), rules)
-}
-
-fn evidence_count(result: &ApiClassificationResult, id: &str) -> u32 {
-    result
-        .capabilities()
-        .iter()
-        .find(|capability| capability.id() == id)
-        .map(|capability| {
-            capability
-                .evidence()
-                .iter()
-                .map(|evidence| evidence.count())
-                .sum()
-        })
-        .unwrap_or(0)
-}
-
-fn assert_count(source: &str, rule: ApiRule, expected: u32) {
-    let id = rule.id.clone();
-    let rules = [rule];
-    let result = classify(source, &rules);
-    assert_eq!(evidence_count(&result, &id), expected, "{source}");
+fn assert_count(source: &str, rule: Rule, expected: usize) {
+    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+    let count = Linter::new(catalog)
+        .lint(source, "minified.js")
+        .findings
+        .len();
+    assert_eq!(count, expected, "{source}");
 }
 
 #[test]

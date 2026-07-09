@@ -53,4 +53,13 @@ fetch('/after');
 // @expect-error-after glass-lint rule=obsidian:network.browser message_id=detected
 ```
 
+Use `@expect-no-error` (or `@expect-no-error-after`) to assert that a selected rule
+does not report a particular lookalike while allowing other expected diagnostics in
+the same snippet:
+
+```js
+fetch('/remote'); // @expect-error glass-lint rule=obsidian:network.browser
+function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=obsidian:network.browser
+```
+
 Supported assertion fields are `rule`, `message_id`, `severity`, `count`, `line`, `column`, and `message`. Use `count=any`, `line=any`, or `column=any` only when the old behavior being preserved is aggregate capability presence rather than exact evidence shape or location. Prefer one assertion comment per expected diagnostic and keep fields as specific as needed for precision. A case with configured rules and no assertions verifies that the selected tool produces no diagnostics.

@@ -114,11 +114,15 @@ fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
         }
     }
     for finding in findings {
-        if !expectation
+        let is_required = expectation
             .required
             .iter()
-            .any(|expected| matches(finding, expected))
-        {
+            .any(|expected| matches(finding, expected));
+        let is_forbidden = expectation
+            .forbidden
+            .iter()
+            .any(|forbidden| matches(finding, forbidden));
+        if !is_required && !is_forbidden {
             errors.push(format!(
                 "unexpected {}:{} at {:?}",
                 finding.rule_id, finding.message_id, finding.range
@@ -172,6 +176,24 @@ mod tests {
             rules: vec![],
             required: vec![],
             forbidden: vec![],
+        };
+        assert_eq!(compare(&[finding()], &expected).len(), 1);
+    }
+
+    #[test]
+    fn reports_forbidden_diagnostic_once() {
+        let expected = ToolExpectation {
+            rules: vec![],
+            required: vec![],
+            forbidden: vec![DiagnosticExpectation {
+                rule_id: "test:a.b".into(),
+                message_id: None,
+                severity: None,
+                count: Some(1),
+                line: None,
+                column: None,
+                message: None,
+            }],
         };
         assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
