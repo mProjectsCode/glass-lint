@@ -3,25 +3,25 @@ use std::collections::{BTreeMap, BTreeSet};
 use swc_common::Span;
 use swc_ecma_ast::{
     AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, Expr, ExprOrSpread, FnDecl, Function,
-    MemberExpr, Pat, Program, SimpleAssignTarget, VarDeclarator,
+    MemberExpr, OptChainBase, OptChainExpr, Pat, Program, SimpleAssignTarget, VarDeclarator,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use super::alias::AliasInfo;
-use super::ast::{binding_ident_name, member_chain, member_prop_name};
-use super::{ApiEvidence, ApiMatchKind};
-use crate::matcher::rule::{
+use super::super::result::{ApiEvidence, ApiMatchKind};
+use super::super::rule::{
     ArgStringMatcher, FlowMatcher, FlowRequirement, FlowSinkArgs, FlowValueMatcher,
 };
+use super::ast::{binding_ident_name, member_chain, member_prop_name};
+use super::scope::ScopeGraph;
 
 pub fn collect(
     program: &Program,
-    aliases: &AliasInfo,
+    aliases: &ScopeGraph,
     rules: &[(usize, usize, FlowMatcher)],
     rule_count: usize,
 ) -> Vec<Vec<ApiEvidence>> {
     let helpers = HelperCollector::collect(program, aliases, rules);
-    let mut visitor = FlowVisitor {
+    let mut visitor = ObjectFlowCollector {
         aliases,
         rules,
         helpers,
@@ -50,8 +50,8 @@ struct HelperSink {
     param_index: usize,
 }
 
-struct FlowVisitor<'a> {
-    aliases: &'a AliasInfo,
+struct ObjectFlowCollector<'a> {
+    aliases: &'a ScopeGraph,
     rules: &'a [(usize, usize, FlowMatcher)],
     helpers: BTreeMap<String, Vec<HelperSink>>,
     evidence: Vec<Vec<ApiEvidence>>,
@@ -60,7 +60,7 @@ struct FlowVisitor<'a> {
     next_function_id: usize,
 }
 
-impl FlowVisitor<'_> {
+impl ObjectFlowCollector<'_> {
     fn current_function(&self) -> usize {
         *self
             .function_stack
@@ -118,6 +118,13 @@ impl FlowVisitor<'_> {
                 self.states.insert(key, states);
                 return;
             }
+        }
+        if matches!(value, Expr::Ident(_))
+            && let Some(source_key) = self.expr_key(value)
+            && let Some(states) = self.states.get(&source_key).cloned()
+        {
+            self.states.insert(key, states);
+            return;
         }
         self.states.remove(&key);
     }
@@ -226,6 +233,24 @@ impl FlowVisitor<'_> {
         }
     }
 
+    fn record_identifier_sink(&mut self, callee: &str, call: &CallExpr) {
+        for (argument_index, argument) in call.args.iter().enumerate() {
+            let Some(key) = self.expr_key(&argument.expr) else {
+                continue;
+            };
+            self.emit_sink_matches(&key, callee, argument_index, call.span);
+        }
+    }
+
+    fn record_sink_arguments(&mut self, callee: &str, args: &[ExprOrSpread], span: Span) {
+        for (argument_index, argument) in args.iter().enumerate() {
+            let Some(key) = self.expr_key(&argument.expr) else {
+                continue;
+            };
+            self.emit_sink_matches(&key, callee, argument_index, span);
+        }
+    }
+
     fn emit_sink_matches(&mut self, key: &str, callee: &str, argument_index: usize, span: Span) {
         let Some(states) = self.states.get(key).cloned() else {
             return;
@@ -299,7 +324,7 @@ fn state_is_ready(state: &FlowState, flow: &FlowMatcher) -> bool {
     }
 }
 
-impl Visit for FlowVisitor<'_> {
+impl Visit for ObjectFlowCollector<'_> {
     fn visit_var_declarator(&mut self, declarator: &VarDeclarator) {
         if let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref()) {
             self.assign_source_or_clear(&Expr::Ident(ident.id.clone()), init);
@@ -330,12 +355,24 @@ impl Visit for FlowVisitor<'_> {
                 }
                 Expr::Ident(ident) => {
                     self.record_helper_sink(ident.sym.as_ref(), call);
+                    if let Some(callee) = self.aliases.callable_member_chain(ident) {
+                        self.record_identifier_sink(&callee, call);
+                    }
                 }
                 _ => {}
             },
             Callee::Super(_) | Callee::Import(_) => {}
         }
         call.visit_children_with(self);
+    }
+
+    fn visit_opt_chain_expr(&mut self, chain: &OptChainExpr) {
+        if let OptChainBase::Call(call) = &*chain.base
+            && let Some(callee) = self.aliases.rooted_expr_chain(&call.callee)
+        {
+            self.record_sink_arguments(&callee, &call.args, call.span);
+        }
+        chain.visit_children_with(self);
     }
 
     fn visit_function(&mut self, function: &Function) {
@@ -346,7 +383,7 @@ impl Visit for FlowVisitor<'_> {
 }
 
 struct HelperCollector<'a> {
-    aliases: &'a AliasInfo,
+    aliases: &'a ScopeGraph,
     rules: &'a [(usize, usize, FlowMatcher)],
     helpers: BTreeMap<String, Vec<HelperSink>>,
 }
@@ -354,7 +391,7 @@ struct HelperCollector<'a> {
 impl<'a> HelperCollector<'a> {
     fn collect(
         program: &Program,
-        aliases: &'a AliasInfo,
+        aliases: &'a ScopeGraph,
         rules: &'a [(usize, usize, FlowMatcher)],
     ) -> BTreeMap<String, Vec<HelperSink>> {
         let mut collector = Self {
@@ -444,7 +481,7 @@ impl Visit for HelperCollector<'_> {
 }
 
 struct HelperBodyVisitor<'a> {
-    aliases: &'a AliasInfo,
+    aliases: &'a ScopeGraph,
     rules: &'a [(usize, usize, FlowMatcher)],
     parameters: Vec<String>,
     sinks: Vec<HelperSink>,
@@ -496,7 +533,7 @@ impl Visit for HelperBodyVisitor<'_> {
     }
 }
 
-fn call_member_chain(call: &CallExpr, aliases: &AliasInfo) -> Option<String> {
+fn call_member_chain(call: &CallExpr, aliases: &ScopeGraph) -> Option<String> {
     let Callee::Expr(callee) = &call.callee else {
         return None;
     };
@@ -523,7 +560,7 @@ fn flow_for_state<'a>(
 fn static_arg_matches(
     matcher: &ArgStringMatcher,
     args: &[ExprOrSpread],
-    aliases: &AliasInfo,
+    aliases: &ScopeGraph,
 ) -> bool {
     args.get(matcher.index).is_some_and(|argument| {
         aliases

@@ -6,9 +6,7 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::VisitWith;
 
-use super::ast::{
-    SymbolCallProvenance, SymbolMemberProvenance, member_chain, member_root_ident, object_keys,
-};
+use super::ast::{SymbolCallProvenance, SymbolMemberProvenance, member_root_ident, object_keys};
 use collector::AliasCollector;
 use collector_helpers::{contains, member_prefix_ends};
 
@@ -16,7 +14,7 @@ mod collector;
 mod collector_helpers;
 
 #[derive(Debug, Default, Clone)]
-pub struct AliasInfo {
+pub struct ScopeGraph {
     scopes: Vec<AliasScope>,
     scopes_by_start: Vec<usize>,
     assignments: BTreeMap<usize, BTreeMap<String, Vec<AliasAssignment>>>,
@@ -47,8 +45,10 @@ enum BindingProvenance {
     ModuleExport { module: String, export: String },
     ModuleNamespace { module: String },
     StaticString(String),
+    StaticNumber(usize),
     StaticStringArray(Vec<String>),
     StaticObjectKeys(Vec<String>),
+    StaticObjectValues(BTreeMap<String, String>),
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +67,7 @@ struct PropertyAliasAssignment {
     target: Option<String>,
 }
 
-impl AliasInfo {
+impl ScopeGraph {
     pub fn collect(program: &Program) -> Self {
         let mut collector = AliasCollector::new(program.span());
         program.visit_children_with(&mut collector);
@@ -135,15 +135,16 @@ impl AliasInfo {
                         .to_string(),
                 }
             }
-            Some(
-                BindingProvenance::Local
-                | BindingProvenance::ValueAlias { .. }
-                | BindingProvenance::ModuleNamespace { .. },
-            )
+            Some(BindingProvenance::ValueAlias { target }) => self
+                .module_export_for_chain(target, span)
+                .unwrap_or(SymbolCallProvenance::Local),
+            Some(BindingProvenance::Local | BindingProvenance::ModuleNamespace { .. })
             | Some(
                 BindingProvenance::StaticString(_)
+                | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
-                | BindingProvenance::StaticObjectKeys(_),
+                | BindingProvenance::StaticObjectKeys(_)
+                | BindingProvenance::StaticObjectValues(_),
             ) => SymbolCallProvenance::Local,
             None => SymbolCallProvenance::Global {
                 name: name.to_string(),
@@ -174,6 +175,9 @@ impl AliasInfo {
             Expr::Object(object) => object_keys(object),
             Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
                 BindingProvenance::StaticObjectKeys(keys) => Some(keys.clone()),
+                BindingProvenance::StaticObjectValues(values) => {
+                    Some(values.keys().cloned().collect())
+                }
                 _ => None,
             },
             Expr::Assign(assign) => self.object_keys_expr(&assign.right),
@@ -190,6 +194,21 @@ impl AliasInfo {
         super::ast::static_string(expr).or_else(|| match expr {
             Expr::Ident(ident) => self.static_string_at(ident),
             Expr::Member(member) => self.static_string_member(member),
+            Expr::Tpl(template) => {
+                let mut value = String::new();
+                for (index, quasi) in template.quasis.iter().enumerate() {
+                    value.push_str(&quasi.raw);
+                    if let Some(expr) = template.exprs.get(index) {
+                        value.push_str(&self.static_string_expr(expr)?);
+                    }
+                }
+                Some(value)
+            }
+            Expr::Bin(binary) if binary.op == swc_ecma_ast::BinaryOp::Add => Some(format!(
+                "{}{}",
+                self.static_string_expr(&binary.left)?,
+                self.static_string_expr(&binary.right)?
+            )),
             Expr::Assign(assign) => self.static_string_expr(&assign.right),
             Expr::Seq(sequence) => sequence
                 .exprs
@@ -211,9 +230,7 @@ impl AliasInfo {
         let Expr::Ident(root) = &*member.obj else {
             return None;
         };
-        let index = super::ast::member_prop_name(&member.prop)?
-            .parse::<usize>()
-            .ok()?;
+        let index = self.member_prop_name(member)?.parse::<usize>().ok()?;
         match self.binding_at(root.sym.as_ref(), root.span)? {
             BindingProvenance::StaticStringArray(values) => values.get(index).cloned(),
             _ => None,
@@ -226,6 +243,10 @@ impl AliasInfo {
             swc_ecma_ast::MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
             swc_ecma_ast::MemberProp::Computed(computed) => self
                 .static_string_expr(&computed.expr)
+                .or_else(|| {
+                    self.static_number_expr(&computed.expr)
+                        .map(|value| value.to_string())
+                })
                 .or_else(|| match &*computed.expr {
                     Expr::Ident(ident) => self.static_string_at(ident),
                     Expr::Paren(paren) => match &*paren.expr {
@@ -238,8 +259,57 @@ impl AliasInfo {
     }
 
     pub fn member_call_provenance(&self, member: &MemberExpr) -> Option<SymbolMemberProvenance> {
-        let chain = member_chain(member)?;
+        let chain = self.member_chain(member)?;
         self.member_call_provenance_for_chain(member, &chain)
+    }
+
+    pub fn member_chain(&self, member: &MemberExpr) -> Option<String> {
+        let object = super::ast::expr_name(&member.obj)?;
+        Some(format!("{object}.{}", self.member_prop_name(member)?))
+    }
+
+    pub fn callable_member_chain(&self, ident: &Ident) -> Option<String> {
+        let BindingProvenance::ValueAlias { target } =
+            self.binding_at(ident.sym.as_ref(), ident.span)?
+        else {
+            return None;
+        };
+        Some(target.strip_suffix(".bind").unwrap_or(target).to_string())
+    }
+
+    fn module_export_for_chain(&self, chain: &str, span: Span) -> Option<SymbolCallProvenance> {
+        let (root, export) = chain.split_once('.')?;
+        match self.binding_at(root, span)? {
+            BindingProvenance::ModuleNamespace { module } => {
+                Some(SymbolCallProvenance::ModuleExport {
+                    module: module.clone(),
+                    export: export.to_string(),
+                })
+            }
+            _ => None,
+        }
+    }
+
+    fn static_number_expr(&self, expr: &Expr) -> Option<usize> {
+        match expr {
+            Expr::Lit(swc_ecma_ast::Lit::Num(number))
+                if number.value.is_finite()
+                    && number.value >= 0.0
+                    && number.value.fract() == 0.0 =>
+            {
+                Some(number.value as usize)
+            }
+            Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
+                BindingProvenance::StaticNumber(value) => Some(*value),
+                _ => None,
+            },
+            Expr::Paren(paren) => self.static_number_expr(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.static_number_expr(expr)),
+            _ => None,
+        }
     }
 
     pub fn member_call_provenance_for_chain(
@@ -276,7 +346,7 @@ impl AliasInfo {
     }
 
     pub fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String> {
-        let syntactic_chain = member_chain(member).or_else(|| {
+        let syntactic_chain = self.member_chain(member).or_else(|| {
             let object = super::ast::expr_name(&member.obj)?;
             let property = self.member_prop_name(member)?;
             Some(format!("{object}.{property}"))
@@ -320,8 +390,10 @@ impl AliasInfo {
             )
             | Some(
                 BindingProvenance::StaticString(_)
+                | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
-                | BindingProvenance::StaticObjectKeys(_),
+                | BindingProvenance::StaticObjectKeys(_)
+                | BindingProvenance::StaticObjectValues(_),
             ) => None,
             None => Some(syntactic_chain.to_string()),
         }
@@ -367,7 +439,7 @@ pub(super) trait RootedExprContext {
     fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String>;
 }
 
-impl RootedExprContext for AliasInfo {
+impl RootedExprContext for ScopeGraph {
     fn rooted_ident_chain(&self, ident: &Ident) -> Option<String> {
         match self.binding_at(ident.sym.as_ref(), ident.span) {
             Some(BindingProvenance::ValueAlias { target }) => Some(target.clone()),
@@ -377,7 +449,7 @@ impl RootedExprContext for AliasInfo {
     }
 
     fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String> {
-        AliasInfo::rooted_member_chain(self, member)
+        ScopeGraph::rooted_member_chain(self, member)
     }
 }
 

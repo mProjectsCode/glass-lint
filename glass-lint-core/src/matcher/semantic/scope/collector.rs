@@ -1,16 +1,16 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use swc_common::Span;
+use swc_common::{BytePos, Span};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CatchClause, ClassDecl, Expr,
-    FnDecl, Function, ImportDecl, ImportSpecifier, Lit, Pat, SimpleAssignTarget, VarDecl,
-    VarDeclKind,
+    FnDecl, Function, ImportDecl, ImportSpecifier, Lit, ObjectPatProp, Pat, SimpleAssignTarget,
+    VarDecl, VarDeclKind,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
 use super::super::ast::{
-    binding_ident_name, collect_pat_bindings, is_function_constructor_member, member_chain,
-    member_prop_name, module_export_name, object_keys, static_string,
+    collect_pat_bindings, is_function_constructor_member, member_chain, member_prop_name,
+    member_root_ident, module_export_name, prop_name, static_string,
 };
 use super::collector_helpers::{
     collect_assignment_aliases, collect_require_aliases, collect_value_aliases,
@@ -26,8 +26,9 @@ pub struct AliasCollector {
     pub assignments: Vec<AliasAssignment>,
     latest_assignments: BTreeMap<usize, BTreeMap<String, BindingProvenance>>,
     pub property_assignments: Vec<PropertyAliasAssignment>,
-    functions: BTreeMap<String, (usize, Vec<String>)>,
+    functions: BTreeMap<String, (usize, Vec<Pat>)>,
     calls: Vec<(String, Vec<Option<BindingProvenance>>)>,
+    inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
 }
 
 fn is_module_interop_wrapper(name: &str) -> bool {
@@ -57,6 +58,7 @@ impl AliasCollector {
             property_assignments: Vec::new(),
             functions: BTreeMap::new(),
             calls: Vec::new(),
+            inline_parameters: BTreeMap::new(),
         }
     }
 
@@ -165,23 +167,42 @@ impl AliasCollector {
                 BindingProvenance::Local
                 | BindingProvenance::ValueAlias { .. }
                 | BindingProvenance::StaticString(_)
+                | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
-                | BindingProvenance::StaticObjectKeys(_) => None,
+                | BindingProvenance::StaticObjectKeys(_)
+                | BindingProvenance::StaticObjectValues(_) => None,
             },
             Expr::Member(member) => {
-                let BindingProvenance::ModuleNamespace { module } =
-                    self.module_alias_provenance(&member.obj)?
-                else {
-                    return None;
-                };
-                Some(BindingProvenance::ModuleExport {
-                    module: module.clone(),
-                    export: member_prop_name(&member.prop)?,
-                })
+                match self.module_alias_provenance(&member.obj)? {
+                    BindingProvenance::ModuleNamespace { module } => {
+                        Some(BindingProvenance::ModuleExport {
+                            module: module.clone(),
+                            export: member_prop_name(&member.prop)?,
+                        })
+                    }
+                    // Binding an export retains the export's callable provenance.
+                    provenance @ BindingProvenance::ModuleExport { .. }
+                        if member_prop_name(&member.prop).as_deref() == Some("bind") =>
+                    {
+                        Some(provenance)
+                    }
+                    _ => None,
+                }
             }
             Expr::Call(call) => self
                 .require_module_name(call)
-                .map(|module| BindingProvenance::ModuleNamespace { module }),
+                .map(|module| BindingProvenance::ModuleNamespace { module })
+                .or_else(|| {
+                    let Callee::Expr(callee) = &call.callee else {
+                        return None;
+                    };
+                    let Expr::Member(member) = &**callee else {
+                        return None;
+                    };
+                    (member_prop_name(&member.prop).as_deref() == Some("bind"))
+                        .then(|| self.module_alias_provenance(&member.obj))
+                        .flatten()
+                }),
             Expr::Paren(paren) => self.module_alias_provenance(&paren.expr),
             Expr::Seq(sequence) => sequence
                 .exprs
@@ -237,7 +258,14 @@ impl AliasCollector {
     }
 
     fn const_provenance(&self, init: &Expr) -> Option<BindingProvenance> {
-        if let Some(value) = static_string(init) {
+        if let Expr::Lit(Lit::Num(number)) = init
+            && number.value.is_finite()
+            && number.value >= 0.0
+            && number.value.fract() == 0.0
+        {
+            return Some(BindingProvenance::StaticNumber(number.value as usize));
+        }
+        if let Some(value) = self.static_string_value(init) {
             return Some(BindingProvenance::StaticString(value));
         }
         if let Expr::Array(array) = init {
@@ -248,24 +276,281 @@ impl AliasCollector {
                 .collect::<Option<Vec<_>>>()?;
             return Some(BindingProvenance::StaticStringArray(values));
         }
-        if let Expr::Object(object) = init
-            && let Some(keys) = object_keys(object)
-        {
+        if let Some(keys) = self.static_object_keys(init) {
             return Some(BindingProvenance::StaticObjectKeys(keys));
         }
         None
     }
 
-    fn function_parameters(function: &Function) -> Vec<String> {
+    fn static_string_value(&self, expr: &Expr) -> Option<String> {
+        static_string(expr).or_else(|| match expr {
+            Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
+                BindingProvenance::StaticString(value) => Some(value.clone()),
+                _ => None,
+            },
+            Expr::Tpl(template) => {
+                let mut value = String::new();
+                for (index, quasi) in template.quasis.iter().enumerate() {
+                    value.push_str(&quasi.raw);
+                    if let Some(expr) = template.exprs.get(index) {
+                        value.push_str(&self.static_string_value(expr)?);
+                    }
+                }
+                Some(value)
+            }
+            Expr::Bin(binary) if binary.op == swc_ecma_ast::BinaryOp::Add => Some(format!(
+                "{}{}",
+                self.static_string_value(&binary.left)?,
+                self.static_string_value(&binary.right)?
+            )),
+            Expr::Paren(paren) => self.static_string_value(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.static_string_value(expr)),
+            _ => None,
+        })
+    }
+
+    fn static_object_keys(&self, expr: &Expr) -> Option<Vec<String>> {
+        if let Expr::Object(object) = expr {
+            let mut keys = Vec::new();
+            for property in &object.props {
+                match property {
+                    swc_ecma_ast::PropOrSpread::Prop(property) => match &**property {
+                        swc_ecma_ast::Prop::Shorthand(ident) => keys.push(ident.sym.to_string()),
+                        swc_ecma_ast::Prop::KeyValue(property) => {
+                            keys.push(prop_name(&property.key)?)
+                        }
+                        swc_ecma_ast::Prop::Assign(property) => {
+                            keys.push(property.key.sym.to_string())
+                        }
+                        // Accessors and methods can execute code, so are deliberately unknown.
+                        _ => return None,
+                    },
+                    swc_ecma_ast::PropOrSpread::Spread(spread) => match &*spread.expr {
+                        Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
+                            BindingProvenance::StaticObjectKeys(existing) => {
+                                keys.extend(existing.clone())
+                            }
+                            _ => return None,
+                        },
+                        _ => return None,
+                    },
+                }
+            }
+            keys.sort();
+            keys.dedup();
+            return Some(keys);
+        }
+        let Expr::Call(call) = expr else { return None };
+        let Callee::Expr(callee) = &call.callee else {
+            return None;
+        };
+        let Expr::Member(member) = &**callee else {
+            return None;
+        };
+        let Expr::Ident(object) = &*member.obj else {
+            return None;
+        };
+        if object.sym != *"Object"
+            || !self.is_unbound("Object")
+            || member_prop_name(&member.prop).as_deref() != Some("assign")
+            || call.args.is_empty()
+            || !matches!(&*call.args[0].expr, Expr::Object(object) if object.props.is_empty())
+        {
+            return None;
+        }
+        let mut keys = Vec::new();
+        for argument in call.args.iter().skip(1) {
+            keys.extend(self.static_object_keys(&argument.expr)?);
+        }
+        keys.sort();
+        keys.dedup();
+        Some(keys)
+    }
+
+    fn argument_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+        self.module_alias_provenance(expr)
+            .or_else(|| match expr {
+                Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
+                    provenance @ BindingProvenance::StaticObjectValues(_) => {
+                        Some(provenance.clone())
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .or_else(|| self.static_object_values(expr))
+            .or_else(|| self.const_provenance(expr))
+            .or_else(|| {
+                self.rooted_expr_name(expr)
+                    .map(|target| BindingProvenance::ValueAlias { target })
+            })
+    }
+
+    fn static_object_values(&self, expr: &Expr) -> Option<BindingProvenance> {
+        let Expr::Object(object) = expr else {
+            return None;
+        };
+        let mut values = BTreeMap::new();
+        for property in &object.props {
+            let swc_ecma_ast::PropOrSpread::Prop(property) = property else {
+                return None;
+            };
+            let swc_ecma_ast::Prop::KeyValue(property) = &**property else {
+                return None;
+            };
+            let target = self.rooted_expr_name(&property.value)?;
+            values.insert(prop_name(&property.key)?, target);
+        }
+        Some(BindingProvenance::StaticObjectValues(values))
+    }
+
+    fn invalidate_member_root(&mut self, member: &swc_ecma_ast::MemberExpr, span: Span) {
+        let Some(root) = member_root_ident(member) else {
+            return;
+        };
+        if !matches!(
+            self.visible_binding(root.sym.as_ref()),
+            Some(
+                BindingProvenance::StaticStringArray(_)
+                    | BindingProvenance::StaticObjectKeys(_)
+                    | BindingProvenance::StaticObjectValues(_)
+            )
+        ) {
+            return;
+        }
+        let Some(scope) = self.stack.iter().rev().find(|scope| {
+            self.scopes[**scope]
+                .bindings
+                .contains_key(root.sym.as_ref())
+        }) else {
+            return;
+        };
+        self.record_assignment(span, *scope, root.sym.to_string(), BindingProvenance::Local);
+    }
+
+    fn bind_inline_parameters<'a>(
+        &mut self,
+        span: Span,
+        parameters: impl IntoIterator<Item = &'a Pat>,
+        arguments: impl IntoIterator<Item = Option<BindingProvenance>>,
+    ) {
+        let mut bindings = BTreeMap::new();
+        for (parameter, argument) in parameters.into_iter().zip(arguments) {
+            if let Some(argument) = argument {
+                project_parameter_pattern(parameter, &argument, &mut bindings);
+            }
+        }
+        if !bindings.is_empty() {
+            self.inline_parameters.insert(span.lo, bindings);
+        }
+    }
+
+    fn record_modeled_callbacks(&mut self, call: &CallExpr) {
+        let Callee::Expr(callee) = &call.callee else {
+            return;
+        };
+        let callee = match &**callee {
+            Expr::Paren(paren) => &*paren.expr,
+            callee => callee,
+        };
+        let arguments = || {
+            call.args
+                .iter()
+                .map(|arg| self.argument_provenance(&arg.expr))
+                .collect::<Vec<_>>()
+        };
+        match callee {
+            Expr::Arrow(arrow) => {
+                self.bind_inline_parameters(arrow.span, arrow.params.iter(), arguments());
+                return;
+            }
+            Expr::Fn(function) => {
+                self.bind_inline_parameters(
+                    function.function.span,
+                    function.function.params.iter().map(|param| &param.pat),
+                    arguments(),
+                );
+                return;
+            }
+            _ => {}
+        }
+        let Expr::Member(member) = callee else { return };
+        let Some(method) = member_prop_name(&member.prop) else {
+            return;
+        };
+        if method == "forEach" {
+            let Expr::Array(array) = &*member.obj else {
+                return;
+            };
+            let elements = array
+                .elems
+                .iter()
+                .map(Option::as_ref)
+                .collect::<Option<Vec<_>>>();
+            let Some(elements) = elements else { return };
+            let Some(first) = elements.first() else {
+                return;
+            };
+            let value = self.argument_provenance(&first.expr);
+            if elements
+                .iter()
+                .skip(1)
+                .any(|element| self.argument_provenance(&element.expr) != value)
+            {
+                return;
+            }
+            let Some(Expr::Arrow(callback)) = call.args.first().map(|arg| &*arg.expr) else {
+                return;
+            };
+            self.bind_inline_parameters(callback.span, callback.params.iter(), [value]);
+            return;
+        }
+        if method != "then" || !self.is_unbound("Promise") {
+            return;
+        }
+        let Expr::Call(resolve) = &*member.obj else {
+            return;
+        };
+        let Callee::Expr(resolve_callee) = &resolve.callee else {
+            return;
+        };
+        let Expr::Member(resolve_member) = &**resolve_callee else {
+            return;
+        };
+        let Expr::Ident(promise) = &*resolve_member.obj else {
+            return;
+        };
+        if promise.sym != *"Promise"
+            || member_prop_name(&resolve_member.prop).as_deref() != Some("resolve")
+        {
+            return;
+        }
+        let Some(Expr::Arrow(callback)) = call.args.first().map(|arg| &*arg.expr) else {
+            return;
+        };
+        self.bind_inline_parameters(
+            callback.span,
+            callback.params.iter(),
+            [resolve
+                .args
+                .first()
+                .and_then(|arg| self.argument_provenance(&arg.expr))],
+        );
+    }
+
+    fn function_parameters(function: &Function) -> Vec<Pat> {
         function
             .params
             .iter()
-            .filter_map(|parameter| binding_ident_name(&parameter.pat))
+            .map(|parameter| parameter.pat.clone())
             .collect()
     }
 
-    fn arrow_parameters(arrow: &ArrowExpr) -> Vec<String> {
-        arrow.params.iter().filter_map(binding_ident_name).collect()
+    fn arrow_parameters(arrow: &ArrowExpr) -> Vec<Pat> {
+        arrow.params.clone()
     }
 
     fn register_function_expression(&mut self, name: String, expr: &Expr) -> bool {
@@ -310,11 +595,17 @@ impl AliasCollector {
                 continue;
             };
             for (parameter, target) in parameters.iter().zip(arguments) {
-                let entry = aliases
-                    .entry((*scope, parameter.clone()))
-                    .or_insert_with(|| target.clone());
-                if entry != target {
-                    *entry = None;
+                let mut projected = BTreeMap::new();
+                if let Some(target) = target {
+                    project_parameter_pattern(parameter, target, &mut projected);
+                }
+                for (name, target) in projected {
+                    let entry = aliases
+                        .entry((*scope, name))
+                        .or_insert_with(|| Some(target.clone()));
+                    if *entry != Some(target) {
+                        *entry = None;
+                    }
                 }
             }
         }
@@ -322,6 +613,55 @@ impl AliasCollector {
             .into_iter()
             .filter_map(|(key, target)| target.map(|target| (key, target)))
             .collect()
+    }
+}
+
+fn project_parameter_pattern(
+    pattern: &Pat,
+    value: &BindingProvenance,
+    output: &mut BTreeMap<String, BindingProvenance>,
+) {
+    match pattern {
+        Pat::Ident(ident) => {
+            output.insert(ident.id.sym.to_string(), value.clone());
+        }
+        Pat::Assign(assign) => project_parameter_pattern(&assign.left, value, output),
+        Pat::Object(object) => {
+            let BindingProvenance::StaticObjectValues(values) = value else {
+                return;
+            };
+            for property in &object.props {
+                match property {
+                    ObjectPatProp::KeyValue(property) => {
+                        let Some(key) = prop_name(&property.key) else {
+                            continue;
+                        };
+                        let Some(target) = values.get(&key) else {
+                            continue;
+                        };
+                        project_parameter_pattern(
+                            &property.value,
+                            &BindingProvenance::ValueAlias {
+                                target: target.clone(),
+                            },
+                            output,
+                        );
+                    }
+                    ObjectPatProp::Assign(property) => {
+                        if let Some(target) = values.get(property.key.sym.as_ref()) {
+                            output.insert(
+                                property.key.sym.to_string(),
+                                BindingProvenance::ValueAlias {
+                                    target: target.clone(),
+                                },
+                            );
+                        }
+                    }
+                    ObjectPatProp::Rest(_) => {}
+                }
+            }
+        }
+        Pat::Array(_) | Pat::Rest(_) | Pat::Invalid(_) | Pat::Expr(_) => {}
     }
 }
 
@@ -374,7 +714,13 @@ impl Visit for AliasCollector {
                     },
                 ),
                 ImportSpecifier::Default(default) => {
-                    self.insert_local(scope, default.local.sym.to_string());
+                    self.insert(
+                        scope,
+                        default.local.sym.to_string(),
+                        BindingProvenance::ModuleNamespace {
+                            module: module.clone(),
+                        },
+                    );
                 }
             }
         }
@@ -398,13 +744,18 @@ impl Visit for AliasCollector {
                 .init
                 .as_deref()
                 .and_then(|init| self.rooted_expr_name(init));
-            let const_value = declarator
-                .init
-                .as_deref()
-                .and_then(|init| self.const_provenance(init));
+            let const_value = declarator.init.as_deref().and_then(|init| {
+                self.static_object_values(init)
+                    .or_else(|| self.const_provenance(init))
+            });
             self.insert_pat_locals(scope, &declarator.name);
-            if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, module_alias) {
-                self.insert(scope, ident.id.sym.to_string(), provenance);
+            if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, module_alias.as_ref())
+            {
+                self.insert(scope, ident.id.sym.to_string(), provenance.clone());
+            } else if let Some(BindingProvenance::ModuleNamespace { module }) =
+                module_alias.as_ref()
+            {
+                collect_require_aliases(&declarator.name, module.clone(), scope, self);
             } else if let Some(init) = declarator.init.as_deref()
                 && let Some(module) = self.require_module_expr_name(init)
             {
@@ -446,6 +797,7 @@ impl Visit for AliasCollector {
                 }
             }
             AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
+                self.invalidate_member_root(member, assignment.span);
                 if let Some(property) = member_chain(member) {
                     self.property_assignments.push(PropertyAliasAssignment {
                         span: assignment.span,
@@ -473,6 +825,7 @@ impl Visit for AliasCollector {
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
+        self.record_modeled_callbacks(call);
         if let Callee::Expr(callee) = &call.callee
             && let Expr::Ident(callee) = &**callee
         {
@@ -480,14 +833,7 @@ impl Visit for AliasCollector {
                 callee.sym.to_string(),
                 call.args
                     .iter()
-                    .map(|argument| {
-                        self.module_alias_provenance(&argument.expr)
-                            .or_else(|| self.const_provenance(&argument.expr))
-                            .or_else(|| {
-                                self.rooted_expr_name(&argument.expr)
-                                    .map(|target| BindingProvenance::ValueAlias { target })
-                            })
-                    })
+                    .map(|argument| self.argument_provenance(&argument.expr))
                     .collect(),
             ));
         }
@@ -522,6 +868,11 @@ impl Visit for AliasCollector {
         for param in &function.params {
             self.insert_pat_locals(scope, &param.pat);
         }
+        if let Some(bindings) = self.inline_parameters.get(&function.span.lo).cloned() {
+            for (name, provenance) in bindings {
+                self.record_assignment(function.span, scope, name, provenance);
+            }
+        }
         function.decorators.visit_with(self);
         function.body.visit_with(self);
         self.pop_scope();
@@ -532,6 +883,11 @@ impl Visit for AliasCollector {
         let scope = self.current_scope();
         for param in &arrow.params {
             self.insert_pat_locals(scope, param);
+        }
+        if let Some(bindings) = self.inline_parameters.get(&arrow.span.lo).cloned() {
+            for (name, provenance) in bindings {
+                self.record_assignment(arrow.span, scope, name, provenance);
+            }
         }
         arrow.body.visit_with(self);
         self.pop_scope();

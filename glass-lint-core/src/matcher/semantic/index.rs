@@ -3,46 +3,41 @@ use std::collections::BTreeMap;
 use swc_common::Span;
 use swc_ecma_ast::Program;
 
-use super::result::{ApiEvidence, ApiMatchKind};
-use super::rule::{
+use super::super::result::{ApiEvidence, ApiMatchKind};
+use super::super::rule::{
     ApiMatcher, ApiRule, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
     FlowMatcher, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
 };
 
-mod alias;
-mod ast;
-mod value_flow;
-mod visitor;
-
-pub use alias::AliasInfo;
+use super::scope::ScopeGraph;
 
 type Occurrences = BTreeMap<String, Vec<Span>>;
 type ModuleOccurrences = BTreeMap<(String, String), Vec<Span>>;
 
 #[derive(Debug, Default)]
-pub struct SymbolIndex {
-    calls: Occurrences,
-    global_calls: Occurrences,
-    module_calls: ModuleOccurrences,
-    member_calls: Occurrences,
-    rooted_member_calls: Occurrences,
-    module_member_calls: ModuleOccurrences,
-    member_reads: Occurrences,
-    rooted_member_reads: Occurrences,
-    module_member_reads: ModuleOccurrences,
-    imports: Occurrences,
-    string_literals: Occurrences,
-    classes: Occurrences,
-    module_classes: ModuleOccurrences,
-    constructors: Occurrences,
-    global_constructors: Occurrences,
-    module_constructors: ModuleOccurrences,
+pub struct MatcherFacts {
+    pub(super) calls: Occurrences,
+    pub(super) global_calls: Occurrences,
+    pub(super) module_calls: ModuleOccurrences,
+    pub(super) member_calls: Occurrences,
+    pub(super) rooted_member_calls: Occurrences,
+    pub(super) module_member_calls: ModuleOccurrences,
+    pub(super) member_reads: Occurrences,
+    pub(super) rooted_member_reads: Occurrences,
+    pub(super) module_member_reads: ModuleOccurrences,
+    pub(super) imports: Occurrences,
+    pub(super) string_literals: Occurrences,
+    pub(super) classes: Occurrences,
+    pub(super) module_classes: ModuleOccurrences,
+    pub(super) constructors: Occurrences,
+    pub(super) global_constructors: Occurrences,
+    pub(super) module_constructors: ModuleOccurrences,
 }
 
-impl SymbolIndex {
+impl MatcherFacts {
     pub fn collect_for_rules(
         program: Option<&Program>,
-        aliases: &AliasInfo,
+        aliases: &ScopeGraph,
         rules: &[ApiRule],
     ) -> (Self, Vec<Vec<ApiEvidence>>) {
         let member_matchers = rules
@@ -94,7 +89,7 @@ impl SymbolIndex {
 
     fn collect_with_argument_matchers(
         program: Option<&Program>,
-        aliases: &AliasInfo,
+        aliases: &ScopeGraph,
         member_argument_matchers: &[(usize, MemberCallMatcher)],
         call_argument_matchers: &[(usize, CallMatcher)],
         flow_matchers: &[(usize, usize, FlowMatcher)],
@@ -103,7 +98,7 @@ impl SymbolIndex {
         let mut index = Self::default();
         let mut argument_evidence = vec![Vec::new(); rule_count];
         if let Some(program) = program {
-            visitor::collect(
+            super::calls::collect(
                 program,
                 aliases,
                 member_argument_matchers,
@@ -111,7 +106,8 @@ impl SymbolIndex {
                 &mut index,
                 &mut argument_evidence,
             );
-            let flow_evidence = value_flow::collect(program, aliases, flow_matchers, rule_count);
+            let flow_evidence =
+                super::object_flow::collect(program, aliases, flow_matchers, rule_count);
             for (rule_index, evidence) in flow_evidence.into_iter().enumerate() {
                 argument_evidence[rule_index].extend(evidence);
             }
@@ -287,7 +283,7 @@ impl SymbolIndex {
         }
     }
 
-    fn record(&mut self, kind: ApiMatchKind, symbol: impl Into<String>, span: Span) {
+    pub(super) fn record(&mut self, kind: ApiMatchKind, symbol: impl Into<String>, span: Span) {
         let target = match kind {
             ApiMatchKind::Call => &mut self.calls,
             ApiMatchKind::MemberCall => &mut self.member_calls,

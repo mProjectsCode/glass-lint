@@ -169,11 +169,34 @@ fn target_tracks_global_callbacks_through_immediately_invoked_arrows() {
 }
 
 #[test]
+fn target_tracks_global_callbacks_through_immediately_invoked_functions() {
+    assert_matches(
+        "(function(callback) { callback('/x'); })(fetch);",
+        Matcher::global_call("fetch"),
+        1,
+    );
+}
+
+#[test]
 fn target_tracks_global_callbacks_through_array_iteration() {
     assert_matches(
         "[fetch].forEach(callback => callback('/x'));",
         Matcher::global_call("fetch"),
         1,
+    );
+}
+
+#[test]
+fn target_joins_matching_values_from_finite_array_callbacks() {
+    assert_matches(
+        "[fetch, fetch].forEach(callback => callback('/x'));",
+        Matcher::global_call("fetch"),
+        1,
+    );
+    assert_matches(
+        "[fetch, local].forEach(callback => callback('/x'));",
+        Matcher::global_call("fetch"),
+        0,
     );
 }
 

@@ -196,6 +196,63 @@ fn target_reuses_constant_object_arguments_for_key_matching() {
 }
 
 #[test]
+fn rejects_reassigned_static_values() {
+    let string_rules = [rule("test.fetch-url")
+        .matcher(CallMatcher::global("fetch").static_string_arg(0))
+        .build()
+        .unwrap()];
+    let object_rules = [rule("test.object-arg")
+        .matcher(MemberCallMatcher::rooted_chain("client.request").arg_object_keys(0, ["url"]))
+        .build()
+        .unwrap()];
+
+    assert_eq!(
+        classify(
+            "let url = '/remote'; url = dynamic; fetch(url);",
+            &string_rules
+        )
+        .finding_count,
+        0
+    );
+    assert_eq!(
+        classify(
+            "let options = { url: '/remote' }; options = dynamic; client.request(options);",
+            &object_rules
+        )
+        .finding_count,
+        0
+    );
+}
+
+#[test]
+fn rejects_static_shapes_after_a_property_write() {
+    let rules = [rule("test.object-arg")
+        .matcher(
+            MemberCallMatcher::rooted_chain("client.request").arg_object_keys(0, ["url", "method"]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const options = { url: '/remote', method: 'GET' }; options.method = dynamic; client.request(options);",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 0);
+}
+
+#[test]
+fn projects_const_object_aliases_into_destructured_parameters() {
+    let rules = [rule("test.arg-flow")
+        .matcher(MemberCallMatcher::rooted_chain("app.open").arg_rooted_exprs(0, ["vault.file"]))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "function open({ file }) { app.open(file); } const options = { file: vault.file }; open(options);",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 1);
+}
+
+#[test]
 fn tracks_configured_values_into_later_member_sinks() {
     let rules = [rule("test.flow")
         .matcher(

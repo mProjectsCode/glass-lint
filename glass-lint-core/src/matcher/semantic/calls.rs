@@ -8,26 +8,24 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use super::alias::AliasInfo;
+use super::super::result::{ApiEvidence, ApiMatchKind};
+use super::super::rule::{CallMatcher, CallProvenance, MemberCallMatcher, MemberCallProvenance};
 use super::ast::{
     SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, expr_member, expr_name,
-    is_function_constructor_member, member_chain, object_keys, prop_name, require_call_module_name,
+    is_function_constructor_member, object_keys, prop_name, require_call_module_name,
 };
-use super::{
-    ApiEvidence, ApiMatchKind, CallMatcher, CallProvenance, MemberCallMatcher,
-    MemberCallProvenance, SymbolIndex,
-};
+use super::{index::MatcherFacts, scope::ScopeGraph};
 use crate::matcher::rule::canonical_rooted_chain;
 
 pub fn collect(
     program: &Program,
-    aliases: &AliasInfo,
+    aliases: &ScopeGraph,
     member_argument_matchers: &[(usize, MemberCallMatcher)],
     call_argument_matchers: &[(usize, CallMatcher)],
-    index: &mut SymbolIndex,
+    index: &mut MatcherFacts,
     argument_evidence: &mut [Vec<ApiEvidence>],
 ) {
-    let mut visitor = SymbolIndexVisitor {
+    let mut visitor = ResolvedCallCollector {
         index,
         aliases,
         pending_callee_reads: BTreeMap::new(),
@@ -38,9 +36,9 @@ pub fn collect(
     program.visit_with(&mut visitor);
 }
 
-struct SymbolIndexVisitor<'a, 'rules> {
-    index: &'a mut SymbolIndex,
-    aliases: &'a AliasInfo,
+struct ResolvedCallCollector<'a, 'rules> {
+    index: &'a mut MatcherFacts,
+    aliases: &'a ScopeGraph,
     pending_callee_reads: BTreeMap<String, u32>,
     member_argument_matchers: &'rules [(usize, MemberCallMatcher)],
     call_argument_matchers: &'rules [(usize, CallMatcher)],
@@ -71,15 +69,41 @@ impl<'a> From<&'a OptCall> for CallArgumentSource<'a> {
     }
 }
 
-impl SymbolIndexVisitor<'_, '_> {
+impl ResolvedCallCollector<'_, '_> {
     fn record_identifier_call(&mut self, ident: &Ident, call: Option<CallArgumentSource<'_>>) {
         let name = ident.sym.to_string();
         self.index
             .record(ApiMatchKind::Call, name.clone(), ident.span);
 
         let provenance = self.aliases.call_provenance(&name, ident.span);
+        let aliased_member = self.aliases.callable_member_chain(ident);
         if let Some(call) = call {
             self.collect_call_argument_evidence(call, ident, &provenance);
+            if let Some(chain) = aliased_member.as_deref() {
+                let module_member = match &provenance {
+                    SymbolCallProvenance::ModuleExport { module, export } => {
+                        Some(SymbolMemberProvenance::ModuleNamespace {
+                            module: module.clone(),
+                            member: export.clone(),
+                        })
+                    }
+                    _ => None,
+                };
+                self.collect_argument_evidence(
+                    call,
+                    Some(chain),
+                    Some(chain),
+                    module_member.as_ref(),
+                );
+            }
+        }
+
+        if let Some(chain) = aliased_member {
+            self.index
+                .rooted_member_calls
+                .entry(canonical_rooted_chain(&chain).to_string())
+                .or_default()
+                .push(ident.span);
         }
 
         match provenance {
@@ -94,6 +118,11 @@ impl SymbolIndexVisitor<'_, '_> {
                 self.index
                     .module_calls
                     .entry((module.clone(), export.clone()))
+                    .or_default()
+                    .push(ident.span);
+                self.index
+                    .module_member_calls
+                    .entry((module, export))
                     .or_default()
                     .push(ident.span);
             }
@@ -155,7 +184,7 @@ impl SymbolIndexVisitor<'_, '_> {
                 .or_default()
                 .push(member.span);
         }
-        let syntactic_chain = member_chain(member);
+        let syntactic_chain = self.aliases.member_chain(member);
         let resolved_chain = syntactic_chain
             .as_deref()
             .and_then(|chain| self.aliases.resolve_member_chain(member, chain))
@@ -193,6 +222,11 @@ impl SymbolIndexVisitor<'_, '_> {
         }) = module_member
         {
             self.index
+                .module_calls
+                .entry((module.clone(), member_name.clone()))
+                .or_default()
+                .push(member.span);
+            self.index
                 .module_member_calls
                 .entry((module.clone(), member_name.clone()))
                 .or_default()
@@ -201,7 +235,7 @@ impl SymbolIndexVisitor<'_, '_> {
     }
 
     fn record_member_read(&mut self, member: &MemberExpr) {
-        let syntactic_chain = member_chain(member);
+        let syntactic_chain = self.aliases.member_chain(member);
         if let Some(chain) = syntactic_chain.as_ref() {
             let chain = canonical_rooted_chain(chain).to_string();
             self.index
@@ -345,7 +379,7 @@ impl SymbolIndexVisitor<'_, '_> {
     }
 
     fn record_static_callable_wrapper(&mut self, member: &MemberExpr) {
-        let Some(property) = super::ast::member_prop_name(&member.prop) else {
+        let Some(property) = crate::matcher::semantic::ast::member_prop_name(&member.prop) else {
             return;
         };
         if property != "call" && property != "apply" {
@@ -376,7 +410,7 @@ impl SymbolIndexVisitor<'_, '_> {
     }
 }
 
-impl Visit for SymbolIndexVisitor<'_, '_> {
+impl Visit for ResolvedCallCollector<'_, '_> {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         let module = import.src.value.to_string_lossy().to_string();
         self.index
@@ -478,7 +512,7 @@ impl Visit for SymbolIndexVisitor<'_, '_> {
     }
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
-        let syntactic_chain = member_chain(member);
+        let syntactic_chain = self.aliases.member_chain(member);
         if let Some(chain) = syntactic_chain.as_ref()
             && let Some(skip_count) = self.pending_callee_reads.get_mut(chain.as_str())
         {
