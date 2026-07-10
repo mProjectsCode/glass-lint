@@ -1,5 +1,6 @@
 // @case description Static Node, Electron, and browser risk APIs are detected
 // @tool glass-lint rules=obsidian:ui.file_dialog,obsidian:workspace.layout_persistence,obsidian:plugins.internal_access,obsidian:metadata.events,obsidian:metadata.extraction,obsidian:browser.broad_input_hooks,obsidian:network.remote_dom_loading,obsidian:vault.enumerate
+// @tool eslint-obsidianmd config=recommended
 
 import { dialog } from "electron";
 import { requestUrl } from "obsidian";

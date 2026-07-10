@@ -111,6 +111,86 @@ pub fn markdown(report: &SuiteReport) -> String {
     out
 }
 
+pub fn comparison(report: &SuiteReport) -> String {
+    let tool_names: Vec<String> = report
+        .cases
+        .iter()
+        .flat_map(|case| case.tools.keys())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .cloned()
+        .collect();
+
+    let mut out = String::from("# Glass Lint vs ESLint comparison\n\n");
+
+    out.push_str(&format!(
+        "| Case | {} |\n|---|{}|\n",
+        tool_names.join(" | "),
+        tool_names
+            .iter()
+            .map(|_| "---:")
+            .collect::<Vec<_>>()
+            .join("|")
+    ));
+
+    for case in &report.cases {
+        let counts: Vec<String> = tool_names
+            .iter()
+            .map(|name| {
+                case.tools
+                    .get(name)
+                    .map(|r| {
+                        if r.skipped {
+                            "skip".into()
+                        } else {
+                            r.findings.len().to_string()
+                        }
+                    })
+                    .unwrap_or_else(|| "-".into())
+            })
+            .collect();
+        out.push_str(&format!("| {} | {} |\n", case.id, counts.join(" | ")));
+    }
+
+    for case in &report.cases {
+        let has_findings = case
+            .tools
+            .values()
+            .any(|r| !r.skipped && !r.findings.is_empty());
+        if !has_findings {
+            continue;
+        }
+        out.push_str(&format!(
+            "\n## {}\n\n```js\n{}\n```\n",
+            case.id, case.source
+        ));
+        for (tool, result) in &case.tools {
+            if result.skipped {
+                out.push_str(&format!("\n### {tool} (skipped)\n"));
+                if let Some(reason) = &result.skip_reason {
+                    out.push_str(&format!("\n{reason}\n"));
+                }
+                continue;
+            }
+            out.push_str(&format!(
+                "\n### {tool} ({} finding(s))\n",
+                result.findings.len()
+            ));
+            for finding in &result.findings {
+                out.push_str(&format!(
+                    "- {}:{} at {}:{} - {}\n",
+                    finding.rule_id,
+                    finding.message_id,
+                    finding.range.start.line,
+                    finding.range.start.column,
+                    finding.message
+                ));
+            }
+        }
+    }
+    out
+}
+
 pub fn report_json(report: &LintReport) -> Result<String> {
     Ok(serde_json::to_string_pretty(report)?)
 }

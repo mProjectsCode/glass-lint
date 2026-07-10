@@ -1,7 +1,12 @@
-use std::{collections::BTreeMap, path::Path};
+use std::{
+    collections::BTreeMap,
+    path::Path,
+    time::{Duration, Instant},
+};
 
 use anyhow::Result;
 use glass_lint_core::Finding;
+use tracing::info;
 
 use crate::{
     adapters::Adapter,
@@ -9,16 +14,25 @@ use crate::{
     types::{CaseResult, DiagnosticExpectation, SuiteReport, ToolExpectation, ToolResult},
 };
 
-pub fn run_suite(root: &Path, adapters: &[Box<dyn Adapter>]) -> Result<SuiteReport> {
+pub type CaseTimings = BTreeMap<String, Duration>;
+
+pub fn run_suite(
+    root: &Path,
+    adapters: &[Box<dyn Adapter>],
+) -> Result<(SuiteReport, Vec<CaseTimings>)> {
     let cases = load_cases(root)?;
     let mut results = Vec::new();
-    for case in cases {
+    let mut all_timings = Vec::new();
+    for case in &cases {
         let mut tools = BTreeMap::new();
+        let mut timings = BTreeMap::new();
         for adapter in adapters {
+            let tool_start = Instant::now();
             let version = adapter
                 .version()
                 .unwrap_or_else(|error| format!("unknown ({error})"));
             let Some(expectation) = case.tools.get(adapter.name()) else {
+                timings.insert(adapter.name().into(), tool_start.elapsed());
                 tools.insert(
                     adapter.name().into(),
                     ToolResult {
@@ -32,13 +46,14 @@ pub fn run_suite(root: &Path, adapters: &[Box<dyn Adapter>]) -> Result<SuiteRepo
                 );
                 continue;
             };
-            let (findings, errors) = match adapter.run(&case, expectation) {
+            let (findings, errors) = match adapter.run(case, expectation) {
                 Ok(findings) => {
                     let errors = compare(&findings, expectation);
                     (findings, errors)
                 }
                 Err(error) => (vec![], vec![error.to_string()]),
             };
+            timings.insert(adapter.name().into(), tool_start.elapsed());
             tools.insert(
                 adapter.name().into(),
                 ToolResult {
@@ -51,17 +66,28 @@ pub fn run_suite(root: &Path, adapters: &[Box<dyn Adapter>]) -> Result<SuiteRepo
                 },
             );
         }
+        let total: Duration = timings.values().sum();
+        let details = timings
+            .iter()
+            .map(|(name, dur)| format!("{name} {dur:.1?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        info!(progress = format!("  {}: {total:.1?} ({})", case.id, details));
+        all_timings.push(timings);
         results.push(CaseResult {
-            id: case.id,
-            description: case.description,
-            source: case.source,
+            id: case.id.clone(),
+            description: case.description.clone(),
+            source: case.source.clone(),
             tools,
         });
     }
-    Ok(SuiteReport {
-        schema_version: 1,
-        cases: results,
-    })
+    Ok((
+        SuiteReport {
+            schema_version: 1,
+            cases: results,
+        },
+        all_timings,
+    ))
 }
 
 fn matches(finding: &Finding, expected: &DiagnosticExpectation) -> bool {
@@ -155,6 +181,7 @@ mod tests {
     #[test]
     fn finds_missing_diagnostic() {
         let expected = ToolExpectation {
+            config: None,
             rules: vec![],
             required: vec![DiagnosticExpectation {
                 rule_id: "test:a.b".into(),
@@ -173,6 +200,7 @@ mod tests {
     #[test]
     fn flags_unexpected_diagnostic() {
         let expected = ToolExpectation {
+            config: None,
             rules: vec![],
             required: vec![],
             forbidden: vec![],
@@ -183,6 +211,7 @@ mod tests {
     #[test]
     fn reports_forbidden_diagnostic_once() {
         let expected = ToolExpectation {
+            config: None,
             rules: vec![],
             required: vec![],
             forbidden: vec![DiagnosticExpectation {

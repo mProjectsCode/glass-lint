@@ -1,5 +1,6 @@
 // @case description Rooted vault aliases, assignments, destructuring, and argument flow preserve provenance
 // @tool glass-lint rules=obsidian:vault.read,obsidian:vault.write,obsidian:vault.enumerate
+// @tool eslint-obsidianmd config=recommended
 
 let late;
 late = this.app.vault;

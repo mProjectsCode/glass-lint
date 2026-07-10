@@ -27,6 +27,9 @@ test:
 harness:
 	$(HARNESS) verify $(HARNESS_SUITE)
 
+compare:
+	$(HARNESS) --adapter eslint-obsidianmd=adapters/eslint-obsidianmd/adapter.mjs compare $(HARNESS_SUITE)
+
 ci: fmt-check check clippy test harness
 
 clean:

@@ -1,5 +1,6 @@
 // @case description Stale provenance and local API lookalikes are rejected
 // @tool glass-lint rules=obsidian:vault.read,obsidian:vault.write
+// @tool eslint-obsidianmd config=recommended
 
 let vault = this.app.vault;
 vault = localStore;

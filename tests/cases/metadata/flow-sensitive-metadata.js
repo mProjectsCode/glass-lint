@@ -1,5 +1,6 @@
 // @case description Metadata frontmatter, traversal, and extraction follow connected flow
 // @tool glass-lint rules=obsidian:metadata.frontmatter,obsidian:metadata.traversal,obsidian:metadata.extraction
+// @tool eslint-obsidianmd config=recommended
 
 const cache = this.app.metadataCache.getFileCache(file);
 console.log(cache.frontmatter); // @expect-error glass-lint rule=obsidian:metadata.frontmatter message_id=detected

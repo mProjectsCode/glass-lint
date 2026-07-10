@@ -79,6 +79,7 @@ impl Adapter for ExternalAdapter {
             filename: case.filename.clone(),
             source: case.source.clone(),
             rules: expectation.rules.clone(),
+            config: expectation.config.clone(),
         };
         serde_json::to_writer(
             child.stdin.as_mut().context("adapter stdin unavailable")?,

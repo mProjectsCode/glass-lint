@@ -1,5 +1,6 @@
 // @case description Metadata flow does not match local lookalikes or sibling bindings
 // @tool glass-lint rules=obsidian:metadata.frontmatter,obsidian:metadata.traversal,obsidian:metadata.extraction
+// @tool eslint-obsidianmd config=recommended
 
 console.log(settings.frontmatter);
 

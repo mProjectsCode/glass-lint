@@ -1,5 +1,6 @@
 // @case description An Obsidian namespace import is unavailable through a shadowing binding
 // @tool glass-lint rules=obsidian:network.obsidian
+// @tool eslint-obsidianmd config=recommended
 
 import * as obsidian from "obsidian";
 

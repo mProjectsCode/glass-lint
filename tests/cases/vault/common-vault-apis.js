@@ -1,7 +1,8 @@
 // @case description Common Obsidian vault API groups are detected
 // @tool glass-lint rules=obsidian:network.obsidian,obsidian:vault.read,obsidian:vault.enumerate,obsidian:metadata.read,obsidian:metadata.frontmatter,obsidian:workspace.active_file,obsidian:ui.commands,obsidian:editor.extension,obsidian:editor.markdown_processing,obsidian:lifecycle.events
+// @tool eslint-obsidianmd config=recommended
 
-import { requestUrl, MarkdownRenderer } from "obsidian"; // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected line=12
+import { requestUrl, MarkdownRenderer } from "obsidian";
 
 class Plugin {
   async onload() {
@@ -9,7 +10,7 @@ class Plugin {
     this.registerEditorExtension([]); // @expect-error glass-lint rule=obsidian:editor.extension message_id=detected
     this.registerMarkdownPostProcessor(() => {}); // @expect-error glass-lint rule=obsidian:editor.markdown_processing message_id=detected
     this.registerInterval(setInterval(() => {}, 1000)); // @expect-error glass-lint rule=obsidian:lifecycle.events message_id=detected count=2
-    await requestUrl("https://example.com");
+    await requestUrl("https://example.com"); // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected
     const file = this.app.workspace.getActiveFile(); // @expect-error glass-lint rule=obsidian:workspace.active_file message_id=detected
     const text = await this.app.vault.read(file); // @expect-error glass-lint rule=obsidian:vault.read message_id=detected
     this.app.vault.getMarkdownFiles(); // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected

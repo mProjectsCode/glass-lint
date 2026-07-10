@@ -1,5 +1,6 @@
 // @case description Module and global provenance respect lexical shadowing
 // @tool glass-lint rules=obsidian:network.browser,obsidian:network.obsidian
+// @tool eslint-obsidianmd config=recommended
 
 import { requestUrl } from "obsidian";
 

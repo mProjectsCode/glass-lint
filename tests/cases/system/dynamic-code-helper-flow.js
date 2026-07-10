@@ -1,5 +1,6 @@
 // @case description Remote DOM flow follows arguments into direct helpers
 // @tool glass-lint rules=obsidian:dynamic_code
+// @tool eslint-obsidianmd config=recommended
 
 function appendToHead(node) {
   document.head.appendChild(node);

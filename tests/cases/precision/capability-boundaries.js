@@ -1,5 +1,6 @@
 // @case description Coarse capabilities stay scoped to actual API use
 // @tool glass-lint rules=obsidian:electron.desktop,obsidian:electron.ipc_shell,obsidian:ui.file_dialog,obsidian:metadata.extraction,obsidian:vault.enumerate
+// @tool eslint-obsidianmd config=recommended
 
 import { clipboard } from "electron"; // @expect-error glass-lint rule=obsidian:electron.desktop message_id=detected
 

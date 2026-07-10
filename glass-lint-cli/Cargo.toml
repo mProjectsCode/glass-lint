@@ -11,6 +11,8 @@ glass-lint-core = { path = "../glass-lint-core" }
 glass-lint-obsidian = { path = "../glass-lint-obsidian" }
 glass-lint-harness = { path = "../glass-lint-harness" }
 serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
 walkdir.workspace = true
 
 [[bin]]

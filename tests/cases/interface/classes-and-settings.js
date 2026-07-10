@@ -1,5 +1,6 @@
 // @case description Obsidian UI class references report their corresponding rules
 // @tool glass-lint rules=obsidian:ui.modals_notices,obsidian:lifecycle.methods,obsidian:settings.ui
+// @tool eslint-obsidianmd config=recommended
 
 import { Modal, Notice, PluginSettingTab } from "obsidian"; // @expect-error glass-lint rule=obsidian:ui.modals_notices message_id=detected count=2 line=any
 

@@ -1,5 +1,6 @@
 // @case description Obsidian request imports, aliases, namespaces, and bundler wrappers preserve provenance
 // @tool glass-lint rules=obsidian:network.obsidian
+// @tool eslint-obsidianmd config=recommended
 
 import { requestUrl as renamedRequestUrl, request } from "obsidian";
 import * as obsidian from "obsidian";

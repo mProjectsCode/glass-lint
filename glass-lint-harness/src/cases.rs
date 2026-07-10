@@ -124,36 +124,7 @@ fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
         }
     }
 
-    case.source = strip_harness_comments(&case.source);
     Ok(case)
-}
-
-fn strip_harness_comments(source: &str) -> String {
-    source
-        .lines()
-        .map(|line| {
-            let Some(comment_start) = line.find("// @") else {
-                return line.to_owned();
-            };
-            let directive = line[comment_start + 3..].trim();
-            if directive.starts_with("@case ")
-                || directive.starts_with("@tool ")
-                || directive.starts_with("@expect-error ")
-                || directive.starts_with("@expect-error-after ")
-                || directive.starts_with("@expect-no-error ")
-                || directive.starts_with("@expect-no-error-after ")
-            {
-                format!(
-                    "{}{}",
-                    &line[..comment_start],
-                    " ".repeat(line.len() - comment_start)
-                )
-            } else {
-                line.to_owned()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }
 
 fn previous_code_line(lines: &[String], assertion_index: usize) -> Option<u32> {
@@ -198,12 +169,16 @@ fn parse_tool_directive(case: &mut Case, rest: &str) -> Result<()> {
         .split_once(' ')
         .with_context(|| format!("invalid @tool directive `{rest}`"))?;
     let mut expectation = ToolExpectation {
+        config: None,
         rules: vec![],
         required: vec![],
         forbidden: vec![],
     };
     for (key, value) in parse_fields(fields)? {
         match key.as_str() {
+            "config" => {
+                expectation.config = Some(value);
+            }
             "rules" => {
                 expectation.rules = value
                     .split(',')
@@ -215,8 +190,8 @@ fn parse_tool_directive(case: &mut Case, rest: &str) -> Result<()> {
             _ => bail!("unknown @tool field `{key}`"),
         }
     }
-    if expectation.rules.is_empty() {
-        bail!("@tool {name} must specify rules=");
+    if expectation.config.is_none() && expectation.rules.is_empty() {
+        bail!("@tool {name} must specify rules= or config=");
     }
     case.tools.insert(name.into(), expectation);
     Ok(())

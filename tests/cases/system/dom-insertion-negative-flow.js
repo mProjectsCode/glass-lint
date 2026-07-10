@@ -1,5 +1,6 @@
 // @case description DOM insertion flow rejects disconnected, local, future, and reassigned elements
 // @tool glass-lint rules=obsidian:dynamic_code,obsidian:network.remote_dom_loading
+// @tool eslint-obsidianmd config=recommended
 
 const configuredOnly = document.createElement("script");
 configuredOnly.src = "https://cdn.example.com/plugin.js";

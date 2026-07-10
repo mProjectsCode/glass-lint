@@ -1,5 +1,6 @@
 // @case description Rooted vault, workspace, metadata, and plugin API groups are detected
 // @tool glass-lint rules=obsidian:vault.folder_ops,obsidian:vault.resources,obsidian:workspace.active_file,obsidian:workspace.layout_persistence,obsidian:metadata.read,obsidian:metadata.events,obsidian:plugins.internal_access
+// @tool eslint-obsidianmd config=recommended
 
 const vault = this.app.vault;
 vault.createFolder("folder");

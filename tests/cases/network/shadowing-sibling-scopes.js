@@ -1,9 +1,10 @@
 // @case description Local shadowing hides calls only in its lexical scope
 // @tool glass-lint rules=obsidian:network.browser,obsidian:network.obsidian
+// @tool eslint-obsidianmd config=recommended
 
-import { requestUrl } from "obsidian"; // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected line=6
+import { requestUrl } from "obsidian";
 
-requestUrl("https://example.com");
+requestUrl("https://example.com"); // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected
 function localOnly(requestUrl) {
   requestUrl("not-network");
 }

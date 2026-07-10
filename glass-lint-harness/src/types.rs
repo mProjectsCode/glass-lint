@@ -18,6 +18,7 @@ pub struct Case {
 
 #[derive(Clone, Debug)]
 pub struct ToolExpectation {
+    pub config: Option<String>,
     pub rules: Vec<String>,
     pub required: Vec<DiagnosticExpectation>,
     pub forbidden: Vec<DiagnosticExpectation>,
@@ -41,6 +42,8 @@ pub struct AdapterRequest {
     pub filename: String,
     pub source: String,
     pub rules: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
