@@ -3,11 +3,11 @@
 // @expect-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
 this.addSettingTab(tab);
 // second independent example
+
 // @expect-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
 this.addSettingTab(secondTab);
-
 // Migrated: interface/classes-and-settings.js
-import { PluginSettingTab as LegacyPluginSettingTab } from "obsidian";
-class LegacySettings extends LegacyPluginSettingTab { // @expect-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
+import { PluginSettingTab as pluginSettingTab } from "obsidian";
+class settings extends pluginSettingTab { // @expect-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
   getSettingDefinitions() { return []; }
 }

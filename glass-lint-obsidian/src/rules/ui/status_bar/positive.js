@@ -3,5 +3,6 @@
 // @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
 this.addStatusBarItem();
 // second independent example
+
 // @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
 this.addStatusBarItem();

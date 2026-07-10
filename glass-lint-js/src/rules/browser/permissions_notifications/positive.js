@@ -3,5 +3,6 @@
 // @expect-error glass-lint rule=js:browser.permissions-notifications message_id=detected
 Notification.requestPermission();
 // second independent example
+
 // @expect-error glass-lint rule=js:browser.permissions-notifications message_id=detected
 Notification.requestPermission();

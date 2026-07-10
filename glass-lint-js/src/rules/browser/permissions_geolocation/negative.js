@@ -4,5 +4,6 @@
 function localLookalike() { return null; }
 localLookalike();
 const navigator = { geolocation: { getCurrentPosition() {} } };
+
 // @expect-no-error glass-lint rule=js:browser.permissions-geolocation message_id=detected
 navigator.geolocation.getCurrentPosition(() => {});

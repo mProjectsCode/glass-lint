@@ -4,5 +4,6 @@
 function localLookalike() { return null; }
 localLookalike();
 import localChildProcess from "not-child_process";
+
 // @expect-no-error glass-lint rule=js:node.subprocess message_id=detected
 localChildProcess;

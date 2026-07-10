@@ -4,5 +4,6 @@
 function localLookalike() { return null; }
 localLookalike();
 const process = { env: {}, platform: "local" };
+
 // @expect-no-error glass-lint rule=js:node.process-environment message_id=detected
 process.env;

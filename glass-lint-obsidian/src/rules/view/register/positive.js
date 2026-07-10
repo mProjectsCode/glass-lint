@@ -3,6 +3,5 @@
 
 // @expect-error glass-lint rule=obsidian:view.register message_id=detected
 this.registerView('x', v1);
-
 // @expect-error glass-lint rule=obsidian:view.register message_id=detected
 this.registerView("second", view);

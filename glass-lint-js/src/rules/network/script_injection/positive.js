@@ -2,21 +2,24 @@
 // @tool glass-lint rules=js:dynamic-code.script-injection
 // @expect-error glass-lint rule=js:dynamic-code.script-injection message_id=detected
 document.createElement("script");
-
 // Migrated: system/dynamic-code-dom-injection.js
-const legacyRemoteScript = document.createElement("script"); // @expect-error glass-lint rule=js:dynamic-code.script-injection message_id=detected
-legacyRemoteScript.src = "https://cdn.example.com/plugin.js";
-document.head.appendChild(legacyRemoteScript);
 
-const legacyInlineScript = document.createElement("script"); // @expect-error glass-lint rule=js:dynamic-code.script-injection message_id=detected
-legacyInlineScript.textContent = generatedCode;
-document.body.prepend(legacyInlineScript);
-
+// @expect-error glass-lint rule=js:dynamic-code.script-injection message_id=detected
+const remoteScript = document.createElement("script");
+remoteScript.src = "https://cdn.example.com/plugin.js";
+document.head.appendChild(remoteScript);
+// @expect-error glass-lint rule=js:dynamic-code.script-injection message_id=detected
+const inlineScript = document.createElement("script");
+inlineScript.textContent = generatedCode;
+document.body.prepend(inlineScript);
 // Migrated: system/dynamic-code-helper-flow.js
-function legacyAppendToHead(node) { document.head.appendChild(node); }
-const legacyHelperScript = document.createElement("script"); // @expect-error glass-lint rule=js:dynamic-code.script-injection message_id=detected
-legacyHelperScript.src = "https://cdn.example.com/plugin.js";
-legacyAppendToHead(legacyHelperScript);
+function appendToHead(node) { document.head.appendChild(node); }
+
+// @expect-error glass-lint rule=js:dynamic-code.script-injection message_id=detected
+const helperScript = document.createElement("script");
+helperScript.src = "https://cdn.example.com/plugin.js";
+appendToHead(helperScript);
+
 // @expect-error glass-lint rule=js:dynamic-code.script-injection message_id=detected
 document.createElement("script");
 // second independent example

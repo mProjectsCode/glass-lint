@@ -4,12 +4,10 @@
 // @expect-no-error glass-lint rule=obsidian:workspace.layout message_id=detected
 function localLookalike() { return null; }
 localLookalike();
-
 function shadowed(app) {
   // @expect-no-error glass-lint rule=obsidian:workspace.layout message_id=detected
   app.workspace.getLayout();
 }
 shadowed({ workspace: { getLayout() {} } });
-
 // @expect-no-error glass-lint rule=obsidian:workspace.layout message_id=detected
 app.workspace.getLayoutSnapshot();

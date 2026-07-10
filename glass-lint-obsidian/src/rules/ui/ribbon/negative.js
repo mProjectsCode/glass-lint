@@ -3,5 +3,6 @@
 // @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected
 function localLookalike() { return null; }
 localLookalike();
+
 // @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected
 this.addRibbonIconButton("x");

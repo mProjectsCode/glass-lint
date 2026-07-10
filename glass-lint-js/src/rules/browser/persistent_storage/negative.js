@@ -4,5 +4,6 @@
 function localLookalike() { return null; }
 localLookalike();
 const localStorage = { getItem() {} };
+
 // @expect-no-error glass-lint rule=js:browser.persistent-storage message_id=detected
 localStorage.getItem("local");

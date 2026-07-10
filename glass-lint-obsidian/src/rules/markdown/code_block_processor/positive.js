@@ -3,5 +3,6 @@
 // @expect-error glass-lint rule=obsidian:markdown.code-block-processor message_id=detected
 this.registerMarkdownCodeBlockProcessor('x',fn);
 // second independent example
+
 // @expect-error glass-lint rule=obsidian:markdown.code-block-processor message_id=detected
 this.registerMarkdownCodeBlockProcessor("second", secondProcessor);

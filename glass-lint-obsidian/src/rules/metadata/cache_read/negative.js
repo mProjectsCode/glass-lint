@@ -3,5 +3,6 @@
 // @expect-no-error glass-lint rule=obsidian:metadata.cache-read message_id=detected
 function localLookalike() { return null; }
 localLookalike();
+
 // @expect-no-error glass-lint rule=obsidian:metadata.cache-read message_id=detected
 app.otherCache.getFileCache(file);

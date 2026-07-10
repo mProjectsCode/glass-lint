@@ -3,9 +3,10 @@
 // @expect-error glass-lint rule=js:electron.module message_id=detected
 import {ipcRenderer} from "electron";
 // second independent example
+
 // @expect-error glass-lint rule=js:electron.module message_id=detected
 import * as secondElectron from "electron";
-
 // Migrated: system/node-and-electron-requires.js
+
 // @expect-error glass-lint rule=js:electron.module message_id=detected
-const legacyElectron = __toESM(require("electron"));
+const electron = __toESM(require("electron"));

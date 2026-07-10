@@ -3,5 +3,6 @@
 // @expect-error glass-lint rule=js:archive.compression message_id=detected
 import z from "node:zlib";
 // second independent example
+
 // @expect-error glass-lint rule=js:archive.compression message_id=detected
 import * as secondZip from "jszip";

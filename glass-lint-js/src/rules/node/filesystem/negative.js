@@ -4,5 +4,6 @@
 function localLookalike() { return null; }
 localLookalike();
 import localFs from "not-fs";
+
 // @expect-no-error glass-lint rule=js:node.filesystem message_id=detected
 localFs;

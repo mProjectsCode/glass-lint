@@ -4,5 +4,6 @@
 function localLookalike() { return null; }
 localLookalike();
 const navigator = { bluetooth: { requestDevice() {} } };
+
 // @expect-no-error glass-lint rule=js:browser.permissions-bluetooth message_id=detected
 navigator.bluetooth.requestDevice({});

@@ -3,10 +3,13 @@
 // @expect-error glass-lint rule=obsidian:metadata.cache-read message_id=detected
 app.metadataCache.getFileCache(file);
 // second independent example
+
 // @expect-error glass-lint rule=obsidian:metadata.cache-read message_id=detected
 app.metadataCache.getCache(file);
-
 // Migrated: vault/vault-workspace-metadata-apis.js
-const legacyMetadataCache = this.app.metadataCache; // @expect-error glass-lint rule=obsidian:metadata.cache-read message_id=detected
+
 // @expect-error glass-lint rule=obsidian:metadata.cache-read message_id=detected
-legacyMetadataCache.getFileCache(file);
+const metadataCache = this.app.metadataCache;
+
+// @expect-error glass-lint rule=obsidian:metadata.cache-read message_id=detected
+metadataCache.getFileCache(file);

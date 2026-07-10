@@ -3,8 +3,10 @@
 // @expect-error glass-lint rule=js:browser.permissions-media message_id=detected
 navigator.mediaDevices.getUserMedia({audio:true});
 // second independent example
+
 // @expect-error glass-lint rule=js:browser.permissions-media message_id=detected
 navigator.mediaDevices.getUserMedia({ video: true });
 const media = navigator.mediaDevices;
+
 // @expect-error glass-lint rule=js:browser.permissions-media message_id=detected
 media.getUserMedia({ audio: true });

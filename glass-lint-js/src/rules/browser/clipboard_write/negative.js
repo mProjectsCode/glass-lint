@@ -4,5 +4,6 @@
 function localLookalike() { return null; }
 localLookalike();
 const navigator = { clipboard: { writeText() {} } };
+
 // @expect-no-error glass-lint rule=js:browser.clipboard-write message_id=detected
 navigator.clipboard.writeText("local");

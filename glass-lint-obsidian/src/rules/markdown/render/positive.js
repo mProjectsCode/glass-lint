@@ -3,5 +3,6 @@
 // @expect-error glass-lint rule=obsidian:markdown.render message_id=detected
 MarkdownRenderer.render(app,text,el,'',ctx);
 // second independent example
+
 // @expect-error glass-lint rule=obsidian:markdown.render message_id=detected
 MarkdownRenderer.render(app, text, el, "", ctx);

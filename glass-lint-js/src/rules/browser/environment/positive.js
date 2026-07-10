@@ -3,5 +3,6 @@
 // @expect-error glass-lint rule=js:browser.environment message_id=detected
 navigator.userAgent;
 // second independent example
+
 // @expect-error glass-lint rule=js:browser.environment message_id=detected
 navigator.language;

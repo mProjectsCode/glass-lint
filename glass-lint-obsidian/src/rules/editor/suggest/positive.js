@@ -3,5 +3,6 @@
 // @expect-error glass-lint rule=obsidian:editor.suggest message_id=detected
 this.registerEditorSuggest(s);
 // second independent example
+
 // @expect-error glass-lint rule=obsidian:editor.suggest message_id=detected
 this.registerEditorSuggest(secondSuggest);

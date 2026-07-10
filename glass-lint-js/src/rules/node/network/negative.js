@@ -4,5 +4,6 @@
 function localLookalike() { return null; }
 localLookalike();
 import localHttp from "not-http";
+
 // @expect-no-error glass-lint rule=js:node.network message_id=detected
 localHttp;

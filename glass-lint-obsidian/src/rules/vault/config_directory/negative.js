@@ -4,6 +4,5 @@
 // @expect-no-error glass-lint rule=obsidian:vault.config-directory message_id=detected
 function localLookalike() { return null; }
 localLookalike();
-
 // @expect-no-error glass-lint rule=obsidian:vault.config-directory message_id=detected
 const ordinaryConfig = ".config/obsidian";
