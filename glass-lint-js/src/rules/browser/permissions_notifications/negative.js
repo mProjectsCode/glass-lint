@@ -3,3 +3,6 @@
 // @expect-no-error glass-lint rule=js:browser.permissions-notifications message_id=detected
 function localLookalike() { return null; }
 localLookalike();
+class Notification { static requestPermission() {} }
+// @expect-no-error glass-lint rule=js:browser.permissions-notifications message_id=detected
+Notification.requestPermission();

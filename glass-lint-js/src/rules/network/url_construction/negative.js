@@ -3,3 +3,5 @@
 // @expect-no-error glass-lint rule=js:network.url-construction message_id=detected
 function localLookalike() { return null; }
 localLookalike();
+// @expect-no-error glass-lint rule=js:network.url-construction message_id=detected
+const urlText = "https://example.com";

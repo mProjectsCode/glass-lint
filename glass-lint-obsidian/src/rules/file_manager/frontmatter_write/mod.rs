@@ -1,8 +1,8 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 pub(crate) fn rule() -> Rule {
-    Rule::builder("metadata.frontmatter-write")
+    Rule::builder("file-manager.frontmatter-write")
         .label("Updates frontmatter through Obsidian APIs")
-        .category("metadata")
+        .category("file-manager/frontmatter-write")
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .matcher(Matcher::rooted_member_call(

@@ -5,3 +5,7 @@ import fs from "node:fs";
 // second independent example
 // @expect-error glass-lint rule=js:node.filesystem message_id=detected
 import * as secondFs from "node:fs";
+
+// Migrated: system/node-and-electron-requires.js
+// @expect-error glass-lint rule=js:node.filesystem message_id=detected
+const legacyFs = require("fs");

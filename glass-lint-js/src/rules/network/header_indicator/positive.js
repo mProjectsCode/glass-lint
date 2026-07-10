@@ -5,3 +5,5 @@ const x="Authorization";
 // second independent example
 // @expect-error glass-lint rule=js:network.header-indicator message_id=detected
 const authHeader = "Authorization";
+// @expect-error glass-lint rule=js:network.header-indicator message_id=detected
+const agentHeader = "user-agent";

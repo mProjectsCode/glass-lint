@@ -138,7 +138,9 @@ fn run() -> Result<bool> {
 
         eprintln!("  total: {suite_elapsed:.1?}");
 
-        let report_dir = path.parent().unwrap_or(&path).to_path_buf();
+        let report_dir = PathBuf::from("reports");
+        fs::create_dir_all(&report_dir)
+            .with_context(|| format!("create {}", report_dir.display()))?;
         let report_path = report_dir.join("COMPARISON.md");
         let content = comparison(&report);
         fs::write(&report_path, &content)

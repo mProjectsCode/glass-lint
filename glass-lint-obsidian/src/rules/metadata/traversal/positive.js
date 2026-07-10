@@ -5,3 +5,11 @@ Object.keys(app.metadataCache.resolvedLinks);
 // second independent example
 // @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
 Object.entries(app.metadataCache.unresolvedLinks);
+const unresolved = app.metadataCache.unresolvedLinks;
+// @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+Object.values(unresolved);
+
+// Migrated: metadata/flow-sensitive-metadata.js
+const legacyResolvedLinks = this.app.metadataCache.resolvedLinks;
+// @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+Object.entries(legacyResolvedLinks);

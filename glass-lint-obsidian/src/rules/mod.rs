@@ -1,5 +1,6 @@
 mod codemirror;
 mod editor;
+mod file_manager;
 mod lifecycle;
 mod markdown;
 mod metadata;
@@ -23,6 +24,7 @@ pub(crate) fn all() -> Vec<Rule> {
         view::rules(),
         ui::rules(),
         editor::rules(),
+        file_manager::rules(),
         markdown::rules(),
         codemirror::rules(),
         storage::rules(),

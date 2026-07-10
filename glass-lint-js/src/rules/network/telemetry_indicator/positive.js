@@ -5,3 +5,5 @@ import x from "@sentry/browser";
 // second independent example
 // @expect-error glass-lint rule=js:network.telemetry-indicator message_id=detected
 const telemetryEndpoint = "sentry.io";
+// @expect-error glass-lint rule=js:network.telemetry-indicator message_id=detected
+import posthog from "posthog-js";

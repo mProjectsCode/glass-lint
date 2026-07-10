@@ -6,7 +6,7 @@ Glass Lint is a general JavaScript lint engine, an Obsidian rule pack, and a sni
 cargo run -p glass-lint-cli --bin glass-lint -- rules
 cargo run -p glass-lint-cli --bin glass-lint -- check main.js
 cargo run -p glass-lint-cli --bin glass-lint -- --provider js check main.js
-cargo run -p glass-lint-cli --bin glass-lint-harness -- verify tests/cases
+cargo run -p glass-lint-cli --bin glass-lint-harness -- verify tests/e2e
 ```
 
 `glass-lint-core` owns parsing, provenance and alias-flow analysis, declarative rule matching, configuration, and reports. It contains no product policy. `glass-lint-obsidian` owns Obsidian rules, while `glass-lint-js` owns generic JavaScript, browser, Node.js, and Electron rules. Rule IDs use `provider:name`, such as `obsidian:network.request` and `js:network.request`.
@@ -27,9 +27,9 @@ The parser accepts JavaScript (including JSX). TypeScript, fixes, and suggestion
 
 ## Harness Cases
 
-Harness cases are ordinary `.js` files. Put related rule cases in topic folders, for example `tests/cases/network/*.js` for network behavior and `tests/cases/system/*.js` for dynamic-code or timer behavior. The case ID is the path below the suite root without `.js`, unless the file sets `// @case id ...`.
+Harness cases are ordinary `.js` files. Rule-level conformance fixtures live alongside their Rust definitions as `positive.js` and `negative.js`; run `make provider-fixtures` to verify them. The remaining `tests/` tree is reserved for end-to-end scenarios, and `make harness` runs `tests/e2e` by default.
 
-The default runnable suite is `tests/cases`. It includes positive, negative, and precision cases organized by the affected capability.
+The case ID is the path below the suite root without `.js`, unless the file sets `// @case id ...`.
 
 Configuration comments must be at the very top of the file, before executable code:
 

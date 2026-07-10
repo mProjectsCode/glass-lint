@@ -282,13 +282,13 @@ mod tests {
     fn parses_comment_case() {
         let source = "\
 // @case description Dynamic code
-// @tool glass-lint rules=obsidian:dynamic_code
-// @expect-error glass-lint rule=obsidian:dynamic_code message_id=detected
+// @tool glass-lint rules=js:dynamic-code.string-timer
+// @expect-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
 globalThis.setTimeout('run()', 10);
 ";
         let case = parse_case(
-            Path::new("tests/cases"),
-            Path::new("tests/cases/system/timer.js"),
+            Path::new("fixtures"),
+            Path::new("fixtures/system/timer.js"),
             source.into(),
         )
         .unwrap();
@@ -300,13 +300,13 @@ globalThis.setTimeout('run()', 10);
     #[test]
     fn parses_forbidden_diagnostic() {
         let source = "\
-// @tool glass-lint rules=obsidian:network.browser
-fetch('/remote'); // @expect-error glass-lint rule=obsidian:network.browser
-function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=obsidian:network.browser
+// @tool glass-lint rules=js:network.request
+fetch('/remote'); // @expect-error glass-lint rule=js:network.request
+function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=js:network.request
 ";
         let case = parse_case(
-            Path::new("tests/cases"),
-            Path::new("tests/cases/network/precision.js"),
+            Path::new("fixtures"),
+            Path::new("fixtures/network/precision.js"),
             source.into(),
         )
         .unwrap();

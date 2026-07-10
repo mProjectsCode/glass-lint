@@ -3,3 +3,5 @@
 // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
 function localLookalike() { return null; }
 localLookalike();
+// @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
+this.loadPluginData();

@@ -9,7 +9,7 @@ pub(super) fn for_rule(id: &str) -> &'static [&'static str] {
         "vault.read" | "metadata.cache-read" | "metadata.frontmatter-read" | "metadata.extract" => {
             &["disclosure.note_content_access"]
         }
-        "vault.write" | "vault.delete" | "vault.move-copy" | "metadata.frontmatter-write" => {
+        "vault.write" | "vault.delete" | "vault.move-copy" | "file-manager.frontmatter-write" => {
             &["disclosure.vault_file_write"]
         }
         "vault.enumerate" => &["disclosure.full_vault_access"],

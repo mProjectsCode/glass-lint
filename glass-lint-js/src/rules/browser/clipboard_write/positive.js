@@ -5,3 +5,6 @@ navigator.clipboard.writeText("x");
 // second independent example
 // @expect-error glass-lint rule=js:browser.clipboard-write message_id=detected
 navigator.clipboard.write([]);
+const writeClipboard = navigator.clipboard.writeText;
+// @expect-error glass-lint rule=js:browser.clipboard-write message_id=detected
+writeClipboard("alias");
