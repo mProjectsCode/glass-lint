@@ -1,10 +1,10 @@
-.PHONY: all build check clippy fmt fmt-check harness test ci clean
+.PHONY: all build check clippy fmt fmt-check harness provider-fixtures test ci clean
 
 CARGO ?= cargo
 HARNESS ?= $(CARGO) run -p glass-lint-cli --bin glass-lint-harness --
 HARNESS_SUITE ?= tests/cases
 
-all: fmt-check check clippy test harness
+all: fmt-check check clippy test harness provider-fixtures
 
 build:
 	$(CARGO) build --workspace
@@ -27,10 +27,14 @@ test:
 harness:
 	$(HARNESS) verify $(HARNESS_SUITE)
 
+provider-fixtures:
+	$(HARNESS) verify glass-lint-js/src/rules
+	$(HARNESS) verify glass-lint-obsidian/src/rules
+
 compare:
 	$(HARNESS) --adapter eslint-obsidianmd=adapters/eslint-obsidianmd/adapter.mjs compare $(HARNESS_SUITE)
 
-ci: fmt-check check clippy test harness
+ci: fmt-check check clippy test harness provider-fixtures
 
 clean:
 	$(CARGO) clean

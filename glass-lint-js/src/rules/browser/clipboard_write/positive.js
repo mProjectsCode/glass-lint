@@ -1,0 +1,7 @@
+// @case description positive fixture for js:browser.clipboard-write
+// @tool glass-lint rules=js:browser.clipboard-write
+// @expect-error glass-lint rule=js:browser.clipboard-write message_id=detected
+navigator.clipboard.writeText("x");
+// second independent example
+// @expect-error glass-lint rule=js:browser.clipboard-write message_id=detected
+navigator.clipboard.write([]);

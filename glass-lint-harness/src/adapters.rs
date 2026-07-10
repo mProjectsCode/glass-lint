@@ -29,26 +29,37 @@ impl Adapter for GlassLintAdapter {
     }
 
     fn run(&self, case: &Case, expectation: &ToolExpectation) -> Result<Vec<Finding>> {
-        let configured = glass_lint_obsidian::heuristic_linter();
-        let enabled = expectation
-            .rules
-            .iter()
-            .map(|id| glass_lint_core::RuleId::parse(id.clone()))
-            .collect::<Result<Vec<_>, _>>()?;
-        let linter = glass_lint_core::Linter::with_rules(configured.catalog().clone(), enabled)?;
-        let report = linter.lint(&case.source, &case.filename);
-        if !report.parse_diagnostics.is_empty() {
-            bail!(
-                "{}",
-                report
-                    .parse_diagnostics
-                    .into_iter()
-                    .map(|d| d.message)
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            );
+        let mut findings = Vec::new();
+        for (prefix, configured) in [
+            ("js:", glass_lint_js::heuristic_linter()),
+            ("obsidian:", glass_lint_obsidian::heuristic_linter()),
+        ] {
+            let enabled = expectation
+                .rules
+                .iter()
+                .filter(|id| id.starts_with(prefix))
+                .map(|id| glass_lint_core::RuleId::parse(id.clone()))
+                .collect::<Result<Vec<_>, _>>()?;
+            if enabled.is_empty() {
+                continue;
+            }
+            let linter =
+                glass_lint_core::Linter::with_rules(configured.catalog().clone(), enabled)?;
+            let report = linter.lint(&case.source, &case.filename);
+            if !report.parse_diagnostics.is_empty() {
+                bail!(
+                    "{}",
+                    report
+                        .parse_diagnostics
+                        .into_iter()
+                        .map(|d| d.message)
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                );
+            }
+            findings.extend(report.findings);
         }
-        Ok(report.findings)
+        Ok(findings)
     }
 }
 

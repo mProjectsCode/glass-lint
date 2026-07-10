@@ -5,17 +5,18 @@ Glass Lint is a general JavaScript lint engine, an Obsidian rule pack, and a sni
 ```sh
 cargo run -p glass-lint-cli --bin glass-lint -- rules
 cargo run -p glass-lint-cli --bin glass-lint -- check main.js
+cargo run -p glass-lint-cli --bin glass-lint -- --provider js check main.js
 cargo run -p glass-lint-cli --bin glass-lint-harness -- verify tests/cases
 ```
 
-`glass-lint-core` owns parsing, provenance and alias-flow analysis, declarative rule matching, configuration, and reports. It contains no Obsidian names or policy. `glass-lint-obsidian` contains only its private rule catalog and exposes ready-to-use precision-first and heuristic linters plus catalog metadata. Rule IDs use `provider:name`, such as `obsidian:network.browser`.
+`glass-lint-core` owns parsing, provenance and alias-flow analysis, declarative rule matching, configuration, and reports. It contains no product policy. `glass-lint-obsidian` owns Obsidian rules, while `glass-lint-js` owns generic JavaScript, browser, Node.js, and Electron rules. Rule IDs use `provider:name`, such as `obsidian:network.request` and `js:network.request`.
 
 ```rust
 let report = glass_lint_obsidian::recommended_linter()
     .lint(source, "main.js");
 
 let configured = glass_lint_obsidian::heuristic_linter();
-let selected = [glass_lint_core::RuleId::parse("obsidian:network.browser")?];
+let selected = [glass_lint_core::RuleId::parse("obsidian:network.request")?];
 let custom = glass_lint_core::Linter::with_rules(
     configured.catalog().clone(),
     selected,
@@ -35,7 +36,7 @@ Configuration comments must be at the very top of the file, before executable co
 ```js
 // @case description Each fetch call produces a located finding
 // @case tags network,browser
-// @tool glass-lint rules=obsidian:network.browser
+// @tool glass-lint rules=js:network.request
 // @tool eslint-obsidianmd rules=obsidianmd/no-global-this
 ```
 
@@ -44,13 +45,13 @@ Only configured tools run a case. When a report includes a registered tool that 
 Expected diagnostics use assertion comments next to the relevant source line:
 
 ```js
-// @expect-error glass-lint rule=obsidian:network.browser message_id=detected
+// @expect-error glass-lint rule=js:network.request message_id=detected
 fetch('/before');
 
-fetch('/inline'); // @expect-error glass-lint rule=obsidian:network.browser message_id=detected
+fetch('/inline'); // @expect-error glass-lint rule=js:network.request message_id=detected
 
 fetch('/after');
-// @expect-error-after glass-lint rule=obsidian:network.browser message_id=detected
+// @expect-error-after glass-lint rule=js:network.request message_id=detected
 ```
 
 Use `@expect-no-error` (or `@expect-no-error-after`) to assert that a selected rule
@@ -58,8 +59,8 @@ does not report a particular lookalike while allowing other expected diagnostics
 the same snippet:
 
 ```js
-fetch('/remote'); // @expect-error glass-lint rule=obsidian:network.browser
-function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=obsidian:network.browser
+fetch('/remote'); // @expect-error glass-lint rule=js:network.request
+function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=js:network.request
 ```
 
 Supported assertion fields are `rule`, `message_id`, `severity`, `count`, `line`, `column`, and `message`. Use `count=any`, `line=any`, or `column=any` only when the behavior under test is aggregate capability presence rather than exact evidence shape or location. Prefer one assertion comment per expected diagnostic and keep fields as specific as needed for precision. A case with configured rules and no assertions verifies that the selected tool produces no diagnostics.

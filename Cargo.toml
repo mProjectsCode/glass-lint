@@ -2,6 +2,7 @@
 members = [
     "glass-lint-core",
     "glass-lint-obsidian",
+    "glass-lint-js",
     "glass-lint-harness",
     "glass-lint-cli",
 ]

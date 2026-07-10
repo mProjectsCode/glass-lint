@@ -1,5 +1,5 @@
 // @case description Local classes and unused imports do not count as Obsidian API usage
-// @tool glass-lint rules=obsidian:ui.modals_notices,obsidian:settings.ui,obsidian:editor.markdown_api
+// @tool glass-lint rules=obsidian:ui.modal,obsidian:ui.settings-tab,obsidian:markdown.link
 // @tool eslint-obsidianmd config=recommended
 
 import { Notice as ImportedNotice, Setting as ImportedSetting, MarkdownView as ImportedMarkdownView } from "obsidian";

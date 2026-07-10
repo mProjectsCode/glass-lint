@@ -1,0 +1,4 @@
+// @case description negative fixture for js:browser.file-dialog
+// @tool glass-lint rules=js:browser.file-dialog
+// @expect-no-error glass-lint rule=js:browser.file-dialog message_id=detected
+document.createElement("div");

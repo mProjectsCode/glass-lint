@@ -245,6 +245,7 @@ dependencies = [
  "clap",
  "glass-lint-core",
  "glass-lint-harness",
+ "glass-lint-js",
  "glass-lint-obsidian",
  "serde_json",
  "tracing",
@@ -269,11 +270,19 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "glass-lint-core",
+ "glass-lint-js",
  "glass-lint-obsidian",
  "serde",
  "serde_json",
  "tracing",
  "walkdir",
+]
+
+[[package]]
+name = "glass-lint-js"
+version = "0.1.0"
+dependencies = [
+ "glass-lint-core",
 ]
 
 [[package]]

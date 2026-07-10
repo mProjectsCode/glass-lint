@@ -16,6 +16,14 @@ use walkdir::WalkDir;
 struct Args {
     #[command(subcommand)]
     command: Command,
+    #[arg(long, value_enum, default_value_t = Provider::Obsidian, global = true)]
+    provider: Provider,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum Provider {
+    Obsidian,
+    Js,
 }
 
 #[derive(Subcommand)]
@@ -58,10 +66,16 @@ enum Profile {
 }
 
 impl Profile {
-    fn linter(self) -> Linter {
+    fn linter(self, provider: Provider) -> Linter {
         match self {
-            Self::Recommended => glass_lint_obsidian::recommended_linter(),
-            Self::Heuristic => glass_lint_obsidian::heuristic_linter(),
+            Self::Recommended => match provider {
+                Provider::Obsidian => glass_lint_obsidian::recommended_linter(),
+                Provider::Js => glass_lint_js::recommended_linter(),
+            },
+            Self::Heuristic => match provider {
+                Provider::Obsidian => glass_lint_obsidian::heuristic_linter(),
+                Provider::Js => glass_lint_js::heuristic_linter(),
+            },
         }
     }
 }
@@ -93,11 +107,16 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<bool> {
-    match Args::parse().command {
+    let args = Args::parse();
+    let provider = args.provider;
+    match args.command {
         Command::Rules => {
             println!(
                 "{}",
-                serde_json::to_string_pretty(&glass_lint_obsidian::rule_catalog())?
+                serde_json::to_string_pretty(&match provider {
+                    Provider::Obsidian => glass_lint_obsidian::rule_catalog(),
+                    Provider::Js => glass_lint_js::rule_catalog(),
+                })?
             );
             Ok(false)
         }
@@ -107,13 +126,13 @@ fn run() -> Result<bool> {
             profile,
             max_bytes,
             fail_on,
-        } => analyze_paths(&path, &rules, profile, max_bytes, fail_on),
+        } => analyze_paths(&path, &rules, profile, provider, max_bytes, fail_on),
         Command::Snippet {
             path,
             rules,
             profile,
             fail_on,
-        } => analyze_paths(&path, &rules, profile, u64::MAX, fail_on),
+        } => analyze_paths(&path, &rules, profile, provider, u64::MAX, fail_on),
     }
 }
 
@@ -121,10 +140,11 @@ fn analyze_paths(
     path: &Path,
     rules: &[String],
     profile: Profile,
+    provider: Provider,
     max_bytes: u64,
     fail_on: Threshold,
 ) -> Result<bool> {
-    let configured = profile.linter();
+    let configured = profile.linter(provider);
     let linter = if rules.is_empty() {
         configured
     } else {

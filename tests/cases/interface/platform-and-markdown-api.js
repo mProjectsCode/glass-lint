@@ -1,5 +1,5 @@
 // @case description Platform branching and Markdown API class references are detected
-// @tool glass-lint rules=obsidian:platform.branching,obsidian:editor.markdown_api,obsidian:vault.read
+// @tool glass-lint rules=obsidian:platform.branching,obsidian:markdown.link,obsidian:vault.read
 // @tool eslint-obsidianmd config=recommended
 
 import * as obsidian from "obsidian";
@@ -12,6 +12,6 @@ if (obsidian . Platform ["isMobile"]) { // @expect-error glass-lint rule=obsidia
   console.log("mobile");
 }
 
-if (leaf.view instanceof MarkdownView) { // @expect-error glass-lint rule=obsidian:editor.markdown_api message_id=detected
+if (leaf.view instanceof MarkdownView) {
   leaf.view.editor.getValue();
 }

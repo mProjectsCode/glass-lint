@@ -6,7 +6,7 @@
 - `glass-lint-core` must not contain Obsidian-specific module names, API knowledge, categories, manifests, disclosures, or rule policy.
 - `glass-lint-obsidian` is a provider package. It owns Obsidian rule definitions, profiles, disclosure mappings, bundle analysis, and the small number of provider-specific custom rule callbacks.
 - Obsidian rules should use the declarative matcher API from core whenever possible. Use custom Rust callbacks only for semantic rules that cannot be expressed accurately through the declarative API.
-- Rule IDs use `provider:name`, for example `obsidian:network.browser`.
+- Rule IDs use `provider:name`, for example `js:network.request`.
 - Accuracy is precision-first. Provenance-aware and connected-flow matches are preferred over raw names or substrings. Broad heuristics belong in the opt-in heuristic profile.
 
 ## Code Quality

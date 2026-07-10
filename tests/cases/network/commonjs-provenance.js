@@ -1,9 +1,9 @@
 // @case description CommonJS Obsidian imports preserve module provenance
-// @tool glass-lint rules=obsidian:network.obsidian
+// @tool glass-lint rules=obsidian:network.request
 // @tool eslint-obsidianmd config=recommended
 
 var obsidian = require("obsidian");
-obsidian.requestUrl("https://example.com"); // @expect-error glass-lint rule=obsidian:network.obsidian message_id=detected count=8 line=any
+obsidian.requestUrl("https://example.com"); // @expect-error glass-lint rule=obsidian:network.request message_id=detected count=8 line=any
 (0, obsidian["requestUrl"])("https://example.com");
 
 var { requestUrl: r } = require("obsidian");

@@ -1,5 +1,5 @@
 // @case description Local network lookalikes do not report network capability use
-// @tool glass-lint rules=obsidian:network.obsidian,obsidian:network.browser
+// @tool glass-lint rules=obsidian:network.request,js:network.request
 // @tool eslint-obsidianmd config=recommended
 
 function requestUrl(url) {

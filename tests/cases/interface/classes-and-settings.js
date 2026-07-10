@@ -1,18 +1,18 @@
 // @case description Obsidian UI class references report their corresponding rules
-// @tool glass-lint rules=obsidian:ui.modals_notices,obsidian:lifecycle.methods,obsidian:settings.ui
+// @tool glass-lint rules=obsidian:ui.modal,obsidian:ui.notice,obsidian:ui.settings-tab
 // @tool eslint-obsidianmd config=recommended
 
-import { Modal, Notice, PluginSettingTab } from "obsidian"; // @expect-error glass-lint rule=obsidian:ui.modals_notices message_id=detected count=2 line=any
+import { Modal, Notice, PluginSettingTab } from "obsidian";
 
-class ExampleModal extends Modal {}
-const show = () => new Notice("done");
+class ExampleModal extends Modal {} // @expect-error glass-lint rule=obsidian:ui.modal message_id=detected line=any column=any
+const show = () => new Notice("done"); // @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
 
 class ExamplePlugin {
-  async onload() {} // @expect-error glass-lint rule=obsidian:lifecycle.methods message_id=detected
-  onunload() {} // @expect-error glass-lint rule=obsidian:lifecycle.methods message_id=detected
+  async onload() {}
+  onunload() {}
 }
 
-class ExampleSettings extends PluginSettingTab { // @expect-error glass-lint rule=obsidian:settings.ui message_id=detected
+class ExampleSettings extends PluginSettingTab { // @expect-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
   getSettingDefinitions() {
     return [];
   }

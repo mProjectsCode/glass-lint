@@ -1,5 +1,5 @@
 // @case description Dynamic-code flow respects shadowing, reassignment, callback values, and ordering
-// @tool glass-lint rules=obsidian:dynamic_code
+// @tool glass-lint rules=js:dynamic-code.eval
 // @tool eslint-obsidianmd config=recommended
 
 function localOnly(eval, Function, setTimeout) {

@@ -1,9 +1,9 @@
 // @case description An Obsidian namespace import is unavailable through a shadowing binding
-// @tool glass-lint rules=obsidian:network.obsidian
+// @tool glass-lint rules=obsidian:network.request
 // @tool eslint-obsidianmd config=recommended
 
 import * as obsidian from "obsidian";
 
 function localOnly(obsidian) {
-  obsidian.requestUrl("not-network"); // @expect-no-error glass-lint rule=obsidian:network.obsidian message_id=detected
+  obsidian.requestUrl("not-network"); // @expect-no-error glass-lint rule=obsidian:network.request message_id=detected
 }
