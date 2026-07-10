@@ -1,12 +1,19 @@
 // @case description positive fixture for js:node.filesystem
 // @tool glass-lint rules=js:node.filesystem
+// Every configured filesystem/path module is reported at its ESM load.
 // @expect-error glass-lint rule=js:node.filesystem message_id=detected
-import fs from "node:fs";
-// second independent example
+import fs from "fs";
+// @expect-error glass-lint rule=js:node.filesystem message_id=detected
+import promises from "fs/promises";
+// @expect-error glass-lint rule=js:node.filesystem message_id=detected
+import nodeFs from "node:fs";
+// @expect-error glass-lint rule=js:node.filesystem message_id=detected
+import nodePromises from "node:fs/promises";
+// @expect-error glass-lint rule=js:node.filesystem message_id=detected
+import nodePath from "node:path";
 
+// Unshadowed static CommonJS loads retain module provenance.
 // @expect-error glass-lint rule=js:node.filesystem message_id=detected
-import * as secondFs from "node:fs";
-// Migrated: system/node-and-electron-requires.js
-
+const loadedFs = require("fs");
 // @expect-error glass-lint rule=js:node.filesystem message_id=detected
-const fs = require("fs");
+const loadedPromises = require("node:fs/promises");

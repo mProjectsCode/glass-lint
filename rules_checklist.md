@@ -1,0 +1,229 @@
+# Rule and Test Audit Checklist
+
+This checklist covers every rule currently registered by the JavaScript (`js`) and Obsidian (`obsidian`) providers. Complete audit groups in order; each group contains 5–10 rules.
+
+## Agent audit instructions
+
+Each agent must pick the first incomplete audit group, then audit every rule in that group and then stop. For each rule:
+
+1. Read the rule implementation and its existing tests.
+2. Determine the rule's intended behavior, including its precision boundaries and relevant provenance, alias, reassignment, and shadowing behavior.
+3. Document that intent in a Rust doc comment on the rule factory or the most relevant public rule-definition item.
+4. Reorganize the rule's tests (the content of `positive.js` and `negative.js` files) so the intent is clear, and add focused positive and negative coverage for it.
+
+Tests that deliberately fail are allowed when they demonstrate a real, documented weakness in a rule. Keep them focused and make both the expected failure and the gap it exposes explicit. Mark every rule and its audit group complete only after the audit work is complete.
+
+Each rule entry links to its directory, which contains `mod.rs` (the implementation) and normally `positive.js` and `negative.js` (the rule fixtures). Start the audit there; trace into the core matcher only when the rule's behavior requires it.
+
+## Audit protocol
+
+### Ownership and ordering
+
+Before editing, claim one incomplete group by recording the auditor and date in its group record. Do not begin a second group until the first is complete. In concurrent work, a claimed group is unavailable to other auditors; choose the next unclaimed incomplete group instead of relying on a race to the first unchecked heading.
+
+### Per-rule record
+
+Every rule has an `Audit:` record immediately below it. For an incomplete rule, fill in its matcher classification (`rooted`, `module provenance`, `heuristic`, `flow`, or `custom`) and replace every `[ ]` only after the corresponding work is complete. Coverage should name the exercised boundaries that apply: direct match, alias, shadowing, reassignment, lookalike, dynamic/static values, imports, and flow lifecycle. Record deliberate gaps precisely in `limitation`.
+
+### Completion gate
+
+Check a rule only after its implementation comment and fixture record are complete. Check a group only when every rule is checked and the following commands have passed:
+
+```sh
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+Also run the targeted rule directories with `cargo run -p glass-lint-cli --bin glass-lint-harness -- verify <rule-directory>`. Run `make test-rules` before closing a JavaScript or Obsidian group. An unrelated failing fixture does not block the group only when its path and exact error are recorded below; never use this exception for a failure in the audited group.
+
+### Group records
+
+Record ownership and completion evidence directly below each group heading using this form:
+
+`Group audit: owner=<name>; claimed=<YYYY-MM-DD>; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=[none|reference]`
+
+## JavaScript rules (30)
+
+- [x] **Audit group 1 — JavaScript browser foundations (8 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-10; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[ ]; exception-log=network/eval parse error
+  - [x] `js:archive.compression` — [`glass-lint-js/src/rules/node/archive_compression/`](glass-lint-js/src/rules/node/archive_compression/)
+    - Audit: module provenance; intent-doc=[x]; coverage=listed packages, similar module, shadowed loader; limitation=reports imports rather than later API use; verified=targeted fixtures
+  - [x] `js:browser.clipboard-read` — [`glass-lint-js/src/rules/browser/clipboard_read/`](glass-lint-js/src/rules/browser/clipboard_read/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment; limitation=read and readText only; verified=targeted fixtures
+  - [x] `js:browser.clipboard-write` — [`glass-lint-js/src/rules/browser/clipboard_write/`](glass-lint-js/src/rules/browser/clipboard_write/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment; limitation=write and writeText only; verified=targeted fixtures
+  - [x] `js:browser.environment` — [`glass-lint-js/src/rules/browser/environment/`](glass-lint-js/src/rules/browser/environment/)
+    - Audit: heuristic; intent-doc=[x]; coverage=configured reads, local lookalike, unlisted and dynamic properties; limitation=local same-chain lookalikes report; verified=targeted fixtures
+  - [x] `js:browser.file-dialog` — [`glass-lint-js/src/rules/browser/file_dialog/`](glass-lint-js/src/rules/browser/file_dialog/)
+    - Audit: flow; intent-doc=[x]; coverage=source, alias, static computed write, setAttribute, reassignment; limitation=bounded direct flow only; verified=targeted fixtures
+  - [x] `js:browser.global-input-hook` — [`glass-lint-js/src/rules/browser/global_input_hook/`](glass-lint-js/src/rules/browser/global_input_hook/)
+    - Audit: heuristic; intent-doc=[x]; coverage=receivers, static event aliases, shadowing, excluded/dynamic events; limitation=local same-chain lookalikes report; verified=targeted fixtures
+  - [x] `js:browser.permissions-bluetooth` — [`glass-lint-js/src/rules/browser/permissions_bluetooth/`](glass-lint-js/src/rules/browser/permissions_bluetooth/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment; limitation=requestDevice only; verified=targeted fixtures
+  - [x] `js:browser.permissions-geolocation` — [`glass-lint-js/src/rules/browser/permissions_geolocation/`](glass-lint-js/src/rules/browser/permissions_geolocation/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment; limitation=getCurrentPosition only; verified=targeted fixtures
+
+- [x] **Audit group 2 — JavaScript browser and dynamic code (8 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-10; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
+  - Exception log: `make test-rules` passed all 60 JavaScript cases but reports the pre-existing unrelated Obsidian failures in `vault/resource_url/positive` (expected 1, found 0), `workspace/leaf_management/positive` (expected 1, found 0), and `workspace/open/positive` (expected 1, found 0).
+- [x] `js:browser.permissions-media` — [`glass-lint-js/src/rules/browser/permissions_media/`](glass-lint-js/src/rules/browser/permissions_media/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment, static constraints; limitation=getUserMedia only; verified=targeted fixtures
+- [x] `js:browser.permissions-notifications` — [`glass-lint-js/src/rules/browser/permissions_notifications/`](glass-lint-js/src/rules/browser/permissions_notifications/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment; limitation=requestPermission only; verified=targeted fixtures
+- [x] `js:browser.persistent-storage` — [`glass-lint-js/src/rules/browser/persistent_storage/`](glass-lint-js/src/rules/browser/persistent_storage/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment, listed methods, unlisted lookalike; limitation=only six configured methods; verified=targeted fixtures
+- [x] `js:crypto.operation` — [`glass-lint-js/src/rules/node/crypto_operation/`](glass-lint-js/src/rules/node/crypto_operation/)
+    - Audit: module provenance/heuristic; intent-doc=[x]; coverage=all listed imports, similar module, shadowed loader, static Web Crypto call, unlisted method; limitation=reports imports rather than later API use and heuristic chains are syntactic; verified=targeted fixtures
+- [x] `js:dom.remote-resource` — [`glass-lint-js/src/rules/network/remote_resource/`](glass-lint-js/src/rules/network/remote_resource/)
+    - Audit: flow; intent-doc=[x]; coverage=script/image source, alias, static computed write, setAttribute, insertion sink, dynamic/local values, unsupported tag; limitation=bounded direct flow and supported sinks only; verified=targeted fixtures
+- [x] `js:dynamic-code.eval` — [`glass-lint-js/src/rules/network/eval/`](glass-lint-js/src/rules/network/eval/)
+    - Audit: rooted/global; intent-doc=[x]; coverage=direct call, shadowing, reassignment, bare alias, eval.call gap; limitation=only direct global eval is reliably covered; declared Function/rooted matchers need additional coverage; verified=targeted fixtures
+- [x] `js:dynamic-code.script-injection` — [`glass-lint-js/src/rules/network/script_injection/`](glass-lint-js/src/rules/network/script_injection/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct creation, alias, static concatenation, dynamic/static tag boundaries; limitation=does not prove document provenance and reports creation without insertion; verified=targeted fixtures
+- [x] `js:dynamic-code.string-timer` — [`glass-lint-js/src/rules/network/string_timer/`](glass-lint-js/src/rules/network/string_timer/)
+    - Audit: global/heuristic; intent-doc=[x]; coverage=global and member forms, aliases, shadowing, reassignment, static strings, callback/dynamic values; limitation=member chains are syntactic heuristics and only listed timer APIs are covered; verified=targeted fixtures
+
+- [x] **Audit group 3 — JavaScript Electron and network (7 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-10; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
+  - Exception log: `make test-rules` passed all 61 JavaScript cases; its unrelated Obsidian suite failures remain in `vault/resource_url/positive` (expected 1, found 0), `workspace/leaf_management/positive` (expected 1, found 0), and `workspace/open/positive` (expected 1, found 0).
+  - [x] `js:electron.dialog` — [`glass-lint-js/src/rules/electron/dialog/`](glass-lint-js/src/rules/electron/dialog/)
+    - Audit: module provenance; intent-doc=[x]; coverage=direct calls, namespace aliases, CommonJS aliases, interop wrappers, shadowing, reassignment, lookalikes; limitation=inline require member chains are not followed; verified=targeted fixtures
+  - [x] `js:electron.ipc` — [`glass-lint-js/src/rules/electron/ipc/`](glass-lint-js/src/rules/electron/ipc/)
+    - Audit: module provenance; intent-doc=[x]; coverage=direct calls, namespace aliases, CommonJS aliases, interop wrappers, shadowing, reassignment, lookalikes; limitation=inline require member chains are not followed and only send/invoke are listed; verified=targeted fixtures
+  - [x] `js:electron.module` — [`glass-lint-js/src/rules/electron/module/`](glass-lint-js/src/rules/electron/module/)
+    - Audit: module provenance; intent-doc=[x]; coverage=ESM imports, CommonJS and interop loads, similar module, shadowed require, load-time reporting; limitation=reports the module load and does not infer later API use; verified=targeted fixtures
+  - [x] `js:electron.shell` — [`glass-lint-js/src/rules/electron/shell/`](glass-lint-js/src/rules/electron/shell/)
+    - Audit: module provenance; intent-doc=[x]; coverage=direct calls, namespace aliases, CommonJS aliases, interop wrappers, shadowing, reassignment, lookalikes; limitation=inline require member chains are not followed and only openExternal/openPath are listed; verified=targeted fixtures
+  - [x] `js:network.header-indicator` — [`glass-lint-js/src/rules/network/header_indicator/`](glass-lint-js/src/rules/network/header_indicator/)
+    - Audit: heuristic; intent-doc=[x]; coverage=marker substrings, configured casing, irrelevant context, casing lookalikes, concatenated and dynamic values; limitation=does not prove request-header use and only configured marker spellings are covered; verified=targeted fixtures
+  - [x] `js:network.private-address` — [`glass-lint-js/src/rules/network/private_address/`](glass-lint-js/src/rules/network/private_address/)
+    - Audit: heuristic; intent-doc=[x]; coverage=all configured markers, public and unlisted ranges, partial markers, concatenated and dynamic values; limitation=does not parse IP/URL semantics or expand unlisted private ranges; verified=targeted fixtures
+  - [x] `js:network.request` — [`glass-lint-js/src/rules/network/request/`](glass-lint-js/src/rules/network/request/)
+    - Audit: rooted/global; intent-doc=[x]; coverage=direct calls, rooted/global aliases, constructors, shadowing, reassignment, local lookalikes, static and dynamic request values; limitation=only the five configured browser APIs are covered; verified=targeted fixtures
+
+- [x] **Audit group 4 — JavaScript network and Node.js (7 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-10; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
+  - Exception log: `make test-rules` passed all 64 JavaScript cases; its unrelated Obsidian suite failures remain in `vault/resource_url/positive` (expected 1, found 0), `workspace/leaf_management/positive` (expected 1, found 0), and `workspace/open/positive` (expected 1, found 0).
+  - [x] `js:network.service-indicator` — [`glass-lint-js/src/rules/network/service_indicator/`](glass-lint-js/src/rules/network/service_indicator/)
+    - Audit: module provenance/heuristic; intent-doc=[x]; coverage=all listed SDK packages and endpoint markers, similar modules, static template fragments, concatenated and dynamic values; limitation=reports module loads and literal markers without proving network use or reconstructing concatenated/dynamic values; verified=targeted fixtures
+  - [x] `js:network.telemetry-indicator` — [`glass-lint-js/src/rules/network/telemetry_indicator/`](glass-lint-js/src/rules/network/telemetry_indicator/)
+    - Audit: module provenance/heuristic; intent-doc=[x]; coverage=all listed SDK packages and endpoint markers, similar modules, static template fragments, concatenated and dynamic values; limitation=reports module loads and literal markers without proving telemetry use or reconstructing concatenated/dynamic values; verified=targeted fixtures
+  - [x] `js:network.url-construction` — [`glass-lint-js/src/rules/network/url_construction/`](glass-lint-js/src/rules/network/url_construction/)
+    - Audit: rooted/global; intent-doc=[x]; coverage=both constructors, aliases, shadowing, reassignment, static and dynamic values, URL-like lookalikes; limitation=only `URL` and `URLSearchParams` construction is covered and arguments/static methods are not analyzed; verified=targeted fixtures
+  - [x] `js:node.filesystem` — [`glass-lint-js/src/rules/node/filesystem/`](glass-lint-js/src/rules/node/filesystem/)
+    - Audit: module provenance; intent-doc=[x]; coverage=all listed ESM/CommonJS loads, similar modules, shadowed loader, dynamic module name; limitation=reports exact static module loads rather than later API use; verified=targeted fixtures
+  - [x] `js:node.network` — [`glass-lint-js/src/rules/node/network/`](glass-lint-js/src/rules/node/network/)
+    - Audit: module provenance; intent-doc=[x]; coverage=all listed ESM/CommonJS loads, similar modules, shadowed loader, dynamic module name; limitation=reports exact static module loads rather than later API use; verified=targeted fixtures
+  - [x] `js:node.process-environment` — [`glass-lint-js/src/rules/node/process_environment/`](glass-lint-js/src/rules/node/process_environment/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct reads, root/member aliases, static computed properties, shadowing, reassignment, unlisted and dynamic properties; limitation=only `process.env` and `process.platform` reads are covered and values are not analyzed; verified=targeted fixtures
+  - [x] `js:node.subprocess` — [`glass-lint-js/src/rules/node/subprocess/`](glass-lint-js/src/rules/node/subprocess/)
+    - Audit: module provenance; intent-doc=[x]; coverage=all listed ESM/CommonJS loads, similar modules, shadowed loader, dynamic module name; limitation=reports exact static module loads rather than particular subprocess API use; verified=targeted fixtures
+
+## Obsidian rules (44)
+
+- [ ] **Audit group 5 — Obsidian editor and Markdown (8 rules)**
+  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
+  - [ ] `obsidian:codemirror.extension` — [`glass-lint-obsidian/src/rules/codemirror/extension/`](glass-lint-obsidian/src/rules/codemirror/extension/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:editor.extension` — [`glass-lint-obsidian/src/rules/editor/extension/`](glass-lint-obsidian/src/rules/editor/extension/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:editor.suggest` — [`glass-lint-obsidian/src/rules/editor/suggest/`](glass-lint-obsidian/src/rules/editor/suggest/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:file-manager.frontmatter-write` — [`glass-lint-obsidian/src/rules/file_manager/frontmatter_write/`](glass-lint-obsidian/src/rules/file_manager/frontmatter_write/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:lifecycle.events` — [`glass-lint-obsidian/src/rules/lifecycle/events/`](glass-lint-obsidian/src/rules/lifecycle/events/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:markdown.code-block-processor` — [`glass-lint-obsidian/src/rules/markdown/code_block_processor/`](glass-lint-obsidian/src/rules/markdown/code_block_processor/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:markdown.link` — [`glass-lint-obsidian/src/rules/markdown/link/`](glass-lint-obsidian/src/rules/markdown/link/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:markdown.postprocessor` — [`glass-lint-obsidian/src/rules/markdown/postprocessor/`](glass-lint-obsidian/src/rules/markdown/postprocessor/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+
+- [ ] **Audit group 6 — Obsidian Markdown, metadata, and plugins (8 rules)**
+  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
+  - [ ] `obsidian:markdown.render` — [`glass-lint-obsidian/src/rules/markdown/render/`](glass-lint-obsidian/src/rules/markdown/render/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:metadata.cache-read` — [`glass-lint-obsidian/src/rules/metadata/cache_read/`](glass-lint-obsidian/src/rules/metadata/cache_read/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:metadata.events` — [`glass-lint-obsidian/src/rules/metadata/events/`](glass-lint-obsidian/src/rules/metadata/events/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:metadata.extract` — [`glass-lint-obsidian/src/rules/metadata/extract/`](glass-lint-obsidian/src/rules/metadata/extract/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:metadata.frontmatter-read` — [`glass-lint-obsidian/src/rules/metadata/frontmatter_read/`](glass-lint-obsidian/src/rules/metadata/frontmatter_read/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:metadata.traversal` — [`glass-lint-obsidian/src/rules/metadata/traversal/`](glass-lint-obsidian/src/rules/metadata/traversal/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:network.request` — [`glass-lint-obsidian/src/rules/network/request/`](glass-lint-obsidian/src/rules/network/request/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:platform.branching` — [`glass-lint-obsidian/src/rules/platform/branching/`](glass-lint-obsidian/src/rules/platform/branching/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+
+- [ ] **Audit group 7 — Obsidian plugins, storage, and UI (7 rules)**
+  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
+  - [ ] `obsidian:plugins.dataview` — [`glass-lint-obsidian/src/rules/plugins/dataview/`](glass-lint-obsidian/src/rules/plugins/dataview/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:plugins.other-access` — [`glass-lint-obsidian/src/rules/plugins/other_access/`](glass-lint-obsidian/src/rules/plugins/other_access/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:storage.plugin-data-read` — [`glass-lint-obsidian/src/rules/storage/plugin_data_read/`](glass-lint-obsidian/src/rules/storage/plugin_data_read/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:storage.plugin-data-write` — [`glass-lint-obsidian/src/rules/storage/plugin_data_write/`](glass-lint-obsidian/src/rules/storage/plugin_data_write/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:ui.command` — [`glass-lint-obsidian/src/rules/ui/command/`](glass-lint-obsidian/src/rules/ui/command/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:ui.menu` — [`glass-lint-obsidian/src/rules/ui/menu/`](glass-lint-obsidian/src/rules/ui/menu/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:ui.modal` — [`glass-lint-obsidian/src/rules/ui/modal/`](glass-lint-obsidian/src/rules/ui/modal/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+
+- [ ] **Audit group 8 — Obsidian UI and vault access (7 rules)**
+  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
+  - [ ] `obsidian:ui.notice` — [`glass-lint-obsidian/src/rules/ui/notice/`](glass-lint-obsidian/src/rules/ui/notice/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:ui.ribbon` — [`glass-lint-obsidian/src/rules/ui/ribbon/`](glass-lint-obsidian/src/rules/ui/ribbon/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:ui.settings-tab` — [`glass-lint-obsidian/src/rules/ui/settings_tab/`](glass-lint-obsidian/src/rules/ui/settings_tab/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:ui.status-bar` — [`glass-lint-obsidian/src/rules/ui/status_bar/`](glass-lint-obsidian/src/rules/ui/status_bar/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:ui.suggest` — [`glass-lint-obsidian/src/rules/ui/suggest/`](glass-lint-obsidian/src/rules/ui/suggest/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:vault.access` — [`glass-lint-obsidian/src/rules/vault/access/`](glass-lint-obsidian/src/rules/vault/access/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:vault.adapter` — [`glass-lint-obsidian/src/rules/vault/adapter/`](glass-lint-obsidian/src/rules/vault/adapter/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+
+- [ ] **Audit group 9 — Obsidian vault operations (7 rules)**
+  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
+  - [ ] `obsidian:vault.config-directory` — [`glass-lint-obsidian/src/rules/vault/config_directory/`](glass-lint-obsidian/src/rules/vault/config_directory/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:vault.delete` — [`glass-lint-obsidian/src/rules/vault/delete/`](glass-lint-obsidian/src/rules/vault/delete/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:vault.enumerate` — [`glass-lint-obsidian/src/rules/vault/enumerate/`](glass-lint-obsidian/src/rules/vault/enumerate/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:vault.events` — [`glass-lint-obsidian/src/rules/vault/events/`](glass-lint-obsidian/src/rules/vault/events/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:vault.move-copy` — [`glass-lint-obsidian/src/rules/vault/move_copy/`](glass-lint-obsidian/src/rules/vault/move_copy/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:vault.read` — [`glass-lint-obsidian/src/rules/vault/read/`](glass-lint-obsidian/src/rules/vault/read/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:vault.resource-url` — [`glass-lint-obsidian/src/rules/vault/resource_url/`](glass-lint-obsidian/src/rules/vault/resource_url/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+
+- [ ] **Audit group 10 — Obsidian vault, views, and workspace (7 rules)**
+  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
+  - [ ] `obsidian:vault.write` — [`glass-lint-obsidian/src/rules/vault/write/`](glass-lint-obsidian/src/rules/vault/write/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:view.register` — [`glass-lint-obsidian/src/rules/view/register/`](glass-lint-obsidian/src/rules/view/register/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:workspace.active-editor` — [`glass-lint-obsidian/src/rules/workspace/active_editor/`](glass-lint-obsidian/src/rules/workspace/active_editor/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:workspace.active-file` — [`glass-lint-obsidian/src/rules/workspace/active_file/`](glass-lint-obsidian/src/rules/workspace/active_file/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:workspace.layout` — [`glass-lint-obsidian/src/rules/workspace/layout/`](glass-lint-obsidian/src/rules/workspace/layout/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:workspace.leaf-management` — [`glass-lint-obsidian/src/rules/workspace/leaf_management/`](glass-lint-obsidian/src/rules/workspace/leaf_management/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+  - [ ] `obsidian:workspace.open` — [`glass-lint-obsidian/src/rules/workspace/open/`](glass-lint-obsidian/src/rules/workspace/open/)
+    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]

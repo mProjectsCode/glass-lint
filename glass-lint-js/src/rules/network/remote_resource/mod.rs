@@ -1,5 +1,10 @@
 use glass_lint_core::rules::{Confidence, FlowMatcher, FlowValueMatcher, Matcher, Rule, Severity};
 
+/// Detects a script or image created by `document.createElement`, configured
+/// with a static remote `src` via assignment or `setAttribute`, then passed to
+/// a supported DOM insertion sink. Direct aliases participate in the bounded
+/// object flow; local paths, dynamic values, other tags, and unsupported sinks
+/// do not match.
 pub(crate) fn rule() -> Rule {
     Rule::builder("dom.remote-resource")
         .label("Loads remote DOM resources")

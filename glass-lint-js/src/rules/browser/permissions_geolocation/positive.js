@@ -2,11 +2,9 @@
 // @tool glass-lint rules=js:browser.permissions-geolocation
 // @expect-error glass-lint rule=js:browser.permissions-geolocation message_id=detected
 navigator.geolocation.getCurrentPosition(()=>{});
-// second independent example
-
+// Aliases of the rooted geolocation namespace retain provenance.
 // @expect-error glass-lint rule=js:browser.permissions-geolocation message_id=detected
 navigator.geolocation.getCurrentPosition(() => {});
 const geolocation = navigator.geolocation;
-
 // @expect-error glass-lint rule=js:browser.permissions-geolocation message_id=detected
 geolocation.getCurrentPosition(() => {});

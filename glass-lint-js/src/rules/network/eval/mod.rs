@@ -1,5 +1,10 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
+/// Detects direct, unshadowed global `eval` calls. Local shadowing and
+/// reassignment are excluded. The rule also declares matchers for `Function`,
+/// rooted eval calls, and `eval.call`; coverage currently demonstrates only
+/// the direct global form, while bare-eval aliases and `eval.call` do not
+/// produce findings.
 pub(crate) fn rule() -> Rule {
     Rule::builder("dynamic-code.eval")
         .label("Evaluates dynamic code")

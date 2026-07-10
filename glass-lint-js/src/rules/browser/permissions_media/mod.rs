@@ -1,5 +1,8 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
+/// Detects unshadowed `navigator.mediaDevices.getUserMedia` calls and aliases
+/// derived from that browser API. Locally shadowed `navigator` bindings and
+/// aliases that are later reassigned do not retain browser provenance.
 pub(crate) fn rule() -> Rule {
     Rule::builder("browser.permissions-media")
         .label("Uses browser media capture")

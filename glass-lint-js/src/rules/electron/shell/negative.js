@@ -1,9 +1,29 @@
 // @case description negative fixture for js:electron.shell
 // @tool glass-lint rules=js:electron.shell
-// @expect-no-error glass-lint rule=js:electron.shell message_id=detected
-function localLookalike() { return null; }
-localLookalike();
+// Same-shaped local objects are not Electron.
 const electron = { shell: { openExternal() {} } };
-
 // @expect-no-error glass-lint rule=js:electron.shell message_id=detected
 electron.shell.openExternal("local");
+
+// Reassignment drops module provenance from an alias.
+let reassigned = require("electron");
+reassigned = {};
+// @expect-no-error glass-lint rule=js:electron.shell message_id=detected
+reassigned.shell.openPath("/tmp/reassigned");
+
+// Shadowed require prevents a local object from becoming a module alias.
+function shadowed(require) {
+  const localElectron = require("electron");
+  // @expect-no-error glass-lint rule=js:electron.shell message_id=detected
+  localElectron.shell.openExternal("local");
+}
+shadowed(() => ({}));
+
+// Known gap: inline CommonJS member chains are not followed.
+// @expect-no-error glass-lint rule=js:electron.shell message_id=detected
+require("electron").shell.openExternal("inline");
+
+// A same-named helper is unrelated to Electron shell APIs.
+function localLookalike() { return null; }
+// @expect-no-error glass-lint rule=js:electron.shell message_id=detected
+localLookalike();

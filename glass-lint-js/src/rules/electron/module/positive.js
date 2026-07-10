@@ -1,12 +1,13 @@
 // @case description positive fixture for js:electron.module
 // @tool glass-lint rules=js:electron.module
+// ESM imports are reported at module load time.
 // @expect-error glass-lint rule=js:electron.module message_id=detected
 import {ipcRenderer} from "electron";
-// second independent example
-
 // @expect-error glass-lint rule=js:electron.module message_id=detected
 import * as secondElectron from "electron";
-// Migrated: system/node-and-electron-requires.js
 
+// Static CommonJS and interop loads are also module provenance.
 // @expect-error glass-lint rule=js:electron.module message_id=detected
-const electron = __toESM(require("electron"));
+const electron = require("electron");
+// @expect-error glass-lint rule=js:electron.module message_id=detected
+const interopElectron = __toESM(require("electron"));

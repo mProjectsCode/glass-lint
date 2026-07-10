@@ -2,18 +2,12 @@
 // @tool glass-lint rules=js:dynamic-code.string-timer
 // @expect-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
 setTimeout("code()", 1);
-// second independent example
-
-// @expect-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
-setTimeout("second()", 1);
-
-// @expect-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
-window.setInterval("intervalCode()", 10);
-// Migrated: system/dynamic-code-string-timers.js and system/global-this-timer.js
-
-// @expect-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
-setTimeout("runCode()", 0);
-
+// Static template strings also satisfy the string argument constraint.
 // @expect-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
 window.setInterval(`runCode()`, 1000);
+// @expect-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
 globalThis.setTimeout("run()", 10);
+// Global aliases retain provenance.
+const schedule = setTimeout;
+// @expect-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
+schedule("later()", 0);

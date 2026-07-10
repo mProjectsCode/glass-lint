@@ -2,11 +2,9 @@
 // @tool glass-lint rules=js:browser.clipboard-read
 // @expect-error glass-lint rule=js:browser.clipboard-read message_id=detected
 navigator.clipboard.readText();
-// second independent example
-
+// Both read methods and derived aliases retain browser provenance.
 // @expect-error glass-lint rule=js:browser.clipboard-read message_id=detected
 navigator.clipboard.read();
 const readClipboard = navigator.clipboard.readText;
-
 // @expect-error glass-lint rule=js:browser.clipboard-read message_id=detected
 readClipboard();

@@ -3,9 +3,21 @@
 // @expect-no-error glass-lint rule=js:browser.file-dialog message_id=detected
 document.createElement("div");
 const textInput = document.createElement("input");
-
 // @expect-no-error glass-lint rule=js:browser.file-dialog message_id=detected
 textInput.type = "text";
-// Migrated: interface/text-inputs-ignored.js
-const textInput = document.createElement("input");
-textInput.type = "text";
+
+// Static computed property names are normalized as direct writes.
+// @expect-error glass-lint rule=js:browser.file-dialog message_id=detected
+const computedInput = document.createElement("input");
+computedInput["type"] = "file";
+
+// setAttribute is intentionally not configuration evidence.
+const attributeInput = document.createElement("input");
+// @expect-no-error glass-lint rule=js:browser.file-dialog message_id=detected
+attributeInput.setAttribute("type", "file");
+
+// Reassigning the variable clears its previously tracked source state.
+let replacedInput = document.createElement("input");
+replacedInput = document.createElement("div");
+// @expect-no-error glass-lint rule=js:browser.file-dialog message_id=detected
+replacedInput.type = "file";

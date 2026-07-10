@@ -2,7 +2,11 @@
 // @tool glass-lint rules=js:crypto.operation
 // @expect-error glass-lint rule=js:crypto.operation message_id=detected
 import c from "node:crypto";
-// second independent example
-
+// Each configured module specifier is reported at import time.
 // @expect-error glass-lint rule=js:crypto.operation message_id=detected
-import * as secondCrypto from "node:crypto";
+import coreCrypto from "crypto";
+// @expect-error glass-lint rule=js:crypto.operation message_id=detected
+import cryptoJs from "crypto-js";
+// Syntactic Web Crypto calls are reported without module provenance.
+// @expect-error glass-lint rule=js:crypto.operation message_id=detected
+crypto.subtle.digest("SHA-256", bytes);

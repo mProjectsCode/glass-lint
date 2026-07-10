@@ -1,5 +1,9 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
+/// Detects static ESM or unshadowed CommonJS loads of the exact Node
+/// filesystem and path module names. The finding is attached to the module
+/// load and does not infer later API use, local names, or similarly named
+/// packages; shadowed loaders and non-listed modules are excluded.
 pub(crate) fn rule() -> Rule {
     Rule::builder("node.filesystem")
         .label("Uses Node filesystem and path APIs")
