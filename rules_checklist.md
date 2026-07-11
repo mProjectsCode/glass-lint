@@ -78,7 +78,7 @@ Record ownership and completion evidence directly below each group heading using
 - [x] `js:dom.remote-resource` — [`glass-lint-js/src/rules/network/remote_resource/`](glass-lint-js/src/rules/network/remote_resource/)
     - Audit: flow; intent-doc=[x]; coverage=script/image source, alias, static computed write, setAttribute, insertion sink, dynamic/local values, unsupported tag; limitation=bounded direct flow and supported sinks only; verified=targeted fixtures
 - [x] `js:dynamic-code.eval` — [`glass-lint-js/src/rules/network/eval/`](glass-lint-js/src/rules/network/eval/)
-    - Audit: rooted/global; intent-doc=[x]; coverage=direct call, shadowing, reassignment, bare alias, eval.call gap; limitation=only direct global eval is reliably covered; declared Function/rooted matchers need additional coverage; verified=targeted fixtures
+    - Audit: rooted/global; intent-doc=[x]; coverage=direct eval, direct Function construction, derived async Function constructor aliases, shadowing, reassignment, bare alias, eval.call gap; limitation=bare-eval aliases and eval.call remain unsupported; verified=targeted fixtures and core provenance tests
 - [x] `js:dynamic-code.script-injection` — [`glass-lint-js/src/rules/network/script_injection/`](glass-lint-js/src/rules/network/script_injection/)
     - Audit: heuristic; intent-doc=[x]; coverage=direct creation, alias, static concatenation, dynamic/static tag boundaries; limitation=does not prove document provenance and reports creation without insertion; verified=targeted fixtures
 - [x] `js:dynamic-code.string-timer` — [`glass-lint-js/src/rules/network/string_timer/`](glass-lint-js/src/rules/network/string_timer/)

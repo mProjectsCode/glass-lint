@@ -741,7 +741,11 @@ impl RootedExprContext for AliasCollector {
     }
 
     fn rooted_member_chain(&self, member: &swc_ecma_ast::MemberExpr) -> Option<String> {
-        if is_function_constructor_member(member) {
+        if is_function_constructor_member(member)
+            && (!member_chain(member)
+                .is_some_and(|chain| chain.starts_with("Object.getPrototypeOf."))
+                || self.is_unbound("Object"))
+        {
             return Some("Function".to_string());
         }
         let object = self.rooted_expr_name(&member.obj)?;
@@ -810,6 +814,12 @@ impl Visit for AliasCollector {
                 .init
                 .as_deref()
                 .and_then(|init| self.rooted_expr_name(init));
+            let function_constructor_alias = value_alias
+                .as_deref()
+                .filter(|target| *target == "Function")
+                .map(|target| BindingProvenance::ValueAlias {
+                    target: target.to_string(),
+                });
             let returned_alias = declarator
                 .init
                 .as_deref()
@@ -832,6 +842,10 @@ impl Visit for AliasCollector {
                 collect_require_aliases(&declarator.name, module, scope, self);
             } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, const_value) {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
+            } else if let (Pat::Ident(ident), Some(provenance)) =
+                (&declarator.name, function_constructor_alias)
+            {
+                self.insert(scope, ident.id.sym.to_string(), provenance);
             } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, returned_alias)
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
@@ -845,14 +859,19 @@ impl Visit for AliasCollector {
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
+        let rooted_alias = self.rooted_expr_name(&assignment.right);
+        let function_constructor_alias = rooted_alias
+            .as_deref()
+            .filter(|target| *target == "Function")
+            .map(|target| BindingProvenance::ValueAlias {
+                target: target.to_string(),
+            });
         let provenance = self
             .module_alias_provenance(&assignment.right)
+            .or(function_constructor_alias)
             .or_else(|| self.returned_object_provenance(&assignment.right))
             .or_else(|| self.const_provenance(&assignment.right))
-            .or_else(|| {
-                self.rooted_expr_name(&assignment.right)
-                    .map(|target| BindingProvenance::ValueAlias { target })
-            })
+            .or_else(|| rooted_alias.map(|target| BindingProvenance::ValueAlias { target }))
             .unwrap_or(BindingProvenance::Local);
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {

@@ -32,7 +32,7 @@ test-rules:
 	$(HARNESS) verify glass-lint-obsidian/src/rules
 
 compare:
-	$(HARNESS) --adapter eslint-obsidianmd=adapters/eslint-obsidianmd/adapter.mjs compare $(HARNESS_SUITE)
+	$(HARNESS) --adapter eslint-obsidianmd=adapters/eslint-obsidianmd/adapter.ts compare $(HARNESS_SUITE)
 
 ci: fmt-check check clippy test test-e2e test-rules
 

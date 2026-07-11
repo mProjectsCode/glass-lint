@@ -19,7 +19,7 @@ use super::super::result::{ApiEvidence, ApiMatchKind};
 use super::super::rule::{CallMatcher, CallProvenance, MemberCallMatcher, MemberCallProvenance};
 use super::ast::{
     SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, expr_member, expr_name,
-    is_function_constructor_member, object_keys, prop_name,
+    object_keys, prop_name,
 };
 use super::{index::MatcherFacts, resolver::Resolver};
 use crate::matcher::rule::canonical_rooted_chain;
@@ -188,7 +188,8 @@ impl ResolvedCallCollector<'_, '_> {
     }
 
     fn record_member_call(&mut self, member: &MemberExpr, call: Option<CallArgumentSource<'_>>) {
-        if is_function_constructor_member(member) {
+        let resolved = self.resolver.resolve_member(member);
+        if resolved.rooted_chain.as_deref() == Some("Function") {
             self.index
                 .record(ApiMatchKind::Call, "Function", member.span);
             self.index
@@ -198,7 +199,6 @@ impl ResolvedCallCollector<'_, '_> {
                 .push(member.span);
         }
         let syntactic_chain = self.resolver.member_chain(member);
-        let resolved = self.resolver.resolve_member(member);
         debug_assert_ne!(resolved.id, super::value::ValueId::UNKNOWN);
         let resolved_chain = resolved.rooted_chain;
         let module_member = resolved.module_member;
@@ -582,8 +582,20 @@ impl Visit for ResolvedCallCollector<'_, '_> {
                 SymbolCallProvenance::Local => {}
             },
             Expr::Member(member) => {
-                if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
-                    self.resolver.resolve_member(member).module_member
+                let resolved = self.resolver.resolve_member(member);
+                if resolved.rooted_chain.as_deref() == Some("Function") {
+                    self.index.record(
+                        ApiMatchKind::Constructor,
+                        "Function",
+                        new_expr.callee.span(),
+                    );
+                    self.index
+                        .global_constructors
+                        .entry("Function".to_string())
+                        .or_default()
+                        .push(new_expr.callee.span());
+                } else if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
+                    resolved.module_member
                 {
                     self.index.record(
                         ApiMatchKind::Constructor,

@@ -9,6 +9,7 @@
 | inspect-note-tags | 0 | 6 |
 | open-workspace-links | 0 | 4 |
 | persist-refresh-settings | 0 | 4 |
+| render-executable-code-blocks | 0 | 2 |
 | roll-ribbon-dice | 0 | 3 |
 | transform-text-case | 0 | 1 |
 | watch-vault-changes | 0 | 9 |
@@ -500,6 +501,51 @@ export default class SettingsPlugin extends Plugin {
 - obsidian:ui.command:detected at 14:5 - Registers commands
 - obsidian:storage.plugin-data-write:detected at 37:11 - Writes plugin data
 - obsidian:lifecycle.events:detected at 45:5 - Registers Obsidian lifecycle events
+
+## render-executable-code-blocks
+
+```js
+// @case description A plugin evaluates JavaScript code blocks and renders string results
+// @tool glass-lint config=heuristic
+// @tool eslint-obsidianmd config=default
+// @expect-error glass-lint rule=obsidian:markdown.code-block-processor count=2 line=any
+
+import { Plugin } from "obsidian";
+
+export default class ExecutableCodeBlocksPlugin extends Plugin {
+    onload() {
+        this.registerMarkdownCodeBlockProcessor(
+            "run-js",
+            (source, element) => {
+                const run = new Function(`return (${source})`);
+                this.renderResult(element, run());
+            },
+        );
+        this.registerMarkdownCodeBlockProcessor(
+            "run-js-async",
+            async (source, element) => {
+                const AsyncFunction = Object.getPrototypeOf(
+                    async function () {},
+                ).constructor;
+                const run = new AsyncFunction(`return (${source})`);
+                this.renderResult(element, await run());
+            },
+        );
+    }
+
+    renderResult(element, value) {
+        element.empty();
+        element.setText(String(value));
+    }
+}
+
+```
+
+### eslint-obsidianmd (0 finding(s))
+
+### glass-lint (2 finding(s))
+- obsidian:markdown.code-block-processor:detected at 10:9 - Registers markdown code-block processors
+- obsidian:markdown.code-block-processor:detected at 17:9 - Registers markdown code-block processors
 
 ## roll-ribbon-dice
 

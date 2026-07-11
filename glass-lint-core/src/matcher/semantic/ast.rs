@@ -182,6 +182,15 @@ pub fn is_function_constructor_member(member: &MemberExpr) -> bool {
 fn is_function_like_expr(expr: &Expr) -> bool {
     match expr {
         Expr::Fn(_) | Expr::Arrow(_) => true,
+        Expr::Call(call) => {
+            let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
+                return false;
+            };
+            matches!(&**callee, Expr::Member(member)
+                if member_chain(member).as_deref() == Some("Object.getPrototypeOf"))
+                && call.args.len() == 1
+                && is_function_like_expr(&call.args[0].expr)
+        }
         Expr::Paren(paren) => is_function_like_expr(&paren.expr),
         _ => false,
     }
