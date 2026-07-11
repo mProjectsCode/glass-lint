@@ -15,8 +15,8 @@ use swc_ecma_ast::{
 use swc_ecma_visit::{Visit, VisitWith};
 
 use super::super::ast::{
-    collect_pat_bindings, is_function_constructor_member, member_chain, member_prop_name,
-    member_root_ident, module_export_name, prop_name, static_string,
+    collect_pat_bindings, function_prototype_builtin, is_function_constructor_member, member_chain,
+    member_prop_name, member_root_ident, module_export_name, prop_name, static_string,
 };
 use super::collector_helpers::{
     collect_assignment_aliases, collect_require_aliases, collect_value_aliases,
@@ -742,11 +742,15 @@ impl RootedExprContext for AliasCollector {
 
     fn rooted_member_chain(&self, member: &swc_ecma_ast::MemberExpr) -> Option<String> {
         if is_function_constructor_member(member)
-            && (!member_chain(member)
-                .is_some_and(|chain| chain.starts_with("Object.getPrototypeOf."))
-                || self.is_unbound("Object"))
+            && function_prototype_builtin(&member.obj).is_none_or(|name| self.is_unbound(name))
         {
             return Some("Function".to_string());
+        }
+        if let Expr::Ident(root) = &*member.obj
+            && root.sym == *"globalThis"
+            && self.is_unbound("globalThis")
+        {
+            return member_prop_name(&member.prop);
         }
         let object = self.rooted_expr_name(&member.obj)?;
         let property = member_prop_name(&member.prop)?;
@@ -829,6 +833,21 @@ impl Visit for AliasCollector {
                     .or_else(|| self.const_provenance(init))
             });
             self.insert_pat_locals(scope, &declarator.name);
+            let derived_function_pattern = if let (Pat::Object(object), Some(init)) =
+                (&declarator.name, init)
+                && function_prototype_builtin(init).is_some_and(|name| self.is_unbound(name))
+            {
+                for property in &object.props {
+                    if let ObjectPatProp::KeyValue(property) = property
+                        && prop_name(&property.key).as_deref() == Some("constructor")
+                    {
+                        collect_value_aliases(&property.value, "Function", scope, self);
+                    }
+                }
+                true
+            } else {
+                false
+            };
             if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, module_alias.as_ref())
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance.clone());
@@ -849,7 +868,7 @@ impl Visit for AliasCollector {
             } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, returned_alias)
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
-            } else if let Some(target) = value_alias {
+            } else if !derived_function_pattern && let Some(target) = value_alias {
                 collect_value_aliases(&declarator.name, &target, scope, self);
             }
             if let Some(init) = init {

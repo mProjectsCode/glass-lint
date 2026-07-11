@@ -591,7 +591,6 @@ fn derived_function_constructors_preserve_global_constructor_provenance() {
 }
 
 #[test]
-#[ignore = "known gap: constructor collection does not unwrap parenthesized or sequence callees"]
 fn global_constructors_survive_transparent_callee_wrappers() {
     let url_constructor = rule("test.wrapped-global-constructor")
         .matcher(Matcher::global_constructor("URL"))
@@ -603,7 +602,6 @@ fn global_constructors_survive_transparent_callee_wrappers() {
 }
 
 #[test]
-#[ignore = "known gap: global constructor provenance does not canonicalize global-object members"]
 fn rooted_global_constructors_and_their_aliases_match_global_constructors() {
     let url_constructor = rule("test.rooted-global-constructor")
         .matcher(Matcher::global_constructor("URL"))
@@ -623,7 +621,6 @@ fn rooted_global_constructors_and_their_aliases_match_global_constructors() {
 }
 
 #[test]
-#[ignore = "known gap: derived constructor provenance is lost through destructuring"]
 fn destructured_derived_function_constructors_preserve_provenance() {
     assert_count(
         r#"const {constructor:AsyncFunction}=Object.getPrototypeOf(async function(){});new AsyncFunction("return 1")"#,
@@ -636,7 +633,6 @@ fn destructured_derived_function_constructors_preserve_provenance() {
 }
 
 #[test]
-#[ignore = "known gap: derived function constructors only recognize Object.getPrototypeOf"]
 fn reflect_derived_function_constructors_preserve_provenance() {
     assert_count(
         r#"const AsyncFunction=Reflect.getPrototypeOf(async function(){}).constructor;new AsyncFunction("return 1")"#,
@@ -645,6 +641,36 @@ fn reflect_derived_function_constructors_preserve_provenance() {
             .build()
             .unwrap(),
         1,
+    );
+}
+
+#[test]
+fn constructor_provenance_rejects_shadowed_global_roots_and_wrapped_lookalikes() {
+    let url_constructor = rule("test.constructor-shadowing-negative")
+        .matcher(Matcher::global_constructor("URL"))
+        .matcher(Matcher::global_constructor("Function"))
+        .build()
+        .unwrap();
+
+    assert_count(
+        r#"const URL=class Local{};new (0,URL)();"#,
+        url_constructor.clone(),
+        0,
+    );
+    assert_count(
+        r#"const globalThis={URL:class Local{}};const Alias=globalThis.URL;new Alias();"#,
+        url_constructor.clone(),
+        0,
+    );
+    assert_count(
+        r#"const Reflect={getPrototypeOf(){return {constructor:class Local{}}}};const C=Reflect.getPrototypeOf(async()=>{}).constructor;new C();"#,
+        url_constructor.clone(),
+        0,
+    );
+    assert_count(
+        r#"const Object={getPrototypeOf(){return {constructor:class Local{}}}};const {constructor:C}=Object.getPrototypeOf(async()=>{});new C();"#,
+        url_constructor,
+        0,
     );
 }
 

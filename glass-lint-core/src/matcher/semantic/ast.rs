@@ -179,18 +179,29 @@ pub fn is_function_constructor_member(member: &MemberExpr) -> bool {
         && is_function_like_expr(&member.obj)
 }
 
+pub fn function_prototype_builtin(expr: &Expr) -> Option<&'static str> {
+    let Expr::Call(call) = expr else {
+        return None;
+    };
+    let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
+        return None;
+    };
+    let Expr::Member(member) = &**callee else {
+        return None;
+    };
+    let chain = member_chain(member)?;
+    let builtin = match chain.as_str() {
+        "Object.getPrototypeOf" => "Object",
+        "Reflect.getPrototypeOf" => "Reflect",
+        _ => return None,
+    };
+    (call.args.len() == 1 && is_function_like_expr(&call.args[0].expr)).then_some(builtin)
+}
+
 fn is_function_like_expr(expr: &Expr) -> bool {
     match expr {
         Expr::Fn(_) | Expr::Arrow(_) => true,
-        Expr::Call(call) => {
-            let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
-                return false;
-            };
-            matches!(&**callee, Expr::Member(member)
-                if member_chain(member).as_deref() == Some("Object.getPrototypeOf"))
-                && call.args.len() == 1
-                && is_function_like_expr(&call.args[0].expr)
-        }
+        Expr::Call(_) => function_prototype_builtin(expr).is_some(),
         Expr::Paren(paren) => is_function_like_expr(&paren.expr),
         _ => false,
     }

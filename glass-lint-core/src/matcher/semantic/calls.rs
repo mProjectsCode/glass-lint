@@ -559,9 +559,17 @@ impl Visit for ResolvedCallCollector<'_, '_> {
     }
 
     fn visit_new_expr(&mut self, new_expr: &NewExpr) {
-        match &*new_expr.callee {
-            Expr::Ident(ident) => match self.resolver.resolve_ident(ident).call {
-                SymbolCallProvenance::Global { name } => {
+        let callee = super::ast::effective_callee_expr(&new_expr.callee);
+        match callee {
+            Expr::Ident(ident) => match self.resolver.resolve_ident(ident) {
+                resolved
+                    if matches!(resolved.call, SymbolCallProvenance::Local)
+                        && resolved
+                            .rooted_chain
+                            .as_deref()
+                            .is_some_and(|name| !name.contains('.')) =>
+                {
+                    let name = resolved.rooted_chain.expect("rooted chain was checked");
                     self.index
                         .record(ApiMatchKind::Constructor, name.clone(), ident.span);
                     self.index
@@ -570,28 +578,42 @@ impl Visit for ResolvedCallCollector<'_, '_> {
                         .or_default()
                         .push(ident.span);
                 }
-                SymbolCallProvenance::ModuleExport { module, export } => {
-                    self.index
-                        .record(ApiMatchKind::Constructor, export.clone(), ident.span);
-                    self.index
-                        .module_constructors
-                        .entry((module.clone(), export.clone()))
-                        .or_default()
-                        .push(ident.span);
-                }
-                SymbolCallProvenance::Local => {}
+                resolved => match resolved.call {
+                    SymbolCallProvenance::Global { name } => {
+                        self.index
+                            .record(ApiMatchKind::Constructor, name.clone(), ident.span);
+                        self.index
+                            .global_constructors
+                            .entry(name)
+                            .or_default()
+                            .push(ident.span);
+                    }
+                    SymbolCallProvenance::ModuleExport { module, export } => {
+                        self.index
+                            .record(ApiMatchKind::Constructor, export.clone(), ident.span);
+                        self.index
+                            .module_constructors
+                            .entry((module.clone(), export.clone()))
+                            .or_default()
+                            .push(ident.span);
+                    }
+                    SymbolCallProvenance::Local => {}
+                },
             },
             Expr::Member(member) => {
                 let resolved = self.resolver.resolve_member(member);
-                if resolved.rooted_chain.as_deref() == Some("Function") {
-                    self.index.record(
-                        ApiMatchKind::Constructor,
-                        "Function",
-                        new_expr.callee.span(),
-                    );
+                let global_name = resolved.rooted_chain.as_deref().and_then(|chain| {
+                    chain
+                        .strip_prefix("globalThis.")
+                        .filter(|_| matches!(self.resolver.resolve_expr(&member.obj).call, SymbolCallProvenance::Global { ref name } if name == "globalThis"))
+                        .or((chain == "Function").then_some(chain))
+                });
+                if let Some(name) = global_name {
+                    self.index
+                        .record(ApiMatchKind::Constructor, name, new_expr.callee.span());
                     self.index
                         .global_constructors
-                        .entry("Function".to_string())
+                        .entry(name.to_string())
                         .or_default()
                         .push(new_expr.callee.span());
                 } else if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
