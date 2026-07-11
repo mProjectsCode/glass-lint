@@ -37,10 +37,14 @@ Configuration comments must be at the very top of the file, before executable co
 // @case description Each fetch call produces a located finding
 // @case tags network,browser
 // @tool glass-lint rules=js:network.request
+// @tool glass-lint config=heuristic
 // @tool eslint-obsidianmd rules=obsidianmd/no-global-this
 ```
 
 Only configured tools run a case. When a report includes a registered tool that is not mentioned by a case, that tool is marked `skip` for that case instead of failing coverage.
+The built-in `glass-lint` adapter accepts `config=heuristic` to run the complete
+JavaScript and Obsidian rule catalogs. Use explicit `rules=` for focused rule
+fixtures.
 
 Expected diagnostics use assertion comments next to the relevant source line:
 

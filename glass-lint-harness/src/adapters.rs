@@ -34,6 +34,25 @@ impl Adapter for GlassLintAdapter {
             ("js:", glass_lint_js::heuristic_linter()),
             ("obsidian:", glass_lint_obsidian::heuristic_linter()),
         ] {
+            if let Some(config) = expectation.config.as_deref() {
+                if config != "heuristic" {
+                    bail!("unknown built-in glass-lint config `{config}`");
+                }
+                let report = configured.lint(&case.source, &case.filename);
+                if !report.parse_diagnostics.is_empty() {
+                    bail!(
+                        "{}",
+                        report
+                            .parse_diagnostics
+                            .into_iter()
+                            .map(|d| d.message)
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    );
+                }
+                findings.extend(report.findings);
+                continue;
+            }
             let enabled = expectation
                 .rules
                 .iter()
