@@ -109,6 +109,51 @@ fn matches_static_string_arguments_but_rejects_dynamic_strings() {
 }
 
 #[test]
+fn callable_transforms_use_effective_target_arguments() {
+    let rule = [rule("test.callable")
+        .matcher(CallMatcher::global("fetch").arg_string(0, ["/call", "/apply", "/optional"]))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const args = ['/apply']; fetch.call(null, '/call'); fetch.apply(null, args); fetch?.call(null, '/optional'); fetch.call(null, dynamic);",
+        &rule,
+    );
+    assert_capability_count(&result, "test.callable", 3);
+}
+
+#[test]
+fn future_declarations_fail_closed_at_the_use_position() {
+    let rules = [
+        rule("test.require")
+            .matcher(Matcher::import("sdk"))
+            .build()
+            .unwrap(),
+        rule("test.fetch")
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap(),
+    ];
+    let result = classify(
+        "require('sdk').send(); const require = localRequire; fetch('/before'); const fetch = localFetch; fetch('/after');",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 0);
+}
+
+#[test]
+fn numeric_addition_is_not_a_static_property_string() {
+    let rules = [rule("test.member")
+        .matcher(Matcher::rooted_member_call("app.12"))
+        .build()
+        .unwrap()];
+    assert_eq!(
+        classify("app[1 + 2]();", &rules).finding_count,
+        0,
+        "numeric addition must not be coerced into string concatenation"
+    );
+}
+
+#[test]
 fn tracks_rooted_expression_arguments_through_aliases() {
     let rules = [rule("test.arg-flow")
         .matcher(MemberCallMatcher::rooted_chain("app.open").arg_rooted_exprs(0, ["vault.file"]))
@@ -262,6 +307,36 @@ fn tracks_configured_values_into_later_member_sinks() {
 }
 
 #[test]
+fn flow_state_does_not_cross_conditional_branches_or_duplicate_sinks() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    assert_eq!(
+        classify(
+            "let script; if (condition) { script = document.createElement('script'); script.src = url; } else { script = local; } document.head.appendChild(script);",
+            &rules
+        )
+        .finding_count,
+        0
+    );
+    assert_eq!(
+        classify(
+            "const script = document.createElement('script'); script.src = url; document.head.appendChild(script); document.head.appendChild(script);",
+            &rules
+        )
+        .finding_count,
+        1
+    );
+}
+
+#[test]
 fn value_flow_respects_reassignment_and_order() {
     let rules = [rule("test.flow")
         .matcher(
@@ -305,6 +380,29 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
         &rules,
     );
     assert_capability_count(&result, "test.flow", 1);
+}
+
+#[test]
+fn flow_helpers_are_scope_and_assignment_aware() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "function append(node) { document.head.appendChild(node); }
+         function local() { function append(node) { localSink(node); }
+             const script = document.createElement('script'); script.src = url; append(script); }
+         append = localAppend;
+         const other = document.createElement('script'); other.src = url; append(other);",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 0);
 }
 
 #[test]

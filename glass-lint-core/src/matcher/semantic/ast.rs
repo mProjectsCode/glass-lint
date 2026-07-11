@@ -1,9 +1,11 @@
 use std::collections::BTreeSet;
 
 use swc_ecma_ast::{
-    BinaryOp, Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectLit, ObjectPatProp,
+    Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectLit, ObjectPatProp,
     OptChainBase, Pat, Prop, PropOrSpread,
 };
+
+use super::constant::{self, NoLookup};
 
 pub fn member_root_ident(member: &MemberExpr) -> Option<&Ident> {
     expr_root_ident(&member.obj)
@@ -208,29 +210,5 @@ fn is_function_like_expr(expr: &Expr) -> bool {
 }
 
 fn static_property_name(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Lit(Lit::Str(value)) => Some(value.value.to_string_lossy().to_string()),
-        Expr::Lit(Lit::Num(value)) => Some(value.value.to_string()),
-        Expr::Tpl(template) if template.exprs.is_empty() && template.quasis.len() == 1 => {
-            template.quasis.first().map(|quasi| quasi.raw.to_string())
-        }
-        Expr::Bin(binary) if binary.op == BinaryOp::Add => Some(format!(
-            "{}{}",
-            static_property_name(&binary.left)?,
-            static_property_name(&binary.right)?
-        )),
-        Expr::Paren(paren) => static_property_name(&paren.expr),
-        _ => None,
-    }
-}
-
-pub fn static_string(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Lit(Lit::Str(value)) => Some(value.value.to_string_lossy().to_string()),
-        Expr::Tpl(template) if template.exprs.is_empty() && template.quasis.len() == 1 => {
-            template.quasis.first().map(|quasi| quasi.raw.to_string())
-        }
-        Expr::Paren(paren) => static_string(&paren.expr),
-        _ => None,
-    }
+    constant::evaluate(expr, &NoLookup).property_key()
 }

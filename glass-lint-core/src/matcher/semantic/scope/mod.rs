@@ -11,7 +11,8 @@ use swc_common::{BytePos, Span, Spanned};
 use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase, Program};
 use swc_ecma_visit::VisitWith;
 
-use super::ast::{SymbolCallProvenance, SymbolMemberProvenance, member_root_ident, object_keys};
+use super::ast::{SymbolCallProvenance, SymbolMemberProvenance, member_root_ident};
+use super::constant::{self, ConstValue, Lookup};
 use collector::AliasCollector;
 use collector_helpers::{contains, member_prefix_ends};
 
@@ -26,6 +27,7 @@ pub struct ScopeGraph {
     property_assignments: BTreeMap<String, Vec<PropertyAliasAssignment>>,
     parameter_aliases: BTreeMap<(usize, String), BindingProvenance>,
     dynamic_evals: Vec<(usize, Span)>,
+    mutable_static_objects: std::collections::BTreeSet<(usize, String)>,
 }
 
 #[derive(Debug, Clone)]
@@ -48,10 +50,28 @@ enum ScopeKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum BindingProvenance {
     Local,
-    ValueAlias { target: String },
-    ReturnedObject { source: String },
-    ModuleExport { module: String, export: String },
-    ModuleNamespace { module: String },
+    ValueAlias {
+        target: String,
+    },
+    BoundCallable {
+        target: String,
+        bound_arguments: Vec<Option<String>>,
+    },
+    BoundModuleCallable {
+        module: String,
+        export: String,
+        bound_arguments: Vec<Option<String>>,
+    },
+    ReturnedObject {
+        source: String,
+    },
+    ModuleExport {
+        module: String,
+        export: String,
+    },
+    ModuleNamespace {
+        module: String,
+    },
     StaticString(String),
     StaticNumber(usize),
     StaticStringArray(Vec<String>),
@@ -95,6 +115,11 @@ enum ReceiverIdentity {
 impl ScopeGraph {
     pub fn collect(program: &Program) -> Self {
         let mut collector = AliasCollector::new(program.span());
+        // Build declarations before collecting initializers and uses.  This
+        // makes the resolver position-aware without making it traversal-order
+        // dependent: an earlier use of a later declaration is local/TDZ, not
+        // an accidentally unshadowed global.
+        collector.predeclare(program);
         program.visit_children_with(&mut collector);
         let parameter_aliases = collector.parameter_aliases();
         // Scope lookup starts from the latest opening delimiter, then walks to
@@ -135,6 +160,7 @@ impl ScopeGraph {
             property_assignments,
             parameter_aliases,
             dynamic_evals: Vec::new(),
+            mutable_static_objects: collector.mutable_static_objects.clone(),
         };
         graph.dynamic_evals = collector
             .dynamic_evals
@@ -166,15 +192,26 @@ impl ScopeGraph {
                     .is_some_and(|root| !root.contains('.')) =>
             {
                 SymbolCallProvenance::Global {
-                    name: target
-                        .strip_suffix(".bind")
-                        .expect("suffix was checked")
-                        .to_string(),
+                    name: target.strip_suffix(".bind").unwrap_or(target).to_string(),
                 }
             }
             Some(BindingProvenance::ValueAlias { target }) => self
                 .module_export_for_chain(target, span)
                 .unwrap_or(SymbolCallProvenance::Local),
+            Some(BindingProvenance::BoundCallable { target, .. }) if !target.contains('.') => {
+                SymbolCallProvenance::Global {
+                    name: target.clone(),
+                }
+            }
+            Some(BindingProvenance::BoundCallable { target, .. }) => self
+                .module_export_for_chain(target, span)
+                .unwrap_or(SymbolCallProvenance::Local),
+            Some(BindingProvenance::BoundModuleCallable { module, export, .. }) => {
+                SymbolCallProvenance::ModuleExport {
+                    module: module.clone(),
+                    export: export.clone(),
+                }
+            }
             Some(BindingProvenance::Local | BindingProvenance::ModuleNamespace { .. })
             | Some(BindingProvenance::ReturnedObject { .. })
             | Some(
@@ -191,97 +228,33 @@ impl ScopeGraph {
     }
 
     pub fn object_keys_expr(&self, expr: &Expr) -> Option<Vec<String>> {
-        match expr {
-            Expr::Object(object) => object_keys(object),
-            Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
-                BindingProvenance::StaticObjectKeys(keys) => Some(keys.clone()),
-                BindingProvenance::StaticObjectValues(values) => {
-                    Some(values.keys().cloned().collect())
-                }
-                _ => None,
-            },
-            Expr::Assign(assign) => self.object_keys_expr(&assign.right),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.object_keys_expr(expr)),
-            Expr::Paren(paren) => self.object_keys_expr(&paren.expr),
-            _ => None,
-        }
+        (!self.has_dynamic_lookup_at(expr.span()))
+            .then(|| constant::evaluate(expr, self).object_keys())
+            .flatten()
     }
 
     pub fn static_string_expr(&self, expr: &Expr) -> Option<String> {
         if self.has_dynamic_lookup_at(expr.span()) {
             return None;
         }
-        super::ast::static_string(expr).or_else(|| match expr {
-            Expr::Ident(ident) => self.static_string_at(ident),
-            Expr::Member(member) => self.static_string_member(member),
-            Expr::Tpl(template) => {
-                let mut value = String::new();
-                for (index, quasi) in template.quasis.iter().enumerate() {
-                    value.push_str(&quasi.raw);
-                    if let Some(expr) = template.exprs.get(index) {
-                        value.push_str(&self.static_string_expr(expr)?);
-                    }
-                }
-                Some(value)
-            }
-            Expr::Bin(binary) if binary.op == swc_ecma_ast::BinaryOp::Add => Some(format!(
-                "{}{}",
-                self.static_string_expr(&binary.left)?,
-                self.static_string_expr(&binary.right)?
-            )),
-            Expr::Assign(assign) => self.static_string_expr(&assign.right),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.static_string_expr(expr)),
-            Expr::Paren(paren) => self.static_string_expr(&paren.expr),
-            _ => None,
-        })
+        constant::evaluate(expr, self).string().map(str::to_owned)
     }
 
-    pub(super) fn static_string_at(&self, ident: &Ident) -> Option<String> {
-        if self.has_dynamic_lookup_at(ident.span) {
+    pub fn static_string_array_expr(&self, expr: &Expr) -> Option<Vec<String>> {
+        if self.has_dynamic_lookup_at(expr.span()) {
             return None;
         }
-        match self.binding_at(ident.sym.as_ref(), ident.span)? {
-            BindingProvenance::StaticString(value) => Some(value.clone()),
-            _ => None,
-        }
-    }
-
-    fn static_string_member(&self, member: &MemberExpr) -> Option<String> {
-        let Expr::Ident(root) = &*member.obj else {
-            return None;
-        };
-        let index = self.member_prop_name(member)?.parse::<usize>().ok()?;
-        match self.binding_at(root.sym.as_ref(), root.span)? {
-            BindingProvenance::StaticStringArray(values) => values.get(index).cloned(),
+        match constant::evaluate(expr, self) {
+            ConstValue::Array(values) => values
+                .into_iter()
+                .map(|value| value.string().map(str::to_owned))
+                .collect(),
             _ => None,
         }
     }
 
     fn member_prop_name(&self, member: &MemberExpr) -> Option<String> {
-        match &member.prop {
-            swc_ecma_ast::MemberProp::Ident(ident) => Some(ident.sym.to_string()),
-            swc_ecma_ast::MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
-            swc_ecma_ast::MemberProp::Computed(computed) => self
-                .static_string_expr(&computed.expr)
-                .or_else(|| {
-                    self.static_number_expr(&computed.expr)
-                        .map(|value| value.to_string())
-                })
-                .or_else(|| match &*computed.expr {
-                    Expr::Ident(ident) => self.static_string_at(ident),
-                    Expr::Paren(paren) => match &*paren.expr {
-                        Expr::Ident(ident) => self.static_string_at(ident),
-                        _ => None,
-                    },
-                    _ => None,
-                }),
-        }
+        constant::property_name(&member.prop, self)
     }
 
     pub fn member_chain(&self, member: &MemberExpr) -> Option<String> {
@@ -297,6 +270,8 @@ impl ScopeGraph {
             BindingProvenance::ValueAlias { target } => {
                 Some(target.strip_suffix(".bind").unwrap_or(target).to_string())
             }
+            BindingProvenance::BoundCallable { target, .. } => Some(target.clone()),
+            BindingProvenance::BoundModuleCallable { .. } => None,
             BindingProvenance::ReturnedObject { source } => Some(source.clone()),
             _ => None,
         }
@@ -311,28 +286,6 @@ impl ScopeGraph {
                     export: export.to_string(),
                 })
             }
-            _ => None,
-        }
-    }
-
-    fn static_number_expr(&self, expr: &Expr) -> Option<usize> {
-        match expr {
-            Expr::Lit(swc_ecma_ast::Lit::Num(number))
-                if number.value.is_finite()
-                    && number.value >= 0.0
-                    && number.value.fract() == 0.0 =>
-            {
-                Some(number.value as usize)
-            }
-            Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
-                BindingProvenance::StaticNumber(value) => Some(*value),
-                _ => None,
-            },
-            Expr::Paren(paren) => self.static_number_expr(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .and_then(|expr| self.static_number_expr(expr)),
             _ => None,
         }
     }
@@ -522,11 +475,15 @@ impl ScopeGraph {
         let suffix = syntactic_chain.strip_prefix(root.sym.as_ref())?;
         match self.binding_at(root.sym.as_ref(), root.span) {
             Some(BindingProvenance::ValueAlias { target }) => Some(format!("{target}{suffix}")),
+            Some(BindingProvenance::BoundCallable { target, .. }) => {
+                Some(format!("{target}{suffix}"))
+            }
             Some(BindingProvenance::ReturnedObject { source }) => Some(format!("{source}{suffix}")),
             Some(
                 BindingProvenance::Local
                 | BindingProvenance::ModuleExport { .. }
-                | BindingProvenance::ModuleNamespace { .. },
+                | BindingProvenance::ModuleNamespace { .. }
+                | BindingProvenance::BoundModuleCallable { .. },
             )
             | Some(
                 BindingProvenance::StaticString(_)
@@ -630,6 +587,113 @@ impl ScopeGraph {
         }
         scope
     }
+
+    pub(super) fn bound_string_arguments(&self, ident: &Ident) -> Option<Vec<Option<String>>> {
+        match self.binding_at(ident.sym.as_ref(), ident.span)? {
+            BindingProvenance::BoundCallable {
+                bound_arguments, ..
+            } => Some(bound_arguments.clone()),
+            BindingProvenance::BoundModuleCallable {
+                bound_arguments, ..
+            } => Some(bound_arguments.clone()),
+            _ => None,
+        }
+    }
+
+    pub(super) fn scope_chain_at(&self, span: Span) -> Vec<usize> {
+        let mut scopes = Vec::new();
+        let mut scope = self.scope_at(span);
+        loop {
+            scopes.push(scope);
+            let Some(parent) = self.scopes[scope].parent else {
+                break;
+            };
+            scope = parent;
+        }
+        scopes
+    }
+
+    pub(super) fn has_assignment_at(&self, name: &str, span: Span) -> bool {
+        self.scope_chain_at(span).into_iter().any(|scope| {
+            self.assignments
+                .get(&scope)
+                .and_then(|assignments| assignments.get(name))
+                .is_some_and(|assignments| {
+                    assignments
+                        .iter()
+                        .any(|assignment| assignment.span.lo <= span.lo)
+                })
+        })
+    }
+}
+
+impl Lookup for ScopeGraph {
+    fn ident(&self, ident: &Ident) -> ConstValue {
+        if self.has_dynamic_lookup_at(ident.span) {
+            return ConstValue::Unknown;
+        }
+        match self.binding_at(ident.sym.as_ref(), ident.span) {
+            Some(BindingProvenance::StaticString(value)) => ConstValue::String(value.clone()),
+            Some(BindingProvenance::StaticNumber(value)) => ConstValue::NonNegativeInteger(*value),
+            Some(BindingProvenance::StaticStringArray(values)) => {
+                ConstValue::Array(values.iter().cloned().map(ConstValue::String).collect())
+            }
+            Some(BindingProvenance::StaticObjectKeys(values)) => ConstValue::Object(
+                values
+                    .iter()
+                    .cloned()
+                    .map(|key| (key, ConstValue::Unknown))
+                    .collect(),
+            ),
+            Some(BindingProvenance::StaticObjectValues(values)) => ConstValue::Object(
+                values
+                    .keys()
+                    .cloned()
+                    .map(|key| (key, ConstValue::Unknown))
+                    .collect(),
+            ),
+            _ => ConstValue::Unknown,
+        }
+    }
+
+    fn spread(&self, expr: &Expr) -> ConstValue {
+        if let Expr::Ident(ident) = expr
+            && self
+                .binding_with_scope_at(ident.sym.as_ref(), ident.span)
+                .is_some_and(|(scope, _)| {
+                    self.mutable_static_objects
+                        .contains(&(scope, ident.sym.to_string()))
+                })
+        {
+            return ConstValue::Unknown;
+        }
+        constant::evaluate(expr, self)
+    }
+
+    fn member(&self, member: &MemberExpr) -> ConstValue {
+        if self.has_dynamic_lookup_at(member.span) {
+            return ConstValue::Unknown;
+        }
+        let Some(property) = constant::property_name(&member.prop, self) else {
+            return ConstValue::Unknown;
+        };
+        match constant::evaluate(&member.obj, self) {
+            ConstValue::Array(values) => property
+                .parse::<usize>()
+                .ok()
+                .and_then(|index| values.get(index).cloned())
+                .unwrap_or(ConstValue::Unknown),
+            ConstValue::Object(values) => values
+                .get(&property)
+                .cloned()
+                .unwrap_or(ConstValue::Unknown),
+            _ => ConstValue::Unknown,
+        }
+    }
+
+    fn unshadowed_global(&self, name: &str, span: Span) -> bool {
+        !self.has_dynamic_lookup_at(span) && self.binding_at(name, span).is_none()
+    }
 }
 
 pub(super) trait RootedExprContext {
@@ -644,6 +708,8 @@ impl RootedExprContext for ScopeGraph {
         }
         match self.binding_at(ident.sym.as_ref(), ident.span) {
             Some(BindingProvenance::ValueAlias { target }) => Some(target.clone()),
+            Some(BindingProvenance::BoundCallable { target, .. }) => Some(target.clone()),
+            Some(BindingProvenance::BoundModuleCallable { .. }) => None,
             Some(BindingProvenance::ReturnedObject { source }) => Some(source.clone()),
             Some(_) => None,
             None => Some(ident.sym.to_string()),

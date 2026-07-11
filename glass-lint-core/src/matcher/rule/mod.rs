@@ -13,12 +13,12 @@ pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
 
 #[derive(Debug, Clone)]
 pub struct ApiRule {
-    pub id: String,
-    pub label: String,
-    pub category: ApiCategory,
-    pub severity: ApiSeverity,
-    pub confidence: Confidence,
-    pub matchers: Vec<Matcher>,
+    id: String,
+    label: String,
+    category: ApiCategory,
+    severity: ApiSeverity,
+    confidence: Confidence,
+    matchers: Vec<Matcher>,
 }
 
 impl ApiRule {
@@ -36,6 +36,25 @@ impl ApiRule {
             confidence: None,
             matchers: Vec::new(),
         }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+    pub fn category(&self) -> &ApiCategory {
+        &self.category
+    }
+    pub fn severity(&self) -> ApiSeverity {
+        self.severity
+    }
+    pub fn confidence(&self) -> Confidence {
+        self.confidence
+    }
+    pub fn matchers(&self) -> &[Matcher] {
+        &self.matchers
     }
 }
 
@@ -87,6 +106,14 @@ impl ApiRuleBuilder {
         if id.is_empty() {
             return Err(ApiRuleBuildError::MissingId);
         }
+        if !valid_local_rule_id(&id) {
+            return Err(ApiRuleBuildError::InvalidId(id));
+        }
+        if !category.is_valid() {
+            return Err(ApiRuleBuildError::InvalidCategory(
+                category.as_str().to_string(),
+            ));
+        }
 
         let matcher = ApiMatcher::from_matchers(self.matchers).normalized();
         if matcher.is_empty() {
@@ -104,14 +131,72 @@ impl ApiRuleBuilder {
     }
 }
 
+fn valid_local_rule_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().enumerate().all(|(index, character)| {
+            (index == 0 && character.is_ascii_lowercase())
+                || (index > 0
+                    && (character.is_ascii_lowercase()
+                        || character.is_ascii_digit()
+                        || character == '-'
+                        || character == '_'
+                        || character == '.'))
+        })
+        && !value.starts_with(['-', '_', '.'])
+        && !value.ends_with(['-', '_', '.'])
+        && !value.contains("..")
+}
+
 fn required_string(
     value: Option<String>,
     missing_error: ApiRuleBuildError,
 ) -> Result<String, ApiRuleBuildError> {
-    let value = value.ok_or(missing_error)?;
+    let value = value.ok_or_else(|| missing_error.clone())?;
     if value.trim().is_empty() {
         return Err(missing_error);
     }
 
     Ok(value.trim().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn build(id: &str, category: &str) -> Result<ApiRule, ApiRuleBuildError> {
+        ApiRule::builder(id)
+            .label("rule")
+            .category(category)
+            .severity(ApiSeverity::Info)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+    }
+
+    #[test]
+    fn rejects_noncanonical_rule_ids_and_categories() {
+        for id in [
+            "Network.fetch",
+            ".network",
+            "network.",
+            "network..fetch",
+            "network:fetch",
+        ] {
+            assert!(matches!(
+                build(id, "network"),
+                Err(ApiRuleBuildError::InvalidId(_))
+            ));
+        }
+        assert!(matches!(
+            build("network.fetch", "  "),
+            Err(ApiRuleBuildError::InvalidCategory(_))
+        ));
+    }
+
+    #[test]
+    fn accepts_provider_category_paths_and_displayable_errors() {
+        assert!(build("network.fetch", "browser/network").is_ok());
+        let error = build("UPPER", "network").unwrap_err();
+        assert!(error.to_string().contains("invalid rule ID"));
+    }
 }

@@ -816,6 +816,15 @@ impl ApiMatcher {
                     normalize_flow_value(predicate);
                 }
             }
+            call.arg_strings.sort_by(|left, right| {
+                left.index
+                    .cmp(&right.index)
+                    .then_with(|| left.values.cmp(&right.values))
+                    .then_with(|| {
+                        format!("{:?}", left.predicate).cmp(&format!("{:?}", right.predicate))
+                    })
+            });
+            call.arg_strings.dedup();
         }
         self.calls.retain(|call| {
             !call.name.is_empty()
@@ -836,6 +845,35 @@ impl ApiMatcher {
             if let MemberCallProvenance::ModuleNamespace { module } = &mut member_call.provenance {
                 *module = module.trim().to_string();
             }
+            for matcher in &mut member_call.arg_strings {
+                normalize_strings(&mut matcher.values);
+                if let Some(predicate) = &mut matcher.predicate {
+                    normalize_flow_value(predicate);
+                }
+            }
+            for matcher in &mut member_call.arg_object_keys {
+                normalize_strings(&mut matcher.keys);
+            }
+            for matcher in &mut member_call.arg_rooted_exprs {
+                normalize_member_chains(&mut matcher.chains);
+            }
+            member_call.arg_strings.sort_by(|left, right| {
+                left.index
+                    .cmp(&right.index)
+                    .then_with(|| left.values.cmp(&right.values))
+                    .then_with(|| {
+                        format!("{:?}", left.predicate).cmp(&format!("{:?}", right.predicate))
+                    })
+            });
+            member_call.arg_strings.dedup();
+            member_call
+                .arg_object_keys
+                .sort_by(|left, right| (left.index, &left.keys).cmp(&(right.index, &right.keys)));
+            member_call.arg_object_keys.dedup();
+            member_call.arg_rooted_exprs.sort_by(|left, right| {
+                (left.index, &left.chains).cmp(&(right.index, &right.chains))
+            });
+            member_call.arg_rooted_exprs.dedup();
         }
         self.member_calls.retain(|call| {
             !call.chain.is_empty()
@@ -875,20 +913,6 @@ impl ApiMatcher {
         normalize_returned_member_calls(&mut self.returned_member_calls);
         normalize_returned_member_reads(&mut self.returned_member_reads);
         normalize_instance_member_calls(&mut self.instance_member_calls);
-        for member_call in &mut self.member_calls {
-            for matcher in &mut member_call.arg_strings {
-                normalize_strings(&mut matcher.values);
-                if let Some(predicate) = &mut matcher.predicate {
-                    normalize_flow_value(predicate);
-                }
-            }
-            for matcher in &mut member_call.arg_object_keys {
-                normalize_strings(&mut matcher.keys);
-            }
-            for matcher in &mut member_call.arg_rooted_exprs {
-                normalize_member_chains(&mut matcher.chains);
-            }
-        }
         self
     }
 }
@@ -1094,4 +1118,31 @@ fn normalize_member_chain(value: &str) -> String {
 
 pub fn canonical_rooted_chain(value: &str) -> &str {
     value.strip_prefix("this.").unwrap_or(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalization_is_idempotent_and_deduplicates_argument_matchers() {
+        let matcher = ApiMatcher::from_matchers(vec![
+            Matcher::member_call(
+                MemberCallMatcher::rooted_chain(" this.client.request ")
+                    .arg_string(1, [" b ", "a"])
+                    .arg_string(0, ["value"]),
+            ),
+            Matcher::member_call(
+                MemberCallMatcher::rooted_chain("this.client.request")
+                    .arg_string(0, ["value"])
+                    .arg_string(1, ["a", "b"]),
+            ),
+        ]);
+        let once = matcher.normalized();
+        assert_eq!(once.member_calls, once.clone().normalized().member_calls);
+        assert_eq!(once.member_calls.len(), 1);
+        assert_eq!(once.member_calls[0].arg_strings.len(), 2);
+        assert_eq!(once.member_calls[0].arg_strings[0].values, ["value"]);
+        assert_eq!(once.member_calls[0].arg_strings[1].values, ["a", "b"]);
+    }
 }

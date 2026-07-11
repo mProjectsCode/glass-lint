@@ -7,10 +7,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use swc_common::Span;
+use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
-    AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, Expr, ExprOrSpread, FnDecl, Function,
-    MemberExpr, OptChainBase, OptChainExpr, Pat, Program, SimpleAssignTarget, VarDeclarator,
+    AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CondExpr, DoWhileStmt, Expr,
+    ExprOrSpread, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, IfStmt, MemberExpr,
+    OptChainBase, OptChainExpr, Pat, Program, SimpleAssignTarget, SwitchStmt, TryStmt,
+    VarDeclarator, WhileStmt,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
@@ -34,8 +36,10 @@ pub fn collect(
         helpers,
         evidence: vec![Vec::new(); rule_count],
         states: BTreeMap::new(),
+        emitted: BTreeSet::new(),
         function_stack: vec![0],
         next_function_id: 1,
+        next_object_id: 0,
     };
     program.visit_with(&mut visitor);
     visitor.evidence
@@ -46,6 +50,7 @@ struct FlowState {
     rule_index: usize,
     flow_index: usize,
     source_span: Span,
+    object_id: u32,
     requirements: BTreeSet<usize>,
     emitted: bool,
 }
@@ -60,21 +65,20 @@ struct HelperSink {
 struct ObjectFlowCollector<'a> {
     resolver: &'a Resolver,
     rules: &'a [(usize, usize, FlowMatcher)],
-    helpers: BTreeMap<String, Vec<HelperSink>>,
+    helpers: BTreeMap<(usize, String), Vec<HelperSink>>,
     evidence: Vec<Vec<ApiEvidence>>,
     states: BTreeMap<String, Vec<FlowState>>,
+    emitted: BTreeSet<(usize, usize, u32, u32, u32, u32)>,
     /// Flow keys are qualified by a synthetic function id. This prevents a
     /// reused local name in a nested or sibling function from inheriting state.
     function_stack: Vec<usize>,
     next_function_id: usize,
+    next_object_id: u32,
 }
 
 impl ObjectFlowCollector<'_> {
     fn current_function(&self) -> usize {
-        *self
-            .function_stack
-            .last()
-            .expect("program function scope is always present")
+        self.function_stack.last().copied().unwrap_or(0)
     }
 
     fn scoped_key(&self, chain: &str) -> String {
@@ -91,26 +95,36 @@ impl ObjectFlowCollector<'_> {
         self.expr_key(&member.obj)
     }
 
-    fn source_match(&self, call: &CallExpr) -> Vec<FlowState> {
+    fn source_match(&mut self, call: &CallExpr) -> Vec<FlowState> {
         let Some(callee) = call_member_chain(call, self.resolver) else {
             return Vec::new();
         };
 
-        self.rules
-            .iter()
-            .filter(|(_, _, flow)| {
-                flow.sources.iter().any(|source| {
-                    source.member_call == callee
-                        && source
-                            .arg_strings
-                            .iter()
-                            .all(|matcher| static_arg_matches(matcher, &call.args, self.resolver))
+        let matching =
+            self.rules
+                .iter()
+                .filter(|(_, _, flow)| {
+                    flow.sources.iter().any(|source| {
+                        source.member_call == callee
+                            && source.arg_strings.iter().all(|matcher| {
+                                static_arg_matches(matcher, &call.args, self.resolver)
+                            })
+                    })
                 })
-            })
-            .map(|(rule_index, flow_index, _)| FlowState {
-                rule_index: *rule_index,
-                flow_index: *flow_index,
+                .map(|(rule_index, flow_index, _)| (*rule_index, *flow_index))
+                .collect::<Vec<_>>();
+        if matching.is_empty() {
+            return Vec::new();
+        }
+        let object_id = self.next_object_id;
+        self.next_object_id = self.next_object_id.saturating_add(1);
+        matching
+            .into_iter()
+            .map(|(rule_index, flow_index)| FlowState {
+                rule_index,
+                flow_index,
                 source_span: call.span,
+                object_id,
                 requirements: BTreeSet::new(),
                 emitted: false,
             })
@@ -204,7 +218,7 @@ impl ObjectFlowCollector<'_> {
             }
         }
         for (state, flow) in ready {
-            self.emit_state(&state, &flow);
+            self.emit_state_if_ready(&state, &flow, state.source_span);
         }
     }
 
@@ -230,10 +244,30 @@ impl ObjectFlowCollector<'_> {
         }
     }
 
-    fn record_helper_sink(&mut self, callee: &str, call: &CallExpr) {
-        let Some(sinks) = self.helpers.get(callee).cloned() else {
+    fn record_helper_sink(&mut self, callee: &swc_ecma_ast::Ident, call: &CallExpr) {
+        let Some((sinks, stable)) = self
+            .resolver
+            .scope_chain_at(callee.span)
+            .into_iter()
+            .find_map(|scope| {
+                self.helpers
+                    .get(&(scope, callee.sym.to_string()))
+                    .cloned()
+                    .map(|sinks| {
+                        (
+                            sinks,
+                            !self
+                                .resolver
+                                .has_assignment_at(callee.sym.as_ref(), callee.span),
+                        )
+                    })
+            })
+        else {
             return;
         };
+        if !stable {
+            return;
+        }
         for sink in sinks {
             let Some(argument) = call.args.get(sink.param_index) else {
                 continue;
@@ -301,19 +335,32 @@ impl ObjectFlowCollector<'_> {
         }
     }
 
-    fn emit_state_if_ready(&mut self, state: &FlowState, flow: &FlowMatcher, _span: Span) {
+    fn emit_state_if_ready(&mut self, state: &FlowState, flow: &FlowMatcher, span: Span) {
         if !state_is_ready(state, flow) {
             return;
         }
-        self.emit_state(state, flow);
+        let key = (
+            state.rule_index,
+            state.flow_index,
+            state.object_id,
+            span.lo.0,
+            span.hi.0,
+            state.source_span.lo.0,
+        );
+        if self.emitted.insert(key) {
+            // Flow evidence is anchored at the source allocation.  This keeps
+            // the capability location stable for a flow that reaches several
+            // sinks while the emission key still records the sink match site.
+            self.emit_state(state, flow, state.source_span);
+        }
     }
 
-    fn emit_state(&mut self, state: &FlowState, flow: &FlowMatcher) {
+    fn emit_state(&mut self, state: &FlowState, flow: &FlowMatcher, span: Span) {
         self.evidence[state.rule_index].push(ApiEvidence {
             kind: ApiMatchKind::CallArgument,
             symbol: flow.evidence_symbol(),
             count: 1,
-            spans: vec![state.source_span],
+            spans: vec![span],
         });
     }
 
@@ -337,6 +384,84 @@ fn state_is_ready(state: &FlowState, flow: &FlowMatcher) -> bool {
 }
 
 impl Visit for ObjectFlowCollector<'_> {
+    fn visit_if_stmt(&mut self, statement: &IfStmt) {
+        statement.test.visit_with(self);
+        let baseline = self.states.clone();
+        statement.cons.visit_with(self);
+        self.states = baseline.clone();
+        if let Some(alternate) = &statement.alt {
+            alternate.visit_with(self);
+        }
+        // A fact established in only one branch is not definite after the
+        // join.  The branch-local visitors have already emitted valid
+        // source-to-sink matches inside their own branch.
+        self.states.clear();
+    }
+
+    fn visit_cond_expr(&mut self, expression: &CondExpr) {
+        expression.test.visit_with(self);
+        let baseline = self.states.clone();
+        expression.cons.visit_with(self);
+        self.states = baseline.clone();
+        expression.alt.visit_with(self);
+        self.states.clear();
+    }
+
+    fn visit_for_stmt(&mut self, statement: &ForStmt) {
+        statement.init.visit_with(self);
+        statement.test.visit_with(self);
+        statement.update.visit_with(self);
+        statement.body.visit_with(self);
+        self.states.clear();
+    }
+
+    fn visit_for_in_stmt(&mut self, statement: &ForInStmt) {
+        statement.left.visit_with(self);
+        statement.right.visit_with(self);
+        statement.body.visit_with(self);
+        self.states.clear();
+    }
+
+    fn visit_for_of_stmt(&mut self, statement: &ForOfStmt) {
+        statement.left.visit_with(self);
+        statement.right.visit_with(self);
+        statement.body.visit_with(self);
+        self.states.clear();
+    }
+
+    fn visit_while_stmt(&mut self, statement: &WhileStmt) {
+        statement.test.visit_with(self);
+        statement.body.visit_with(self);
+        self.states.clear();
+    }
+
+    fn visit_do_while_stmt(&mut self, statement: &DoWhileStmt) {
+        statement.body.visit_with(self);
+        statement.test.visit_with(self);
+        self.states.clear();
+    }
+
+    fn visit_switch_stmt(&mut self, statement: &SwitchStmt) {
+        statement.discriminant.visit_with(self);
+        let baseline = self.states.clone();
+        for case in &statement.cases {
+            self.states = baseline.clone();
+            case.visit_with(self);
+        }
+        self.states.clear();
+    }
+
+    fn visit_try_stmt(&mut self, statement: &TryStmt) {
+        let baseline = self.states.clone();
+        statement.block.visit_with(self);
+        self.states = baseline.clone();
+        statement.handler.visit_with(self);
+        if let Some(finalizer) = &statement.finalizer {
+            finalizer.visit_with(self);
+        }
+        self.states.clear();
+    }
+
     fn visit_var_declarator(&mut self, declarator: &VarDeclarator) {
         if let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref()) {
             self.assign_source_or_clear(&Expr::Ident(ident.id.clone()), init);
@@ -366,7 +491,7 @@ impl Visit for ObjectFlowCollector<'_> {
                     self.record_member_sink(member, call);
                 }
                 Expr::Ident(ident) => {
-                    self.record_helper_sink(ident.sym.as_ref(), call);
+                    self.record_helper_sink(ident, call);
                     if let Some(callee) = self.resolver.resolve_ident(ident).rooted_chain {
                         self.record_identifier_sink(&callee, call);
                     }
@@ -397,7 +522,7 @@ impl Visit for ObjectFlowCollector<'_> {
 struct HelperCollector<'a> {
     resolver: &'a Resolver,
     rules: &'a [(usize, usize, FlowMatcher)],
-    helpers: BTreeMap<String, Vec<HelperSink>>,
+    helpers: BTreeMap<(usize, String), Vec<HelperSink>>,
 }
 
 impl<'a> HelperCollector<'a> {
@@ -405,7 +530,7 @@ impl<'a> HelperCollector<'a> {
         program: &Program,
         resolver: &'a Resolver,
         rules: &'a [(usize, usize, FlowMatcher)],
-    ) -> BTreeMap<String, Vec<HelperSink>> {
+    ) -> BTreeMap<(usize, String), Vec<HelperSink>> {
         let mut collector = Self {
             resolver,
             rules,
@@ -415,15 +540,22 @@ impl<'a> HelperCollector<'a> {
         collector.helpers
     }
 
-    fn record_function(&mut self, name: String, parameters: Vec<String>, body: Option<&BlockStmt>) {
+    fn record_function(
+        &mut self,
+        scope: usize,
+        name: String,
+        parameters: Vec<String>,
+        body: Option<&BlockStmt>,
+    ) {
         let Some(body) = body else {
             return;
         };
-        self.record_helper(name, parameters, |visitor| body.visit_with(visitor));
+        self.record_helper(scope, name, parameters, |visitor| body.visit_with(visitor));
     }
 
     fn record_helper(
         &mut self,
+        scope: usize,
         name: String,
         parameters: Vec<String>,
         visit_body: impl FnOnce(&mut HelperBodyVisitor<'_>),
@@ -435,9 +567,10 @@ impl<'a> HelperCollector<'a> {
             sinks: Vec::new(),
         };
         visit_body(&mut visitor);
-        if !visitor.sinks.is_empty() {
-            self.helpers.insert(name, visitor.sinks);
-        }
+        // Keep an empty marker as well: a nested function with the same name
+        // must shadow an outer helper summary even when its body has no
+        // modeled sink.
+        self.helpers.insert((scope, name), visitor.sinks);
     }
 }
 
@@ -450,10 +583,25 @@ impl Visit for HelperCollector<'_> {
             .filter_map(|param| binding_ident_name(&param.pat))
             .collect::<Vec<_>>();
         self.record_function(
+            self.resolver
+                .scope_chain_at(
+                    function
+                        .function
+                        .body
+                        .as_ref()
+                        .map_or(function.ident.span, Spanned::span),
+                )
+                .get(2)
+                .copied()
+                .unwrap_or(0),
             function.ident.sym.to_string(),
             parameters,
             function.function.body.as_ref(),
         );
+        function.function.decorators.visit_with(self);
+        if let Some(body) = &function.function.body {
+            body.visit_with(self);
+        }
     }
 
     fn visit_var_declarator(&mut self, declarator: &VarDeclarator) {
@@ -472,10 +620,15 @@ impl Visit for HelperCollector<'_> {
                     .filter_map(|param| binding_ident_name(&param.pat))
                     .collect::<Vec<_>>();
                 self.record_function(
+                    self.resolver.scope_chain_at(ident.id.span)[0],
                     ident.id.sym.to_string(),
                     parameters,
                     function.function.body.as_ref(),
                 );
+                function.function.decorators.visit_with(self);
+                if let Some(body) = &function.function.body {
+                    body.visit_with(self);
+                }
             }
             Expr::Arrow(arrow) => {
                 let parameters = arrow
@@ -483,9 +636,15 @@ impl Visit for HelperCollector<'_> {
                     .iter()
                     .filter_map(binding_ident_name)
                     .collect::<Vec<_>>();
-                self.record_helper(ident.id.sym.to_string(), parameters, |visitor| {
-                    arrow.body.visit_with(visitor);
-                });
+                self.record_helper(
+                    self.resolver.scope_chain_at(ident.id.span)[0],
+                    ident.id.sym.to_string(),
+                    parameters,
+                    |visitor| {
+                        arrow.body.visit_with(visitor);
+                    },
+                );
+                arrow.body.visit_with(self);
             }
             _ => {}
         }

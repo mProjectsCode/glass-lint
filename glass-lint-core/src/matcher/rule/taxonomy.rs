@@ -4,11 +4,28 @@ pub struct ApiCategory(String);
 
 impl ApiCategory {
     pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
+        Self(value.into().trim().to_string())
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    pub(crate) fn is_valid(&self) -> bool {
+        !self.0.is_empty()
+            && self.0.chars().enumerate().all(|(index, character)| {
+                (index == 0 && character.is_ascii_lowercase())
+                    || (index > 0
+                        && (character.is_ascii_lowercase()
+                            || character.is_ascii_digit()
+                            || character == '-'
+                            || character == '_'
+                            || character == '.'
+                            || character == '/'))
+            })
+            && !self.0.ends_with(['-', '_', '.', '/'])
+            && !self.0.contains("..")
+            && !self.0.contains("//")
     }
 }
 
@@ -29,6 +46,7 @@ impl From<String> for ApiCategory {
 pub enum ApiSeverity {
     Info,
     Warning,
+    Error,
 }
 
 impl ApiSeverity {
@@ -36,6 +54,7 @@ impl ApiSeverity {
         match self {
             Self::Info => "info",
             Self::Warning => "warning",
+            Self::Error => "error",
         }
     }
 }

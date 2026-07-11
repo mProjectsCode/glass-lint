@@ -5,7 +5,7 @@
 
 use glass_lint_core::{
     Linter, RuleCatalog,
-    rules::{Confidence, Matcher, MemberCallMatcher, Rule, Severity},
+    rules::{CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity},
 };
 
 fn findings(source: &str, matcher: Matcher) -> usize {
@@ -126,6 +126,31 @@ fn follows_bound_rooted_members_and_their_arguments() {
         "const open = app.open.bind(app); open(vault.file);",
         MemberCallMatcher::rooted_chain("app.open")
             .arg_rooted_exprs(0, ["vault.file"])
+            .into(),
+        1,
+    );
+}
+
+#[test]
+fn prepends_static_bound_arguments_before_call_arguments() {
+    assert_matches(
+        "const request = fetch.bind(null, '/bound'); request('/actual');",
+        CallMatcher::global("fetch")
+            .arg_string(0, ["/bound"])
+            .into(),
+        1,
+    );
+    assert_matches(
+        "const request = fetch.bind(null, '/bound'); request('/actual');",
+        CallMatcher::global("fetch")
+            .arg_string(0, ["/actual"])
+            .into(),
+        0,
+    );
+    assert_matches(
+        "const send = require('sdk').send.bind(null, '/bound'); send('/actual');",
+        CallMatcher::module_export("sdk", "send")
+            .arg_string(0, ["/bound"])
             .into(),
         1,
     );

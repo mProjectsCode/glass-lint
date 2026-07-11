@@ -6,6 +6,9 @@
 
 use std::collections::HashMap;
 
+const MAX_VALUES: usize = 65_536;
+const MAX_OBJECTS: u32 = 65_536;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(super) struct ValueId(u32);
 
@@ -76,24 +79,31 @@ impl Default for ValueArena {
 
 impl ValueArena {
     pub(super) fn intern(&mut self, value: Value) -> ValueId {
+        if self.values.len() >= MAX_VALUES {
+            return ValueId::UNKNOWN;
+        }
         if let Some(id) = self.ids.get(&value) {
             return *id;
         }
-        let id = ValueId(self.values.len() as u32);
+        let Ok(index) = u32::try_from(self.values.len()) else {
+            return ValueId::UNKNOWN;
+        };
+        let id = ValueId(index);
         self.values.push(value.clone());
         self.ids.insert(value, id);
         id
     }
 
-    pub(super) fn allocate_object_id(&mut self) -> ObjectId {
+    pub(super) fn allocate_object_id(&mut self) -> Option<ObjectId> {
+        if self.next_object >= MAX_OBJECTS {
+            return None;
+        }
         let object = ObjectId(self.next_object);
         self.next_object += 1;
-        object
+        Some(object)
     }
 
-    pub(super) fn get(&self, id: ValueId) -> &Value {
-        self.values
-            .get(id.0 as usize)
-            .expect("a ValueId always belongs to its arena")
+    pub(super) fn get(&self, id: ValueId) -> Option<&Value> {
+        self.values.get(usize::try_from(id.0).ok()?)
     }
 }

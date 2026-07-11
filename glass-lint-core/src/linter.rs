@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use swc_common::{SourceMap, Span, sync::Lrc};
+use swc_common::{SourceMap, SourceMapper, Span, sync::Lrc};
 
 use crate::matcher::{ApiRule, ApiSeverity, classify_api_usage, validate_catalog};
 use crate::{
@@ -10,8 +10,8 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct RuleCatalog {
-    provider: String,
     rules: Vec<ApiRule>,
+    namespaced: BTreeMap<String, RuleId>,
 }
 
 impl RuleCatalog {
@@ -19,29 +19,31 @@ impl RuleCatalog {
         let provider = provider.into();
         RuleId::parse(format!("{provider}:placeholder"))?;
         validate_catalog(&rules).map_err(|error| match error {
-            crate::matcher::ApiCatalogError::DuplicateRule(id) => RegistryError::InvalidRule(
-                RuleId::parse(format!("{provider}:{id}"))
-                    .expect("validated provider and catalog rule ID"),
-                "duplicate rule".into(),
-            ),
+            crate::matcher::ApiCatalogError::DuplicateRule(id) => {
+                RegistryError::InvalidRule(format!("{provider}:{id}"), "duplicate rule".into())
+            }
         })?;
+        let mut namespaced = BTreeMap::new();
         for rule in &rules {
-            RuleId::parse(format!("{provider}:{}", rule.id))?;
+            let id = RuleId::parse(format!("{provider}:{}", rule.id()))?;
+            namespaced.insert(rule.id().to_string(), id);
         }
-        Ok(Self { provider, rules })
+        Ok(Self { rules, namespaced })
     }
 
     pub fn metadata(&self) -> Vec<RuleMetadata> {
         self.rules
             .iter()
-            .map(|rule| RuleMetadata {
-                id: self.namespaced_id(&rule.id),
-                description: rule.label.clone(),
-                default_severity: severity(rule.severity),
-                messages: BTreeMap::from([(
-                    "detected".into(),
-                    "Detected matching capability".into(),
-                )]),
+            .filter_map(|rule| {
+                self.namespaced_id(rule.id()).map(|id| RuleMetadata {
+                    id: id.clone(),
+                    description: rule.label().to_string(),
+                    default_severity: severity(rule.severity()),
+                    messages: BTreeMap::from([(
+                        "detected".into(),
+                        "Detected matching capability".into(),
+                    )]),
+                })
             })
             .collect()
     }
@@ -49,12 +51,12 @@ impl RuleCatalog {
     pub fn rule_ids(&self) -> Vec<RuleId> {
         self.rules
             .iter()
-            .map(|rule| self.namespaced_id(&rule.id))
+            .filter_map(|rule| self.namespaced_id(rule.id()).cloned())
             .collect()
     }
 
-    fn namespaced_id(&self, id: &str) -> RuleId {
-        RuleId::parse(format!("{}:{id}", self.provider)).expect("catalog IDs were validated")
+    fn namespaced_id(&self, id: &str) -> Option<&RuleId> {
+        self.namespaced.get(id)
     }
 }
 
@@ -85,6 +87,11 @@ impl Linter {
         &self.catalog
     }
 
+    /// Lints one JavaScript/JSX source file.
+    ///
+    /// Parsing stops after the first parser diagnostic.  Findings contain
+    /// source ranges in one-based Unicode display columns, while evidence is
+    /// bounded and carries the first matching source snippet for each group.
     pub fn lint(&self, source: &str, filename: &str) -> LintReport {
         let parsed = match crate::parse(source, filename) {
             Ok(parsed) => parsed,
@@ -101,12 +108,19 @@ impl Linter {
             .catalog
             .rules
             .iter()
-            .filter(|rule| self.enabled.contains(&self.catalog.namespaced_id(&rule.id)))
+            .filter(|rule| {
+                self.catalog
+                    .namespaced_id(rule.id())
+                    .is_some_and(|id| self.enabled.contains(id))
+            })
             .cloned()
             .collect();
-        let classification = classify_api_usage(Some(&parsed.program), &selected);
+        let classification = classify_api_usage(&parsed.program, &selected);
         let mut findings = Vec::new();
         for capability in classification.capabilities() {
+            let Some(rule_id) = self.catalog.namespaced_id(capability.id()).cloned() else {
+                continue;
+            };
             let mut ranges: Vec<_> = capability
                 .evidence()
                 .iter()
@@ -118,7 +132,7 @@ impl Linter {
             }
             for range in ranges {
                 findings.push(Finding {
-                    rule_id: self.catalog.namespaced_id(capability.id()),
+                    rule_id: rule_id.clone(),
                     message_id: "detected".into(),
                     message: capability.label().into(),
                     severity: severity(capability.severity()),
@@ -126,16 +140,21 @@ impl Linter {
                     evidence: capability
                         .evidence()
                         .iter()
-                        .map(|evidence| Evidence {
-                            message: format!(
-                                "{}: {} ({} occurrence{})",
-                                evidence.kind().as_str(),
-                                evidence.symbol(),
-                                evidence.count(),
-                                if evidence.count() == 1 { "" } else { "s" }
-                            ),
-                            range: None,
-                            source: None,
+                        .map(|evidence| {
+                            let span = evidence.spans.iter().find(|span| !span.is_dummy()).copied();
+                            Evidence {
+                                message: format!(
+                                    "{}: {} ({} occurrence{})",
+                                    evidence.kind().as_str(),
+                                    evidence.symbol(),
+                                    evidence.count(),
+                                    if evidence.count() == 1 { "" } else { "s" }
+                                ),
+                                range: span
+                                    .map(|span| source_range_from_span(&parsed.source_map, span)),
+                                source: span
+                                    .and_then(|span| parsed.source_map.span_to_snippet(span).ok()),
+                            }
                         })
                         .collect(),
                 });
@@ -166,6 +185,7 @@ fn severity(value: ApiSeverity) -> Severity {
     match value {
         ApiSeverity::Info => Severity::Info,
         ApiSeverity::Warning => Severity::Warning,
+        ApiSeverity::Error => Severity::Error,
     }
 }
 
@@ -202,24 +222,36 @@ fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) -> SourceRang
     let end = source_map.lookup_char_pos(span.hi());
     SourceRange {
         start: Position {
-            line: start.line as u32,
-            column: start.col_display as u32 + 1,
+            line: u32::try_from(start.line).unwrap_or(u32::MAX),
+            column: u32::try_from(start.col_display)
+                .unwrap_or(u32::MAX)
+                .saturating_add(1),
         },
         end: Position {
-            line: end.line as u32,
-            column: end.col_display as u32 + 1,
+            line: u32::try_from(end.line).unwrap_or(u32::MAX),
+            column: u32::try_from(end.col_display)
+                .unwrap_or(u32::MAX)
+                .saturating_add(1),
         },
     }
 }
 
 fn position(source: &str, offset: usize) -> Position {
-    let prefix = &source[..offset.min(source.len())];
+    let mut end = offset.min(source.len());
+    while end > 0 && !source.is_char_boundary(end) {
+        end -= 1;
+    }
+    let prefix = &source[..end];
     Position {
-        line: prefix.bytes().filter(|byte| *byte == b'\n').count() as u32 + 1,
+        line: u32::try_from(prefix.bytes().filter(|byte| *byte == b'\n').count())
+            .unwrap_or(u32::MAX)
+            .saturating_add(1),
         column: prefix
             .rsplit_once('\n')
-            .map_or(prefix.len(), |(_, tail)| tail.len()) as u32
-            + 1,
+            .map_or(prefix.chars().count(), |(_, tail)| tail.chars().count())
+            .try_into()
+            .unwrap_or(u32::MAX)
+            .saturating_add(1),
     }
 }
 
@@ -312,5 +344,45 @@ mod tests {
             Linter::with_rules(catalog(), [unknown]),
             Err(LintConfigError::UnknownRule(_))
         ));
+    }
+
+    #[test]
+    fn reports_structured_diagnostic_for_oversized_source() {
+        let report =
+            Linter::new(catalog()).lint(&"x".repeat(crate::MAX_SOURCE_BYTES + 1), "large.js");
+        assert!(report.findings.is_empty());
+        assert_eq!(report.parse_diagnostics.len(), 1);
+        assert_eq!(report.parse_diagnostics[0].filename, "large.js");
+        assert!(report.parse_diagnostics[0].range.is_none());
+    }
+
+    #[test]
+    fn parse_diagnostics_carry_stable_location_context() {
+        let report = Linter::new(catalog()).lint("fetch(", "broken.js");
+        assert!(report.findings.is_empty());
+        let diagnostic = &report.parse_diagnostics[0];
+        assert_eq!(diagnostic.filename, "broken.js");
+        assert!(diagnostic.message.starts_with("JavaScript parse error:"));
+        assert!(diagnostic.range.is_some());
+    }
+
+    #[test]
+    fn evidence_ranges_and_snippets_are_populated_for_unicode_source() {
+        let report = Linter::new(catalog()).lint("// é\nfetch('/x');", "unicode.js");
+        let evidence = &report.findings[0].evidence[0];
+        assert_eq!(
+            evidence.range.as_ref().map(|range| range.start.line),
+            Some(2)
+        );
+        assert_eq!(evidence.source.as_deref(), Some("fetch"));
+    }
+
+    #[test]
+    fn evidence_limit_is_source_ordered_and_applied_once() {
+        let source = (0..20).map(|_| "fetch();\n").collect::<String>();
+        let report = Linter::new(catalog()).lint(&source, "many.js");
+        assert_eq!(report.findings.len(), 16);
+        assert_eq!(report.findings.first().unwrap().range.start.line, 1);
+        assert_eq!(report.findings.last().unwrap().range.start.line, 16);
     }
 }

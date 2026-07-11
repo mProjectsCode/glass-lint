@@ -25,6 +25,13 @@ let custom = glass_lint_core::Linter::with_rules(
 
 The parser accepts JavaScript (including JSX). TypeScript, fixes, and suggestions are intentionally out of scope.
 
+Core analysis is precision-first and bounded: strict matchers require lexical
+and provenance evidence, dynamic/unsupported semantics fail closed, source
+files over 8 MiB receive a structured parse diagnostic, and each rule keeps at
+most 16 source occurrences in deterministic order. `Evidence` entries include
+the first matching range and source snippet; report finding ranges are the
+outermost non-contained matching spans.
+
 ## Harness Cases
 
 Harness cases are ordinary `.js` files. Rule-level conformance fixtures live alongside their Rust definitions as `positive.js` and `negative.js`; run `make provider-fixtures` to verify them. The remaining `tests/` tree is reserved for end-to-end scenarios, and `make harness` runs `tests/e2e` by default.

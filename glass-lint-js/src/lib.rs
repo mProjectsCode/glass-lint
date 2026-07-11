@@ -14,8 +14,8 @@ pub fn recommended_linter() -> Linter {
     let catalog = catalog();
     let enabled = rules::all()
         .into_iter()
-        .filter(|rule| rule.confidence == glass_lint_core::rules::Confidence::High)
-        .map(|rule| RuleId::parse(format!("js:{}", rule.id)).unwrap());
+        .filter(|rule| rule.confidence() == glass_lint_core::rules::Confidence::High)
+        .map(|rule| RuleId::parse(format!("js:{}", rule.id())).unwrap());
     Linter::with_rules(catalog, enabled).unwrap()
 }
 

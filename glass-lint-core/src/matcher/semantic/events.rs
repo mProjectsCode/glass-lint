@@ -42,7 +42,10 @@ impl EventLog {
             .events
             .sort_by_key(|event| (event.span.lo, event.span.hi));
         for (index, event) in collector.events.iter_mut().enumerate() {
-            event.id = EventId(index as u32);
+            let Ok(index) = u32::try_from(index) else {
+                break;
+            };
+            event.id = EventId(index);
         }
         Self {
             events: collector.events,

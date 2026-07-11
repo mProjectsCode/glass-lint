@@ -108,6 +108,18 @@ impl Resolver {
         }
     }
 
+    pub(super) fn bound_string_arguments(&self, ident: &Ident) -> Option<Vec<Option<String>>> {
+        self.scopes.bound_string_arguments(ident)
+    }
+
+    pub(super) fn scope_chain_at(&self, span: swc_common::Span) -> Vec<usize> {
+        self.scopes.scope_chain_at(span)
+    }
+
+    pub(super) fn has_assignment_at(&self, name: &str, span: swc_common::Span) -> bool {
+        self.scopes.has_assignment_at(name, span)
+    }
+
     pub(super) fn resolve_member(&self, member: &MemberExpr) -> ResolvedValue {
         let syntactic = self.scopes.member_chain(member);
         // Prefer the alias-expanded path. Falling back to a rooted member keeps
@@ -162,7 +174,12 @@ impl Resolver {
             Expr::Lit(Lit::Str(value)) => self.static_value(Value::StaticString(
                 value.value.to_string_lossy().to_string(),
             )),
-            Expr::Lit(Lit::Num(value)) if value.value.is_finite() && value.value.fract() == 0.0 => {
+            Expr::Lit(Lit::Num(value))
+                if value.value.is_finite()
+                    && value.value >= 0.0
+                    && value.value.fract() == 0.0
+                    && value.value <= usize::MAX as f64 =>
+            {
                 self.static_value(Value::StaticNumber(value.value as usize))
             }
             Expr::Array(array) => {
@@ -194,6 +211,10 @@ impl Resolver {
             .borrow_mut()
             .intern(Value::StaticString(value.clone()));
         Some(value)
+    }
+
+    pub(super) fn static_string_array_expr(&self, expr: &Expr) -> Option<Vec<String>> {
+        self.scopes.static_string_array_expr(expr)
     }
 
     pub(super) fn object_keys_expr(&self, expr: &Expr) -> Option<Vec<String>> {
@@ -282,12 +303,14 @@ impl Resolver {
             SymbolCallProvenance::Local => rooted.map_or(Value::Local, rooted_value),
         };
         let id = self.values.borrow_mut().intern(value);
-        debug_assert!(!matches!(self.values.borrow().get(id), Value::Unknown));
+        debug_assert!(self.values.borrow().get(id).is_some());
         id
     }
 
     fn fresh_object_value(&self) -> ResolvedValue {
-        let object = self.values.borrow_mut().allocate_object_id();
+        let Some(object) = self.values.borrow_mut().allocate_object_id() else {
+            return self.unknown();
+        };
         self.static_value(Value::Object(object))
     }
 }

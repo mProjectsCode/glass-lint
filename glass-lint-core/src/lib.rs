@@ -3,7 +3,7 @@
 use std::{collections::BTreeMap, error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
-use swc_common::{FileName, SourceMap, sync::Lrc};
+use swc_common::{FileName, SourceMap, Spanned, sync::Lrc};
 use swc_ecma_ast::{EsVersion, Program};
 use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax, lexer::Lexer};
 
@@ -14,6 +14,12 @@ pub use linter::{Linter, RuleCatalog};
 
 /// Declarative rule-building API for provider crates and custom catalogs.
 pub mod rules {
+    /// Builders for strict, provenance-aware matchers.
+    ///
+    /// Constructors named `global`, `rooted_chain`, and `module_*` require
+    /// semantic proof.  `heuristic_*` constructors intentionally opt into
+    /// weaker syntactic matching and should be used only by an explicit
+    /// heuristic profile.
     pub use crate::matcher::{
         ApiCategory as Category, ApiRule as Rule, ApiRuleBuildError as BuildError,
         ApiRuleBuilder as Builder, ApiSeverity as Severity, CallMatcher, ClassMatcher, Confidence,
@@ -23,6 +29,9 @@ pub mod rules {
 }
 
 pub const REPORT_VERSION: u32 = 2;
+/// Inputs above this bound receive a controlled parse diagnostic.  The core
+/// is intended for source files, not unbounded data blobs or hostile bundles.
+pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
@@ -116,6 +125,9 @@ pub struct Finding {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ParseDiagnostic {
     pub message: String,
+    pub filename: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub range: Option<SourceRange>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -141,6 +153,16 @@ pub(crate) struct ParsedSource {
 }
 
 pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
+    if source.len() > MAX_SOURCE_BYTES {
+        return Err(ParseDiagnostic {
+            message: format!(
+                "JavaScript source exceeds the {} byte analysis limit",
+                MAX_SOURCE_BYTES
+            ),
+            filename: filename.to_string(),
+            range: None,
+        });
+    }
     let source_map = Lrc::new(SourceMap::default());
     let file =
         source_map.new_source_file(FileName::Custom(filename.into()).into(), source.to_owned());
@@ -165,17 +187,36 @@ pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseD
         .parse_program()
         .map(|program| ParsedSource {
             program,
-            source_map,
+            source_map: source_map.clone(),
         })
         .map_err(|error| ParseDiagnostic {
-            message: format!("JavaScript parse error: {error:?}"),
+            message: format!("JavaScript parse error: {}", error.kind().msg()),
+            filename: filename.to_string(),
+            range: (!error.span().is_dummy()).then(|| {
+                let start = source_map.lookup_char_pos(error.span().lo());
+                let end = source_map.lookup_char_pos(error.span().hi());
+                SourceRange {
+                    start: Position {
+                        line: u32::try_from(start.line).unwrap_or(u32::MAX),
+                        column: u32::try_from(start.col_display)
+                            .unwrap_or(u32::MAX)
+                            .saturating_add(1),
+                    },
+                    end: Position {
+                        line: u32::try_from(end.line).unwrap_or(u32::MAX),
+                        column: u32::try_from(end.col_display)
+                            .unwrap_or(u32::MAX)
+                            .saturating_add(1),
+                    },
+                }
+            }),
         })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RegistryError {
     InvalidRuleId(String),
-    InvalidRule(RuleId, String),
+    InvalidRule(String, String),
 }
 
 impl fmt::Display for RegistryError {

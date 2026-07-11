@@ -5,9 +5,9 @@
 //! lets `Any`, rooted, and module-qualified matchers remain precise without
 //! each matcher revisiting the AST.
 
-use std::collections::BTreeMap;
+use std::borrow::Cow;
 
-use swc_common::Spanned;
+use swc_common::{DUMMY_SP, Spanned};
 use swc_ecma_ast::{
     BinaryOp, CallExpr, Callee, ClassDecl, ClassExpr, ClassMethod, Expr, ExprOrSpread, Ident,
     ImportDecl, MemberExpr, NewExpr, ObjectLit, OptCall, OptChainBase, OptChainExpr, Program, Str,
@@ -19,7 +19,7 @@ use super::super::result::{ApiEvidence, ApiMatchKind};
 use super::super::rule::{CallMatcher, CallProvenance, MemberCallMatcher, MemberCallProvenance};
 use super::ast::{
     SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, expr_member, expr_name,
-    object_keys, prop_name,
+    member_prop_name, object_keys, prop_name,
 };
 use super::{index::MatcherFacts, resolver::Resolver};
 use crate::matcher::rule::canonical_rooted_chain;
@@ -35,7 +35,6 @@ pub fn collect(
     let mut visitor = ResolvedCallCollector {
         index,
         resolver,
-        pending_callee_reads: BTreeMap::new(),
         member_argument_matchers,
         call_argument_matchers,
         argument_evidence,
@@ -46,24 +45,21 @@ pub fn collect(
 struct ResolvedCallCollector<'a, 'rules> {
     index: &'a mut MatcherFacts,
     resolver: &'a Resolver,
-    /// A member expression is visited both as the callee and as a child node.
-    /// Count callee visits so the child visit does not become a false read.
-    pending_callee_reads: BTreeMap<String, u32>,
     member_argument_matchers: &'rules [(usize, MemberCallMatcher)],
     call_argument_matchers: &'rules [(usize, CallMatcher)],
     argument_evidence: &'a mut [Vec<ApiEvidence>],
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct CallArgumentSource<'a> {
-    args: &'a [ExprOrSpread],
+    args: Cow<'a, [ExprOrSpread]>,
     span: swc_common::Span,
 }
 
 impl<'a> From<&'a CallExpr> for CallArgumentSource<'a> {
     fn from(call: &'a CallExpr) -> Self {
         Self {
-            args: &call.args,
+            args: Cow::Borrowed(&call.args),
             span: call.span,
         }
     }
@@ -72,13 +68,77 @@ impl<'a> From<&'a CallExpr> for CallArgumentSource<'a> {
 impl<'a> From<&'a OptCall> for CallArgumentSource<'a> {
     fn from(call: &'a OptCall) -> Self {
         Self {
-            args: &call.args,
+            args: Cow::Borrowed(&call.args),
             span: call.span,
         }
     }
 }
 
+impl<'a> CallArgumentSource<'a> {
+    fn with_args(args: Cow<'a, [ExprOrSpread]>, span: swc_common::Span) -> Self {
+        Self { args, span }
+    }
+
+    fn prepend_bound_strings(mut self, bound: &[Option<String>]) -> Self {
+        if bound.is_empty() {
+            return self;
+        }
+        let mut args = bound
+            .iter()
+            .map(|value| ExprOrSpread {
+                spread: None,
+                expr: Box::new(match value {
+                    Some(value) => Expr::Lit(swc_ecma_ast::Lit::Str(swc_ecma_ast::Str {
+                        span: DUMMY_SP,
+                        value: value.clone().into(),
+                        raw: None,
+                    })),
+                    None => Expr::Invalid(Default::default()),
+                }),
+            })
+            .collect::<Vec<_>>();
+        args.extend(self.args.into_owned());
+        self.args = Cow::Owned(args);
+        self
+    }
+}
+
 impl ResolvedCallCollector<'_, '_> {
+    /// Visit the children of a callee without visiting the callee expression
+    /// itself.  The latter is already represented by the resolved call fact;
+    /// visiting it again would classify a call target as an ordinary member
+    /// read.
+    fn visit_callee_children(&mut self, callee: &Expr) {
+        match callee {
+            Expr::Ident(_) => {}
+            Expr::Member(member) => {
+                member.obj.visit_with(self);
+                member.prop.visit_with(self);
+            }
+            Expr::Paren(paren) => self.visit_callee_children(&paren.expr),
+            Expr::Seq(sequence) => {
+                for expression in sequence
+                    .exprs
+                    .iter()
+                    .take(sequence.exprs.len().saturating_sub(1))
+                {
+                    expression.visit_with(self);
+                }
+                if let Some(expression) = sequence.exprs.last() {
+                    self.visit_callee_children(expression);
+                }
+            }
+            Expr::OptChain(chain) => match &*chain.base {
+                OptChainBase::Member(member) => {
+                    member.obj.visit_with(self);
+                    member.prop.visit_with(self);
+                }
+                OptChainBase::Call(call) => self.visit_callee_children(&call.callee),
+            },
+            other => other.visit_with(self),
+        }
+    }
+
     fn record_identifier_call(&mut self, ident: &Ident, call: Option<CallArgumentSource<'_>>) {
         let name = ident.sym.to_string();
         self.index
@@ -88,8 +148,13 @@ impl ResolvedCallCollector<'_, '_> {
         debug_assert_ne!(resolved.id, super::value::ValueId::UNKNOWN);
         let provenance = resolved.call;
         let aliased_member = resolved.rooted_chain;
+        let call = call.map(|call| {
+            self.resolver
+                .bound_string_arguments(ident)
+                .map_or(call.clone(), |bound| call.prepend_bound_strings(&bound))
+        });
         if let Some(call) = call {
-            self.collect_call_argument_evidence(call, ident, &provenance);
+            self.collect_call_argument_evidence(call.clone(), ident, &provenance);
             if let Some(chain) = aliased_member.as_deref() {
                 let module_member = resolved.module_member;
                 self.collect_argument_evidence(
@@ -158,22 +223,21 @@ impl ResolvedCallCollector<'_, '_> {
             if call_matches
                 && matcher.arg_strings.iter().all(|arg_matcher| {
                     call.args.get(arg_matcher.index).is_some_and(|argument| {
-                        self.resolver
-                            .static_string_expr(&argument.expr)
-                            .is_some_and(|value| {
-                                arg_matcher.predicate.as_ref().map_or_else(
-                                    || {
-                                        arg_matcher.values.is_empty()
-                                            || arg_matcher
-                                                .values
-                                                .iter()
-                                                .any(|expected| expected == &value)
-                                    },
-                                    |predicate| {
-                                        super::object_flow::matches_static_value(predicate, &value)
-                                    },
-                                )
-                            })
+                        let static_value = self.resolver.static_string_expr(&argument.expr);
+                        static_value.is_some_and(|value| {
+                            arg_matcher.predicate.as_ref().map_or_else(
+                                || {
+                                    arg_matcher.values.is_empty()
+                                        || arg_matcher
+                                            .values
+                                            .iter()
+                                            .any(|expected| expected == &value)
+                                },
+                                |predicate| {
+                                    super::object_flow::matches_static_value(predicate, &value)
+                                },
+                            )
+                        })
                     })
                 })
             {
@@ -210,8 +274,6 @@ impl ResolvedCallCollector<'_, '_> {
                 .push(member.span);
         }
 
-        self.record_static_callable_wrapper(member);
-
         if let Some(call) = call {
             self.collect_argument_evidence(
                 call,
@@ -223,7 +285,6 @@ impl ResolvedCallCollector<'_, '_> {
         if let Some(chain) = syntactic_chain {
             self.index
                 .record(ApiMatchKind::MemberCall, chain.clone(), member.span);
-            *self.pending_callee_reads.entry(chain.clone()).or_insert(0) += 1;
         }
         if let Some(chain) = resolved_chain {
             let chain = canonical_rooted_chain(&chain).to_string();
@@ -248,6 +309,130 @@ impl ResolvedCallCollector<'_, '_> {
                 .entry((module.clone(), member_name.clone()))
                 .or_default()
                 .push(member.span);
+        }
+    }
+
+    /// Resolve the target of `target.call(receiver, ...args)` and
+    /// `target.apply(receiver, args)`.  The wrapper receiver is not an
+    /// argument to the target, and `.apply` exposes arguments only when the
+    /// array is statically bounded.
+    fn record_callable_wrapper(&mut self, member: &MemberExpr, call: &CallExpr) {
+        self.record_callable_wrapper_args(member, &call.args, call.span);
+    }
+
+    fn record_callable_wrapper_args(
+        &mut self,
+        member: &MemberExpr,
+        call_args: &[ExprOrSpread],
+        span: swc_common::Span,
+    ) {
+        let Some(property) = member_prop_name(&member.prop) else {
+            return;
+        };
+        let args = match property.as_str() {
+            "call" if !call_args.is_empty() => Some(CallArgumentSource::with_args(
+                Cow::Borrowed(&call_args[1..]),
+                span,
+            )),
+            "apply" if call_args.len() >= 2 => {
+                if let Expr::Array(array) = &*call_args[1].expr {
+                    if array.elems.iter().any(|element| {
+                        element
+                            .as_ref()
+                            .is_none_or(|element| element.spread.is_some())
+                    }) {
+                        return;
+                    }
+                    Some(CallArgumentSource::with_args(
+                        Cow::Owned(array.elems.iter().flatten().cloned().collect()),
+                        span,
+                    ))
+                } else {
+                    let Some(values) = self.resolver.static_string_array_expr(&call_args[1].expr)
+                    else {
+                        return;
+                    };
+                    Some(CallArgumentSource::with_args(
+                        Cow::Owned(
+                            values
+                                .into_iter()
+                                .map(|value| ExprOrSpread {
+                                    spread: None,
+                                    expr: Box::new(Expr::Lit(swc_ecma_ast::Lit::Str(
+                                        swc_ecma_ast::Str {
+                                            span: DUMMY_SP,
+                                            value: value.into(),
+                                            raw: None,
+                                        },
+                                    ))),
+                                })
+                                .collect(),
+                        ),
+                        span,
+                    ))
+                }
+            }
+            _ => None,
+        };
+        let Some(args) = args else {
+            return;
+        };
+        self.record_resolved_target(&member.obj, args);
+    }
+
+    fn record_resolved_target(&mut self, target: &Expr, args: CallArgumentSource<'_>) {
+        match effective_callee_expr(target) {
+            Expr::Ident(ident) => self.record_identifier_call(ident, Some(args)),
+            Expr::Member(member) => self.record_member_call(member, Some(args)),
+            target => {
+                let raw = expr_name(target);
+                let rooted = self
+                    .resolver
+                    .rooted_expr_chain(target)
+                    .map(|chain| canonical_rooted_chain(&chain).to_string());
+                let module_member = expr_member(target)
+                    .and_then(|member| self.resolver.resolve_member(member).module_member);
+                self.collect_argument_evidence(
+                    args,
+                    raw.as_deref(),
+                    rooted.as_deref(),
+                    module_member.as_ref(),
+                );
+            }
+        }
+    }
+
+    fn record_optional_target(&mut self, call: &OptCall) {
+        let raw = expr_name(&call.callee);
+        let rooted = self
+            .resolver
+            .rooted_expr_chain(&call.callee)
+            .map(|chain| canonical_rooted_chain(&chain).to_string());
+        let module_member = expr_member(&call.callee)
+            .and_then(|member| self.resolver.resolve_member(member).module_member);
+        self.collect_argument_evidence(
+            CallArgumentSource::from(call),
+            raw.as_deref(),
+            rooted.as_deref(),
+            module_member.as_ref(),
+        );
+        if let Some(raw) = raw {
+            self.index
+                .record(ApiMatchKind::MemberCall, raw, call.callee.span());
+        }
+        if let Some(rooted) = rooted {
+            self.index
+                .rooted_member_calls
+                .entry(rooted)
+                .or_default()
+                .push(call.callee.span());
+        }
+        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
+            self.index
+                .module_member_calls
+                .entry((module, member))
+                .or_default()
+                .push(call.callee.span());
         }
     }
 
@@ -406,37 +591,6 @@ impl ResolvedCallCollector<'_, '_> {
             _ => {}
         }
     }
-
-    fn record_static_callable_wrapper(&mut self, member: &MemberExpr) {
-        let Some(property) = crate::matcher::semantic::ast::member_prop_name(&member.prop) else {
-            return;
-        };
-        if property != "call" && property != "apply" {
-            return;
-        }
-        let Some(provenance) = self.resolver.expr_call_provenance(&member.obj) else {
-            return;
-        };
-        match provenance {
-            SymbolCallProvenance::Global { name } => {
-                self.index
-                    .global_calls
-                    .entry(name.clone())
-                    .or_default()
-                    .push(member.span);
-                self.index.record(ApiMatchKind::Call, name, member.span);
-            }
-            SymbolCallProvenance::ModuleExport { module, export } => {
-                self.index
-                    .module_calls
-                    .entry((module.clone(), export.clone()))
-                    .or_default()
-                    .push(member.span);
-                self.index.record(ApiMatchKind::Call, export, member.span);
-            }
-            SymbolCallProvenance::Local => {}
-        }
-    }
 }
 
 impl Visit for ResolvedCallCollector<'_, '_> {
@@ -457,7 +611,28 @@ impl Visit for ResolvedCallCollector<'_, '_> {
                     self.record_identifier_call(ident, Some(CallArgumentSource::from(call)));
                 }
                 Expr::Member(member) => {
-                    self.record_member_call(member, Some(CallArgumentSource::from(call)));
+                    if matches!(
+                        member_prop_name(&member.prop).as_deref(),
+                        Some("call" | "apply")
+                    ) {
+                        self.record_member_call(member, None);
+                        self.record_callable_wrapper(member, call);
+                    } else {
+                        self.record_member_call(member, Some(CallArgumentSource::from(call)));
+                    }
+                }
+                Expr::OptChain(chain) => {
+                    if let OptChainBase::Member(member) = &*chain.base {
+                        if matches!(
+                            member_prop_name(&member.prop).as_deref(),
+                            Some("call" | "apply")
+                        ) {
+                            self.record_member_call(member, None);
+                            self.record_callable_wrapper(member, call);
+                        } else {
+                            self.record_member_call(member, Some(CallArgumentSource::from(call)));
+                        }
+                    }
                 }
                 other => {
                     if let Some(provenance) = self.resolver.expr_call_provenance(other) {
@@ -487,7 +662,10 @@ impl Visit for ResolvedCallCollector<'_, '_> {
             Callee::Import(_) => self.index.record(ApiMatchKind::Call, "import", call.span),
         }
 
-        call.visit_children_with(self);
+        if let Callee::Expr(callee) = &call.callee {
+            self.visit_callee_children(callee);
+        }
+        call.args.visit_with(self);
     }
 
     fn visit_opt_chain_expr(&mut self, chain: &OptChainExpr) {
@@ -497,62 +675,46 @@ impl Visit for ResolvedCallCollector<'_, '_> {
                     self.record_identifier_call(ident, Some(CallArgumentSource::from(call)))
                 }
                 Expr::Member(member) => {
-                    self.record_member_call(member, Some(CallArgumentSource::from(call)))
-                }
-                _ => {
-                    let raw = expr_name(&call.callee);
-                    let rooted = self
-                        .resolver
-                        .rooted_expr_chain(&call.callee)
-                        .map(|chain| canonical_rooted_chain(&chain).to_string());
-                    let module_member = expr_member(&call.callee)
-                        .and_then(|member| self.resolver.resolve_member(member).module_member);
-                    self.collect_argument_evidence(
-                        CallArgumentSource::from(call),
-                        raw.as_deref(),
-                        rooted.as_deref(),
-                        module_member.as_ref(),
-                    );
-                    if let Some(raw) = raw {
-                        self.index
-                            .record(ApiMatchKind::MemberCall, raw, call.callee.span());
-                    }
-                    if let Some(rooted) = rooted {
-                        self.index
-                            .rooted_member_calls
-                            .entry(rooted.clone())
-                            .or_default()
-                            .push(call.callee.span());
-                    }
-                    if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
-                        module_member
-                    {
-                        self.index
-                            .module_member_calls
-                            .entry((module.clone(), member.clone()))
-                            .or_default()
-                            .push(call.callee.span());
+                    if matches!(
+                        member_prop_name(&member.prop).as_deref(),
+                        Some("call" | "apply")
+                    ) {
+                        self.record_member_call(member, None);
+                        self.record_callable_wrapper_args(member, &call.args, call.span);
+                    } else {
+                        self.record_member_call(member, Some(CallArgumentSource::from(call)))
                     }
                 }
+                Expr::OptChain(chain) => {
+                    if let OptChainBase::Member(member) = &*chain.base {
+                        if matches!(
+                            member_prop_name(&member.prop).as_deref(),
+                            Some("call" | "apply")
+                        ) {
+                            self.record_member_call(member, None);
+                            self.record_callable_wrapper_args(member, &call.args, call.span);
+                        } else {
+                            self.record_optional_target(call);
+                        }
+                    }
+                }
+                _ => self.record_optional_target(call),
             },
             OptChainBase::Member(member) => self.record_member_read(member),
         }
-        chain.visit_children_with(self);
+        match &*chain.base {
+            OptChainBase::Call(call) => {
+                self.visit_callee_children(&call.callee);
+                call.args.visit_with(self);
+            }
+            OptChainBase::Member(member) => {
+                member.obj.visit_with(self);
+                member.prop.visit_with(self);
+            }
+        }
     }
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
-        let syntactic_chain = self.resolver.member_chain(member);
-        if let Some(chain) = syntactic_chain.as_ref()
-            && let Some(skip_count) = self.pending_callee_reads.get_mut(chain.as_str())
-        {
-            *skip_count -= 1;
-            if *skip_count == 0 {
-                self.pending_callee_reads.remove(chain.as_str());
-            }
-
-            member.visit_children_with(self);
-            return;
-        }
         self.record_member_read(member);
 
         member.visit_children_with(self);
@@ -569,7 +731,9 @@ impl Visit for ResolvedCallCollector<'_, '_> {
                             .as_deref()
                             .is_some_and(|name| !name.contains('.')) =>
                 {
-                    let name = resolved.rooted_chain.expect("rooted chain was checked");
+                    let Some(name) = resolved.rooted_chain else {
+                        return;
+                    };
                     self.index
                         .record(ApiMatchKind::Constructor, name.clone(), ident.span);
                     self.index
