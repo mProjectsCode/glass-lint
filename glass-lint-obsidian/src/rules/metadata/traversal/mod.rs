@@ -1,4 +1,9 @@
 use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Severity};
+
+/// Detects `Object.entries`, `Object.keys`, and `Object.values` when their
+/// first argument has proven rooted provenance from `resolvedLinks` or
+/// `unresolvedLinks`. The Object call itself is syntactic; local lookalikes,
+/// dynamic arguments, unlisted metadata maps, and reassigned aliases are excluded.
 pub(crate) fn rule() -> Rule {
     Rule::builder("metadata.traversal")
         .label("Traverses metadata cache maps")

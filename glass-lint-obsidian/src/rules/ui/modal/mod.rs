@@ -1,4 +1,10 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects global/unbound `new Modal()` syntax and `Modal` constructors or
+/// subclass expressions proven to originate from the `obsidian` module through
+/// ESM, CommonJS, or namespace aliases. Local/shadowed and reassigned aliases
+/// are excluded from the provenance matchers; the heuristic global spelling
+/// remains syntactic, and constructor arguments and class bodies are ignored.
 pub(crate) fn rule() -> Rule {
     Rule::builder("ui.modal")
         .label("Uses Obsidian modal UI")

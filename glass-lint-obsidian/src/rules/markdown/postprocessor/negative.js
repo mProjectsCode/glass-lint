@@ -1,8 +1,14 @@
-// @case description negative fixture for obsidian:markdown.postprocessor
+// @case description receiver, alias, dynamic-property, and near-name exclusions
 // @tool glass-lint rules=obsidian:markdown.postprocessor
 // @expect-no-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected
-function localLookalike() { return null; }
-localLookalike();
+plugin.registerMarkdownPostProcessor(handler);
+
+const register = this.registerMarkdownPostProcessor;
+// @expect-no-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected
+register(handler);
+
+// @expect-no-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected
+this[dynamicMethod](handler);
 
 // @expect-no-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected
 this.registerMarkdownPostProcessors(handler);

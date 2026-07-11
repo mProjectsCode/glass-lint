@@ -1,13 +1,23 @@
-// @case description negative fixture for obsidian:metadata.extract
+// @case description shadowed, reassigned, dynamic, and unlisted collections
 // @tool glass-lint rules=obsidian:metadata.extract
+const localMetadata = { tags: [], links: [], embeds: [] };
 // @expect-no-error glass-lint rule=obsidian:metadata.extract message_id=detected
-function localLookalike() { return null; }
-localLookalike();
+localMetadata.tags;
+
+function localApp(app) {
+    // @expect-no-error glass-lint rule=obsidian:metadata.extract message_id=detected
+    app.metadataCache.getFileCache.tags;
+}
+
+let cache = app.metadataCache.getFileCache;
+cache = localCache;
+// @expect-no-error glass-lint rule=obsidian:metadata.extract message_id=detected
+cache.tags;
+
+function dynamicProperty(property) {
+    // @expect-no-error glass-lint rule=obsidian:metadata.extract message_id=detected
+    app.metadataCache.getFileCache[property];
+}
 
 // @expect-no-error glass-lint rule=obsidian:metadata.extract message_id=detected
 app.metadataCache.getFileCache.comments;
-// Migrated: metadata/local-lookalikes-ignored.js and precision/capability-boundaries.js
-const localMetadata = { tags: [], links: [], embeds: [] };
-
-// @expect-no-error glass-lint rule=obsidian:metadata.extract message_id=detected
-localMetadata.tags;

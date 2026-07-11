@@ -1,8 +1,12 @@
-// @case description negative fixture for obsidian:storage.plugin-data-read
+// @case description other receivers, aliases, dynamic properties, and lookalikes
 // @tool glass-lint rules=obsidian:storage.plugin-data-read
 // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
-function localLookalike() { return null; }
-localLookalike();
+plugin.loadData();
 
 // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
-this.loadPluginData();
+const load = this.loadData;
+load();
+// @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
+this[dynamicProperty]();
+// @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
+this.loadDatas();

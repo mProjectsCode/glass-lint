@@ -1,16 +1,23 @@
-// @case description positive fixture for obsidian:file-manager.frontmatter-write
+// @case description rooted direct calls, aliases, and static properties
 // @tool glass-lint rules=obsidian:file-manager.frontmatter-write
 // @expect-error glass-lint rule=obsidian:file-manager.frontmatter-write message_id=detected
 app.fileManager.processFrontMatter(file, fn);
-// second independent example
-
 // @expect-error glass-lint rule=obsidian:file-manager.frontmatter-write message_id=detected
-app.fileManager.processFrontMatter(otherFile, handler);
-const manager = app.fileManager;
+this.app.fileManager.processFrontMatter(otherFile, handler);
 
+const manager = app.fileManager;
 // @expect-error glass-lint rule=obsidian:file-manager.frontmatter-write message_id=detected
 manager.processFrontMatter(file, fn);
-// Migrated: vault/open-create-and-mutations.js
 
+const { processFrontMatter: updateFrontmatter } = app.fileManager;
 // @expect-error glass-lint rule=obsidian:file-manager.frontmatter-write message_id=detected
-this.app.fileManager.processFrontMatter(file, data => { data.legacy = true; });
+updateFrontmatter(file, fn);
+
+let managerBeforeReassignment = app.fileManager;
+// @expect-error glass-lint rule=obsidian:file-manager.frontmatter-write message_id=detected
+managerBeforeReassignment.processFrontMatter(file, handler);
+managerBeforeReassignment = otherFileManager;
+
+// Static computed properties resolve to the same rooted API.
+// @expect-error glass-lint rule=obsidian:file-manager.frontmatter-write message_id=detected
+app['fileManager']['processFrontMatter'](file, handler);

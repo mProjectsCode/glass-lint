@@ -1,8 +1,14 @@
-// @case description negative fixture for obsidian:markdown.code-block-processor
+// @case description receiver, alias, dynamic-property, and near-name exclusions
 // @tool glass-lint rules=obsidian:markdown.code-block-processor
 // @expect-no-error glass-lint rule=obsidian:markdown.code-block-processor message_id=detected
-function localLookalike() { return null; }
-localLookalike();
+plugin.registerMarkdownCodeBlockProcessor('x', handler);
+
+const register = this.registerMarkdownCodeBlockProcessor;
+// @expect-no-error glass-lint rule=obsidian:markdown.code-block-processor message_id=detected
+register('x', handler);
+
+// @expect-no-error glass-lint rule=obsidian:markdown.code-block-processor message_id=detected
+this[dynamicMethod]('x', handler);
 
 // @expect-no-error glass-lint rule=obsidian:markdown.code-block-processor message_id=detected
 this.registerMarkdownProcessor(handler);

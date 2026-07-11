@@ -1,8 +1,14 @@
-// @case description negative fixture for obsidian:editor.suggest
+// @case description receiver, alias, dynamic-property, and near-name exclusions
 // @tool glass-lint rules=obsidian:editor.suggest
 // @expect-no-error glass-lint rule=obsidian:editor.suggest message_id=detected
-function localLookalike() { return null; }
-localLookalike();
+plugin.registerEditorSuggest(s);
+
+const register = this.registerEditorSuggest;
+// @expect-no-error glass-lint rule=obsidian:editor.suggest message_id=detected
+register(s);
+
+// @expect-no-error glass-lint rule=obsidian:editor.suggest message_id=detected
+this[dynamicMethod](s);
 
 // @expect-no-error glass-lint rule=obsidian:editor.suggest message_id=detected
 this.registerEditorSuggestion(handler);

@@ -1,11 +1,22 @@
-// @case description positive fixture for obsidian:ui.modal
+// @case description global, module, namespace, and CommonJS Modal forms
 // @tool glass-lint rules=obsidian:ui.modal
 // @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
 new Modal(app);
-// Migrated: interface/classes-and-settings.js
-import { Modal as modal } from "obsidian";
-class exampleModal extends modal {} // @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
-// second independent example
 
+const GlobalAlias = Modal;
 // @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
-new Modal(app);
+new GlobalAlias(app);
+
+import { Modal as ImportedModal } from "obsidian";
+// @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
+new ImportedModal(app);
+// @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
+class ExampleModal extends ImportedModal {}
+
+import * as obsidian from "obsidian";
+// @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
+new obsidian.Modal(app);
+
+const { Modal: CommonJsModal } = require('obsidian');
+// @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
+new CommonJsModal(app);

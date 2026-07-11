@@ -122,60 +122,63 @@ Record ownership and completion evidence directly below each group heading using
 
 ## Obsidian rules (44)
 
-- [ ] **Audit group 5 — Obsidian editor and Markdown (8 rules)**
-  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
-  - [ ] `obsidian:codemirror.extension` — [`glass-lint-obsidian/src/rules/codemirror/extension/`](glass-lint-obsidian/src/rules/codemirror/extension/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:editor.extension` — [`glass-lint-obsidian/src/rules/editor/extension/`](glass-lint-obsidian/src/rules/editor/extension/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:editor.suggest` — [`glass-lint-obsidian/src/rules/editor/suggest/`](glass-lint-obsidian/src/rules/editor/suggest/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:file-manager.frontmatter-write` — [`glass-lint-obsidian/src/rules/file_manager/frontmatter_write/`](glass-lint-obsidian/src/rules/file_manager/frontmatter_write/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:lifecycle.events` — [`glass-lint-obsidian/src/rules/lifecycle/events/`](glass-lint-obsidian/src/rules/lifecycle/events/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:markdown.code-block-processor` — [`glass-lint-obsidian/src/rules/markdown/code_block_processor/`](glass-lint-obsidian/src/rules/markdown/code_block_processor/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:markdown.link` — [`glass-lint-obsidian/src/rules/markdown/link/`](glass-lint-obsidian/src/rules/markdown/link/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:markdown.postprocessor` — [`glass-lint-obsidian/src/rules/markdown/postprocessor/`](glass-lint-obsidian/src/rules/markdown/postprocessor/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+- [x] **Audit group 5 — Obsidian editor and Markdown (8 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-10; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
+  - Exception log: `make test-rules` passed all 64 JavaScript cases and all eight audited Obsidian directories; its unrelated Obsidian failures remain in `vault/resource_url/positive` (expected 1, found 0), `workspace/leaf_management/positive` (expected 1, found 0), and `workspace/open/positive` (expected 1, found 0).
+  - [x] `obsidian:codemirror.extension` — [`glass-lint-obsidian/src/rules/codemirror/extension/`](glass-lint-obsidian/src/rules/codemirror/extension/)
+    - Audit: module provenance; intent-doc=[x]; coverage=all four configured packages, ESM/CommonJS static loads, similar module, dynamic module name, shadowed loader; limitation=reports module loads rather than later API use; verified=targeted fixtures
+  - [x] `obsidian:editor.extension` — [`glass-lint-obsidian/src/rules/editor/extension/`](glass-lint-obsidian/src/rules/editor/extension/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct this chain, static computed name, same-shaped receiver gap, alias/dynamic/near-name exclusions; limitation=does not prove an Obsidian receiver or follow aliases/reassignment; verified=targeted fixtures
+  - [x] `obsidian:editor.suggest` — [`glass-lint-obsidian/src/rules/editor/suggest/`](glass-lint-obsidian/src/rules/editor/suggest/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct this chain, static computed name, same-shaped receiver gap, alias/dynamic/near-name exclusions; limitation=does not prove an Obsidian receiver or follow aliases/reassignment; verified=targeted fixtures
+  - [x] `obsidian:file-manager.frontmatter-write` — [`glass-lint-obsidian/src/rules/file_manager/frontmatter_write/`](glass-lint-obsidian/src/rules/file_manager/frontmatter_write/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct calls, this.app/root aliases, destructured alias, static computed properties, pre/post reassignment, shadowed app, dynamic/unlisted lookalikes; limitation=arguments and callback contents are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:lifecycle.events` — [`glass-lint-obsidian/src/rules/lifecycle/events/`](glass-lint-obsidian/src/rules/lifecycle/events/)
+    - Audit: heuristic; intent-doc=[x]; coverage=all three configured chains, static computed name, same-shaped receiver gap, alias/dynamic/near-name exclusions; limitation=does not prove an Obsidian receiver or follow aliases/reassignment; verified=targeted fixtures
+  - [x] `obsidian:markdown.code-block-processor` — [`glass-lint-obsidian/src/rules/markdown/code_block_processor/`](glass-lint-obsidian/src/rules/markdown/code_block_processor/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct chain, static computed name, same-shaped receiver gap, alias/dynamic/near-name exclusions; limitation=does not prove an Obsidian receiver or follow aliases/reassignment; processor arguments are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:markdown.link` — [`glass-lint-obsidian/src/rules/markdown/link/`](glass-lint-obsidian/src/rules/markdown/link/)
+    - Audit: module provenance; intent-doc=[x]; coverage=all three exports, ESM namespace aliases, CommonJS destructuring, similar module, dynamic module, shadowed loader, reassigned alias, local lookalike; limitation=reports configured calls without analyzing arguments or helper behavior; verified=targeted fixtures
+  - [x] `obsidian:markdown.postprocessor` — [`glass-lint-obsidian/src/rules/markdown/postprocessor/`](glass-lint-obsidian/src/rules/markdown/postprocessor/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct chain, static computed name, same-shaped receiver gap, alias/dynamic/near-name exclusions; limitation=does not prove an Obsidian receiver or follow aliases/reassignment; processor arguments are not analyzed; verified=targeted fixtures
 
-- [ ] **Audit group 6 — Obsidian Markdown, metadata, and plugins (8 rules)**
-  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
-  - [ ] `obsidian:markdown.render` — [`glass-lint-obsidian/src/rules/markdown/render/`](glass-lint-obsidian/src/rules/markdown/render/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:metadata.cache-read` — [`glass-lint-obsidian/src/rules/metadata/cache_read/`](glass-lint-obsidian/src/rules/metadata/cache_read/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:metadata.events` — [`glass-lint-obsidian/src/rules/metadata/events/`](glass-lint-obsidian/src/rules/metadata/events/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:metadata.extract` — [`glass-lint-obsidian/src/rules/metadata/extract/`](glass-lint-obsidian/src/rules/metadata/extract/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:metadata.frontmatter-read` — [`glass-lint-obsidian/src/rules/metadata/frontmatter_read/`](glass-lint-obsidian/src/rules/metadata/frontmatter_read/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:metadata.traversal` — [`glass-lint-obsidian/src/rules/metadata/traversal/`](glass-lint-obsidian/src/rules/metadata/traversal/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:network.request` — [`glass-lint-obsidian/src/rules/network/request/`](glass-lint-obsidian/src/rules/network/request/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:platform.branching` — [`glass-lint-obsidian/src/rules/platform/branching/`](glass-lint-obsidian/src/rules/platform/branching/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+- [x] **Audit group 6 — Obsidian Markdown, metadata, and plugins (8 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-10; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
+  - Exception log: `make test-rules` passed all 64 JavaScript cases and all eight audited Obsidian directories; its unrelated Obsidian failures remain in `vault/resource_url/positive` (expected 1, found 0), `workspace/leaf_management/positive` (expected 1, found 0), and `workspace/open/positive` (expected 1, found 0).
+  - [x] `obsidian:markdown.render` — [`glass-lint-obsidian/src/rules/markdown/render/`](glass-lint-obsidian/src/rules/markdown/render/)
+    - Audit: heuristic; intent-doc=[x]; coverage=both configured chains, static computed methods, other receiver, alias, dynamic property, near-name exclusions; limitation=does not prove renderer provenance or follow aliases/reassignment; verified=targeted fixtures
+  - [x] `obsidian:metadata.cache-read` — [`glass-lint-obsidian/src/rules/metadata/cache_read/`](glass-lint-obsidian/src/rules/metadata/cache_read/)
+    - Audit: rooted; intent-doc=[x]; coverage=all six configured reads/calls, rooted aliases, static computed properties, shadowing, reassignment, dynamic/unlisted lookalikes; limitation=broad `app.metadataCache` reads can still report through dynamic/unlisted suffixes, and call arguments are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:metadata.events` — [`glass-lint-obsidian/src/rules/metadata/events/`](glass-lint-obsidian/src/rules/metadata/events/)
+    - Audit: rooted/flow; intent-doc=[x]; coverage=all three literal events, rooted aliases, shadowing, reassignment, dynamic event value, computed member, unsupported event; limitation=only literal first arguments and direct rooted member chains match; verified=targeted fixtures
+  - [x] `obsidian:metadata.extract` — [`glass-lint-obsidian/src/rules/metadata/extract/`](glass-lint-obsidian/src/rules/metadata/extract/)
+    - Audit: rooted; intent-doc=[x]; coverage=all six configured collections, rooted aliases, static computed property, shadowing, reassignment, dynamic/unlisted lookalikes; limitation=reads member chains only and does not infer collections from arbitrary `getFileCache(...)` return values; verified=targeted fixtures
+  - [x] `obsidian:metadata.frontmatter-read` — [`glass-lint-obsidian/src/rules/metadata/frontmatter_read/`](glass-lint-obsidian/src/rules/metadata/frontmatter_read/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct read, rooted aliases, static computed properties, shadowing, reassignment, dynamic/unlisted lookalikes; limitation=does not analyze the returned frontmatter value or arbitrary cache objects; verified=targeted fixtures
+  - [x] `obsidian:metadata.traversal` — [`glass-lint-obsidian/src/rules/metadata/traversal/`](glass-lint-obsidian/src/rules/metadata/traversal/)
+    - Audit: flow; intent-doc=[x]; coverage=all three Object methods, both rooted maps, aliases, static computed Object member, local/dynamic/reassigned/unlisted inputs; limitation=only the first argument's proven rooted values are followed and Object receiver provenance is syntactic; verified=targeted fixtures
+  - [x] `obsidian:network.request` — [`glass-lint-obsidian/src/rules/network/request/`](glass-lint-obsidian/src/rules/network/request/)
+    - Audit: module provenance; intent-doc=[x]; coverage=both exports, ESM/CommonJS namespace and export aliases, shadowed loader/namespace, similar module, dynamic module, reassignment; limitation=inline `require('obsidian').member` chains and request arguments are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:platform.branching` — [`glass-lint-obsidian/src/rules/platform/branching/`](glass-lint-obsidian/src/rules/platform/branching/)
+    - Audit: module provenance; intent-doc=[x]; coverage=all seven flags, namespace aliases, optional/static computed reads, similar module, shadowed namespace, dynamic property, reassignment, unlisted flag; limitation=reads are reported without control-flow/value analysis and destructured `Platform` exports are not followed; verified=targeted fixtures
 
-- [ ] **Audit group 7 — Obsidian plugins, storage, and UI (7 rules)**
-  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
-  - [ ] `obsidian:plugins.dataview` — [`glass-lint-obsidian/src/rules/plugins/dataview/`](glass-lint-obsidian/src/rules/plugins/dataview/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:plugins.other-access` — [`glass-lint-obsidian/src/rules/plugins/other_access/`](glass-lint-obsidian/src/rules/plugins/other_access/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:storage.plugin-data-read` — [`glass-lint-obsidian/src/rules/storage/plugin_data_read/`](glass-lint-obsidian/src/rules/storage/plugin_data_read/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:storage.plugin-data-write` — [`glass-lint-obsidian/src/rules/storage/plugin_data_write/`](glass-lint-obsidian/src/rules/storage/plugin_data_write/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:ui.command` — [`glass-lint-obsidian/src/rules/ui/command/`](glass-lint-obsidian/src/rules/ui/command/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:ui.menu` — [`glass-lint-obsidian/src/rules/ui/menu/`](glass-lint-obsidian/src/rules/ui/menu/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:ui.modal` — [`glass-lint-obsidian/src/rules/ui/modal/`](glass-lint-obsidian/src/rules/ui/modal/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+- [x] **Audit group 7 — Obsidian plugins, storage, and UI (7 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-11; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
+  - Exception log: `make test-rules` passed all 64 JavaScript cases and 85 of 88 Obsidian cases. Its three unrelated pre-existing failures are `vault/resource_url/positive` (expected 1, found 0; four findings), `workspace/leaf_management/positive` (expected 1, found 0; two findings), and `workspace/open/positive` (expected 1, found 0; two findings). All seven audited group-7 directories passed.
+  - [x] `obsidian:plugins.dataview` — [`glass-lint-obsidian/src/rules/plugins/dataview/`](glass-lint-obsidian/src/rules/plugins/dataview/)
+    - Audit: heuristic; intent-doc=[x]; coverage=all four markers, substring and static-template matches, dynamic value, concatenation, unrelated marker; limitation=reports marker strings without proving plugin API use or module provenance and does not reconstruct dynamic values or concatenations; verified=targeted fixtures
+  - [x] `obsidian:plugins.other-access` — [`glass-lint-obsidian/src/rules/plugins/other_access/`](glass-lint-obsidian/src/rules/plugins/other_access/)
+    - Audit: rooted; intent-doc=[x]; coverage=all three configured chains, rooted alias, static computed properties, shadowed/reassigned roots, dynamic and unlisted lookalikes; limitation=arguments and returned plugin objects are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:storage.plugin-data-read` — [`glass-lint-obsidian/src/rules/storage/plugin_data_read/`](glass-lint-obsidian/src/rules/storage/plugin_data_read/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, same-shaped receiver, reassignment, alias, dynamic property, other receiver, near-name method; limitation=does not prove plugin receiver or follow aliases, and reports same-shaped `this` calls even outside plugin code; arguments are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:storage.plugin-data-write` — [`glass-lint-obsidian/src/rules/storage/plugin_data_write/`](glass-lint-obsidian/src/rules/storage/plugin_data_write/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, same-shaped receiver, reassignment, alias, dynamic property, other receiver, near-name method; limitation=does not prove plugin receiver or follow aliases, and reports same-shaped `this` calls even outside plugin code; arguments are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:ui.command` — [`glass-lint-obsidian/src/rules/ui/command/`](glass-lint-obsidian/src/rules/ui/command/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, same-shaped receiver, reassignment, alias, dynamic property, other receiver, near-name method; limitation=does not prove plugin receiver or follow aliases, and reports same-shaped `this` calls outside plugin code; command descriptors are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:ui.menu` — [`glass-lint-obsidian/src/rules/ui/menu/`](glass-lint-obsidian/src/rules/ui/menu/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, reassignment, alias, dynamic property, other receiver, near-name method; limitation=does not prove Obsidian menu provenance or follow aliases, and only the exact `menu.addMenuItem` chain is covered; arguments are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:ui.modal` — [`glass-lint-obsidian/src/rules/ui/modal/`](glass-lint-obsidian/src/rules/ui/modal/)
+    - Audit: module provenance/heuristic; intent-doc=[x]; coverage=global and aliased constructor, ESM named and namespace imports, CommonJS destructuring, subclass, local/shadowed/reassigned aliases, dynamic module, lookalikes; limitation=only constructor and subclass syntax is matched, and constructor arguments/class bodies are not analyzed; unbound `Modal` remains a syntactic heuristic; verified=targeted fixtures
 
 - [ ] **Audit group 8 — Obsidian UI and vault access (7 rules)**
   - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none

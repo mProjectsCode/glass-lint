@@ -1,8 +1,12 @@
-// @case description negative fixture for obsidian:ui.menu
+// @case description other receivers, aliases, dynamic properties, and lookalikes
 // @tool glass-lint rules=obsidian:ui.menu
 // @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
-function localLookalike() { return null; }
-localLookalike();
+otherMenu.addMenuItem(item);
 
 // @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
-menu.addItem(item);
+const addItem = menu.addMenuItem;
+addItem(item);
+// @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
+menu[dynamicProperty](item);
+// @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
+menu.addMenuItems(item);

@@ -1,4 +1,9 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects reads of the seven exact `obsidian.Platform` flags configured by
+/// this rule. Module namespace aliases, optional chains, and static computed
+/// properties retain module provenance; local lookalikes, shadowed namespaces,
+/// dynamic properties, and unlisted flags are excluded.
 pub(crate) fn rule() -> Rule {
     Rule::builder("platform.branching")
         .label("Checks Obsidian platform flags")

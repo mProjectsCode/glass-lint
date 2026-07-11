@@ -1,8 +1,16 @@
-// @case description positive fixture for obsidian:plugins.dataview
+// @case description configured markers and static marker fragments
 // @tool glass-lint rules=obsidian:plugins.dataview
 // @expect-error glass-lint rule=obsidian:plugins.dataview message_id=detected
-const x='dataview';
-// second independent example
+const dataview = 'dataview';
+// @expect-error glass-lint rule=obsidian:plugins.dataview message_id=detected
+const dataviewApi = 'dataviewapi';
+// @expect-error glass-lint rule=obsidian:plugins.dataview message_id=detected
+const dataCoreDashed = 'data-core';
+// @expect-error glass-lint rule=obsidian:plugins.dataview message_id=detected
+const dataCore = 'datacore';
 
 // @expect-error glass-lint rule=obsidian:plugins.dataview message_id=detected
-const secondIntegration = "datacore";
+const embeddedMarker = 'using dataview in a string';
+// Static template fragments are indexed, but interpolated values are not.
+// @expect-error glass-lint rule=obsidian:plugins.dataview message_id=detected
+const template = `datacore: ${runtimeValue}`;

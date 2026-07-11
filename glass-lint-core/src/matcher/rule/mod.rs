@@ -21,7 +21,10 @@ pub struct ApiRule {
 }
 
 impl ApiRule {
-    pub const EVIDENCE_LIMIT: usize = 5;
+    /// Retain enough matcher evidence for provider rules with several
+    /// configured members without dropping valid capabilities during report
+    /// construction. The limit remains finite to keep reports bounded.
+    pub const EVIDENCE_LIMIT: usize = 16;
 
     pub fn builder(id: impl Into<String>) -> ApiRuleBuilder {
         ApiRuleBuilder {
