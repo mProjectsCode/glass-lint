@@ -426,6 +426,27 @@ fn value_flow_supports_const_arrow_helper_sinks() {
 }
 
 #[test]
+fn helper_summaries_fail_closed_for_incompatible_invocations() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "function append(node) { document.head.appendChild(node); }
+         const script = document.createElement('script'); script.src = url;
+         append(); append(script, extra);",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 0);
+}
+
+#[test]
 fn value_flow_static_prefix_requires_static_values() {
     let rules = [rule("test.flow")
         .matcher(

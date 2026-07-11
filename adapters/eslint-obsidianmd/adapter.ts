@@ -194,11 +194,21 @@ function createFinding(message: Linter.LintMessage): AdapterFinding {
 }
 
 async function main(): Promise<void> {
+    let start = performance.now();
+    
+    let before = performance.now();
     const request = await readRequest();
+    process.stderr.write(`[${TOOL_NAME}] read request in ${Math.round(performance.now() - before)}ms\n`);
+
+    before = performance.now();
     const eslint = createEslint(request);
+    process.stderr.write(`[${TOOL_NAME}] constructed ESLint instance in ${Math.round(performance.now() - before)}ms\n`);
+
+    before = performance.now();
     const [result] = await eslint.lintText(request.source, {
         filePath: request.filename,
     });
+    process.stderr.write(`[${TOOL_NAME}] linted ${request.filename} in ${Math.round(performance.now() - before)}ms\n`);
 
     const response: AdapterResponse = {
         protocol_version: ADAPTER_PROTOCOL_VERSION,
@@ -206,6 +216,8 @@ async function main(): Promise<void> {
         tool_version: obsidianmdPlugin.meta?.version ?? FALLBACK_PLUGIN_VERSION,
         findings: result.messages.map(createFinding),
     };
+
+    process.stderr.write(`[${TOOL_NAME}] total time ${Math.round(performance.now() - start)}ms\n`);
 
     process.stdout.write(JSON.stringify(response));
 }

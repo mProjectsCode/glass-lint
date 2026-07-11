@@ -1,6 +1,6 @@
 // @case description A plugin can make a browser network request
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=js:network.request count=1 line=any
 // @expect-error glass-lint rule=js:network.url-construction count=1 line=any
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any

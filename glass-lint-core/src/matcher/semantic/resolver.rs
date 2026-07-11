@@ -62,6 +62,10 @@ impl Resolver {
         self.events.is_source_ordered()
     }
 
+    pub(super) fn value_is_known(&self, id: ValueId) -> bool {
+        id != ValueId::UNKNOWN && self.values.borrow().get(id).is_some()
+    }
+
     /// Returns a CommonJS module only when the callee is proven to be the
     /// unshadowed global loader. Import collection and alias provenance both
     /// depend on this conservative distinction.
@@ -86,9 +90,10 @@ impl Resolver {
     }
 
     pub(super) fn resolve_ident(&self, ident: &Ident) -> ResolvedValue {
-        let call = self.scopes.call_provenance(ident.sym.as_ref(), ident.span);
+        let scoped_call = self.scopes.call_provenance(ident.sym.as_ref(), ident.span);
         let rooted_chain = self.scopes.callable_member_chain(ident);
-        let id = self.intern_call_value(&call, rooted_chain.as_deref());
+        let id = self.intern_call_value(&scoped_call, rooted_chain.as_deref());
+        let call = self.call_provenance_for_value(id);
         let module_member = match &call {
             SymbolCallProvenance::ModuleExport { module, export } => {
                 Some(SymbolMemberProvenance::ModuleNamespace {
@@ -131,7 +136,7 @@ impl Resolver {
         let module_member = syntactic
             .as_deref()
             .and_then(|chain| self.scopes.member_call_provenance_for_chain(member, chain));
-        let call = match &module_member {
+        let scoped_call = match &module_member {
             Some(SymbolMemberProvenance::ModuleNamespace { module, member }) => {
                 SymbolCallProvenance::ModuleExport {
                     module: module.clone(),
@@ -141,7 +146,8 @@ impl Resolver {
             None => SymbolCallProvenance::Local,
         };
         let returned_member = self.scopes.returned_member(member);
-        let id = self.intern_call_value(&call, rooted_chain.as_deref());
+        let id = self.intern_call_value(&scoped_call, rooted_chain.as_deref());
+        let call = self.call_provenance_for_value(id);
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values
                 .borrow_mut()
@@ -305,6 +311,25 @@ impl Resolver {
         let id = self.values.borrow_mut().intern(value);
         debug_assert!(self.values.borrow().get(id).is_some());
         id
+    }
+
+    /// Convert the canonical value back into matcher provenance. This keeps
+    /// the arena authoritative for call identity: scope collection supplies a
+    /// candidate once, but matchers never consume a separately reconstructed
+    /// spelling. Unknown or exhausted values are local and therefore fail
+    /// closed for strict global/module matchers.
+    fn call_provenance_for_value(&self, id: ValueId) -> SymbolCallProvenance {
+        let Some(value) = self.values.borrow().get(id).cloned() else {
+            return SymbolCallProvenance::Local;
+        };
+        match value {
+            Value::Global(name) => SymbolCallProvenance::Global { name },
+            Value::ModuleExport { module, export } => {
+                SymbolCallProvenance::ModuleExport { module, export }
+            }
+            Value::Callable(callable) => self.call_provenance_for_value(callable.target),
+            _ => SymbolCallProvenance::Local,
+        }
     }
 
     fn fresh_object_value(&self) -> ResolvedValue {

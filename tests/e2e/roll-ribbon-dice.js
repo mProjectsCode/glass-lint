@@ -1,6 +1,6 @@
 // @case description A plugin adds a ribbon action
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.status-bar count=1 line=any
 // @expect-error glass-lint rule=obsidian:ui.ribbon count=1 line=any
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any

@@ -12,8 +12,8 @@ use swc_ecma_ast::Program;
 
 use super::super::result::{ApiEvidence, ApiMatchKind};
 use super::super::rule::{
-    ApiMatcher, ApiRule, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
-    FlowMatcher, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+    ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, FlowMatcher,
+    MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
 };
 
 use super::resolver::Resolver;
@@ -48,55 +48,57 @@ pub struct MatcherFacts {
 }
 
 impl MatcherFacts {
-    pub fn collect_for_rules(
+    pub fn collect_for_matchers(
         program: &Program,
         resolver: &Resolver,
-        rules: &[ApiRule],
+        matchers: &[ApiMatcher],
     ) -> (Self, Vec<Vec<ApiEvidence>>) {
-        // Pre-filtering avoids evaluating argument predicates during evidence
-        // lookup for matchers that only care about a callee occurrence.
-        let member_matchers = rules
+        // The catalog is compiled into ApiMatcher values once. Pre-filtering
+        // then only clones the specific matcher records needed by the
+        // argument visitors; it never reparses or renormalizes a whole rule.
+        let member_matchers = matchers
             .iter()
             .enumerate()
-            .flat_map(|(rule_index, rule)| {
-                ApiMatcher::from_matchers(rule.matchers().to_vec())
+            .flat_map(|(rule_index, matcher)| {
+                matcher
                     .member_calls
-                    .into_iter()
+                    .iter()
                     .filter(|matcher| {
                         !matcher.arg_strings.is_empty()
                             || !matcher.arg_object_keys.is_empty()
                             || !matcher.arg_rooted_exprs.is_empty()
                     })
+                    .cloned()
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
-        let call_matchers = rules
+        let call_matchers = matchers
             .iter()
             .enumerate()
-            .flat_map(|(rule_index, rule)| {
-                ApiMatcher::from_matchers(rule.matchers().to_vec())
+            .flat_map(|(rule_index, matcher)| {
+                matcher
                     .calls
-                    .into_iter()
+                    .iter()
                     .filter(|matcher| !matcher.arg_strings.is_empty())
+                    .cloned()
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
-        let flow_matchers = rules
+        let flow_matchers = matchers
             .iter()
             .enumerate()
-            .flat_map(|(rule_index, rule)| {
-                ApiMatcher::from_matchers(rule.matchers().to_vec())
+            .flat_map(|(rule_index, matcher)| {
+                matcher
                     .flows
-                    .into_iter()
+                    .iter()
+                    .cloned()
                     .enumerate()
                     .map(move |(flow_index, matcher)| (rule_index, flow_index, matcher))
             })
             .collect::<Vec<_>>();
-        let instance_matchers = rules
+        let instance_matchers = matchers
             .iter()
-            .flat_map(|rule| {
-                ApiMatcher::from_matchers(rule.matchers().to_vec()).instance_member_calls
-            })
+            .flat_map(|matcher| matcher.instance_member_calls.iter().cloned())
             .collect::<Vec<_>>();
         Self::collect_with_argument_matchers(
             program,
@@ -105,7 +107,7 @@ impl MatcherFacts {
             &call_matchers,
             &flow_matchers,
             &instance_matchers,
-            rules.len(),
+            matchers.len(),
         )
     }
 
@@ -160,9 +162,8 @@ impl MatcherFacts {
         sort_spans(&mut self.module_constructors);
     }
 
-    pub fn evidence_for(&self, rule: &ApiRule) -> Vec<ApiEvidence> {
+    pub fn evidence_for(&self, matcher: &ApiMatcher) -> Vec<ApiEvidence> {
         let mut evidence = Vec::new();
-        let matcher = ApiMatcher::from_matchers(rule.matchers().to_vec());
         self.collect_call_evidence(&matcher.calls, &mut evidence);
         self.collect_member_call_evidence(&matcher.member_calls, &mut evidence);
         self.collect_member_read_evidence(&matcher.member_reads, &mut evidence);

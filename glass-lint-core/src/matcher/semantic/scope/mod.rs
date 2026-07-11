@@ -628,7 +628,7 @@ impl ScopeGraph {
 }
 
 impl Lookup for ScopeGraph {
-    fn ident(&self, ident: &Ident) -> ConstValue {
+    fn ident(&self, ident: &Ident, _state: &mut super::constant::EvalState) -> ConstValue {
         if self.has_dynamic_lookup_at(ident.span) {
             return ConstValue::Unknown;
         }
@@ -656,7 +656,7 @@ impl Lookup for ScopeGraph {
         }
     }
 
-    fn spread(&self, expr: &Expr) -> ConstValue {
+    fn spread(&self, expr: &Expr, state: &mut super::constant::EvalState) -> ConstValue {
         if let Expr::Ident(ident) = expr
             && self
                 .binding_with_scope_at(ident.sym.as_ref(), ident.span)
@@ -667,17 +667,17 @@ impl Lookup for ScopeGraph {
         {
             return ConstValue::Unknown;
         }
-        constant::evaluate(expr, self)
+        state.evaluate(expr, self)
     }
 
-    fn member(&self, member: &MemberExpr) -> ConstValue {
+    fn member(&self, member: &MemberExpr, state: &mut super::constant::EvalState) -> ConstValue {
         if self.has_dynamic_lookup_at(member.span) {
             return ConstValue::Unknown;
         }
-        let Some(property) = constant::property_name(&member.prop, self) else {
+        let Some(property) = constant::property_name_with_state(&member.prop, self, state) else {
             return ConstValue::Unknown;
         };
-        match constant::evaluate(&member.obj, self) {
+        match state.evaluate(&member.obj, self) {
             ConstValue::Array(values) => property
                 .parse::<usize>()
                 .ok()

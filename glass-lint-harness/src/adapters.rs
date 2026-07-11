@@ -100,7 +100,7 @@ impl Adapter for ExternalAdapter {
         let mut child = Command::new(&self.command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::inherit())
             .spawn()
             .with_context(|| format!("start adapter {}", self.command.display()))?;
         let request = AdapterRequest {

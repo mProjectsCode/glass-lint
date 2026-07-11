@@ -1,6 +1,6 @@
 // @case description A plugin reads the active file from its vault
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:lifecycle.events count=1 line=any
 // @expect-error glass-lint rule=obsidian:vault.access count=2 line=any

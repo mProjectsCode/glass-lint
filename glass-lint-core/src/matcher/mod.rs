@@ -25,7 +25,7 @@ pub fn classify_api_usage(program: &Program, rules: &[ApiRule]) -> ApiClassifica
     let mut result = ApiClassificationResult::default();
 
     for (index, rule) in rules.iter().enumerate() {
-        let evidence = semantic.evidence_for(index, rule);
+        let evidence = semantic.evidence_for(index);
         if evidence.is_empty() {
             continue;
         }

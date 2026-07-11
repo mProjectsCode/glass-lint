@@ -1,6 +1,6 @@
 // @case description A plugin uses Obsidian's network request API
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:network.request count=1 line=any
 

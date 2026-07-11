@@ -838,7 +838,11 @@ impl Visit for PredeclareVisitor<'_> {
 }
 
 impl Lookup for AliasCollector {
-    fn ident(&self, ident: &swc_ecma_ast::Ident) -> ConstValue {
+    fn ident(
+        &self,
+        ident: &swc_ecma_ast::Ident,
+        _state: &mut super::super::constant::EvalState,
+    ) -> ConstValue {
         match self.visible_binding(ident.sym.as_ref()) {
             Some(BindingProvenance::StaticString(value)) => ConstValue::String(value.clone()),
             Some(BindingProvenance::StaticNumber(value)) => ConstValue::NonNegativeInteger(*value),
@@ -863,7 +867,7 @@ impl Lookup for AliasCollector {
         }
     }
 
-    fn spread(&self, expr: &Expr) -> ConstValue {
+    fn spread(&self, expr: &Expr, state: &mut super::super::constant::EvalState) -> ConstValue {
         if let Expr::Ident(ident) = expr
             && self
                 .visible_binding_scope(ident.sym.as_ref())
@@ -874,14 +878,18 @@ impl Lookup for AliasCollector {
         {
             return ConstValue::Unknown;
         }
-        constant::evaluate(expr, self)
+        state.evaluate(expr, self)
     }
 
-    fn member(&self, member: &MemberExpr) -> ConstValue {
-        let Some(property) = constant::property_name(&member.prop, self) else {
+    fn member(
+        &self,
+        member: &MemberExpr,
+        state: &mut super::super::constant::EvalState,
+    ) -> ConstValue {
+        let Some(property) = constant::property_name_with_state(&member.prop, self, state) else {
             return ConstValue::Unknown;
         };
-        match constant::evaluate(&member.obj, self) {
+        match state.evaluate(&member.obj, self) {
             ConstValue::Array(values) => property
                 .parse::<usize>()
                 .ok()

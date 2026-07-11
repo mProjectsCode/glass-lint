@@ -14,6 +14,7 @@ use swc_ecma_ast::{
 
 const MAX_DEPTH: usize = 32;
 const MAX_NODES: usize = 4_096;
+const MAX_LOOKUPS: usize = 512;
 const MAX_STRING_BYTES: usize = 16 * 1024;
 const MAX_ARRAY_ITEMS: usize = 256;
 const MAX_OBJECT_KEYS: usize = 256;
@@ -52,18 +53,18 @@ impl ConstValue {
 }
 
 pub(super) trait Lookup {
-    fn ident(&self, ident: &Ident) -> ConstValue;
-    fn member(&self, member: &MemberExpr) -> ConstValue;
+    fn ident(&self, ident: &Ident, state: &mut EvalState) -> ConstValue;
+    fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue;
     fn unshadowed_global(&self, name: &str, span: swc_common::Span) -> bool;
 
     /// Spreading a mutable object is intentionally weaker than passing that
     /// object directly: a later mutation or reassignment can change the
     /// copied shape before the use site.
-    fn spread(&self, expr: &Expr) -> ConstValue
+    fn spread(&self, expr: &Expr, state: &mut EvalState) -> ConstValue
     where
         Self: Sized,
     {
-        evaluate(expr, self)
+        state.evaluate(expr, self)
     }
 }
 
@@ -71,11 +72,11 @@ pub(super) trait Lookup {
 pub(super) struct NoLookup;
 
 impl Lookup for NoLookup {
-    fn ident(&self, _ident: &Ident) -> ConstValue {
+    fn ident(&self, _ident: &Ident, _state: &mut EvalState) -> ConstValue {
         ConstValue::Unknown
     }
 
-    fn member(&self, _member: &MemberExpr) -> ConstValue {
+    fn member(&self, _member: &MemberExpr, _state: &mut EvalState) -> ConstValue {
         ConstValue::Unknown
     }
 
@@ -85,25 +86,36 @@ impl Lookup for NoLookup {
 }
 
 pub(super) fn evaluate(expr: &Expr, lookup: &impl Lookup) -> ConstValue {
-    let mut state = EvalState { depth: 0, nodes: 0 };
+    let mut state = EvalState::default();
     state.evaluate(expr, lookup)
 }
 
 pub(super) fn property_name(prop: &MemberProp, lookup: &impl Lookup) -> Option<String> {
+    let mut state = EvalState::default();
+    property_name_with_state(prop, lookup, &mut state)
+}
+
+pub(super) fn property_name_with_state(
+    prop: &MemberProp,
+    lookup: &impl Lookup,
+    state: &mut EvalState,
+) -> Option<String> {
     match prop {
         MemberProp::Ident(ident) => Some(ident.sym.to_string()),
         MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
-        MemberProp::Computed(computed) => evaluate(&computed.expr, lookup).property_key(),
+        MemberProp::Computed(computed) => state.evaluate(&computed.expr, lookup).property_key(),
     }
 }
 
-struct EvalState {
+#[derive(Default)]
+pub(super) struct EvalState {
     depth: usize,
     nodes: usize,
+    lookups: usize,
 }
 
 impl EvalState {
-    fn evaluate(&mut self, expr: &Expr, lookup: &impl Lookup) -> ConstValue {
+    pub(super) fn evaluate(&mut self, expr: &Expr, lookup: &impl Lookup) -> ConstValue {
         if self.depth >= MAX_DEPTH || self.nodes >= MAX_NODES {
             return ConstValue::Unknown;
         }
@@ -125,8 +137,8 @@ impl EvalState {
             {
                 ConstValue::NonNegativeInteger(value.value as usize)
             }
-            Expr::Ident(ident) => lookup.ident(ident),
-            Expr::Member(member) => lookup.member(member),
+            Expr::Ident(ident) => self.lookup_ident(lookup, ident),
+            Expr::Member(member) => self.lookup_member(lookup, member),
             Expr::Paren(paren) => self.evaluate(&paren.expr, lookup),
             Expr::Seq(sequence) => sequence
                 .exprs
@@ -211,7 +223,8 @@ impl EvalState {
         for property in &object.props {
             match property {
                 PropOrSpread::Spread(spread) => {
-                    let ConstValue::Object(spread_values) = lookup.spread(&spread.expr) else {
+                    let ConstValue::Object(spread_values) = lookup.spread(&spread.expr, self)
+                    else {
                         return ConstValue::Unknown;
                     };
                     if values.len().saturating_add(spread_values.len()) > MAX_OBJECT_KEYS {
@@ -226,7 +239,7 @@ impl EvalState {
                             self.evaluate(&Expr::Ident(ident.clone()), lookup),
                         ),
                         Prop::KeyValue(property) => {
-                            let Some(key) = prop_name(&property.key, lookup) else {
+                            let Some(key) = prop_name(&property.key, lookup, self) else {
                                 return ConstValue::Unknown;
                             };
                             (key, self.evaluate(&property.value, lookup))
@@ -253,7 +266,7 @@ impl EvalState {
         let Expr::Member(member) = &**callee else {
             return ConstValue::Unknown;
         };
-        if property_name(&member.prop, lookup).as_deref() != Some("assign")
+        if property_name_with_state(&member.prop, lookup, self).as_deref() != Some("assign")
             || !matches!(&*member.obj, Expr::Ident(ident) if ident.sym == *"Object")
             || !lookup.unshadowed_global("Object", member.obj.span())
             || call.args.is_empty()
@@ -272,6 +285,28 @@ impl EvalState {
         }
         ConstValue::Object(values)
     }
+
+    fn lookup_ident(&mut self, lookup: &impl Lookup, ident: &Ident) -> ConstValue {
+        if !self.consume_lookup() {
+            return ConstValue::Unknown;
+        }
+        lookup.ident(ident, self)
+    }
+
+    fn lookup_member(&mut self, lookup: &impl Lookup, member: &MemberExpr) -> ConstValue {
+        if !self.consume_lookup() {
+            return ConstValue::Unknown;
+        }
+        lookup.member(member, self)
+    }
+
+    fn consume_lookup(&mut self) -> bool {
+        if self.lookups >= MAX_LOOKUPS {
+            return false;
+        }
+        self.lookups += 1;
+        true
+    }
 }
 
 impl ConstValue {
@@ -284,7 +319,7 @@ impl ConstValue {
     }
 }
 
-fn prop_name(prop: &PropName, lookup: &impl Lookup) -> Option<String> {
+fn prop_name(prop: &PropName, lookup: &impl Lookup, state: &mut EvalState) -> Option<String> {
     match prop {
         PropName::Ident(ident) => Some(ident.sym.to_string()),
         PropName::Str(value) => {
@@ -299,7 +334,7 @@ fn prop_name(prop: &PropName, lookup: &impl Lookup) -> Option<String> {
             Some((value.value as usize).to_string())
         }
         PropName::Num(_) => None,
-        PropName::Computed(computed) => evaluate(&computed.expr, lookup).property_key(),
+        PropName::Computed(computed) => state.evaluate(&computed.expr, lookup).property_key(),
         PropName::BigInt(_) => None,
     }
 }
@@ -335,19 +370,37 @@ mod tests {
     }
 
     impl Lookup for TestLookup {
-        fn ident(&self, ident: &swc_ecma_ast::Ident) -> ConstValue {
+        fn ident(&self, ident: &swc_ecma_ast::Ident, _state: &mut super::EvalState) -> ConstValue {
             self.values
                 .get(ident.sym.as_ref())
                 .cloned()
                 .unwrap_or(ConstValue::Unknown)
         }
 
-        fn member(&self, _member: &MemberExpr) -> ConstValue {
+        fn member(&self, _member: &MemberExpr, _state: &mut super::EvalState) -> ConstValue {
             ConstValue::Unknown
         }
 
         fn unshadowed_global(&self, _name: &str, _span: swc_common::Span) -> bool {
             self.globals
+        }
+    }
+
+    struct RecursiveLookup {
+        expression: Box<Expr>,
+    }
+
+    impl Lookup for RecursiveLookup {
+        fn ident(&self, _ident: &swc_ecma_ast::Ident, state: &mut super::EvalState) -> ConstValue {
+            state.evaluate(&self.expression, self)
+        }
+
+        fn member(&self, _member: &MemberExpr, _state: &mut super::EvalState) -> ConstValue {
+            ConstValue::Unknown
+        }
+
+        fn unshadowed_global(&self, _name: &str, _span: swc_common::Span) -> bool {
+            false
         }
     }
 
@@ -437,5 +490,13 @@ mod tests {
             ConstValue::Unknown
         );
         assert_eq!(eval("({ ...dynamic })"), ConstValue::Unknown);
+    }
+
+    #[test]
+    fn bounds_recursive_alias_lookup_work() {
+        let lookup = RecursiveLookup {
+            expression: expression("alias"),
+        };
+        assert_eq!(evaluate(&expression("alias"), &lookup), ConstValue::Unknown);
     }
 }

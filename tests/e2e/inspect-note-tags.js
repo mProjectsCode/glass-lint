@@ -1,6 +1,6 @@
 // @case description A plugin reads metadata for the active file
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:lifecycle.events count=1 line=any
 // @expect-error glass-lint rule=obsidian:metadata.cache-read count=2 line=any

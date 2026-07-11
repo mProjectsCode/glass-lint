@@ -1,6 +1,6 @@
 // @case description A plugin subscribes to vault changes through lifecycle cleanup
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:lifecycle.events count=3 line=any
 // @expect-error glass-lint rule=obsidian:vault.access count=3 line=any
 // @expect-error glass-lint rule=obsidian:vault.events count=3 line=any

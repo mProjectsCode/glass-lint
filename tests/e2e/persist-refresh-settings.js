@@ -1,6 +1,6 @@
 // @case description A plugin persists its own settings
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:storage.plugin-data-read count=1 line=any
 // @expect-error glass-lint rule=obsidian:storage.plugin-data-write count=1 line=any
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any

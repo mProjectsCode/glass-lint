@@ -1,6 +1,6 @@
 // @case description A plugin registers a command
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 
 import { Plugin } from "obsidian";

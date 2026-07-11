@@ -1,6 +1,6 @@
 // @case description A plugin evaluates JavaScript code blocks and renders string results
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:markdown.code-block-processor count=2 line=any
 // @expect-error glass-lint rule=js:dynamic-code.eval count=2 line=any
 

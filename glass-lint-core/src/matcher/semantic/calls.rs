@@ -145,7 +145,9 @@ impl ResolvedCallCollector<'_, '_> {
             .record(ApiMatchKind::Call, name.clone(), ident.span);
 
         let resolved = self.resolver.resolve_ident(ident);
-        debug_assert_ne!(resolved.id, super::value::ValueId::UNKNOWN);
+        if !self.resolver.value_is_known(resolved.id) {
+            return;
+        }
         let provenance = resolved.call;
         let aliased_member = resolved.rooted_chain;
         let call = call.map(|call| {
@@ -263,7 +265,9 @@ impl ResolvedCallCollector<'_, '_> {
                 .push(member.span);
         }
         let syntactic_chain = self.resolver.member_chain(member);
-        debug_assert_ne!(resolved.id, super::value::ValueId::UNKNOWN);
+        if !self.resolver.value_is_known(resolved.id) {
+            return;
+        }
         let resolved_chain = resolved.rooted_chain;
         let module_member = resolved.module_member;
         if let Some((source, member_name)) = resolved.returned_member.clone() {

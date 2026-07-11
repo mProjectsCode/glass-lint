@@ -2,24 +2,24 @@
 
 | Case | eslint-obsidianmd | glass-lint |
 |---|---:|---:|
-| count-note-words | 0 | 7 |
+| count-note-words | 1 | 7 |
 | create-meeting-note | 0 | 9 |
 | download-daily-quote | 0 | 2 |
-| fetch-remote-catalog | 0 | 4 |
-| inspect-note-tags | 0 | 6 |
+| fetch-remote-catalog | 1 | 4 |
+| inspect-note-tags | 1 | 6 |
 | open-workspace-links | 0 | 4 |
 | persist-refresh-settings | 0 | 4 |
-| render-executable-code-blocks | 0 | 2 |
+| render-executable-code-blocks | 1 | 4 |
 | roll-ribbon-dice | 0 | 3 |
 | transform-text-case | 0 | 1 |
-| watch-vault-changes | 0 | 9 |
+| watch-vault-changes | 1 | 9 |
 
 ## count-note-words
 
 ```js
 // @case description A plugin reads the active file from its vault
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:lifecycle.events count=1 line=any
 // @expect-error glass-lint rule=obsidian:vault.access count=2 line=any
@@ -74,7 +74,8 @@ export default class VaultReaderPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (1 finding(s))
+- eslint-obsidianmd:rule-custom-message:customMessage at 30:5 - [no-console] Avoid unnecessary logging to console. See https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
 
 ### glass-lint (7 finding(s))
 - obsidian:ui.command:detected at 16:5 - Registers commands
@@ -90,7 +91,7 @@ export default class VaultReaderPlugin extends Plugin {
 ```js
 // @case description A plugin creates a note in the vault
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:vault.access count=4 line=any
 // @expect-error glass-lint rule=obsidian:vault.write count=2 line=any
@@ -174,7 +175,7 @@ export default class NoteCreatorPlugin extends Plugin {
 ```js
 // @case description A plugin uses Obsidian's network request API
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:network.request count=1 line=any
 
@@ -238,7 +239,7 @@ export default class RequestPlugin extends Plugin {
 ```js
 // @case description A plugin can make a browser network request
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=js:network.request count=1 line=any
 // @expect-error glass-lint rule=js:network.url-construction count=1 line=any
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
@@ -290,7 +291,8 @@ export default class NetworkPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (1 finding(s))
+- eslint-config:no-restricted-globals:customMessage at 24:28 - Unexpected use of 'fetch'. Use the built-in `requestUrl` function instead of `fetch` for network requests in Obsidian.
 
 ### glass-lint (4 finding(s))
 - js:network.request:detected at 24:28 - Uses browser network request APIs
@@ -303,7 +305,7 @@ export default class NetworkPlugin extends Plugin {
 ```js
 // @case description A plugin reads metadata for the active file
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:lifecycle.events count=1 line=any
 // @expect-error glass-lint rule=obsidian:metadata.cache-read count=2 line=any
@@ -356,7 +358,8 @@ export default class MetadataPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (1 finding(s))
+- eslint-obsidianmd:rule-custom-message:customMessage at 32:5 - [no-console] Avoid unnecessary logging to console. See https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
 
 ### glass-lint (6 finding(s))
 - obsidian:ui.command:detected at 15:5 - Registers commands
@@ -371,7 +374,7 @@ export default class MetadataPlugin extends Plugin {
 ```js
 // @case description A plugin opens a link in the workspace
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=2 line=any
 // @expect-error glass-lint rule=obsidian:workspace.open count=1 line=any
 // @expect-error glass-lint rule=obsidian:workspace.active-file count=1 line=any
@@ -437,7 +440,7 @@ export default class LinkOpenerPlugin extends Plugin {
 ```js
 // @case description A plugin persists its own settings
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:storage.plugin-data-read count=1 line=any
 // @expect-error glass-lint rule=obsidian:storage.plugin-data-write count=1 line=any
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
@@ -507,8 +510,9 @@ export default class SettingsPlugin extends Plugin {
 ```js
 // @case description A plugin evaluates JavaScript code blocks and renders string results
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:markdown.code-block-processor count=2 line=any
+// @expect-error glass-lint rule=js:dynamic-code.eval count=2 line=any
 
 import { Plugin } from "obsidian";
 
@@ -541,18 +545,21 @@ export default class ExecutableCodeBlocksPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (1 finding(s))
+- eslint-obsidianmd:rule-custom-message:customMessage at 14:29 - [no-new-func] Using the `Function` constructor is dangerous because it executes arbitrary code, similar to `eval()`
 
-### glass-lint (2 finding(s))
-- obsidian:markdown.code-block-processor:detected at 10:9 - Registers markdown code-block processors
-- obsidian:markdown.code-block-processor:detected at 17:9 - Registers markdown code-block processors
+### glass-lint (4 finding(s))
+- js:dynamic-code.eval:detected at 14:33 - Evaluates dynamic code
+- js:dynamic-code.eval:detected at 24:33 - Evaluates dynamic code
+- obsidian:markdown.code-block-processor:detected at 11:9 - Registers markdown code-block processors
+- obsidian:markdown.code-block-processor:detected at 18:9 - Registers markdown code-block processors
 
 ## roll-ribbon-dice
 
 ```js
 // @case description A plugin adds a ribbon action
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.status-bar count=1 line=any
 // @expect-error glass-lint rule=obsidian:ui.ribbon count=1 line=any
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
@@ -616,7 +623,7 @@ export default class RibbonPlugin extends Plugin {
 ```js
 // @case description A plugin registers a command
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 
 import { Plugin } from "obsidian";
@@ -679,7 +686,7 @@ export default class CommandPlugin extends Plugin {
 ```js
 // @case description A plugin subscribes to vault changes through lifecycle cleanup
 // @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd config=default
+// @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:lifecycle.events count=3 line=any
 // @expect-error glass-lint rule=obsidian:vault.access count=3 line=any
 // @expect-error glass-lint rule=obsidian:vault.events count=3 line=any
@@ -732,7 +739,8 @@ export default class VaultWatcherPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (1 finding(s))
+- eslint-obsidianmd:rule-custom-message:customMessage at 43:27 - [no-console] Avoid unnecessary logging to console. See https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
 
 ### glass-lint (9 finding(s))
 - obsidian:lifecycle.events:detected at 14:5 - Registers Obsidian lifecycle events
