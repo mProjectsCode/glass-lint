@@ -2,6 +2,9 @@
 // @tool glass-lint rules=obsidian:metadata.frontmatter-read
 // @expect-error glass-lint rule=obsidian:metadata.frontmatter-read message_id=detected
 app.metadataCache.getFileCache.frontmatter;
+const cacheResult = app.metadataCache.getFileCache(file);
+// @expect-error glass-lint rule=obsidian:metadata.frontmatter-read message_id=detected
+cacheResult.frontmatter;
 const metadataCache = this.app.metadataCache.getFileCache(file);
 // @expect-error glass-lint rule=obsidian:metadata.frontmatter-read message_id=detected
 metadataCache.frontmatter;

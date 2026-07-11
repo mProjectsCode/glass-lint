@@ -17,6 +17,7 @@ electronAlias.dialog.showOpenDialog({});
 const electronCjs = require("electron");
 // @expect-error glass-lint rule=js:electron.dialog message_id=detected
 electronCjs.dialog.showOpenDialog({});
+// @expect-error glass-lint rule=js:electron.dialog message_id=detected
 require("electron").dialog.showSaveDialog({});
 
 // Static interop wrappers preserve the underlying module namespace.

@@ -161,8 +161,18 @@ impl ResolvedCallCollector<'_, '_> {
                         self.resolver
                             .static_string_expr(&argument.expr)
                             .is_some_and(|value| {
-                                arg_matcher.values.is_empty()
-                                    || arg_matcher.values.iter().any(|expected| expected == &value)
+                                arg_matcher.predicate.as_ref().map_or_else(
+                                    || {
+                                        arg_matcher.values.is_empty()
+                                            || arg_matcher
+                                                .values
+                                                .iter()
+                                                .any(|expected| expected == &value)
+                                    },
+                                    |predicate| {
+                                        super::object_flow::matches_static_value(predicate, &value)
+                                    },
+                                )
                             })
                     })
                 })
@@ -192,6 +202,13 @@ impl ResolvedCallCollector<'_, '_> {
         debug_assert_ne!(resolved.id, super::value::ValueId::UNKNOWN);
         let resolved_chain = resolved.rooted_chain;
         let module_member = resolved.module_member;
+        if let Some((source, member_name)) = resolved.returned_member.clone() {
+            self.index
+                .returned_member_calls
+                .entry((source, member_name))
+                .or_default()
+                .push(member.span);
+        }
 
         self.record_static_callable_wrapper(member);
 
@@ -242,6 +259,13 @@ impl ResolvedCallCollector<'_, '_> {
                 .record(ApiMatchKind::MemberRead, chain, member.span);
         }
         let resolved = self.resolver.resolve_member(member);
+        if let Some((source, member_name)) = resolved.returned_member.clone() {
+            self.index
+                .returned_member_reads
+                .entry((source, member_name))
+                .or_default()
+                .push(member.span);
+        }
         if let Some(resolved_chain) = resolved.rooted_chain {
             self.index
                 .rooted_member_reads
@@ -291,8 +315,18 @@ impl ResolvedCallCollector<'_, '_> {
                         self.resolver
                             .static_string_expr(&argument.expr)
                             .is_some_and(|value| {
-                                arg_matcher.values.is_empty()
-                                    || arg_matcher.values.iter().any(|expected| expected == &value)
+                                arg_matcher.predicate.as_ref().map_or_else(
+                                    || {
+                                        arg_matcher.values.is_empty()
+                                            || arg_matcher
+                                                .values
+                                                .iter()
+                                                .any(|expected| expected == &value)
+                                    },
+                                    |predicate| {
+                                        super::object_flow::matches_static_value(predicate, &value)
+                                    },
+                                )
                             })
                     })
                 })

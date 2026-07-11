@@ -24,7 +24,8 @@ pub(super) fn for_rule(id: &str) -> &'static [&'static str] {
         | "markdown.code-block-processor"
         | "markdown.render"
         | "markdown.link" => &["disclosure.markdown_processing"],
-        "plugins.other-access" => &["disclosure.plugin_internals"],
+        "plugins.access" => &["disclosure.plugin_internals"],
+        "plugins.enable-disable" | "plugins.load-unload" => &["disclosure.plugin_lifecycle"],
         "platform.branching" => &["disclosure.platform_branching"],
         _ => &[],
     }

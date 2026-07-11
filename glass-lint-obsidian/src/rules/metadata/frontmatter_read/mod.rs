@@ -13,6 +13,10 @@ pub(crate) fn rule() -> Rule {
         .matcher(Matcher::rooted_member_read(
             "app.metadataCache.getFileCache.frontmatter",
         ))
+        .matcher(Matcher::returned_member_read(
+            "app.metadataCache.getFileCache",
+            "frontmatter",
+        ))
         .build()
         .unwrap()
 }

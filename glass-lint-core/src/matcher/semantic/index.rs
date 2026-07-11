@@ -35,6 +35,9 @@ pub struct MatcherFacts {
     pub(super) member_reads: Occurrences,
     pub(super) rooted_member_reads: Occurrences,
     pub(super) module_member_reads: ModuleOccurrences,
+    pub(super) returned_member_calls: BTreeMap<(String, String), Vec<Span>>,
+    pub(super) returned_member_reads: BTreeMap<(String, String), Vec<Span>>,
+    pub(super) instance_member_calls: BTreeMap<(String, String, String), Vec<Span>>,
     pub(super) imports: Occurrences,
     pub(super) string_literals: Occurrences,
     pub(super) classes: Occurrences,
@@ -89,12 +92,17 @@ impl MatcherFacts {
                     .map(move |(flow_index, matcher)| (rule_index, flow_index, matcher))
             })
             .collect::<Vec<_>>();
+        let instance_matchers = rules
+            .iter()
+            .flat_map(|rule| ApiMatcher::from_matchers(rule.matchers.clone()).instance_member_calls)
+            .collect::<Vec<_>>();
         Self::collect_with_argument_matchers(
             program,
             resolver,
             &member_matchers,
             &call_matchers,
             &flow_matchers,
+            &instance_matchers,
             rules.len(),
         )
     }
@@ -105,6 +113,7 @@ impl MatcherFacts {
         member_argument_matchers: &[(usize, MemberCallMatcher)],
         call_argument_matchers: &[(usize, CallMatcher)],
         flow_matchers: &[(usize, usize, FlowMatcher)],
+        instance_matchers: &[super::super::rule::InstanceMemberCallMatcher],
         rule_count: usize,
     ) -> (Self, Vec<Vec<ApiEvidence>>) {
         let mut index = Self::default();
@@ -118,6 +127,7 @@ impl MatcherFacts {
                 &mut index,
                 &mut argument_evidence,
             );
+            super::instance::collect(program, resolver, instance_matchers, &mut index);
             let flow_evidence =
                 super::object_flow::collect(program, resolver, flow_matchers, rule_count);
             for (rule_index, evidence) in flow_evidence.into_iter().enumerate() {
@@ -137,11 +147,84 @@ impl MatcherFacts {
         self.collect_string_literal_evidence(&matcher.string_literals, &mut evidence);
         self.collect_class_evidence(&matcher.classes, &mut evidence);
         self.collect_constructor_evidence(&matcher.constructors, &mut evidence);
+        self.collect_returned_member_call_evidence(&matcher.returned_member_calls, &mut evidence);
+        self.collect_returned_member_read_evidence(&matcher.returned_member_reads, &mut evidence);
+        self.collect_instance_member_call_evidence(&matcher.instance_member_calls, &mut evidence);
 
         // All occurrence maps are ordered, so truncation remains stable across
         // runs and does not depend on hash-map iteration order.
         evidence.truncate(ApiRule::EVIDENCE_LIMIT);
         evidence
+    }
+
+    fn collect_returned_member_call_evidence(
+        &self,
+        matchers: &[super::super::rule::ReturnedMemberCallMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for matcher in matchers {
+            let spans = self
+                .returned_member_calls
+                .iter()
+                .filter(|((source, member), _)| {
+                    (source == &matcher.source
+                        || source.starts_with(&format!("{}.", matcher.source)))
+                        && member == &matcher.member
+                })
+                .flat_map(|(_, spans)| spans.iter().copied())
+                .collect::<Vec<_>>();
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::MemberCall,
+                format!("{}.{}", matcher.source, matcher.member),
+                (!spans.is_empty()).then_some(spans),
+            );
+        }
+    }
+
+    fn collect_returned_member_read_evidence(
+        &self,
+        matchers: &[super::super::rule::ReturnedMemberReadMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for matcher in matchers {
+            let spans = self
+                .returned_member_reads
+                .iter()
+                .filter(|((source, member), _)| {
+                    (source == &matcher.source
+                        || source.starts_with(&format!("{}.", matcher.source)))
+                        && member == &matcher.member
+                })
+                .flat_map(|(_, spans)| spans.iter().copied())
+                .collect::<Vec<_>>();
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::MemberRead,
+                format!("{}.{}", matcher.source, matcher.member),
+                (!spans.is_empty()).then_some(spans),
+            );
+        }
+    }
+
+    fn collect_instance_member_call_evidence(
+        &self,
+        matchers: &[super::super::rule::InstanceMemberCallMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for matcher in matchers {
+            let key = (
+                matcher.module.clone(),
+                matcher.export.clone(),
+                matcher.member.clone(),
+            );
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::MemberCall,
+                format!("{}:{}.{}", matcher.module, matcher.export, matcher.member),
+                self.instance_member_calls.get(&key).cloned(),
+            );
+        }
     }
 
     fn collect_call_evidence(&self, calls: &[CallMatcher], evidence: &mut Vec<ApiEvidence>) {

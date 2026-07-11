@@ -30,6 +30,30 @@ pub(crate) fn rule() -> Rule {
         .matcher(Matcher::rooted_member_read(
             "app.metadataCache.getFileCache.sections",
         ))
+        .matcher(Matcher::returned_member_read(
+            "app.metadataCache.getFileCache",
+            "tags",
+        ))
+        .matcher(Matcher::returned_member_read(
+            "app.metadataCache.getFileCache",
+            "links",
+        ))
+        .matcher(Matcher::returned_member_read(
+            "app.metadataCache.getFileCache",
+            "embeds",
+        ))
+        .matcher(Matcher::returned_member_read(
+            "app.metadataCache.getFileCache",
+            "blocks",
+        ))
+        .matcher(Matcher::returned_member_read(
+            "app.metadataCache.getFileCache",
+            "headings",
+        ))
+        .matcher(Matcher::returned_member_read(
+            "app.metadataCache.getFileCache",
+            "sections",
+        ))
         .build()
         .unwrap()
 }

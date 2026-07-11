@@ -10,8 +10,10 @@ pub(crate) fn rule() -> Rule {
         .label("Reads plugin data")
         .category("storage")
         .severity(Severity::Info)
-        .confidence(Confidence::Medium)
-        .matcher(Matcher::heuristic_member_call("this.loadData"))
+        .confidence(Confidence::High)
+        .matcher(Matcher::instance_member_call(
+            "obsidian", "Plugin", "loadData",
+        ))
         .build()
         .unwrap()
 }

@@ -10,7 +10,8 @@ pub use result::{ApiCapability, ApiClassificationResult};
 pub use rule::{
     ApiCatalogError, ApiCategory, ApiRule, ApiRuleBuildError, ApiRuleBuilder, ApiSeverity,
     CallMatcher, ClassMatcher, Confidence, ConstructorMatcher, FlowMatcher, FlowValueMatcher,
-    Matcher, MemberCallMatcher, MemberReadMatcher,
+    InstanceMemberCallMatcher, Matcher, MemberCallMatcher, MemberReadMatcher,
+    ReturnedMemberCallMatcher, ReturnedMemberReadMatcher,
 };
 
 /// Classifies a parsed program with caller-provided rules. Core owns no catalog.

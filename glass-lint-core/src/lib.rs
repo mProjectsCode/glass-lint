@@ -17,8 +17,8 @@ pub mod rules {
     pub use crate::matcher::{
         ApiCategory as Category, ApiRule as Rule, ApiRuleBuildError as BuildError,
         ApiRuleBuilder as Builder, ApiSeverity as Severity, CallMatcher, ClassMatcher, Confidence,
-        ConstructorMatcher, FlowMatcher, FlowValueMatcher, Matcher, MemberCallMatcher,
-        MemberReadMatcher,
+        ConstructorMatcher, FlowMatcher, FlowValueMatcher, InstanceMemberCallMatcher, Matcher,
+        MemberCallMatcher, MemberReadMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher,
     };
 }
 

@@ -179,6 +179,7 @@ impl AliasCollector {
                 | BindingProvenance::ModuleNamespace { .. }) => Some(provenance.clone()),
                 BindingProvenance::Local
                 | BindingProvenance::ValueAlias { .. }
+                | BindingProvenance::ReturnedObject { .. }
                 | BindingProvenance::StaticString(_)
                 | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
@@ -385,6 +386,7 @@ impl AliasCollector {
 
     fn argument_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
         self.module_alias_provenance(expr)
+            .or_else(|| self.returned_object_provenance(expr))
             .or_else(|| match expr {
                 Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
                     provenance @ BindingProvenance::StaticObjectValues(_) => {
@@ -400,6 +402,51 @@ impl AliasCollector {
                 self.rooted_expr_name(expr)
                     .map(|target| BindingProvenance::ValueAlias { target })
             })
+    }
+
+    fn returned_object_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+        match expr {
+            Expr::Call(call) => {
+                let Callee::Expr(callee) = &call.callee else {
+                    return None;
+                };
+                if let Expr::Member(member) = &**callee
+                    && member_prop_name(&member.prop).as_deref() == Some("bind")
+                {
+                    return None;
+                }
+                let source = self.rooted_expr_name(callee)?;
+                source
+                    .contains('.')
+                    .then_some(BindingProvenance::ReturnedObject { source })
+            }
+            Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
+                BindingProvenance::ReturnedObject { source } => {
+                    Some(BindingProvenance::ReturnedObject {
+                        source: source.clone(),
+                    })
+                }
+                _ => None,
+            },
+            Expr::Member(member) => {
+                if let Expr::Ident(ident) = &*member.obj
+                    && let Some(BindingProvenance::ReturnedObject { source }) =
+                        self.visible_binding(ident.sym.as_ref())
+                {
+                    return Some(BindingProvenance::ReturnedObject {
+                        source: source.clone(),
+                    });
+                }
+                self.rooted_expr_name(expr)
+                    .map(|source| BindingProvenance::ReturnedObject { source })
+            }
+            Expr::Paren(paren) => self.returned_object_provenance(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.returned_object_provenance(expr)),
+            _ => None,
+        }
     }
 
     fn static_object_values(&self, expr: &Expr) -> Option<BindingProvenance> {
@@ -763,6 +810,10 @@ impl Visit for AliasCollector {
                 .init
                 .as_deref()
                 .and_then(|init| self.rooted_expr_name(init));
+            let returned_alias = declarator
+                .init
+                .as_deref()
+                .and_then(|init| self.returned_object_provenance(init));
             let const_value = declarator.init.as_deref().and_then(|init| {
                 self.static_object_values(init)
                     .or_else(|| self.const_provenance(init))
@@ -781,6 +832,9 @@ impl Visit for AliasCollector {
                 collect_require_aliases(&declarator.name, module, scope, self);
             } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, const_value) {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
+            } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, returned_alias)
+            {
+                self.insert(scope, ident.id.sym.to_string(), provenance);
             } else if let Some(target) = value_alias {
                 collect_value_aliases(&declarator.name, &target, scope, self);
             }
@@ -793,6 +847,7 @@ impl Visit for AliasCollector {
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
         let provenance = self
             .module_alias_provenance(&assignment.right)
+            .or_else(|| self.returned_object_provenance(&assignment.right))
             .or_else(|| self.const_provenance(&assignment.right))
             .or_else(|| {
                 self.rooted_expr_name(&assignment.right)

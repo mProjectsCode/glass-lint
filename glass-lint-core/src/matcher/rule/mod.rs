@@ -5,8 +5,9 @@ mod taxonomy;
 pub use error::{ApiCatalogError, ApiRuleBuildError};
 pub use matcher::{
     ApiMatcher, ArgStringMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
-    FlowMatcher, FlowRequirement, FlowSinkArgs, FlowValueMatcher, Matcher, MemberCallMatcher,
-    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, canonical_rooted_chain,
+    FlowMatcher, FlowRequirement, FlowSinkArgs, FlowValueMatcher, InstanceMemberCallMatcher,
+    Matcher, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+    ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, canonical_rooted_chain,
 };
 pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
 

@@ -1,5 +1,8 @@
 // @case description direct, computed, and same-shaped receiver calls
 // @tool glass-lint rules=obsidian:ui.command
+import { Plugin } from "obsidian";
+class TestPlugin extends Plugin {
+  run() {
 // @expect-error glass-lint rule=obsidian:ui.command message_id=detected
 this.addCommand({id:'x'});
 // @expect-error glass-lint rule=obsidian:ui.command message_id=detected
@@ -7,7 +10,7 @@ this['addCommand']({ id: "second" });
 
 // Receiver provenance is intentionally not established by this heuristic.
 function unrelatedReceiver() {
-    // @expect-error glass-lint rule=obsidian:ui.command message_id=detected
+    // @expect-no-error glass-lint rule=obsidian:ui.command message_id=detected
     this.addCommand({ id: "unrelated" });
 }
 
@@ -15,3 +18,5 @@ function unrelatedReceiver() {
 this.addCommand = replacement;
 // @expect-error glass-lint rule=obsidian:ui.command message_id=detected
 this.addCommand({ id: "reassigned" });
+  }
+}

@@ -5,6 +5,12 @@
 app.workspace.openLinkText(name, source);
 // @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
 app.workspace.getLeaf.openFile(file);
+// @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
+app.workspace.getLeaf().openFile(file);
+const leaf = app.workspace.getLeaf();
+const leafAlias = leaf;
+// @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
+leafAlias.openFile(aliasedFile);
 
 // `this.app`, workspace aliases, and static computed names retain provenance.
 // @expect-error glass-lint rule=obsidian:workspace.open message_id=detected

@@ -17,6 +17,7 @@ electronAlias.shell.openExternal("https://alias.example");
 const electronCjs = require("electron");
 // @expect-error glass-lint rule=js:electron.shell message_id=detected
 electronCjs.shell.openPath("/tmp/commonjs");
+// @expect-error glass-lint rule=js:electron.shell message_id=detected
 require("electron").shell.openExternal("https://direct.example");
 const electronInterop = __toESM(require("electron"));
 // @expect-error glass-lint rule=js:electron.shell message_id=detected

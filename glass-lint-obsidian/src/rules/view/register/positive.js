@@ -1,5 +1,8 @@
 // @case description direct, static-computed, and same-shaped registerView calls
 // @tool glass-lint rules=obsidian:view.register
+import { Plugin } from "obsidian";
+class TestPlugin extends Plugin {
+  run() {
 
 // @expect-error glass-lint rule=obsidian:view.register message_id=detected
 this.registerView("view", view);
@@ -10,7 +13,7 @@ this["registerView"]("computed", view);
 // The heuristic intentionally reports the same chain without proving the
 // receiver is an Obsidian plugin instance.
 function unrelatedReceiver() {
-  // @expect-error glass-lint rule=obsidian:view.register message_id=detected
+  // @expect-no-error glass-lint rule=obsidian:view.register message_id=detected
   this.registerView("same-shaped", view);
 }
 
@@ -18,3 +21,5 @@ function unrelatedReceiver() {
 this.registerView = replacement;
 // @expect-error glass-lint rule=obsidian:view.register message_id=detected
 this.registerView("reassigned", view);
+  }
+}

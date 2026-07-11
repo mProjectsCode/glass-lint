@@ -10,9 +10,11 @@ pub(crate) fn rule() -> Rule {
         .label("Registers markdown postprocessors")
         .category("markdown")
         .severity(Severity::Info)
-        .confidence(Confidence::Medium)
-        .matcher(Matcher::heuristic_member_call(
-            "this.registerMarkdownPostProcessor",
+        .confidence(Confidence::High)
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "registerMarkdownPostProcessor",
         ))
         .build()
         .unwrap()

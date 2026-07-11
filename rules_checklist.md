@@ -162,13 +162,15 @@ Record ownership and completion evidence directly below each group heading using
   - [x] `obsidian:platform.branching` — [`glass-lint-obsidian/src/rules/platform/branching/`](glass-lint-obsidian/src/rules/platform/branching/)
     - Audit: module provenance; intent-doc=[x]; coverage=all seven flags, namespace aliases, optional/static computed reads, similar module, shadowed namespace, dynamic property, reassignment, unlisted flag; limitation=reads are reported without control-flow/value analysis and destructured `Platform` exports are not followed; verified=targeted fixtures
 
-- [x] **Audit group 7 — Obsidian plugins, storage, and UI (7 rules)**
+- [x] **Audit group 7 — Obsidian plugins, storage, and UI (8 rules)**
   - Group audit: owner=Codex; claimed=2026-07-11; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
-  - Exception log: `make test-rules` passed all 64 JavaScript cases and 85 of 88 Obsidian cases. Its three unrelated pre-existing failures are `vault/resource_url/positive` (expected 1, found 0; four findings), `workspace/leaf_management/positive` (expected 1, found 0; two findings), and `workspace/open/positive` (expected 1, found 0; two findings). All seven audited group-7 directories passed.
-  - [x] `obsidian:plugins.dataview` — [`glass-lint-obsidian/src/rules/plugins/dataview/`](glass-lint-obsidian/src/rules/plugins/dataview/)
-    - Audit: heuristic; intent-doc=[x]; coverage=all four markers, substring and static-template matches, dynamic value, concatenation, unrelated marker; limitation=reports marker strings without proving plugin API use or module provenance and does not reconstruct dynamic values or concatenations; verified=targeted fixtures
-  - [x] `obsidian:plugins.other-access` — [`glass-lint-obsidian/src/rules/plugins/other_access/`](glass-lint-obsidian/src/rules/plugins/other_access/)
-    - Audit: rooted; intent-doc=[x]; coverage=all three configured chains, rooted alias, static computed properties, shadowed/reassigned roots, dynamic and unlisted lookalikes; limitation=arguments and returned plugin objects are not analyzed; verified=targeted fixtures
+  - Exception log: `make test-rules` passed all 64 JavaScript cases and all 90 Obsidian cases; no exceptions.
+  - [x] `obsidian:plugins.access` — [`glass-lint-obsidian/src/rules/plugins/access/`](glass-lint-obsidian/src/rules/plugins/access/)
+    - Audit: rooted; intent-doc=[x]; coverage=plugin instances, manifests, enabled state, static/dynamic keys, aliases, shadowing, reassignment, and string lookalikes; limitation=plugin IDs are not inferred from dynamic keys; verified=targeted fixtures
+  - [x] `obsidian:plugins.enable-disable` — [`glass-lint-obsidian/src/rules/plugins/enable_disable/`](glass-lint-obsidian/src/rules/plugins/enable_disable/)
+    - Audit: rooted mutation; intent-doc=[x]; coverage=enable/disable methods, aliases, static computed methods, shadowing, dynamic methods, near names, and local lookalikes; verified=targeted fixtures
+  - [x] `obsidian:plugins.load-unload` — [`glass-lint-obsidian/src/rules/plugins/load_unload/`](glass-lint-obsidian/src/rules/plugins/load_unload/)
+    - Audit: rooted plus returned-object provenance; intent-doc=[x]; coverage=manager and returned plugin lifecycle calls, keyed plugin instances, shadowing, reassignment, dynamic methods, and local lookalikes; verified=targeted fixtures
   - [x] `obsidian:storage.plugin-data-read` — [`glass-lint-obsidian/src/rules/storage/plugin_data_read/`](glass-lint-obsidian/src/rules/storage/plugin_data_read/)
     - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, same-shaped receiver, reassignment, alias, dynamic property, other receiver, near-name method; limitation=does not prove plugin receiver or follow aliases, and reports same-shaped `this` calls even outside plugin code; arguments are not analyzed; verified=targeted fixtures
   - [x] `obsidian:storage.plugin-data-write` — [`glass-lint-obsidian/src/rules/storage/plugin_data_write/`](glass-lint-obsidian/src/rules/storage/plugin_data_write/)
@@ -182,7 +184,7 @@ Record ownership and completion evidence directly below each group heading using
 
 - [x] **Audit group 8 — Obsidian UI and vault access (7 rules)**
   - Group audit: owner=Codex; claimed=2026-07-11; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
-  - Exception log: `make test-rules` passed all 64 JavaScript cases and 85 of 88 Obsidian cases. Its three unrelated pre-existing failures are `vault/resource_url/positive` (expected 1, found 0; four findings), `workspace/leaf_management/positive` (expected 1, found 0; two findings), and `workspace/open/positive` (expected 1, found 0; two findings). All seven audited group-8 directories passed.
+  - Exception log: `make test-rules` passed all 64 JavaScript cases and all 90 Obsidian cases; no exceptions.
   - [x] `obsidian:ui.notice` — [`glass-lint-obsidian/src/rules/ui/notice/`](glass-lint-obsidian/src/rules/ui/notice/)
     - Audit: module provenance/heuristic; intent-doc=[x]; coverage=global and aliased constructors, ESM named/namespace/CommonJS imports, subclass, shadowing, reassignment, dynamic module, lookalike; limitation=unbound `Notice` remains a heuristic and constructor arguments/class bodies are not analyzed; verified=targeted fixtures
   - [x] `obsidian:ui.ribbon` — [`glass-lint-obsidian/src/rules/ui/ribbon/`](glass-lint-obsidian/src/rules/ui/ribbon/)

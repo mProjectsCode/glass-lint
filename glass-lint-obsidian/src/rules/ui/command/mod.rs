@@ -10,8 +10,12 @@ pub(crate) fn rule() -> Rule {
         .label("Registers commands")
         .category("ui")
         .severity(Severity::Info)
-        .confidence(Confidence::Medium)
-        .matcher(Matcher::heuristic_member_call("this.addCommand"))
+        .confidence(Confidence::High)
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "addCommand",
+        ))
         .build()
         .unwrap()
 }

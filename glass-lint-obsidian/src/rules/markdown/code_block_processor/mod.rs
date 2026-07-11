@@ -10,9 +10,11 @@ pub(crate) fn rule() -> Rule {
         .label("Registers markdown code-block processors")
         .category("markdown")
         .severity(Severity::Info)
-        .confidence(Confidence::Medium)
-        .matcher(Matcher::heuristic_member_call(
-            "this.registerMarkdownCodeBlockProcessor",
+        .confidence(Confidence::High)
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "registerMarkdownCodeBlockProcessor",
         ))
         .build()
         .unwrap()

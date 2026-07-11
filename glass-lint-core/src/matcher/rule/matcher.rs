@@ -8,6 +8,9 @@ pub struct ApiMatcher {
     pub classes: Vec<ClassMatcher>,
     pub constructors: Vec<ConstructorMatcher>,
     pub flows: Vec<FlowMatcher>,
+    pub returned_member_calls: Vec<ReturnedMemberCallMatcher>,
+    pub returned_member_reads: Vec<ReturnedMemberReadMatcher>,
+    pub instance_member_calls: Vec<InstanceMemberCallMatcher>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +23,9 @@ pub enum Matcher {
     Class(ClassMatcher),
     Constructor(ConstructorMatcher),
     Flow(FlowMatcher),
+    ReturnedMemberCall(ReturnedMemberCallMatcher),
+    ReturnedMemberRead(ReturnedMemberReadMatcher),
+    InstanceMemberCall(InstanceMemberCallMatcher),
 }
 
 impl Matcher {
@@ -110,6 +116,32 @@ impl Matcher {
     pub fn flow(value: FlowMatcher) -> Self {
         Self::Flow(value)
     }
+
+    pub fn returned_member_call(source: impl Into<String>, member: impl Into<String>) -> Self {
+        Self::ReturnedMemberCall(ReturnedMemberCallMatcher {
+            source: source.into(),
+            member: member.into(),
+        })
+    }
+
+    pub fn returned_member_read(source: impl Into<String>, member: impl Into<String>) -> Self {
+        Self::ReturnedMemberRead(ReturnedMemberReadMatcher {
+            source: source.into(),
+            member: member.into(),
+        })
+    }
+
+    pub fn instance_member_call(
+        module: impl Into<String>,
+        export: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Self {
+        Self::InstanceMemberCall(InstanceMemberCallMatcher {
+            module: module.into(),
+            export: export.into(),
+            member: member.into(),
+        })
+    }
 }
 
 impl From<CallMatcher> for Matcher {
@@ -148,10 +180,29 @@ impl From<FlowMatcher> for Matcher {
     }
 }
 
+impl From<ReturnedMemberCallMatcher> for Matcher {
+    fn from(value: ReturnedMemberCallMatcher) -> Self {
+        Self::ReturnedMemberCall(value)
+    }
+}
+
+impl From<ReturnedMemberReadMatcher> for Matcher {
+    fn from(value: ReturnedMemberReadMatcher) -> Self {
+        Self::ReturnedMemberRead(value)
+    }
+}
+
+impl From<InstanceMemberCallMatcher> for Matcher {
+    fn from(value: InstanceMemberCallMatcher) -> Self {
+        Self::InstanceMemberCall(value)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArgStringMatcher {
     pub index: usize,
     pub values: Vec<String>,
+    pub predicate: Option<FlowValueMatcher>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,6 +224,25 @@ pub enum FlowValueMatcher {
     StaticPrefix(Vec<String>),
     StaticContainsAny(Vec<String>),
     StaticContainsAll(Vec<String>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReturnedMemberCallMatcher {
+    pub source: String,
+    pub member: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReturnedMemberReadMatcher {
+    pub source: String,
+    pub member: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstanceMemberCallMatcher {
+    pub module: String,
+    pub export: String,
+    pub member: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -252,6 +322,7 @@ impl FlowMatcher {
         source.arg_strings.push(ArgStringMatcher {
             index,
             values: values.into_iter().map(Into::into).collect(),
+            predicate: None,
         });
         self
     }
@@ -356,6 +427,7 @@ impl CallMatcher {
         self.arg_strings.push(ArgStringMatcher {
             index,
             values: Vec::new(),
+            predicate: None,
         });
         self
     }
@@ -368,6 +440,16 @@ impl CallMatcher {
         self.arg_strings.push(ArgStringMatcher {
             index,
             values: values.into_iter().map(Into::into).collect(),
+            predicate: None,
+        });
+        self
+    }
+
+    pub fn arg_value(mut self, index: usize, value: FlowValueMatcher) -> Self {
+        self.arg_strings.push(ArgStringMatcher {
+            index,
+            values: Vec::new(),
+            predicate: Some(value),
         });
         self
     }
@@ -491,6 +573,7 @@ impl MemberCallMatcher {
         self.arg_strings.push(ArgStringMatcher {
             index,
             values: values.into_iter().map(Into::into).collect(),
+            predicate: None,
         });
         self
     }
@@ -499,6 +582,16 @@ impl MemberCallMatcher {
         self.arg_strings.push(ArgStringMatcher {
             index,
             values: Vec::new(),
+            predicate: None,
+        });
+        self
+    }
+
+    pub fn arg_value(mut self, index: usize, value: FlowValueMatcher) -> Self {
+        self.arg_strings.push(ArgStringMatcher {
+            index,
+            values: Vec::new(),
+            predicate: Some(value),
         });
         self
     }
@@ -662,6 +755,21 @@ impl ApiMatcher {
             .chain(self.classes.into_iter().map(Matcher::Class))
             .chain(self.constructors.into_iter().map(Matcher::Constructor))
             .chain(self.flows.into_iter().map(Matcher::Flow))
+            .chain(
+                self.returned_member_calls
+                    .into_iter()
+                    .map(Matcher::ReturnedMemberCall),
+            )
+            .chain(
+                self.returned_member_reads
+                    .into_iter()
+                    .map(Matcher::ReturnedMemberRead),
+            )
+            .chain(
+                self.instance_member_calls
+                    .into_iter()
+                    .map(Matcher::InstanceMemberCall),
+            )
             .collect()
     }
 
@@ -675,6 +783,9 @@ impl ApiMatcher {
             Matcher::Class(value) => self.classes.push(value),
             Matcher::Constructor(value) => self.constructors.push(value),
             Matcher::Flow(value) => self.flows.push(value),
+            Matcher::ReturnedMemberCall(value) => self.returned_member_calls.push(value),
+            Matcher::ReturnedMemberRead(value) => self.returned_member_reads.push(value),
+            Matcher::InstanceMemberCall(value) => self.instance_member_calls.push(value),
         }
     }
 
@@ -687,6 +798,9 @@ impl ApiMatcher {
             && self.classes.is_empty()
             && self.constructors.is_empty()
             && self.flows.is_empty()
+            && self.returned_member_calls.is_empty()
+            && self.returned_member_reads.is_empty()
+            && self.instance_member_calls.is_empty()
     }
 
     pub fn normalized(mut self) -> Self {
@@ -698,6 +812,9 @@ impl ApiMatcher {
             }
             for matcher in &mut call.arg_strings {
                 normalize_strings(&mut matcher.values);
+                if let Some(predicate) = &mut matcher.predicate {
+                    normalize_flow_value(predicate);
+                }
             }
         }
         self.calls.retain(|call| {
@@ -755,9 +872,15 @@ impl ApiMatcher {
         normalize_class_matchers(&mut self.classes);
         normalize_constructor_matchers(&mut self.constructors);
         normalize_flows(&mut self.flows);
+        normalize_returned_member_calls(&mut self.returned_member_calls);
+        normalize_returned_member_reads(&mut self.returned_member_reads);
+        normalize_instance_member_calls(&mut self.instance_member_calls);
         for member_call in &mut self.member_calls {
             for matcher in &mut member_call.arg_strings {
                 normalize_strings(&mut matcher.values);
+                if let Some(predicate) = &mut matcher.predicate {
+                    normalize_flow_value(predicate);
+                }
             }
             for matcher in &mut member_call.arg_object_keys {
                 normalize_strings(&mut matcher.keys);
@@ -770,6 +893,47 @@ impl ApiMatcher {
     }
 }
 
+fn normalize_returned_member_calls(values: &mut Vec<ReturnedMemberCallMatcher>) {
+    for matcher in values.iter_mut() {
+        matcher.source =
+            canonical_rooted_chain(&normalize_member_chain(&matcher.source)).to_string();
+        matcher.member = matcher.member.trim().to_string();
+    }
+    values.retain(|matcher| !matcher.source.is_empty() && !matcher.member.is_empty());
+    values.sort_by(|left, right| (&left.source, &left.member).cmp(&(&right.source, &right.member)));
+    values.dedup();
+}
+
+fn normalize_returned_member_reads(values: &mut Vec<ReturnedMemberReadMatcher>) {
+    for matcher in values.iter_mut() {
+        matcher.source =
+            canonical_rooted_chain(&normalize_member_chain(&matcher.source)).to_string();
+        matcher.member = matcher.member.trim().to_string();
+    }
+    values.retain(|matcher| !matcher.source.is_empty() && !matcher.member.is_empty());
+    values.sort_by(|left, right| (&left.source, &left.member).cmp(&(&right.source, &right.member)));
+    values.dedup();
+}
+
+fn normalize_instance_member_calls(values: &mut Vec<InstanceMemberCallMatcher>) {
+    for matcher in values.iter_mut() {
+        matcher.module = matcher.module.trim().to_string();
+        matcher.export = matcher.export.trim().to_string();
+        matcher.member = matcher.member.trim().to_string();
+    }
+    values.retain(|matcher| {
+        !matcher.module.is_empty() && !matcher.export.is_empty() && !matcher.member.is_empty()
+    });
+    values.sort_by(|left, right| {
+        (&left.module, &left.export, &left.member).cmp(&(
+            &right.module,
+            &right.export,
+            &right.member,
+        ))
+    });
+    values.dedup();
+}
+
 fn normalize_flows(values: &mut Vec<FlowMatcher>) {
     for flow in values.iter_mut() {
         flow.symbol = flow.symbol.trim().to_string();
@@ -777,6 +941,9 @@ fn normalize_flows(values: &mut Vec<FlowMatcher>) {
             source.member_call = normalize_member_chain(&source.member_call);
             for matcher in &mut source.arg_strings {
                 normalize_strings(&mut matcher.values);
+                if let Some(predicate) = &mut matcher.predicate {
+                    normalize_flow_value(predicate);
+                }
             }
         }
         flow.sources.retain(|source| !source.member_call.is_empty());

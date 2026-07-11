@@ -11,10 +11,22 @@ pub(crate) fn rule() -> Rule {
         .label("Registers Obsidian lifecycle events")
         .category("lifecycle")
         .severity(Severity::Info)
-        .confidence(Confidence::Medium)
-        .matcher(Matcher::heuristic_member_call("this.registerEvent"))
-        .matcher(Matcher::heuristic_member_call("this.registerDomEvent"))
-        .matcher(Matcher::heuristic_member_call("this.registerInterval"))
+        .confidence(Confidence::High)
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "registerEvent",
+        ))
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "registerDomEvent",
+        ))
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "registerInterval",
+        ))
         .build()
         .unwrap()
 }

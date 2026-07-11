@@ -9,8 +9,12 @@ pub(crate) fn rule() -> Rule {
         .label("Registers ribbon icons")
         .category("ui")
         .severity(Severity::Info)
-        .confidence(Confidence::Medium)
-        .matcher(Matcher::heuristic_member_call("this.addRibbonIcon"))
+        .confidence(Confidence::High)
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "addRibbonIcon",
+        ))
         .build()
         .unwrap()
 }

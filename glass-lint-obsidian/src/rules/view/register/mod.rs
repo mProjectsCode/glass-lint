@@ -10,8 +10,12 @@ pub(crate) fn rule() -> Rule {
         .label("Registers Obsidian views")
         .category("view")
         .severity(Severity::Info)
-        .confidence(Confidence::Medium)
-        .matcher(Matcher::heuristic_member_call("this.registerView"))
+        .confidence(Confidence::High)
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "registerView",
+        ))
         .build()
         .unwrap()
 }

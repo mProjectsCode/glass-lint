@@ -1,5 +1,8 @@
 // @case description receiver, alias, dynamic-property, and near-name exclusions
 // @tool glass-lint rules=obsidian:lifecycle.events
+import { Plugin } from "obsidian";
+class TestPlugin extends Plugin {
+  run() {
 // @expect-no-error glass-lint rule=obsidian:lifecycle.events message_id=detected
 plugin.registerEvent(handler);
 
@@ -15,3 +18,5 @@ this.registerEventual(handler);
 
 // @expect-no-error glass-lint rule=obsidian:lifecycle.events message_id=detected
 this.registerDomEvents(element, handler);
+  }
+}

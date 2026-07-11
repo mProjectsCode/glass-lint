@@ -578,8 +578,29 @@ fn static_arg_matches(
     args.get(matcher.index).is_some_and(|argument| {
         resolver
             .static_string_expr(&argument.expr)
-            .is_some_and(|value| matcher.values.is_empty() || matcher.values.contains(&value))
+            .is_some_and(|value| {
+                matcher.predicate.as_ref().map_or_else(
+                    || matcher.values.is_empty() || matcher.values.contains(&value),
+                    |predicate| matches_static_value(predicate, &value),
+                )
+            })
     })
+}
+
+pub(super) fn matches_static_value(matcher: &FlowValueMatcher, value: &str) -> bool {
+    match matcher {
+        FlowValueMatcher::Any => true,
+        FlowValueMatcher::StaticExact(values) => values.iter().any(|expected| expected == value),
+        FlowValueMatcher::StaticPrefix(prefixes) => {
+            prefixes.iter().any(|prefix| value.starts_with(prefix))
+        }
+        FlowValueMatcher::StaticContainsAny(markers) => {
+            markers.iter().any(|marker| value.contains(marker))
+        }
+        FlowValueMatcher::StaticContainsAll(markers) => {
+            markers.iter().all(|marker| value.contains(marker))
+        }
+    }
 }
 
 fn flow_value_matches(

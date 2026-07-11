@@ -1,5 +1,8 @@
 // @case description registration and module-provenance settings tabs
 // @tool glass-lint rules=obsidian:ui.settings-tab
+import { Plugin } from "obsidian";
+class TestPlugin extends Plugin {
+  run() {
 // @expect-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
 this.addSettingTab(tab);
 
@@ -8,6 +11,8 @@ this["addSettingTab"](secondTab);
 this.addSettingTab = replacement;
 // @expect-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
 this.addSettingTab(thirdTab);
+  }
+}
 
 import { PluginSettingTab as pluginSettingTab } from "obsidian";
 // @expect-error glass-lint rule=obsidian:ui.settings-tab message_id=detected

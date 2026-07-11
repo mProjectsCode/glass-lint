@@ -1,5 +1,8 @@
 // @case description other receivers, aliases, dynamic properties, and lookalikes
 // @tool glass-lint rules=obsidian:storage.plugin-data-read
+import { Plugin } from "obsidian";
+class TestPlugin extends Plugin {
+  run() {
 // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
 plugin.loadData();
 
@@ -10,3 +13,5 @@ load();
 this[dynamicProperty]();
 // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
 this.loadDatas();
+  }
+}

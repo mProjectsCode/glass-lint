@@ -10,8 +10,12 @@ pub(crate) fn rule() -> Rule {
         .label("Registers editor suggestions")
         .category("editor")
         .severity(Severity::Info)
-        .confidence(Confidence::Medium)
-        .matcher(Matcher::heuristic_member_call("this.registerEditorSuggest"))
+        .confidence(Confidence::High)
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "registerEditorSuggest",
+        ))
         .build()
         .unwrap()
 }

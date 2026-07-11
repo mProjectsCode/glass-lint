@@ -1,4 +1,6 @@
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{
+    Confidence, FlowValueMatcher, Matcher, MemberCallMatcher, Rule, Severity,
+};
 
 /// Detects rooted registration through `app.vault.on`, including `this.app`,
 /// direct receiver aliases, and static computed properties. Source-ordered
@@ -10,7 +12,22 @@ pub(crate) fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("app.vault.on"))
+        .matcher(Matcher::member_call(
+            MemberCallMatcher::rooted_chain("app.vault.on").arg_value(
+                0,
+                FlowValueMatcher::StaticExact(vec![
+                    "changed".into(),
+                    "created".into(),
+                    "create".into(),
+                    "deleted".into(),
+                    "delete".into(),
+                    "modified".into(),
+                    "modify".into(),
+                    "renamed".into(),
+                    "rename".into(),
+                ]),
+            ),
+        ))
         .build()
         .unwrap()
 }

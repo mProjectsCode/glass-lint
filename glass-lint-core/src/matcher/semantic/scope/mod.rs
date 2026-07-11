@@ -49,6 +49,7 @@ enum ScopeKind {
 enum BindingProvenance {
     Local,
     ValueAlias { target: String },
+    ReturnedObject { source: String },
     ModuleExport { module: String, export: String },
     ModuleNamespace { module: String },
     StaticString(String),
@@ -175,6 +176,7 @@ impl ScopeGraph {
                 .module_export_for_chain(target, span)
                 .unwrap_or(SymbolCallProvenance::Local),
             Some(BindingProvenance::Local | BindingProvenance::ModuleNamespace { .. })
+            | Some(BindingProvenance::ReturnedObject { .. })
             | Some(
                 BindingProvenance::StaticString(_)
                 | BindingProvenance::StaticNumber(_)
@@ -291,12 +293,13 @@ impl ScopeGraph {
         if self.has_dynamic_lookup_at(ident.span) {
             return None;
         }
-        let BindingProvenance::ValueAlias { target } =
-            self.binding_at(ident.sym.as_ref(), ident.span)?
-        else {
-            return None;
-        };
-        Some(target.strip_suffix(".bind").unwrap_or(target).to_string())
+        match self.binding_at(ident.sym.as_ref(), ident.span)? {
+            BindingProvenance::ValueAlias { target } => {
+                Some(target.strip_suffix(".bind").unwrap_or(target).to_string())
+            }
+            BindingProvenance::ReturnedObject { source } => Some(source.clone()),
+            _ => None,
+        }
     }
 
     fn module_export_for_chain(&self, chain: &str, span: Span) -> Option<SymbolCallProvenance> {
@@ -342,6 +345,17 @@ impl ScopeGraph {
         if self.has_dynamic_lookup_at(member.span) {
             return None;
         }
+        if let Some((module, prefix)) = self.module_member_for_expr(&member.obj) {
+            let property = self.member_prop_name(member)?;
+            return Some(SymbolMemberProvenance::ModuleNamespace {
+                module,
+                member: if prefix.is_empty() {
+                    property
+                } else {
+                    format!("{prefix}.{property}")
+                },
+            });
+        }
         let root = member_root_ident(member)?;
         let member = chain.strip_prefix(root.sym.as_ref())?.strip_prefix('.')?;
         match self.binding_at(root.sym.as_ref(), root.span) {
@@ -353,6 +367,96 @@ impl ScopeGraph {
             }
             _ => None,
         }
+    }
+
+    fn module_member_for_expr(&self, expr: &Expr) -> Option<(String, String)> {
+        match expr {
+            Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
+                BindingProvenance::ModuleExport { module, export } => {
+                    Some((module.clone(), export.clone()))
+                }
+                BindingProvenance::ModuleNamespace { module } => {
+                    Some((module.clone(), String::new()))
+                }
+                _ => None,
+            },
+            Expr::Member(member) => {
+                let (module, prefix) = self.module_member_for_expr(&member.obj)?;
+                let property = self.member_prop_name(member)?;
+                Some((
+                    module,
+                    if prefix.is_empty() {
+                        property
+                    } else {
+                        format!("{prefix}.{property}")
+                    },
+                ))
+            }
+            Expr::Call(call) => {
+                let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
+                    return None;
+                };
+                let Expr::Ident(require) = &**callee else {
+                    return None;
+                };
+                if require.sym != *"require"
+                    || self
+                        .binding_at(require.sym.as_ref(), require.span)
+                        .is_some()
+                {
+                    return None;
+                }
+                let argument = call.args.first()?;
+                let Expr::Lit(swc_ecma_ast::Lit::Str(module)) = &*argument.expr else {
+                    return None;
+                };
+                Some((module.value.to_string_lossy().to_string(), String::new()))
+            }
+            Expr::Paren(paren) => self.module_member_for_expr(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.module_member_for_expr(expr)),
+            _ => None,
+        }
+    }
+
+    /// Returns the proven source call or rooted object that produced `expr`.
+    /// Rooted member objects are retained as bounded provenance so callers can
+    /// follow plugin instances obtained from a keyed collection without
+    /// treating arbitrary `.load()`/`.unload()` spellings as APIs.
+    pub fn returned_object_source(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Call(call) => {
+                let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
+                    return None;
+                };
+                let source = self.rooted_expr_chain(callee)?;
+                source.contains('.').then_some(source)
+            }
+            Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
+                BindingProvenance::ReturnedObject { source } => Some(source.clone()),
+                _ => None,
+            },
+            Expr::Member(member) => {
+                if let Some(source) = self.returned_object_source(&member.obj) {
+                    return Some(source);
+                }
+                self.rooted_member_chain(member)
+            }
+            Expr::Paren(paren) => self.returned_object_source(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.returned_object_source(expr)),
+            _ => None,
+        }
+    }
+
+    pub fn returned_member(&self, member: &MemberExpr) -> Option<(String, String)> {
+        let source = self.returned_object_source(&member.obj)?;
+        let property = self.member_prop_name(member)?;
+        Some((source, property))
     }
 
     fn binding_at(&self, name: &str, span: Span) -> Option<&BindingProvenance> {
@@ -418,6 +522,7 @@ impl ScopeGraph {
         let suffix = syntactic_chain.strip_prefix(root.sym.as_ref())?;
         match self.binding_at(root.sym.as_ref(), root.span) {
             Some(BindingProvenance::ValueAlias { target }) => Some(format!("{target}{suffix}")),
+            Some(BindingProvenance::ReturnedObject { source }) => Some(format!("{source}{suffix}")),
             Some(
                 BindingProvenance::Local
                 | BindingProvenance::ModuleExport { .. }
@@ -539,6 +644,7 @@ impl RootedExprContext for ScopeGraph {
         }
         match self.binding_at(ident.sym.as_ref(), ident.span) {
             Some(BindingProvenance::ValueAlias { target }) => Some(target.clone()),
+            Some(BindingProvenance::ReturnedObject { source }) => Some(source.clone()),
             Some(_) => None,
             None => Some(ident.sym.to_string()),
         }

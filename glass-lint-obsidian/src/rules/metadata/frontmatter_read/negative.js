@@ -20,3 +20,6 @@ function dynamicProperty(property) {
 
 // @expect-no-error glass-lint rule=obsidian:metadata.frontmatter-read message_id=detected
 app.metadataCache.getFileCache.description;
+// @expect-no-error glass-lint rule=obsidian:metadata.frontmatter-read message_id=detected
+const localCache = localMetadata.getFileCache(file);
+localCache.frontmatter;

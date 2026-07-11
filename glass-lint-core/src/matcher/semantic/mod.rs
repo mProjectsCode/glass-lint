@@ -13,6 +13,7 @@ mod ast;
 mod calls;
 mod events;
 mod index;
+mod instance;
 mod object_flow;
 mod resolver;
 mod scope;

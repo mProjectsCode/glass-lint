@@ -16,9 +16,13 @@ shadowed({ workspace: { openLinkText() {} } });
 app.workspace[method](name, source);
 // @expect-no-error glass-lint rule=obsidian:workspace.open message_id=detected
 app.workspace.openFile(file);
-// The rooted matcher does not follow the intermediate getLeaf() call.
-// @expect-no-error glass-lint rule=obsidian:workspace.open message_id=detected
+// A reassigned returned leaf no longer has return provenance.
+// @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
 app.workspace.getLeaf().openFile(file);
+let leaf = app.workspace.getLeaf();
+leaf = localLeaf;
+// @expect-no-error glass-lint rule=obsidian:workspace.open message_id=detected
+leaf.openFile(file);
 
 let workspace = app.workspace;
 // @expect-error glass-lint rule=obsidian:workspace.open message_id=detected

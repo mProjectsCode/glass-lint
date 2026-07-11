@@ -28,6 +28,7 @@ pub(super) struct ResolvedValue {
     /// Namespace provenance for member matchers, retained independently from
     /// `call` because a namespace member can also be read without being called.
     pub(super) module_member: Option<SymbolMemberProvenance>,
+    pub(super) returned_member: Option<(String, String)>,
 }
 
 #[derive(Debug)]
@@ -97,11 +98,13 @@ impl Resolver {
             }
             _ => None,
         };
+        let returned_member = None;
         ResolvedValue {
             id,
             rooted_chain,
             call,
             module_member,
+            returned_member,
         }
     }
 
@@ -125,6 +128,7 @@ impl Resolver {
             }
             None => SymbolCallProvenance::Local,
         };
+        let returned_member = self.scopes.returned_member(member);
         let id = self.intern_call_value(&call, rooted_chain.as_deref());
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values
@@ -136,6 +140,7 @@ impl Resolver {
             rooted_chain,
             call,
             module_member,
+            returned_member,
         }
     }
 
@@ -209,12 +214,20 @@ impl Resolver {
         self.scopes.member_chain(member)
     }
 
+    pub(super) fn class_provenance(&self, expr: &Expr) -> Option<(String, String)> {
+        match self.resolve_expr(expr).call {
+            SymbolCallProvenance::ModuleExport { module, export } => Some((module, export)),
+            _ => None,
+        }
+    }
+
     fn unknown(&self) -> ResolvedValue {
         ResolvedValue {
             id: ValueId::UNKNOWN,
             rooted_chain: None,
             call: SymbolCallProvenance::Local,
             module_member: None,
+            returned_member: None,
         }
     }
 
@@ -225,6 +238,7 @@ impl Resolver {
             rooted_chain: None,
             call: SymbolCallProvenance::Local,
             module_member: None,
+            returned_member: None,
         }
     }
 

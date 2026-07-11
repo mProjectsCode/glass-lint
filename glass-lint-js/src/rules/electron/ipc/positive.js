@@ -17,6 +17,7 @@ electronAlias.ipcRenderer.send("aliased");
 const electronCjs = require("electron");
 // @expect-error glass-lint rule=js:electron.ipc message_id=detected
 electronCjs.ipcRenderer.invoke("commonjs");
+// @expect-error glass-lint rule=js:electron.ipc message_id=detected
 require("electron").ipcRenderer.send("direct");
 const electronInterop = __toESM(require("electron"));
 // @expect-error glass-lint rule=js:electron.ipc message_id=detected

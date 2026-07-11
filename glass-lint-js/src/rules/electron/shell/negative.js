@@ -19,8 +19,8 @@ function shadowed(require) {
 }
 shadowed(() => ({}));
 
-// Known gap: inline CommonJS member chains are not followed.
-// @expect-no-error glass-lint rule=js:electron.shell message_id=detected
+// Inline CommonJS member chains share module provenance.
+// @expect-error glass-lint rule=js:electron.shell message_id=detected
 require("electron").shell.openExternal("inline");
 
 // A same-named helper is unrelated to Electron shell APIs.

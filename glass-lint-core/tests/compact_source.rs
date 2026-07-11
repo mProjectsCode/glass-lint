@@ -5,7 +5,9 @@
 
 use glass_lint_core::{
     Linter, RuleCatalog,
-    rules::{Builder, CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity},
+    rules::{
+        BuildError, Builder, CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity,
+    },
 };
 
 fn rule(id: &str) -> Builder {
@@ -112,6 +114,166 @@ fn this_root_aliases_canonicalize_to_rooted_members() {
             .build()
             .unwrap(),
         1,
+    );
+}
+
+#[test]
+fn returned_objects_follow_direct_calls_aliases_and_reassignment() {
+    let matcher = Matcher::returned_member_call("app.workspace.getLeaf", "openFile");
+    assert_count(
+        r#"
+        app.workspace.getLeaf().openFile(file);
+        const leaf = app.workspace.getLeaf();
+        const alias = leaf;
+        alias.openFile(file);
+        let changed = app.workspace.getLeaf();
+        changed = localLeaf;
+        changed.openFile(file);
+        function local(app) { app.workspace.getLeaf().openFile(file); }
+        localWorkspace.getLeaf().openFile(file);
+        "#,
+        rule("test.returned").matcher(matcher).build().unwrap(),
+        2,
+    );
+}
+
+#[test]
+fn returned_object_reads_are_provenance_aware() {
+    assert_count(
+        r#"
+        const plugin = app.plugins.getPlugin("calendar");
+        plugin.manifest;
+        const local = { manifest: {} };
+        local.manifest;
+        "#,
+        rule("test.returned-read")
+            .matcher(Matcher::returned_member_read(
+                "app.plugins.getPlugin",
+                "manifest",
+            ))
+            .build()
+            .unwrap(),
+        1,
+    );
+}
+
+#[test]
+fn inline_commonjs_members_share_module_provenance() {
+    assert_count(
+        r#"
+        require("electron").shell.openExternal(url);
+        require("electron")["shell"].openPath(path);
+        require(name).shell.openExternal(url);
+        require("electrons").shell.openExternal(url);
+        function f(require) { require("electron").shell.openExternal(url); }
+        "#,
+        rule("test.inline")
+            .matcher(Matcher::module_member_call(
+                "electron",
+                "shell.openExternal",
+            ))
+            .matcher(Matcher::module_member_call("electron", "shell.openPath"))
+            .build()
+            .unwrap(),
+        2,
+    );
+}
+
+#[test]
+fn instance_matchers_require_proven_module_subclasses() {
+    assert_count(
+        r#"
+        import { Base as Renamed } from "framework";
+        class Child extends Renamed {
+            run() { this.registerThing(); const self = this; self.registerThing();
+                (() => this.registerThing())(); function nested() { this.registerThing(); } }
+        }
+        const framework = require("framework");
+        class CommonChild extends framework.Base { run() { this.registerThing(); } }
+        class Lookalike extends Base { run() { this.registerThing(); } }
+        function unrelated() { this.registerThing(); }
+        "#,
+        rule("test.instance")
+            .matcher(Matcher::instance_member_call(
+                "framework",
+                "Base",
+                "registerThing",
+            ))
+            .build()
+            .unwrap(),
+        4,
+    );
+}
+
+#[test]
+fn instance_matchers_respect_alias_scope_and_static_methods() {
+    assert_count(
+        r#"
+        import { Base } from "framework";
+        class Child extends Base {
+            run() {
+                const self = this;
+                self.registerThing();
+                { const self = local; self.registerThing(); }
+                self.registerThing();
+            }
+            static configure() { this.registerThing(); }
+        }
+        "#,
+        rule("test.instance-scope")
+            .matcher(Matcher::instance_member_call(
+                "framework",
+                "Base",
+                "registerThing",
+            ))
+            .build()
+            .unwrap(),
+        2,
+    );
+}
+
+#[test]
+fn new_semantic_matchers_are_normalized_and_validated() {
+    assert_count(
+        r#"const value = app.workspace["getLeaf"](); value.openFile(file);"#,
+        rule("test.normalized-return")
+            .matcher(Matcher::returned_member_call(
+                " app.workspace.getLeaf ",
+                " openFile ",
+            ))
+            .build()
+            .unwrap(),
+        1,
+    );
+
+    let invalid = rule("test.invalid-semantic")
+        .matcher(Matcher::returned_member_call(" ", " "))
+        .matcher(Matcher::returned_member_read(" ", "manifest"))
+        .matcher(Matcher::instance_member_call("framework", " ", "run"))
+        .build();
+    assert_eq!(invalid.unwrap_err(), BuildError::MissingMatcher);
+}
+
+#[test]
+fn ordinary_member_argument_predicates_reuse_static_values() {
+    assert_count(
+        r#"
+        app.vault.on("delete", handler);
+        app.vault.on(`rename`, handler);
+        app.vault.on(eventName, handler);
+        app.vault.on("unrelated", handler);
+        "#,
+        rule("test.event")
+            .matcher(MemberCallMatcher::rooted_chain("app.vault.on").arg_value(
+                0,
+                glass_lint_core::rules::FlowValueMatcher::StaticExact(vec![
+                    "delete".into(),
+                    "rename".into(),
+                ]),
+            ))
+            .build()
+            .unwrap(),
+        2,
     );
 }
 

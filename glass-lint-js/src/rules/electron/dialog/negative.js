@@ -13,8 +13,8 @@ dialog.showOpenDialog({});
 // @expect-no-error glass-lint rule=js:electron.dialog message_id=detected
 require("other-electron").dialog.showSaveDialog({});
 
-// Known gap: inline CommonJS member chains are not followed.
-// @expect-no-error glass-lint rule=js:electron.dialog message_id=detected
+// Inline CommonJS member chains share module provenance.
+// @expect-error glass-lint rule=js:electron.dialog message_id=detected
 require("electron").dialog.showSaveDialog({});
 
 // Reassignment drops module provenance from a namespace alias.

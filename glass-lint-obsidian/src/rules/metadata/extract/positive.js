@@ -2,6 +2,10 @@
 // @tool glass-lint rules=obsidian:metadata.extract
 // @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
 app.metadataCache.getFileCache.tags;
+const cacheResult = app.metadataCache.getFileCache(file);
+const cacheResultAlias = cacheResult;
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+cacheResultAlias.links;
 // @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
 app.metadataCache.getFileCache.links;
 // @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
