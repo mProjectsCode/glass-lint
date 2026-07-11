@@ -1,4 +1,10 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects string and static-template fragments containing the exact
+/// `.obsidian/` or `.obsidian\\` configuration-directory markers. This is a
+/// medium-confidence literal heuristic: it does not establish vault or path
+/// provenance, reconstruct dynamic values or concatenations, or normalize
+/// casing and separators beyond the two configured spellings.
 pub(crate) fn rule() -> Rule {
     Rule::builder("vault.config-directory")
         .label("References .obsidian configuration paths")
@@ -6,7 +12,7 @@ pub(crate) fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .matcher(Matcher::string_literal(".obsidian/"))
-        .matcher(Matcher::string_literal(".obsidian\\\\"))
+        .matcher(Matcher::string_literal(".obsidian\\"))
         .build()
         .unwrap()
 }

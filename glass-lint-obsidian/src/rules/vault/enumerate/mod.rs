@@ -1,4 +1,10 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects rooted calls to the six configured vault enumeration methods:
+/// `getFiles`, `getMarkdownFiles`, `getAllLoadedFiles`, `getAllFolders`,
+/// `getFolderByPath`, and `getRoot`. The matcher follows `this.app`, direct
+/// receiver aliases, static computed properties, source-ordered reassignment,
+/// and lexical shadowing, but does not analyze arguments or other vault APIs.
 pub(crate) fn rule() -> Rule {
     Rule::builder("vault.enumerate")
         .label("Enumerates vault files")

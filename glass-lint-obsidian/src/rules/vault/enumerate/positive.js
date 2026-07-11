@@ -1,19 +1,21 @@
-// @case description positive fixture for obsidian:vault.enumerate
+// @case description all configured enumeration methods and rooted aliases
 // @tool glass-lint rules=obsidian:vault.enumerate
 
 // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
 app.vault.getFiles();
-
 // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
 app.vault.getMarkdownFiles();
-const v1 = app.vault;
+// @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
+app.vault.getAllLoadedFiles();
+// @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
+app.vault.getAllFolders();
+// @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
+app.vault.getFolderByPath(path);
+// @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
+app.vault.getRoot();
 
+const vault = app.vault;
 // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
-v1.getFiles();
-const v2 = {};
-v2.vault = this.app.vault;
-
+vault.getFiles();
 // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
-v2.vault.getFiles();
-// @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
-this.app.vault.getRoot();
+this["app"]["vault"]["getRoot"]();

@@ -1,19 +1,29 @@
-// @case description positive fixture for obsidian:vault.write
+// @case description all configured vault write APIs, rooted aliases, and static properties
 // @tool glass-lint rules=obsidian:vault.write
 
+// Direct calls cover every configured method.
+// @expect-error glass-lint rule=obsidian:vault.write message_id=detected
+app.vault.create(file, text);
+// @expect-error glass-lint rule=obsidian:vault.write message_id=detected
+app.vault.createBinary(file, data);
 // @expect-error glass-lint rule=obsidian:vault.write message_id=detected
 app.vault.modify(file, text);
 // @expect-error glass-lint rule=obsidian:vault.write message_id=detected
-app.vault.append(file, text);
-const w1 = app.vault;
-
+app.vault.modifyBinary(file, data);
 // @expect-error glass-lint rule=obsidian:vault.write message_id=detected
-w1.modify(file, text);
+app.vault.append(file, text);
+// @expect-error glass-lint rule=obsidian:vault.write message_id=detected
+app.vault.appendBinary(file, data);
+// @expect-error glass-lint rule=obsidian:vault.write message_id=detected
+app.vault.process(file, processor);
+// @expect-error glass-lint rule=obsidian:vault.write message_id=detected
+app.vault.createFolder(path);
+
+// `this.app`, receiver aliases, and static computed names retain rooted provenance.
 // @expect-error glass-lint rule=obsidian:vault.write message_id=detected
 this.app.vault.createFolder("new");
+const vault = app.vault;
 // @expect-error glass-lint rule=obsidian:vault.write message_id=detected
-this.app.vault.appendBinary(file, data);
-const { vault: w2 } = this.app;
-
+vault.modify(file, text);
 // @expect-error glass-lint rule=obsidian:vault.write message_id=detected
-w2.modify(file, text);
+app["vault"]["appendBinary"](file, data);

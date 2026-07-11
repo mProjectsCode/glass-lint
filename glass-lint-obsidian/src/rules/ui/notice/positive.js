@@ -1,13 +1,19 @@
-// @case description positive fixture for obsidian:ui.notice
+// @case description global and module-provenance Notice constructors/classes
 // @tool glass-lint rules=obsidian:ui.notice
+// The unbound spelling is a deliberate medium-confidence heuristic.
 // @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
-new Notice('x');
-// second independent example
+new Notice("global");
+
+import { Notice as ImportedNotice } from "obsidian";
+// @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
+new ImportedNotice("named import");
+// @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
+class ChildNotice extends ImportedNotice {}
 
 // @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
-new Notice("second");
-// Migrated: interface/classes-and-settings.js
-import { Notice as notice } from "obsidian";
-
+new noticeNamespace.Notice("namespace");
 // @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
-const showNotice = () => new notice("done");
+new CommonJsNotice("commonjs");
+
+import * as noticeNamespace from "obsidian";
+const { Notice: CommonJsNotice } = require("obsidian");

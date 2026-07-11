@@ -1,11 +1,16 @@
-// @case description positive fixture for obsidian:workspace.leaf-management
+// @case description all configured leaf calls through rooted aliases and static properties
 // @tool glass-lint rules=obsidian:workspace.leaf-management
 
 // @expect-error glass-lint rule=obsidian:workspace.leaf-management message_id=detected
-app.workspace.getLeavesOfType('x');
+app.workspace.getLeavesOfType("view");
+// @expect-error glass-lint rule=obsidian:workspace.leaf-management message_id=detected
+app.workspace.detachLeavesOfType("view");
 // @expect-error glass-lint rule=obsidian:workspace.leaf-management message_id=detected
 app.workspace.revealLeaf(leaf);
-const w = app.workspace;
 
+const workspace = this.app.workspace;
 // @expect-error glass-lint rule=obsidian:workspace.leaf-management message_id=detected
-w1.getLeavesOfType("alias");
+workspace["getLeavesOfType"]("computed");
+const workspaceAlias = app.workspace;
+// @expect-error glass-lint rule=obsidian:workspace.leaf-management message_id=detected
+workspaceAlias.detachLeavesOfType("alias");

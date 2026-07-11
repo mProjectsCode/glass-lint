@@ -180,53 +180,55 @@ Record ownership and completion evidence directly below each group heading using
   - [x] `obsidian:ui.modal` — [`glass-lint-obsidian/src/rules/ui/modal/`](glass-lint-obsidian/src/rules/ui/modal/)
     - Audit: module provenance/heuristic; intent-doc=[x]; coverage=global and aliased constructor, ESM named and namespace imports, CommonJS destructuring, subclass, local/shadowed/reassigned aliases, dynamic module, lookalikes; limitation=only constructor and subclass syntax is matched, and constructor arguments/class bodies are not analyzed; unbound `Modal` remains a syntactic heuristic; verified=targeted fixtures
 
-- [ ] **Audit group 8 — Obsidian UI and vault access (7 rules)**
-  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
-  - [ ] `obsidian:ui.notice` — [`glass-lint-obsidian/src/rules/ui/notice/`](glass-lint-obsidian/src/rules/ui/notice/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:ui.ribbon` — [`glass-lint-obsidian/src/rules/ui/ribbon/`](glass-lint-obsidian/src/rules/ui/ribbon/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:ui.settings-tab` — [`glass-lint-obsidian/src/rules/ui/settings_tab/`](glass-lint-obsidian/src/rules/ui/settings_tab/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:ui.status-bar` — [`glass-lint-obsidian/src/rules/ui/status_bar/`](glass-lint-obsidian/src/rules/ui/status_bar/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:ui.suggest` — [`glass-lint-obsidian/src/rules/ui/suggest/`](glass-lint-obsidian/src/rules/ui/suggest/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:vault.access` — [`glass-lint-obsidian/src/rules/vault/access/`](glass-lint-obsidian/src/rules/vault/access/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:vault.adapter` — [`glass-lint-obsidian/src/rules/vault/adapter/`](glass-lint-obsidian/src/rules/vault/adapter/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+- [x] **Audit group 8 — Obsidian UI and vault access (7 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-11; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
+  - Exception log: `make test-rules` passed all 64 JavaScript cases and 85 of 88 Obsidian cases. Its three unrelated pre-existing failures are `vault/resource_url/positive` (expected 1, found 0; four findings), `workspace/leaf_management/positive` (expected 1, found 0; two findings), and `workspace/open/positive` (expected 1, found 0; two findings). All seven audited group-8 directories passed.
+  - [x] `obsidian:ui.notice` — [`glass-lint-obsidian/src/rules/ui/notice/`](glass-lint-obsidian/src/rules/ui/notice/)
+    - Audit: module provenance/heuristic; intent-doc=[x]; coverage=global and aliased constructors, ESM named/namespace/CommonJS imports, subclass, shadowing, reassignment, dynamic module, lookalike; limitation=unbound `Notice` remains a heuristic and constructor arguments/class bodies are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:ui.ribbon` — [`glass-lint-obsidian/src/rules/ui/ribbon/`](glass-lint-obsidian/src/rules/ui/ribbon/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, same-shaped receiver, reassignment, other receiver, alias, dynamic property, lookalike; limitation=does not prove an Obsidian receiver or follow aliases/reassignment, and arguments are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:ui.settings-tab` — [`glass-lint-obsidian/src/rules/ui/settings_tab/`](glass-lint-obsidian/src/rules/ui/settings_tab/)
+    - Audit: module provenance/heuristic; intent-doc=[x]; coverage=registration direct/static-computed/same-shaped/reassigned calls, ESM named/namespace/CommonJS constructors, subclass, shadowing, reassignment, dynamic property, lookalike; limitation=registration is syntactic and constructor arguments/class bodies are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:ui.status-bar` — [`glass-lint-obsidian/src/rules/ui/status_bar/`](glass-lint-obsidian/src/rules/ui/status_bar/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, same-shaped receiver, reassignment, other receiver, alias, dynamic property, lookalike; limitation=does not prove an Obsidian receiver or follow aliases/reassignment, and arguments are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:ui.suggest` — [`glass-lint-obsidian/src/rules/ui/suggest/`](glass-lint-obsidian/src/rules/ui/suggest/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, same-shaped receiver, reassignment, other receiver, alias, dynamic property, lookalike; limitation=does not prove an Obsidian receiver or follow aliases/reassignment, and arguments are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:vault.access` — [`glass-lint-obsidian/src/rules/vault/access/`](glass-lint-obsidian/src/rules/vault/access/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct read, `this.app` and receiver aliases, static computed property, shadowing, declared-alias reassignment, dynamic property, local/unlisted lookalikes; limitation=does not follow a bare vault alias or analyze values, methods, arguments, or undeclared-global reassignment; verified=targeted fixtures
+  - [x] `obsidian:vault.adapter` — [`glass-lint-obsidian/src/rules/vault/adapter/`](glass-lint-obsidian/src/rules/vault/adapter/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct read/call, `this.app` and receiver aliases, static computed properties, shadowing, declared-alias reassignment boundary, dynamic property, local/lookalike receiver; limitation=does not follow a bare adapter alias or analyze later method names, values, or arguments; verified=targeted fixtures
 
-- [ ] **Audit group 9 — Obsidian vault operations (7 rules)**
-  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
-  - [ ] `obsidian:vault.config-directory` — [`glass-lint-obsidian/src/rules/vault/config_directory/`](glass-lint-obsidian/src/rules/vault/config_directory/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:vault.delete` — [`glass-lint-obsidian/src/rules/vault/delete/`](glass-lint-obsidian/src/rules/vault/delete/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:vault.enumerate` — [`glass-lint-obsidian/src/rules/vault/enumerate/`](glass-lint-obsidian/src/rules/vault/enumerate/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:vault.events` — [`glass-lint-obsidian/src/rules/vault/events/`](glass-lint-obsidian/src/rules/vault/events/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:vault.move-copy` — [`glass-lint-obsidian/src/rules/vault/move_copy/`](glass-lint-obsidian/src/rules/vault/move_copy/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:vault.read` — [`glass-lint-obsidian/src/rules/vault/read/`](glass-lint-obsidian/src/rules/vault/read/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:vault.resource-url` — [`glass-lint-obsidian/src/rules/vault/resource_url/`](glass-lint-obsidian/src/rules/vault/resource_url/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+- [x] **Audit group 9 — Obsidian vault operations (7 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-11; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
+  - Exception log: `make test-rules` passed all 64 JavaScript cases and 86 of 88 Obsidian cases. Its two unrelated pre-existing failures are `workspace/leaf_management/positive` (expected 1, found 0; two findings) and `workspace/open/positive` (expected 1, found 0; two findings). All seven audited group-9 directories passed.
+  - [x] `obsidian:vault.config-directory` — [`glass-lint-obsidian/src/rules/vault/config_directory/`](glass-lint-obsidian/src/rules/vault/config_directory/)
+    - Audit: heuristic; intent-doc=[x]; coverage=forward/backslash marker substrings, static templates, case boundary, split/dynamic values; limitation=raw literal matching has no vault/path provenance and does not reconstruct dynamic or concatenated values; verified=targeted fixtures
+  - [x] `obsidian:vault.delete` — [`glass-lint-obsidian/src/rules/vault/delete/`](glass-lint-obsidian/src/rules/vault/delete/)
+    - Audit: rooted; intent-doc=[x]; coverage=all three configured calls, this.app, aliases, static computed properties, shadowing, reassignment, dynamic/unlisted lookalikes; limitation=arguments, returned objects, and unlisted methods are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:vault.enumerate` — [`glass-lint-obsidian/src/rules/vault/enumerate/`](glass-lint-obsidian/src/rules/vault/enumerate/)
+    - Audit: rooted; intent-doc=[x]; coverage=all six configured calls, this.app, aliases, static computed properties, shadowing, reassignment, dynamic/unlisted lookalikes; limitation=arguments and other vault APIs are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:vault.events` — [`glass-lint-obsidian/src/rules/vault/events/`](glass-lint-obsidian/src/rules/vault/events/)
+    - Audit: rooted; intent-doc=[x]; coverage=on calls, this.app, aliases, static computed property, shadowing, reassignment, dynamic and other event methods; limitation=event names, handlers, arguments, and methods other than on are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:vault.move-copy` — [`glass-lint-obsidian/src/rules/vault/move_copy/`](glass-lint-obsidian/src/rules/vault/move_copy/)
+    - Audit: rooted; intent-doc=[x]; coverage=all three configured calls, this.app, aliases, static computed properties, shadowing, reassignment, dynamic/unlisted lookalikes; limitation=arguments, returned objects, and unlisted methods are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:vault.read` — [`glass-lint-obsidian/src/rules/vault/read/`](glass-lint-obsidian/src/rules/vault/read/)
+    - Audit: rooted; intent-doc=[x]; coverage=all three configured calls, aliases, this.app, static computed properties, bounded rooted argument flow, shadowing, reassignment, dynamic/unlisted lookalikes; limitation=arguments and other read-like methods are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:vault.resource-url` — [`glass-lint-obsidian/src/rules/vault/resource_url/`](glass-lint-obsidian/src/rules/vault/resource_url/)
+    - Audit: rooted/heuristic; intent-doc=[x]; coverage=vault/adapter calls, this.app, aliases, static computed properties, literal/template URL markers, shadowing, reassignment, dynamic/unlisted lookalikes; limitation=rooted calls do not analyze arguments and URL detection is raw literal matching without dynamic reconstruction or scheme semantics; verified=targeted fixtures
 
-- [ ] **Audit group 10 — Obsidian vault, views, and workspace (7 rules)**
-  - Group audit: owner=unclaimed; claimed=—; targeted-fixtures=[ ]; workspace-tests=[ ]; clippy=[ ]; full-suite=[ ]; exception-log=none
-  - [ ] `obsidian:vault.write` — [`glass-lint-obsidian/src/rules/vault/write/`](glass-lint-obsidian/src/rules/vault/write/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:view.register` — [`glass-lint-obsidian/src/rules/view/register/`](glass-lint-obsidian/src/rules/view/register/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:workspace.active-editor` — [`glass-lint-obsidian/src/rules/workspace/active_editor/`](glass-lint-obsidian/src/rules/workspace/active_editor/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:workspace.active-file` — [`glass-lint-obsidian/src/rules/workspace/active_file/`](glass-lint-obsidian/src/rules/workspace/active_file/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:workspace.layout` — [`glass-lint-obsidian/src/rules/workspace/layout/`](glass-lint-obsidian/src/rules/workspace/layout/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:workspace.leaf-management` — [`glass-lint-obsidian/src/rules/workspace/leaf_management/`](glass-lint-obsidian/src/rules/workspace/leaf_management/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
-  - [ ] `obsidian:workspace.open` — [`glass-lint-obsidian/src/rules/workspace/open/`](glass-lint-obsidian/src/rules/workspace/open/)
-    - Audit: unclassified; intent-doc=[ ]; coverage=[ ]; limitation=[ ]; verified=[ ]
+- [x] **Audit group 10 — Obsidian vault, views, and workspace (7 rules)**
+  - Group audit: owner=Codex; claimed=2026-07-11; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=none
+  - [x] `obsidian:vault.write` — [`glass-lint-obsidian/src/rules/vault/write/`](glass-lint-obsidian/src/rules/vault/write/)
+    - Audit: rooted; intent-doc=[x]; coverage=all eight configured calls, `this.app`, aliases, static computed properties, shadowing, dynamic/unlisted methods, reassignment; limitation=call arguments and later API use are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:view.register` — [`glass-lint-obsidian/src/rules/view/register/`](glass-lint-obsidian/src/rules/view/register/)
+    - Audit: heuristic; intent-doc=[x]; coverage=direct `this` call, static computed name, same-shaped receiver gap, reassignment, other receiver, alias, dynamic property, near-name exclusion; limitation=does not prove an Obsidian receiver or follow aliases/reassignment; verified=targeted fixtures
+  - [x] `obsidian:workspace.active-editor` — [`glass-lint-obsidian/src/rules/workspace/active_editor/`](glass-lint-obsidian/src/rules/workspace/active_editor/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct read, `this.app`, aliases, static computed property, shadowing, dynamic/unlisted properties, reassignment; limitation=the read value is not analyzed; verified=targeted fixtures
+  - [x] `obsidian:workspace.active-file` — [`glass-lint-obsidian/src/rules/workspace/active_file/`](glass-lint-obsidian/src/rules/workspace/active_file/)
+    - Audit: rooted; intent-doc=[x]; coverage=direct call, `this.app`, aliases, static computed property, shadowing, dynamic/unlisted methods, reassignment; limitation=call arguments and returned file values are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:workspace.layout` — [`glass-lint-obsidian/src/rules/workspace/layout/`](glass-lint-obsidian/src/rules/workspace/layout/)
+    - Audit: rooted; intent-doc=[x]; coverage=all three configured calls, `this.app`, aliases, static computed property, shadowing, dynamic/unlisted methods, reassignment; limitation=layout arguments and values are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:workspace.leaf-management` — [`glass-lint-obsidian/src/rules/workspace/leaf_management/`](glass-lint-obsidian/src/rules/workspace/leaf_management/)
+    - Audit: rooted; intent-doc=[x]; coverage=all three configured calls, `this.app`, aliases, static computed property, shadowing, dynamic/unlisted methods, reassignment; limitation=call arguments, returned leaves, and intermediate API flow are not analyzed; verified=targeted fixtures
+  - [x] `obsidian:workspace.open` — [`glass-lint-obsidian/src/rules/workspace/open/`](glass-lint-obsidian/src/rules/workspace/open/)
+    - Audit: rooted; intent-doc=[x]; coverage=both configured chains, `this.app`, aliases, static computed property, shadowing, dynamic/unlisted methods, reassignment, intermediate-call gap; limitation=`getLeaf().openFile()` is not followed because rooted provenance does not cross intermediate calls, and arguments/returned objects are not analyzed; verified=targeted fixtures

@@ -1,15 +1,16 @@
-// @case description positive fixture for obsidian:workspace.layout
+// @case description all configured layout calls through rooted aliases and static properties
 // @tool glass-lint rules=obsidian:workspace.layout
 
 // @expect-error glass-lint rule=obsidian:workspace.layout message_id=detected
 app.workspace.getLayout();
-const w1 = this.app.workspace;
+// @expect-error glass-lint rule=obsidian:workspace.layout message_id=detected
+app.workspace.changeLayout(layout);
+// @expect-error glass-lint rule=obsidian:workspace.layout message_id=detected
+app.workspace.requestSaveLayout();
 
+const workspace = this.app.workspace;
 // @expect-error glass-lint rule=obsidian:workspace.layout message_id=detected
-w1.requestSaveLayout();
-const w2 = app.workspace;
-
+workspace["changeLayout"](otherLayout);
+const workspaceAlias = app.workspace;
 // @expect-error glass-lint rule=obsidian:workspace.layout message_id=detected
-w2.changeLayout({});
-// @expect-error glass-lint rule=obsidian:workspace.layout message_id=detected
-app.workspace.getLayout();
+workspaceAlias.requestSaveLayout();

@@ -1,8 +1,16 @@
-// @case description positive fixture for obsidian:ui.status-bar
+// @case description direct, computed, same-shaped, and reassigned calls
 // @tool glass-lint rules=obsidian:ui.status-bar
 // @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
 this.addStatusBarItem();
-// second independent example
 
+// @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+this["addStatusBarItem"]();
+
+function unrelatedReceiver() {
+  // @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+  this.addStatusBarItem();
+}
+
+this.addStatusBarItem = replacement;
 // @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
 this.addStatusBarItem();

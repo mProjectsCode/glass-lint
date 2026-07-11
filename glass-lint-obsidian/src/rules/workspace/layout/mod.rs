@@ -1,4 +1,10 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects rooted calls to `getLayout`, `changeLayout`, and
+/// `requestSaveLayout` on `app.workspace`. Provenance follows `this.app`,
+/// workspace aliases, static computed properties, source-ordered alias
+/// reassignment, and lexical shadowing. Dynamic or unlisted members, local
+/// lookalikes, and call arguments are not analyzed.
 pub(crate) fn rule() -> Rule {
     Rule::builder("workspace.layout")
         .label("Reads or writes workspace layout")

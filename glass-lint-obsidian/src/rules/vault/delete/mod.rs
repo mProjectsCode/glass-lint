@@ -1,4 +1,10 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects rooted calls to the vault `delete`/`trash` APIs and the file
+/// manager's `trashFile` API. Rooted provenance follows `this.app`, direct
+/// receiver aliases, static computed properties, source-ordered reassignment,
+/// and lexical shadowing. Arguments, returned objects, and unlisted methods
+/// are intentionally not analyzed.
 pub(crate) fn rule() -> Rule {
     Rule::builder("vault.delete")
         .label("Deletes or trashes vault files")

@@ -1,4 +1,10 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects reads of rooted `app.vault.adapter`, including `this.app`, direct
+/// receiver aliases, and static computed properties. Source-ordered root
+/// reassignment and lexical shadowing are respected, while a bare adapter
+/// alias is not followed after initialization; later method names and
+/// arguments are intentionally not analyzed.
 pub(crate) fn rule() -> Rule {
     Rule::builder("vault.adapter")
         .label("Uses adapter-level vault filesystem APIs")

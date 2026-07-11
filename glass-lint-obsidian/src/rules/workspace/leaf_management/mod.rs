@@ -1,4 +1,10 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects rooted calls to `getLeavesOfType`, `detachLeavesOfType`, and
+/// `revealLeaf` on `app.workspace`. Provenance follows `this.app`, workspace
+/// aliases, static computed properties, source-ordered alias reassignment,
+/// and lexical shadowing. Dynamic or unlisted members, local lookalikes, and
+/// call arguments are not analyzed.
 pub(crate) fn rule() -> Rule {
     Rule::builder("workspace.leaf-management")
         .label("Manages workspace leaves")

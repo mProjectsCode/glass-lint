@@ -1,4 +1,11 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects rooted calls to the eight configured vault write APIs: `create`,
+/// `createBinary`, `modify`, `modifyBinary`, `append`, `appendBinary`,
+/// `process`, and `createFolder`. Provenance follows `this.app`, receiver
+/// aliases, static computed properties, source-ordered alias reassignment,
+/// and lexical shadowing. Local lookalikes, dynamic or unlisted members, and
+/// call arguments are not analyzed.
 pub(crate) fn rule() -> Rule {
     Rule::builder("vault.write")
         .label("Writes vault files")

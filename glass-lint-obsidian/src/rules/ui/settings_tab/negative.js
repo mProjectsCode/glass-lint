@@ -1,13 +1,26 @@
-// @case description negative fixture for obsidian:ui.settings-tab
+// @case description negative registration and constructor lookalikes
 // @tool glass-lint rules=obsidian:ui.settings-tab
 // @expect-no-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
-function localLookalike() { return null; }
-localLookalike();
+plugin.addSettingTab(tab);
+
+const addSettingTab = this.addSettingTab;
+// @expect-no-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
+addSettingTab(tab);
+
+// @expect-no-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
+this[dynamicProperty](tab);
 
 // @expect-no-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
 this.addSettingsTab(tab);
-// Migrated: interface/local-classes-ignored.js and unused-imports-ignored.js
-import { Setting as unusedSetting } from "obsidian";
-class localSetting {}
-new localSetting();
-unusedSetting;
+
+function shadowed(PluginSettingTab) {
+  // @expect-no-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
+  new PluginSettingTab();
+}
+
+class LocalSettingTab {}
+import { PluginSettingTab as ImportedSettingTab } from "obsidian";
+let reassigned = ImportedSettingTab;
+reassigned = LocalSettingTab;
+// @expect-no-error glass-lint rule=obsidian:ui.settings-tab message_id=detected
+new reassigned();

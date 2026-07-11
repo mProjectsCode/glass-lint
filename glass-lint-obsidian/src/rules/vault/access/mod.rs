@@ -1,4 +1,10 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects reads of the rooted `app.vault` object, including `this.app` and
+/// direct aliases of the root receiver plus static computed properties. The
+/// matcher tracks source-ordered root reassignment and lexical shadowing, but
+/// does not follow a bare alias after reading the value; vault methods and
+/// argument/value semantics are not analyzed.
 pub(crate) fn rule() -> Rule {
     Rule::builder("vault.access")
         .label("Accesses Obsidian vault APIs")
