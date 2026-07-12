@@ -11,125 +11,64 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use swc_common::{Span, Spanned};
+use swc_common::Span;
 use swc_ecma_ast::{
-    AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CondExpr, DoWhileStmt, Expr,
-    ExprOrSpread, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, IfStmt, MemberExpr,
-    OptChainBase, OptChainExpr, Pat, Program, SimpleAssignTarget, SwitchStmt, TryStmt,
-    VarDeclarator, WhileStmt,
+    AssignExpr, AssignOp, AssignTarget, CallExpr, Callee, CondExpr, DoWhileStmt, Expr,
+    ExprOrSpread, ForInStmt, ForOfStmt, ForStmt, IfStmt, MemberExpr, ObjectPatProp, OptChainBase,
+    OptChainExpr, Pat, Program, SimpleAssignTarget, SwitchStmt, TryStmt, UnaryExpr, UnaryOp,
+    UpdateExpr, VarDeclarator, WhileStmt,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
 use super::super::result::{ApiEvidence, ApiMatchKind};
-use super::super::rule::{
-    ArgStringMatcher, FlowMatcher, FlowRequirement, FlowSinkArgs, FlowValueMatcher,
-};
-use super::ast::{binding_ident_name, member_chain, member_prop_name};
+use super::super::rule::{FlowMatcher, FlowRequirement, FlowSinkArgs};
+use super::ast::member_prop_name;
+use super::call::ResolvedCall;
+use super::events::EventLog;
+use super::flow_calls::{effective_flow_call, effective_opt_flow_call, flow_value_matches};
+use super::flow_index::{FlowId, FlowIndex, FlowLimits};
+use super::flow_state::{FlowState, state_is_ready};
 use super::resolver::Resolver;
-use super::value::ObjectId;
-
-const MAX_FLOW_OBJECTS: u32 = 65_536;
-const MAX_FLOW_STATES: usize = 262_144;
-const MAX_FLOW_EMISSIONS: usize = 65_536;
-
-#[derive(Debug, Clone, Copy)]
-pub(super) struct FlowLimits {
-    pub(super) max_objects: u32,
-    pub(super) max_states: usize,
-    pub(super) max_emissions: usize,
-}
-
-impl Default for FlowLimits {
-    fn default() -> Self {
-        Self {
-            max_objects: MAX_FLOW_OBJECTS,
-            max_states: MAX_FLOW_STATES,
-            max_emissions: MAX_FLOW_EMISSIONS,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct FlowId {
-    rule_index: usize,
-    flow_index: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-struct BindingKey {
-    function_id: usize,
-    path: String,
-}
-
-#[derive(Debug, Default)]
-struct FlowIndex {
-    flows: BTreeMap<FlowId, FlowMatcher>,
-    sources: BTreeMap<String, Vec<FlowId>>,
-    sinks: BTreeMap<String, Vec<FlowId>>,
-}
-
-impl FlowIndex {
-    fn new(rules: &[(usize, usize, FlowMatcher)]) -> Self {
-        let mut index = Self::default();
-        for (rule_index, flow_index, flow) in rules {
-            let id = FlowId {
-                rule_index: *rule_index,
-                flow_index: *flow_index,
-            };
-            index.flows.insert(id, flow.clone());
-            for source in &flow.sources {
-                index
-                    .sources
-                    .entry(source.member_call.clone())
-                    .or_default()
-                    .push(id);
-            }
-            for sink in &flow.sinks {
-                for member_call in &sink.member_calls {
-                    index.sinks.entry(member_call.clone()).or_default().push(id);
-                }
-            }
-        }
-        for ids in index.sources.values_mut().chain(index.sinks.values_mut()) {
-            ids.sort_unstable();
-            ids.dedup();
-        }
-        index
-    }
-
-    fn get(&self, id: FlowId) -> Option<&FlowMatcher> {
-        self.flows.get(&id)
-    }
-}
+use super::value::{BindingKey, ObjectId};
 
 pub fn collect(
     program: &Program,
     resolver: &Resolver,
-    rules: &[(usize, usize, FlowMatcher)],
+    events: &EventLog,
+    rules: &[(usize, usize, &FlowMatcher)],
     rule_count: usize,
 ) -> Vec<Vec<ApiEvidence>> {
-    collect_with_limits(program, resolver, rules, rule_count, FlowLimits::default())
+    collect_with_limits(
+        program,
+        resolver,
+        events,
+        rules,
+        rule_count,
+        FlowLimits::default(),
+    )
 }
 
 pub(super) fn collect_with_limits(
     program: &Program,
     resolver: &Resolver,
-    rules: &[(usize, usize, FlowMatcher)],
+    events: &EventLog,
+    rules: &[(usize, usize, &FlowMatcher)],
     rule_count: usize,
     limits: FlowLimits,
 ) -> Vec<Vec<ApiEvidence>> {
     let flow_index = FlowIndex::new(rules);
-    let helpers = HelperCollector::collect(program, resolver, &flow_index);
+    let helpers = super::summary::FunctionSummaries {
+        sinks: super::summary::collect(program, resolver, &flow_index),
+    };
     let mut visitor = ObjectFlowCollector {
         resolver,
+        events,
         flow_index,
         helpers,
         evidence: vec![Vec::new(); rule_count],
         aliases: BTreeMap::new(),
         states: BTreeMap::new(),
         emitted: BTreeSet::new(),
-        function_stack: vec![0],
-        next_function_id: 1,
         next_object_id: 0,
         limits,
     };
@@ -137,84 +76,36 @@ pub(super) fn collect_with_limits(
     visitor.evidence
 }
 
-#[derive(Debug, Clone)]
-struct FlowState {
-    flow: FlowId,
-    source_span: Span,
-    object_id: ObjectId,
-    requirements: BTreeSet<usize>,
-    emitted: bool,
-}
-
-#[derive(Debug, Clone)]
-struct HelperSink {
-    flow: FlowId,
-    param_index: usize,
-    parameter_count: usize,
-}
-
-struct ObjectFlowCollector<'a> {
-    resolver: &'a Resolver,
-    flow_index: FlowIndex,
-    helpers: BTreeMap<(usize, String), Vec<HelperSink>>,
+#[derive(Debug)]
+struct ObjectFlowCollector<'resolver, 'rules> {
+    resolver: &'resolver Resolver,
+    events: &'resolver EventLog,
+    flow_index: FlowIndex<'rules>,
+    helpers: super::summary::FunctionSummaries,
     evidence: Vec<Vec<ApiEvidence>>,
     aliases: BTreeMap<BindingKey, ObjectId>,
     states: BTreeMap<(ObjectId, FlowId), FlowState>,
     emitted: BTreeSet<(usize, usize, ObjectId, u32, u32)>,
-    function_stack: Vec<usize>,
-    next_function_id: usize,
     next_object_id: u32,
     limits: FlowLimits,
 }
 
-impl ObjectFlowCollector<'_> {
-    fn current_function(&self) -> usize {
-        self.function_stack.last().copied().unwrap_or(0)
-    }
-
-    fn scoped_key(&self, chain: &str) -> BindingKey {
-        BindingKey {
-            function_id: self.current_function(),
-            path: chain.to_string(),
-        }
-    }
-
+impl ObjectFlowCollector<'_, '_> {
     fn expr_key(&self, expr: &Expr) -> Option<BindingKey> {
         self.resolver
-            .rooted_expr_chain(expr)
-            .map(|chain| self.scoped_key(&chain))
+            .binding_key_for_expr(expr)
+            .or_else(|| self.resolver.binding_key_or_global(expr))
     }
 
     fn member_object_key(&self, member: &MemberExpr) -> Option<BindingKey> {
         self.expr_key(&member.obj)
     }
 
-    fn source_invocation<'a>(
-        &self,
-        expression: &'a Expr,
-    ) -> Option<(String, &'a [ExprOrSpread], Span)> {
+    fn source_invocation<'a>(&self, expression: &'a Expr) -> Option<(String, ResolvedCall<'a>)> {
         match expression {
-            Expr::Call(call) => {
-                let span = if call.span.is_dummy() {
-                    expression.span()
-                } else {
-                    call.span
-                };
-                Some((call_member_chain(call, self.resolver)?, &call.args, span))
-            }
+            Expr::Call(call) => effective_flow_call(call, self.resolver),
             Expr::OptChain(chain) => match &*chain.base {
-                OptChainBase::Call(call) => {
-                    let span = if call.span.is_dummy() {
-                        expression.span()
-                    } else {
-                        call.span
-                    };
-                    Some((
-                        member_callee_chain(&call.callee, self.resolver)?,
-                        &call.args,
-                        span,
-                    ))
-                }
+                OptChainBase::Call(call) => effective_opt_flow_call(call, self.resolver),
                 OptChainBase::Member(_) => None,
             },
             Expr::Paren(paren) => self.source_invocation(&paren.expr),
@@ -233,8 +124,7 @@ impl ObjectFlowCollector<'_> {
     fn source_match(
         &mut self,
         callee: &str,
-        args: &[ExprOrSpread],
-        span: Span,
+        call: &ResolvedCall<'_>,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
         let matching = self
             .flow_index
@@ -247,10 +137,13 @@ impl ObjectFlowCollector<'_> {
                 self.flow_index.get(*flow_id).is_some_and(|flow| {
                     flow.sources.iter().any(|source| {
                         source.member_call == callee
-                            && source
-                                .arg_strings
-                                .iter()
-                                .all(|matcher| static_arg_matches(matcher, args, self.resolver))
+                            && source.arg_strings.iter().all(|matcher| {
+                                super::flow_calls::static_arg_matches(
+                                    matcher,
+                                    &call.args,
+                                    self.resolver,
+                                )
+                            })
                     })
                 })
             })
@@ -263,7 +156,7 @@ impl ObjectFlowCollector<'_> {
             .into_iter()
             .map(|flow| FlowState {
                 flow,
-                source_span: span,
+                source_span: call.span,
                 object_id,
                 requirements: BTreeSet::new(),
                 emitted: false,
@@ -276,8 +169,8 @@ impl ObjectFlowCollector<'_> {
         let Some(key) = self.expr_key(target) else {
             return;
         };
-        if let Some((callee, args, span)) = self.source_invocation(value)
-            && let Some((object_id, states)) = self.source_match(&callee, args, span)
+        if let Some((callee, call)) = self.source_invocation(value)
+            && let Some((object_id, states)) = self.source_match(&callee, &call)
         {
             self.bind_states(key, object_id, states);
             return;
@@ -285,8 +178,7 @@ impl ObjectFlowCollector<'_> {
         // Only copy a state through a direct identifier alias. Following
         // arbitrary expressions here would require control-flow and mutation
         // reasoning that this intentionally small analysis does not provide.
-        if matches!(value, Expr::Ident(_))
-            && let Some(source_key) = self.expr_key(value)
+        if let Some(source_key) = self.expr_key(value)
             && let Some(object_id) = self.aliases.get(&source_key).copied()
         {
             self.aliases.insert(key, object_id);
@@ -305,9 +197,23 @@ impl ObjectFlowCollector<'_> {
         }
     }
 
+    fn clear_target(&mut self, target: &Expr) {
+        if let Some(key) = self.expr_key(target) {
+            let object_id = match target {
+                Expr::Member(member) => self
+                    .member_object_key(member)
+                    .and_then(|object_key| self.object_for_key(&object_key)),
+                _ => None,
+            };
+            self.aliases.remove(&key);
+            if let Some(object_id) = object_id {
+                self.states.retain(|(object, _), _| *object != object_id);
+            }
+        }
+    }
+
     fn allocate_object_id(&mut self) -> Option<ObjectId> {
-        if self.next_object_id >= self.limits.max_objects || self.next_object_id >= MAX_FLOW_OBJECTS
-        {
+        if self.next_object_id >= self.limits.max_objects {
             return None;
         }
         let object = ObjectId(self.next_object_id);
@@ -395,19 +301,19 @@ impl ObjectFlowCollector<'_> {
     }
 
     fn record_member_sink(&mut self, member: &MemberExpr, call: &CallExpr) {
-        let Some(callee) = call_member_chain(call, self.resolver) else {
+        let Some((callee, effective_call)) = effective_flow_call(call, self.resolver) else {
             return;
         };
-        for (argument_index, argument) in call.args.iter().enumerate() {
+        for (argument_index, argument) in effective_call.args.iter().enumerate() {
             let Some(key) = self.expr_key(&argument.expr) else {
                 continue;
             };
             self.emit_sink_matches(&key, &callee, argument_index);
         }
-        if let Some(raw_callee) = member_chain(member)
+        if let Some(raw_callee) = super::ast::member_chain(member)
             && raw_callee != callee
         {
-            for (argument_index, argument) in call.args.iter().enumerate() {
+            for (argument_index, argument) in effective_call.args.iter().enumerate() {
                 let Some(key) = self.expr_key(&argument.expr) else {
                     continue;
                 };
@@ -423,7 +329,11 @@ impl ObjectFlowCollector<'_> {
             .into_iter()
             .find_map(|scope| {
                 self.helpers
-                    .get(&(scope, callee.sym.to_string()))
+                    .sinks
+                    .get(&(
+                        self.resolver.function_id_for_scope(scope),
+                        callee.sym.to_string(),
+                    ))
                     .cloned()
                     .map(|sinks| {
                         (
@@ -551,31 +461,9 @@ impl ObjectFlowCollector<'_> {
             spans: vec![span],
         });
     }
-
-    fn enter_function(&mut self) {
-        let id = self.next_function_id;
-        let Some(next) = id.checked_add(1) else {
-            return;
-        };
-        self.next_function_id = next;
-        self.function_stack.push(id);
-    }
-
-    fn exit_function(&mut self) {
-        debug_assert!(self.function_stack.len() > 1);
-        let _ = self.function_stack.pop();
-    }
 }
 
-fn state_is_ready(state: &FlowState, flow: &FlowMatcher) -> bool {
-    if flow.all_requirements_required {
-        state.requirements.len() == flow.requirements.len()
-    } else {
-        !state.requirements.is_empty()
-    }
-}
-
-impl Visit for ObjectFlowCollector<'_> {
+impl Visit for ObjectFlowCollector<'_, '_> {
     fn visit_if_stmt(&mut self, statement: &IfStmt) {
         statement.test.visit_with(self);
         let baseline = self.states.clone();
@@ -672,13 +560,38 @@ impl Visit for ObjectFlowCollector<'_> {
     }
 
     fn visit_var_declarator(&mut self, declarator: &VarDeclarator) {
+        if self.events.order_for(declarator.span).is_none() {
+            return;
+        }
         if let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref()) {
             self.assign_source_or_clear(&Expr::Ident(ident.id.clone()), init);
+        } else {
+            let mut targets = Vec::new();
+            collect_pattern_targets(&declarator.name, &mut targets);
+            for target in targets {
+                self.clear_target(&target);
+            }
         }
         declarator.visit_children_with(self);
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
+        if self.events.order_for(assignment.span).is_none() {
+            return;
+        }
+        if assignment.op != AssignOp::Assign {
+            match &assignment.left {
+                AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
+                    self.clear_target(&Expr::Ident(ident.id.clone()));
+                }
+                AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
+                    self.clear_target(&Expr::Member(member.clone()));
+                }
+                _ => {}
+            }
+            assignment.visit_children_with(self);
+            return;
+        }
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
                 self.assign_source_or_clear(&Expr::Ident(ident.id.clone()), &assignment.right);
@@ -687,12 +600,41 @@ impl Visit for ObjectFlowCollector<'_> {
                 self.record_property_write(member, &assignment.right);
                 self.assign_source_or_clear(&Expr::Member(member.clone()), &assignment.right);
             }
+            AssignTarget::Pat(pattern) => {
+                let pattern: Pat = pattern.clone().into();
+                let mut targets = Vec::new();
+                collect_pattern_targets(&pattern, &mut targets);
+                for target in targets {
+                    self.clear_target(&target);
+                }
+            }
             _ => {}
         }
         assignment.visit_children_with(self);
     }
 
+    fn visit_update_expr(&mut self, update: &UpdateExpr) {
+        if self.events.order_for(update.span).is_none() {
+            return;
+        }
+        self.clear_target(&update.arg);
+        update.visit_children_with(self);
+    }
+
+    fn visit_unary_expr(&mut self, unary: &UnaryExpr) {
+        if self.events.order_for(unary.span).is_none() {
+            return;
+        }
+        if unary.op == UnaryOp::Delete {
+            self.clear_target(&unary.arg);
+        }
+        unary.visit_children_with(self);
+    }
+
     fn visit_call_expr(&mut self, call: &CallExpr) {
+        if self.events.order_for(call.span).is_none() {
+            return;
+        }
         match &call.callee {
             Callee::Expr(callee) => match &**callee {
                 Expr::Member(member) => {
@@ -720,304 +662,39 @@ impl Visit for ObjectFlowCollector<'_> {
         }
         chain.visit_children_with(self);
     }
-
-    fn visit_function(&mut self, function: &Function) {
-        self.enter_function();
-        function.visit_children_with(self);
-        self.exit_function();
-    }
 }
 
-struct HelperCollector<'a> {
-    resolver: &'a Resolver,
-    flow_index: &'a FlowIndex,
-    helpers: BTreeMap<(usize, String), Vec<HelperSink>>,
-}
-
-impl<'a> HelperCollector<'a> {
-    fn collect(
-        program: &Program,
-        resolver: &'a Resolver,
-        flow_index: &'a FlowIndex,
-    ) -> BTreeMap<(usize, String), Vec<HelperSink>> {
-        let mut collector = Self {
-            resolver,
-            flow_index,
-            helpers: BTreeMap::new(),
-        };
-        program.visit_with(&mut collector);
-        collector.helpers
-    }
-
-    fn record_function(
-        &mut self,
-        scope: usize,
-        name: String,
-        parameters: Vec<String>,
-        parameter_count: usize,
-        body: Option<&BlockStmt>,
-    ) {
-        let Some(body) = body else {
-            return;
-        };
-        self.record_helper(scope, name, parameters, parameter_count, |visitor| {
-            body.visit_with(visitor)
-        });
-    }
-
-    fn record_helper(
-        &mut self,
-        scope: usize,
-        name: String,
-        parameters: Vec<String>,
-        parameter_count: usize,
-        visit_body: impl FnOnce(&mut HelperBodyVisitor<'_>),
-    ) {
-        let mut visitor = HelperBodyVisitor {
-            resolver: self.resolver,
-            flow_index: self.flow_index,
-            parameters,
-            parameter_count,
-            sinks: Vec::new(),
-        };
-        visit_body(&mut visitor);
-        // Keep an empty marker as well: a nested function with the same name
-        // must shadow an outer helper summary even when its body has no
-        // modeled sink.
-        self.helpers.insert((scope, name), visitor.sinks);
-    }
-}
-
-impl Visit for HelperCollector<'_> {
-    fn visit_fn_decl(&mut self, function: &FnDecl) {
-        let parameters = function
-            .function
-            .params
-            .iter()
-            .filter_map(|param| binding_ident_name(&param.pat))
-            .collect::<Vec<_>>();
-        self.record_function(
-            self.resolver
-                .scope_chain_at(
-                    function
-                        .function
-                        .body
-                        .as_ref()
-                        .map_or(function.ident.span, Spanned::span),
-                )
-                .get(2)
-                .copied()
-                .unwrap_or(0),
-            function.ident.sym.to_string(),
-            parameters,
-            function.function.params.len(),
-            function.function.body.as_ref(),
-        );
-        function.function.decorators.visit_with(self);
-        if let Some(body) = &function.function.body {
-            body.visit_with(self);
-        }
-    }
-
-    fn visit_var_declarator(&mut self, declarator: &VarDeclarator) {
-        let Pat::Ident(ident) = &declarator.name else {
-            return;
-        };
-        let Some(init) = declarator.init.as_deref() else {
-            return;
-        };
-        match init {
-            Expr::Fn(function) => {
-                let parameters = function
-                    .function
-                    .params
-                    .iter()
-                    .filter_map(|param| binding_ident_name(&param.pat))
-                    .collect::<Vec<_>>();
-                self.record_function(
-                    self.resolver.scope_chain_at(ident.id.span)[0],
-                    ident.id.sym.to_string(),
-                    parameters,
-                    function.function.params.len(),
-                    function.function.body.as_ref(),
-                );
-                function.function.decorators.visit_with(self);
-                if let Some(body) = &function.function.body {
-                    body.visit_with(self);
-                }
+fn collect_pattern_targets(pattern: &Pat, targets: &mut Vec<Expr>) {
+    match pattern {
+        Pat::Ident(ident) => targets.push(Expr::Ident(ident.id.clone())),
+        Pat::Assign(assign) => collect_pattern_targets(&assign.left, targets),
+        Pat::Rest(rest) => collect_pattern_targets(&rest.arg, targets),
+        Pat::Array(array) => {
+            for element in array.elems.iter().flatten() {
+                collect_pattern_targets(element, targets);
             }
-            Expr::Arrow(arrow) => {
-                let parameters = arrow
-                    .params
-                    .iter()
-                    .filter_map(binding_ident_name)
-                    .collect::<Vec<_>>();
-                self.record_helper(
-                    self.resolver.scope_chain_at(ident.id.span)[0],
-                    ident.id.sym.to_string(),
-                    parameters,
-                    arrow.params.len(),
-                    |visitor| {
-                        arrow.body.visit_with(visitor);
-                    },
-                );
-                arrow.body.visit_with(self);
-            }
-            _ => {}
         }
-    }
-}
-
-struct HelperBodyVisitor<'a> {
-    resolver: &'a Resolver,
-    flow_index: &'a FlowIndex,
-    parameters: Vec<String>,
-    parameter_count: usize,
-    sinks: Vec<HelperSink>,
-}
-
-impl HelperBodyVisitor<'_> {
-    fn record_member_sink(&mut self, call: &CallExpr) {
-        let Some(callee) = call_member_chain(call, self.resolver) else {
-            return;
-        };
-        for (argument_index, argument) in call.args.iter().enumerate() {
-            let Expr::Ident(argument_ident) = &*argument.expr else {
-                continue;
-            };
-            let Some(param_index) = self
-                .parameters
-                .iter()
-                .position(|parameter| parameter == argument_ident.sym.as_ref())
-            else {
-                continue;
-            };
-            for flow_id in self
-                .flow_index
-                .sinks
-                .get(&callee)
-                .into_iter()
-                .flatten()
-                .copied()
-            {
-                let Some(flow) = self.flow_index.get(flow_id) else {
-                    continue;
-                };
-                if flow.sinks.iter().any(|sink| {
-                    sink.member_calls
-                        .iter()
-                        .any(|member_call| member_call == &callee)
-                        && match &sink.args {
-                            FlowSinkArgs::Any => true,
-                            FlowSinkArgs::Indices(indices) => indices.contains(&argument_index),
-                        }
-                }) {
-                    self.sinks.push(HelperSink {
-                        flow: flow_id,
-                        param_index,
-                        parameter_count: self.parameter_count,
-                    });
+        Pat::Object(object) => {
+            for property in &object.props {
+                match property {
+                    ObjectPatProp::KeyValue(property) => {
+                        collect_pattern_targets(&property.value, targets);
+                    }
+                    ObjectPatProp::Assign(property) => {
+                        targets.push(Expr::Ident(property.key.id.clone()));
+                    }
+                    ObjectPatProp::Rest(rest) => collect_pattern_targets(&rest.arg, targets),
                 }
             }
         }
-    }
-}
-
-impl Visit for HelperBodyVisitor<'_> {
-    fn visit_call_expr(&mut self, call: &CallExpr) {
-        if matches!(call.callee, Callee::Expr(ref callee) if matches!(&**callee, Expr::Member(_))) {
-            self.record_member_sink(call);
-        }
-        call.visit_children_with(self);
-    }
-}
-
-fn call_member_chain(call: &CallExpr, resolver: &Resolver) -> Option<String> {
-    let Callee::Expr(callee) = &call.callee else {
-        return None;
-    };
-    member_callee_chain(callee, resolver)
-}
-
-fn member_callee_chain(expr: &Expr, resolver: &Resolver) -> Option<String> {
-    resolver.rooted_expr_chain(expr).or_else(|| match expr {
-        Expr::Member(member) => resolver
-            .resolve_member(member)
-            .rooted_chain
-            .or_else(|| member_chain(member)),
-        Expr::OptChain(chain) => match &*chain.base {
-            OptChainBase::Member(member) => resolver
-                .resolve_member(member)
-                .rooted_chain
-                .or_else(|| member_chain(member)),
-            OptChainBase::Call(call) => member_callee_chain(&call.callee, resolver),
-        },
-        Expr::Paren(paren) => member_callee_chain(&paren.expr, resolver),
-        Expr::Seq(sequence) => sequence
-            .exprs
-            .last()
-            .and_then(|expr| member_callee_chain(expr, resolver)),
-        _ => None,
-    })
-}
-
-fn static_arg_matches(
-    matcher: &ArgStringMatcher,
-    args: &[ExprOrSpread],
-    resolver: &Resolver,
-) -> bool {
-    args.get(matcher.index).is_some_and(|argument| {
-        resolver
-            .static_string_expr(&argument.expr)
-            .is_some_and(|value| {
-                matcher.predicate.as_ref().map_or_else(
-                    || matcher.values.is_empty() || matcher.values.contains(&value),
-                    |predicate| matches_static_value(predicate, &value),
-                )
-            })
-    })
-}
-
-pub(super) fn matches_static_value(matcher: &FlowValueMatcher, value: &str) -> bool {
-    match matcher {
-        FlowValueMatcher::Any => true,
-        FlowValueMatcher::StaticExact(values) => values.iter().any(|expected| expected == value),
-        FlowValueMatcher::StaticPrefix(prefixes) => {
-            prefixes.iter().any(|prefix| value.starts_with(prefix))
-        }
-        FlowValueMatcher::StaticContainsAny(markers) => {
-            markers.iter().any(|marker| value.contains(marker))
-        }
-        FlowValueMatcher::StaticContainsAll(markers) => {
-            markers.iter().all(|marker| value.contains(marker))
-        }
-    }
-}
-
-fn flow_value_matches(
-    matcher: &FlowValueMatcher,
-    static_value: Option<&str>,
-    allow_dynamic_for_any: bool,
-) -> bool {
-    match matcher {
-        FlowValueMatcher::Any => allow_dynamic_for_any || static_value.is_some(),
-        FlowValueMatcher::StaticExact(values) => {
-            static_value.is_some_and(|value| values.iter().any(|expected| expected == value))
-        }
-        FlowValueMatcher::StaticPrefix(prefixes) => static_value
-            .is_some_and(|value| prefixes.iter().any(|prefix| value.starts_with(prefix))),
-        FlowValueMatcher::StaticContainsAny(markers) => {
-            static_value.is_some_and(|value| markers.iter().any(|marker| value.contains(marker)))
-        }
-        FlowValueMatcher::StaticContainsAll(markers) => {
-            static_value.is_some_and(|value| markers.iter().all(|marker| value.contains(marker)))
-        }
+        Pat::Expr(_) | Pat::Invalid(_) => {}
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::matcher::rule::FlowValueMatcher;
 
     #[test]
     fn stops_tracking_when_the_configured_object_budget_is_exhausted() {
@@ -1027,6 +704,7 @@ mod tests {
         )
         .expect("test source should parse");
         let resolver = Resolver::collect(&parsed.program);
+        let events = EventLog::collect(&parsed.program).with_scopes(|_| 0);
         let flow = FlowMatcher::new("script insertion")
             .source_member_call("document.createElement")
             .source_arg_string(0, ["script"])
@@ -1035,7 +713,8 @@ mod tests {
         let evidence = collect_with_limits(
             &parsed.program,
             &resolver,
-            &[(0, 0, flow)],
+            &events,
+            &[(0, 0, &flow)],
             1,
             FlowLimits {
                 max_objects: 1,

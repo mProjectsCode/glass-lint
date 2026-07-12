@@ -16,7 +16,7 @@ pub fn collect_value_aliases(pat: &Pat, target: &str, scope: usize, aliases: &mu
             scope,
             ident.id.sym.to_string(),
             BindingProvenance::ValueAlias {
-                target: target.to_string(),
+                target: target.to_string().into(),
             },
         ),
         Pat::Object(object) => {
@@ -38,7 +38,7 @@ pub fn collect_value_aliases(pat: &Pat, target: &str, scope: usize, aliases: &mu
                             scope,
                             property.clone(),
                             BindingProvenance::ValueAlias {
-                                target: format!("{target}.{property}"),
+                                target: format!("{target}.{property}").into(),
                             },
                         );
                     }
@@ -63,7 +63,7 @@ pub fn collect_assignment_aliases(
             scope,
             ident.id.sym.to_string(),
             BindingProvenance::ValueAlias {
-                target: target.to_string(),
+                target: target.to_string().into(),
             },
         ),
         Pat::Object(object) => {
@@ -87,7 +87,7 @@ pub fn collect_assignment_aliases(
                             scope,
                             name.clone(),
                             BindingProvenance::ValueAlias {
-                                target: format!("{target}.{name}"),
+                                target: format!("{target}.{name}").into(),
                             },
                         );
                     }

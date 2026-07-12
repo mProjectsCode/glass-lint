@@ -132,6 +132,17 @@ fn follows_bound_rooted_members_and_their_arguments() {
 }
 
 #[test]
+fn preserves_bound_rooted_expression_arguments() {
+    assert_matches(
+        "const open = app.open.bind(app, vault.file); open(actual);",
+        MemberCallMatcher::rooted_chain("app.open")
+            .arg_rooted_exprs(0, ["vault.file"])
+            .into(),
+        1,
+    );
+}
+
+#[test]
 fn prepends_static_bound_arguments_before_call_arguments() {
     assert_matches(
         "const request = fetch.bind(null, '/bound'); request('/actual');",

@@ -124,6 +124,7 @@ pub struct Finding {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ParseDiagnostic {
+    pub code: String,
     pub message: String,
     pub filename: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -155,6 +156,7 @@ pub(crate) struct ParsedSource {
 pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
     if source.len() > MAX_SOURCE_BYTES {
         return Err(ParseDiagnostic {
+            code: "source_too_large".into(),
             message: format!(
                 "JavaScript source exceeds the {} byte analysis limit",
                 MAX_SOURCE_BYTES
@@ -190,6 +192,7 @@ pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseD
             source_map: source_map.clone(),
         })
         .map_err(|error| ParseDiagnostic {
+            code: "syntax_error".into(),
             message: format!("JavaScript parse error: {}", error.kind().msg()),
             filename: filename.to_string(),
             range: (!error.span().is_dummy()).then(|| {

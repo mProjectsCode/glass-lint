@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use swc_common::{BytePos, Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CatchClause, ClassDecl, Expr,
-    FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, ImportDecl, ImportSpecifier, Lit, MemberExpr,
+    FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, ImportDecl, ImportSpecifier, Lit,
     ObjectPatProp, Pat, SimpleAssignTarget, SwitchStmt, VarDecl, VarDeclKind, WithStmt,
 };
 use swc_ecma_visit::{Visit, VisitWith};
@@ -18,14 +18,18 @@ use super::super::ast::{
     collect_pat_bindings, function_prototype_builtin, is_function_constructor_member, member_chain,
     member_prop_name, member_root_ident, module_export_name, prop_name,
 };
-use super::super::constant::{self, ConstValue, Lookup};
+use super::super::constant::{self, ConstValue};
+use super::super::summary::{FunctionDeclarations, FunctionInvocations};
+use super::super::value::BindingVersion;
 use super::collector_helpers::{
     collect_assignment_aliases, collect_require_aliases, collect_value_aliases,
 };
-use super::{
-    AliasAssignment, AliasScope, BindingProvenance, PropertyAliasAssignment, RootedExprContext,
-    ScopeKind, rooted_expr_chain_with,
-};
+use super::rooted::{RootedExprContext, rooted_expr_chain_with};
+use super::{AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeKind};
+
+mod callbacks;
+mod constants;
+mod predeclare;
 
 pub struct AliasCollector {
     pub scopes: Vec<AliasScope>,
@@ -34,12 +38,21 @@ pub struct AliasCollector {
     latest_assignments: BTreeMap<usize, BTreeMap<String, BindingProvenance>>,
     pub property_assignments: Vec<PropertyAliasAssignment>,
     pub dynamic_evals: Vec<(usize, Span)>,
-    functions: BTreeMap<String, (usize, Vec<Pat>)>,
-    calls: Vec<(String, Vec<Option<BindingProvenance>>)>,
+    functions: FunctionDeclarations,
+    calls: FunctionInvocations,
     inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
     pub mutable_static_objects: BTreeSet<(usize, String)>,
     reuse_scopes: bool,
     reused_scopes: BTreeSet<usize>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct PropertyAliasAssignment {
+    pub(super) span: Span,
+    pub(super) scope: usize,
+    pub(super) property: String,
+    pub(super) receiver: swc_ecma_ast::Ident,
+    pub(super) target: Option<String>,
 }
 
 fn is_module_interop_wrapper(name: &str) -> bool {
@@ -84,7 +97,7 @@ impl AliasCollector {
     /// visibility depend on whether traversal had reached the declaration,
     /// which incorrectly treated an earlier use as a global.
     pub fn predeclare(&mut self, program: &swc_ecma_ast::Program) {
-        let mut visitor = PredeclareVisitor { collector: self };
+        let mut visitor = predeclare::PredeclareVisitor { collector: self };
         program.visit_children_with(&mut visitor);
         self.reuse_scopes = true;
         self.reused_scopes.clear();
@@ -128,6 +141,16 @@ impl AliasCollector {
         name: String,
         provenance: BindingProvenance,
     ) {
+        let version = BindingVersion(
+            u32::try_from(
+                self.assignments
+                    .iter()
+                    .filter(|assignment| assignment.scope == scope && assignment.name == name)
+                    .count()
+                    .saturating_add(1),
+            )
+            .unwrap_or(u32::MAX),
+        );
         self.latest_assignments
             .entry(scope)
             .or_default()
@@ -136,6 +159,7 @@ impl AliasCollector {
             span,
             scope,
             name,
+            version,
             provenance,
         });
     }
@@ -168,7 +192,11 @@ impl AliasCollector {
     }
 
     fn pop_scope(&mut self) {
-        self.stack.pop();
+        if self.stack.len() <= 1 {
+            debug_assert!(false, "attempted to pop the program scope");
+            return;
+        }
+        let _ = self.stack.pop();
     }
 
     fn insert_pat_locals(&mut self, scope: usize, pat: &Pat) {
@@ -349,7 +377,9 @@ impl AliasCollector {
             .or_else(|| self.const_provenance(expr))
             .or_else(|| {
                 self.rooted_expr_name(expr)
-                    .map(|target| BindingProvenance::ValueAlias { target })
+                    .map(|target| BindingProvenance::ValueAlias {
+                        target: target.into(),
+                    })
             })
     }
 
@@ -371,9 +401,18 @@ impl AliasCollector {
             .args
             .iter()
             .skip(1)
-            .map(|argument| match self.const_provenance(&argument.expr) {
-                Some(BindingProvenance::StaticString(value)) => Some(value),
-                _ => None,
+            .map(|argument| {
+                self.const_provenance(&argument.expr)
+                    .and_then(|provenance| match provenance {
+                        BindingProvenance::StaticString(value) => {
+                            Some(BoundArgument::StaticString(value))
+                        }
+                        _ => None,
+                    })
+                    .or_else(|| {
+                        self.rooted_expr_name(&argument.expr)
+                            .map(|value| BoundArgument::RootedExpression(value.into()))
+                    })
             })
             .collect();
         match self.module_alias_provenance(&member.obj) {
@@ -385,7 +424,7 @@ impl AliasCollector {
                 })
             }
             _ => Some(BindingProvenance::BoundCallable {
-                target,
+                target: target.into(),
                 bound_arguments,
             }),
         }
@@ -405,7 +444,9 @@ impl AliasCollector {
                 let source = self.rooted_expr_name(callee)?;
                 source
                     .contains('.')
-                    .then_some(BindingProvenance::ReturnedObject { source })
+                    .then_some(BindingProvenance::ReturnedObject {
+                        source: source.into(),
+                    })
             }
             Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
                 BindingProvenance::ReturnedObject { source } => {
@@ -425,7 +466,9 @@ impl AliasCollector {
                     });
                 }
                 self.rooted_expr_name(expr)
-                    .map(|source| BindingProvenance::ReturnedObject { source })
+                    .map(|source| BindingProvenance::ReturnedObject {
+                        source: source.into(),
+                    })
             }
             Expr::Paren(paren) => self.returned_object_provenance(&paren.expr),
             Expr::Seq(sequence) => sequence
@@ -449,7 +492,7 @@ impl AliasCollector {
                 return None;
             };
             let target = self.rooted_expr_name(&property.value)?;
-            values.insert(prop_name(&property.key)?, target);
+            values.insert(prop_name(&property.key)?, target.into());
         }
         Some(BindingProvenance::StaticObjectValues(values))
     }
@@ -478,119 +521,6 @@ impl AliasCollector {
         self.record_assignment(span, *scope, root.sym.to_string(), BindingProvenance::Local);
     }
 
-    fn bind_inline_parameters<'a>(
-        &mut self,
-        span: Span,
-        parameters: impl IntoIterator<Item = &'a Pat>,
-        arguments: impl IntoIterator<Item = Option<BindingProvenance>>,
-    ) {
-        // Inline callbacks are visited after their call expression is seen.
-        // Stash the proven argument facts by span so they can be installed when
-        // the callback's lexical scope is entered.
-        let mut bindings = BTreeMap::new();
-        for (parameter, argument) in parameters.into_iter().zip(arguments) {
-            if let Some(argument) = argument {
-                project_parameter_pattern(parameter, &argument, &mut bindings);
-            }
-        }
-        if !bindings.is_empty() {
-            self.inline_parameters.insert(span.lo, bindings);
-        }
-    }
-
-    fn record_modeled_callbacks(&mut self, call: &CallExpr) {
-        let Callee::Expr(callee) = &call.callee else {
-            return;
-        };
-        let callee = match &**callee {
-            Expr::Paren(paren) => &*paren.expr,
-            callee => callee,
-        };
-        let arguments = || {
-            call.args
-                .iter()
-                .map(|arg| self.argument_provenance(&arg.expr))
-                .collect::<Vec<_>>()
-        };
-        match callee {
-            Expr::Arrow(arrow) => {
-                self.bind_inline_parameters(arrow.span, arrow.params.iter(), arguments());
-                return;
-            }
-            Expr::Fn(function) => {
-                self.bind_inline_parameters(
-                    function.function.span,
-                    function.function.params.iter().map(|param| &param.pat),
-                    arguments(),
-                );
-                return;
-            }
-            _ => {}
-        }
-        let Expr::Member(member) = callee else { return };
-        let Some(method) = member_prop_name(&member.prop) else {
-            return;
-        };
-        if method == "forEach" {
-            let Expr::Array(array) = &*member.obj else {
-                return;
-            };
-            let elements = array
-                .elems
-                .iter()
-                .map(Option::as_ref)
-                .collect::<Option<Vec<_>>>();
-            let Some(elements) = elements else { return };
-            let Some(first) = elements.first() else {
-                return;
-            };
-            let value = self.argument_provenance(&first.expr);
-            if elements
-                .iter()
-                .skip(1)
-                .any(|element| self.argument_provenance(&element.expr) != value)
-            {
-                return;
-            }
-            let Some(Expr::Arrow(callback)) = call.args.first().map(|arg| &*arg.expr) else {
-                return;
-            };
-            self.bind_inline_parameters(callback.span, callback.params.iter(), [value]);
-            return;
-        }
-        if method != "then" || !self.is_unbound("Promise") {
-            return;
-        }
-        let Expr::Call(resolve) = &*member.obj else {
-            return;
-        };
-        let Callee::Expr(resolve_callee) = &resolve.callee else {
-            return;
-        };
-        let Expr::Member(resolve_member) = &**resolve_callee else {
-            return;
-        };
-        let Expr::Ident(promise) = &*resolve_member.obj else {
-            return;
-        };
-        if promise.sym != *"Promise"
-            || member_prop_name(&resolve_member.prop).as_deref() != Some("resolve")
-        {
-            return;
-        }
-        let Some(Expr::Arrow(callback)) = call.args.first().map(|arg| &*arg.expr) else {
-            return;
-        };
-        self.bind_inline_parameters(
-            callback.span,
-            callback.params.iter(),
-            [resolve
-                .args
-                .first()
-                .and_then(|arg| self.argument_provenance(&arg.expr))],
-        );
-    }
-
     fn function_parameters(function: &Function) -> Vec<Pat> {
         function
             .params
@@ -604,6 +534,7 @@ impl AliasCollector {
     }
 
     fn register_function_expression(&mut self, name: String, expr: &Expr) -> bool {
+        let declaration_scope = self.current_scope();
         match expr {
             Expr::Arrow(arrow) => {
                 let parameters = Self::arrow_parameters(arrow);
@@ -612,7 +543,8 @@ impl AliasCollector {
                 for param in &arrow.params {
                     self.insert_pat_locals(scope, param);
                 }
-                self.functions.insert(name, (scope, parameters));
+                self.functions
+                    .insert((declaration_scope, name), (scope, parameters));
                 arrow.body.visit_with(self);
                 self.pop_scope();
                 true
@@ -627,7 +559,8 @@ impl AliasCollector {
                 for param in &function_expr.function.params {
                     self.insert_pat_locals(scope, &param.pat);
                 }
-                self.functions.insert(name, (scope, parameters));
+                self.functions
+                    .insert((declaration_scope, name), (scope, parameters));
                 function_expr.function.decorators.visit_with(self);
                 function_expr.function.body.visit_with(self);
                 self.pop_scope();
@@ -639,329 +572,15 @@ impl AliasCollector {
     }
 
     pub fn parameter_aliases(&self) -> BTreeMap<(usize, String), BindingProvenance> {
-        let mut aliases = BTreeMap::<(usize, String), Option<BindingProvenance>>::new();
-        // A named helper can have many call sites. Retain a parameter alias
-        // only when every modeled invocation agrees, avoiding false positives
-        // from joining incompatible values.
-        for (callee, arguments) in &self.calls {
-            let Some((scope, parameters)) = self.functions.get(callee) else {
-                continue;
-            };
-            for (parameter, target) in parameters.iter().zip(arguments) {
-                let mut projected = BTreeMap::new();
-                if let Some(target) = target {
-                    project_parameter_pattern(parameter, target, &mut projected);
-                }
-                for (name, target) in projected {
-                    let entry = aliases
-                        .entry((*scope, name))
-                        .or_insert_with(|| Some(target.clone()));
-                    if *entry != Some(target) {
-                        *entry = None;
-                    }
-                }
-            }
-        }
-        aliases
-            .into_iter()
-            .filter_map(|(key, target)| target.map(|target| (key, target)))
-            .collect()
-    }
-}
-
-struct PredeclareVisitor<'a> {
-    collector: &'a mut AliasCollector,
-}
-
-impl PredeclareVisitor<'_> {
-    fn insert_import(&mut self, import: &ImportDecl) {
-        let scope = self.collector.current_scope();
-        let module = import.src.value.to_string_lossy().to_string();
-        for specifier in &import.specifiers {
-            match specifier {
-                ImportSpecifier::Named(named) => {
-                    let local = named.local.sym.to_string();
-                    let export = named
-                        .imported
-                        .as_ref()
-                        .map(module_export_name)
-                        .unwrap_or_else(|| local.clone());
-                    self.collector.insert(
-                        scope,
-                        local,
-                        BindingProvenance::ModuleExport {
-                            module: module.clone(),
-                            export,
-                        },
-                    );
-                }
-                ImportSpecifier::Namespace(namespace) => self.collector.insert(
-                    scope,
-                    namespace.local.sym.to_string(),
-                    BindingProvenance::ModuleNamespace {
-                        module: module.clone(),
-                    },
-                ),
-                ImportSpecifier::Default(default) => self.collector.insert(
-                    scope,
-                    default.local.sym.to_string(),
-                    BindingProvenance::ModuleNamespace {
-                        module: module.clone(),
-                    },
-                ),
-            }
-        }
-    }
-
-    fn push_function(&mut self, span: Span, parameters: &[swc_ecma_ast::Param]) {
-        self.collector.push_scope(span, ScopeKind::Function);
-        let scope = self.collector.current_scope();
-        for parameter in parameters {
-            self.collector.insert_pat_locals(scope, &parameter.pat);
-        }
-    }
-
-    fn pop_scope(&mut self) {
-        debug_assert!(self.collector.stack.len() > 1);
-        self.collector.pop_scope();
-    }
-}
-
-impl Visit for PredeclareVisitor<'_> {
-    fn visit_import_decl(&mut self, import: &ImportDecl) {
-        self.insert_import(import);
-    }
-
-    fn visit_var_decl(&mut self, declaration: &VarDecl) {
-        let scope = self.collector.binding_scope(declaration.kind);
-        for declarator in &declaration.decls {
-            self.collector.insert_pat_locals(scope, &declarator.name);
-            if let Some(init) = declarator.init.as_deref() {
-                init.visit_with(self);
-            }
-        }
-    }
-
-    fn visit_fn_decl(&mut self, declaration: &FnDecl) {
-        let parent = self.collector.current_scope();
-        self.collector
-            .insert_local(parent, declaration.ident.sym.to_string());
-        self.push_function(declaration.function.span, &declaration.function.params);
-        declaration.function.decorators.visit_with(self);
-        if let Some(body) = &declaration.function.body {
-            body.visit_with(self);
-        }
-        self.pop_scope();
-    }
-
-    fn visit_class_decl(&mut self, declaration: &ClassDecl) {
-        let scope = self.collector.current_scope();
-        self.collector
-            .insert_local(scope, declaration.ident.sym.to_string());
-        declaration.class.visit_children_with(self);
-    }
-
-    fn visit_function(&mut self, function: &Function) {
-        self.push_function(function.span, &function.params);
-        function.decorators.visit_with(self);
-        if let Some(body) = &function.body {
-            body.visit_with(self);
-        }
-        self.pop_scope();
-    }
-
-    fn visit_arrow_expr(&mut self, arrow: &ArrowExpr) {
-        self.collector.push_scope(arrow.span, ScopeKind::Function);
-        let scope = self.collector.current_scope();
-        for parameter in &arrow.params {
-            self.collector.insert_pat_locals(scope, parameter);
-        }
-        arrow.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_block_stmt(&mut self, block: &BlockStmt) {
-        self.collector.push_scope(block.span, ScopeKind::Block);
-        block.stmts.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_for_stmt(&mut self, statement: &ForStmt) {
-        self.collector.push_scope(statement.span, ScopeKind::Block);
-        statement.init.visit_with(self);
-        statement.test.visit_with(self);
-        statement.update.visit_with(self);
-        statement.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_for_in_stmt(&mut self, statement: &ForInStmt) {
-        self.collector.push_scope(statement.span, ScopeKind::Block);
-        statement.left.visit_with(self);
-        statement.right.visit_with(self);
-        statement.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_for_of_stmt(&mut self, statement: &ForOfStmt) {
-        self.collector.push_scope(statement.span, ScopeKind::Block);
-        statement.left.visit_with(self);
-        statement.right.visit_with(self);
-        statement.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_switch_stmt(&mut self, statement: &SwitchStmt) {
-        statement.discriminant.visit_with(self);
-        self.collector.push_scope(statement.span, ScopeKind::Block);
-        statement.cases.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_with_stmt(&mut self, statement: &WithStmt) {
-        statement.obj.visit_with(self);
-        self.collector
-            .push_scope(statement.body.span(), ScopeKind::Dynamic);
-        statement.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_catch_clause(&mut self, clause: &CatchClause) {
-        self.collector.push_scope(clause.span, ScopeKind::Block);
-        let scope = self.collector.current_scope();
-        if let Some(parameter) = &clause.param {
-            self.collector.insert_pat_locals(scope, parameter);
-        }
-        clause.body.stmts.visit_with(self);
-        self.pop_scope();
-    }
-}
-
-impl Lookup for AliasCollector {
-    fn ident(
-        &self,
-        ident: &swc_ecma_ast::Ident,
-        _state: &mut super::super::constant::EvalState,
-    ) -> ConstValue {
-        match self.visible_binding(ident.sym.as_ref()) {
-            Some(BindingProvenance::StaticString(value)) => ConstValue::String(value.clone()),
-            Some(BindingProvenance::StaticNumber(value)) => ConstValue::NonNegativeInteger(*value),
-            Some(BindingProvenance::StaticStringArray(values)) => {
-                ConstValue::Array(values.iter().cloned().map(ConstValue::String).collect())
-            }
-            Some(BindingProvenance::StaticObjectKeys(values)) => ConstValue::Object(
-                values
-                    .iter()
-                    .cloned()
-                    .map(|key| (key, ConstValue::Unknown))
-                    .collect(),
-            ),
-            Some(BindingProvenance::StaticObjectValues(values)) => ConstValue::Object(
-                values
-                    .keys()
-                    .cloned()
-                    .map(|key| (key, ConstValue::Unknown))
-                    .collect(),
-            ),
-            _ => ConstValue::Unknown,
-        }
-    }
-
-    fn spread(&self, expr: &Expr, state: &mut super::super::constant::EvalState) -> ConstValue {
-        if let Expr::Ident(ident) = expr
-            && self
-                .visible_binding_scope(ident.sym.as_ref())
-                .is_some_and(|scope| {
-                    self.mutable_static_objects
-                        .contains(&(scope, ident.sym.to_string()))
-                })
-        {
-            return ConstValue::Unknown;
-        }
-        state.evaluate(expr, self)
-    }
-
-    fn member(
-        &self,
-        member: &MemberExpr,
-        state: &mut super::super::constant::EvalState,
-    ) -> ConstValue {
-        let Some(property) = constant::property_name_with_state(&member.prop, self, state) else {
-            return ConstValue::Unknown;
-        };
-        match state.evaluate(&member.obj, self) {
-            ConstValue::Array(values) => property
-                .parse::<usize>()
-                .ok()
-                .and_then(|index| values.get(index).cloned())
-                .unwrap_or(ConstValue::Unknown),
-            ConstValue::Object(values) => values
-                .get(&property)
-                .cloned()
-                .unwrap_or(ConstValue::Unknown),
-            _ => ConstValue::Unknown,
-        }
-    }
-
-    fn unshadowed_global(&self, name: &str, _span: Span) -> bool {
-        self.is_unbound(name)
-    }
-}
-
-fn project_parameter_pattern(
-    pattern: &Pat,
-    value: &BindingProvenance,
-    output: &mut BTreeMap<String, BindingProvenance>,
-) {
-    match pattern {
-        Pat::Ident(ident) => {
-            output.insert(ident.id.sym.to_string(), value.clone());
-        }
-        Pat::Assign(assign) => project_parameter_pattern(&assign.left, value, output),
-        Pat::Object(object) => {
-            let BindingProvenance::StaticObjectValues(values) = value else {
-                return;
-            };
-            for property in &object.props {
-                match property {
-                    ObjectPatProp::KeyValue(property) => {
-                        let Some(key) = prop_name(&property.key) else {
-                            continue;
-                        };
-                        let Some(target) = values.get(&key) else {
-                            continue;
-                        };
-                        project_parameter_pattern(
-                            &property.value,
-                            &BindingProvenance::ValueAlias {
-                                target: target.clone(),
-                            },
-                            output,
-                        );
-                    }
-                    ObjectPatProp::Assign(property) => {
-                        if let Some(target) = values.get(property.key.sym.as_ref()) {
-                            output.insert(
-                                property.key.sym.to_string(),
-                                BindingProvenance::ValueAlias {
-                                    target: target.clone(),
-                                },
-                            );
-                        }
-                    }
-                    ObjectPatProp::Rest(_) => {}
-                }
-            }
-        }
-        Pat::Array(_) | Pat::Rest(_) | Pat::Invalid(_) | Pat::Expr(_) => {}
+        super::super::summary::parameter_aliases(&self.functions, &self.calls, &self.scopes)
     }
 }
 
 impl RootedExprContext for AliasCollector {
     fn rooted_ident_chain(&self, ident: &swc_ecma_ast::Ident) -> Option<String> {
         match self.visible_binding(ident.sym.as_ref()) {
-            Some(BindingProvenance::ValueAlias { target }) => Some(target.clone()),
-            Some(BindingProvenance::BoundCallable { target, .. }) => Some(target.clone()),
+            Some(BindingProvenance::ValueAlias { target }) => Some(target.to_string()),
+            Some(BindingProvenance::BoundCallable { target, .. }) => Some(target.to_string()),
             Some(_) => None,
             None => Some(ident.sym.to_string()),
         }
@@ -1064,7 +683,7 @@ impl Visit for AliasCollector {
                 .as_deref()
                 .filter(|target| *target == "Function")
                 .map(|target| BindingProvenance::ValueAlias {
-                    target: target.to_string(),
+                    target: target.to_string().into(),
                 });
             let returned_alias = declarator
                 .init
@@ -1133,7 +752,7 @@ impl Visit for AliasCollector {
             .as_deref()
             .filter(|target| *target == "Function")
             .map(|target| BindingProvenance::ValueAlias {
-                target: target.to_string(),
+                target: target.to_string().into(),
             });
         let provenance = self
             .bound_callable_provenance(&assignment.right)
@@ -1141,7 +760,11 @@ impl Visit for AliasCollector {
             .or(function_constructor_alias)
             .or_else(|| self.returned_object_provenance(&assignment.right))
             .or_else(|| self.const_provenance(&assignment.right))
-            .or_else(|| rooted_alias.map(|target| BindingProvenance::ValueAlias { target }))
+            .or_else(|| {
+                rooted_alias.map(|target| BindingProvenance::ValueAlias {
+                    target: target.into(),
+                })
+            })
             .unwrap_or(BindingProvenance::Local);
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
@@ -1168,8 +791,7 @@ impl Visit for AliasCollector {
                         span: assignment.span,
                         scope: self.current_scope(),
                         property,
-                        receiver_root: root.sym.to_string(),
-                        receiver_span: root.span,
+                        receiver: root.clone(),
                         target: self.rooted_expr_name(&assignment.right),
                     });
                 }
@@ -1201,6 +823,7 @@ impl Visit for AliasCollector {
                     .push((self.binding_scope(VarDeclKind::Var), call.span));
             }
             self.calls.push((
+                self.current_scope(),
                 callee.sym.to_string(),
                 call.args
                     .iter()
@@ -1221,7 +844,7 @@ impl Visit for AliasCollector {
             self.insert_pat_locals(scope, &parameter.pat);
         }
         self.functions
-            .insert(fn_decl.ident.sym.to_string(), (scope, parameters));
+            .insert((parent, fn_decl.ident.sym.to_string()), (scope, parameters));
         fn_decl.function.decorators.visit_with(self);
         fn_decl.function.body.visit_with(self);
         self.pop_scope();

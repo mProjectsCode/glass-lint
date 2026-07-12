@@ -503,79 +503,166 @@ provider fixture suites pass.
   budget all pass, with any deliberate semantic gaps documented in the core API
   and provider rule audits.
 
-## Implementation review (2026-07-11)
+## Implementation review (2026-07-12)
 
-The current change is a useful partial implementation, but it does not yet meet
-the plan's definition of done. The focused core suite passes, and direct unit
-coverage has now been added for the constant evaluator's typed addition, cooked
-templates, finite arrays/objects, spreads, `Object.assign`, accessors/methods,
-shadowed globals, unknown spreads, and string/container limits. The following
-points remain before this plan can be considered implemented:
+The implementation has moved materially beyond the July 11 review, but the
+plan's definition of done is not yet met.
 
-1. **P0 — the semantic-model migration is still transitional.**
-   `SemanticModel` retains only `MatcherFacts` and per-rule argument evidence;
-   the event log is still consumed solely by a debug ordering assertion
-   (`semantic/mod.rs:39-55`), and `ValueArena` is not the authoritative value
-   store queried by matchers. `calls`, `instance`, and `object_flow` remain
-   separate AST visitors. This falls short of items 1, 5, 7, and 15 and should
-   not be described as a shared, rule-independent semantic build yet.
+Completed or substantially addressed:
 
-2. **P0 — object-flow identity is only partially implemented.** `FlowState`
-   has an `object_id`, but live state is still stored in
-   `BTreeMap<String, Vec<FlowState>>` and keyed by formatted function/chain
-   strings (`object_flow.rs:48-95`). Consequently the identity is used for
-   emission deduplication, not as the authoritative alias/property state key.
-   The collector also still linearly scans every flow rule at each source and
-   update. Complete item 4 by binding aliases to an `ObjectId`, storing state by
-   `(ObjectId, FlowId)`, and pre-indexing flow operations.
+- Constant evaluation now threads one `EvalState` through identifier, member,
+  spread, computed-property, and `Object.assign` lookup. Depth, node, lookup,
+  string, array, and object limits fail closed, with direct tests for recursive
+  alias exhaustion and container/string limits (`constant.rs:88-309,
+  427-501`). This resolves the previous budget-bypass finding in item 6.
+- Object flow now uses an alias map from `BindingKey` to `ObjectId`, stores live
+  state by `(ObjectId, FlowId)`, pre-indexes sources and sinks, deduplicates
+  emissions, and caps objects, states, and emissions (`object_flow.rs:31-105,
+  141-167,238-318,527-550`). A configurable small-budget unit test verifies
+  fail-closed object exhaustion. This resolves the previous identity,
+  linear-source/sink-scan, and unbounded-allocation findings in item 4.
+- Callable transforms now cover `.bind`, `.call`, `.apply`, optional calls,
+  and sequence-wrapped calls with effective argument remapping, including
+  bounded static-array handling for `.apply` (`calls.rs:106-357,600-711`).
+  Focused positive and negative tests exercise these forms.
+- Evidence from ordinary indexes, argument predicates, and flows now crosses
+  one normalization boundary: occurrences are source-sorted, deduplicated by
+  `(span, kind, symbol)`, and truncated once before regrouping
+  (`semantic/mod.rs:74-119`). Report evidence includes Unicode-aware ranges and
+  snippets, and tests cover ordering and the single evidence limit. Rule IDs,
+  categories, builder errors, oversized-source diagnostics, and parse locations
+  also have direct validation tests.
+- Future declarations, reassignment, sibling scopes, property writes, dynamic
+  scopes, branch flow invalidation, repeated sinks, optional flow sinks, and
+  incompatible helper invocations now have regression coverage in the core
+  integration suites.
 
-3. **P0 — constant-evaluator bounds can be bypassed by nested lookup work.**
-   `Lookup::spread`, both `member` implementations, `property_name`, and
-   computed `prop_name` call the top-level `evaluate`, which creates a fresh
-   `EvalState` (`constant.rs:54-97,206-232` and
-   `scope/collector.rs:866-895`). Nested spreads, computed keys, and member
-   lookup therefore do not share the advertised depth/node budget. Alias
-   expansion also has no explicit counter. Thread one evaluation budget through
-   all recursive lookup operations and add adversarial tests that exceed depth,
-   node, object-key-after-duplicate/spread, and alias-expansion limits.
+Remaining work, in priority order:
 
-4. **P0 — flow allocation is not safely bounded.** `next_object_id` uses
-   saturating increment, so after `u32::MAX` distinct modeled sources the same
-   ID is reused. The flow-state and emission collections have no practical
-   configured cap. Return unknown/stop tracking when allocation is exhausted,
-   as `ValueArena::allocate_object_id` now does, and test the limit through a
-   configurable small test budget.
+1. **P0 — finish the authoritative semantic-model migration.**
+   `SemanticModel` now owns one `SemanticFacts` build result and the catalog
+   inputs are compiled at that boundary, but the build still delegates to
+   separate canonical-call and object-flow visitors. `EventLog` now
+   orders evidence and enforces its event budget, but is not yet the complete
+   fact stream. `ScopeGraph` still computes string-shaped provenance before the
+   resolver interns position-versioned values. Items 1, 2, 5, and 15 therefore
+   remain transitional.
 
-5. **P1 — callback/helper consolidation is incomplete.** Flow helpers still
-   have their own `HelperCollector`/body scan while callback parameter joining
-   remains in the scope collector. Scope-qualified string keys improve sibling
-   isolation, but there is still no shared `FunctionId` summary with invocation
-   compatibility, recursion handling, returns, and parameter patterns as
-   required by item 7.
+2. **P0 — remove the remaining textual binding/provenance machinery.**
+   Flow aliases now use `BindingId`, `BindingVersion`, `FunctionId`, and
+   structured paths, but scope collection and member provenance are still
+   selected through name/span maps and string-shaped alias targets. The
+   resolver interns a versioned binding wrapper and caches it, but the arena is
+   not yet the sole source of all call/member facts. Complete this clean break
+   before treating the semantic identity migration as finished.
 
-6. **P1 — the monolith and repeated normalization work remain.** The main
-   collector, call, flow, and matcher modules remain responsibility-heavy, and
-   `MatcherFacts::collect_for_rules` repeatedly clones and normalizes each
-   rule's matcher vectors. The change improves normalization correctness and
-   evidence ordering, but items 8, 11, and 15 are not complete.
+3. **P1 — finish callback and flow-helper summaries.** A shared
+   `semantic/summary.rs` layer now owns recursive parameter projection,
+   lexical named-function alias joining, and flow-helper sink summaries keyed
+   by `FunctionId`. Callback invocation discovery and the remaining modeled
+   calls/writes/returns still live in the scope collector, so the complete
+   summary required by item 7 is not finished.
 
-7. **P1 — add invariant-level tests, not only end-to-end examples.** Direct
-   constant-evaluator tests now cover its basic contract, but `EventLog`,
-   `ValueArena` exhaustion/foreign-ID behavior, occurrence-index ordering and
-   equivalence, and evidence normalization permutation invariance still lack
-   focused unit/property tests. Add these alongside adversarial flow tests for
-   loops, `try`/`finally`, switch fallthrough, destructuring, compound writes,
-   `delete`, optional sources, and sequence-wrapped sources/sinks.
+4. **P1 — split the monoliths and finish the compiled index design.** The
+   principal modules remain responsibility-heavy: `scope/collector.rs` is
+   about 1,360 lines, `calls.rs` about 820, `object_flow.rs` about 930, and
+   `rule/matcher.rs` about 1,330. Call/flow/instance matcher inputs now borrow
+   compiled records and occurrence maps use a typed container, but the index
+   still has parallel provenance views and the largest modules have not all
+   been split by responsibility. Items 8, 9, 11, and 15 remain partial.
 
-8. **P2 — the benchmark is a smoke timer, not the specified measurement.** It
-   covers the five requested source shapes, but measures only the complete lint
-   path and prints elapsed time/findings/bytes. It does not separate parse,
-   semantic build, and matching; measure allocations or peak fact counts; or
-   enforce a benchmark budget. Add stable benchmark methodology before using it
-   to substantiate the performance/resource definition of done.
+5. **P1/P2 — add the missing invariant, property, and adversarial coverage.**
+   Direct invariant tests now cover event ordering, invalid value IDs,
+   normalization permutation, typed occurrence ordering, flow budgets, and
+   compound/update/delete invalidation. A property-test framework and
+   reference-index differential test are still absent, as are dedicated
+   loop, `try`/`finally`, switch-fallthrough, and destructuring flow cases.
 
-Review verification performed: `cargo fmt --all -- --check` and
-`cargo test --workspace` pass (including the new evaluator unit tests), as does
-`cargo clippy --workspace --all-targets -- -D warnings`. Provider fixture suites
-and the benchmark budget must also pass after the remaining implementation
-work.
+6. **P2 — replace the smoke benchmark with actionable measurements.** The
+   benchmark still exercises the five requested source shapes but times only
+   the complete lint path and prints elapsed time, findings, diagnostics, and
+   bytes (`benches/core.rs`). It does not isolate parse/semantic/match phases,
+   measure allocations or peak fact/flow counts, repeat samples statistically,
+   or enforce a budget. It cannot yet substantiate the performance and resource
+   parts of the definition of done.
+
+Review verification performed on 2026-07-12: `cargo fmt --all -- --check`,
+`cargo test --workspace`, and
+`cargo clippy --workspace --all-targets -- -D warnings` all pass. The workspace
+suite includes 19 core unit tests, 104 core integration tests, provider tests,
+and harness tests. Provider fixture suites and a defined benchmark budget still
+need to be run after the remaining architectural work.
+
+## Implementation progress (2026-07-12, continuation)
+
+The remaining P0/P1 work has now received a second implementation pass:
+
+- Lexical declarations have stable per-file `BindingId`s, position-sensitive
+  `BindingVersion`s, and `FunctionId`s. Resolver-owned flow keys use those IDs
+  plus structured property paths; property-write invalidation compares the
+  same identity rather than formatted receiver names. Version changes are
+  covered by unit tests, and compound writes, updates, and `delete` now kill
+  flow state conservatively.
+- `ValueArena` stores versioned binding values and reuses existing interned
+  values before applying its capacity bound. Invalid IDs fail closed. The
+  ordered event log now participates in evidence ordering and rejects an
+  overlarge event stream instead of producing ambiguous IDs.
+- Direct and optional flow source calls share the canonical `ResolvedCall`
+  argument representation, including effective `.call`/`.apply` receiver and
+  argument remapping. Bound callables preserve static strings and rooted
+  expression arguments. Flow helper sink discovery is separated into the shared
+  `semantic/summary.rs` layer, and named callback summaries are keyed by
+  lexical owner `FunctionId` rather than a global function-name map.
+- Semantic assembly now has one `SemanticFacts::build` boundary; the matcher
+  model owns the resolver and compiled fact indexes. Class/instance facts are
+  now collected by the canonical call visitor; `MatcherFacts` owns typed
+  occurrence-index storage with one span insertion/normalization policy, and
+  resolver results are cached per source node so the value arena is the stable
+  source for repeated matcher queries.
+- Argument, flow, and instance matcher inputs are now borrowed from the
+  normalized catalog during fact construction instead of cloned into visitor
+  records; the flow index retains references to the compiled flow matchers.
+- Matcher-shape validation now lives in its own rule-validation module, and the
+  scope collector delegates recursive callback parameter projection and
+  invocation joining to the shared summary layer. Control-boundary tests cover
+  loops, try/catch, and destructuring fail-closed behavior.
+- Summary invocation joins now invalidate aliases for missing, dynamic, or
+  extra arguments instead of relying on `zip`; focused regressions cover both
+  incomplete and over-specified helper calls.
+- Normalization permutation invariance and typed occurrence ordering are now
+  directly tested in addition to the existing evidence and ID invariants.
+- Nested matcher normalization is now in `rule/normalization.rs`, while flow
+  indexing, canonical flow calls, call-argument predicates, constructors, and
+  scope predeclaration/constant/callback passes have focused modules. A
+  reference-query test checks the optimized occurrence index.
+- Alias targets now use segmented `SymbolPath` values, property aliases are
+  indexed by `(BindingKey, path)` with typed targets, and the raw receiver AST
+  reference is confined to collection-time conversion. This removes formatted
+  receiver strings from the authoritative scope graph.
+- Resolver construction now consumes typed `IdentValueSeed` and
+  `MemberValueSeed` snapshots from scope collection. Scope provenance is
+  converted once at that boundary; resolver interning no longer reconstructs
+  call/member/constant facts by issuing a sequence of independent
+  `ScopeGraph` queries. The shared event log also records declarations,
+  assignments, calls, constructions, references, and member reads under one
+  bounded source-order policy.
+- Rule builders validate matcher shape before normalization: empty or malformed
+  chains, invalid predicates and argument indices, incomplete flows, and empty
+  sink index sets are rejected with displayable `InvalidMatcher` errors.
+- New adversarial coverage covers future declarations for builtin provenance
+  seeds, same-name helpers in sibling lexical scopes, binding versions, event
+  ordering/limits, invalid value IDs, and compound/update/delete flow writes.
+
+Verification after this pass: `cargo fmt --all -- --check`,
+`cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`,
+the 11-case e2e harness (all passed), and both provider fixture suites (64 JS
+cases and 90 Obsidian cases, all passed).
+
+The remaining architectural gap is replacing the two stateful call and
+object-flow AST visitors with one immutable event/fact stream. Both visitors
+now receive and validate against the same bounded event log, so source order
+and node coverage are shared, but their state transitions are still separate.
+The resolver boundary itself now consumes typed seeds, and the new IDs,
+segmented paths, expanded event ordering, canonical call container, and
+summary/index boundaries are the migration seam. The P2
+benchmark/property-test expansion remains separate work.

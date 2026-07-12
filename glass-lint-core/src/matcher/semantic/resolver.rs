@@ -1,19 +1,20 @@
 //! Position-sensitive expression resolution.
 //!
-//! `ScopeGraph` supplies lexical declarations and historical assignments.
-//! `Resolver` is the single adapter from those low-level facts to the values
-//! consumed by matchers, so callers never make matching decisions from raw
-//! identifier spelling.
+//! The lexical fact builder supplies declarations and historical assignments.
+//! `Resolver` is the single adapter from those low-level facts to the versioned
+//! values consumed by matchers, so callers never make matching decisions from
+//! raw identifier spelling.
 
-use std::cell::RefCell;
+use std::{cell::RefCell, collections::BTreeMap};
 
 use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
+use swc_ecma_visit::{Visit, VisitWith};
 
 use super::{
     ast::{SymbolCallProvenance, SymbolMemberProvenance},
-    events::EventLog,
+    constant::{self, ConstValue, EvalState, Lookup},
     scope::ScopeGraph,
-    value::{Value, ValueArena, ValueId},
+    value::{BindingKey, Value, ValueArena, ValueId},
 };
 
 #[derive(Debug, Clone)]
@@ -29,21 +30,29 @@ pub(super) struct ResolvedValue {
     /// `call` because a namespace member can also be read without being called.
     pub(super) module_member: Option<SymbolMemberProvenance>,
     pub(super) returned_member: Option<(String, String)>,
+    pub(super) bound_arguments: Option<Vec<Option<super::scope::BoundArgument>>>,
+    pub(super) syntactic_chain: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum ResolutionKey {
+    Ident { lo: u32, hi: u32, symbol: String },
+    Member { lo: u32, hi: u32 },
 }
 
 #[derive(Debug)]
 pub(super) struct Resolver {
     scopes: ScopeGraph,
-    events: EventLog,
     values: RefCell<ValueArena>,
+    resolved_values: RefCell<BTreeMap<ResolutionKey, ResolvedValue>>,
 }
 
 impl Default for Resolver {
     fn default() -> Self {
         Self {
             scopes: ScopeGraph::default(),
-            events: EventLog::default(),
             values: RefCell::new(ValueArena::default()),
+            resolved_values: RefCell::new(BTreeMap::new()),
         }
     }
 }
@@ -51,15 +60,16 @@ impl Default for Resolver {
 impl Resolver {
     pub(super) fn collect(program: &Program) -> Self {
         let scopes = ScopeGraph::collect(program);
-        Self {
-            events: EventLog::collect(program).with_scopes(|span| scopes.scope_at(span)),
+        let resolver = Self {
             scopes,
             values: RefCell::new(ValueArena::default()),
-        }
-    }
-
-    pub(super) fn events_are_source_ordered(&self) -> bool {
-        self.events.is_source_ordered()
+            resolved_values: RefCell::new(BTreeMap::new()),
+        };
+        let mut collector = ValueFactCollector {
+            resolver: &resolver,
+        };
+        program.visit_with(&mut collector);
+        resolver
     }
 
     pub(super) fn value_is_known(&self, id: ValueId) -> bool {
@@ -90,9 +100,34 @@ impl Resolver {
     }
 
     pub(super) fn resolve_ident(&self, ident: &Ident) -> ResolvedValue {
-        let scoped_call = self.scopes.call_provenance(ident.sym.as_ref(), ident.span);
-        let rooted_chain = self.scopes.callable_member_chain(ident);
-        let id = self.intern_call_value(&scoped_call, rooted_chain.as_deref());
+        let key = ResolutionKey::Ident {
+            lo: ident.span.lo.0,
+            hi: ident.span.hi.0,
+            symbol: ident.sym.to_string(),
+        };
+        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
+            return value;
+        }
+        self.unknown()
+    }
+
+    fn resolve_ident_uncached(&self, ident: &Ident) -> ResolvedValue {
+        let key = ResolutionKey::Ident {
+            lo: ident.span.lo.0,
+            hi: ident.span.hi.0,
+            symbol: ident.sym.to_string(),
+        };
+        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
+            return value;
+        }
+        let seed = self.scopes.ident_value_seed(ident);
+        let rooted_chain = seed.rooted_chain.map(|chain| chain.to_string());
+        let id = match seed.constant {
+            ConstValue::Unknown => {
+                self.intern_call_value(&seed.call, rooted_chain.as_deref(), seed.binding)
+            }
+            value => self.intern_const_value(value, seed.binding),
+        };
         let call = self.call_provenance_for_value(id);
         let module_member = match &call {
             SymbolCallProvenance::ModuleExport { module, export } => {
@@ -104,21 +139,42 @@ impl Resolver {
             _ => None,
         };
         let returned_member = None;
-        ResolvedValue {
+        let resolved = ResolvedValue {
             id,
             rooted_chain,
             call,
             module_member,
             returned_member,
-        }
+            bound_arguments: seed.bound_arguments,
+            syntactic_chain: None,
+        };
+        self.resolved_values
+            .borrow_mut()
+            .insert(key, resolved.clone());
+        resolved
     }
 
-    pub(super) fn bound_string_arguments(&self, ident: &Ident) -> Option<Vec<Option<String>>> {
-        self.scopes.bound_string_arguments(ident)
+    pub(super) fn bound_arguments(
+        &self,
+        ident: &Ident,
+    ) -> Option<Vec<Option<super::scope::BoundArgument>>> {
+        self.resolve_ident(ident).bound_arguments
     }
 
     pub(super) fn scope_chain_at(&self, span: swc_common::Span) -> Vec<usize> {
         self.scopes.scope_chain_at(span)
+    }
+
+    pub(super) fn function_id_for_scope(&self, scope: usize) -> super::value::FunctionId {
+        self.scopes.function_id_for_scope(scope)
+    }
+
+    pub(super) fn binding_key_for_expr(&self, expr: &Expr) -> Option<BindingKey> {
+        self.scopes.binding_key_for_expr(expr)
+    }
+
+    pub(super) fn binding_key_or_global(&self, expr: &Expr) -> Option<BindingKey> {
+        self.scopes.binding_key_or_global(expr)
     }
 
     pub(super) fn has_assignment_at(&self, name: &str, span: swc_common::Span) -> bool {
@@ -126,16 +182,30 @@ impl Resolver {
     }
 
     pub(super) fn resolve_member(&self, member: &MemberExpr) -> ResolvedValue {
-        let syntactic = self.scopes.member_chain(member);
+        let key = ResolutionKey::Member {
+            lo: member.span.lo.0,
+            hi: member.span.hi.0,
+        };
+        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
+            return value;
+        }
+        self.unknown()
+    }
+
+    fn resolve_member_uncached(&self, member: &MemberExpr) -> ResolvedValue {
+        let key = ResolutionKey::Member {
+            lo: member.span.lo.0,
+            hi: member.span.hi.0,
+        };
+        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
+            return value;
+        }
+        let seed = self.scopes.member_value_seed(member);
+        let syntactic = seed.syntactic_chain.map(|chain| chain.to_string());
         // Prefer the alias-expanded path. Falling back to a rooted member keeps
         // direct global/`this` access available when no local alias is present.
-        let rooted_chain = syntactic
-            .as_deref()
-            .and_then(|chain| self.scopes.resolve_member_chain(member, chain))
-            .or_else(|| self.scopes.rooted_member_chain(member));
-        let module_member = syntactic
-            .as_deref()
-            .and_then(|chain| self.scopes.member_call_provenance_for_chain(member, chain));
+        let rooted_chain = seed.rooted_chain.map(|chain| chain.to_string());
+        let module_member = seed.module_member;
         let scoped_call = match &module_member {
             Some(SymbolMemberProvenance::ModuleNamespace { module, member }) => {
                 SymbolCallProvenance::ModuleExport {
@@ -145,21 +215,28 @@ impl Resolver {
             }
             None => SymbolCallProvenance::Local,
         };
-        let returned_member = self.scopes.returned_member(member);
-        let id = self.intern_call_value(&scoped_call, rooted_chain.as_deref());
+        let id = self.intern_call_value(&scoped_call, rooted_chain.as_deref(), seed.binding);
         let call = self.call_provenance_for_value(id);
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values
                 .borrow_mut()
                 .intern(Value::ModuleNamespace(module.clone()));
         }
-        ResolvedValue {
+        let resolved = ResolvedValue {
             id,
             rooted_chain,
             call,
             module_member,
-            returned_member,
-        }
+            returned_member: seed
+                .returned_member
+                .map(|(source, member)| (source.to_string(), member)),
+            bound_arguments: None,
+            syntactic_chain: syntactic,
+        };
+        self.resolved_values
+            .borrow_mut()
+            .insert(key, resolved.clone());
+        resolved
     }
 
     pub(super) fn resolve_expr(&self, expr: &Expr) -> ResolvedValue {
@@ -212,7 +289,7 @@ impl Resolver {
     }
 
     pub(super) fn static_string_expr(&self, expr: &Expr) -> Option<String> {
-        let value = self.scopes.static_string_expr(expr)?;
+        let value = constant::evaluate(expr, self).string()?.to_string();
         self.values
             .borrow_mut()
             .intern(Value::StaticString(value.clone()));
@@ -220,11 +297,17 @@ impl Resolver {
     }
 
     pub(super) fn static_string_array_expr(&self, expr: &Expr) -> Option<Vec<String>> {
-        self.scopes.static_string_array_expr(expr)
+        match constant::evaluate(expr, self) {
+            ConstValue::Array(values) => values
+                .into_iter()
+                .map(|value| value.string().map(str::to_owned))
+                .collect(),
+            _ => None,
+        }
     }
 
     pub(super) fn object_keys_expr(&self, expr: &Expr) -> Option<Vec<String>> {
-        let keys = self.scopes.object_keys_expr(expr)?;
+        let keys = constant::evaluate(expr, self).object_keys()?;
         let mut values = self.values.borrow_mut();
         let unknown = ValueId::UNKNOWN;
         values.intern(Value::StaticObject(
@@ -234,11 +317,45 @@ impl Resolver {
     }
 
     pub(super) fn rooted_expr_chain(&self, expr: &Expr) -> Option<String> {
-        self.scopes.rooted_expr_chain(expr)
+        match expr {
+            Expr::Ident(ident) => self
+                .resolve_ident(ident)
+                .rooted_chain
+                .or_else(|| ident.span.is_dummy().then(|| ident.sym.to_string())),
+            Expr::Member(member) => self.resolve_member(member).rooted_chain,
+            Expr::Call(call) => match &call.callee {
+                Callee::Expr(callee) => self.rooted_expr_chain(callee),
+                Callee::Super(_) | Callee::Import(_) => None,
+            },
+            Expr::OptChain(chain) => match &*chain.base {
+                swc_ecma_ast::OptChainBase::Member(member) => {
+                    self.resolve_member(member).rooted_chain
+                }
+                swc_ecma_ast::OptChainBase::Call(call) => self.rooted_expr_chain(&call.callee),
+            },
+            Expr::Paren(paren) => self.rooted_expr_chain(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.rooted_expr_chain(expr)),
+            Expr::TsAs(value) => self.rooted_expr_chain(&value.expr),
+            Expr::TsNonNull(value) => self.rooted_expr_chain(&value.expr),
+            Expr::TsSatisfies(value) => self.rooted_expr_chain(&value.expr),
+            Expr::TsTypeAssertion(value) => self.rooted_expr_chain(&value.expr),
+            _ => None,
+        }
     }
 
     pub(super) fn member_chain(&self, member: &MemberExpr) -> Option<String> {
-        self.scopes.member_chain(member)
+        let key = ResolutionKey::Member {
+            lo: member.span.lo.0,
+            hi: member.span.hi.0,
+        };
+        self.resolved_values
+            .borrow()
+            .get(&key)
+            .and_then(|value| value.syntactic_chain.clone())
+            .or_else(|| super::ast::member_chain(member))
     }
 
     pub(super) fn class_provenance(&self, expr: &Expr) -> Option<(String, String)> {
@@ -255,6 +372,8 @@ impl Resolver {
             call: SymbolCallProvenance::Local,
             module_member: None,
             returned_member: None,
+            bound_arguments: None,
+            syntactic_chain: None,
         }
     }
 
@@ -266,6 +385,8 @@ impl Resolver {
             call: SymbolCallProvenance::Local,
             module_member: None,
             returned_member: None,
+            bound_arguments: None,
+            syntactic_chain: None,
         }
     }
 
@@ -299,7 +420,12 @@ impl Resolver {
         }))
     }
 
-    fn intern_call_value(&self, call: &SymbolCallProvenance, rooted: Option<&str>) -> ValueId {
+    fn intern_call_value(
+        &self,
+        call: &SymbolCallProvenance,
+        rooted: Option<&str>,
+        binding: Option<super::value::BindingKey>,
+    ) -> ValueId {
         let value = match call {
             SymbolCallProvenance::Global { name } => Value::Global(name.clone()),
             SymbolCallProvenance::ModuleExport { module, export } => Value::ModuleExport {
@@ -308,14 +434,17 @@ impl Resolver {
             },
             SymbolCallProvenance::Local => rooted.map_or(Value::Local, rooted_value),
         };
-        let id = self.values.borrow_mut().intern(value);
+        let mut arena = self.values.borrow_mut();
+        let target = arena.intern(value);
+        let id = binding.map_or(target, |key| arena.intern(Value::Binding { key, target }));
+        drop(arena);
         debug_assert!(self.values.borrow().get(id).is_some());
         id
     }
 
     /// Convert the canonical value back into matcher provenance. This keeps
     /// the arena authoritative for call identity: scope collection supplies a
-    /// candidate once, but matchers never consume a separately reconstructed
+    /// typed seed once, but matchers never consume a separately reconstructed
     /// spelling. Unknown or exhausted values are local and therefore fail
     /// closed for strict global/module matchers.
     fn call_provenance_for_value(&self, id: ValueId) -> SymbolCallProvenance {
@@ -323,6 +452,7 @@ impl Resolver {
             return SymbolCallProvenance::Local;
         };
         match value {
+            Value::Binding { target, .. } => self.call_provenance_for_value(target),
             Value::Global(name) => SymbolCallProvenance::Global { name },
             Value::ModuleExport { module, export } => {
                 SymbolCallProvenance::ModuleExport { module, export }
@@ -332,11 +462,108 @@ impl Resolver {
         }
     }
 
+    fn const_value(&self, id: ValueId) -> ConstValue {
+        let Some(value) = self.values.borrow().get(id).cloned() else {
+            return ConstValue::Unknown;
+        };
+        match value {
+            Value::Binding { target, .. } => self.const_value(target),
+            Value::StaticString(value) => ConstValue::String(value),
+            Value::StaticNumber(value) => ConstValue::NonNegativeInteger(value),
+            Value::StaticArray(values) => {
+                ConstValue::Array(values.into_iter().map(|id| self.const_value(id)).collect())
+            }
+            Value::StaticObject(values) => ConstValue::Object(
+                values
+                    .into_iter()
+                    .map(|(key, value)| (key, self.const_value(value)))
+                    .collect(),
+            ),
+            _ => ConstValue::Unknown,
+        }
+    }
+
+    fn intern_const_value(&self, value: ConstValue, binding: Option<BindingKey>) -> ValueId {
+        let value = match value {
+            ConstValue::Unknown => Value::Unknown,
+            ConstValue::String(value) => Value::StaticString(value),
+            ConstValue::NonNegativeInteger(value) => Value::StaticNumber(value),
+            ConstValue::Array(values) => Value::StaticArray(
+                values
+                    .into_iter()
+                    .map(|value| self.intern_const_value(value, None))
+                    .collect(),
+            ),
+            ConstValue::Object(values) => Value::StaticObject(
+                values
+                    .into_iter()
+                    .map(|(key, value)| (key, self.intern_const_value(value, None)))
+                    .collect(),
+            ),
+        };
+        let mut arena = self.values.borrow_mut();
+        let target = arena.intern(value);
+        binding.map_or(target, |key| arena.intern(Value::Binding { key, target }))
+    }
+
     fn fresh_object_value(&self) -> ResolvedValue {
         let Some(object) = self.values.borrow_mut().allocate_object_id() else {
             return self.unknown();
         };
         self.static_value(Value::Object(object))
+    }
+}
+
+impl Lookup for Resolver {
+    fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
+        self.const_value(self.resolve_ident(ident).id)
+    }
+
+    fn spread(&self, expr: &Expr, state: &mut EvalState) -> ConstValue {
+        if self.scopes.mutable_static_object_at(expr) {
+            return ConstValue::Unknown;
+        }
+        state.evaluate(expr, self)
+    }
+
+    fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue {
+        if let Some(property) = constant::property_name_with_state(&member.prop, self, state) {
+            return match state.evaluate(&member.obj, self) {
+                ConstValue::Array(values) => property
+                    .parse::<usize>()
+                    .ok()
+                    .and_then(|index| values.get(index).cloned())
+                    .unwrap_or(ConstValue::Unknown),
+                ConstValue::Object(values) => values
+                    .get(&property)
+                    .cloned()
+                    .unwrap_or(ConstValue::Unknown),
+                _ => ConstValue::Unknown,
+            };
+        }
+        ConstValue::Unknown
+    }
+
+    fn unshadowed_global(&self, name: &str, span: swc_common::Span) -> bool {
+        self.scopes.unshadowed_global_at(name, span)
+    }
+}
+
+/// Populate the immutable resolver cache once for every lexical identifier and
+/// member expression. Later matcher queries consume these facts instead of
+/// re-deriving provenance from raw AST nodes.
+struct ValueFactCollector<'a> {
+    resolver: &'a Resolver,
+}
+
+impl Visit for ValueFactCollector<'_> {
+    fn visit_ident(&mut self, ident: &Ident) {
+        let _ = self.resolver.resolve_ident_uncached(ident);
+    }
+
+    fn visit_member_expr(&mut self, member: &MemberExpr) {
+        let _ = self.resolver.resolve_member_uncached(member);
+        member.visit_children_with(self);
     }
 }
 

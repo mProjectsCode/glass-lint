@@ -17,17 +17,25 @@ use super::{
 };
 
 mod ast;
+mod call;
+mod call_arguments;
 mod calls;
 mod constant;
+mod constructors;
 mod events;
+mod facts;
+mod flow_calls;
+mod flow_index;
+mod flow_state;
 mod index;
-mod instance;
 mod object_flow;
 mod resolver;
 mod scope;
+mod summary;
 mod value;
 
-use index::MatcherFacts;
+use events::EventLog;
+use facts::SemanticFacts;
 
 /// The matcher-oriented facts derived from one parsed JavaScript file.
 ///
@@ -37,10 +45,8 @@ use index::MatcherFacts;
 /// matcher observes the same resolution decisions.
 #[derive(Debug)]
 pub(super) struct SemanticModel {
-    resolver: resolver::Resolver,
-    index: MatcherFacts,
+    facts: SemanticFacts,
     matchers: Vec<ApiMatcher>,
-    argument_evidence: Vec<Vec<ApiEvidence>>,
 }
 
 impl SemanticModel {
@@ -50,34 +56,28 @@ impl SemanticModel {
             .map(|rule| ApiMatcher::from_matchers(rule.matchers().to_vec()))
             .collect::<Vec<_>>();
         let resolver = resolver::Resolver::collect(program);
+        let events = EventLog::collect(program)
+            .with_scopes(|span| resolver.scope_chain_at(span).first().copied().unwrap_or(0));
         // The event log is the analysis boundary's source-order contract. A
         // malformed or overlarge event stream fails closed before any visitor
         // can manufacture a second ordering from the AST.
-        if !resolver.events_are_source_ordered() {
+        if !events.is_source_ordered() {
             return Self {
-                resolver,
-                index: MatcherFacts::default(),
+                facts: SemanticFacts::empty(rules.len()),
                 matchers,
-                argument_evidence: vec![Vec::new(); rules.len()],
             };
         }
-        let (index, argument_evidence) =
-            MatcherFacts::collect_for_matchers(program, &resolver, &matchers);
-        Self {
-            resolver,
-            index,
-            matchers,
-            argument_evidence,
-        }
+        let facts = SemanticFacts::build(program, resolver, events, &matchers, rules.len());
+        Self { facts, matchers }
     }
 
     pub(super) fn evidence_for(&self, rule_index: usize) -> Vec<ApiEvidence> {
-        if !self.resolver.events_are_source_ordered() {
+        if !self.facts.events.is_source_ordered() {
             return Vec::new();
         }
-        let mut evidence = self.index.evidence_for(&self.matchers[rule_index]);
-        evidence.extend_from_slice(&self.argument_evidence[rule_index]);
-        normalize_evidence(evidence)
+        let mut evidence = self.facts.index.evidence_for(&self.matchers[rule_index]);
+        evidence.extend_from_slice(&self.facts.argument_evidence[rule_index]);
+        normalize_evidence(evidence, &self.facts.events)
     }
 }
 
@@ -85,7 +85,7 @@ impl SemanticModel {
 /// order is deliberately irrelevant: spans are sorted first, identical
 /// `(kind, symbol, span)` occurrences are collapsed, and the finite limit is
 /// applied to source occurrences rather than matcher declaration order.
-fn normalize_evidence(evidence: Vec<ApiEvidence>) -> Vec<ApiEvidence> {
+fn normalize_evidence(evidence: Vec<ApiEvidence>, events: &EventLog) -> Vec<ApiEvidence> {
     let mut occurrences = evidence
         .into_iter()
         .flat_map(|evidence| {
@@ -97,7 +97,26 @@ fn normalize_evidence(evidence: Vec<ApiEvidence>) -> Vec<ApiEvidence> {
         })
         .collect::<Vec<_>>();
     occurrences.sort_by(|left, right| {
-        (left.0.lo, left.0.hi, left.1, &left.2).cmp(&(right.0.lo, right.0.hi, right.1, &right.2))
+        (
+            events
+                .order_for(left.0)
+                .map(|event| event.0)
+                .unwrap_or(u32::MAX),
+            left.0.lo,
+            left.0.hi,
+            left.1,
+            &left.2,
+        )
+            .cmp(&(
+                events
+                    .order_for(right.0)
+                    .map(|event| event.0)
+                    .unwrap_or(u32::MAX),
+                right.0.lo,
+                right.0.hi,
+                right.1,
+                &right.2,
+            ))
     });
     occurrences.dedup();
     occurrences.truncate(ApiRule::EVIDENCE_LIMIT);

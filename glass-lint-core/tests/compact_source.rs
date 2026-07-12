@@ -251,7 +251,10 @@ fn new_semantic_matchers_are_normalized_and_validated() {
         .matcher(Matcher::returned_member_read(" ", "manifest"))
         .matcher(Matcher::instance_member_call("framework", " ", "run"))
         .build();
-    assert_eq!(invalid.unwrap_err(), BuildError::MissingMatcher);
+    assert!(matches!(
+        invalid.unwrap_err(),
+        BuildError::InvalidMatcher(_)
+    ));
 }
 
 #[test]
@@ -541,6 +544,26 @@ fn inconsistent_helper_calls_do_not_infer_parameter_aliases() {
     assert_count(
         r#"function n(t){t("/x")}n(fetch);n(localFetch);"#,
         rule("test.inconsistent-helper-negative")
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap(),
+        0,
+    );
+}
+
+#[test]
+fn incomplete_helper_invocations_do_not_infer_parameter_aliases() {
+    assert_count(
+        r#"function n(t){t(\"/x\")}n();n(fetch);"#,
+        rule("test.incomplete-helper-negative")
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap(),
+        0,
+    );
+    assert_count(
+        r#"function n(t){t(\"/x\")}n(fetch,local);"#,
+        rule("test.extra-helper-argument-negative")
             .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap(),

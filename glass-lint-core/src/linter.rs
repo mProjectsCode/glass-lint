@@ -352,6 +352,7 @@ mod tests {
             Linter::new(catalog()).lint(&"x".repeat(crate::MAX_SOURCE_BYTES + 1), "large.js");
         assert!(report.findings.is_empty());
         assert_eq!(report.parse_diagnostics.len(), 1);
+        assert_eq!(report.parse_diagnostics[0].code, "source_too_large");
         assert_eq!(report.parse_diagnostics[0].filename, "large.js");
         assert!(report.parse_diagnostics[0].range.is_none());
     }
@@ -361,9 +362,23 @@ mod tests {
         let report = Linter::new(catalog()).lint("fetch(", "broken.js");
         assert!(report.findings.is_empty());
         let diagnostic = &report.parse_diagnostics[0];
+        assert_eq!(diagnostic.code, "syntax_error");
         assert_eq!(diagnostic.filename, "broken.js");
         assert!(diagnostic.message.starts_with("JavaScript parse error:"));
         assert!(diagnostic.range.is_some());
+    }
+
+    #[test]
+    fn source_locations_handle_crlf_and_eof_without_byte_columns() {
+        let report = Linter::new(catalog()).lint("fetch('/a');\r\nfetch('/é');", "crlf.js");
+        assert_eq!(report.findings.len(), 2);
+        assert_eq!(report.findings[0].range.start.line, 1);
+        assert_eq!(report.findings[1].range.start.line, 2);
+        assert!(report.findings[1].range.end.column > report.findings[1].range.start.column);
+
+        let empty = Linter::new(catalog()).lint("", "empty.js");
+        assert!(empty.findings.is_empty());
+        assert!(empty.parse_diagnostics.is_empty());
     }
 
     #[test]

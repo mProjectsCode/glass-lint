@@ -5,21 +5,54 @@
 //! Argument and flow evidence remain per-rule because their matchers carry
 //! rule-specific predicates that cannot be represented as a shared key.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    ops::{Deref, DerefMut},
+};
 
 use swc_common::Span;
-use swc_ecma_ast::Program;
 
 use super::super::result::{ApiEvidence, ApiMatchKind};
 use super::super::rule::{
-    ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, FlowMatcher,
-    MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+    ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, MemberCallMatcher,
+    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
 };
 
-use super::resolver::Resolver;
+/// Typed occurrence storage.  Keeping insertion and normalization in one
+/// container prevents semantic collectors from inventing subtly different
+/// span ordering or duplicate policies for each provenance view.
+#[derive(Debug, Default)]
+pub(super) struct OccurrenceIndex<K: Ord>(BTreeMap<K, Vec<Span>>);
 
-type Occurrences = BTreeMap<String, Vec<Span>>;
-type ModuleOccurrences = BTreeMap<(String, String), Vec<Span>>;
+impl<K: Ord> OccurrenceIndex<K> {
+    pub(super) fn push(&mut self, key: K, span: Span) {
+        self.0.entry(key).or_default().push(span);
+    }
+
+    pub(super) fn normalize(&mut self) {
+        for spans in self.0.values_mut() {
+            spans.sort_by_key(|span| (span.lo, span.hi));
+            spans.dedup();
+        }
+    }
+}
+
+impl<K: Ord> Deref for OccurrenceIndex<K> {
+    type Target = BTreeMap<K, Vec<Span>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<K: Ord> DerefMut for OccurrenceIndex<K> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+type Occurrences = OccurrenceIndex<String>;
+type ModuleOccurrences = OccurrenceIndex<(String, String)>;
 
 #[derive(Debug, Default)]
 pub struct MatcherFacts {
@@ -35,9 +68,9 @@ pub struct MatcherFacts {
     pub(super) member_reads: Occurrences,
     pub(super) rooted_member_reads: Occurrences,
     pub(super) module_member_reads: ModuleOccurrences,
-    pub(super) returned_member_calls: BTreeMap<(String, String), Vec<Span>>,
-    pub(super) returned_member_reads: BTreeMap<(String, String), Vec<Span>>,
-    pub(super) instance_member_calls: BTreeMap<(String, String, String), Vec<Span>>,
+    pub(super) returned_member_calls: OccurrenceIndex<(String, String)>,
+    pub(super) returned_member_reads: OccurrenceIndex<(String, String)>,
+    pub(super) instance_member_calls: OccurrenceIndex<(String, String, String)>,
     pub(super) imports: Occurrences,
     pub(super) string_literals: Occurrences,
     pub(super) classes: Occurrences,
@@ -48,118 +81,26 @@ pub struct MatcherFacts {
 }
 
 impl MatcherFacts {
-    pub fn collect_for_matchers(
-        program: &Program,
-        resolver: &Resolver,
-        matchers: &[ApiMatcher],
-    ) -> (Self, Vec<Vec<ApiEvidence>>) {
-        // The catalog is compiled into ApiMatcher values once. Pre-filtering
-        // then only clones the specific matcher records needed by the
-        // argument visitors; it never reparses or renormalizes a whole rule.
-        let member_matchers = matchers
-            .iter()
-            .enumerate()
-            .flat_map(|(rule_index, matcher)| {
-                matcher
-                    .member_calls
-                    .iter()
-                    .filter(|matcher| {
-                        !matcher.arg_strings.is_empty()
-                            || !matcher.arg_object_keys.is_empty()
-                            || !matcher.arg_rooted_exprs.is_empty()
-                    })
-                    .cloned()
-                    .map(move |matcher| (rule_index, matcher))
-            })
-            .collect::<Vec<_>>();
-        let call_matchers = matchers
-            .iter()
-            .enumerate()
-            .flat_map(|(rule_index, matcher)| {
-                matcher
-                    .calls
-                    .iter()
-                    .filter(|matcher| !matcher.arg_strings.is_empty())
-                    .cloned()
-                    .map(move |matcher| (rule_index, matcher))
-            })
-            .collect::<Vec<_>>();
-        let flow_matchers = matchers
-            .iter()
-            .enumerate()
-            .flat_map(|(rule_index, matcher)| {
-                matcher
-                    .flows
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(move |(flow_index, matcher)| (rule_index, flow_index, matcher))
-            })
-            .collect::<Vec<_>>();
-        let instance_matchers = matchers
-            .iter()
-            .flat_map(|matcher| matcher.instance_member_calls.iter().cloned())
-            .collect::<Vec<_>>();
-        Self::collect_with_argument_matchers(
-            program,
-            resolver,
-            &member_matchers,
-            &call_matchers,
-            &flow_matchers,
-            &instance_matchers,
-            matchers.len(),
-        )
-    }
-
-    fn collect_with_argument_matchers(
-        program: &Program,
-        resolver: &Resolver,
-        member_argument_matchers: &[(usize, MemberCallMatcher)],
-        call_argument_matchers: &[(usize, CallMatcher)],
-        flow_matchers: &[(usize, usize, FlowMatcher)],
-        instance_matchers: &[super::super::rule::InstanceMemberCallMatcher],
-        rule_count: usize,
-    ) -> (Self, Vec<Vec<ApiEvidence>>) {
-        let mut index = Self::default();
-        let mut argument_evidence = vec![Vec::new(); rule_count];
-        super::calls::collect(
-            program,
-            resolver,
-            member_argument_matchers,
-            call_argument_matchers,
-            &mut index,
-            &mut argument_evidence,
-        );
-        super::instance::collect(program, resolver, instance_matchers, &mut index);
-        let flow_evidence =
-            super::object_flow::collect(program, resolver, flow_matchers, rule_count);
-        for (rule_index, evidence) in flow_evidence.into_iter().enumerate() {
-            argument_evidence[rule_index].extend(evidence);
-        }
-        index.normalize_occurrences();
-        (index, argument_evidence)
-    }
-
-    fn normalize_occurrences(&mut self) {
-        sort_spans(&mut self.calls);
-        sort_spans(&mut self.global_calls);
-        sort_spans(&mut self.module_calls);
-        sort_spans(&mut self.member_calls);
-        sort_spans(&mut self.rooted_member_calls);
-        sort_spans(&mut self.module_member_calls);
-        sort_spans(&mut self.member_reads);
-        sort_spans(&mut self.rooted_member_reads);
-        sort_spans(&mut self.module_member_reads);
-        sort_spans(&mut self.returned_member_calls);
-        sort_spans(&mut self.returned_member_reads);
-        sort_spans(&mut self.instance_member_calls);
-        sort_spans(&mut self.imports);
-        sort_spans(&mut self.string_literals);
-        sort_spans(&mut self.classes);
-        sort_spans(&mut self.module_classes);
-        sort_spans(&mut self.constructors);
-        sort_spans(&mut self.global_constructors);
-        sort_spans(&mut self.module_constructors);
+    pub(super) fn normalize_occurrences(&mut self) {
+        self.calls.normalize();
+        self.global_calls.normalize();
+        self.module_calls.normalize();
+        self.member_calls.normalize();
+        self.rooted_member_calls.normalize();
+        self.module_member_calls.normalize();
+        self.member_reads.normalize();
+        self.rooted_member_reads.normalize();
+        self.module_member_reads.normalize();
+        self.returned_member_calls.normalize();
+        self.returned_member_reads.normalize();
+        self.instance_member_calls.normalize();
+        self.imports.normalize();
+        self.string_literals.normalize();
+        self.classes.normalize();
+        self.module_classes.normalize();
+        self.constructors.normalize();
+        self.global_constructors.normalize();
+        self.module_constructors.normalize();
     }
 
     pub fn evidence_for(&self, matcher: &ApiMatcher) -> Vec<ApiEvidence> {
@@ -402,18 +343,31 @@ impl MatcherFacts {
     }
 
     pub(super) fn record(&mut self, kind: ApiMatchKind, symbol: impl Into<String>, span: Span) {
-        let target = match kind {
-            ApiMatchKind::Call => &mut self.calls,
-            ApiMatchKind::MemberCall => &mut self.member_calls,
-            ApiMatchKind::MemberRead => &mut self.member_reads,
-            ApiMatchKind::Import => &mut self.imports,
-            ApiMatchKind::StringLiteral => &mut self.string_literals,
-            ApiMatchKind::Class => &mut self.classes,
-            ApiMatchKind::Constructor => &mut self.constructors,
-            ApiMatchKind::CallArgument => return,
-        };
-
-        target.entry(symbol.into()).or_default().push(span);
+        let symbol = symbol.into();
+        match kind {
+            ApiMatchKind::Call => {
+                self.calls.push(symbol, span);
+            }
+            ApiMatchKind::MemberCall => {
+                self.member_calls.push(symbol, span);
+            }
+            ApiMatchKind::MemberRead => {
+                self.member_reads.push(symbol, span);
+            }
+            ApiMatchKind::Import => {
+                self.imports.push(symbol, span);
+            }
+            ApiMatchKind::StringLiteral => {
+                self.string_literals.push(symbol, span);
+            }
+            ApiMatchKind::Class => {
+                self.classes.push(symbol, span);
+            }
+            ApiMatchKind::Constructor => {
+                self.constructors.push(symbol, span);
+            }
+            ApiMatchKind::CallArgument => {}
+        }
     }
 }
 
@@ -446,9 +400,45 @@ fn push_owned_evidence(
     });
 }
 
-fn sort_spans<K: Ord>(occurrences: &mut BTreeMap<K, Vec<Span>>) {
-    for spans in occurrences.values_mut() {
-        spans.sort_by_key(|span| (span.lo, span.hi));
-        spans.dedup();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use swc_common::BytePos;
+
+    fn span(start: u32, end: u32) -> Span {
+        Span::new(BytePos(start), BytePos(end))
+    }
+
+    #[test]
+    fn typed_occurrence_index_is_sorted_and_deduplicated() {
+        let mut index = OccurrenceIndex::<String>::default();
+        index.push("fetch".into(), span(20, 26));
+        index.push("fetch".into(), span(5, 11));
+        index.push("fetch".into(), span(5, 11));
+        index.normalize();
+        assert_eq!(index.get("fetch").unwrap(), &[span(5, 11), span(20, 26)]);
+    }
+
+    #[test]
+    fn optimized_member_query_matches_reference_occurrences() {
+        let mut facts = MatcherFacts::default();
+        facts.record(ApiMatchKind::MemberCall, "client.request", span(30, 44));
+        facts.record(ApiMatchKind::MemberCall, "other.request", span(5, 18));
+        facts.record(ApiMatchKind::MemberCall, "client.request", span(10, 24));
+        facts.normalize_occurrences();
+
+        let matcher =
+            ApiMatcher::from_matchers(vec![super::super::super::rule::Matcher::member_call(
+                MemberCallMatcher::syntactic_heuristic("client.request"),
+            )]);
+        let evidence = facts.evidence_for(&matcher);
+        let reference = facts
+            .member_calls
+            .iter()
+            .filter(|(symbol, _)| *symbol == "client.request")
+            .flat_map(|(_, spans)| spans.iter().copied())
+            .collect::<Vec<_>>();
+        assert_eq!(evidence.len(), 1);
+        assert_eq!(evidence[0].spans, reference);
     }
 }

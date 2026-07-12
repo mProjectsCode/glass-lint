@@ -141,6 +141,32 @@ fn future_declarations_fail_closed_at_the_use_position() {
 }
 
 #[test]
+fn future_declarations_shadow_all_builtin_provenance_seeds() {
+    let rules = [
+        rule("test.import")
+            .matcher(Matcher::import("sdk"))
+            .build()
+            .unwrap(),
+        rule("test.fetch")
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap(),
+        rule("test.global-fetch")
+            .matcher(Matcher::rooted_member_call("globalThis.fetch"))
+            .build()
+            .unwrap(),
+    ];
+    let result = classify(
+        "require('sdk').send(); const require = localRequire;
+         __toESM(require('sdk')).send(); const __toESM = localInterop;
+         Promise.resolve(fetch).then(callback => callback('/x')); const Promise = localPromise;
+         globalThis.fetch('/x'); const globalThis = localGlobalThis;",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 0);
+}
+
+#[test]
 fn numeric_addition_is_not_a_static_property_string() {
     let rules = [rule("test.member")
         .matcher(Matcher::rooted_member_call("app.12"))
@@ -174,6 +200,21 @@ fn tracks_simple_parameter_aliases_into_named_functions() {
         .unwrap()];
     let result = classify(
         "function invoke(callback) { callback('/remote'); } invoke(fetch);",
+        &rules,
+    );
+    assert_capability_count(&result, "test.fetch", 1);
+}
+
+#[test]
+fn named_helper_summaries_are_lexically_scoped() {
+    let rules = [rule("test.fetch")
+        .matcher(Matcher::global_call("fetch"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "function localScope() { function invoke(callback) { callback('/local'); } invoke(local); }
+         function globalScope() { function invoke(callback) { callback('/global'); } invoke(fetch); }
+         localScope(); globalScope();",
         &rules,
     );
     assert_capability_count(&result, "test.fetch", 1);
@@ -307,6 +348,51 @@ fn tracks_configured_values_into_later_member_sinks() {
 }
 
 #[test]
+fn flow_calls_use_effective_call_and_apply_arguments() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const first = document.createElement.call(document, 'script'); first.src = url;
+         document.head.appendChild.call(document.head, first);
+         const args = [second]; const second = document.createElement.apply(document, ['script']);
+         second.src = url; document.head.appendChild.apply(document.head, [second]);",
+        &rules,
+    );
+    assert_capability_count(&result, "test.flow", 2);
+}
+
+#[test]
+fn flow_control_boundaries_fail_closed_after_loops_try_and_destructuring() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "let loopValue; while (condition) { loopValue = document.createElement('script'); loopValue.src = url; }
+         document.head.appendChild(loopValue);
+         let tryValue; try { tryValue = document.createElement('script'); tryValue.src = url; } catch (error) {}
+         document.head.appendChild(tryValue);
+         const source = document.createElement('script'); const { node } = source; node.src = url; document.head.appendChild(node);",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 0);
+}
+
+#[test]
 fn flow_state_does_not_cross_conditional_branches_or_duplicate_sinks() {
     let rules = [rule("test.flow")
         .matcher(
@@ -351,6 +437,27 @@ fn value_flow_respects_reassignment_and_order() {
     let result = classify(
         "let script = document.createElement('script'); script.src = getUrl(); script = document.createElement('div'); document.head.appendChild(script);
          const future = document.createElement('script'); document.head.appendChild(future); future.src = getUrl();",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 0);
+}
+
+#[test]
+fn flow_kills_object_state_for_compound_writes_updates_and_delete() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const compound = document.createElement('script'); compound.src = url; compound.src += suffix; document.head.appendChild(compound);
+         const updated = document.createElement('script'); updated.src = url; updated.src++; document.head.appendChild(updated);
+         const deleted = document.createElement('script'); deleted.src = url; delete deleted.src; document.head.appendChild(deleted);",
         &rules,
     );
     assert_eq!(result.finding_count, 0);

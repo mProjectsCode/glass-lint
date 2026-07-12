@@ -1,6 +1,8 @@
 mod error;
 mod matcher;
+mod normalization;
 mod taxonomy;
+mod validation;
 
 pub use error::{ApiCatalogError, ApiRuleBuildError};
 pub use matcher::{
@@ -115,7 +117,11 @@ impl ApiRuleBuilder {
             ));
         }
 
-        let matcher = ApiMatcher::from_matchers(self.matchers).normalized();
+        let candidate = ApiMatcher::from_matchers(self.matchers);
+        candidate
+            .validate()
+            .map_err(ApiRuleBuildError::InvalidMatcher)?;
+        let matcher = candidate.normalized();
         if matcher.is_empty() {
             return Err(ApiRuleBuildError::MissingMatcher);
         }
@@ -198,5 +204,29 @@ mod tests {
         assert!(build("network.fetch", "browser/network").is_ok());
         let error = build("UPPER", "network").unwrap_err();
         assert!(error.to_string().contains("invalid rule ID"));
+    }
+
+    #[test]
+    fn rejects_invalid_matcher_shapes_at_the_builder_boundary() {
+        let error = ApiRule::builder("network.fetch")
+            .label("rule")
+            .category("network")
+            .severity(ApiSeverity::Info)
+            .confidence(Confidence::High)
+            .matcher(Matcher::rooted_member_call("client..request"))
+            .build()
+            .unwrap_err();
+        assert!(matches!(error, ApiRuleBuildError::InvalidMatcher(_)));
+
+        let flow = FlowMatcher::new("incomplete").source_member_call("document.createElement");
+        let error = ApiRule::builder("network.flow")
+            .label("rule")
+            .category("network")
+            .severity(ApiSeverity::Info)
+            .confidence(Confidence::High)
+            .matcher(flow)
+            .build()
+            .unwrap_err();
+        assert!(matches!(error, ApiRuleBuildError::InvalidMatcher(_)));
     }
 }
