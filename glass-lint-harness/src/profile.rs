@@ -3,7 +3,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc, Barrier, Mutex, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
     thread,
@@ -117,36 +117,16 @@ pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
     }
     let setup_elapsed = setup_start.elapsed();
 
-    let lint_start = Instant::now();
-    let next = Arc::new(AtomicUsize::new(0));
-    let results = Arc::new(Mutex::new(Vec::with_capacity(prepared.len())));
     let prepared = Arc::new(prepared);
-    thread::scope(|scope| {
-        for _ in 0..config.workers {
-            let next = Arc::clone(&next);
-            let results = Arc::clone(&results);
-            let prepared = Arc::clone(&prepared);
-            let linters = Arc::clone(&linters);
-            scope.spawn(move || {
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(file) = prepared.get(index) else {
-                        break;
-                    };
-                    let result = profile_file(file, &linters, config.warm_up, config.repeat);
-                    results.lock().unwrap().push(result);
-                }
-            });
-        }
-    });
-    let lint_elapsed = lint_start.elapsed();
-
-    file_results.extend(
-        Arc::try_unwrap(results)
-            .expect("profile workers still hold result storage")
-            .into_inner()
-            .expect("profile result storage was poisoned"),
+    let (results, lint_elapsed) = run_profile(
+        &prepared,
+        &linters,
+        config.workers,
+        config.warm_up,
+        config.repeat,
     );
+
+    file_results.extend(results);
     file_results.sort_by(|left, right| left.path.cmp(&right.path));
 
     let errors = file_results
@@ -374,6 +354,60 @@ fn profile_file(
         elapsed,
         error: None,
     }
+}
+
+fn run_profile(
+    prepared: &Arc<Vec<PreparedFile>>,
+    linters: &Arc<Vec<ProfileLinter>>,
+    workers: usize,
+    warm_up: usize,
+    repeat: usize,
+) -> (Vec<ProfileFileSummary>, Duration) {
+    let warm_up_next = Arc::new(AtomicUsize::new(0));
+    let measured_next = Arc::new(AtomicUsize::new(0));
+    let results = Arc::new(Mutex::new(Vec::with_capacity(prepared.len())));
+    let warm_up_barrier = Arc::new(Barrier::new(workers));
+    let measured_start = Arc::new(OnceLock::new());
+    thread::scope(|scope| {
+        for _ in 0..workers {
+            let warm_up_next = Arc::clone(&warm_up_next);
+            let measured_next = Arc::clone(&measured_next);
+            let results = Arc::clone(&results);
+            let prepared = Arc::clone(prepared);
+            let linters = Arc::clone(linters);
+            let warm_up_barrier = Arc::clone(&warm_up_barrier);
+            let measured_start = Arc::clone(&measured_start);
+            scope.spawn(move || {
+                loop {
+                    let index = warm_up_next.fetch_add(1, Ordering::Relaxed);
+                    let Some(file) = prepared.get(index) else {
+                        break;
+                    };
+                    let _ = profile_file(file, &linters, warm_up, 0);
+                }
+                warm_up_barrier.wait();
+                measured_start.get_or_init(Instant::now);
+                loop {
+                    let index = measured_next.fetch_add(1, Ordering::Relaxed);
+                    let Some(file) = prepared.get(index) else {
+                        break;
+                    };
+                    let result = profile_file(file, &linters, 0, repeat);
+                    results.lock().unwrap().push(result);
+                }
+            });
+        }
+    });
+    let elapsed = measured_start
+        .get()
+        .map_or(Duration::ZERO, Instant::elapsed);
+    (
+        Arc::try_unwrap(results)
+            .expect("profile workers still hold result storage")
+            .into_inner()
+            .expect("profile result storage was poisoned"),
+        elapsed,
+    )
 }
 
 #[cfg(test)]

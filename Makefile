@@ -37,7 +37,7 @@ test-rules:
 	$(HARNESS) verify glass-lint-obsidian/src/rules
 
 profile:
-	$(CARGO) build --profiling -p glass-lint-cli --bin glass-lint-harness
+	$(CARGO) build --profile profiling -p glass-lint-cli --bin glass-lint-harness
 	$(SAMPLY) record target/profiling/glass-lint-harness profile --path "$(PROFILE_PATH)" --provider "$(PROFILE_PROVIDER)" --profile "$(PROFILE_MODE)" $(PROFILE_ARGS)
 
 compare:

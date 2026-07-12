@@ -183,7 +183,7 @@ fn run() -> Result<bool> {
             rules,
         })?;
         print_profile(&report, quiet);
-        return Ok(report.errors > 0);
+        return Ok(report.errors == 0);
     }
     let mut adapters: Vec<Box<dyn Adapter>> = vec![Box::new(GlassLintAdapter)];
     for (name, command) in args.adapters {

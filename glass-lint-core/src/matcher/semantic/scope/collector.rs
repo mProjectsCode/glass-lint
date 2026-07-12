@@ -43,7 +43,10 @@ pub struct AliasCollector {
     inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
     pub mutable_static_objects: BTreeSet<(usize, String)>,
     reuse_scopes: bool,
-    reused_scopes: BTreeSet<usize>,
+    predeclared_scope_order: Vec<usize>,
+    next_predeclared_scope: usize,
+    #[cfg(test)]
+    scope_reuse_steps: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -87,7 +90,10 @@ impl AliasCollector {
             inline_parameters: BTreeMap::new(),
             mutable_static_objects: BTreeSet::new(),
             reuse_scopes: false,
-            reused_scopes: BTreeSet::new(),
+            predeclared_scope_order: Vec::new(),
+            next_predeclared_scope: 0,
+            #[cfg(test)]
+            scope_reuse_steps: 0,
         }
     }
 
@@ -101,7 +107,11 @@ impl AliasCollector {
         let mut visitor = predeclare::PredeclareVisitor { collector: self };
         program.visit_children_with(&mut visitor);
         self.reuse_scopes = true;
-        self.reused_scopes.clear();
+        self.next_predeclared_scope = 0;
+        #[cfg(test)]
+        {
+            self.scope_reuse_steps = 0;
+        }
     }
 
     fn current_scope(&self) -> usize {
@@ -168,17 +178,30 @@ impl AliasCollector {
     fn push_scope(&mut self, span: Span, kind: ScopeKind) {
         if self.reuse_scopes {
             let parent = self.current_scope();
-            if let Some(index) = (0..self.scopes.len()).find(|index| {
-                !self.reused_scopes.contains(index)
-                    && self.scopes[*index].parent == Some(parent)
-                    && self.scopes[*index].span == span
-                    && self.scopes[*index].kind == kind
-            }) {
-                self.reused_scopes.insert(index);
-                self.stack.push(index);
-                return;
+            let Some(&index) = self
+                .predeclared_scope_order
+                .get(self.next_predeclared_scope)
+            else {
+                panic!("normal traversal entered more scopes than predeclaration");
+            };
+            self.next_predeclared_scope += 1;
+            let matches_predeclared = self.scopes[index].parent == Some(parent)
+                && self.scopes[index].span == span
+                && self.scopes[index].kind == kind;
+            debug_assert!(
+                matches_predeclared,
+                "normal traversal must consume its matching predeclared scope"
+            );
+            assert!(
+                matches_predeclared,
+                "normal traversal scope order diverged from predeclaration"
+            );
+            self.stack.push(index);
+            #[cfg(test)]
+            {
+                self.scope_reuse_steps += 1;
             }
-            debug_assert!(false, "normal traversal must reuse predeclared scopes");
+            return;
         }
         let index = self.scopes.len();
         let parent = self.current_scope();
@@ -189,6 +212,7 @@ impl AliasCollector {
             parent: Some(parent),
             bindings: BTreeMap::new(),
         });
+        self.predeclared_scope_order.push(index);
         self.stack.push(index);
     }
 
@@ -1085,5 +1109,137 @@ impl Visit for AliasCollector {
         }
         catch.body.stmts.visit_with(self);
         self.pop_scope();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use swc_ecma_visit::VisitWith;
+
+    fn collect(source: &str) -> AliasCollector {
+        let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");
+        let mut collector = AliasCollector::new(parsed.program.span());
+        collector.predeclare(&parsed.program);
+        parsed.program.visit_children_with(&mut collector);
+        assert_eq!(
+            collector.next_predeclared_scope,
+            collector.predeclared_scope_order.len()
+        );
+        assert_eq!(
+            collector.scope_reuse_steps,
+            collector.predeclared_scope_order.len()
+        );
+        collector
+    }
+
+    fn scope_fingerprint(collector: &AliasCollector) -> Vec<String> {
+        collector
+            .scopes
+            .iter()
+            .map(|scope| {
+                format!(
+                    "parent={:?} depth={} kind={:?} span=({}, {}) bindings={:?}",
+                    scope.parent,
+                    scope.depth,
+                    scope.kind,
+                    scope.span.lo.0,
+                    scope.span.hi.0,
+                    scope.bindings
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn preserves_scope_order_for_all_scope_constructs() {
+        let source = r#"
+            function outer(parameter) {
+                { let block = parameter; }
+                for (let index = 0; index < 1; index++) {
+                    (() => { let nested = index; })();
+                }
+                for (const item of items) { function loopFunction() {} }
+                for (const key in object) { key; }
+                switch (parameter) {
+                    case 0: { let caseValue = parameter; break; }
+                    default: break;
+                }
+                try { throw parameter; }
+                catch (error) { const caught = error; }
+                with (context) { value; }
+                const functionValue = function named(value) { return value; };
+                const arrow = value => { return value; };
+            }
+        "#;
+        let first = collect(source);
+        let second = collect(source);
+
+        assert_eq!(scope_fingerprint(&first), scope_fingerprint(&second));
+        assert!(
+            first
+                .scopes
+                .iter()
+                .any(|scope| scope.kind == ScopeKind::Function)
+        );
+        assert!(
+            first
+                .scopes
+                .iter()
+                .any(|scope| scope.kind == ScopeKind::Block)
+        );
+        assert!(
+            first
+                .scopes
+                .iter()
+                .any(|scope| scope.kind == ScopeKind::Dynamic)
+        );
+        assert!(
+            first
+                .scopes
+                .iter()
+                .any(|scope| scope.kind == ScopeKind::Function && scope.depth > 2)
+        );
+    }
+
+    #[test]
+    fn reuses_same_span_same_kind_siblings_by_order() {
+        let parsed = crate::parse("value;", "same-span.js").expect("source should parse");
+        let span = parsed.program.span();
+        let mut collector = AliasCollector::new(span);
+
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        collector.reuse_scopes = true;
+        collector.next_predeclared_scope = 0;
+
+        collector.push_scope(span, ScopeKind::Block);
+        let first = collector.current_scope();
+        collector.pop_scope();
+        collector.push_scope(span, ScopeKind::Block);
+        let second = collector.current_scope();
+
+        assert_eq!((first, second), (1, 2));
+        assert_eq!(collector.scope_reuse_steps, 2);
+    }
+
+    fn sibling_scope_steps(count: usize) -> usize {
+        let source = (0..count)
+            .map(|index| format!("{{ let value{index} = {index}; }}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let collector = collect(&source);
+        collector.scope_reuse_steps
+    }
+
+    #[test]
+    fn many_sibling_scopes_use_one_cursor_step_each() {
+        let one = sibling_scope_steps(128);
+        let two = sibling_scope_steps(256);
+
+        assert_eq!(one, 128);
+        assert_eq!(two, one * 2);
     }
 }
