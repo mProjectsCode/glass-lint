@@ -9,6 +9,34 @@ cargo run -p glass-lint-cli --bin glass-lint -- --provider js check main.js
 cargo run -p glass-lint-cli --bin glass-lint-harness -- verify tests/e2e
 ```
 
+## Folder profiling
+
+The harness can profile arbitrary JavaScript files without case metadata.
+Run it on one subfolder of a large production corpus:
+
+    cargo run -p glass-lint-cli --bin glass-lint-harness -- profile --path /path/to/a/plugin/subfolder --provider obsidian --profile recommended --quiet
+
+Use repeated --path options for multiple roots. Discovery is recursive,
+deterministic, and does not follow symlinks. --include and --exclude use
+glob::Pattern syntax with slash-separated paths. Patterns without a slash
+also match basenames. --sample N --seed S selects a deterministic sample
+after filtering. --warm-up N, --repeat N, --workers N, and
+--continue-on-error control execution; the default is one worker.
+
+The selected sources are read into memory before the measured phase. Per-file
+timings and lint wall time cover only Linter::lint calls; setup and total
+process time are reported separately. This keeps file reads and decoding out
+of the useful timings.
+
+Install Samply, then run:
+
+    make profile PROFILE_PATH=/path/to/a/plugin/subfolder PROFILE_ARGS="--quiet --sample 20 --seed 20260712"
+
+The Make target builds the release harness with debug symbols and invokes
+samply record. Its default corpus is the small tests/e2e directory. Point
+PROFILE_PATH at one subfolder of a large production corpus rather than the
+entire release tree.
+
 `glass-lint-core` owns parsing, provenance and alias-flow analysis, declarative rule matching, configuration, and reports. It contains no product policy. `glass-lint-obsidian` owns Obsidian rules, while `glass-lint-js` owns generic JavaScript, browser, Node.js, and Electron rules. Rule IDs use `provider:name`, such as `obsidian:network.request` and `js:network.request`.
 
 ```rust

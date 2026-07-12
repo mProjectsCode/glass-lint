@@ -1,8 +1,8 @@
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use glass_lint_harness::{
-    Adapter, ExternalAdapter, GlassLintAdapter, comparison, failure_details, markdown, run_suite,
-    summary,
+    Adapter, ExternalAdapter, GlassLintAdapter, ProfileConfig, ProfileMode, ProfileProvider,
+    comparison, failure_details, markdown, profile_folder, run_suite, summary,
 };
 use std::{
     collections::BTreeMap,
@@ -35,11 +35,71 @@ enum Command {
     Compare {
         path: PathBuf,
     },
+    Profile {
+        #[arg(long = "path", required = true)]
+        paths: Vec<PathBuf>,
+        #[arg(long, value_enum, default_value_t = ProfileProviderArg::Obsidian)]
+        provider: ProfileProviderArg,
+        #[arg(long, value_enum, default_value_t = ProfileModeArg::Recommended)]
+        profile: ProfileModeArg,
+        #[arg(long = "rule")]
+        rules: Vec<String>,
+        #[arg(long)]
+        include: Vec<String>,
+        #[arg(long)]
+        exclude: Vec<String>,
+        #[arg(long)]
+        sample: Option<usize>,
+        #[arg(long, default_value_t = 0)]
+        seed: u64,
+        #[arg(long = "warm-up", default_value_t = 0)]
+        warm_up: usize,
+        #[arg(long, default_value_t = 1)]
+        repeat: usize,
+        #[arg(long, default_value_t = 1)]
+        workers: usize,
+        #[arg(long)]
+        continue_on_error: bool,
+        #[arg(long)]
+        quiet: bool,
+    },
 }
 #[derive(Clone, Copy, ValueEnum)]
 enum Format {
     Markdown,
     Json,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ProfileProviderArg {
+    Js,
+    Obsidian,
+    Both,
+}
+
+impl From<ProfileProviderArg> for ProfileProvider {
+    fn from(provider: ProfileProviderArg) -> Self {
+        match provider {
+            ProfileProviderArg::Js => Self::Js,
+            ProfileProviderArg::Obsidian => Self::Obsidian,
+            ProfileProviderArg::Both => Self::Both,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum ProfileModeArg {
+    Recommended,
+    Heuristic,
+}
+
+impl From<ProfileModeArg> for ProfileMode {
+    fn from(mode: ProfileModeArg) -> Self {
+        match mode {
+            ProfileModeArg::Recommended => Self::Recommended,
+            ProfileModeArg::Heuristic => Self::Heuristic,
+        }
+    }
 }
 
 fn parse_adapter(value: &str) -> Result<(String, PathBuf), String> {
@@ -92,6 +152,39 @@ impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for ProgressLayer {
 }
 fn run() -> Result<bool> {
     let args = Args::parse();
+    if let Command::Profile {
+        paths,
+        provider,
+        profile,
+        rules,
+        include,
+        exclude,
+        sample,
+        seed,
+        warm_up,
+        repeat,
+        workers,
+        continue_on_error,
+        quiet,
+    } = args.command
+    {
+        let report = profile_folder(&ProfileConfig {
+            paths,
+            include,
+            exclude,
+            sample,
+            seed,
+            warm_up,
+            repeat,
+            continue_on_error,
+            workers,
+            provider: provider.into(),
+            mode: profile.into(),
+            rules,
+        })?;
+        print_profile(&report, quiet);
+        return Ok(report.errors > 0);
+    }
     let mut adapters: Vec<Box<dyn Adapter>> = vec![Box::new(GlassLintAdapter)];
     for (name, command) in args.adapters {
         adapters.push(Box::new(ExternalAdapter { name, command }));
@@ -100,6 +193,7 @@ fn run() -> Result<bool> {
         Command::Verify { path } => (path, Format::Markdown, true, false),
         Command::Report { path, format } => (path, format, false, false),
         Command::Compare { path } => (path, Format::Markdown, false, true),
+        Command::Profile { .. } => unreachable!("profile command was handled above"),
     };
     if compare_mode {
         eprintln!(
@@ -164,4 +258,47 @@ fn run() -> Result<bool> {
     }
 
     Ok(compare_mode || report.passed())
+}
+
+fn print_profile(report: &glass_lint_harness::ProfileSummary, quiet: bool) {
+    if !quiet {
+        for file in &report.file_results {
+            if let Some(error) = &file.error {
+                eprintln!("error {}: {}", file.path.display(), error);
+            } else {
+                eprintln!(
+                    "  {}: {:.1?} ({} finding(s), {} diagnostic(s))",
+                    file.path.display(),
+                    file.elapsed,
+                    file.findings,
+                    file.diagnostics
+                );
+            }
+        }
+    }
+    println!(
+        "Profile: {} file(s), {} byte(s), {} run(s), {} finding(s), {} parse/analysis diagnostic(s), {} error(s), setup {:.1?}, lint wall {:.1?}, total {:.1?}",
+        report.files,
+        report.bytes,
+        report.runs,
+        report.findings,
+        report.diagnostics,
+        report.errors,
+        report.setup_elapsed,
+        report.elapsed,
+        report.total_elapsed
+    );
+    let mut slowest = report.file_results.iter().collect::<Vec<_>>();
+    slowest.sort_by(|left, right| {
+        right
+            .elapsed
+            .cmp(&left.elapsed)
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    if !slowest.is_empty() {
+        println!("Slowest files:");
+        for file in slowest.into_iter().take(10) {
+            println!("  {:.1?} {}", file.elapsed, file.path.display());
+        }
+    }
 }

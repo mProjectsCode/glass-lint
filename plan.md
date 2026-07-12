@@ -1,363 +1,241 @@
-# `glass-lint-core` open work plan
+# Glass Lint open work plan
 
 ## Scope and current baseline
 
-This plan contains only unfinished work. It covers the generic JavaScript
-engine in `glass-lint-core` and the core-facing test/profiling support in
-`glass-lint-harness`. Provider policy and Obsidian-specific knowledge remain in
-`glass-lint-obsidian`.
+This file contains only unfinished work. `glass-lint-core` owns the generic
+JavaScript engine; JavaScript platform policy belongs in `glass-lint-js`, and
+Obsidian policy belongs in `glass-lint-obsidian`.
 
 Repository audit baseline (2026-07-12):
 
-- Core already has stable `BindingId`, `BindingVersion`, `FunctionId`,
-  `ObjectId`, and `ValueId` types; typed symbol paths; bounded constant
-  evaluation; canonical handling for ordinary/optional/`bind`/`call`/`apply`
-  calls; matcher validation; deterministic evidence normalization; structured
-  parse locations; and focused precision regressions. Do not recreate these as
-  plan items.
-- Semantic construction still performs several whole-program traversals:
-  resolver/scope collection, event collection, function-summary collection,
-  call/index collection, and object-flow collection. `EventLog` is primarily
-  an ordering/coverage guard; it is not yet the fact stream consumed by those
-  analyses.
-- The largest remaining files are `rule/matcher.rs` (about 1,050 lines),
-  `scope/collector.rs` (about 940), `scope/mod.rs` (about 800),
-  `object_flow.rs` (about 730), `calls.rs` (about 680), and `resolver.rs`
-  (about 580).
-- `glass-lint-core/benches/core.rs` is a custom `cargo bench` smoke program.
-  This is not the desired profiling workflow and should be removed when the
-  harness folder runner replaces it.
-- The harness currently expects case-oriented `.js` fixtures and executes each
-  configured adapter. It cannot yet lint an arbitrary folder of JavaScript for
-  profiling, nor generate transformed e2e variants.
+- The former P0 semantic-fact migration is complete. A lexical prepass and one
+  authoritative `FactBuilder` produce the rule-independent fact stream.
+  Occurrence indexes, argument predicates, function summaries, and object flow
+  consume facts rather than walking the AST. Catalog matchers are normalized at
+  the rule boundary and compiled outside per-file analysis. Evidence retains
+  originating `FactId`s, summaries use `FunctionId`, and definite flow state is
+  joined conservatively across branches, loops, switch, and `try`/`finally`.
+- The completed folder profiler and Samply target replace the old Cargo bench.
+  The profiler preloads sources, measures lint calls separately from setup, and
+  supports deterministic filtering, sampling, repetition, and worker counts.
+- Verification is green: `cargo test --workspace` passes, and `make test-rules`
+  passes all 64 JavaScript and 90 Obsidian provider cases.
+- The first production profile covered 100 files, 86,498,585 bytes, and 3,521
+  findings. Setup took 148 ms and linting took 66.9 s. One 20.1 s bundle
+  accounts for 30% of lint wall time; the ten slowest files account for 48.5 s
+  (72%). Aggregate throughput is about 1.29 MB/s. Two parse/analysis
+  diagnostics occurred and must be classified before this corpus becomes a
+  regression baseline.
+- The baseline command was `make profile
+  PROFILE_PATH=/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs
+  PROFILE_ARGS="--quiet --sample 100 --seed 0"`. Samply attributes about 77%
+  to resolver/scope collection and 18% to semantic fact construction. Source
+  audit found two explicit quadratic candidates in scope collection:
+  `record_assignment` rescans every prior assignment to calculate a binding
+  version, and second-pass `push_scope` linearly searches all predeclared
+  scopes for every scope entry. These are the first optimization candidates to
+  confirm with stacks/counters.
 
 ## Invariants for every task
 
 1. Strict matching requires proven lexical identity and provenance at the use
    position. Raw-name matching remains an explicit heuristic mode.
 2. Unknown, dynamic, ambiguous, unsupported, or budget-exhausted analysis
-   fails closed without leaking facts across bindings, objects, functions, or
-   control-flow paths.
-3. Analysis is bounded and deterministic. Limits must not panic, wrap IDs, or
-   make results depend on hash iteration or matcher declaration order.
-4. Parse and semantic work shared by rules is built once per file. Adding a
-   rule must not add another AST traversal or a parallel resolver.
-5. Core remains provider-neutral. Test infrastructure may exercise providers,
-   but provider names and policy do not enter the core model.
+   fails closed without leaking facts across identities or control-flow paths.
+3. Analysis and output are bounded and deterministic. Optimization must not
+   change findings, diagnostics, source locations, or ordering.
+4. Shared parse and semantic work is built once per file. Adding or selecting
+   a rule must not add an AST traversal or matcher-dependent fact construction.
+5. Core remains provider-neutral.
 
-## P0 — finish the semantic fact architecture
+## P0 — optimize production-bundle throughput
 
-### 1. Replace parallel AST visitors with one immutable per-file fact stream
+The profile is dominated by a small number of large/minified bundles, so
+optimize the slow tail rather than the 100-file average.
 
-`SemanticFacts::build` still passes the raw `Program` to both `calls::collect`
-and `object_flow::collect`; `summary::collect` performs another visitor; and
-the resolver/scope collector retains its own histories. The event log records
-only kind, span, and scope, so consumers still revisit AST nodes to recover the
-actual declaration, target, receiver, arguments, and write value.
+For a smaller faster optimization benchmark consider running the linter on 
+`/home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/obsidian-meta-bind-plugin/1.5.0-main.js`
+the baseline before any optimization lies at roughly 4.1 seconds for 
+`time cargo run --release --bin glass-lint -- check /home/lemon/src/obsidian-stats/data/out/plugin-release-mainjs/obsidian-meta-bind-plugin/1.5.0-main.js`
 
 Work:
 
-- Define the minimal typed event/fact payloads needed by downstream analysis:
-  declarations and versions, references, assignments/property writes,
-  resolved calls/constructions, member reads, control boundaries, and function
-  ownership. Facts should reference stable IDs and compact paths, not borrowed
-  AST expressions or formatted names.
-- Produce these facts during the authoritative semantic build. Resolve calls,
-  effective arguments, receiver provenance, constants, and object identities
-  once, then let occurrence indexing, argument predicates, summaries, and flow
-  consume immutable facts.
-- Fold the current event coverage/order checks into the fact builder. Delete
-  the call and object-flow whole-program visitors once their consumers operate
-  on facts; do not retain fallback AST paths.
-- Compile the selected normalized matcher catalog once per `Linter`/catalog,
-  outside per-file analysis. Per-file work may build rule-independent indexes
-  and evaluate compiled predicates, but must not reconstruct or clone matcher
-  plans for every source.
-- Add an invariant test that every relevant AST node creates exactly one
-  canonical fact and that adding unrelated matchers does not change the fact
-  stream.
+- Check in a reproducible benchmark manifest for the sampled corpus: file list
+  or stable corpus-relative identifiers, byte sizes, seed, provider/profile,
+  release build revision, command, worker count, warm-up/repeat counts, and
+  diagnostic/finding totals. Do not check in third-party bundles.
+- Re-run the baseline with `--release`, one worker, warm-up, and at least three
+  measured repetitions. Report median per-file and total lint time. Separate
+  parser, scope/resolver, fact construction, index/predicate evaluation,
+  summaries, object flow, and final normalization with low-overhead stage
+  timings or profiler markers.
+- Capture and retain a Samply profile for the 20.1 s `code-workbench` outlier
+  and one representative median file. Use stacks and allocation evidence to
+  select work; do not infer a hot path solely from file size.
+- Audit suspected scaling hazards in the measured hot stages: repeated
+  `resolve_expr`/constant evaluation, string/path cloning and `format!`,
+  `BTreeMap<String, ...>` scans, repeated sorting/deduplication, summary
+  fixed-point rounds, and object-flow state cloning. Add counters or complexity
+  tests before changing an algorithm.
+- Replace assignment-history rescans with a per-`(scope, binding)` version
+  counter, and replace scope-reuse scans with a preindexed deterministic scope
+  key or traversal cursor. Measure these separately because both are currently
+  capable of quadratic behavior in the 77% collection stage.
+- Precompute reverse `FunctionId -> scope/end`, dynamic-eval ancestry, and
+  enclosing-function data if samples reach the current linear scans. Avoid
+  allocating `name.to_string()` merely to probe tuple-keyed maps; use nested
+  maps or borrowed-key-compatible typed keys.
+- Implement optimizations behind the existing semantic APIs. Prefer interned
+  typed keys, memoized rule-independent projections, indexed queries, and
+  compact state snapshots. Do not introduce matcher-specific fact building or
+  a second fast-but-weaker analysis path.
+- Add a deterministic performance smoke command that detects large regressions
+  without flaky wall-clock assertions in normal unit tests. Keep full corpus
+  timing manual; compare the same machine/build using medians.
 
-Exit criteria: one semantic traversal supplies downstream queries; matcher
-evaluation receives no `Program`; event ordering is intrinsic to fact IDs; and
-the obsolete visitors and adapters are removed in the same change.
+Exit criteria:
 
-### 2. Make event lookup bounded and sublinear before growing the fact stream
+- Findings and diagnostics match the recorded baseline exactly on every corpus
+  file, and all correctness suites remain green.
+- The selected optimization has profiler evidence identifying the old cost and
+  showing it reduced. Record before/after total time, slowest-file time,
+  throughput, peak memory, and build revision in this plan or a linked report.
+- Set a numeric speed target only after the repeatable release baseline exists.
+  The first milestone is to remove any superlinear hot path demonstrated by
+  counters or stacks.
 
-`EventLog::order_for` currently uses `Vec::iter().find` for every lookup. It is
-called while walking calls and flows and again while sorting evidence. With an
-event limit of `1 << 20`, this can turn otherwise linear work into quadratic
-behavior. Its containment lookup can also choose an enclosing parent event
-rather than the exact semantic event when spans overlap.
+## P1 — make incomplete analysis explicit
 
-Work:
-
-- Give facts direct `EventId`s during construction. For the few span-based
-  compatibility lookups left during migration, use an exact `(lo, hi, kind)`
-  index or a deterministic binary/range index with documented nesting rules.
-- Distinguish exact-node lookup from “smallest enclosing event” lookup; never
-  let caller behavior depend on visitor insertion order for equal spans.
-- Cache the event/fact order on evidence occurrences so evidence sorting does
-  not repeatedly search the log.
-- Add nested member/call, equal-span or synthetic-span, and large-event tests.
-  The folder profiling workflow below should include an event-dense corpus.
-
-### 3. Complete lexical summary modeling without name-keyed joins
-
-`summary.rs` still exposes `FunctionDeclarations` and `FunctionInvocations`
-keyed by `(scope, String)`, while flow sink summaries use
-`(FunctionId, String)`. Callback alias discovery remains partly in the scope
-collector, and flow helper discovery separately scans function bodies.
-
-Work:
-
-- Resolve every function declaration/expression/arrow and invocation to a
-  `FunctionId`; use the ID alone as identity and retain a name only for display
-  or lookup diagnostics.
-- Build one bounded `FunctionSummary` containing parameter patterns, call/sink
-  projections, relevant property writes, return facts, and invalidation flags.
-- Join invocation contexts by parameter position and recursive pattern
-  projection. Missing, extra, spread, dynamic, recursive, reassigned, or
-  conflicting invocations must invalidate only the affected summary facts.
-- Model closures and sibling same-name functions by lexical identity. Avoid
-  treating arbitrary methods named `then`, `map`, or `forEach` as known
-  callback protocols without proven receiver provenance.
-- Replace body rescans in object flow and callback collection with queries over
-  the shared facts/summaries.
-
-Required adversarial tests: mutually recursive helpers, function aliases,
-reassignment before invocation, closures over versioned outer bindings,
-destructured/default/rest parameters, spread calls, missing and extra
-arguments, sibling functions with the same name, and a local lookalike callback
-method.
-
-### 4. Make object flow conservative without discarding definite baseline facts
-
-Object flow has identity-based states and bounded emissions, but control-flow
-handling remains coarse. After an `if`, conditional expression, loop, switch,
-or `try`, the collector clears all states and aliases. That prevents leaks but
-also loses objects and requirements established before the branch. `try` and
-`finally` are especially imprecise because the finalizer is evaluated from one
-reset branch rather than from a conservative join of all paths.
+The source-size limit has a structured diagnostic, but other semantic limits
+still invalidate or truncate internal state without a caller-visible reason.
+For example, `FactStream` becomes invalid at `MAX_FACTS` and the result is an
+empty semantic match set, which is indistinguishable from a clean file.
 
 Work:
 
-- Introduce explicit state snapshot, kill, and intersection/join operations.
-  Preserve facts that are identical on every reachable path, including an
-  unchanged baseline object; discard branch-only allocation/configuration and
-  conflicting aliases.
-- Define loop semantics conservatively for zero iterations, one-or-more
-  iterations, `break`, `continue`, and writes in the test/update expressions.
-- Model switch fallthrough and `default`, and run `finally` against the joined
-  normal/exceptional state. If a construct cannot be modeled precisely, kill
-  only the identities it can affect rather than clearing the file-wide state.
-- Make source/configuration/sink spans explicit in `FlowState`. Document which
-  site is reported and deduplicate by `(rule, flow, object, match site)`, not
-  solely by the source allocation.
-- Extend invalidation to all assignment patterns, destructuring aliases,
-  computed/optional member writes, sequence expressions, and helper-mediated
-  writes using the same binding/object identity rules.
+- Define a provider-neutral semantic diagnostic with a stable code, optional
+  range, component/limit name, and observed and capped values. Keep syntax
+  diagnostics distinct from incomplete semantic analysis in both Rust and JSON
+  reports and in profiler totals.
+- Thread one internal analysis-budget/status object through fact construction,
+  resolution, constants, indexes, summaries, and object flow. Centralize
+  defaults and expose smaller budgets only through test support.
+- Retain sound facts already proven where possible, mark affected components
+  incomplete, and prevent absence from being used as proof. Strict provenance
+  chains that cross incomplete data must fail closed.
+- Fix fact-limit handling so exhaustion is recorded once and cannot attempt a
+  duplicate/out-of-range `FactId` emission.
+- Add below/at/above tests for every limit, multiple simultaneous exhaustions,
+  deterministic diagnostics, and ID conversion boundaries.
+- Classify the two diagnostics in the 100-file profile. If either is semantic
+  exhaustion, preserve the file as a focused regression case or synthetic
+  equivalent.
 
-Required tests: baseline source configured before both branches then sunk
-afterward; identical configuration in both branches; conflicting branch
-aliases; zero-iteration loops; switch fallthrough; catch-only writes;
-`finally` configuration/sink; two valid sinks for one source; and source versus
-sink evidence locations.
+## P1 — compact and index semantic queries
 
-## P1 — precision, limits, and maintainability
-
-### 5. Surface semantic budget exhaustion instead of silently returning no findings
-
-Source bytes, events, values, objects, flow states/emissions, and constant
-evaluation have finite limits, but their failure behavior is inconsistent.
-For example, an overlarge event log makes the semantic model empty, which is
-indistinguishable from a clean file to callers.
+Several semantic views still use owned strings and ordered maps even after the
+fact migration. These are both a maintainability issue and likely candidates
+for production-bundle cost, but changes should follow the profiling evidence.
 
 Work:
 
-- Define a provider-neutral analysis diagnostic type with a stable code,
-  optional range, limit name, and observed/capped value. Keep parse diagnostics
-  distinct from semantic incompleteness.
-- Thread a shared analysis budget through fact construction, resolution,
-  summaries, constants, indexes, and flow. Centralize defaults and make test
-  budgets injectable without exposing a misuse-prone public configuration.
-- On exhaustion, retain sound facts already proven where possible, mark the
-  affected analysis component incomplete, and prevent downstream consumers
-  from interpreting absence as proof. Never emit a strict match from a partial
-  provenance chain.
-- Test each limit just below, at, and above its boundary; multiple exhausted
-  components; ID conversion boundaries; and deterministic diagnostics.
-
-### 6. Finish rule-independent indexes and remove query-time scans
-
-`MatcherFacts` still stores many `BTreeMap<String, Vec<Span>>` views. Returned
-member and suffix member-read queries scan whole maps and allocate formatted
-prefix/suffix strings. Instance facts are collected with knowledge of the
-selected instance matchers, so the index is not fully rule-independent.
-
-Work:
-
-- Intern module names, symbols, and property segments into compact IDs owned by
-  the per-file model; use typed provenance keys rather than repeated strings.
-- Record rule-independent instance/class/return relationships, then query them
-  with compiled matcher keys.
-- Pre-index exact, suffix, and returned-member prefix relations needed by the
-  API. Avoid `format!` and full-map filters in rule evaluation.
-- Keep one occurrence insertion/normalization policy and one evidence
-  accumulator. Preserve source ordering, duplicate semantics, and the single
-  evidence limit.
-- Maintain a simple reference query implementation in tests and compare all
-  optimized query kinds against it on generated bounded inputs.
-
-### 7. Consolidate constant and value representations
-
-The bounded constant evaluator is now shared for matcher predicates, but
-`BindingProvenance`, resolver `Value`, static object maps, rooted chains, and
-call argument representations still overlap. This makes invalidation and new
-static syntax easy to implement inconsistently.
-
-Work:
-
-- Define ownership boundaries between lexical binding versions, canonical
-  `ValueId`s, `ConstValue`, callable provenance, and object identity. A value
-  fact should be interned once and projected into matcher-specific views.
-- Ensure property mutation through aliases invalidates constant object facts,
-  argument predicates, and flow state consistently.
-- Audit JavaScript coercion support for numeric keys, cooked templates,
+- Intern module names and property/path segments into file-owned compact IDs;
+  keep strings only at parsing and report boundaries.
+- Ensure instance, class, return, exact-member, suffix-member, and returned-
+  member relationships are rule-independent and directly indexed for compiled
+  matcher keys. Remove query-time full-map scans and formatted prefix/suffix
+  allocation.
+- Consolidate lexical versions, `ValueId`, constant values, callable
+  provenance, and object identity around documented ownership and invalidation
+  rules. Intern each fact once and project matcher views from it.
+- Make alias-mediated property mutation invalidate constant objects, argument
+  predicates, and object flow consistently. Audit numeric keys, templates,
   concatenation, spreads, duplicate properties, accessors, methods, and
-  `Object.assign`; unsupported cases return unknown uniformly.
-- Add property/property-alias version tests and property-based tests for
-  evaluator boundedness and normalization idempotence.
+  `Object.assign`; unsupported forms return unknown uniformly.
+- Compare every optimized query against a deliberately simple reference
+  implementation on generated bounded inputs.
 
-### 8. Split remaining responsibility-heavy modules after the fact boundary is stable
+## P1 — split responsibility-heavy modules
 
-Do not perform cosmetic moves that preserve duplicate engines. Split along the
-new ownership boundaries:
+The fact migration concentrated code in a new 1,800+ line `fact_builder.rs`;
+`scope/collector.rs`, `object_flow.rs`, and `index.rs` are also about 40–44 KiB.
+This now conflicts with the repository's focused-module invariant.
 
-- `rule/matcher.rs`: public matcher shapes/builders versus shared primitives;
-- `scope/collector.rs` and `scope/mod.rs`: lexical construction, declaration
-  versions, provenance seeds, and dynamic-scope invalidation;
-- `calls.rs`: fact extraction, call provenance indexing, member-read indexing,
-  and argument predicate evaluation;
-- `object_flow.rs`: fact transfer, control-flow joins, alias/object lifecycle,
-  and emission;
-- `resolver.rs`: value interning, binding-version lookup, callable transforms,
-  and public query surface.
+Split by ownership without recreating visitors or parallel models:
 
-Remove obsolete compatibility helpers during the split. Keep public APIs small
-and add module-level invariant documentation rather than exposing internal
-collector types.
+- fact emission versus call/value projection, patterns/writes, functions and
+  classes, and control-boundary emission;
+- lexical declaration construction versus version/provenance seeds and
+  dynamic-scope invalidation;
+- occurrence storage versus index construction and argument queries;
+- object-flow transfer versus joins/exits, alias lifecycle, helper effects,
+  and emission.
 
-### 9. Add generated and adversarial semantic checks
+Keep `FactBuilder` as the only post-scope visitor and keep internal collector
+types private. Remove dead compatibility helpers while splitting. Add concise
+module-level invariant documentation and retain the structural no-downstream-
+AST test.
+
+## P2 — generated semantic checks
 
 - Add property tests for matcher normalization idempotence/permutation,
-  deterministic evidence, constant evaluator fail-closed behavior, and stable
-  binding-version resolution.
-- Generate small lexical programs with shadowing, aliases, reassignment, and
-  property writes; compare optimized resolution/index queries with deliberately
-  simple reference implementations.
-- Add stress cases for deep ASTs, many aliases, many functions/rules/events,
-  huge static containers, recursive summaries, and flow-state explosion.
-- Keep focused regression fixtures readable. Generated failures must print a
-  reproducible source and seed.
+  deterministic evidence, constant evaluation boundedness, and stable binding-
+  version resolution.
+- Generate small lexical programs containing shadowing, aliases,
+  reassignment, property writes, closures, destructured/default/rest
+  parameters, spread calls, recursion, and same-name siblings. Compare
+  optimized resolution/index results with reference implementations.
+- Add stress cases for deep ASTs, many aliases/functions/rules/facts, huge
+  static containers, recursive summaries, and flow-state explosion. Generated
+  failures must print a reproducible source and seed.
 
-## P2 — harness-based profiling and transformed e2e coverage
+## P2 — transformed end-to-end matrix
 
-### 10. Replace the core cargo benchmark with a folder profiling mode in the harness
-
-The intended workflow is manual profiling with `perf` or `cargo flamegraph`,
-not Rust benchmark targets or `cargo test` benchmark machinery.
+Prove detection survives production transformations rather than relying only
+on hand-written minified-looking fixtures.
 
 Work:
 
-- Add a harness command that accepts a file or directory, recursively discovers
-  `.js` files in deterministic path order, and lints every file with the chosen
-  Glass Lint catalog/profile. It must not require case metadata or expected
-  diagnostics.
-- Support useful corpus controls: repeated `--path`, include/exclude globs or a
-  documented equivalent, optional warm-up and repeat counts, fail-fast versus
-  continue-on-error, and an explicit worker count. Default to a stable
-  single-process/single-worker mode suitable for profiler attribution.
-- Print a compact final summary: files, bytes, findings, parse/analysis
-  diagnostics, total wall time, and slowest files. Provide a quiet mode so
-  profiler output is not dominated by per-file logging. Keep deterministic
-  behavior; this is an execution driver, not a statistical benchmark suite.
-- Document human workflows such as running the debug-symbol-enabled harness
-  under `perf record`/`perf report` or `cargo flamegraph`. Do not make tests
-  invoke profilers, set performance thresholds, or claim stable benchmark
-  numbers across machines.
-- Add harness tests for recursive discovery, ordering, unreadable/malformed
-  files, empty folders, repeated paths, symlinks, filtering, and summary totals.
-- Remove `glass-lint-core/benches/core.rs` and the `[[bench]]` entry once the
-  folder mode is available. Do not replace them with Criterion or cargo test
-  benchmarks.
+- Define canonical ESM and CommonJS source projects with expected positive and
+  adversarial-negative finding multisets.
+- Pin a small maintained matrix containing at least one bundler, one minifier,
+  and one transpiler, including a combined production pipeline. Cover tree
+  shaking, scope hoisting, mangling, helper injection, interop wrappers,
+  downlevel async/classes/optional chaining, and source concatenation.
+- Compare baseline and transformed artifacts by rule ID and occurrence count.
+  Record intentional behavior-erasing exceptions explicitly in fixture
+  metadata; never hide them by weakening the comparison.
+- Store source/configuration rather than generated bundles where practical.
+  Failures must identify tool version, flags, artifact, and count delta.
+- Keep a lightweight workspace smoke subset and a documented full release
+  matrix. Distinguish transformation-tool failures from lint failures.
 
-### 11. Add a bundler/minifier/transpiler e2e transformation matrix
-
-The goal is to prove that production-style transformations preserve detection,
-using well-known tools rather than hand-written “minified-looking” fixtures.
-
-Work:
-
-- Define canonical e2e source projects with an entry point and an expected
-  baseline multiset of findings. Compare transformed output by rule ID and
-  occurrence count; do not require identical line/column locations after
-  transformation.
-- Add a harness preparation mode or test driver that runs a pinned matrix of
-  representative transformations. Start with at least one bundler, one
-  minifier, and one transpiler; include combined production pipelines. Likely
-  candidates are esbuild, Rollup, webpack, Terser, SWC, and Babel, but select a
-  small maintained matrix and pin versions/flags in the repository.
-- Exercise ESM and CommonJS inputs, tree shaking, scope hoisting, helper
-  injection, identifier mangling, property mangling where sound, downlevel
-  async/classes/optional chaining, interop wrappers, and source concatenation.
-- Run Glass Lint on the baseline and every generated artifact and assert the
-  same per-rule counts. Keep explicit exceptions only for transformations that
-  intentionally erase a behavior; record those as fixture metadata with a
-  reason rather than silently weakening the comparison.
-- Store source fixtures and transformation configuration, not generated
-  bundles, unless reproducibility or tool availability requires checked-in
-  golden artifacts. Ensure CI failures identify the tool, version, flags,
-  artifact, and count delta and preserve the failing artifact for inspection.
-- Separate semantic failures from toolchain failures. Add a lightweight smoke
-  subset for normal workspace tests and a documented full matrix target for
-  release/architecture validation.
-
-Required cases: direct global call, ESM named/default/namespace imports,
-CommonJS `require`, aliases and destructuring, callback propagation, constructor
-and instance-member matching, object flow, `.bind`/`.call`/`.apply`, local
-lookalikes, shadowing, and reassignment. Include positives and adversarial
-negatives so a transformed build cannot preserve counts by adding compensating
-false positives.
+Required semantics include direct globals, ESM import forms, CommonJS
+`require`, aliases/destructuring, callback propagation, constructors and
+instances, object flow, `.bind`/`.call`/`.apply`, local lookalikes, shadowing,
+and reassignment.
 
 ## Suggested order
 
-1. Add characterization tests for event lookup, baseline-preserving flow joins,
-   summary identity, and explicit limit diagnostics.
-2. Make event lookup indexed, compile matcher plans outside per-file analysis,
-   and introduce the typed fact payloads.
-3. Move call indexes and summaries to facts, then move object-flow transfer to
-   facts and delete the parallel visitors.
-4. Add precise control-flow joins and shared budget reporting.
-5. Compact/index semantic keys and split modules along the completed boundary.
-6. Add harness folder profiling, document manual `perf`/flamegraph use, and
-   remove the cargo benchmark target.
-7. Add the pinned transformed-e2e matrix and use its failures to drive further
-   provenance/flow regressions.
+1. Make the release corpus baseline reproducible and classify its two
+   diagnostics.
+2. Profile the slowest and median files by analysis stage, then implement and
+   verify the highest-impact scaling fix.
+3. Surface all semantic-budget exhaustion before increasing limits or relying
+   on corpus absence as proof.
+4. Compact/index the hot semantic keys and split modules along stable ownership
+   boundaries.
+5. Add generated reference comparisons and the pinned transformation matrix.
 
 ## Definition of done
 
-- One bounded, typed, source-ordered fact build is authoritative for a file;
-  rules, summaries, argument predicates, and object flow do not walk the AST.
-- Lexical/function/object identity is never reconstructed from display strings,
-  and definite facts survive conservative control-flow joins without leaking
-  branch-local state.
-- Limit exhaustion is visible and deterministic while strict matching remains
-  fail-closed.
-- Query hot paths are indexed; event/evidence lookup cannot become quadratic in
-  the number of facts.
-- The harness can lint arbitrary JavaScript folders as a stable manual
-  `perf`/`cargo flamegraph` target, and no cargo benchmark target remains.
-- Pinned real-world bundler/minifier/transpiler e2e variants preserve the
-  baseline per-rule finding multiset, including negative controls.
-- Focused, generated, provider fixture, harness, formatting, workspace test,
-  and warnings-denied Clippy suites pass.
+- Production-corpus performance is repeatable, stage-attributed, and improved
+  without finding, diagnostic, ordering, or location drift.
+- Every bounded semantic component reports deterministic incompleteness; a
+  clean report cannot mean silent budget exhaustion.
+- Query hot paths are indexed and typed, and semantic modules remain focused
+  without adding AST traversals or duplicate models.
+- Generated/reference and transformed e2e suites cover the precision
+  invariants and preserve positive and negative behavior.
+- Formatting, workspace tests, warnings-denied Clippy, provider fixtures, and
+  harness suites pass.

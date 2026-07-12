@@ -1,3 +1,4 @@
 /target
 node_modules/
 tests/COMPARISON.md
+profile.json.gz

@@ -1,0 +1,471 @@
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    thread,
+    time::{Duration, Instant},
+};
+
+use anyhow::{Context, Result, bail};
+use glass_lint_core::{Linter, RuleId};
+use glob::{MatchOptions, Pattern};
+use walkdir::WalkDir;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProfileProvider {
+    Js,
+    Obsidian,
+    Both,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProfileMode {
+    Recommended,
+    Heuristic,
+}
+
+#[derive(Clone, Debug)]
+pub struct ProfileConfig {
+    pub paths: Vec<PathBuf>,
+    pub include: Vec<String>,
+    pub exclude: Vec<String>,
+    pub sample: Option<usize>,
+    pub seed: u64,
+    pub warm_up: usize,
+    pub repeat: usize,
+    pub continue_on_error: bool,
+    pub workers: usize,
+    pub provider: ProfileProvider,
+    pub mode: ProfileMode,
+    pub rules: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ProfileFileSummary {
+    pub path: PathBuf,
+    pub bytes: u64,
+    pub findings: usize,
+    pub diagnostics: usize,
+    /// Time spent in lint calls, excluding corpus discovery and file reads.
+    pub elapsed: Duration,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ProfileSummary {
+    pub files: usize,
+    pub bytes: u64,
+    pub findings: usize,
+    pub diagnostics: usize,
+    pub errors: usize,
+    pub runs: usize,
+    pub setup_elapsed: Duration,
+    /// Wall time for the measured linting phase.
+    pub elapsed: Duration,
+    pub total_elapsed: Duration,
+    pub file_results: Vec<ProfileFileSummary>,
+}
+
+struct ProfileLinter(Arc<Linter>);
+
+struct PreparedFile {
+    path: PathBuf,
+    bytes: u64,
+    source: String,
+}
+
+pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
+    validate_config(config)?;
+    let total_start = Instant::now();
+    let mut paths = discover_profile_files(&config.paths, &config.include, &config.exclude)?;
+    if let Some(sample) = config.sample {
+        sample_paths(&mut paths, sample, config.seed);
+    }
+    let linters = Arc::new(build_linters(config.provider, config.mode, &config.rules)?);
+
+    // Keep discovery, metadata, and UTF-8 decoding outside the measured
+    // workload. This also leaves Samply with a memory-resident corpus.
+    let setup_start = Instant::now();
+    let mut prepared = Vec::with_capacity(paths.len());
+    let mut file_results = Vec::new();
+    for path in &paths {
+        match prepare_file(path) {
+            Ok(file) => prepared.push(file),
+            Err(error) => {
+                let result = ProfileFileSummary {
+                    path: path.clone(),
+                    bytes: 0,
+                    findings: 0,
+                    diagnostics: 0,
+                    elapsed: Duration::ZERO,
+                    error: Some(format!("{error:#}")),
+                };
+                if !config.continue_on_error {
+                    bail!(
+                        "{}: {}",
+                        result.path.display(),
+                        result.error.as_deref().unwrap_or("file preparation failed")
+                    );
+                }
+                file_results.push(result);
+            }
+        }
+    }
+    let setup_elapsed = setup_start.elapsed();
+
+    let lint_start = Instant::now();
+    let next = Arc::new(AtomicUsize::new(0));
+    let results = Arc::new(Mutex::new(Vec::with_capacity(prepared.len())));
+    let prepared = Arc::new(prepared);
+    thread::scope(|scope| {
+        for _ in 0..config.workers {
+            let next = Arc::clone(&next);
+            let results = Arc::clone(&results);
+            let prepared = Arc::clone(&prepared);
+            let linters = Arc::clone(&linters);
+            scope.spawn(move || {
+                loop {
+                    let index = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(file) = prepared.get(index) else {
+                        break;
+                    };
+                    let result = profile_file(file, &linters, config.warm_up, config.repeat);
+                    results.lock().unwrap().push(result);
+                }
+            });
+        }
+    });
+    let lint_elapsed = lint_start.elapsed();
+
+    file_results.extend(
+        Arc::try_unwrap(results)
+            .expect("profile workers still hold result storage")
+            .into_inner()
+            .expect("profile result storage was poisoned"),
+    );
+    file_results.sort_by(|left, right| left.path.cmp(&right.path));
+
+    let errors = file_results
+        .iter()
+        .filter(|result| result.error.is_some())
+        .count();
+    let bytes = file_results.iter().map(|result| result.bytes).sum();
+    let findings = file_results.iter().map(|result| result.findings).sum();
+    let diagnostics = file_results.iter().map(|result| result.diagnostics).sum();
+    let successful_files = file_results
+        .iter()
+        .filter(|result| result.error.is_none())
+        .count();
+
+    Ok(ProfileSummary {
+        files: paths.len(),
+        bytes,
+        findings,
+        diagnostics,
+        errors,
+        runs: successful_files * config.repeat,
+        setup_elapsed,
+        elapsed: lint_elapsed,
+        total_elapsed: total_start.elapsed(),
+        file_results,
+    })
+}
+
+pub fn discover_profile_files(
+    roots: &[PathBuf],
+    includes: &[String],
+    excludes: &[String],
+) -> Result<Vec<PathBuf>> {
+    let includes = compile_globs(includes)?;
+    let excludes = compile_globs(excludes)?;
+    let mut paths = BTreeMap::<PathBuf, ()>::new();
+    for root in roots {
+        let metadata = fs::symlink_metadata(root)
+            .with_context(|| format!("inspect profiling path {}", root.display()))?;
+        if metadata.file_type().is_symlink() {
+            continue;
+        }
+        if metadata.is_file() {
+            if is_javascript(root)
+                && matches_filters(root, root.parent().unwrap_or(root), &includes, &excludes)
+            {
+                paths.insert(root.clone(), ());
+            }
+            continue;
+        }
+        if !metadata.is_dir() {
+            bail!(
+                "profiling path is not a file or directory: {}",
+                root.display()
+            );
+        }
+        for entry in WalkDir::new(root).follow_links(false) {
+            let entry = entry?;
+            if entry.file_type().is_file()
+                && is_javascript(entry.path())
+                && matches_filters(entry.path(), root, &includes, &excludes)
+            {
+                paths.insert(entry.into_path(), ());
+            }
+        }
+    }
+    Ok(paths.into_keys().collect())
+}
+
+fn validate_config(config: &ProfileConfig) -> Result<()> {
+    if config.paths.is_empty() {
+        bail!("at least one --path is required");
+    }
+    if config.workers == 0 {
+        bail!("--workers must be at least 1");
+    }
+    if config.repeat == 0 {
+        bail!("--repeat must be at least 1");
+    }
+    if config.sample == Some(0) {
+        bail!("--sample must be at least 1");
+    }
+    Ok(())
+}
+
+fn prepare_file(path: &Path) -> Result<PreparedFile> {
+    let metadata = fs::metadata(path).with_context(|| format!("inspect {}", path.display()))?;
+    let source = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    Ok(PreparedFile {
+        path: path.to_owned(),
+        bytes: metadata.len(),
+        source,
+    })
+}
+
+fn is_javascript(path: &Path) -> bool {
+    path.extension().is_some_and(|extension| extension == "js")
+}
+
+fn matches_filters(path: &Path, root: &Path, includes: &[Pattern], excludes: &[Pattern]) -> bool {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let relative = relative.to_string_lossy().replace('\\', "/");
+    let basename = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let options = MatchOptions {
+        case_sensitive: true,
+        require_literal_separator: true,
+        require_literal_leading_dot: false,
+    };
+    let matches = |patterns: &[Pattern]| {
+        patterns.iter().any(|pattern| {
+            pattern.matches_with(&relative, options)
+                || (!pattern.as_str().contains('/') && pattern.matches_with(&basename, options))
+        })
+    };
+    (includes.is_empty() || matches(includes)) && !matches(excludes)
+}
+
+fn compile_globs(patterns: &[String]) -> Result<Vec<Pattern>> {
+    patterns
+        .iter()
+        .map(|pattern| {
+            Pattern::new(pattern).with_context(|| format!("compile profiling glob {pattern}"))
+        })
+        .collect()
+}
+
+fn sample_paths(paths: &mut Vec<PathBuf>, sample: usize, seed: u64) {
+    if sample >= paths.len() {
+        return;
+    }
+    let mut state = if seed == 0 {
+        0x9e37_79b9_7f4a_7c15
+    } else {
+        seed
+    };
+    for index in (1..paths.len()).rev() {
+        state ^= state << 7;
+        state ^= state >> 9;
+        state ^= state << 8;
+        paths.swap(index, (state as usize) % (index + 1));
+    }
+    paths.truncate(sample);
+    paths.sort();
+}
+
+fn build_linters(
+    provider: ProfileProvider,
+    mode: ProfileMode,
+    rules: &[String],
+) -> Result<Vec<ProfileLinter>> {
+    let parsed = rules
+        .iter()
+        .map(|rule| RuleId::parse(rule.clone()).map_err(anyhow::Error::msg))
+        .collect::<Result<Vec<_>>>()?;
+    let providers = match provider {
+        ProfileProvider::Js => vec!["js"],
+        ProfileProvider::Obsidian => vec!["obsidian"],
+        ProfileProvider::Both => vec!["js", "obsidian"],
+    };
+    let mut linters = Vec::new();
+    for prefix in providers {
+        let selected: Vec<_> = parsed
+            .iter()
+            .filter(|rule| rule.as_str().starts_with(&format!("{prefix}:")))
+            .cloned()
+            .collect();
+        if !rules.is_empty() && selected.is_empty() {
+            continue;
+        }
+        let linter = match (prefix, mode) {
+            ("js", ProfileMode::Recommended) => glass_lint_js::recommended_linter(),
+            ("js", ProfileMode::Heuristic) => glass_lint_js::heuristic_linter(),
+            ("obsidian", ProfileMode::Recommended) => glass_lint_obsidian::recommended_linter(),
+            ("obsidian", ProfileMode::Heuristic) => glass_lint_obsidian::heuristic_linter(),
+            _ => unreachable!(),
+        };
+        let linter = if rules.is_empty() {
+            linter
+        } else {
+            Linter::with_rules(linter.catalog().clone(), selected)?
+        };
+        linters.push(ProfileLinter(Arc::new(linter)));
+    }
+    if linters.is_empty() {
+        bail!("no selected rules belong to the chosen provider");
+    }
+    if parsed.iter().any(|rule| {
+        !["js:", "obsidian:"]
+            .iter()
+            .any(|prefix| rule.as_str().starts_with(prefix))
+    }) {
+        bail!("rule does not belong to a supported profiling provider");
+    }
+    Ok(linters)
+}
+
+fn profile_file(
+    file: &PreparedFile,
+    linters: &[ProfileLinter],
+    warm_up: usize,
+    repeat: usize,
+) -> ProfileFileSummary {
+    let mut findings = 0;
+    let mut diagnostics = 0;
+    let mut elapsed = Duration::ZERO;
+    for iteration in 0..warm_up + repeat {
+        for ProfileLinter(linter) in linters {
+            let started = Instant::now();
+            let report = linter.lint(&file.source, &file.path.to_string_lossy());
+            if iteration >= warm_up {
+                elapsed += started.elapsed();
+                findings += report.findings.len();
+                diagnostics += report.parse_diagnostics.len();
+            }
+        }
+    }
+    ProfileFileSummary {
+        path: file.path.clone(),
+        bytes: file.bytes,
+        findings,
+        diagnostics,
+        elapsed,
+        error: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::*;
+
+    fn temp_root() -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("glass-lint-profile-{suffix}"));
+        fs::create_dir_all(&root).unwrap();
+        root
+    }
+
+    fn config(root: &Path) -> ProfileConfig {
+        ProfileConfig {
+            paths: vec![root.to_owned()],
+            include: vec![],
+            exclude: vec![],
+            sample: None,
+            seed: 1,
+            warm_up: 0,
+            repeat: 1,
+            continue_on_error: false,
+            workers: 1,
+            provider: ProfileProvider::Js,
+            mode: ProfileMode::Recommended,
+            rules: vec![],
+        }
+    }
+
+    #[test]
+    fn discovers_sorted_unique_filtered_files() {
+        let root = temp_root();
+        fs::create_dir_all(root.join("nested")).unwrap();
+        fs::write(root.join("z.js"), "").unwrap();
+        fs::write(root.join("nested/a.js"), "").unwrap();
+        fs::write(root.join("nested/no.txt"), "").unwrap();
+        let paths = discover_profile_files(
+            &[root.clone(), root.join("nested")],
+            &["**/a.js".into()],
+            &[],
+        )
+        .unwrap();
+        assert_eq!(paths, vec![root.join("nested/a.js")]);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn empty_folder_is_a_valid_profile_corpus() {
+        let root = temp_root();
+        let result = profile_folder(&config(&root)).unwrap();
+        assert_eq!(result.files, 0);
+        assert_eq!(result.runs, 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn malformed_files_are_counted_as_parse_diagnostics() {
+        let root = temp_root();
+        fs::write(root.join("broken.js"), "function (").unwrap();
+        let result = profile_folder(&config(&root)).unwrap();
+        assert_eq!(result.files, 1);
+        assert_eq!(result.diagnostics, 1);
+        assert_eq!(result.errors, 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn sampling_is_deterministic_for_a_seed() {
+        let mut left: Vec<_> = (0..20).map(|i| PathBuf::from(format!("{i}.js"))).collect();
+        let mut right = left.clone();
+        sample_paths(&mut left, 5, 42);
+        sample_paths(&mut right, 5, 42);
+        assert_eq!(left, right);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recursive_discovery_does_not_follow_symlinks() {
+        let root = temp_root();
+        fs::write(root.join("real.js"), "").unwrap();
+        std::os::unix::fs::symlink(".", root.join("link")).unwrap();
+        let paths = discover_profile_files(std::slice::from_ref(&root), &[], &[]).unwrap();
+        assert_eq!(paths, vec![root.join("real.js")]);
+        fs::remove_dir_all(root).unwrap();
+    }
+}
