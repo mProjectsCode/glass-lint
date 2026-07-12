@@ -451,6 +451,9 @@ impl Resolver {
                 SymbolCallProvenance::ModuleExport { module, export }
             }
             Value::Callable(callable) => self.call_provenance_for_value(callable.target),
+            Value::RootedMember { root, path } if path.is_empty() => {
+                SymbolCallProvenance::Global { name: root }
+            }
             _ => SymbolCallProvenance::Local,
         }
     }

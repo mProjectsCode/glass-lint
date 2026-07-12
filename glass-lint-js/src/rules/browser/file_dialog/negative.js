@@ -7,9 +7,9 @@ const textInput = document.createElement("input");
 textInput.type = "text";
 
 // Static computed property names are normalized as direct writes.
-// @expect-error glass-lint rule=js:browser.file-dialog message_id=detected
 const computedInput = document.createElement("input");
 computedInput["type"] = "file";
+// @expect-error-after glass-lint rule=js:browser.file-dialog message_id=detected
 
 // setAttribute is intentionally not configuration evidence.
 const attributeInput = document.createElement("input");

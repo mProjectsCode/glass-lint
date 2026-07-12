@@ -8,6 +8,7 @@
 use std::collections::BTreeMap;
 
 use super::super::rule::FlowSinkArgs;
+use super::facts::FactId;
 use super::facts::{CallArgInfo, FactPayload, FactStream, ParameterBinding, ProjectionSegment};
 use super::flow_index::{FlowId, FlowIndex};
 use super::value::{FunctionId, ValueId};
@@ -30,7 +31,30 @@ pub(super) struct FunctionSummary {
     pub(super) parameters: Vec<ParameterBinding>,
     pub(super) parameter_count: usize,
     pub(super) has_rest: bool,
+    pub(super) calls: Vec<CallProjection>,
     pub(super) sinks: Vec<FunctionSinkSummary>,
+    pub(super) writes: Vec<PropertyWriteProjection>,
+    pub(super) returns: Vec<ReturnProjection>,
+    pub(super) invalid: SummaryInvalidation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct PropertyWriteProjection {
+    pub(super) event: FactId,
+    pub(super) target: ValueId,
+    pub(super) receiver: Option<ValueId>,
+    pub(super) property: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ReturnProjection {
+    pub(super) event: FactId,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(super) struct SummaryInvalidation {
+    pub(super) reassigned: bool,
+    pub(super) dynamic: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -71,8 +95,48 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                         parameters: parameters.clone(),
                         parameter_count,
                         has_rest: parameters.iter().any(|parameter| parameter.rest),
+                        calls: Vec::new(),
                         sinks: Vec::new(),
+                        writes: Vec::new(),
+                        returns: Vec::new(),
+                        invalid: SummaryInvalidation::default(),
                     });
+            }
+            FactPayload::Assignment {
+                target, receiver, ..
+            } => {
+                if let Some(summary) = summaries.by_id.get_mut(&fact.function) {
+                    summary.invalid.reassigned = true;
+                    summary.writes.push(PropertyWriteProjection {
+                        event: fact.id,
+                        target: *target,
+                        receiver: *receiver,
+                        property: None,
+                    });
+                }
+            }
+            FactPayload::PropertyWrite {
+                target,
+                receiver,
+                property,
+                ..
+            } => {
+                if let Some(summary) = summaries.by_id.get_mut(&fact.function) {
+                    summary.writes.push(PropertyWriteProjection {
+                        event: fact.id,
+                        target: *target,
+                        receiver: Some(*receiver),
+                        property: property.clone(),
+                    });
+                }
+            }
+            FactPayload::Control {
+                kind: super::facts::ControlKind::Return,
+                ..
+            } => {
+                if let Some(summary) = summaries.by_id.get_mut(&fact.function) {
+                    summary.returns.push(ReturnProjection { event: fact.id });
+                }
             }
             FactPayload::Call {
                 syntactic_chain,
@@ -98,6 +162,7 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
         let Some(calls) = calls_by_function.get(function) else {
             continue;
         };
+        summary.calls = calls.clone();
         for call in calls {
             let chain = call
                 .rooted_chain
@@ -311,7 +376,7 @@ fn add_sink(summary: &mut FunctionSummary, sink: FunctionSinkSummary) {
 }
 
 #[derive(Debug, Clone)]
-struct CallProjection {
+pub(super) struct CallProjection {
     syntactic_chain: Option<String>,
     rooted_chain: Option<String>,
     target_function: Option<FunctionId>,

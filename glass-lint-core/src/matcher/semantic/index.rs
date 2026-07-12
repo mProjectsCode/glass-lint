@@ -18,29 +18,40 @@ use super::super::rule::{
     MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, canonical_rooted_chain,
 };
 use super::ast::{SymbolCallProvenance, SymbolMemberProvenance};
-use super::facts::{CallArgInfo, FactPayload, FactStream};
+use super::facts::{CallArgInfo, FactId, FactPayload, FactStream};
 
-/// Typed occurrence storage.  Keeping insertion and normalization in one
+/// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different
 /// span ordering or duplicate policies for each provenance view.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct Occurrence {
+    pub(super) event: FactId,
+    pub(super) span: Span,
+}
+
 #[derive(Debug, Default)]
-pub(super) struct OccurrenceIndex<K: Ord>(BTreeMap<K, Vec<Span>>);
+pub(super) struct OccurrenceIndex<K: Ord>(BTreeMap<K, Vec<Occurrence>>);
 
 impl<K: Ord> OccurrenceIndex<K> {
-    pub(super) fn push(&mut self, key: K, span: Span) {
-        self.0.entry(key).or_default().push(span);
+    pub(super) fn push(&mut self, key: K, event: FactId, span: Span) {
+        self.0
+            .entry(key)
+            .or_default()
+            .push(Occurrence { event, span });
     }
 
     pub(super) fn normalize(&mut self) {
-        for spans in self.0.values_mut() {
-            spans.sort_by_key(|span| (span.lo, span.hi));
-            spans.dedup();
+        for occurrences in self.0.values_mut() {
+            occurrences.sort_by_key(|occurrence| {
+                (occurrence.event, occurrence.span.lo, occurrence.span.hi)
+            });
+            occurrences.dedup();
         }
     }
 }
 
 impl<K: Ord> Deref for OccurrenceIndex<K> {
-    type Target = BTreeMap<K, Vec<Span>>;
+    type Target = BTreeMap<K, Vec<Occurrence>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -107,8 +118,7 @@ impl MatcherFacts {
 
     /// Project a rule-independent `FactStream` into occurrence indexes.
     ///
-    /// This replaces the AST-walking index collection that `calls.rs`
-    /// currently performs.  Every fact kind is projected exactly once into
+    /// Every fact kind is projected exactly once into
     /// the matching occurrence map based on its provenance fields.
     pub(super) fn build_from_stream(&mut self, stream: &FactStream) {
         for fact in stream.facts() {
@@ -131,30 +141,36 @@ impl MatcherFacts {
 
                     // Syntactic name for identifier calls.
                     if let Some(name) = callee_name {
-                        self.calls.push(name.clone(), span);
+                        self.calls.push(name.clone(), fact.id, span);
                     }
 
                     // Provenance-based call indexes.
                     match call_provenance {
                         SymbolCallProvenance::Global { name } => {
-                            self.global_calls.push(name.clone(), span);
+                            self.global_calls.push(name.clone(), fact.id, span);
                         }
                         SymbolCallProvenance::ModuleExport { module, export } => {
                             self.module_calls
-                                .push((module.clone(), export.clone()), span);
-                            self.module_member_calls
-                                .push((module.clone(), export.clone()), span);
+                                .push((module.clone(), export.clone()), fact.id, span);
+                            self.module_member_calls.push(
+                                (module.clone(), export.clone()),
+                                fact.id,
+                                span,
+                            );
                         }
                         SymbolCallProvenance::Local => {}
                     }
 
                     // Member call indexes for member-expression callees.
                     if let Some(chain) = syntactic_chain {
-                        self.member_calls.push(chain.clone(), span);
+                        self.member_calls.push(chain.clone(), fact.id, span);
                     }
                     if let Some(chain) = rooted_chain {
-                        self.rooted_member_calls
-                            .push(canonical_rooted_chain(chain).to_string(), span);
+                        self.rooted_member_calls.push(
+                            canonical_rooted_chain(chain).to_string(),
+                            fact.id,
+                            span,
+                        );
                     }
 
                     // Module namespace provenance from member expression.
@@ -162,15 +178,21 @@ impl MatcherFacts {
                         module_member
                     {
                         self.module_calls
-                            .push((module.clone(), member.clone()), span);
-                        self.module_member_calls
-                            .push((module.clone(), member.clone()), span);
+                            .push((module.clone(), member.clone()), fact.id, span);
+                        self.module_member_calls.push(
+                            (module.clone(), member.clone()),
+                            fact.id,
+                            span,
+                        );
                     }
 
                     // Returned member from function return types.
                     if let Some((source, member)) = returned_member {
-                        self.returned_member_calls
-                            .push((source.clone(), member.clone()), span);
+                        self.returned_member_calls.push(
+                            (source.clone(), member.clone()),
+                            fact.id,
+                            span,
+                        );
                     }
 
                     // Instance member call: this.method() inside a class
@@ -182,6 +204,7 @@ impl MatcherFacts {
                     {
                         self.instance_member_calls.push(
                             (module.clone(), export.clone(), member_name.to_string()),
+                            fact.id,
                             span,
                         );
                     }
@@ -189,8 +212,9 @@ impl MatcherFacts {
                     // Special case: `Function` constructor calls via member
                     // expression (e.g., `(0, Function)(code)`).
                     if rooted_chain.as_deref() == Some("Function") {
-                        self.global_calls.push("Function".to_string(), span);
-                        self.calls.push("Function".to_string(), span);
+                        self.global_calls
+                            .push("Function".to_string(), fact.id, span);
+                        self.calls.push("Function".to_string(), fact.id, span);
                     }
 
                     // .call()/.apply() unwrapping: also record the target
@@ -199,9 +223,12 @@ impl MatcherFacts {
                     if let Some(unwrap) = unwrap
                         && !unwrap.chain.is_empty()
                     {
-                        self.member_calls.push(unwrap.chain.clone(), span);
-                        self.rooted_member_calls
-                            .push(canonical_rooted_chain(&unwrap.chain).to_string(), span);
+                        self.member_calls.push(unwrap.chain.clone(), fact.id, span);
+                        self.rooted_member_calls.push(
+                            canonical_rooted_chain(&unwrap.chain).to_string(),
+                            fact.id,
+                            span,
+                        );
                     }
                 }
 
@@ -213,24 +240,34 @@ impl MatcherFacts {
                     ..
                 } => {
                     if let Some(chain) = syntactic_chain {
-                        self.member_reads.push(chain.clone(), fact.span);
+                        self.member_reads.push(chain.clone(), fact.id, fact.span);
                     }
                     if let Some(chain) = rooted_chain {
-                        self.rooted_member_reads
-                            .push(canonical_rooted_chain(chain).to_string(), fact.span);
+                        self.rooted_member_reads.push(
+                            canonical_rooted_chain(chain).to_string(),
+                            fact.id,
+                            fact.span,
+                        );
                     }
                     if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
                         module_member
                     {
-                        self.module_member_reads
-                            .push((module.clone(), member.clone()), fact.span);
+                        self.module_member_reads.push(
+                            (module.clone(), member.clone()),
+                            fact.id,
+                            fact.span,
+                        );
                         // Record as a class occurrence for module namespace
-                        // member reads (matching the old record_member_read behavior).
-                        self.classes.push(member.clone(), fact.span);
+                        // A module member read is also a class occurrence for
+                        // the module-class matcher.
+                        self.classes.push(member.clone(), fact.id, fact.span);
                     }
                     if let Some((source, member)) = returned_member {
-                        self.returned_member_reads
-                            .push((source.clone(), member.clone()), fact.span);
+                        self.returned_member_reads.push(
+                            (source.clone(), member.clone()),
+                            fact.id,
+                            fact.span,
+                        );
                     }
                 }
 
@@ -242,35 +279,44 @@ impl MatcherFacts {
                 } => {
                     let span = *callee_span;
                     if let Some(name) = callee_name {
-                        self.constructors.push(name.clone(), span);
+                        self.constructors.push(name.clone(), fact.id, span);
                     }
                     match provenance {
                         SymbolCallProvenance::Global { name } => {
-                            self.global_constructors.push(name.clone(), span);
+                            self.global_constructors.push(name.clone(), fact.id, span);
                         }
                         SymbolCallProvenance::ModuleExport { module, export } => {
-                            self.module_constructors
-                                .push((module.clone(), export.clone()), span);
+                            self.module_constructors.push(
+                                (module.clone(), export.clone()),
+                                fact.id,
+                                span,
+                            );
                         }
                         SymbolCallProvenance::Local => {}
                     }
                 }
 
                 FactPayload::Import { module } => {
-                    self.imports.push(module.clone(), fact.span);
+                    self.imports.push(module.clone(), fact.id, fact.span);
                 }
 
-                FactPayload::StringLiteral { value } => {
-                    self.string_literals.push(value.clone(), fact.span);
+                FactPayload::Reference {
+                    static_string: Some(value),
+                    ..
+                } => {
+                    self.string_literals.push(value.clone(), fact.id, fact.span);
                 }
 
                 FactPayload::Class { name, provenance } => {
                     if !name.is_empty() {
-                        self.classes.push(name.clone(), fact.span);
+                        self.classes.push(name.clone(), fact.id, fact.span);
                     }
                     if let Some((module, export)) = provenance {
-                        self.module_classes
-                            .push((module.clone(), export.clone()), fact.span);
+                        self.module_classes.push(
+                            (module.clone(), export.clone()),
+                            fact.id,
+                            fact.span,
+                        );
                     }
                 }
 
@@ -279,7 +325,10 @@ impl MatcherFacts {
                 FactPayload::Declaration { .. }
                 | FactPayload::Assignment { .. }
                 | FactPayload::PropertyWrite { .. }
-                | FactPayload::Reference { .. }
+                | FactPayload::Reference {
+                    static_string: None,
+                    ..
+                }
                 | FactPayload::Function { .. }
                 | FactPayload::Control { .. } => {}
             }
@@ -316,6 +365,7 @@ impl MatcherFacts {
                     self.collect_member_argument_evidence_from_args(
                         member_argument_matchers,
                         argument_evidence,
+                        fact.id,
                         fact.span,
                         syntactic_chain.as_deref(),
                         rooted_chain.as_deref(),
@@ -336,6 +386,7 @@ impl MatcherFacts {
                     self.collect_call_argument_evidence_from_args(
                         call_argument_matchers,
                         argument_evidence,
+                        fact.id,
                         fact.span,
                         effective_name,
                         effective_provenance,
@@ -346,10 +397,12 @@ impl MatcherFacts {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn collect_call_argument_evidence_from_args(
         &self,
         matchers: &[(usize, &CallMatcher)],
         evidence: &mut [Vec<ApiEvidence>],
+        event: FactId,
         span: Span,
         callee_name: Option<&str>,
         call_provenance: &SymbolCallProvenance,
@@ -396,6 +449,7 @@ impl MatcherFacts {
                     symbol: matcher.evidence_symbol(),
                     count: 1,
                     spans: vec![span],
+                    event_ids: vec![event.0],
                 });
             }
         }
@@ -406,6 +460,7 @@ impl MatcherFacts {
         &self,
         matchers: &[(usize, &MemberCallMatcher)],
         evidence: &mut [Vec<ApiEvidence>],
+        event: FactId,
         span: Span,
         syntactic_chain: Option<&str>,
         resolved_chain: Option<&str>,
@@ -415,7 +470,10 @@ impl MatcherFacts {
         for (rule_index, matcher) in matchers {
             let matcher = *matcher;
             let member_matches = match &matcher.provenance {
-                MemberCallProvenance::Any => syntactic_chain == Some(&matcher.chain),
+                MemberCallProvenance::Any => {
+                    syntactic_chain == Some(&matcher.chain)
+                        || resolved_chain == Some(&matcher.chain)
+                }
                 MemberCallProvenance::Rooted => resolved_chain
                     .map(canonical_rooted_chain)
                     .is_some_and(|chain| chain == matcher.chain),
@@ -476,6 +534,7 @@ impl MatcherFacts {
                     symbol,
                     count: 1,
                     spans: vec![span],
+                    event_ids: vec![event.0],
                 });
             }
         }
@@ -511,7 +570,7 @@ impl MatcherFacts {
                         || source.starts_with(&format!("{}.", matcher.source)))
                         && member == &matcher.member
                 })
-                .flat_map(|(_, spans)| spans.iter().copied())
+                .flat_map(|(_, occurrences)| occurrences.iter().copied())
                 .collect::<Vec<_>>();
             push_owned_evidence(
                 evidence,
@@ -536,7 +595,7 @@ impl MatcherFacts {
                         || source.starts_with(&format!("{}.", matcher.source)))
                         && member == &matcher.member
                 })
-                .flat_map(|(_, spans)| spans.iter().copied())
+                .flat_map(|(_, occurrences)| occurrences.iter().copied())
                 .collect::<Vec<_>>();
             push_owned_evidence(
                 evidence,
@@ -601,7 +660,7 @@ impl MatcherFacts {
                             .filter(|(member_read, _)| {
                                 *member_read == &read.chain || member_read.ends_with(&suffix)
                             })
-                            .flat_map(|(_, spans)| spans.iter().copied())
+                            .flat_map(|(_, occurrences)| occurrences.iter().copied())
                             .collect::<Vec<_>>();
                         (!spans.is_empty()).then_some(spans)
                     }
@@ -673,7 +732,7 @@ impl MatcherFacts {
     ) {
         for constructor in constructors {
             let spans = match &constructor.provenance {
-                CallProvenance::Any => self.constructors.get(&constructor.name),
+                CallProvenance::Any => self.global_constructors.get(&constructor.name),
                 CallProvenance::Global => self.global_constructors.get(&constructor.name),
                 CallProvenance::ModuleExport { module } => self
                     .module_constructors
@@ -709,7 +768,7 @@ impl MatcherFacts {
                 .string_literals
                 .iter()
                 .filter(|(literal, _)| literal.contains(marker))
-                .flat_map(|(_, spans)| spans.iter().copied())
+                .flat_map(|(_, occurrences)| occurrences.iter().copied())
                 .collect::<Vec<_>>();
             push_owned_evidence(
                 evidence,
@@ -725,25 +784,25 @@ impl MatcherFacts {
         let symbol = symbol.into();
         match kind {
             ApiMatchKind::Call => {
-                self.calls.push(symbol, span);
+                self.calls.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::MemberCall => {
-                self.member_calls.push(symbol, span);
+                self.member_calls.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::MemberRead => {
-                self.member_reads.push(symbol, span);
+                self.member_reads.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::Import => {
-                self.imports.push(symbol, span);
+                self.imports.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::StringLiteral => {
-                self.string_literals.push(symbol, span);
+                self.string_literals.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::Class => {
-                self.classes.push(symbol, span);
+                self.classes.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::Constructor => {
-                self.constructors.push(symbol, span);
+                self.constructors.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::CallArgument => {}
         }
@@ -754,28 +813,37 @@ fn push_evidence(
     evidence: &mut Vec<ApiEvidence>,
     kind: ApiMatchKind,
     symbol: String,
-    spans: Option<&Vec<Span>>,
+    occurrences: Option<&Vec<Occurrence>>,
 ) {
-    push_owned_evidence(evidence, kind, symbol, spans.cloned());
+    push_owned_evidence(evidence, kind, symbol, occurrences.cloned());
 }
 
 fn push_owned_evidence(
     evidence: &mut Vec<ApiEvidence>,
     kind: ApiMatchKind,
     symbol: String,
-    spans: Option<Vec<Span>>,
+    occurrences: Option<Vec<Occurrence>>,
 ) {
-    let Some(spans) = spans else {
+    let Some(occurrences) = occurrences else {
         return;
     };
-    if spans.is_empty() {
+    if occurrences.is_empty() {
         return;
     }
+    let spans = occurrences
+        .iter()
+        .map(|occurrence| occurrence.span)
+        .collect();
+    let event_ids = occurrences
+        .iter()
+        .map(|occurrence| occurrence.event.0)
+        .collect();
     evidence.push(ApiEvidence {
         kind,
         symbol,
-        count: u32::try_from(spans.len()).unwrap_or(u32::MAX),
+        count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
         spans,
+        event_ids,
     });
 }
 
@@ -791,11 +859,19 @@ mod tests {
     #[test]
     fn typed_occurrence_index_is_sorted_and_deduplicated() {
         let mut index = OccurrenceIndex::<String>::default();
-        index.push("fetch".into(), span(20, 26));
-        index.push("fetch".into(), span(5, 11));
-        index.push("fetch".into(), span(5, 11));
+        index.push("fetch".into(), FactId(2), span(20, 26));
+        index.push("fetch".into(), FactId(1), span(5, 11));
+        index.push("fetch".into(), FactId(1), span(5, 11));
         index.normalize();
-        assert_eq!(index.get("fetch").unwrap(), &[span(5, 11), span(20, 26)]);
+        assert_eq!(
+            index
+                .get("fetch")
+                .unwrap()
+                .iter()
+                .map(|occurrence| occurrence.span)
+                .collect::<Vec<_>>(),
+            vec![span(5, 11), span(20, 26)]
+        );
     }
 
     #[test]
@@ -815,7 +891,7 @@ mod tests {
             .member_calls
             .iter()
             .filter(|(symbol, _)| *symbol == "client.request")
-            .flat_map(|(_, spans)| spans.iter().copied())
+            .flat_map(|(_, occurrences)| occurrences.iter().map(|occurrence| occurrence.span))
             .collect::<Vec<_>>();
         assert_eq!(evidence.len(), 1);
         assert_eq!(evidence[0].spans, reference);
@@ -823,7 +899,7 @@ mod tests {
 
     #[test]
     fn build_from_stream_populates_all_occurrence_indexes() {
-        use super::super::fact_builder::FactBuilder;
+        use super::super::fact_builder::build_test_stream;
         use super::super::resolver::Resolver;
 
         let src = r#"
@@ -839,9 +915,7 @@ mod tests {
         "#;
         let parsed = crate::parse(src, "stream-index.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&resolver);
-        swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
-        let stream = builder.into_stream();
+        let stream = build_test_stream(&parsed.program, &resolver);
 
         let mut index = MatcherFacts::default();
         index.build_from_stream(&stream);

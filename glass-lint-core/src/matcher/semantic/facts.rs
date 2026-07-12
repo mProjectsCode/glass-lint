@@ -4,7 +4,7 @@
 //! Matchers receive only the immutable SemanticFacts result, so adding a
 //! matcher cannot introduce another semantic path at the model boundary.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use swc_common::{BytePos, Span};
 use swc_ecma_ast::Program;
@@ -126,9 +126,12 @@ pub(super) struct CallUnwrap {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub(super) enum FactPayload {
-    /// Identifier reference.
+    /// Identifier or literal reference. A static string is a projection of
+    /// this value/reference fact, not a parallel `StringLiteral` fact kind;
+    /// string matchers consume the projection through the occurrence index.
     Reference {
         value: ValueId,
+        static_string: Option<String>,
     },
     /// Member expression read.
     MemberRead {
@@ -160,6 +163,7 @@ pub(super) enum FactPayload {
     /// Function or method call.
     Call {
         callee: ValueId,
+        receiver: Option<ValueId>,
         result: ValueId,
         callee_span: Span,
         callee_name: Option<String>,
@@ -199,10 +203,6 @@ pub(super) enum FactPayload {
     /// Import declaration.
     Import {
         module: String,
-    },
-    /// String literal or template quasi.
-    StringLiteral {
-        value: String,
     },
     /// Class declaration or expression, or `instanceof` operand.
     Class {
@@ -246,7 +246,6 @@ pub(super) struct FactStream {
     facts: Vec<SemanticFact>,
     exact: BTreeMap<ExactEventKey, Vec<FactId>>,
     exact_by_span_kind: BTreeMap<(BytePos, BytePos, FactKind), Vec<FactId>>,
-    span_order: BTreeMap<(BytePos, BytePos), FactId>,
     /// Per `(lo, hi, kind)` ordinal counter for deterministic same-span
     /// ordering.  Fails closed on overflow rather than wrapping.
     ordinal_counters: BTreeMap<(BytePos, BytePos, FactKind), u32>,
@@ -259,7 +258,6 @@ impl FactStream {
             facts: Vec::new(),
             exact: BTreeMap::new(),
             exact_by_span_kind: BTreeMap::new(),
-            span_order: BTreeMap::new(),
             ordinal_counters: BTreeMap::new(),
             valid: true,
         }
@@ -267,6 +265,13 @@ impl FactStream {
 
     pub(super) fn push(&mut self, fact: SemanticFact) {
         if !self.valid || self.facts.len() >= MAX_FACTS {
+            self.valid = false;
+            return;
+        }
+        // The builder is the only producer of canonical facts. Reject an
+        // out-of-order or reused ID instead of silently creating an index
+        // whose event identity no longer matches stream order.
+        if fact.id.0 != self.facts.len() as u32 {
             self.valid = false;
             return;
         }
@@ -296,10 +301,6 @@ impl FactStream {
             .entry(counter_key)
             .or_default()
             .push(fact.id);
-        self.span_order
-            .entry((fact.span.lo(), fact.span.hi()))
-            .and_modify(|id| *id = (*id).min(fact.id))
-            .or_insert(fact.id);
         self.facts.push(fact);
     }
 
@@ -338,15 +339,6 @@ impl FactStream {
     pub(super) fn fingerprint(&self) -> String {
         format!("{:?}", self.facts)
     }
-
-    /// Return the canonical fact order for an evidence span.  Evidence is
-    /// produced from canonical facts, so this indexed fallback is only used
-    /// for spans that do not carry an occurrence object (for example, a
-    /// synthetic compatibility span).  Equal spans resolve to the earliest
-    /// fact deterministically.
-    pub(super) fn order_for_span(&self, span: Span) -> Option<FactId> {
-        self.span_order.get(&(span.lo(), span.hi())).copied()
-    }
 }
 
 // ── SemanticFacts ───────────────────────────────────────────────────────
@@ -357,6 +349,7 @@ pub(super) struct SemanticFacts {
     pub(super) stream: FactStream,
     pub(super) index: MatcherFacts,
     pub(super) argument_evidence: Vec<Vec<ApiEvidence>>,
+    selected: BTreeSet<usize>,
 }
 
 impl SemanticFacts {
@@ -364,11 +357,17 @@ impl SemanticFacts {
         program: &Program,
         resolver: Resolver,
         matchers: &[&ApiMatcher],
-        rule_count: usize,
+        selected: &[usize],
     ) -> Self {
-        let member_argument_matchers = matchers
+        let selected = selected.iter().copied().collect::<BTreeSet<_>>();
+        let active_matchers = matchers
             .iter()
             .enumerate()
+            .filter(|(rule_index, _)| selected.contains(rule_index))
+            .collect::<Vec<_>>();
+        let member_argument_matchers = active_matchers
+            .iter()
+            .copied()
             .flat_map(|(rule_index, matcher)| {
                 matcher
                     .member_calls
@@ -381,9 +380,9 @@ impl SemanticFacts {
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
-        let call_argument_matchers = matchers
+        let call_argument_matchers = active_matchers
             .iter()
-            .enumerate()
+            .copied()
             .flat_map(|(rule_index, matcher)| {
                 matcher
                     .calls
@@ -392,9 +391,9 @@ impl SemanticFacts {
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
-        let flow_matchers = matchers
+        let flow_matchers = active_matchers
             .iter()
-            .enumerate()
+            .copied()
             .flat_map(|(rule_index, matcher)| {
                 matcher
                     .flows
@@ -413,7 +412,8 @@ impl SemanticFacts {
             return Self {
                 stream,
                 index: MatcherFacts::default(),
-                argument_evidence: vec![Vec::new(); rule_count],
+                argument_evidence: vec![Vec::new(); matchers.len()],
+                selected,
             };
         }
 
@@ -422,7 +422,7 @@ impl SemanticFacts {
         index.build_from_stream(&stream);
 
         // Compute argument evidence from pre-computed fact data.
-        let mut argument_evidence = vec![Vec::new(); rule_count];
+        let mut argument_evidence = vec![Vec::new(); matchers.len()];
         index.compute_argument_evidence_from_stream(
             &stream,
             &member_argument_matchers,
@@ -430,7 +430,7 @@ impl SemanticFacts {
             &mut argument_evidence,
         );
 
-        for (rule_index, evidence) in object_flow::collect(&stream, &flow_matchers, rule_count)
+        for (rule_index, evidence) in object_flow::collect(&stream, &flow_matchers, matchers.len())
             .into_iter()
             .enumerate()
         {
@@ -441,7 +441,12 @@ impl SemanticFacts {
             stream,
             index,
             argument_evidence,
+            selected,
         }
+    }
+
+    pub(super) fn is_selected(&self, rule_index: usize) -> bool {
+        self.selected.contains(&rule_index)
     }
 }
 
@@ -460,6 +465,7 @@ mod tests {
             payload: match kind {
                 FactKind::Call => FactPayload::Call {
                     callee: ValueId::UNKNOWN,
+                    receiver: None,
                     result: ValueId::UNKNOWN,
                     callee_span: span,
                     callee_name: None,
@@ -482,6 +488,7 @@ mod tests {
                 },
                 FactKind::Reference => FactPayload::Reference {
                     value: ValueId::UNKNOWN,
+                    static_string: None,
                 },
                 FactKind::Function => FactPayload::Function {
                     id: FunctionId(0),
@@ -527,7 +534,58 @@ mod tests {
             }),
             vec![FactId(2)]
         );
-        assert_eq!(stream.order_for_span(span), Some(FactId(0)));
+    }
+
+    #[test]
+    fn dense_exact_lookup_preserves_every_same_span_fact() {
+        let span = Span::new(BytePos(100), BytePos(120));
+        let mut stream = FactStream::new();
+        for id in 0..10_001 {
+            stream.push(test_fact(id, FactKind::Call, span));
+        }
+        let calls = stream.facts_at(span.lo(), span.hi(), FactKind::Call);
+        assert_eq!(calls.len(), 10_001);
+        assert_eq!(calls.first().map(|fact| fact.id), Some(FactId(0)));
+        assert_eq!(calls.last().map(|fact| fact.id), Some(FactId(10_000)));
+        assert_eq!(
+            stream.exact_lookup(&ExactEventKey {
+                lo: span.lo(),
+                hi: span.hi(),
+                kind: FactKind::Call,
+                ordinal: 10_000,
+            }),
+            vec![FactId(10_000)]
+        );
+    }
+
+    #[test]
+    fn catalog_selection_and_order_cannot_change_fact_fingerprint() {
+        let source = "fetch('/api'); document.createElement('script');";
+        let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
+        let first =
+            ApiMatcher::from_matchers(vec![super::super::super::rule::Matcher::global_call(
+                "fetch",
+            )])
+            .normalized();
+        let second =
+            ApiMatcher::from_matchers(vec![super::super::super::rule::Matcher::member_call(
+                super::super::super::rule::MemberCallMatcher::syntactic_heuristic(
+                    "document.createElement",
+                ),
+            )])
+            .normalized();
+        let build = |matchers: Vec<&ApiMatcher>, selected: &[usize]| {
+            let resolver = Resolver::collect(&parsed.program);
+            SemanticFacts::build(&parsed.program, resolver, &matchers, selected)
+                .stream
+                .fingerprint()
+        };
+
+        let forward = build(vec![&first, &second], &[0, 1]);
+        assert_eq!(forward, build(vec![&first, &second], &[0]));
+        assert_eq!(forward, build(vec![&first, &second], &[1, 0]));
+        assert_eq!(forward, build(vec![&first, &second], &[]));
+        assert_eq!(forward, build(vec![&second, &first], &[0, 1]));
     }
 
     /// Verify that the fact-driven index populates expected occurrence maps

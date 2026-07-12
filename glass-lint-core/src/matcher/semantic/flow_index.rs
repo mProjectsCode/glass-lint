@@ -1,6 +1,6 @@
 //! Compiled source and sink lookup for declarative flow matchers.
 //!
-//! This index is independent of the mutable object-flow visitor.  It owns the
+//! This index is independent of the mutable object-flow projector.  It owns the
 //! rule-facing lookup keys while the collector owns object identity, state,
 //! and lifecycle transitions.
 

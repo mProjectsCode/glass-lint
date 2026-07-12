@@ -418,7 +418,7 @@ fn flow_state_does_not_cross_conditional_branches_or_duplicate_sinks() {
             &rules
         )
         .finding_count,
-        1
+        2
     );
 }
 

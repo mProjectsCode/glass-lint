@@ -60,7 +60,6 @@ pub(super) fn collect_with_limits(
                         chain,
                         args: effective_args,
                         fact_id: fact.id,
-                        span: fact.span,
                     },
                 ))
             }
@@ -72,6 +71,11 @@ pub(super) fn collect_with_limits(
         flow_index,
         helpers,
         calls_by_result,
+        fact_spans: stream
+            .facts()
+            .iter()
+            .map(|fact| (fact.id, fact.span))
+            .collect(),
         evidence: vec![Vec::new(); rule_count],
         aliases: BTreeMap::new(),
         states: BTreeMap::new(),
@@ -92,6 +96,7 @@ struct ObjectFlowProjector<'rules> {
     flow_index: FlowIndex<'rules>,
     helpers: FunctionSummaries,
     calls_by_result: BTreeMap<ValueId, SourceCall>,
+    fact_spans: BTreeMap<FactId, swc_common::Span>,
     evidence: Vec<Vec<ApiEvidence>>,
     aliases: BTreeMap<ValueId, ObjectId>,
     states: BTreeMap<(ObjectId, FlowId), FlowState>,
@@ -102,7 +107,7 @@ struct ObjectFlowProjector<'rules> {
     reachable: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct FlowEnvironment {
     aliases: BTreeMap<ValueId, ObjectId>,
     states: BTreeMap<(ObjectId, FlowId), FlowState>,
@@ -126,7 +131,7 @@ enum ControlFrame {
     Switch {
         region: u32,
         baseline: FlowEnvironment,
-        exits: Vec<FlowEnvironment>,
+        breaks: Vec<FlowEnvironment>,
         has_default: bool,
     },
     Try {
@@ -134,6 +139,8 @@ enum ControlFrame {
         baseline: FlowEnvironment,
         try_exit: Option<FlowEnvironment>,
         catch_exit: Option<FlowEnvironment>,
+        normal_exit: Option<FlowEnvironment>,
+        abrupt_exits: Vec<(AbruptExit, FlowEnvironment)>,
         has_finally: bool,
     },
     Function {
@@ -141,12 +148,18 @@ enum ControlFrame {
     },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AbruptExit {
+    Break,
+    Continue,
+    Return,
+}
+
 #[derive(Debug, Clone)]
 struct SourceCall {
     chain: Option<String>,
     args: Vec<CallArgInfo>,
     fact_id: FactId,
-    span: swc_common::Span,
 }
 
 impl<'rules> ObjectFlowProjector<'rules> {
@@ -184,7 +197,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
                     return;
                 }
                 if let Some(receiver) = receiver {
-                    self.kill_value(*receiver);
+                    self.invalidate_object(*receiver);
                 } else {
                     self.assign(*target, *source);
                 }
@@ -198,12 +211,18 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 if !self.reachable {
                     return;
                 }
-                self.record_property_write(*receiver, property.as_deref(), static_value.as_deref())
+                self.record_property_write(
+                    *receiver,
+                    property.as_deref(),
+                    static_value.as_deref(),
+                    fact.id,
+                )
             }
             FactPayload::Call {
                 syntactic_chain,
                 rooted_chain,
                 callee_name,
+                receiver,
                 args,
                 unwrap,
                 target_function,
@@ -228,7 +247,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
                     },
                 );
                 if let Some(chain) = chain {
-                    self.record_configuration(chain, effective_args);
+                    self.record_configuration(*receiver, chain, effective_args, fact.id);
                     self.record_sinks(chain, effective_args, fact.id);
                 }
                 if let Some(function) = target_function {
@@ -275,7 +294,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 let mut state = left_state.clone();
                 state
                     .requirements
-                    .retain(|requirement| right_state.requirements.contains(requirement));
+                    .retain(|requirement, _| right_state.requirements.contains_key(requirement));
                 Some((*key, state))
             })
             .collect();
@@ -383,7 +402,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
                     baseline,
                     guaranteed,
                     breaks,
-                    continues: _,
+                    continues,
                 }) = self.control.pop()
                 else {
                     return;
@@ -396,13 +415,16 @@ impl<'rules> ObjectFlowProjector<'rules> {
                     paths.push(baseline);
                 }
                 paths.extend(breaks);
+                // A continue in a do/while still reaches its test and can
+                // therefore reach the loop exit.
+                paths.extend(continues);
                 paths.push(self.environment());
                 self.restore(Self::join_many(&paths));
             }
             ControlKind::SwitchStart => self.control.push(ControlFrame::Switch {
                 region,
                 baseline: self.environment(),
-                exits: Vec::new(),
+                breaks: Vec::new(),
                 has_default: false,
             }),
             ControlKind::SwitchCase { is_default } => {
@@ -411,15 +433,15 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 if let Some(ControlFrame::Switch {
                     region: expected,
                     baseline,
-                    exits,
                     has_default: default,
+                    ..
                 }) = self.control.last_mut()
                     && *expected == region
                 {
-                    if !exits.is_empty() {
-                        exits.push(current.clone());
-                        restore = Some(Self::join(&current, baseline));
-                    }
+                    // The current environment is the fall-through input
+                    // from the preceding case. Joining it with baseline
+                    // also admits direct entry at this case.
+                    restore = Some(Self::join(&current, baseline));
                     *default |= is_default;
                 }
                 if let Some(environment) = restore {
@@ -430,8 +452,9 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 let Some(ControlFrame::Switch {
                     region: expected,
                     baseline,
-                    mut exits,
+                    breaks,
                     has_default,
+                    ..
                 }) = self.control.pop()
                 else {
                     return;
@@ -439,7 +462,8 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 if expected != region {
                     return;
                 }
-                exits.push(self.environment());
+                let mut exits = vec![self.environment()];
+                exits.extend(breaks);
                 if !has_default {
                     exits.push(baseline);
                 }
@@ -450,6 +474,8 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 baseline: self.environment(),
                 try_exit: None,
                 catch_exit: None,
+                normal_exit: None,
+                abrupt_exits: Vec::new(),
                 has_finally: false,
             }),
             ControlKind::CatchStart => {
@@ -463,7 +489,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 }) = self.control.last_mut()
                     && *expected == region
                 {
-                    *try_exit = Some(current);
+                    *try_exit = current.reachable.then_some(current);
                     restore = Some(baseline.clone());
                 }
                 if let Some(environment) = restore {
@@ -477,6 +503,8 @@ impl<'rules> ObjectFlowProjector<'rules> {
                     region: expected,
                     try_exit,
                     catch_exit,
+                    normal_exit,
+                    abrupt_exits,
                     has_finally,
                     ..
                 }) = self.control.last_mut()
@@ -484,9 +512,23 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 {
                     *catch_exit = Some(current.clone());
                     *has_finally = true;
-                    if let Some(try_exit) = try_exit {
-                        restore = Some(Self::join(try_exit, &current));
+                    let mut normal = try_exit.clone();
+                    if current.reachable {
+                        normal = Some(
+                            normal.map_or(current.clone(), |normal| Self::join(&normal, &current)),
+                        );
                     }
+                    *normal_exit = normal.clone();
+                    let mut incoming = Vec::new();
+                    if let Some(normal) = normal {
+                        incoming.push(normal);
+                    }
+                    incoming.extend(
+                        abrupt_exits
+                            .iter()
+                            .map(|(_, environment)| environment.clone()),
+                    );
+                    restore = Some(Self::join_many(&incoming));
                 }
                 if let Some(environment) = restore {
                     self.restore(environment);
@@ -497,13 +539,39 @@ impl<'rules> ObjectFlowProjector<'rules> {
                     region: expected,
                     try_exit,
                     catch_exit,
+                    normal_exit,
+                    abrupt_exits,
                     has_finally,
                     ..
                 }) = self.control.pop()
                 else {
                     return;
                 };
-                if expected != region || has_finally {
+                if expected != region {
+                    return;
+                }
+                if has_finally {
+                    let after_finally = self.environment();
+                    for (kind, before) in abrupt_exits {
+                        self.apply_finally_to_abrupt_exit(kind, &before, &after_finally);
+                    }
+                    if let Some(normal) = normal_exit {
+                        if normal.reachable {
+                            self.restore(after_finally);
+                        } else {
+                            self.restore(FlowEnvironment {
+                                aliases: BTreeMap::new(),
+                                states: BTreeMap::new(),
+                                reachable: false,
+                            });
+                        }
+                    } else {
+                        self.restore(FlowEnvironment {
+                            aliases: BTreeMap::new(),
+                            states: BTreeMap::new(),
+                            reachable: false,
+                        });
+                    }
                     return;
                 }
                 if let Some(try_exit) = try_exit {
@@ -513,18 +581,25 @@ impl<'rules> ObjectFlowProjector<'rules> {
             }
             ControlKind::Break => {
                 let current = self.environment();
-                if let Some(ControlFrame::Loop { breaks, .. }) = self
-                    .control
-                    .iter_mut()
-                    .rev()
-                    .find(|frame| matches!(frame, ControlFrame::Loop { .. }))
-                {
-                    breaks.push(current);
+                self.record_abrupt_exit(AbruptExit::Break, &current);
+                if let Some(frame) = self.control.iter_mut().rev().find(|frame| {
+                    matches!(
+                        frame,
+                        ControlFrame::Loop { .. } | ControlFrame::Switch { .. }
+                    )
+                }) {
+                    match frame {
+                        ControlFrame::Loop { breaks, .. } | ControlFrame::Switch { breaks, .. } => {
+                            breaks.push(current)
+                        }
+                        _ => unreachable!(),
+                    }
                     self.reachable = false;
                 }
             }
             ControlKind::Continue => {
                 let current = self.environment();
+                self.record_abrupt_exit(AbruptExit::Continue, &current);
                 if let Some(ControlFrame::Loop { continues, .. }) = self
                     .control
                     .iter_mut()
@@ -535,7 +610,44 @@ impl<'rules> ObjectFlowProjector<'rules> {
                     self.reachable = false;
                 }
             }
-            ControlKind::Return => self.reachable = false,
+            ControlKind::Return => {
+                let current = self.environment();
+                self.record_abrupt_exit(AbruptExit::Return, &current);
+                self.reachable = false;
+            }
+        }
+    }
+
+    fn record_abrupt_exit(&mut self, kind: AbruptExit, environment: &FlowEnvironment) {
+        for frame in self.control.iter_mut().rev() {
+            if let ControlFrame::Try { abrupt_exits, .. } = frame {
+                abrupt_exits.push((kind, environment.clone()));
+            }
+        }
+    }
+
+    fn apply_finally_to_abrupt_exit(
+        &mut self,
+        kind: AbruptExit,
+        before: &FlowEnvironment,
+        after: &FlowEnvironment,
+    ) {
+        let frames = self.control.iter_mut().rev();
+        for frame in frames {
+            let targets = match (kind, frame) {
+                (AbruptExit::Break, ControlFrame::Loop { breaks, .. })
+                | (AbruptExit::Break, ControlFrame::Switch { breaks, .. }) => Some(breaks),
+                (AbruptExit::Continue, ControlFrame::Loop { continues, .. }) => Some(continues),
+                _ => None,
+            };
+            if let Some(targets) = targets {
+                for target in targets {
+                    if target == before {
+                        *target = after.clone();
+                    }
+                }
+                return;
+            }
         }
     }
 
@@ -545,8 +657,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
         }
         if let Some(call) = self.calls_by_result.get(&source).cloned()
             && let Some(chain) = call.chain.as_deref()
-            && let Some((object, states)) =
-                self.source_match(chain, &call.args, call.fact_id, call.span)
+            && let Some((object, states)) = self.source_match(chain, &call.args, call.fact_id)
         {
             if self.states.len().saturating_add(states.len()) > self.limits.max_states {
                 return;
@@ -560,7 +671,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
         if let Some(object) = self.aliases.get(&source).copied() {
             self.aliases.insert(target, object);
         } else {
-            self.kill_value(target);
+            self.unbind_value(target);
         }
     }
 
@@ -569,7 +680,6 @@ impl<'rules> ObjectFlowProjector<'rules> {
         chain: &str,
         args: &[CallArgInfo],
         source_fact: FactId,
-        source_span: swc_common::Span,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
         let ids = self.flow_index.sources.get(chain)?;
         let matching = ids
@@ -608,10 +718,9 @@ impl<'rules> ObjectFlowProjector<'rules> {
             .into_iter()
             .map(|flow| FlowState {
                 flow,
-                source_fact,
-                source_span,
+                source_event: source_fact,
                 object_id: object,
-                requirements: BTreeSet::new(),
+                requirements: BTreeMap::new(),
             })
             .collect();
         Some((object, states))
@@ -622,6 +731,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
         receiver: ValueId,
         property: Option<&str>,
         value: Option<&str>,
+        event: FactId,
     ) {
         let Some(object) = self.aliases.get(&receiver).copied() else {
             return;
@@ -650,16 +760,30 @@ impl<'rules> ObjectFlowProjector<'rules> {
                     if property == Some(expected.as_str())
                         && super::flow_calls::flow_value_matches(matcher, value, true)
                     {
-                        state.requirements.insert(index);
+                        state.requirements.insert(index, event);
                     }
                 }
             }
-            self.emit_if_ready(key.1, key.0);
+            self.emit_if_ready(key.1, key.0, event);
         }
     }
 
-    fn record_configuration(&mut self, chain: &str, args: &[CallArgInfo]) {
-        let objects = self.aliases.values().copied().collect::<BTreeSet<_>>();
+    fn record_configuration(
+        &mut self,
+        receiver: Option<ValueId>,
+        chain: &str,
+        args: &[CallArgInfo],
+        event: FactId,
+    ) {
+        let objects = match receiver {
+            Some(value) => self
+                .aliases
+                .get(&value)
+                .copied()
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+            None => self.aliases.values().copied().collect::<BTreeSet<_>>(),
+        };
         for object in objects {
             let keys = self
                 .states
@@ -690,10 +814,10 @@ impl<'rules> ObjectFlowProjector<'rules> {
                             })
                         })
                     {
-                        state.requirements.insert(index);
+                        state.requirements.insert(index, event);
                     }
                 }
-                self.emit_if_ready(key.1, key.0);
+                self.emit_if_ready(key.1, key.0, event);
             }
         }
     }
@@ -770,7 +894,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
         }
     }
 
-    fn emit_if_ready(&mut self, flow: FlowId, object: ObjectId) {
+    fn emit_if_ready(&mut self, flow: FlowId, object: ObjectId, event: FactId) {
         let Some(state) = self.states.get(&(object, flow)).cloned() else {
             return;
         };
@@ -778,7 +902,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
             return;
         };
         if matcher.emit_on_requirements {
-            self.emit_state(&state, &matcher, state.source_fact);
+            self.emit_state(&state, &matcher, event);
         }
     }
 
@@ -786,6 +910,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
         if !state_is_ready(state, flow) {
             return;
         }
+        debug_assert!(state.source_event <= match_fact);
         let key = (
             state.flow.rule_index,
             state.flow.flow_index,
@@ -796,19 +921,34 @@ impl<'rules> ObjectFlowProjector<'rules> {
             return;
         }
         if self.emitted.insert(key) {
+            // Requirement-only flows are anchored at the event that made the
+            // final requirement true; sink flows use the sink event passed by
+            // the caller. Keep the span and event identity parallel.
+            let anchor = match_fact;
             self.evidence[state.flow.rule_index].push(ApiEvidence {
                 kind: ApiMatchKind::CallArgument,
                 symbol: flow.evidence_symbol(),
                 count: 1,
-                spans: vec![state.source_span],
+                spans: vec![self.fact_spans.get(&anchor).copied().unwrap_or_default()],
+                event_ids: vec![anchor.0],
             });
         }
     }
 
-    fn kill_value(&mut self, value: ValueId) {
-        if let Some(object) = self.aliases.remove(&value) {
+    fn unbind_value(&mut self, value: ValueId) {
+        let Some(object) = self.aliases.remove(&value) else {
+            return;
+        };
+        if !self.aliases.values().any(|alias| *alias == object) {
             self.states.retain(|(id, _), _| *id != object);
         }
+    }
+
+    fn invalidate_object(&mut self, value: ValueId) {
+        let Some(object) = self.aliases.get(&value).copied() else {
+            return;
+        };
+        self.states.retain(|(id, _), _| *id != object);
     }
 
     fn allocate_object_id(&mut self) -> Option<ObjectId> {
@@ -848,6 +988,23 @@ mod tests {
         let evidence = collect_source(
             "const script = document.createElement('script'); script.src = url; document.head.appendChild(script);",
             &script_flow(),
+        );
+        assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    }
+
+    #[test]
+    fn member_call_configuration_stays_with_its_receiver() {
+        let flow = FlowMatcher::new("configured script")
+            .source_member_call("document.createElement")
+            .source_arg_string(0, ["script"])
+            .member_call_config(
+                "configure",
+                [(0, FlowValueMatcher::StaticExact(vec!["yes".into()]))],
+            )
+            .sink_member_call_arg_indices(["document.head.appendChild"], [0]);
+        let evidence = collect_source(
+            "const first = document.createElement('script'); const second = document.createElement('script'); first.configure('yes'); document.head.appendChild(second); document.head.appendChild(first);",
+            &flow,
         );
         assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
     }
@@ -967,5 +1124,90 @@ mod tests {
             &script_flow(),
         );
         assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    }
+
+    #[test]
+    fn finally_configuration_reaches_a_break_exit() {
+        let evidence = collect_source(
+            "const script = document.createElement('script'); do { try { break; } finally { script.src = url; } } while (ready); document.head.appendChild(script);",
+            &script_flow(),
+        );
+        assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    }
+
+    #[test]
+    fn finally_return_does_not_reach_code_after_the_try() {
+        let evidence = collect_source(
+            "function run() { const script = document.createElement('script'); try { return; } finally { script.src = url; } document.head.appendChild(script); }",
+            &script_flow(),
+        );
+        assert!(evidence[0].is_empty());
+    }
+
+    #[test]
+    fn destructuring_assignment_invalidates_the_written_alias() {
+        let evidence = collect_source(
+            "let script = document.createElement('script'); script.src = url; ({ script } = replacement); document.head.appendChild(script);",
+            &script_flow(),
+        );
+        assert!(evidence[0].is_empty());
+    }
+
+    #[test]
+    fn rebinding_one_alias_does_not_kill_the_shared_object() {
+        let evidence = collect_source(
+            "let first = document.createElement('script'); const alias = first; first = replacement; alias.src = url; document.head.appendChild(alias);",
+            &script_flow(),
+        );
+        assert_eq!(evidence[0].iter().map(|item| item.count).sum::<u32>(), 1);
+    }
+
+    #[test]
+    fn flow_evidence_is_anchored_at_the_sink_event() {
+        let source = "const script = document.createElement('script'); script.src = url; document.head.appendChild(script);";
+        let parsed = crate::parse(source, "flow-location.js").expect("source should parse");
+        let resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::matcher::semantic::fact_builder::build_test_stream(&parsed.program, &resolver);
+        let sink_span = stream
+            .facts()
+            .iter()
+            .find_map(|fact| match &fact.payload {
+                FactPayload::Call {
+                    syntactic_chain: Some(chain),
+                    ..
+                } if chain == "document.head.appendChild" => Some(fact.span),
+                _ => None,
+            })
+            .expect("sink call should be present");
+        let evidence =
+            collect_with_limits(&stream, &[(0, 0, &script_flow())], 1, FlowLimits::default());
+        assert_eq!(evidence[0][0].spans, vec![sink_span]);
+    }
+
+    #[test]
+    fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
+        let flow = FlowMatcher::new("configured input")
+            .source_member_call("document.createElement")
+            .source_arg_string(0, ["input"])
+            .property_write("type", FlowValueMatcher::StaticExact(vec!["file".into()]))
+            .emit_when_requirements_met();
+        let source = "const input = document.createElement('input'); input.type = 'file';";
+        let parsed =
+            crate::parse(source, "flow-requirement-location.js").expect("source should parse");
+        let resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::matcher::semantic::fact_builder::build_test_stream(&parsed.program, &resolver);
+        let configuration = stream
+            .facts()
+            .iter()
+            .find_map(|fact| {
+                matches!(fact.payload, FactPayload::PropertyWrite { .. })
+                    .then_some((fact.id, fact.span))
+            })
+            .expect("configuration write should be present");
+        let evidence = collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default());
+        assert_eq!(evidence[0][0].spans, vec![configuration.1]);
+        assert_eq!(evidence[0][0].event_ids, vec![configuration.0.0]);
     }
 }

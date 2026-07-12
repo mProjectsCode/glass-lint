@@ -441,8 +441,24 @@ mod tests {
         let catalog = RuleCatalog::new("test", vec![rule_a, rule_b]).unwrap();
 
         let source = "fetch('/a'); new XMLHttpRequest();";
-        let report_asc = Linter::new(catalog.clone()).lint(source, "order.js");
-        let report_desc = Linter::new(catalog.clone()).lint(source, "order.js");
+        let report_asc = Linter::with_rules(
+            catalog.clone(),
+            [
+                RuleId::parse("test:alpha.first").unwrap(),
+                RuleId::parse("test:beta.second").unwrap(),
+            ],
+        )
+        .unwrap()
+        .lint(source, "order.js");
+        let report_desc = Linter::with_rules(
+            catalog.clone(),
+            [
+                RuleId::parse("test:beta.second").unwrap(),
+                RuleId::parse("test:alpha.first").unwrap(),
+            ],
+        )
+        .unwrap()
+        .lint(source, "order.js");
 
         // Both runs produce identical findings regardless of internal order.
         assert_eq!(report_asc.findings.len(), report_desc.findings.len());
@@ -451,5 +467,31 @@ mod tests {
             assert_eq!(a.range, b.range);
             assert_eq!(a.message, b.message);
         }
+    }
+
+    #[test]
+    fn disabled_catalog_rules_do_not_produce_findings() {
+        let rule_a = ApiRule::builder("alpha.first")
+            .label("First")
+            .category("network")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap();
+        let rule_b = ApiRule::builder("beta.second")
+            .label("Second")
+            .category("network")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("XMLHttpRequest"))
+            .build()
+            .unwrap();
+        let catalog = RuleCatalog::new("test", vec![rule_a, rule_b]).unwrap();
+        let report = Linter::with_rules(catalog, [RuleId::parse("test:beta.second").unwrap()])
+            .unwrap()
+            .lint("fetch(); XMLHttpRequest();", "subset.js");
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].rule_id.as_str(), "test:beta.second");
     }
 }

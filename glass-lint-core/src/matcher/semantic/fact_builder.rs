@@ -311,6 +311,7 @@ impl<'a> FactBuilder<'a> {
             span,
             FactPayload::Call {
                 callee: resolved.value,
+                receiver: resolved.receiver,
                 result,
                 callee_span: resolved.callee_span,
                 callee_name: resolved.callee_name,
@@ -369,6 +370,45 @@ impl<'a> FactBuilder<'a> {
                 }
             }
             Pat::Expr(_) | Pat::Invalid(_) => {}
+        }
+    }
+
+    fn pattern_write_targets(&self, pattern: &Pat, targets: &mut Vec<(ValueId, Option<ValueId>)>) {
+        match pattern {
+            Pat::Ident(ident) => targets.push((self.resolver.resolve_ident(&ident.id).id, None)),
+            Pat::Assign(assign) => self.pattern_write_targets(&assign.left, targets),
+            Pat::Rest(rest) => self.pattern_write_targets(&rest.arg, targets),
+            Pat::Array(array) => {
+                for element in array.elems.iter().flatten() {
+                    self.pattern_write_targets(element, targets);
+                }
+            }
+            Pat::Object(object) => {
+                for property in &object.props {
+                    match property {
+                        swc_ecma_ast::ObjectPatProp::KeyValue(property) => {
+                            self.pattern_write_targets(&property.value, targets)
+                        }
+                        swc_ecma_ast::ObjectPatProp::Assign(property) => {
+                            targets.push((self.resolver.resolve_ident(&property.key.id).id, None))
+                        }
+                        swc_ecma_ast::ObjectPatProp::Rest(property) => {
+                            self.pattern_write_targets(&property.arg, targets)
+                        }
+                    }
+                }
+            }
+            Pat::Expr(expr) => {
+                if let Expr::Member(member) = &**expr {
+                    targets.push((
+                        self.resolver.resolve_member(member).id,
+                        Some(self.resolver.resolve_expr(&member.obj).id),
+                    ));
+                } else {
+                    targets.push((self.resolver.resolve_expr(expr).id, None));
+                }
+            }
+            Pat::Invalid(_) => {}
         }
     }
 
@@ -667,6 +707,7 @@ impl<'a> FactBuilder<'a> {
                 let resolved = self.resolver.resolve_ident(ident);
                 ResolvedCallee {
                     value: resolved.id,
+                    receiver: None,
                     callee_span: ident.span,
                     callee_name: Some(ident.sym.to_string()),
                     call_provenance: resolved.call.clone(),
@@ -686,6 +727,7 @@ impl<'a> FactBuilder<'a> {
                     let resolved = self.resolver.resolve_expr(effective);
                     ResolvedCallee {
                         value: resolved.id,
+                        receiver: None,
                         callee_span: effective.span(),
                         callee_name: None,
                         call_provenance: resolved.call.clone(),
@@ -703,6 +745,7 @@ impl<'a> FactBuilder<'a> {
                 let resolved = self.resolver.resolve_expr(effective);
                 ResolvedCallee {
                     value: resolved.id,
+                    receiver: None,
                     callee_span: effective.span(),
                     callee_name: None,
                     call_provenance: resolved.call.clone(),
@@ -724,6 +767,7 @@ impl<'a> FactBuilder<'a> {
         let instance_class = self.instance_class_for_receiver(&member.obj);
         ResolvedCallee {
             value: resolved.id,
+            receiver: Some(self.resolver.resolve_expr(&member.obj).id),
             callee_span: member.span,
             callee_name: None,
             call_provenance: resolved.call.clone(),
@@ -789,6 +833,7 @@ impl<'a> FactBuilder<'a> {
 
 struct ResolvedCallee {
     value: ValueId,
+    receiver: Option<ValueId>,
     callee_span: Span,
     callee_name: Option<String>,
     call_provenance: SymbolCallProvenance,
@@ -808,7 +853,10 @@ impl Visit for FactBuilder<'_> {
         self.emit(
             FactKind::Reference,
             ident.span(),
-            FactPayload::Reference { value: resolved.id },
+            FactPayload::Reference {
+                value: resolved.id,
+                static_string: None,
+            },
         );
     }
 
@@ -921,6 +969,23 @@ impl Visit for FactBuilder<'_> {
                     );
                 }
             }
+            swc_ecma_ast::AssignTarget::Pat(pattern) => {
+                assignment.right.visit_with(self);
+                let pattern: Pat = pattern.clone().into();
+                let mut targets = Vec::new();
+                self.pattern_write_targets(&pattern, &mut targets);
+                for (target, receiver) in targets {
+                    self.emit(
+                        FactKind::Assignment,
+                        assignment.span(),
+                        FactPayload::Assignment {
+                            target,
+                            source: ValueId::UNKNOWN,
+                            receiver,
+                        },
+                    );
+                }
+            }
             _ => {}
         }
     }
@@ -969,6 +1034,7 @@ impl Visit for FactBuilder<'_> {
                 call.span(),
                 FactPayload::Call {
                     callee: ValueId::UNKNOWN,
+                    receiver: None,
                     result,
                     callee_span: call.span,
                     callee_name: None,
@@ -1064,7 +1130,15 @@ impl Visit for FactBuilder<'_> {
         let (callee_name, provenance) = match &*new_expr.callee {
             Expr::Ident(ident) => {
                 let p = resolved.call.clone();
-                (Some(ident.sym.to_string()), p)
+                (
+                    Some(
+                        resolved
+                            .rooted_chain
+                            .clone()
+                            .unwrap_or_else(|| ident.sym.to_string()),
+                    ),
+                    p,
+                )
             }
             Expr::Member(member) => {
                 let member_resolved = self.resolver.resolve_member(member);
@@ -1124,7 +1198,7 @@ impl Visit for FactBuilder<'_> {
             FactPayload::Import { module },
         );
         // Do not visit children: the source string is already captured in the
-        // Import fact, and visiting it would emit a spurious StringLiteral.
+        // Import fact, and visiting it would emit a duplicate static reference.
     }
 
     fn visit_str(&mut self, value: &Str) {
@@ -1132,7 +1206,13 @@ impl Visit for FactBuilder<'_> {
         self.emit(
             FactKind::Reference,
             value.span(),
-            FactPayload::StringLiteral { value: literal },
+            FactPayload::Reference {
+                value: self
+                    .resolver
+                    .resolve_expr(&Expr::Lit(swc_ecma_ast::Lit::Str(value.clone())))
+                    .id,
+                static_string: Some(literal),
+            },
         );
     }
 
@@ -1146,7 +1226,10 @@ impl Visit for FactBuilder<'_> {
             self.emit(
                 FactKind::Reference,
                 quasi.span,
-                FactPayload::StringLiteral { value: literal },
+                FactPayload::Reference {
+                    value: ValueId::UNKNOWN,
+                    static_string: Some(literal),
+                },
             );
         }
         template.visit_children_with(self);
@@ -1266,9 +1349,8 @@ impl Visit for FactBuilder<'_> {
         if method.is_static {
             self.static_method_depth += 1;
         }
-        // Visit only the method body, not the Function node, to match the
-        // calls.rs behavior where ordinary_functions is not incremented for
-        // class method bodies.
+        // Visit only the method body so the method gets one function boundary
+        // pair, rather than a nested duplicate Function walk.
         if let Some(body) = method.function.body.as_ref() {
             body.visit_with(self);
         }
@@ -1717,13 +1799,25 @@ mod tests {
         let str_facts: Vec<_> = stream
             .facts()
             .iter()
-            .filter(|f| matches!(&f.payload, FactPayload::StringLiteral { .. }))
+            .filter(|f| {
+                matches!(
+                    &f.payload,
+                    FactPayload::Reference {
+                        static_string: Some(_),
+                        ..
+                    }
+                )
+            })
             .collect();
         assert!(!str_facts.is_empty(), "should have string literal facts");
         let values: Vec<_> = str_facts
             .iter()
             .filter_map(|f| {
-                if let FactPayload::StringLiteral { value } = &f.payload {
+                if let FactPayload::Reference {
+                    static_string: Some(value),
+                    ..
+                } = &f.payload
+                {
                     Some(value.as_str())
                 } else {
                     None

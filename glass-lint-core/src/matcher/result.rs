@@ -19,6 +19,10 @@ pub struct ApiEvidence {
     pub count: u32,
     #[serde(skip)]
     pub spans: Vec<Span>,
+    /// Canonical fact IDs parallel to `spans`. `u32::MAX` is reserved for a
+    /// deliberately synthetic occurrence that has no source fact.
+    #[serde(skip)]
+    pub(crate) event_ids: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]

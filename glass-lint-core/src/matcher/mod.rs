@@ -71,10 +71,17 @@ pub(crate) fn classify_compiled_api_usage(
         .iter()
         .map(|rule| &rule.matcher)
         .collect::<Vec<_>>();
-    let semantic = semantic::SemanticModel::analyze_compiled(program, &matchers);
+    let semantic = semantic::SemanticModel::analyze_compiled(program, &matchers, selected);
     let mut result = ApiClassificationResult::default();
 
-    for &index in selected {
+    let selected = selected
+        .iter()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    for index in 0..rules.len() {
+        if !selected.contains(&index) {
+            continue;
+        }
         let Some(rule) = rules.get(index) else {
             continue;
         };

@@ -21,6 +21,7 @@ pub struct ApiRule {
     severity: ApiSeverity,
     confidence: Confidence,
     matchers: Vec<Matcher>,
+    compiled_matcher: ApiMatcher,
 }
 
 impl ApiRule {
@@ -59,11 +60,11 @@ impl ApiRule {
         &self.matchers
     }
 
-    /// Build a normalized, compiled matcher from this rule's matcher list.
-    /// This is called once per rule at catalog construction time, not on
-    /// every `lint()` call.
+    /// Clone the normalized matcher compiled at the rule boundary.  Catalog
+    /// construction may copy this immutable plan, but must never normalize
+    /// the rule again for each file.
     pub(crate) fn matcher_for_compilation(&self) -> ApiMatcher {
-        ApiMatcher::from_matchers(self.matchers.to_vec()).normalized()
+        self.compiled_matcher.clone()
     }
 }
 
@@ -132,6 +133,7 @@ impl ApiRuleBuilder {
         if matcher.is_empty() {
             return Err(ApiRuleBuildError::MissingMatcher);
         }
+        let compiled_matcher = matcher.clone();
         let matchers = matcher.into_matchers();
         Ok(ApiRule {
             id,
@@ -140,6 +142,7 @@ impl ApiRuleBuilder {
             severity,
             confidence,
             matchers,
+            compiled_matcher,
         })
     }
 }
