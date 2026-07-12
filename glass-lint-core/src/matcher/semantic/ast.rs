@@ -1,8 +1,7 @@
 use std::collections::BTreeSet;
 
 use swc_ecma_ast::{
-    Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectLit, ObjectPatProp,
-    OptChainBase, Pat, Prop, PropOrSpread,
+    Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp, OptChainBase, Pat,
 };
 
 use super::constant::{self, NoLookup};
@@ -20,18 +19,6 @@ fn expr_root_ident(expr: &Expr) -> Option<&Ident> {
             OptChainBase::Call(call) => expr_root_ident(&call.callee),
         },
         Expr::Paren(paren) => expr_root_ident(&paren.expr),
-        _ => None,
-    }
-}
-
-pub fn expr_member(expr: &Expr) -> Option<&MemberExpr> {
-    match expr {
-        Expr::Member(member) => Some(member),
-        Expr::OptChain(chain) => match &*chain.base {
-            OptChainBase::Member(member) => Some(member),
-            OptChainBase::Call(call) => expr_member(&call.callee),
-        },
-        Expr::Paren(paren) => expr_member(&paren.expr),
         _ => None,
     }
 }
@@ -85,14 +72,6 @@ pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<String>) {
         }
         Pat::Assign(assign) => collect_pat_bindings(&assign.left, bindings),
         Pat::Invalid(_) | Pat::Expr(_) => {}
-    }
-}
-
-pub fn binding_ident_name(pat: &Pat) -> Option<String> {
-    match pat {
-        Pat::Ident(ident) => Some(ident.id.sym.to_string()),
-        Pat::Assign(assign) => binding_ident_name(&assign.left),
-        _ => None,
     }
 }
 
@@ -155,25 +134,6 @@ pub fn member_prop_name(prop: &MemberProp) -> Option<String> {
         MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
         MemberProp::Computed(computed) => static_property_name(&computed.expr),
     }
-}
-
-pub fn object_keys(object: &ObjectLit) -> Option<Vec<String>> {
-    let mut keys = Vec::new();
-    for property in &object.props {
-        let key = match property {
-            PropOrSpread::Prop(property) => match &**property {
-                Prop::Shorthand(ident) => ident.sym.to_string(),
-                Prop::KeyValue(key_value) => prop_name(&key_value.key)?,
-                Prop::Method(method) => prop_name(&method.key)?,
-                Prop::Getter(getter) => prop_name(&getter.key)?,
-                Prop::Setter(setter) => prop_name(&setter.key)?,
-                Prop::Assign(assign) => assign.key.sym.to_string(),
-            },
-            PropOrSpread::Spread(_) => return None,
-        };
-        keys.push(key);
-    }
-    Some(keys)
 }
 
 pub fn is_function_constructor_member(member: &MemberExpr) -> bool {

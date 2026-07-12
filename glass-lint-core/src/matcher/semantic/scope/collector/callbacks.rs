@@ -6,9 +6,9 @@ use swc_common::Span;
 use swc_ecma_ast::{CallExpr, Callee, Expr, Pat};
 
 use super::super::super::ast::member_prop_name;
-use super::super::super::summary::project_parameter_pattern;
 use super::super::BindingProvenance;
 use super::AliasCollector;
+use super::project_parameter_pattern;
 
 impl AliasCollector {
     fn bind_inline_parameters<'a>(

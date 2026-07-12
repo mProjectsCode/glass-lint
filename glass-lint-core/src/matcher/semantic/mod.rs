@@ -17,12 +17,8 @@ use super::{
 };
 
 mod ast;
-mod call;
-mod call_arguments;
-mod calls;
 mod constant;
-mod constructors;
-mod events;
+mod fact_builder;
 mod facts;
 mod flow_calls;
 mod flow_index;
@@ -34,7 +30,6 @@ mod scope;
 mod summary;
 mod value;
 
-use events::EventLog;
 use facts::SemanticFacts;
 
 /// The matcher-oriented facts derived from one parsed JavaScript file.
@@ -44,86 +39,100 @@ use facts::SemanticFacts;
 /// This keeps rule evaluation free of ad-hoc AST traversal and ensures every
 /// matcher observes the same resolution decisions.
 #[derive(Debug)]
-pub(super) struct SemanticModel {
+pub(super) struct SemanticModel<'matchers> {
     facts: SemanticFacts,
-    matchers: Vec<ApiMatcher>,
+    matchers: Vec<&'matchers ApiMatcher>,
 }
 
-impl SemanticModel {
-    pub(super) fn analyze(program: &Program, rules: &[ApiRule]) -> Self {
-        let matchers = rules
-            .iter()
-            .map(|rule| ApiMatcher::from_matchers(rule.matchers().to_vec()))
-            .collect::<Vec<_>>();
+impl<'matchers> SemanticModel<'matchers> {
+    /// Analyze with pre-compiled, normalized matchers.  The `rule_count`
+    /// is used to size per-rule evidence vectors.
+    pub(super) fn analyze_compiled(
+        program: &Program,
+        matchers: &'matchers [&'matchers ApiMatcher],
+    ) -> Self {
+        Self::analyze_with_matchers(program, matchers, matchers.len())
+    }
+
+    fn analyze_with_matchers(
+        program: &Program,
+        matchers: &'matchers [&'matchers ApiMatcher],
+        rule_count: usize,
+    ) -> Self {
         let resolver = resolver::Resolver::collect(program);
-        let events = EventLog::collect(program)
-            .with_scopes(|span| resolver.scope_chain_at(span).first().copied().unwrap_or(0));
-        // The event log is the analysis boundary's source-order contract. A
-        // malformed or overlarge event stream fails closed before any visitor
-        // can manufacture a second ordering from the AST.
-        if !events.is_source_ordered() {
-            return Self {
-                facts: SemanticFacts::empty(rules.len()),
-                matchers,
-            };
+        let facts = SemanticFacts::build(program, resolver, matchers, rule_count);
+        Self {
+            facts,
+            matchers: matchers.to_vec(),
         }
-        let facts = SemanticFacts::build(program, resolver, events, &matchers, rules.len());
-        Self { facts, matchers }
     }
 
     pub(super) fn evidence_for(&self, rule_index: usize) -> Vec<ApiEvidence> {
-        if !self.facts.events.is_source_ordered() {
-            return Vec::new();
-        }
-        let mut evidence = self.facts.index.evidence_for(&self.matchers[rule_index]);
+        let mut evidence = self.facts.index.evidence_for(self.matchers[rule_index]);
         evidence.extend_from_slice(&self.facts.argument_evidence[rule_index]);
-        normalize_evidence(evidence, &self.facts.events)
+        normalize_evidence(annotate_evidence(evidence, &self.facts.stream))
     }
 }
 
-/// Normalize every semantic evidence path at the same boundary.  The input
-/// order is deliberately irrelevant: spans are sorted first, identical
-/// `(kind, symbol, span)` occurrences are collapsed, and the finite limit is
-/// applied to source occurrences rather than matcher declaration order.
-fn normalize_evidence(evidence: Vec<ApiEvidence>, events: &EventLog) -> Vec<ApiEvidence> {
-    let mut occurrences = evidence
+#[derive(Debug, PartialEq, Eq)]
+struct EvidenceOccurrence {
+    event: Option<facts::FactId>,
+    span: Span,
+    kind: ApiMatchKind,
+    symbol: String,
+}
+
+fn annotate_evidence(
+    evidence: Vec<ApiEvidence>,
+    facts: &facts::FactStream,
+) -> Vec<EvidenceOccurrence> {
+    evidence
         .into_iter()
         .flat_map(|evidence| {
             evidence
                 .spans
                 .into_iter()
                 .filter(|span| !span.is_dummy())
-                .map(move |span| (span, evidence.kind, evidence.symbol.clone()))
+                .map(move |span| EvidenceOccurrence {
+                    event: facts.order_for_span(span),
+                    span,
+                    kind: evidence.kind,
+                    symbol: evidence.symbol.clone(),
+                })
         })
-        .collect::<Vec<_>>();
+        .collect()
+}
+
+/// Normalize every semantic evidence path at the same boundary.  The input
+/// order is deliberately irrelevant: spans are sorted first, identical
+/// `(kind, symbol, span)` occurrences are collapsed, and the finite limit is
+/// applied to source occurrences rather than matcher declaration order.
+fn normalize_evidence(mut occurrences: Vec<EvidenceOccurrence>) -> Vec<ApiEvidence> {
     occurrences.sort_by(|left, right| {
         (
-            events
-                .order_for(left.0)
-                .map(|event| event.0)
-                .unwrap_or(u32::MAX),
-            left.0.lo,
-            left.0.hi,
-            left.1,
-            &left.2,
+            left.event.map(|event| event.0).unwrap_or(u32::MAX),
+            left.span.lo,
+            left.span.hi,
+            left.kind,
+            &left.symbol,
         )
             .cmp(&(
-                events
-                    .order_for(right.0)
-                    .map(|event| event.0)
-                    .unwrap_or(u32::MAX),
-                right.0.lo,
-                right.0.hi,
-                right.1,
-                &right.2,
+                right.event.map(|event| event.0).unwrap_or(u32::MAX),
+                right.span.lo,
+                right.span.hi,
+                right.kind,
+                &right.symbol,
             ))
     });
     occurrences.dedup();
     occurrences.truncate(ApiRule::EVIDENCE_LIMIT);
 
     let mut grouped = BTreeMap::<(ApiMatchKind, String), Vec<Span>>::new();
-    for (span, kind, symbol) in occurrences {
-        grouped.entry((kind, symbol)).or_default().push(span);
+    for occurrence in occurrences {
+        grouped
+            .entry((occurrence.kind, occurrence.symbol))
+            .or_default()
+            .push(occurrence.span);
     }
     let mut normalized = grouped
         .into_iter()

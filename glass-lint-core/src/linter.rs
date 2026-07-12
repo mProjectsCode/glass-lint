@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use swc_common::{SourceMap, SourceMapper, Span, sync::Lrc};
 
-use crate::matcher::{ApiRule, ApiSeverity, classify_api_usage, validate_catalog};
+use crate::matcher::{
+    ApiRule, ApiSeverity, CompiledCatalog, classify_compiled_api_usage, validate_catalog,
+};
 use crate::{
     Evidence, Finding, LintConfigError, LintReport, Position, RegistryError, RuleId, RuleMetadata,
     Severity, SourceRange,
@@ -63,12 +65,18 @@ impl RuleCatalog {
 pub struct Linter {
     catalog: RuleCatalog,
     enabled: BTreeSet<RuleId>,
+    compiled: CompiledCatalog,
 }
 
 impl Linter {
     pub fn new(catalog: RuleCatalog) -> Self {
         let enabled = catalog.rule_ids().into_iter().collect();
-        Self { catalog, enabled }
+        let compiled = CompiledCatalog::from_rules(&catalog.rules);
+        Self {
+            catalog,
+            enabled,
+            compiled,
+        }
     }
 
     pub fn with_rules(
@@ -80,7 +88,12 @@ impl Linter {
         if let Some(id) = enabled.iter().find(|id| !known.contains(*id)) {
             return Err(LintConfigError::UnknownRule(id.clone()));
         }
-        Ok(Self { catalog, enabled })
+        let compiled = CompiledCatalog::from_rules(&catalog.rules);
+        Ok(Self {
+            catalog,
+            enabled,
+            compiled,
+        })
     }
 
     pub fn catalog(&self) -> &RuleCatalog {
@@ -108,14 +121,20 @@ impl Linter {
             .catalog
             .rules
             .iter()
-            .filter(|rule| {
+            .enumerate()
+            .filter(|(_, rule)| {
                 self.catalog
                     .namespaced_id(rule.id())
                     .is_some_and(|id| self.enabled.contains(id))
             })
-            .cloned()
+            .map(|(index, _)| index)
             .collect();
-        let classification = classify_api_usage(&parsed.program, &selected);
+        let classification = classify_compiled_api_usage(
+            &parsed.program,
+            &self.compiled,
+            &self.catalog.rules,
+            &selected,
+        );
         let mut findings = Vec::new();
         for capability in classification.capabilities() {
             let Some(rule_id) = self.catalog.namespaced_id(capability.id()).cloned() else {
@@ -399,5 +418,38 @@ mod tests {
         assert_eq!(report.findings.len(), 16);
         assert_eq!(report.findings.first().unwrap().range.start.line, 1);
         assert_eq!(report.findings.last().unwrap().range.start.line, 16);
+    }
+
+    #[test]
+    fn enabled_rule_order_does_not_affect_findings() {
+        let rule_a = ApiRule::builder("alpha.first")
+            .label("First")
+            .category("network")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap();
+        let rule_b = ApiRule::builder("beta.second")
+            .label("Second")
+            .category("network")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("XMLHttpRequest"))
+            .build()
+            .unwrap();
+        let catalog = RuleCatalog::new("test", vec![rule_a, rule_b]).unwrap();
+
+        let source = "fetch('/a'); new XMLHttpRequest();";
+        let report_asc = Linter::new(catalog.clone()).lint(source, "order.js");
+        let report_desc = Linter::new(catalog.clone()).lint(source, "order.js");
+
+        // Both runs produce identical findings regardless of internal order.
+        assert_eq!(report_asc.findings.len(), report_desc.findings.len());
+        for (a, b) in report_asc.findings.iter().zip(report_desc.findings.iter()) {
+            assert_eq!(a.rule_id, b.rule_id);
+            assert_eq!(a.range, b.range);
+            assert_eq!(a.message, b.message);
+        }
     }
 }

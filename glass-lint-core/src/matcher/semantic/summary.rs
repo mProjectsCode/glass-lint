@@ -1,394 +1,347 @@
-//! Shared function-summary data used by semantic callback and flow analysis.
+//! Function summaries projected from the canonical fact stream.
 //!
-//! A summary is keyed by the lexical scope that owns the function binding,
-//! never by a process-wide function name.  The collector currently fills the
-//! flow-sink projection here; the same shape is also the extension point for
-//! callback parameters, writes, and return facts.
+//! A summary is keyed only by `FunctionId`. Parameter paths and argument
+//! projections keep destructuring precise, while the fixed point joins helper
+//! calls (including recursive and mutually recursive helpers) without walking
+//! AST bodies again.
 
 use std::collections::BTreeMap;
 
-use swc_common::Spanned;
-use swc_ecma_ast::{
-    BlockStmt, BlockStmtOrExpr, CallExpr, Callee, Expr, FnDecl, ObjectPatProp, Pat, VarDeclarator,
-};
-use swc_ecma_visit::{Visit, VisitWith};
-
 use super::super::rule::FlowSinkArgs;
-use super::ast::binding_ident_name;
-use super::ast::prop_name;
+use super::facts::{CallArgInfo, FactPayload, FactStream, ParameterBinding, ProjectionSegment};
 use super::flow_index::{FlowId, FlowIndex};
-use super::resolver::Resolver;
-use super::scope::{AliasScope, BindingProvenance};
-use super::value::FunctionId;
+use super::value::{FunctionId, ValueId};
 
-pub(super) type FunctionDeclarations = BTreeMap<(usize, String), (usize, Vec<Pat>)>;
-pub(super) type FunctionInvocations = Vec<(usize, String, Vec<Option<BindingProvenance>>)>;
+const MAX_SUMMARY_ROUNDS: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FunctionSinkSummary {
     pub(super) flow: FlowId,
-    pub(super) param_index: usize,
+    pub(super) parameter_index: usize,
+    pub(super) path: Vec<ProjectionSegment>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct FunctionSummary {
+    #[allow(dead_code)]
+    pub(super) id: FunctionId,
+    #[allow(dead_code)]
+    pub(super) owner: FunctionId,
+    pub(super) parameters: Vec<ParameterBinding>,
     pub(super) parameter_count: usize,
+    pub(super) has_rest: bool,
+    pub(super) sinks: Vec<FunctionSinkSummary>,
 }
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct FunctionSummaries {
-    pub(super) sinks: BTreeMap<(FunctionId, String), Vec<FunctionSinkSummary>>,
+    pub(super) by_id: BTreeMap<FunctionId, FunctionSummary>,
 }
 
-pub(super) fn parameter_aliases(
-    functions: &FunctionDeclarations,
-    calls: &FunctionInvocations,
-    scopes: &[AliasScope],
-) -> BTreeMap<(usize, String), BindingProvenance> {
-    let mut aliases = BTreeMap::<(usize, String), Option<BindingProvenance>>::new();
-    for (caller_scope, callee, arguments) in calls {
-        let Some((scope, parameters)) = function_for_call(functions, scopes, *caller_scope, callee)
-        else {
+impl FunctionSummaries {
+    pub(super) fn get(&self, id: FunctionId) -> Option<&FunctionSummary> {
+        self.by_id.get(&id)
+    }
+}
+
+pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> FunctionSummaries {
+    let mut summaries = FunctionSummaries::default();
+    let mut calls_by_function: BTreeMap<FunctionId, Vec<CallProjection>> = BTreeMap::new();
+
+    for fact in stream.facts() {
+        match &fact.payload {
+            FactPayload::Function {
+                id,
+                owner,
+                parameters,
+                boundary: super::facts::FunctionBoundary::Enter,
+                ..
+            } => {
+                let parameter_count = parameters
+                    .iter()
+                    .map(|parameter| parameter.parameter_index)
+                    .max()
+                    .map_or(0, |index| index.saturating_add(1));
+                summaries
+                    .by_id
+                    .entry(*id)
+                    .or_insert_with(|| FunctionSummary {
+                        id: *id,
+                        owner: *owner,
+                        parameters: parameters.clone(),
+                        parameter_count,
+                        has_rest: parameters.iter().any(|parameter| parameter.rest),
+                        sinks: Vec::new(),
+                    });
+            }
+            FactPayload::Call {
+                syntactic_chain,
+                rooted_chain,
+                target_function,
+                args,
+                ..
+            } => calls_by_function
+                .entry(fact.function)
+                .or_default()
+                .push(CallProjection {
+                    syntactic_chain: syntactic_chain.clone(),
+                    rooted_chain: rooted_chain.clone(),
+                    target_function: *target_function,
+                    args: args.clone(),
+                }),
+            _ => {}
+        }
+    }
+
+    // First collect facts whose sink is directly visible in the function.
+    for (function, summary) in &mut summaries.by_id {
+        let Some(calls) = calls_by_function.get(function) else {
             continue;
         };
-        for (index, parameter) in parameters.iter().enumerate() {
-            let mut projected = BTreeMap::new();
-            let recursive = *caller_scope == *scope;
-            if !recursive && let Some(Some(target)) = arguments.get(index) {
-                project_parameter_pattern(parameter, target, &mut projected);
-            }
-            // Every declared parameter must participate in the invocation
-            // join.  Ignoring a missing argument (or an argument whose value
-            // is dynamic) would let a compatible call contribute a strict
-            // alias even though another invocation cannot establish it.
-            for name in parameter_binding_names(parameter) {
-                let target = projected.get(&name).cloned();
-                let entry = aliases.entry((*scope, name)).or_insert(target.clone());
-                if *entry != target {
-                    *entry = None;
-                }
-            }
-        }
-        // Extra arguments are not projected into parameters.  They still
-        // make this invocation incompatible with the summary's fixed
-        // parameter shape, so invalidate every parameter alias for it.
-        if arguments.len() != parameters.len() {
-            for parameter in parameters {
-                for name in parameter_binding_names(parameter) {
-                    aliases.insert((*scope, name), None);
-                }
-            }
-        }
-    }
-    aliases
-        .into_iter()
-        .filter_map(|(key, target)| target.map(|target| (key, target)))
-        .collect()
-}
-
-fn parameter_binding_names(pattern: &Pat) -> Vec<String> {
-    let mut names = Vec::new();
-    collect_parameter_binding_names(pattern, &mut names);
-    names.sort();
-    names.dedup();
-    names
-}
-
-fn collect_parameter_binding_names(pattern: &Pat, names: &mut Vec<String>) {
-    match pattern {
-        Pat::Ident(ident) => names.push(ident.id.sym.to_string()),
-        Pat::Assign(assign) => collect_parameter_binding_names(&assign.left, names),
-        Pat::Object(object) => {
-            for property in &object.props {
-                match property {
-                    ObjectPatProp::KeyValue(property) => {
-                        collect_parameter_binding_names(&property.value, names)
+        for call in calls {
+            let chain = call
+                .rooted_chain
+                .as_deref()
+                .or(call.syntactic_chain.as_deref());
+            let Some(chain) = chain else { continue };
+            let flow_ids = flow_index.sinks.get(chain).into_iter().flatten();
+            for flow_id in flow_ids {
+                let Some(flow) = flow_index.get(*flow_id) else {
+                    continue;
+                };
+                for sink in &flow.sinks {
+                    if !sink.member_calls.iter().any(|member| member == chain) {
+                        continue;
                     }
-                    ObjectPatProp::Assign(property) => names.push(property.key.sym.to_string()),
-                    ObjectPatProp::Rest(property) => {
-                        collect_parameter_binding_names(&property.arg, names)
-                    }
-                }
-            }
-        }
-        Pat::Array(array) => {
-            for element in array.elems.iter().flatten() {
-                collect_parameter_binding_names(element, names);
-            }
-        }
-        Pat::Rest(rest) => collect_parameter_binding_names(&rest.arg, names),
-        Pat::Expr(_) | Pat::Invalid(_) => {}
-    }
-}
-
-fn function_for_call<'a>(
-    functions: &'a FunctionDeclarations,
-    scopes: &[AliasScope],
-    mut scope: usize,
-    name: &str,
-) -> Option<&'a (usize, Vec<Pat>)> {
-    loop {
-        if let Some(function) = functions.get(&(scope, name.to_string())) {
-            return Some(function);
-        }
-        scope = scopes[scope].parent?;
-    }
-}
-
-pub(super) fn project_parameter_pattern(
-    pattern: &Pat,
-    value: &BindingProvenance,
-    output: &mut BTreeMap<String, BindingProvenance>,
-) {
-    match pattern {
-        Pat::Ident(ident) => {
-            output.insert(ident.id.sym.to_string(), value.clone());
-        }
-        Pat::Assign(assign) => project_parameter_pattern(&assign.left, value, output),
-        Pat::Object(object) => {
-            let BindingProvenance::StaticObjectValues(values) = value else {
-                return;
-            };
-            for property in &object.props {
-                match property {
-                    ObjectPatProp::KeyValue(property) => {
-                        let Some(key) = prop_name(&property.key) else {
+                    for argument_index in sink_argument_indices(&sink.args, call.args.len()) {
+                        let Some(argument) = call.args.get(argument_index) else {
                             continue;
                         };
-                        let Some(target) = values.get(&key) else {
-                            continue;
-                        };
-                        project_parameter_pattern(
-                            &property.value,
-                            &BindingProvenance::ValueAlias {
-                                target: target.clone(),
-                            },
-                            output,
-                        );
-                    }
-                    ObjectPatProp::Assign(property) => {
-                        if let Some(target) = values.get(property.key.sym.as_ref()) {
-                            output.insert(
-                                property.key.sym.to_string(),
-                                BindingProvenance::ValueAlias {
-                                    target: target.clone(),
+                        if let Some(parameter) = summary.parameters.iter().find(|parameter| {
+                            parameter.value != ValueId::UNKNOWN
+                                && parameter.value == argument.base_value
+                        }) {
+                            let mut path = parameter.path.clone();
+                            path.extend(argument.base_path.clone());
+                            add_sink(
+                                summary,
+                                FunctionSinkSummary {
+                                    flow: *flow_id,
+                                    parameter_index: parameter.parameter_index,
+                                    path,
                                 },
                             );
                         }
                     }
-                    ObjectPatProp::Rest(_) => {}
                 }
             }
         }
-        Pat::Array(_) | Pat::Rest(_) | Pat::Invalid(_) | Pat::Expr(_) => {}
-    }
-}
-
-pub(super) fn collect<'rules>(
-    program: &swc_ecma_ast::Program,
-    resolver: &Resolver,
-    flow_index: &'rules FlowIndex<'rules>,
-) -> BTreeMap<(FunctionId, String), Vec<FunctionSinkSummary>> {
-    let mut collector = FunctionSummaryCollector {
-        resolver,
-        flow_index,
-        helpers: BTreeMap::new(),
-    };
-    program.visit_with(&mut collector);
-    collector.helpers
-}
-
-struct FunctionSummaryCollector<'resolver, 'rules> {
-    resolver: &'resolver Resolver,
-    flow_index: &'rules FlowIndex<'rules>,
-    helpers: BTreeMap<(FunctionId, String), Vec<FunctionSinkSummary>>,
-}
-
-impl FunctionSummaryCollector<'_, '_> {
-    fn record_function(
-        &mut self,
-        scope: usize,
-        name: String,
-        parameters: Vec<String>,
-        parameter_count: usize,
-        body: Option<&BlockStmt>,
-    ) {
-        let Some(body) = body else {
-            return;
-        };
-        let mut visitor = FunctionBodySummary {
-            resolver: self.resolver,
-            flow_index: self.flow_index,
-            parameters,
-            parameter_count,
-            sinks: Vec::new(),
-        };
-        body.visit_with(&mut visitor);
-        self.helpers.insert(
-            (self.resolver.function_id_for_scope(scope), name),
-            visitor.sinks,
-        );
     }
 
-    fn record_arrow(
-        &mut self,
-        scope: usize,
-        name: String,
-        parameters: Vec<String>,
-        parameter_count: usize,
-        body: &BlockStmtOrExpr,
-    ) {
-        let mut visitor = FunctionBodySummary {
-            resolver: self.resolver,
-            flow_index: self.flow_index,
-            parameters,
-            parameter_count,
-            sinks: Vec::new(),
-        };
-        body.visit_with(&mut visitor);
-        self.helpers.insert(
-            (self.resolver.function_id_for_scope(scope), name),
-            visitor.sinks,
-        );
-    }
-}
-
-impl Visit for FunctionSummaryCollector<'_, '_> {
-    fn visit_fn_decl(&mut self, function: &FnDecl) {
-        let parameters = function
-            .function
-            .params
-            .iter()
-            .filter_map(|param| binding_ident_name(&param.pat))
-            .collect::<Vec<_>>();
-        let scope = self
-            .resolver
-            .scope_chain_at(
-                function
-                    .function
-                    .body
-                    .as_ref()
-                    .map_or(function.ident.span, Spanned::span),
-            )
-            .get(2)
-            .copied()
-            .unwrap_or(0);
-        self.record_function(
-            scope,
-            function.ident.sym.to_string(),
-            parameters,
-            function.function.params.len(),
-            function.function.body.as_ref(),
-        );
-        function.function.decorators.visit_with(self);
-        if let Some(body) = &function.function.body {
-            body.visit_with(self);
-        }
-    }
-
-    fn visit_var_declarator(&mut self, declarator: &VarDeclarator) {
-        let Pat::Ident(ident) = &declarator.name else {
-            return;
-        };
-        let Some(init) = declarator.init.as_deref() else {
-            return;
-        };
-        match init {
-            Expr::Fn(function) => {
-                let parameters = function
-                    .function
-                    .params
-                    .iter()
-                    .filter_map(|param| binding_ident_name(&param.pat))
-                    .collect::<Vec<_>>();
-                self.record_function(
-                    self.resolver.scope_chain_at(ident.id.span)[0],
-                    ident.id.sym.to_string(),
-                    parameters,
-                    function.function.params.len(),
-                    function.function.body.as_ref(),
-                );
-                function.function.decorators.visit_with(self);
-                if let Some(body) = &function.function.body {
-                    body.visit_with(self);
-                }
-            }
-            Expr::Arrow(arrow) => {
-                let parameters = arrow
-                    .params
-                    .iter()
-                    .filter_map(binding_ident_name)
-                    .collect::<Vec<_>>();
-                self.record_arrow(
-                    self.resolver.scope_chain_at(ident.id.span)[0],
-                    ident.id.sym.to_string(),
-                    parameters,
-                    arrow.params.len(),
-                    &arrow.body,
-                );
-                arrow.body.visit_with(self);
-            }
-            _ => {}
-        }
-    }
-}
-
-struct FunctionBodySummary<'resolver, 'rules> {
-    resolver: &'resolver Resolver,
-    flow_index: &'rules FlowIndex<'rules>,
-    parameters: Vec<String>,
-    parameter_count: usize,
-    sinks: Vec<FunctionSinkSummary>,
-}
-
-impl FunctionBodySummary<'_, '_> {
-    fn record_member_sink(&mut self, call: &CallExpr) {
-        let Some(callee) = super::flow_calls::call_member_chain(call, self.resolver) else {
-            return;
-        };
-        for (argument_index, argument) in call.args.iter().enumerate() {
-            let Expr::Ident(argument_ident) = &*argument.expr else {
+    // Propagate sink projections through proven FunctionId call edges. Since
+    // every propagation only adds a deduplicated projection, this is a finite
+    // monotone fixed point even for recursive SCCs.
+    for _ in 0..MAX_SUMMARY_ROUNDS {
+        let mut changed = false;
+        let function_ids = summaries.by_id.keys().copied().collect::<Vec<_>>();
+        for caller in function_ids {
+            let Some(calls) = calls_by_function.get(&caller) else {
                 continue;
             };
-            let Some(param_index) = self
-                .parameters
-                .iter()
-                .position(|parameter| parameter == argument_ident.sym.as_ref())
-            else {
-                continue;
-            };
-            for flow_id in self
-                .flow_index
-                .sinks
-                .get(&callee)
-                .into_iter()
-                .flatten()
-                .copied()
-            {
-                let Some(flow) = self.flow_index.get(flow_id) else {
+            let caller_parameters = summaries
+                .get(caller)
+                .map(|summary| summary.parameters.clone())
+                .unwrap_or_default();
+            for call in calls {
+                let Some(target) = call.target_function else {
                     continue;
                 };
-                if flow.sinks.iter().any(|sink| {
-                    sink.member_calls
-                        .iter()
-                        .any(|member_call| member_call == &callee)
-                        && match &sink.args {
-                            FlowSinkArgs::Any => true,
-                            FlowSinkArgs::Indices(indices) => indices.contains(&argument_index),
-                        }
-                }) {
-                    self.sinks.push(FunctionSinkSummary {
-                        flow: flow_id,
-                        param_index,
-                        parameter_count: self.parameter_count,
-                    });
+                let Some(target_summary) = summaries.get(target).cloned() else {
+                    continue;
+                };
+                if !invocation_is_compatible(&target_summary, &call.args) {
+                    continue;
+                }
+                for sink in target_summary.sinks {
+                    let Some(target_parameter) =
+                        target_summary.parameters.iter().find(|parameter| {
+                            parameter.parameter_index == sink.parameter_index
+                                && (parameter.path == sink.path
+                                    || (parameter.rest && sink.path.starts_with(&parameter.path)))
+                        })
+                    else {
+                        continue;
+                    };
+                    let mut target_parameter = target_parameter.clone();
+                    target_parameter.path = sink.path.clone();
+                    let Some(argument) = project_parameter_argument(&call.args, &target_parameter)
+                    else {
+                        continue;
+                    };
+                    let Some(caller_parameter) = caller_parameters.iter().find(|parameter| {
+                        !parameter.rest
+                            && parameter.value != ValueId::UNKNOWN
+                            && parameter.value == argument
+                    }) else {
+                        continue;
+                    };
+                    let projection = FunctionSinkSummary {
+                        flow: sink.flow,
+                        parameter_index: caller_parameter.parameter_index,
+                        path: caller_parameter.path.clone(),
+                    };
+                    let Some(caller_summary) = summaries.by_id.get_mut(&caller) else {
+                        continue;
+                    };
+                    if !caller_summary.sinks.contains(&projection) {
+                        caller_summary.sinks.push(projection);
+                        changed = true;
+                    }
                 }
             }
         }
+        if !changed {
+            break;
+        }
+    }
+
+    for summary in summaries.by_id.values_mut() {
+        summary
+            .sinks
+            .sort_by_key(|sink| (sink.flow, sink.parameter_index, sink.path.clone()));
+        summary.sinks.dedup();
+    }
+    summaries
+}
+
+pub(super) fn invocation_is_compatible(summary: &FunctionSummary, args: &[CallArgInfo]) -> bool {
+    if args.iter().any(|argument| argument.spread) {
+        return false;
+    }
+    if !summary.has_rest && args.len() > summary.parameter_count {
+        return false;
+    }
+    for argument in args.iter().take(summary.parameter_count) {
+        if argument.value == ValueId::UNKNOWN {
+            return false;
+        }
+    }
+    for parameter in &summary.parameters {
+        if parameter.rest || parameter.parameter_index >= args.len() {
+            if parameter.parameter_index >= args.len()
+                && parameter.default.is_none()
+                && !parameter.rest
+            {
+                return false;
+            }
+            continue;
+        }
+        if parameter.path.is_empty() {
+            continue;
+        }
+        // A missing nested property is unknown unless the leaf has a default.
+        if project_parameter_argument(args, parameter).is_none() && parameter.default.is_none() {
+            return false;
+        }
+    }
+    true
+}
+
+pub(super) fn project_parameter_argument(
+    args: &[CallArgInfo],
+    parameter: &ParameterBinding,
+) -> Option<ValueId> {
+    let Some(argument) = args.get(parameter.parameter_index) else {
+        return parameter
+            .path
+            .is_empty()
+            .then_some(parameter.default)
+            .flatten()
+            .filter(|value| *value != ValueId::UNKNOWN);
+    };
+    if argument.spread {
+        return None;
+    }
+    if parameter.rest {
+        let Some(ProjectionSegment::Index(index)) = parameter.path.first() else {
+            return None;
+        };
+        let argument = args.get(parameter.parameter_index.saturating_add(*index))?;
+        if argument.spread {
+            return None;
+        }
+        let path = &parameter.path[1..];
+        if path.is_empty() {
+            return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
+        }
+        return argument
+            .projections
+            .iter()
+            .find(|projection| projection.path == path)
+            .map(|projection| projection.value)
+            .filter(|value| *value != ValueId::UNKNOWN);
+    }
+    if parameter.path.is_empty() {
+        return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
+    }
+    argument
+        .projections
+        .iter()
+        .find(|projection| projection.path == parameter.path)
+        .map(|projection| projection.value)
+        .filter(|value| *value != ValueId::UNKNOWN)
+        .or_else(|| parameter.default.filter(|value| *value != ValueId::UNKNOWN))
+}
+
+fn sink_argument_indices(args: &FlowSinkArgs, argument_count: usize) -> Vec<usize> {
+    match args {
+        FlowSinkArgs::Any => (0..argument_count).collect(),
+        FlowSinkArgs::Indices(indices) => indices
+            .iter()
+            .copied()
+            .filter(|index| *index < argument_count)
+            .collect(),
     }
 }
 
-impl Visit for FunctionBodySummary<'_, '_> {
-    fn visit_call_expr(&mut self, call: &CallExpr) {
-        if matches!(call.callee, Callee::Expr(ref callee) if matches!(&**callee, Expr::Member(_))) {
-            self.record_member_sink(call);
-        }
-        call.visit_children_with(self);
+fn add_sink(summary: &mut FunctionSummary, sink: FunctionSinkSummary) {
+    if !summary.sinks.contains(&sink) {
+        summary.sinks.push(sink);
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CallProjection {
+    syntactic_chain: Option<String>,
+    rooted_chain: Option<String>,
+    target_function: Option<FunctionId>,
+    args: Vec<CallArgInfo>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::matcher::semantic::resolver::Resolver;
+
+    #[test]
+    fn same_name_siblings_are_keyed_by_function_id() {
+        let parsed = crate::parse(
+            "function first(x) { document.body.appendChild(x); } function second(x) { console.log(x); }",
+            "summary-siblings.js",
+        )
+        .expect("source should parse");
+        let resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::matcher::semantic::fact_builder::build_test_stream(&parsed.program, &resolver);
+        let summaries = collect(&stream, &FlowIndex::new(&[]));
+        assert!(summaries.by_id.len() >= 2);
+        assert_eq!(
+            summaries
+                .by_id
+                .values()
+                .filter(|summary| summary.parameters.len() == 1)
+                .count(),
+            2
+        );
     }
 }

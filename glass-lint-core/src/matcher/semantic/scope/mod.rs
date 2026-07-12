@@ -31,6 +31,8 @@ pub(super) struct ScopeGraph {
     assignments: BTreeMap<usize, BTreeMap<String, Vec<AliasAssignment>>>,
     binding_ids: BTreeMap<(usize, String), BindingId>,
     function_ids: BTreeMap<usize, FunctionId>,
+    function_bindings: BTreeMap<(usize, String), FunctionId>,
+    function_aliases: BTreeMap<(usize, String), FunctionId>,
     property_assignments: BTreeMap<(BindingKey, Vec<String>), Vec<PropertyAliasFact>>,
     parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
     dynamic_evals: Vec<(usize, Span)>,
@@ -179,6 +181,26 @@ impl ScopeGraph {
                 next_function_id = next_function_id.saturating_add(1);
             }
         }
+        let function_bindings = collector
+            .function_scopes
+            .iter()
+            .filter_map(|((scope, name), (function_scope, _))| {
+                function_ids
+                    .get(function_scope)
+                    .copied()
+                    .map(|function| ((*scope, name.clone()), function))
+            })
+            .collect();
+        let function_aliases = collector
+            .function_aliases
+            .into_iter()
+            .filter_map(|((scope, name), function_scope)| {
+                function_ids
+                    .get(&function_scope)
+                    .copied()
+                    .map(|function| ((scope, name), function))
+            })
+            .collect();
         let parameter_aliases = parameter_aliases_by_scope
             .into_iter()
             .filter_map(|((scope, name), provenance)| {
@@ -195,6 +217,8 @@ impl ScopeGraph {
             assignments,
             binding_ids,
             function_ids,
+            function_bindings,
+            function_aliases,
             property_assignments: BTreeMap::new(),
             parameter_aliases,
             dynamic_evals: Vec::new(),
@@ -548,11 +572,6 @@ impl ScopeGraph {
         }
     }
 
-    pub(super) fn binding_key_or_global(&self, expr: &Expr) -> Option<BindingKey> {
-        self.binding_key_for_expr(expr)
-            .or_else(|| self.global_key_for_expr(expr))
-    }
-
     fn global_key_for_expr(&self, expr: &Expr) -> Option<BindingKey> {
         match expr {
             Expr::Ident(ident) => self
@@ -624,6 +643,58 @@ impl ScopeGraph {
 
     pub(super) fn function_id_for_scope(&self, scope: usize) -> FunctionId {
         self.function_scope_at(scope)
+    }
+
+    pub(super) fn function_id_for_expr(&self, expr: &Expr) -> Option<FunctionId> {
+        let Expr::Ident(ident) = expr else {
+            return None;
+        };
+        let (scope, provenance) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
+        let function = self
+            .function_bindings
+            .get(&(scope, ident.sym.to_string()))
+            .copied()
+            .or_else(|| {
+                self.function_aliases
+                    .get(&(scope, ident.sym.to_string()))
+                    .copied()
+            })
+            .or_else(|| {
+                let target = match provenance {
+                    BindingProvenance::ValueAlias { target }
+                    | BindingProvenance::BoundCallable { target, .. } => target
+                        .without_bind_suffix()
+                        .unwrap_or_else(|| target.clone()),
+                    _ => return None,
+                };
+                target
+                    .is_root()
+                    .then(|| self.function_binding_at(target.to_string().as_str(), ident.span))
+                    .flatten()
+            })?;
+        let function_end = self.function_ids.iter().find_map(|(scope, candidate)| {
+            (*candidate == function).then_some(self.scopes[*scope].span.hi)
+        })?;
+        let reassigned = self
+            .assignments
+            .get(&scope)
+            .and_then(|assignments| assignments.get(ident.sym.as_ref()))
+            .is_some_and(|assignments| {
+                assignments.iter().any(|assignment| {
+                    assignment.span.lo > function_end && assignment.span.lo <= ident.span.lo
+                })
+            });
+        (!reassigned).then_some(function)
+    }
+
+    fn function_binding_at(&self, name: &str, span: Span) -> Option<FunctionId> {
+        let mut scope = self.scope_at(span);
+        loop {
+            if let Some(function) = self.function_bindings.get(&(scope, name.to_string())) {
+                return Some(*function);
+            }
+            scope = self.scopes.get(scope)?.parent?;
+        }
     }
 
     pub(super) fn rooted_expr_chain(&self, expr: &Expr) -> Option<String> {
@@ -718,19 +789,6 @@ impl ScopeGraph {
             scope = parent;
         }
         scopes
-    }
-
-    pub(super) fn has_assignment_at(&self, name: &str, span: Span) -> bool {
-        self.scope_chain_at(span).into_iter().any(|scope| {
-            self.assignments
-                .get(&scope)
-                .and_then(|assignments| assignments.get(name))
-                .is_some_and(|assignments| {
-                    assignments
-                        .iter()
-                        .any(|assignment| assignment.span.lo <= span.lo)
-                })
-        })
     }
 
     pub(super) fn unshadowed_global_at(&self, name: &str, span: Span) -> bool {

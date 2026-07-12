@@ -721,3 +721,25 @@ fn local_class_lookalikes_do_not_match_module_class_or_constructor() {
         0,
     );
 }
+
+#[test]
+fn debug_urlalias_global_constructor() {
+    // Direct globalThis.URL constructor - should work
+    assert_count(
+        "new globalThis.URL('/a')",
+        rule("test.debug1")
+            .matcher(Matcher::global_constructor("URL"))
+            .build()
+            .unwrap(),
+        1,
+    );
+    // Aliased globalThis.URL constructor
+    assert_count(
+        "const U=globalThis.URL;new U('/a')",
+        rule("test.debug2")
+            .matcher(Matcher::global_constructor("URL"))
+            .build()
+            .unwrap(),
+        1,
+    );
+}

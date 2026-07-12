@@ -19,7 +19,6 @@ use super::super::ast::{
     member_prop_name, member_root_ident, module_export_name, prop_name,
 };
 use super::super::constant::{self, ConstValue};
-use super::super::summary::{FunctionDeclarations, FunctionInvocations};
 use super::super::value::BindingVersion;
 use super::collector_helpers::{
     collect_assignment_aliases, collect_require_aliases, collect_value_aliases,
@@ -38,8 +37,9 @@ pub struct AliasCollector {
     latest_assignments: BTreeMap<usize, BTreeMap<String, BindingProvenance>>,
     pub property_assignments: Vec<PropertyAliasAssignment>,
     pub dynamic_evals: Vec<(usize, Span)>,
-    functions: FunctionDeclarations,
-    calls: FunctionInvocations,
+    pub(super) function_scopes: BTreeMap<(usize, String), (usize, Vec<Pat>)>,
+    pub(super) function_aliases: BTreeMap<(usize, String), usize>,
+    calls: Vec<(usize, String, Vec<Option<BindingProvenance>>)>,
     inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
     pub mutable_static_objects: BTreeSet<(usize, String)>,
     reuse_scopes: bool,
@@ -81,7 +81,8 @@ impl AliasCollector {
             latest_assignments: BTreeMap::new(),
             property_assignments: Vec::new(),
             dynamic_evals: Vec::new(),
-            functions: BTreeMap::new(),
+            function_scopes: BTreeMap::new(),
+            function_aliases: BTreeMap::new(),
             calls: Vec::new(),
             inline_parameters: BTreeMap::new(),
             mutable_static_objects: BTreeSet::new(),
@@ -543,7 +544,7 @@ impl AliasCollector {
                 for param in &arrow.params {
                     self.insert_pat_locals(scope, param);
                 }
-                self.functions
+                self.function_scopes
                     .insert((declaration_scope, name), (scope, parameters));
                 arrow.body.visit_with(self);
                 self.pop_scope();
@@ -559,7 +560,7 @@ impl AliasCollector {
                 for param in &function_expr.function.params {
                     self.insert_pat_locals(scope, &param.pat);
                 }
-                self.functions
+                self.function_scopes
                     .insert((declaration_scope, name), (scope, parameters));
                 function_expr.function.decorators.visit_with(self);
                 function_expr.function.body.visit_with(self);
@@ -572,7 +573,141 @@ impl AliasCollector {
     }
 
     pub fn parameter_aliases(&self) -> BTreeMap<(usize, String), BindingProvenance> {
-        super::super::summary::parameter_aliases(&self.functions, &self.calls, &self.scopes)
+        let mut aliases = BTreeMap::<(usize, String), Option<BindingProvenance>>::new();
+        for (caller_scope, callee, arguments) in &self.calls {
+            let Some((scope, parameters)) = self.function_for_call(*caller_scope, callee) else {
+                continue;
+            };
+            for (index, parameter) in parameters.iter().enumerate() {
+                let mut projected = BTreeMap::new();
+                if *caller_scope != *scope
+                    && let Some(Some(target)) = arguments.get(index)
+                {
+                    project_parameter_pattern(parameter, target, &mut projected);
+                }
+                for name in parameter_binding_names(parameter) {
+                    let target = projected.get(&name).cloned();
+                    let entry = aliases.entry((*scope, name)).or_insert(target.clone());
+                    if *entry != target {
+                        *entry = None;
+                    }
+                }
+            }
+            if arguments.len() != parameters.len() {
+                for parameter in parameters {
+                    for name in parameter_binding_names(parameter) {
+                        aliases.insert((*scope, name), None);
+                    }
+                }
+            }
+        }
+        aliases
+            .into_iter()
+            .filter_map(|(key, value)| value.map(|value| (key, value)))
+            .collect()
+    }
+
+    fn function_for_call(&self, mut scope: usize, name: &str) -> Option<&(usize, Vec<Pat>)> {
+        loop {
+            if let Some(function) = self.function_scopes.get(&(scope, name.to_string())) {
+                return Some(function);
+            }
+            scope = self.scopes.get(scope)?.parent?;
+        }
+    }
+
+    fn function_scope_for_name(&self, name: &str) -> Option<usize> {
+        let mut scope = self.current_scope();
+        loop {
+            if let Some((function, _)) = self.function_scopes.get(&(scope, name.to_string())) {
+                return Some(*function);
+            }
+            scope = self.scopes.get(scope)?.parent?;
+        }
+    }
+}
+
+fn parameter_binding_names(pattern: &Pat) -> Vec<String> {
+    let mut names = Vec::new();
+    collect_parameter_binding_names(pattern, &mut names);
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn collect_parameter_binding_names(pattern: &Pat, names: &mut Vec<String>) {
+    match pattern {
+        Pat::Ident(ident) => names.push(ident.id.sym.to_string()),
+        Pat::Assign(assign) => collect_parameter_binding_names(&assign.left, names),
+        Pat::Object(object) => {
+            for property in &object.props {
+                match property {
+                    ObjectPatProp::KeyValue(property) => {
+                        collect_parameter_binding_names(&property.value, names)
+                    }
+                    ObjectPatProp::Assign(property) => names.push(property.key.sym.to_string()),
+                    ObjectPatProp::Rest(property) => {
+                        collect_parameter_binding_names(&property.arg, names)
+                    }
+                }
+            }
+        }
+        Pat::Array(array) => {
+            for element in array.elems.iter().flatten() {
+                collect_parameter_binding_names(element, names);
+            }
+        }
+        Pat::Rest(rest) => collect_parameter_binding_names(&rest.arg, names),
+        Pat::Expr(_) | Pat::Invalid(_) => {}
+    }
+}
+
+pub(super) fn project_parameter_pattern(
+    pattern: &Pat,
+    value: &BindingProvenance,
+    output: &mut BTreeMap<String, BindingProvenance>,
+) {
+    match pattern {
+        Pat::Ident(ident) => {
+            output.insert(ident.id.sym.to_string(), value.clone());
+        }
+        Pat::Assign(assign) => project_parameter_pattern(&assign.left, value, output),
+        Pat::Object(object) => {
+            let BindingProvenance::StaticObjectValues(values) = value else {
+                return;
+            };
+            for property in &object.props {
+                match property {
+                    ObjectPatProp::KeyValue(property) => {
+                        let Some(key) = prop_name(&property.key) else {
+                            continue;
+                        };
+                        let Some(target) = values.get(&key) else {
+                            continue;
+                        };
+                        project_parameter_pattern(
+                            &property.value,
+                            &BindingProvenance::ValueAlias {
+                                target: target.clone(),
+                            },
+                            output,
+                        );
+                    }
+                    ObjectPatProp::Assign(property) => {
+                        if let Some(target) = values.get(property.key.sym.as_ref()) {
+                            output.insert(
+                                property.key.sym.to_string(),
+                                BindingProvenance::ValueAlias {
+                                    target: target.clone(),
+                                },
+                            );
+                        }
+                    }
+                    ObjectPatProp::Rest(_) => {}
+                }
+            }
+        }
+        Pat::Array(_) | Pat::Rest(_) | Pat::Invalid(_) | Pat::Expr(_) => {}
     }
 }
 
@@ -670,6 +805,13 @@ impl Visit for AliasCollector {
                 self.insert_local(scope, ident.id.sym.to_string());
                 continue;
             }
+            if let (Pat::Ident(alias), Some(Expr::Ident(target))) =
+                (&declarator.name, declarator.init.as_deref())
+                && let Some(function_scope) = self.function_scope_for_name(target.sym.as_ref())
+            {
+                self.function_aliases
+                    .insert((scope, alias.id.sym.to_string()), function_scope);
+            }
             let init = declarator.init.as_deref();
             let module_alias = declarator
                 .init
@@ -734,7 +876,10 @@ impl Visit for AliasCollector {
                 (&declarator.name, function_constructor_alias)
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
-            } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, returned_alias)
+            } else if value_alias
+                .as_deref()
+                .is_none_or(|target| target.contains('.'))
+                && let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, returned_alias)
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
             } else if !derived_function_pattern && let Some(target) = value_alias {
@@ -843,7 +988,7 @@ impl Visit for AliasCollector {
         for parameter in &fn_decl.function.params {
             self.insert_pat_locals(scope, &parameter.pat);
         }
-        self.functions
+        self.function_scopes
             .insert((parent, fn_decl.ident.sym.to_string()), (scope, parameters));
         fn_decl.function.decorators.visit_with(self);
         fn_decl.function.body.visit_with(self);

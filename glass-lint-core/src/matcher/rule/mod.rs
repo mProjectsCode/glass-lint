@@ -6,9 +6,9 @@ mod validation;
 
 pub use error::{ApiCatalogError, ApiRuleBuildError};
 pub use matcher::{
-    ApiMatcher, ArgStringMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
-    FlowMatcher, FlowRequirement, FlowSinkArgs, FlowValueMatcher, InstanceMemberCallMatcher,
-    Matcher, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+    ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, FlowMatcher,
+    FlowRequirement, FlowSinkArgs, FlowValueMatcher, InstanceMemberCallMatcher, Matcher,
+    MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
     ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, canonical_rooted_chain,
 };
 pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
@@ -57,6 +57,13 @@ impl ApiRule {
     }
     pub fn matchers(&self) -> &[Matcher] {
         &self.matchers
+    }
+
+    /// Build a normalized, compiled matcher from this rule's matcher list.
+    /// This is called once per rule at catalog construction time, not on
+    /// every `lint()` call.
+    pub(crate) fn matcher_for_compilation(&self) -> ApiMatcher {
+        ApiMatcher::from_matchers(self.matchers.to_vec()).normalized()
     }
 }
 

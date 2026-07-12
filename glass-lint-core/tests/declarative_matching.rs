@@ -533,6 +533,116 @@ fn value_flow_supports_const_arrow_helper_sinks() {
 }
 
 #[test]
+fn value_flow_projects_nested_destructured_helper_arguments() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "function append([{ node }]) { document.head.appendChild(node); }
+         const script = document.createElement('script'); script.src = url;
+         append([{ node: script }]);",
+        &rules,
+    );
+    assert_capability_count(&result, "test.flow", 1);
+    assert_eq!(
+        classify(
+            "function append([{ node }]) { document.head.appendChild(node); }
+             const script = document.createElement('script'); script.src = url;
+             append([{ other: script }]);",
+            &rules,
+        )
+        .finding_count,
+        0
+    );
+}
+
+#[test]
+fn value_flow_reaches_sinks_through_mutually_recursive_helpers() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "function first(node) { second(node); }
+         function second(node) { first(node); document.head.appendChild(node); }
+         const script = document.createElement('script'); script.src = url; first(script);",
+        &rules,
+    );
+    assert_capability_count(&result, "test.flow", 1);
+}
+
+#[test]
+fn value_flow_uses_precise_helper_parameter_defaults() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "const script = document.createElement('script'); script.src = url;
+         function append(node = script) { document.head.appendChild(node); }
+         append();",
+        &rules,
+    );
+    assert_capability_count(&result, "test.flow", 1);
+
+    let nested_default = classify(
+        "const script = document.createElement('script'); script.src = url;
+         function append({ node = script }) { document.head.appendChild(node); }
+         append({});",
+        &rules,
+    );
+    assert_capability_count(&nested_default, "test.flow", 1);
+
+    let rest_parameter = classify(
+        "const script = document.createElement('script'); script.src = url;
+         function append(...nodes) { document.head.appendChild(nodes[0]); }
+         append(script);",
+        &rules,
+    );
+    assert_capability_count(&rest_parameter, "test.flow", 1);
+}
+
+#[test]
+fn value_flow_follows_function_aliases_by_function_id() {
+    let rules = [rule("test.flow")
+        .matcher(
+            FlowMatcher::new("script insertion".to_string())
+                .source_member_call("document.createElement")
+                .source_arg_string(0, ["script"])
+                .property_write("src", FlowValueMatcher::Any)
+                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "function append(node) { document.head.appendChild(node); }
+         const alias = append;
+         const script = document.createElement('script'); script.src = url; alias(script);",
+        &rules,
+    );
+    assert_capability_count(&result, "test.flow", 1);
+}
+
+#[test]
 fn helper_summaries_fail_closed_for_incompatible_invocations() {
     let rules = [rule("test.flow")
         .matcher(

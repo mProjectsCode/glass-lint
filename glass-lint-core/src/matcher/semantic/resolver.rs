@@ -5,10 +5,10 @@
 //! values consumed by matchers, so callers never make matching decisions from
 //! raw identifier spelling.
 
-use std::{cell::RefCell, collections::BTreeMap};
-
-use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
-use swc_ecma_visit::{Visit, VisitWith};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+};
 
 use super::{
     ast::{SymbolCallProvenance, SymbolMemberProvenance},
@@ -16,6 +16,7 @@ use super::{
     scope::ScopeGraph,
     value::{BindingKey, Value, ValueArena, ValueId},
 };
+use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
 
 #[derive(Debug, Clone)]
 pub(super) struct ResolvedValue {
@@ -44,7 +45,9 @@ enum ResolutionKey {
 pub(super) struct Resolver {
     scopes: ScopeGraph,
     values: RefCell<ValueArena>,
+    fresh_values: RefCell<BTreeMap<(u32, u32), ValueId>>,
     resolved_values: RefCell<BTreeMap<ResolutionKey, ResolvedValue>>,
+    resolving: RefCell<BTreeSet<ResolutionKey>>,
 }
 
 impl Default for Resolver {
@@ -52,7 +55,9 @@ impl Default for Resolver {
         Self {
             scopes: ScopeGraph::default(),
             values: RefCell::new(ValueArena::default()),
+            fresh_values: RefCell::new(BTreeMap::new()),
             resolved_values: RefCell::new(BTreeMap::new()),
+            resolving: RefCell::new(BTreeSet::new()),
         }
     }
 }
@@ -60,20 +65,13 @@ impl Default for Resolver {
 impl Resolver {
     pub(super) fn collect(program: &Program) -> Self {
         let scopes = ScopeGraph::collect(program);
-        let resolver = Self {
+        Self {
             scopes,
             values: RefCell::new(ValueArena::default()),
+            fresh_values: RefCell::new(BTreeMap::new()),
             resolved_values: RefCell::new(BTreeMap::new()),
-        };
-        let mut collector = ValueFactCollector {
-            resolver: &resolver,
-        };
-        program.visit_with(&mut collector);
-        resolver
-    }
-
-    pub(super) fn value_is_known(&self, id: ValueId) -> bool {
-        id != ValueId::UNKNOWN && self.values.borrow().get(id).is_some()
+            resolving: RefCell::new(BTreeSet::new()),
+        }
     }
 
     /// Returns a CommonJS module only when the callee is proven to be the
@@ -100,15 +98,7 @@ impl Resolver {
     }
 
     pub(super) fn resolve_ident(&self, ident: &Ident) -> ResolvedValue {
-        let key = ResolutionKey::Ident {
-            lo: ident.span.lo.0,
-            hi: ident.span.hi.0,
-            symbol: ident.sym.to_string(),
-        };
-        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
-            return value;
-        }
-        self.unknown()
+        self.resolve_ident_uncached(ident)
     }
 
     fn resolve_ident_uncached(&self, ident: &Ident) -> ResolvedValue {
@@ -119,6 +109,9 @@ impl Resolver {
         };
         if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
             return value;
+        }
+        if !self.resolving.borrow_mut().insert(key.clone()) {
+            return self.unknown();
         }
         let seed = self.scopes.ident_value_seed(ident);
         let rooted_chain = seed.rooted_chain.map(|chain| chain.to_string());
@@ -151,14 +144,12 @@ impl Resolver {
         self.resolved_values
             .borrow_mut()
             .insert(key, resolved.clone());
+        self.resolving.borrow_mut().remove(&ResolutionKey::Ident {
+            lo: ident.span.lo.0,
+            hi: ident.span.hi.0,
+            symbol: ident.sym.to_string(),
+        });
         resolved
-    }
-
-    pub(super) fn bound_arguments(
-        &self,
-        ident: &Ident,
-    ) -> Option<Vec<Option<super::scope::BoundArgument>>> {
-        self.resolve_ident(ident).bound_arguments
     }
 
     pub(super) fn scope_chain_at(&self, span: swc_common::Span) -> Vec<usize> {
@@ -169,27 +160,12 @@ impl Resolver {
         self.scopes.function_id_for_scope(scope)
     }
 
-    pub(super) fn binding_key_for_expr(&self, expr: &Expr) -> Option<BindingKey> {
-        self.scopes.binding_key_for_expr(expr)
-    }
-
-    pub(super) fn binding_key_or_global(&self, expr: &Expr) -> Option<BindingKey> {
-        self.scopes.binding_key_or_global(expr)
-    }
-
-    pub(super) fn has_assignment_at(&self, name: &str, span: swc_common::Span) -> bool {
-        self.scopes.has_assignment_at(name, span)
+    pub(super) fn function_id_for_expr(&self, expr: &Expr) -> Option<super::value::FunctionId> {
+        self.scopes.function_id_for_expr(expr)
     }
 
     pub(super) fn resolve_member(&self, member: &MemberExpr) -> ResolvedValue {
-        let key = ResolutionKey::Member {
-            lo: member.span.lo.0,
-            hi: member.span.hi.0,
-        };
-        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
-            return value;
-        }
-        self.unknown()
+        self.resolve_member_uncached(member)
     }
 
     fn resolve_member_uncached(&self, member: &MemberExpr) -> ResolvedValue {
@@ -199,6 +175,9 @@ impl Resolver {
         };
         if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
             return value;
+        }
+        if !self.resolving.borrow_mut().insert(key.clone()) {
+            return self.unknown();
         }
         let seed = self.scopes.member_value_seed(member);
         let syntactic = seed.syntactic_chain.map(|chain| chain.to_string());
@@ -236,6 +215,10 @@ impl Resolver {
         self.resolved_values
             .borrow_mut()
             .insert(key, resolved.clone());
+        self.resolving.borrow_mut().remove(&ResolutionKey::Member {
+            lo: member.span.lo.0,
+            hi: member.span.hi.0,
+        });
         resolved
     }
 
@@ -277,15 +260,25 @@ impl Resolver {
                     .collect();
                 self.static_value(Value::StaticArray(values))
             }
+            Expr::Object(_) => {
+                // Preserve finite object structure for helper parameter
+                // projection. The constant evaluator already applies the
+                // depth, node, spread, and mutation bounds used elsewhere.
+                let id = self.intern_const_value(constant::evaluate(expr, self), None);
+                ResolvedValue {
+                    id,
+                    rooted_chain: None,
+                    call: SymbolCallProvenance::Local,
+                    module_member: None,
+                    returned_member: None,
+                    bound_arguments: None,
+                    syntactic_chain: None,
+                }
+            }
             Expr::Call(call) => self.resolve_call_expression(call),
-            Expr::New(_) => self.fresh_object_value(),
+            Expr::New(new_expr) => self.fresh_object_value_at(new_expr.span),
             _ => self.unknown(),
         }
-    }
-
-    pub(super) fn expr_call_provenance(&self, expr: &Expr) -> Option<SymbolCallProvenance> {
-        let value = self.resolve_expr(expr);
-        (!matches!(value.call, SymbolCallProvenance::Local)).then_some(value.call)
     }
 
     pub(super) fn static_string_expr(&self, expr: &Expr) -> Option<String> {
@@ -397,10 +390,10 @@ impl Resolver {
             return self.unknown();
         };
         let Expr::Member(member) = &**callee else {
-            return self.fresh_object_value();
+            return self.fresh_object_value_at(call.span);
         };
         if super::ast::member_prop_name(&member.prop).as_deref() != Some("bind") {
-            return self.fresh_object_value();
+            return self.fresh_object_value_at(call.span);
         }
         let target = self.resolve_expr(&member.obj).id;
         let receiver = call
@@ -506,11 +499,29 @@ impl Resolver {
         binding.map_or(target, |key| arena.intern(Value::Binding { key, target }))
     }
 
-    fn fresh_object_value(&self) -> ResolvedValue {
+    pub(super) fn fresh_object_value(&self) -> ResolvedValue {
         let Some(object) = self.values.borrow_mut().allocate_object_id() else {
             return self.unknown();
         };
         self.static_value(Value::Object(object))
+    }
+
+    pub(super) fn fresh_object_value_at(&self, span: swc_common::Span) -> ResolvedValue {
+        let key = (span.lo.0, span.hi.0);
+        if let Some(value) = self.fresh_values.borrow().get(&key).copied() {
+            return ResolvedValue {
+                id: value,
+                rooted_chain: None,
+                call: SymbolCallProvenance::Local,
+                module_member: None,
+                returned_member: None,
+                bound_arguments: None,
+                syntactic_chain: None,
+            };
+        }
+        let value = self.fresh_object_value();
+        self.fresh_values.borrow_mut().insert(key, value.id);
+        value
     }
 }
 
@@ -546,24 +557,6 @@ impl Lookup for Resolver {
 
     fn unshadowed_global(&self, name: &str, span: swc_common::Span) -> bool {
         self.scopes.unshadowed_global_at(name, span)
-    }
-}
-
-/// Populate the immutable resolver cache once for every lexical identifier and
-/// member expression. Later matcher queries consume these facts instead of
-/// re-deriving provenance from raw AST nodes.
-struct ValueFactCollector<'a> {
-    resolver: &'a Resolver,
-}
-
-impl Visit for ValueFactCollector<'_> {
-    fn visit_ident(&mut self, ident: &Ident) {
-        let _ = self.resolver.resolve_ident_uncached(ident);
-    }
-
-    fn visit_member_expr(&mut self, member: &MemberExpr) {
-        let _ = self.resolver.resolve_member_uncached(member);
-        member.visit_children_with(self);
     }
 }
 

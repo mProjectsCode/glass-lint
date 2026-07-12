@@ -15,8 +15,10 @@ use swc_common::Span;
 use super::super::result::{ApiEvidence, ApiMatchKind};
 use super::super::rule::{
     ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, MemberCallMatcher,
-    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, canonical_rooted_chain,
 };
+use super::ast::{SymbolCallProvenance, SymbolMemberProvenance};
+use super::facts::{CallArgInfo, FactPayload, FactStream};
 
 /// Typed occurrence storage.  Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different
@@ -101,6 +103,382 @@ impl MatcherFacts {
         self.constructors.normalize();
         self.global_constructors.normalize();
         self.module_constructors.normalize();
+    }
+
+    /// Project a rule-independent `FactStream` into occurrence indexes.
+    ///
+    /// This replaces the AST-walking index collection that `calls.rs`
+    /// currently performs.  Every fact kind is projected exactly once into
+    /// the matching occurrence map based on its provenance fields.
+    pub(super) fn build_from_stream(&mut self, stream: &FactStream) {
+        for fact in stream.facts() {
+            match &fact.payload {
+                FactPayload::Call {
+                    callee_name,
+                    callee_span,
+                    call_provenance,
+                    syntactic_chain,
+                    rooted_chain,
+                    module_member,
+                    returned_member,
+                    instance_class,
+                    unwrap,
+                    ..
+                } => {
+                    // Use callee_span (member/ident span) for occurrences
+                    // rather than the full call expression span.
+                    let span = *callee_span;
+
+                    // Syntactic name for identifier calls.
+                    if let Some(name) = callee_name {
+                        self.calls.push(name.clone(), span);
+                    }
+
+                    // Provenance-based call indexes.
+                    match call_provenance {
+                        SymbolCallProvenance::Global { name } => {
+                            self.global_calls.push(name.clone(), span);
+                        }
+                        SymbolCallProvenance::ModuleExport { module, export } => {
+                            self.module_calls
+                                .push((module.clone(), export.clone()), span);
+                            self.module_member_calls
+                                .push((module.clone(), export.clone()), span);
+                        }
+                        SymbolCallProvenance::Local => {}
+                    }
+
+                    // Member call indexes for member-expression callees.
+                    if let Some(chain) = syntactic_chain {
+                        self.member_calls.push(chain.clone(), span);
+                    }
+                    if let Some(chain) = rooted_chain {
+                        self.rooted_member_calls
+                            .push(canonical_rooted_chain(chain).to_string(), span);
+                    }
+
+                    // Module namespace provenance from member expression.
+                    if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
+                        module_member
+                    {
+                        self.module_calls
+                            .push((module.clone(), member.clone()), span);
+                        self.module_member_calls
+                            .push((module.clone(), member.clone()), span);
+                    }
+
+                    // Returned member from function return types.
+                    if let Some((source, member)) = returned_member {
+                        self.returned_member_calls
+                            .push((source.clone(), member.clone()), span);
+                    }
+
+                    // Instance member call: this.method() inside a class
+                    // with a known module superclass.
+                    if let Some((module, export)) = instance_class
+                        && let Some(member_name) = syntactic_chain
+                            .as_ref()
+                            .and_then(|chain| chain.rsplit('.').next())
+                    {
+                        self.instance_member_calls.push(
+                            (module.clone(), export.clone(), member_name.to_string()),
+                            span,
+                        );
+                    }
+
+                    // Special case: `Function` constructor calls via member
+                    // expression (e.g., `(0, Function)(code)`).
+                    if rooted_chain.as_deref() == Some("Function") {
+                        self.global_calls.push("Function".to_string(), span);
+                        self.calls.push("Function".to_string(), span);
+                    }
+
+                    // .call()/.apply() unwrapping: also record the target
+                    // as a member call so argument predicates can match
+                    // against the effective arguments.
+                    if let Some(unwrap) = unwrap
+                        && !unwrap.chain.is_empty()
+                    {
+                        self.member_calls.push(unwrap.chain.clone(), span);
+                        self.rooted_member_calls
+                            .push(canonical_rooted_chain(&unwrap.chain).to_string(), span);
+                    }
+                }
+
+                FactPayload::MemberRead {
+                    syntactic_chain,
+                    rooted_chain,
+                    module_member,
+                    returned_member,
+                    ..
+                } => {
+                    if let Some(chain) = syntactic_chain {
+                        self.member_reads.push(chain.clone(), fact.span);
+                    }
+                    if let Some(chain) = rooted_chain {
+                        self.rooted_member_reads
+                            .push(canonical_rooted_chain(chain).to_string(), fact.span);
+                    }
+                    if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
+                        module_member
+                    {
+                        self.module_member_reads
+                            .push((module.clone(), member.clone()), fact.span);
+                        // Record as a class occurrence for module namespace
+                        // member reads (matching the old record_member_read behavior).
+                        self.classes.push(member.clone(), fact.span);
+                    }
+                    if let Some((source, member)) = returned_member {
+                        self.returned_member_reads
+                            .push((source.clone(), member.clone()), fact.span);
+                    }
+                }
+
+                FactPayload::Construction {
+                    callee_name,
+                    callee_span,
+                    provenance,
+                    ..
+                } => {
+                    let span = *callee_span;
+                    if let Some(name) = callee_name {
+                        self.constructors.push(name.clone(), span);
+                    }
+                    match provenance {
+                        SymbolCallProvenance::Global { name } => {
+                            self.global_constructors.push(name.clone(), span);
+                        }
+                        SymbolCallProvenance::ModuleExport { module, export } => {
+                            self.module_constructors
+                                .push((module.clone(), export.clone()), span);
+                        }
+                        SymbolCallProvenance::Local => {}
+                    }
+                }
+
+                FactPayload::Import { module } => {
+                    self.imports.push(module.clone(), fact.span);
+                }
+
+                FactPayload::StringLiteral { value } => {
+                    self.string_literals.push(value.clone(), fact.span);
+                }
+
+                FactPayload::Class { name, provenance } => {
+                    if !name.is_empty() {
+                        self.classes.push(name.clone(), fact.span);
+                    }
+                    if let Some((module, export)) = provenance {
+                        self.module_classes
+                            .push((module.clone(), export.clone()), fact.span);
+                    }
+                }
+
+                // Declaration, Assignment, PropertyWrite, Reference facts
+                // do not contribute to occurrence indexes.
+                FactPayload::Declaration { .. }
+                | FactPayload::Assignment { .. }
+                | FactPayload::PropertyWrite { .. }
+                | FactPayload::Reference { .. }
+                | FactPayload::Function { .. }
+                | FactPayload::Control { .. } => {}
+            }
+        }
+    }
+
+    /// Compute argument predicate evidence directly from the `FactStream`.
+    ///
+    /// For each `Call` fact, check call-argument and member-argument matchers
+    /// against the pre-computed argument info.  For `.call()`/`.apply()` calls,
+    /// the effective arguments after unwrapping are used for call-argument
+    /// matching.
+    pub(super) fn compute_argument_evidence_from_stream(
+        &self,
+        stream: &FactStream,
+        member_argument_matchers: &[(usize, &MemberCallMatcher)],
+        call_argument_matchers: &[(usize, &CallMatcher)],
+        argument_evidence: &mut [Vec<ApiEvidence>],
+    ) {
+        for fact in stream.facts() {
+            if let FactPayload::Call {
+                callee_name,
+                call_provenance,
+                syntactic_chain,
+                rooted_chain,
+                module_member,
+                args,
+                unwrap,
+                ..
+            } = &fact.payload
+            {
+                // Member argument predicates use the original args.
+                if !member_argument_matchers.is_empty() {
+                    self.collect_member_argument_evidence_from_args(
+                        member_argument_matchers,
+                        argument_evidence,
+                        fact.span,
+                        syntactic_chain.as_deref(),
+                        rooted_chain.as_deref(),
+                        module_member.as_ref(),
+                        args,
+                    );
+                }
+
+                // Call argument predicates: for .call()/.apply(), use the
+                // effective args after unwrapping.
+                if !call_argument_matchers.is_empty() {
+                    let (effective_args, effective_name, effective_provenance) =
+                        if let Some(u) = unwrap {
+                            (&u.effective_args, Some(u.chain.as_str()), call_provenance)
+                        } else {
+                            (args, callee_name.as_deref(), call_provenance)
+                        };
+                    self.collect_call_argument_evidence_from_args(
+                        call_argument_matchers,
+                        argument_evidence,
+                        fact.span,
+                        effective_name,
+                        effective_provenance,
+                        effective_args,
+                    );
+                }
+            }
+        }
+    }
+
+    fn collect_call_argument_evidence_from_args(
+        &self,
+        matchers: &[(usize, &CallMatcher)],
+        evidence: &mut [Vec<ApiEvidence>],
+        span: Span,
+        callee_name: Option<&str>,
+        call_provenance: &SymbolCallProvenance,
+        args: &[CallArgInfo],
+    ) {
+        for (rule_index, matcher) in matchers {
+            let matcher = *matcher;
+            let call_matches = match &matcher.provenance {
+                CallProvenance::Any => {
+                    callee_name.is_some_and(|name| name == matcher.name.as_str())
+                }
+                CallProvenance::Global => matches!(
+                    call_provenance,
+                    SymbolCallProvenance::Global { name } if name == &matcher.name
+                ),
+                CallProvenance::ModuleExport { module } => matches!(
+                    call_provenance,
+                    SymbolCallProvenance::ModuleExport {
+                        module: found_module,
+                        export
+                    } if found_module == module && export == &matcher.name
+                ),
+            };
+
+            if call_matches
+                && matcher.arg_strings.iter().all(|arg_matcher| {
+                    args.get(arg_matcher.index).is_some_and(|arg| {
+                        arg.static_string.as_ref().is_some_and(|value| {
+                            arg_matcher.predicate.as_ref().map_or_else(
+                                || {
+                                    arg_matcher.values.is_empty()
+                                        || arg_matcher.values.iter().any(|e| e == value)
+                                },
+                                |predicate| {
+                                    super::flow_calls::matches_static_value(predicate, value)
+                                },
+                            )
+                        })
+                    })
+                })
+            {
+                evidence[*rule_index].push(ApiEvidence {
+                    kind: ApiMatchKind::CallArgument,
+                    symbol: matcher.evidence_symbol(),
+                    count: 1,
+                    spans: vec![span],
+                });
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn collect_member_argument_evidence_from_args(
+        &self,
+        matchers: &[(usize, &MemberCallMatcher)],
+        evidence: &mut [Vec<ApiEvidence>],
+        span: Span,
+        syntactic_chain: Option<&str>,
+        resolved_chain: Option<&str>,
+        module_member: Option<&SymbolMemberProvenance>,
+        args: &[CallArgInfo],
+    ) {
+        for (rule_index, matcher) in matchers {
+            let matcher = *matcher;
+            let member_matches = match &matcher.provenance {
+                MemberCallProvenance::Any => syntactic_chain == Some(&matcher.chain),
+                MemberCallProvenance::Rooted => resolved_chain
+                    .map(canonical_rooted_chain)
+                    .is_some_and(|chain| chain == matcher.chain),
+                MemberCallProvenance::ModuleNamespace { module } => matches!(
+                    module_member,
+                    Some(SymbolMemberProvenance::ModuleNamespace {
+                        module: found_module,
+                        member
+                    }) if found_module == module && member == &matcher.chain
+                ),
+            };
+            if member_matches
+                && matcher.arg_strings.iter().all(|arg_matcher| {
+                    args.get(arg_matcher.index).is_some_and(|arg| {
+                        arg.static_string.as_ref().is_some_and(|value| {
+                            arg_matcher.predicate.as_ref().map_or_else(
+                                || {
+                                    arg_matcher.values.is_empty()
+                                        || arg_matcher.values.iter().any(|e| e == value)
+                                },
+                                |predicate| {
+                                    super::flow_calls::matches_static_value(predicate, value)
+                                },
+                            )
+                        })
+                    })
+                })
+                && matcher.arg_object_keys.iter().all(|key_matcher| {
+                    args.get(key_matcher.index)
+                        .and_then(|arg| arg.object_keys.as_ref())
+                        .is_some_and(|keys| {
+                            key_matcher
+                                .keys
+                                .iter()
+                                .all(|expected| keys.iter().any(|key| key == expected))
+                        })
+                })
+                && matcher.arg_rooted_exprs.iter().all(|root_matcher| {
+                    args.get(root_matcher.index)
+                        .and_then(|arg| arg.rooted_chain.as_ref())
+                        .map(|chain| canonical_rooted_chain(chain).to_string())
+                        .is_some_and(|chain| {
+                            root_matcher
+                                .chains
+                                .iter()
+                                .any(|expected| expected == &chain)
+                        })
+                })
+            {
+                let symbol = match matcher.provenance {
+                    MemberCallProvenance::Any => matcher.evidence_symbol(),
+                    MemberCallProvenance::Rooted | MemberCallProvenance::ModuleNamespace { .. } => {
+                        syntactic_chain.unwrap_or(&matcher.chain).to_string()
+                    }
+                };
+                evidence[*rule_index].push(ApiEvidence {
+                    kind: ApiMatchKind::CallArgument,
+                    symbol,
+                    count: 1,
+                    spans: vec![span],
+                });
+            }
+        }
     }
 
     pub fn evidence_for(&self, matcher: &ApiMatcher) -> Vec<ApiEvidence> {
@@ -342,6 +720,7 @@ impl MatcherFacts {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn record(&mut self, kind: ApiMatchKind, symbol: impl Into<String>, span: Span) {
         let symbol = symbol.into();
         match kind {
@@ -440,5 +819,75 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(evidence.len(), 1);
         assert_eq!(evidence[0].spans, reference);
+    }
+
+    #[test]
+    fn build_from_stream_populates_all_occurrence_indexes() {
+        use super::super::fact_builder::FactBuilder;
+        use super::super::resolver::Resolver;
+
+        let src = r#"
+            import { foo } from 'mod';
+            import { Bar } from 'other-mod';
+            class MyClass extends Bar {}
+            const x = foo;
+            foo();
+            x.hello();
+            new MyClass();
+            const s = "hello world";
+            require('fs');
+        "#;
+        let parsed = crate::parse(src, "stream-index.js").expect("source should parse");
+        let resolver = Resolver::collect(&parsed.program);
+        let mut builder = FactBuilder::new(&resolver);
+        swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
+        let stream = builder.into_stream();
+
+        let mut index = MatcherFacts::default();
+        index.build_from_stream(&stream);
+        index.normalize_occurrences();
+
+        // Imports should have both 'mod' and 'other-mod' from import declarations,
+        // and 'fs' from require() call.
+        assert!(
+            index.imports.get("mod").is_some(),
+            "should have 'mod' import"
+        );
+        assert!(
+            index.imports.get("other-mod").is_some(),
+            "should have 'other-mod' import"
+        );
+        assert!(
+            index.imports.get("fs").is_some(),
+            "should have 'fs' require import"
+        );
+
+        // String literal should be indexed.
+        assert!(
+            index.string_literals.get("hello world").is_some(),
+            "should have 'hello world' string literal"
+        );
+
+        // Class declaration should be indexed.
+        assert!(
+            index.classes.get("MyClass").is_some(),
+            "should have MyClass class"
+        );
+
+        // Constructor call should be indexed.
+        assert!(
+            index.constructors.get("MyClass").is_some(),
+            "should have MyClass constructor"
+        );
+
+        // foo() is an identifier call with module provenance.
+        assert!(index.calls.get("foo").is_some(), "should have foo call");
+        assert!(
+            index
+                .module_calls
+                .get(&("mod".to_string(), "foo".to_string()))
+                .is_some(),
+            "should have foo as module call from 'mod'"
+        );
     }
 }
