@@ -25,6 +25,44 @@ opt-in `heuristic` profiles.
 TypeScript syntax, automatic fixes, and suggestions are not currently
 supported. A source file is limited to 8 MiB by the core parser.
 
+## A small example
+
+Glass Lint can follow an object from creation, through configuration and an
+alias, to the sink that makes it interesting. It reports the positive flow:
+
+```js
+const script = document.createElement("script");
+script.src = "https://example.com/plugin.js";
+const resource = script;
+document.head.appendChild(resource); // js:dom.remote-resource
+```
+
+The corresponding negative flow is deliberately similar, but does not match
+`js:dom.remote-resource` because the URL is local:
+
+```js
+const script = document.createElement("script");
+script.src = "/local.js";
+document.head.appendChild(script); // no js:dom.remote-resource finding
+```
+
+With the full JavaScript catalog, the same snippet still produces
+`js:dynamic-code.script-injection` though.
+
+It also recognizes contrived dynamic-code paths, including a configured
+foreign-realm `eval` and an async function constructor reached through the
+prototype chain:
+
+```js
+activeWindow.eval(source); // js:dynamic-code.eval
+
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+const run = new AsyncFunction(`return (${source})`); // js:dynamic-code.eval
+```
+
+These examples correspond to the [remote-resource fixtures](glass-lint-js/src/rules/browser/remote_resource/)
+and the [executable-code-blocks e2e case](tests/e2e/render-executable-code-blocks.js).
+
 ## Get started
 
 Glass Lint currently builds from source. With a recent Rust toolchain installed,
