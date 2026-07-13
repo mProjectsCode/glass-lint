@@ -8,7 +8,6 @@ pub(in crate::analysis) use arena::{CallableValue, ObjectId, Value, ValueArena};
 pub(in crate::analysis) use identity::{
     BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, SymbolPath, ValueId,
 };
-#[allow(unused_imports)]
 pub(in crate::analysis) use path::{PathId, PathInterner, PathSegment};
 
 #[cfg(test)]

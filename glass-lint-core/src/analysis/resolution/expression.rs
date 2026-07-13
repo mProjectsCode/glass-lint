@@ -21,7 +21,7 @@ impl Resolver {
             return value;
         }
         if !self.resolving.borrow_mut().insert(key.clone()) {
-            return self.unknown();
+            return Self::unknown();
         }
         let seed = self.scopes.ident_value_seed(ident);
         let rooted_chain = seed.rooted_chain.map(|chain| chain.to_string());
@@ -50,7 +50,7 @@ impl Resolver {
             bound_arguments: seed.bound_arguments,
             syntactic_chain: None,
         };
-        self.cache_resolution(key, resolved.clone());
+        self.cache_resolution(&key, resolved.clone());
         resolved
     }
 
@@ -85,7 +85,7 @@ impl Resolver {
             return value;
         }
         if !self.resolving.borrow_mut().insert(key.clone()) {
-            return self.unknown();
+            return Self::unknown();
         }
         let seed = self.scopes.member_value_seed(member);
         let syntactic = seed.syntactic_chain.map(|chain| chain.to_string());
@@ -120,10 +120,15 @@ impl Resolver {
             bound_arguments: None,
             syntactic_chain: syntactic,
         };
-        self.cache_resolution(key, resolved.clone());
+        self.cache_resolution(&key, resolved.clone());
         resolved
     }
 
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     pub(in crate::analysis) fn resolve_expr(&self, expr: &Expr) -> ResolvedValue {
         match expr {
             Expr::Ident(ident) => self.resolve_ident(ident),
@@ -138,7 +143,7 @@ impl Resolver {
             Expr::Seq(sequence) => sequence
                 .exprs
                 .last()
-                .map_or_else(|| self.unknown(), |last| self.resolve_expr(last)),
+                .map_or_else(Self::unknown, |last| self.resolve_expr(last)),
             Expr::Lit(Lit::Str(value)) => self.static_value(Value::StaticString(
                 value.value.to_string_lossy().to_string(),
             )),
@@ -146,7 +151,7 @@ impl Resolver {
                 if value.value.is_finite()
                     && value.value >= 0.0
                     && value.value.fract() == 0.0
-                    && value.value <= usize::MAX as f64 =>
+                    && value.value <= (usize::MAX as u64) as f64 =>
             {
                 self.static_value(Value::StaticNumber(value.value as usize))
             }
@@ -171,13 +176,13 @@ impl Resolver {
             }
             Expr::Call(call) => self.resolve_call_expression(call),
             Expr::New(new_expr) => self.fresh_object_value_at(new_expr.span),
-            _ => self.unknown(),
+            _ => Self::unknown(),
         }
     }
 
-    fn cache_resolution(&self, key: ResolutionKey, value: ResolvedValue) {
+    fn cache_resolution(&self, key: &ResolutionKey, value: ResolvedValue) {
         self.resolved_values.borrow_mut().insert(key.clone(), value);
-        self.resolving.borrow_mut().remove(&key);
+        self.resolving.borrow_mut().remove(key);
     }
 
     pub(in crate::analysis) fn static_string_expr(&self, expr: &Expr) -> Option<String> {
@@ -257,7 +262,7 @@ impl Resolver {
         }
     }
 
-    pub(in crate::analysis) fn unknown(&self) -> ResolvedValue {
+    pub(in crate::analysis) fn unknown() -> ResolvedValue {
         ResolvedValue::local(ValueId::UNKNOWN)
     }
 
@@ -268,7 +273,7 @@ impl Resolver {
 
     pub(in crate::analysis) fn fresh_object_value(&self) -> ResolvedValue {
         let Some(object) = self.values.borrow_mut().allocate_object_id() else {
-            return self.unknown();
+            return Self::unknown();
         };
         self.static_value(Value::Object(object))
     }

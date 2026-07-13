@@ -43,10 +43,12 @@ impl ValueMatcher {
         }
     }
 
+    #[must_use]
     pub fn equals(self, value: impl Into<String>) -> Self {
         self.with_static_predicate(StaticStringPredicate::Exact(vec![value.into()]))
     }
 
+    #[must_use]
     pub fn equals_any<I, S>(self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -57,6 +59,7 @@ impl ValueMatcher {
         ))
     }
 
+    #[must_use]
     pub fn starts_with_any<I, S>(self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -67,6 +70,7 @@ impl ValueMatcher {
         ))
     }
 
+    #[must_use]
     pub fn contains_any<I, S>(self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -77,6 +81,7 @@ impl ValueMatcher {
         ))
     }
 
+    #[must_use]
     pub fn contains_all<I, S>(self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -392,6 +397,7 @@ impl FlowMatcher {
             completion: None,
         }
     }
+    #[must_use]
     pub fn source_member_call(mut self, member_call: impl Into<String>) -> Self {
         self.sources
             .push(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(
@@ -399,6 +405,7 @@ impl FlowMatcher {
             )));
         self
     }
+    #[must_use]
     pub fn source_arg_string<I, S>(mut self, index: usize, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -420,11 +427,13 @@ impl FlowMatcher {
         }
         self
     }
+    #[must_use]
     pub fn property_write(mut self, property: impl Into<String>, value: FlowValueMatcher) -> Self {
         self.events
             .push(ObjectEventMatcher::property_write(property, value.into()));
         self
     }
+    #[must_use]
     pub fn member_call_config<I>(mut self, member: impl Into<String>, args: I) -> Self
     where
         I: IntoIterator<Item = (usize, FlowValueMatcher)>,
@@ -449,6 +458,7 @@ impl FlowMatcher {
         self.completion = Some(FlowCompletion::Configuration);
         self
     }
+    #[must_use]
     pub fn sink_member_call_arg_indices<I, S, J>(mut self, member_calls: I, indices: J) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -468,6 +478,7 @@ impl FlowMatcher {
         self.completion = Some(FlowCompletion::any_sink(sinks));
         self
     }
+    #[must_use]
     pub fn sink_member_call_any_arg<I, S>(mut self, member_calls: I) -> Self
     where
         I: IntoIterator<Item = S>,

@@ -19,11 +19,7 @@ impl CompiledCatalog {
             }
         }
         Ok(Self {
-            rules: rules
-                .iter()
-                .enumerate()
-                .map(|(index, rule)| CompiledRule::new(index, rule))
-                .collect(),
+            rules: rules.iter().map(CompiledRule::new).collect(),
         })
     }
 

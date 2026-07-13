@@ -140,6 +140,11 @@ impl EvalState {
         value
     }
 
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn evaluate_inner(&mut self, expr: &Expr, lookup: &impl Lookup) -> ConstValue {
         match expr {
             Expr::Lit(Lit::Str(value)) => {
@@ -149,7 +154,7 @@ impl EvalState {
                 if value.value.is_finite()
                     && value.value >= 0.0
                     && value.value.fract() == 0.0
-                    && value.value <= usize::MAX as f64 =>
+                    && value.value <= (usize::MAX as u64) as f64 =>
             {
                 ConstValue::NonNegativeInteger(value.value as usize)
             }
@@ -171,7 +176,7 @@ impl EvalState {
                         || quasi.raw.to_string(),
                         |value| value.to_string_lossy().to_string(),
                     );
-                    if !self.append_bounded(&mut output, &cooked) {
+                    if !Self::append_bounded(&mut output, &cooked) {
                         return ConstValue::Unknown;
                     }
                     if let Some(expression) = template.exprs.get(index) {
@@ -179,7 +184,7 @@ impl EvalState {
                         else {
                             return ConstValue::Unknown;
                         };
-                        if !self.append_bounded(&mut output, &value) {
+                        if !Self::append_bounded(&mut output, &value) {
                             return ConstValue::Unknown;
                         }
                     }
@@ -221,7 +226,7 @@ impl EvalState {
                     return ConstValue::Unknown;
                 };
                 let mut value = left;
-                if !self.append_bounded(&mut value, &right) {
+                if !Self::append_bounded(&mut value, &right) {
                     return ConstValue::Unknown;
                 }
                 ConstValue::String(value)
@@ -326,6 +331,11 @@ impl EvalState {
     /// Resolve a property name using the same bounded evaluator state as its
     /// surrounding expression. Computed keys therefore consume depth, node,
     /// and lookup budget instead of silently starting a second evaluation.
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn property_name(&mut self, prop: &PropName, lookup: &impl Lookup) -> Option<String> {
         match prop {
             PropName::Ident(ident) => Some(ident.sym.to_string()),
@@ -340,9 +350,8 @@ impl EvalState {
             {
                 Some((value.value as usize).to_string())
             }
-            PropName::Num(_) => None,
+            PropName::Num(_) | PropName::BigInt(_) => None,
             PropName::Computed(computed) => self.evaluate(&computed.expr, lookup).property_key(),
-            PropName::BigInt(_) => None,
         }
     }
 
@@ -354,7 +363,7 @@ impl EvalState {
         }
     }
 
-    fn append_bounded(&self, output: &mut String, value: &str) -> bool {
+    fn append_bounded(output: &mut String, value: &str) -> bool {
         if output.len().saturating_add(value.len()) > MAX_STRING_BYTES {
             return false;
         }
@@ -422,20 +431,20 @@ mod tests {
         }
     }
 
-    fn expression(source: &str) -> Box<Expr> {
+    fn expression(source: &str) -> Expr {
         let parsed = crate::parse(&format!("({source});"), "constant-test.js").unwrap();
         let statements = match parsed.program {
             Program::Module(module) => module
                 .body
                 .into_iter()
-                .filter_map(|item| item.stmt())
+                .filter_map(swc_ecma_ast::ModuleItem::stmt)
                 .collect::<Vec<_>>(),
             Program::Script(script) => script.body,
         };
         let Stmt::Expr(ExprStmt { expr, .. }) = statements.into_iter().next().unwrap() else {
             panic!("test input did not parse as an expression statement");
         };
-        expr
+        *expr
     }
 
     fn eval(source: &str) -> ConstValue {
@@ -513,7 +522,7 @@ mod tests {
     #[test]
     fn bounds_recursive_alias_lookup_work() {
         let lookup = RecursiveLookup {
-            expression: expression("alias"),
+            expression: Box::new(expression("alias")),
         };
         assert_eq!(evaluate(&expression("alias"), &lookup), ConstValue::Unknown);
     }

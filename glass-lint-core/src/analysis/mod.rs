@@ -30,7 +30,7 @@ impl<'matchers> SemanticModel<'matchers> {
         environment: &Environment,
     ) -> Self {
         let resolver = resolution::Resolver::collect_with_environment(program, environment);
-        let facts = SemanticFacts::build(program, resolver, &matchers);
+        let facts = SemanticFacts::build(program, &resolver, &matchers);
         Self { facts, matchers }
     }
 

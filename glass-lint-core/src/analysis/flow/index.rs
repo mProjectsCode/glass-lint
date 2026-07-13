@@ -14,17 +14,17 @@ const MAX_FLOW_EMISSIONS: usize = 65_536;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FlowLimits {
-    pub(super) max_objects: u32,
-    pub(super) max_states: usize,
-    pub(super) max_emissions: usize,
+    pub(super) objects: u32,
+    pub(super) states: usize,
+    pub(super) emissions: usize,
 }
 
 impl Default for FlowLimits {
     fn default() -> Self {
         Self {
-            max_objects: MAX_FLOW_OBJECTS,
-            max_states: MAX_FLOW_STATES,
-            max_emissions: MAX_FLOW_EMISSIONS,
+            objects: MAX_FLOW_OBJECTS,
+            states: MAX_FLOW_STATES,
+            emissions: MAX_FLOW_EMISSIONS,
         }
     }
 }

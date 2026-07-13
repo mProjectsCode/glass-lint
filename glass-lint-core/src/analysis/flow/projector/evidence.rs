@@ -170,7 +170,7 @@ impl ObjectFlowProjector<'_, '_> {
             state.object_id,
             match_fact,
         );
-        if !self.emitted.contains(&key) && self.emitted.len() >= self.limits.max_emissions {
+        if !self.emitted.contains(&key) && self.emitted.len() >= self.limits.emissions {
             return;
         }
         if self.emitted.insert(key) {

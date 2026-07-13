@@ -1,3 +1,5 @@
+#![allow(clippy::cast_possible_truncation, clippy::zero_sized_map_values)]
+
 use std::{
     collections::BTreeMap,
     fs,

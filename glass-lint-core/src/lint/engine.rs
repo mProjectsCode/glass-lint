@@ -181,14 +181,13 @@ impl Linter {
                 evidence: capability
                     .evidence()
                     .iter()
-                    .map(|evidence| self.report_evidence(evidence, parsed))
+                    .map(|evidence| Self::report_evidence(evidence, parsed))
                     .collect(),
             })
             .collect()
     }
 
     fn report_evidence(
-        &self,
         evidence: &crate::api::classification::ApiEvidence,
         parsed: &crate::parse::ParsedSource,
     ) -> Evidence {

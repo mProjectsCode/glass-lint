@@ -91,6 +91,8 @@ impl<'a> FactBuilder<'a> {
     }
 
     fn emit(&mut self, kind: FactKind, span: Span, payload: FactPayload) {
+        #[cfg(not(test))]
+        let _ = kind;
         let Some(id) = self.next_fact_id() else {
             // Keep the stream structurally usable after the budget is spent.
             // The synthetic ID cannot participate in normal indexed lookups,
@@ -98,8 +100,8 @@ impl<'a> FactBuilder<'a> {
             self.stream.push(SemanticFact {
                 id: FactId(self.next_id),
                 span,
-                scope: 0,
                 function: crate::analysis::value::FunctionId(0),
+                #[cfg(test)]
                 kind,
                 payload,
             });
@@ -109,8 +111,8 @@ impl<'a> FactBuilder<'a> {
         let fact = SemanticFact {
             id,
             span,
-            scope,
             function: self.resolver.function_id_for_scope(scope),
+            #[cfg(test)]
             kind,
             payload,
         };
@@ -204,7 +206,8 @@ mod tests {
         );
         assert_eq!(
             ids1,
-            (0..ids1.len() as u32).collect::<Vec<_>>(),
+            (0..u32::try_from(ids1.len()).expect("test fact count fits in u32"))
+                .collect::<Vec<_>>(),
             "IDs must be sequential from 0"
         );
     }
@@ -284,18 +287,18 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(calls.len(), 2);
         assert_eq!(members.len(), 1);
-        assert!(calls[0].id != calls[1].id);
+        assert_ne!(calls[0].id, calls[1].id);
         assert!(members[0].span.lo >= calls[0].span.lo);
         assert!(members[0].span.hi <= calls[0].span.hi);
     }
 
     #[test]
     fn repeated_builds_yield_identical_fact_fingerprints() {
-        let src = r#"
+        let src = r"
             const a = fetch('https://example.com');
             a.then(x => x.json());
             document.getElementById('root');
-        "#;
+        ";
         let parsed = crate::parse(src, "fp.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
 
@@ -306,7 +309,7 @@ mod tests {
             stream
                 .facts()
                 .iter()
-                .map(|f| (f.kind, f.span.lo.0, f.span.hi.0, f.function, f.scope))
+                .map(|f| (f.kind, f.span.lo.0, f.span.hi.0, f.function))
                 .collect::<Vec<_>>()
         };
 
@@ -354,6 +357,63 @@ mod tests {
     }
 
     #[test]
+    fn facts_retain_identities_for_future_connected_matchers() {
+        let src = r"
+            function factory() {}
+            const source = factory();
+            const target = {};
+            target.slot = source;
+            const read = target.slot;
+            class Constructor {}
+            new Constructor();
+            function outer() { function inner() {} }
+        ";
+        let parsed = crate::parse(src, "fact-identities.js").expect("source should parse");
+        let resolver = Resolver::collect(&parsed.program);
+        let mut builder = FactBuilder::new(&resolver);
+        parsed.program.visit_with(&mut builder);
+        let stream = builder.into_stream();
+
+        assert!(stream.facts().iter().any(|fact| {
+            matches!(
+                fact.payload,
+                FactPayload::Reference { value, .. } if value != ValueId::UNKNOWN
+            )
+        }));
+        assert!(stream.facts().iter().any(|fact| {
+            matches!(
+                fact.payload,
+                FactPayload::MemberRead { value, .. } if value != ValueId::UNKNOWN
+            )
+        }));
+        assert!(stream.facts().iter().any(|fact| {
+            matches!(
+                fact.payload,
+                FactPayload::PropertyWrite { source, .. } if source != ValueId::UNKNOWN
+            )
+        }));
+        assert!(stream.facts().iter().any(|fact| {
+            matches!(
+                fact.payload,
+                FactPayload::Call { callee, .. } if callee != ValueId::UNKNOWN
+            )
+        }));
+        assert!(stream.facts().iter().any(|fact| {
+            matches!(
+                fact.payload,
+                FactPayload::Construction { callee, result, .. }
+                    if callee != ValueId::UNKNOWN && result != ValueId::UNKNOWN
+            )
+        }));
+        assert!(stream.facts().iter().any(|fact| {
+            matches!(
+                fact.payload,
+                FactPayload::Function { id, owner, .. } if id != owner
+            )
+        }));
+    }
+
+    #[test]
     fn member_read_fact_captures_chain_info() {
         let src = "const x = document.body;";
         let parsed = crate::parse(src, "member-prov.js").expect("source should parse");
@@ -377,7 +437,7 @@ mod tests {
 
     #[test]
     fn import_fact_is_emitted() {
-        let src = r#"import { x } from 'module';"#;
+        let src = r"import { x } from 'module';";
         let parsed = crate::parse(src, "import.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
         let mut builder = FactBuilder::new(&resolver);
@@ -438,7 +498,7 @@ mod tests {
 
     #[test]
     fn class_fact_is_emitted_for_class_declaration() {
-        let src = r#"class Foo extends Bar {}"#;
+        let src = r"class Foo extends Bar {}";
         let parsed = crate::parse(src, "class.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
         let mut builder = FactBuilder::new(&resolver);
@@ -457,12 +517,12 @@ mod tests {
 
     #[test]
     fn instance_class_is_captured_for_this_calls() {
-        let src = r#"
+        let src = r"
             import { Base } from 'lib';
             class Foo extends Base {
                 bar() { this.baz(); }
             }
-        "#;
+        ";
         let parsed = crate::parse(src, "instance.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
         let mut builder = FactBuilder::new(&resolver);

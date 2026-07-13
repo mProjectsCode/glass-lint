@@ -120,7 +120,7 @@ mod tests {
         ApiEvidence {
             kind: ApiMatchKind::Call,
             symbol: symbol.into(),
-            count: spans.len() as u32,
+            count: u32::try_from(spans.len()).unwrap_or(u32::MAX),
             spans: spans
                 .iter()
                 .map(|position| Span::new(BytePos(*position), BytePos(*position + 1)))

@@ -8,7 +8,6 @@ use super::{
 
 impl MatcherFacts {
     pub(in crate::analysis) fn compute_argument_evidence_from_stream(
-        &self,
         stream: &FactStream,
         member_argument_matchers: &[(usize, &MemberCallMatcher)],
         call_argument_matchers: &[(usize, &CallMatcher)],
@@ -28,7 +27,7 @@ impl MatcherFacts {
             {
                 // Member argument predicates use the original args.
                 if !member_argument_matchers.is_empty() {
-                    self.collect_member_argument_evidence_from_args(
+                    Self::collect_member_argument_evidence_from_args(
                         member_argument_matchers,
                         argument_evidence,
                         fact.id,
@@ -49,7 +48,7 @@ impl MatcherFacts {
                         } else {
                             (args, callee_name.as_deref(), call_provenance)
                         };
-                    self.collect_call_argument_evidence_from_args(
+                    Self::collect_call_argument_evidence_from_args(
                         call_argument_matchers,
                         argument_evidence,
                         fact.id,
@@ -65,7 +64,6 @@ impl MatcherFacts {
 
     #[allow(clippy::too_many_arguments)]
     fn collect_call_argument_evidence_from_args(
-        &self,
         matchers: &[(usize, &CallMatcher)],
         evidence: &mut [Vec<ApiEvidence>],
         event: FactId,
@@ -90,7 +88,6 @@ impl MatcherFacts {
 
     #[allow(clippy::too_many_arguments)]
     fn collect_member_argument_evidence_from_args(
-        &self,
         matchers: &[(usize, &MemberCallMatcher)],
         evidence: &mut [Vec<ApiEvidence>],
         event: FactId,

@@ -7,6 +7,7 @@
 use super::{AbruptExit, ControlFrame, ControlKind, FlowEnvironment, ObjectFlowProjector};
 
 impl ObjectFlowProjector<'_, '_> {
+    #[allow(clippy::too_many_lines)]
     pub(super) fn transfer_control(
         &mut self,
         kind: ControlKind,
@@ -208,7 +209,7 @@ impl ObjectFlowProjector<'_, '_> {
                             FlowEnvironment::join(&normal, &current)
                         }));
                     }
-                    *normal_exit = normal.clone();
+                    normal_exit.clone_from(&normal);
                     let mut incoming = Vec::new();
                     if let Some(normal) = normal {
                         incoming.push(normal);

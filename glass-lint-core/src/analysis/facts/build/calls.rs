@@ -35,7 +35,7 @@ impl FactBuilder<'_> {
                                 }],
                                 spread: false,
                             },
-                            |argument| self.bound_arg_info(argument),
+                            FactBuilder::bound_arg_info,
                         )
                     })
                     .collect::<Vec<_>>()
@@ -190,7 +190,10 @@ impl FactBuilder<'_> {
             Pat::Array(array) => {
                 for (index, element) in array.elems.iter().enumerate() {
                     let Some(element) = element else { continue };
-                    let path = self.append_path(path, PathSegment::Index(index as u32));
+                    let Ok(index) = u32::try_from(index) else {
+                        continue;
+                    };
+                    let path = self.append_path(path, PathSegment::Index(index));
                     self.parameter_bindings(element, parameter_index, path, default, rest, output);
                 }
             }
@@ -260,7 +263,6 @@ impl FactBuilder<'_> {
         match property.as_str() {
             "call" if !call.args.is_empty() => {
                 let chain = self.resolve_target_chain(&member.obj);
-                let receiver = self.receiver_chain(&call.args[0].expr);
                 let effective_args: Vec<_> = call.args[1..]
                     .iter()
                     .map(|a| self.arg_info(&a.expr))
@@ -269,7 +271,6 @@ impl FactBuilder<'_> {
                 let resolved = self.resolve_call_callee(target);
                 let unwrap = Some(Box::new(CallUnwrap {
                     chain: chain.unwrap_or_default(),
-                    receiver,
                     effective_args,
                 }));
                 self.emit_call(call.span, resolved, &call.args, unwrap);
@@ -280,12 +281,10 @@ impl FactBuilder<'_> {
                     return;
                 };
                 let chain = self.resolve_target_chain(&member.obj);
-                let receiver = self.receiver_chain(&call.args[0].expr);
                 let target = crate::analysis::syntax::effective_callee_expr(&member.obj);
                 let resolved = self.resolve_call_callee(target);
                 let unwrap = Some(Box::new(CallUnwrap {
                     chain: chain.unwrap_or_default(),
-                    receiver,
                     effective_args,
                 }));
                 self.emit_call(call.span, resolved, &call.args, unwrap);
@@ -305,7 +304,6 @@ impl FactBuilder<'_> {
         match property.as_str() {
             "call" if !call.args.is_empty() => {
                 let chain = self.resolve_target_chain(&member.obj);
-                let receiver = self.receiver_chain(&call.args[0].expr);
                 let effective_args: Vec<_> = call.args[1..]
                     .iter()
                     .map(|a| self.arg_info(&a.expr))
@@ -314,7 +312,6 @@ impl FactBuilder<'_> {
                 let resolved = self.resolve_call_callee(target);
                 let unwrap = Some(Box::new(CallUnwrap {
                     chain: chain.unwrap_or_default(),
-                    receiver,
                     effective_args,
                 }));
                 self.emit_call(call.span, resolved, &call.args, unwrap);
@@ -325,12 +322,10 @@ impl FactBuilder<'_> {
                     return;
                 };
                 let chain = self.resolve_target_chain(&member.obj);
-                let receiver = self.receiver_chain(&call.args[0].expr);
                 let target = crate::analysis::syntax::effective_callee_expr(&member.obj);
                 let resolved = self.resolve_call_callee(target);
                 let unwrap = Some(Box::new(CallUnwrap {
                     chain: chain.unwrap_or_default(),
-                    receiver,
                     effective_args,
                 }));
                 self.emit_call(call.span, resolved, &call.args, unwrap);

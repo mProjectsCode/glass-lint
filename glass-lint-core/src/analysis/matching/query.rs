@@ -199,8 +199,9 @@ impl MatcherFacts {
     ) {
         for constructor in constructors {
             let spans = match &constructor.provenance {
-                CallProvenance::Any => self.global_constructors.get(&constructor.name),
-                CallProvenance::Global => self.global_constructors.get(&constructor.name),
+                CallProvenance::Any | CallProvenance::Global => {
+                    self.global_constructors.get(&constructor.name)
+                }
                 CallProvenance::ModuleExport { module } => self
                     .module_constructors
                     .get(&(module.clone(), constructor.name.clone())),
@@ -249,7 +250,7 @@ impl MatcherFacts {
     #[cfg(test)]
     pub(super) fn record(&mut self, kind: ApiMatchKind, symbol: impl Into<String>, span: Span) {
         use crate::analysis::facts::FactId;
-        
+
         let symbol = symbol.into();
         match kind {
             ApiMatchKind::Call => {

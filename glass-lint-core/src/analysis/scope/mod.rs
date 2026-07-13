@@ -26,6 +26,7 @@ impl ScopeGraph {
         Self::collect_with_environment(program, &crate::Environment::default())
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(super) fn collect_with_environment(
         program: &Program,
         environment: &crate::Environment,

@@ -15,13 +15,24 @@ impl RootedExprContext for ScopeGraph {
             return None;
         }
         match self.binding_at(ident.sym.as_ref(), ident.span) {
-            Some(BindingProvenance::ValueAlias { target }) => Some(target.to_string()),
-            Some(BindingProvenance::BoundCallable { target, .. }) => Some(target.to_string()),
-            Some(BindingProvenance::BoundModuleCallable { .. }) => None,
-            Some(BindingProvenance::ReturnedObject { source }) => Some(source.to_string()),
-            Some(_) => None,
             None if self.environment.is_global(ident.sym.as_ref()) => Some(ident.sym.to_string()),
-            None => None,
+            Some(
+                BindingProvenance::ValueAlias { target }
+                | BindingProvenance::BoundCallable { target, .. },
+            ) => Some(target.to_string()),
+            Some(
+                BindingProvenance::BoundModuleCallable { .. }
+                | BindingProvenance::Local
+                | BindingProvenance::ModuleExport { .. }
+                | BindingProvenance::ModuleNamespace { .. }
+                | BindingProvenance::StaticString(_)
+                | BindingProvenance::StaticNumber(_)
+                | BindingProvenance::StaticStringArray(_)
+                | BindingProvenance::StaticObjectKeys(_)
+                | BindingProvenance::StaticObjectValues(_),
+            )
+            | None => None,
+            Some(BindingProvenance::ReturnedObject { source }) => Some(source.to_string()),
         }
     }
 

@@ -7,7 +7,6 @@ use swc_common::Span;
 // ── Fact stream types ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[allow(dead_code)]
 pub(in crate::analysis) struct FactId(pub(in crate::analysis) u32);
 
 impl FactId {
@@ -26,7 +25,6 @@ impl FactId {
 
 /// Semantic categories for facts stored in the stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[allow(dead_code)]
 pub(in crate::analysis) enum FactKind {
     Declaration,
     Assignment,
@@ -69,7 +67,6 @@ pub(in crate::analysis) enum FunctionBoundary {
 /// Pre-computed evaluation of a single argument at a call site.  Stored in
 /// the `Call` fact so argument predicates never need to reach back to the AST.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(in crate::analysis) struct CallArgInfo {
     pub(in crate::analysis) value: ValueId,
     pub(in crate::analysis) base_value: ValueId,
@@ -104,12 +101,9 @@ pub(in crate::analysis) struct ParameterBinding {
 
 /// Information about a `.call()`/`.apply()` unwrapping at a call site.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(in crate::analysis) struct CallUnwrap {
     /// The chain spelling of the target being called (e.g. `"fetch"` or `"mod.fn"`).
     pub(in crate::analysis) chain: String,
-    /// Receiver expression for `.call(receiver, ...)` / `.apply(receiver, ...)`.
-    pub(in crate::analysis) receiver: Option<String>,
     /// Effective arguments after removing the receiver and options/array wrapper.
     pub(in crate::analysis) effective_args: Vec<CallArgInfo>,
 }
@@ -118,17 +112,22 @@ pub(in crate::analysis) struct CallUnwrap {
 /// nodes, formatted identity strings used as matcher/rule indexes, or
 /// matcher-specific state.  All provenance is resolved once at build time.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(in crate::analysis) enum FactPayload {
     /// Identifier or literal reference. A static string is a projection of
     /// this value/reference fact, not a parallel `StringLiteral` fact kind;
     /// string matchers consume the projection through the occurrence index.
     Reference {
+        // Kept even before a matcher consumes it: reference identity is the
+        // canonical input for future value-use and connected-flow matchers.
+        #[allow(dead_code)]
         value: ValueId,
         static_string: Option<String>,
     },
     /// Member expression read.
     MemberRead {
+        // Kept so a future read/value-flow matcher can connect this event to
+        // declarations and assignments without another AST traversal.
+        #[allow(dead_code)]
         value: ValueId,
         syntactic_chain: Option<String>,
         rooted_chain: Option<String>,
@@ -150,12 +149,18 @@ pub(in crate::analysis) enum FactPayload {
     PropertyWrite {
         target: ValueId,
         receiver: ValueId,
+        // Static-value matching uses `static_value` today, while `source`
+        // preserves the RHS identity needed by future property-flow matchers.
+        #[allow(dead_code)]
         source: ValueId,
         property: Option<String>,
         static_value: Option<String>,
     },
     /// Function or method call.
     Call {
+        // Provenance matchers do not consume the identity yet, but callable
+        // value flow needs the callee linked to its declaration or alias.
+        #[allow(dead_code)]
         callee: ValueId,
         receiver: Option<ValueId>,
         result: ValueId,
@@ -178,7 +183,6 @@ pub(in crate::analysis) enum FactPayload {
     Function {
         id: FunctionId,
         owner: FunctionId,
-        name: Option<String>,
         parameters: Vec<ParameterBinding>,
         boundary: FunctionBoundary,
     },
@@ -188,7 +192,12 @@ pub(in crate::analysis) enum FactPayload {
     },
     /// `new Constructor()`.
     Construction {
+        // Constructor identity and the allocated value are retained together
+        // so construction can become a connected-flow source without
+        // changing matcher-independent fact construction.
+        #[allow(dead_code)]
         callee: ValueId,
+        #[allow(dead_code)]
         result: ValueId,
         callee_span: Span,
         callee_name: Option<String>,
@@ -207,12 +216,11 @@ pub(in crate::analysis) enum FactPayload {
 
 /// A single, immutable semantic fact in the canonical stream.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub(in crate::analysis) struct SemanticFact {
     pub(in crate::analysis) id: FactId,
     pub(in crate::analysis) span: Span,
-    pub(in crate::analysis) scope: usize,
     pub(in crate::analysis) function: FunctionId,
+    #[cfg(test)]
     pub(in crate::analysis) kind: FactKind,
     pub(in crate::analysis) payload: FactPayload,
 }

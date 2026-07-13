@@ -9,7 +9,6 @@ use std::cell::RefCell;
 use swc_common::BytePos;
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub(in crate::analysis) struct FactStream {
     facts: Vec<SemanticFact>,
     paths: RefCell<PathInterner>,
@@ -41,14 +40,13 @@ impl FactStream {
         self.facts.push(fact);
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(super) fn len(&self) -> usize {
         self.facts.len()
     }
     pub(super) fn is_valid(&self) -> bool {
         self.valid
     }
-    #[allow(dead_code)]
     pub(in crate::analysis) fn fact(&self, id: FactId) -> Option<&SemanticFact> {
         self.facts.get(id.index()?)
     }
@@ -82,7 +80,6 @@ impl FactStream {
             .filter(|fact| fact.span.lo() == lo && fact.span.hi() == hi && fact.kind == kind)
             .collect()
     }
-    #[allow(dead_code)]
     pub(in crate::analysis) fn facts(&self) -> &[SemanticFact] {
         &self.facts
     }

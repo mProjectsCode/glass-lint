@@ -4,10 +4,12 @@
 //! together. A rooted spelling is useful only when every relevant binding and
 //! property write remains proven at the use position.
 
+#![allow(clippy::match_same_arms)]
+
 use super::{
     BindingKey, BindingProvenance, Expr, Ident, IdentValueSeed, MemberExpr, MemberValueSeed,
-    ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant,
-    contains, member_prefix_ends, member_root_ident,
+    ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant, contains,
+    member_prefix_ends, member_root_ident,
 };
 
 impl ScopeGraph {

@@ -36,7 +36,6 @@ impl FactBuilder<'_> {
             FactPayload::Function {
                 id,
                 owner,
-                name: None,
                 parameters: parameter_bindings,
                 boundary,
             },

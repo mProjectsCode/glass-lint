@@ -47,7 +47,7 @@ impl Resolver {
         // Calls normally produce fresh, opaque values. `.bind` is the modeled
         // exception because it preserves a callable's target and arguments.
         let Callee::Expr(callee) = &call.callee else {
-            return self.unknown();
+            return Resolver::unknown();
         };
         let Expr::Member(member) = &**callee else {
             return self.fresh_object_value_at(call.span);

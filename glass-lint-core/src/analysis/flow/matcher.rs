@@ -8,8 +8,9 @@ impl ValueMatcher {
     /// Match a value against a known static string without widening unknowns.
     pub(in crate::analysis) fn matches_static(&self, value: &str) -> bool {
         match &self.kind {
-            ValueMatcherKind::Any => true,
-            ValueMatcherKind::StaticString(StaticStringPredicate::Any) => true,
+            ValueMatcherKind::Any | ValueMatcherKind::StaticString(StaticStringPredicate::Any) => {
+                true
+            }
             ValueMatcherKind::StaticString(StaticStringPredicate::Exact(values)) => {
                 values.iter().any(|expected| expected == value)
             }

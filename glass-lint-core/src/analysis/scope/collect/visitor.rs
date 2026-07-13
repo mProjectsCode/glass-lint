@@ -48,6 +48,7 @@ impl Visit for AliasCollector {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn visit_var_decl(&mut self, var_decl: &VarDecl) {
         let scope = self.binding_scope(var_decl.kind);
         for declarator in &var_decl.decls {
@@ -227,7 +228,7 @@ impl Visit for AliasCollector {
                     );
                 }
             }
-            _ => {}
+            AssignTarget::Simple(_) => {}
         }
         assignment.visit_children_with(self);
     }

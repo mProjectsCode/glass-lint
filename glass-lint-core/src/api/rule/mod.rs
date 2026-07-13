@@ -89,16 +89,19 @@ pub struct ApiRuleBuilder {
 }
 
 impl ApiRuleBuilder {
+    #[must_use]
     pub fn matcher(mut self, matcher: impl Into<Matcher>) -> Self {
         self.matchers.push(matcher.into());
         self
     }
 
+    #[must_use]
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
     }
 
+    #[must_use]
     pub fn category(mut self, category: impl Into<ApiCategory>) -> Self {
         self.category = Some(category.into());
         self

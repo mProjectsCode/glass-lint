@@ -32,7 +32,7 @@ pub(in crate::analysis) struct SemanticFacts {
 impl SemanticFacts {
     pub(in crate::analysis) fn build(
         program: &Program,
-        resolver: Resolver,
+        resolver: &Resolver,
         matchers: &CompiledMatcherCatalog<'_>,
     ) -> Self {
         let member_argument_matchers = matchers
@@ -69,7 +69,7 @@ impl SemanticFacts {
             .collect::<Vec<_>>();
 
         // Build the canonical fact stream from the authoritative FactBuilder.
-        let mut builder = FactBuilder::new(&resolver);
+        let mut builder = FactBuilder::new(resolver);
         swc_ecma_visit::VisitWith::visit_with(program, &mut builder);
         let stream = builder.into_stream();
 
@@ -86,7 +86,7 @@ impl SemanticFacts {
 
         // Compute argument evidence from pre-computed fact data.
         let mut argument_evidence = vec![Vec::new(); matchers.len()];
-        index.compute_argument_evidence_from_stream(
+        MatcherFacts::compute_argument_evidence_from_stream(
             &stream,
             &member_argument_matchers,
             &call_argument_matchers,
@@ -121,7 +121,6 @@ mod tests {
         SemanticFact {
             id: FactId(id),
             span,
-            scope: 0,
             function: FunctionId(0),
             kind,
             payload: match kind {
@@ -155,7 +154,6 @@ mod tests {
                 FactKind::Function => FactPayload::Function {
                     id: FunctionId(0),
                     owner: FunctionId(0),
-                    name: None,
                     parameters: Vec::new(),
                     boundary: FunctionBoundary::Enter,
                 },
@@ -220,7 +218,9 @@ mod tests {
         assert_eq!(FactId::from_index(0), Some(FactId(0)));
         assert_eq!(
             FactId::from_index(MAX_FACTS - 1),
-            Some(FactId((MAX_FACTS - 1) as u32))
+            Some(FactId(
+                u32::try_from(MAX_FACTS - 1).expect("fact limit fits in FactId")
+            ))
         );
         assert_eq!(FactId::from_index(MAX_FACTS), None);
         assert_eq!(FactId(u32::MAX).index(), None);
@@ -246,7 +246,7 @@ mod tests {
             let catalog = CompiledMatcherCatalog::new(matchers, &selected);
             format!(
                 "{:?}",
-                SemanticFacts::build(&parsed.program, resolver, &catalog).index
+                SemanticFacts::build(&parsed.program, &resolver, &catalog).index
             )
         };
 
@@ -326,11 +326,11 @@ mod tests {
     /// member call entries for the target.
     #[test]
     fn call_apply_unwrapping_populates_indexes() {
-        let src = r#"
+        let src = r"
             function fetch(url) { return url; }
             fetch.call(null, '/api');
             fetch.apply(null, ['/api']);
-        "#;
+        ";
         let parsed = crate::parse(src, "unwrap.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
 

@@ -1,3 +1,5 @@
+#![allow(clippy::format_push_string)]
+
 use anyhow::Result;
 use glass_lint_core::LintReport;
 

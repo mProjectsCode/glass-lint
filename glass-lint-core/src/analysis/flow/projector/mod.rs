@@ -308,9 +308,9 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 }
                 if let Some(source) = SourceCall::from_parts(
                     fact.id,
-                    rooted_chain,
-                    syntactic_chain,
-                    callee_name,
+                    rooted_chain.as_deref(),
+                    syntactic_chain.as_deref(),
+                    callee_name.as_deref(),
                     args,
                     unwrap.as_deref(),
                 ) {
@@ -397,7 +397,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     }
 
     fn allocate_object_id(&mut self) -> Option<ObjectId> {
-        if self.next_object_id >= self.limits.max_objects {
+        if self.next_object_id >= self.limits.objects {
             return None;
         }
         let object = ObjectId(self.next_object_id);

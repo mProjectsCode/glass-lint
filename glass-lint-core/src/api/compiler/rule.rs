@@ -220,15 +220,12 @@ pub(crate) fn compile_legacy_flow(flow: FlowMatcher) -> CompiledObjectFlow {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledRule {
-    #[allow(dead_code)]
-    pub(crate) catalog_index: usize,
     pub(crate) matcher: CompiledMatcherPlan,
 }
 
 impl CompiledRule {
-    pub(crate) fn new(catalog_index: usize, rule: &ApiRule) -> Self {
+    pub(crate) fn new(rule: &ApiRule) -> Self {
         Self {
-            catalog_index,
             matcher: rule.matcher_for_compilation(),
         }
     }

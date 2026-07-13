@@ -35,7 +35,10 @@ impl FactBuilder<'_> {
                     return (ValueId::UNKNOWN, PathId::EMPTY);
                 };
                 let path = if let Ok(index) = property.parse::<usize>() {
-                    self.append_path(path, PathSegment::Index(index as u32))
+                    let Ok(index) = u32::try_from(index) else {
+                        return (ValueId::UNKNOWN, PathId::EMPTY);
+                    };
+                    self.append_path(path, PathSegment::Index(index))
                 } else {
                     self.append_path(path, PathSegment::Property(property))
                 };
@@ -79,7 +82,10 @@ impl FactBuilder<'_> {
             Expr::Array(array) => {
                 for (index, element) in array.elems.iter().enumerate() {
                     let Some(element) = element else { continue };
-                    let path = self.append_path(path, PathSegment::Index(index as u32));
+                    let Ok(index) = u32::try_from(index) else {
+                        continue;
+                    };
+                    let path = self.append_path(path, PathSegment::Index(index));
                     self.collect_value_projections(&element.expr, path, output);
                 }
             }
@@ -93,7 +99,7 @@ impl FactBuilder<'_> {
         }
     }
 
-    pub(super) fn bound_arg_info(&mut self, argument: &BoundArgument) -> CallArgInfo {
+    pub(super) fn bound_arg_info(argument: &BoundArgument) -> CallArgInfo {
         match argument {
             BoundArgument::StaticString(value) => CallArgInfo {
                 value: ValueId::UNKNOWN,
@@ -140,21 +146,6 @@ impl FactBuilder<'_> {
     pub(super) fn resolve_target_chain(&self, target: &Expr) -> Option<String> {
         use crate::analysis::syntax::effective_callee_expr;
         let effective = effective_callee_expr(target);
-        match effective {
-            Expr::Ident(ident) => self
-                .resolver
-                .resolve_ident(ident)
-                .rooted_chain
-                .clone()
-                .or_else(|| Some(ident.sym.to_string())),
-            Expr::Member(member) => self.resolver.resolve_member(member).rooted_chain.clone(),
-            _ => self.resolver.rooted_expr_chain(effective),
-        }
-    }
-
-    pub(super) fn receiver_chain(&self, expr: &Expr) -> Option<String> {
-        use crate::analysis::syntax::effective_callee_expr;
-        let effective = effective_callee_expr(expr);
         match effective {
             Expr::Ident(ident) => self
                 .resolver

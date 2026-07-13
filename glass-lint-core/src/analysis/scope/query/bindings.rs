@@ -217,8 +217,8 @@ impl ScopeGraph {
         match self.binding_at(ident.sym.as_ref(), ident.span)? {
             BindingProvenance::BoundCallable {
                 bound_arguments, ..
-            } => Some(bound_arguments.clone()),
-            BindingProvenance::BoundModuleCallable {
+            }
+            | BindingProvenance::BoundModuleCallable {
                 bound_arguments, ..
             } => Some(bound_arguments.clone()),
             _ => None,

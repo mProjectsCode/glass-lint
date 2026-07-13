@@ -3,6 +3,8 @@
 //! These tests exercise the public linting API so matcher behavior is verified
 //! exactly as provider crates consume it.
 
+#![allow(clippy::needless_raw_string_hashes)]
+
 use glass_lint_core::{
     Environment, Linter, RuleCatalog,
     rules::{

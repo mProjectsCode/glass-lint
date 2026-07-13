@@ -34,9 +34,9 @@ impl SourceCall {
         };
         Self::from_parts(
             fact.id,
-            rooted_chain,
-            syntactic_chain,
-            callee_name,
+            rooted_chain.as_deref(),
+            syntactic_chain.as_deref(),
+            callee_name.as_deref(),
             args,
             unwrap.as_deref(),
         )
@@ -44,9 +44,9 @@ impl SourceCall {
 
     pub(super) fn from_parts(
         fact_id: FactId,
-        rooted_chain: &Option<String>,
-        syntactic_chain: &Option<String>,
-        callee_name: &Option<String>,
+        rooted_chain: Option<&str>,
+        syntactic_chain: Option<&str>,
+        callee_name: Option<&str>,
         args: &[CallArgInfo],
         unwrap: Option<&crate::analysis::facts::CallUnwrap>,
     ) -> Option<Self> {
@@ -54,9 +54,8 @@ impl SourceCall {
             || {
                 (
                     rooted_chain
-                        .as_deref()
-                        .or(syntactic_chain.as_deref())
-                        .or(callee_name.as_deref())
+                        .or(syntactic_chain)
+                        .or(callee_name)
                         .map(str::to_owned),
                     args.to_vec(),
                 )
@@ -81,7 +80,7 @@ impl ObjectFlowProjector<'_, '_> {
             && let Some((object, states)) =
                 self.match_source(&call.chain, &call.args, call.fact_id, call.rooted)
         {
-            if self.states.len().saturating_add(states.len()) > self.limits.max_states {
+            if self.states.len().saturating_add(states.len()) > self.limits.states {
                 return;
             }
             self.aliases.insert(target, object);

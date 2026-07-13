@@ -23,8 +23,9 @@ pub(super) struct FunctionSinkSummary {
 
 #[derive(Debug, Clone)]
 pub(super) struct FunctionSummary {
-    #[allow(dead_code)]
     pub(super) id: FunctionId,
+    // Retained to make lexical nesting available to future closure-aware
+    // summary propagation; current helper summaries only follow call edges.
     #[allow(dead_code)]
     pub(super) owner: FunctionId,
     pub(super) parameters: Vec<ParameterBinding>,
@@ -92,6 +93,7 @@ impl FunctionSummary {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> FunctionSummaries {
     let mut summaries = FunctionSummaries::default();
     let mut calls_by_function: BTreeMap<FunctionId, Vec<FactId>> = BTreeMap::new();

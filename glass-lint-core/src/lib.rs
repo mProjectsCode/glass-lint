@@ -15,8 +15,6 @@ pub use diagnostic::{
 pub use environment::{Environment, EnvironmentError};
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
 pub use parse::ParseDiagnostic;
-#[allow(unused_imports)]
-pub(crate) use parse::parse;
 pub use rule_id::RuleId;
 
 pub const REPORT_VERSION: u32 = 2;
@@ -33,3 +31,5 @@ pub mod rules {
         ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, ValueMatcher,
     };
 }
+#[cfg(test)]
+pub(crate) use parse::parse;

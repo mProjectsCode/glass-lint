@@ -32,6 +32,7 @@ impl MatcherFacts {
         self.module_constructors.normalize();
     }
 
+    #[allow(clippy::too_many_lines)]
     pub(in crate::analysis) fn build_from_stream(&mut self, stream: &FactStream) {
         // This is the sole projection from semantic facts into shared matcher
         // indexes. Rule selection must happen later, in query code.

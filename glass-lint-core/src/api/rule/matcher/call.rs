@@ -33,6 +33,7 @@ impl CallMatcher {
         }
     }
 
+    #[must_use]
     pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
         self.arguments.push(ArgumentConstraint {
             index,
@@ -46,6 +47,7 @@ impl CallMatcher {
         self.arg(index, ValueMatcher::static_string())
     }
 
+    #[must_use]
     pub fn arg_string<I, S>(self, index: usize, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -54,6 +56,7 @@ impl CallMatcher {
         self.arg(index, ValueMatcher::static_string().equals_any(values))
     }
 
+    #[must_use]
     pub fn arg_value(self, index: usize, value: impl Into<ValueMatcher>) -> Self {
         self.arg(index, value.into())
     }
@@ -80,6 +83,3 @@ pub enum CallProvenance {
     Global,
     ModuleExport { module: String },
 }
-
-#[allow(dead_code)]
-fn _value_matcher_is_used(_: ValueMatcher) {}

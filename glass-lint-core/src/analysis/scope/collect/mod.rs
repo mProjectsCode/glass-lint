@@ -618,8 +618,10 @@ impl AliasCollector {
 impl RootedExprContext for AliasCollector {
     fn rooted_ident_chain(&self, ident: &swc_ecma_ast::Ident) -> Option<String> {
         match self.visible_binding(ident.sym.as_ref()) {
-            Some(BindingProvenance::ValueAlias { target }) => Some(target.to_string()),
-            Some(BindingProvenance::BoundCallable { target, .. }) => Some(target.to_string()),
+            Some(
+                BindingProvenance::ValueAlias { target }
+                | BindingProvenance::BoundCallable { target, .. },
+            ) => Some(target.to_string()),
             Some(_) => None,
             None => Some(ident.sym.to_string()),
         }
@@ -678,7 +680,7 @@ mod tests {
 
     #[test]
     fn preserves_scope_order_for_all_scope_constructs() {
-        let source = r#"
+        let source = r"
             function outer(parameter) {
                 { let block = parameter; }
                 for (let index = 0; index < 1; index++) {
@@ -696,7 +698,7 @@ mod tests {
                 const functionValue = function named(value) { return value; };
                 const arrow = value => { return value; };
             }
-        "#;
+        ";
         let first = collect(source);
         let second = collect(source);
 

@@ -159,7 +159,7 @@ impl Visit for FactBuilder<'_> {
                     );
                 }
             }
-            _ => {}
+            swc_ecma_ast::AssignTarget::Simple(_) => {}
         }
     }
 
@@ -259,7 +259,7 @@ impl Visit for FactBuilder<'_> {
                     Expr::Member(member) => Some(member),
                     Expr::OptChain(inner) => match &*inner.base {
                         OptChainBase::Member(member) => Some(member),
-                        _ => None,
+                        OptChainBase::Call(_) => None,
                     },
                     _ => None,
                 };
