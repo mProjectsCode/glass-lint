@@ -1,14 +1,28 @@
 //! Rule-independent semantic fact identities and payloads.
 
 use super::super::syntax::{SymbolCallProvenance, SymbolMemberProvenance};
-use super::super::value::{FunctionId, ValueId};
-use swc_common::{BytePos, Span};
+use super::super::value::{FunctionId, PathId, ValueId};
+use swc_common::Span;
 
 // ── Fact stream types ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[allow(dead_code)]
 pub(in crate::analysis) struct FactId(pub(in crate::analysis) u32);
+
+impl FactId {
+    pub(in crate::analysis) fn from_index(index: usize) -> Option<Self> {
+        (index < MAX_FACTS)
+            .then(|| u32::try_from(index).ok().map(Self))
+            .flatten()
+    }
+
+    pub(in crate::analysis) fn index(self) -> Option<usize> {
+        usize::try_from(self.0)
+            .ok()
+            .filter(|index| *index < MAX_FACTS)
+    }
+}
 
 /// Semantic categories for facts stored in the stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -59,7 +73,7 @@ pub(in crate::analysis) enum FunctionBoundary {
 pub(in crate::analysis) struct CallArgInfo {
     pub(in crate::analysis) value: ValueId,
     pub(in crate::analysis) base_value: ValueId,
-    pub(in crate::analysis) base_path: Vec<ProjectionSegment>,
+    pub(in crate::analysis) base_path: PathId,
     pub(in crate::analysis) static_string: Option<String>,
     pub(in crate::analysis) object_keys: Option<Vec<String>>,
     pub(in crate::analysis) rooted_chain: Option<String>,
@@ -71,15 +85,9 @@ pub(in crate::analysis) struct CallArgInfo {
     pub(in crate::analysis) spread: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub(in crate::analysis) enum ProjectionSegment {
-    Property(String),
-    Index(usize),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis) struct ValueProjection {
-    pub(in crate::analysis) path: Vec<ProjectionSegment>,
+    pub(in crate::analysis) path: PathId,
     pub(in crate::analysis) value: ValueId,
 }
 
@@ -88,7 +96,7 @@ pub(in crate::analysis) struct ValueProjection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis) struct ParameterBinding {
     pub(in crate::analysis) parameter_index: usize,
-    pub(in crate::analysis) path: Vec<ProjectionSegment>,
+    pub(in crate::analysis) path: PathId,
     pub(in crate::analysis) value: ValueId,
     pub(in crate::analysis) default: Option<ValueId>,
     pub(in crate::analysis) rest: bool,
@@ -207,19 +215,6 @@ pub(in crate::analysis) struct SemanticFact {
     pub(in crate::analysis) function: FunctionId,
     pub(in crate::analysis) kind: FactKind,
     pub(in crate::analysis) payload: FactPayload,
-}
-
-/// Key for exact event lookup: `(lo, hi, kind, ordinal)` identifies
-/// individual facts at a given source position and semantic role.
-/// The ordinal distinguishes canonical same-span facts in deterministic
-/// insertion order.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[allow(dead_code)]
-pub(in crate::analysis) struct ExactEventKey {
-    pub(in crate::analysis) lo: BytePos,
-    pub(in crate::analysis) hi: BytePos,
-    pub(in crate::analysis) kind: FactKind,
-    pub(in crate::analysis) ordinal: u32,
 }
 
 pub(in crate::analysis) const MAX_FACTS: usize = 1 << 20;

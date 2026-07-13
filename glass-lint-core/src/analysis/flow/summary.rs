@@ -8,10 +8,8 @@
 use std::collections::BTreeMap;
 
 use super::super::facts::FactId;
-use super::super::facts::{
-    CallArgInfo, FactPayload, FactStream, ParameterBinding, ProjectionSegment,
-};
-use super::super::value::{FunctionId, ValueId};
+use super::super::facts::{CallArgInfo, FactPayload, FactStream, ParameterBinding};
+use super::super::value::{FunctionId, PathId, ValueId};
 use super::index::{FlowId, FlowIndex};
 use crate::api::compiler::CompiledObjectSinkArgs;
 
@@ -21,7 +19,7 @@ const MAX_SUMMARY_ROUNDS: usize = 64;
 pub(super) struct FunctionSinkSummary {
     pub(super) flow: FlowId,
     pub(super) parameter_index: usize,
-    pub(super) path: Vec<ProjectionSegment>,
+    pub(super) path: PathId,
 }
 
 #[derive(Debug, Clone)]
@@ -33,7 +31,9 @@ pub(super) struct FunctionSummary {
     pub(super) parameters: Vec<ParameterBinding>,
     pub(super) parameter_count: usize,
     pub(super) has_rest: bool,
-    pub(super) calls: Vec<CallProjection>,
+    /// Canonical fact identities avoid retaining cloned call payloads in the
+    /// summary. Resolve these through the immutable stream when projecting.
+    pub(super) calls: Vec<FactId>,
     pub(super) sinks: Vec<FunctionSinkSummary>,
     pub(super) writes: Vec<PropertyWriteProjection>,
     pub(super) returns: Vec<ReturnProjection>,
@@ -61,18 +61,28 @@ pub(super) struct SummaryInvalidation {
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct FunctionSummaries {
-    pub(super) by_id: BTreeMap<FunctionId, FunctionSummary>,
+    pub(super) by_id: Vec<Option<FunctionSummary>>,
 }
 
 impl FunctionSummaries {
     pub(super) fn get(&self, id: FunctionId) -> Option<&FunctionSummary> {
-        self.by_id.get(&id)
+        self.by_id.get(usize::try_from(id.0).ok()?)?.as_ref()
+    }
+
+    fn insert(&mut self, summary: FunctionSummary) {
+        let Some(index) = usize::try_from(summary.id.0).ok() else {
+            return;
+        };
+        if self.by_id.len() <= index {
+            self.by_id.resize_with(index + 1, || None);
+        }
+        self.by_id[index] = Some(summary);
     }
 }
 
 pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> FunctionSummaries {
     let mut summaries = FunctionSummaries::default();
-    let mut calls_by_function: BTreeMap<FunctionId, Vec<CallProjection>> = BTreeMap::new();
+    let mut calls_by_function: BTreeMap<FunctionId, Vec<FactId>> = BTreeMap::new();
 
     for fact in stream.facts() {
         match &fact.payload {
@@ -88,10 +98,8 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                     .map(|parameter| parameter.parameter_index)
                     .max()
                     .map_or(0, |index| index.saturating_add(1));
-                summaries
-                    .by_id
-                    .entry(*id)
-                    .or_insert_with(|| FunctionSummary {
+                if summaries.get(*id).is_none() {
+                    summaries.insert(FunctionSummary {
                         id: *id,
                         owner: *owner,
                         parameters: parameters.clone(),
@@ -103,11 +111,16 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                         returns: Vec::new(),
                         invalid: SummaryInvalidation::default(),
                     });
+                }
             }
             FactPayload::Assignment {
                 target, receiver, ..
             } => {
-                if let Some(summary) = summaries.by_id.get_mut(&fact.function) {
+                if let Some(summary) = summaries
+                    .by_id
+                    .get_mut(usize::try_from(fact.function.0).unwrap_or(usize::MAX))
+                    .and_then(Option::as_mut)
+                {
                     summary.invalid.reassigned = true;
                     summary.writes.push(PropertyWriteProjection {
                         event: fact.id,
@@ -123,7 +136,11 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                 property,
                 ..
             } => {
-                if let Some(summary) = summaries.by_id.get_mut(&fact.function) {
+                if let Some(summary) = summaries
+                    .by_id
+                    .get_mut(usize::try_from(fact.function.0).unwrap_or(usize::MAX))
+                    .and_then(Option::as_mut)
+                {
                     summary.writes.push(PropertyWriteProjection {
                         event: fact.id,
                         target: *target,
@@ -136,40 +153,39 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                 kind: crate::analysis::facts::ControlKind::Return,
                 ..
             } => {
-                if let Some(summary) = summaries.by_id.get_mut(&fact.function) {
+                if let Some(summary) = summaries
+                    .by_id
+                    .get_mut(usize::try_from(fact.function.0).unwrap_or(usize::MAX))
+                    .and_then(Option::as_mut)
+                {
                     summary.returns.push(ReturnProjection { event: fact.id });
                 }
             }
-            FactPayload::Call {
-                syntactic_chain,
-                rooted_chain,
-                target_function,
-                args,
-                ..
-            } => calls_by_function
+            FactPayload::Call { .. } => calls_by_function
                 .entry(fact.function)
                 .or_default()
-                .push(CallProjection {
-                    syntactic_chain: syntactic_chain.clone(),
-                    rooted_chain: rooted_chain.clone(),
-                    target_function: *target_function,
-                    args: args.clone(),
-                }),
+                .push(fact.id),
             _ => {}
         }
     }
 
     // First collect facts whose sink is directly visible in the function.
-    for (function, summary) in &mut summaries.by_id {
-        let Some(calls) = calls_by_function.get(function) else {
+    for summary in summaries.by_id.iter_mut().filter_map(Option::as_mut) {
+        let Some(call_ids) = calls_by_function.get(&summary.id) else {
             continue;
         };
-        summary.calls = calls.clone();
-        for call in calls {
-            let chain = call
-                .rooted_chain
-                .as_deref()
-                .or(call.syntactic_chain.as_deref());
+        summary.calls = call_ids.clone();
+        for call_id in call_ids {
+            let Some(FactPayload::Call {
+                syntactic_chain,
+                rooted_chain,
+                args,
+                ..
+            }) = stream.fact(*call_id).map(|fact| &fact.payload)
+            else {
+                continue;
+            };
+            let chain = rooted_chain.as_deref().or(syntactic_chain.as_deref());
             let Some(chain) = chain else { continue };
             let flow_ids = flow_index.sinks.get(chain).into_iter().flatten();
             for flow_id in flow_ids {
@@ -180,16 +196,19 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                     if !sink.member_calls.iter().any(|member| member == chain) {
                         continue;
                     }
-                    for argument_index in sink_argument_indices(&sink.args, call.args.len()) {
-                        let Some(argument) = call.args.get(argument_index) else {
+                    for argument_index in sink_argument_indices(&sink.args, args.len()) {
+                        let Some(argument) = args.get(argument_index) else {
                             continue;
                         };
                         if let Some(parameter) = summary.parameters.iter().find(|parameter| {
                             parameter.value != ValueId::UNKNOWN
                                 && parameter.value == argument.base_value
                         }) {
-                            let mut path = parameter.path.clone();
-                            path.extend(argument.base_path.clone());
+                            let Some(path) =
+                                stream.concat_paths(parameter.path, argument.base_path)
+                            else {
+                                continue;
+                            };
                             add_sink(
                                 summary,
                                 FunctionSinkSummary {
@@ -210,7 +229,11 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
     // monotone fixed point even for recursive SCCs.
     for _ in 0..MAX_SUMMARY_ROUNDS {
         let mut changed = false;
-        let function_ids = summaries.by_id.keys().copied().collect::<Vec<_>>();
+        let function_ids = summaries
+            .by_id
+            .iter()
+            .filter_map(|summary| summary.as_ref().map(|summary| summary.id))
+            .collect::<Vec<_>>();
         for caller in function_ids {
             let Some(calls) = calls_by_function.get(&caller) else {
                 continue;
@@ -219,14 +242,22 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                 .get(caller)
                 .map(|summary| summary.parameters.clone())
                 .unwrap_or_default();
-            for call in calls {
-                let Some(target) = call.target_function else {
+            for call_id in calls {
+                let Some(FactPayload::Call {
+                    target_function,
+                    args,
+                    ..
+                }) = stream.fact(*call_id).map(|fact| &fact.payload)
+                else {
+                    continue;
+                };
+                let Some(target) = *target_function else {
                     continue;
                 };
                 let Some(target_summary) = summaries.get(target).cloned() else {
                     continue;
                 };
-                if !invocation_is_compatible(&target_summary, &call.args) {
+                if !invocation_is_compatible(stream, &target_summary, args) {
                     continue;
                 }
                 for sink in target_summary.sinks {
@@ -234,14 +265,16 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                         target_summary.parameters.iter().find(|parameter| {
                             parameter.parameter_index == sink.parameter_index
                                 && (parameter.path == sink.path
-                                    || (parameter.rest && sink.path.starts_with(&parameter.path)))
+                                    || (parameter.rest
+                                        && stream.paths().starts_with(sink.path, parameter.path)))
                         })
                     else {
                         continue;
                     };
                     let mut target_parameter = target_parameter.clone();
-                    target_parameter.path = sink.path.clone();
-                    let Some(argument) = project_parameter_argument(&call.args, &target_parameter)
+                    target_parameter.path = sink.path;
+                    let Some(argument) =
+                        project_parameter_argument(stream, args, &target_parameter)
                     else {
                         continue;
                     };
@@ -255,9 +288,13 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                     let projection = FunctionSinkSummary {
                         flow: sink.flow,
                         parameter_index: caller_parameter.parameter_index,
-                        path: caller_parameter.path.clone(),
+                        path: caller_parameter.path,
                     };
-                    let Some(caller_summary) = summaries.by_id.get_mut(&caller) else {
+                    let Some(caller_summary) = summaries
+                        .by_id
+                        .get_mut(usize::try_from(caller.0).unwrap_or(usize::MAX))
+                        .and_then(Option::as_mut)
+                    else {
                         continue;
                     };
                     if !caller_summary.sinks.contains(&projection) {
@@ -272,16 +309,20 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
         }
     }
 
-    for summary in summaries.by_id.values_mut() {
+    for summary in summaries.by_id.iter_mut().filter_map(Option::as_mut) {
         summary
             .sinks
-            .sort_by_key(|sink| (sink.flow, sink.parameter_index, sink.path.clone()));
+            .sort_by_key(|sink| (sink.flow, sink.parameter_index, sink.path));
         summary.sinks.dedup();
     }
     summaries
 }
 
-pub(super) fn invocation_is_compatible(summary: &FunctionSummary, args: &[CallArgInfo]) -> bool {
+pub(super) fn invocation_is_compatible(
+    stream: &FactStream,
+    summary: &FunctionSummary,
+    args: &[CallArgInfo],
+) -> bool {
     if args.iter().any(|argument| argument.spread) {
         return false;
     }
@@ -307,7 +348,9 @@ pub(super) fn invocation_is_compatible(summary: &FunctionSummary, args: &[CallAr
             continue;
         }
         // A missing nested property is unknown unless the leaf has a default.
-        if project_parameter_argument(args, parameter).is_none() && parameter.default.is_none() {
+        if project_parameter_argument(stream, args, parameter).is_none()
+            && parameter.default.is_none()
+        {
             return false;
         }
     }
@@ -315,6 +358,7 @@ pub(super) fn invocation_is_compatible(summary: &FunctionSummary, args: &[CallAr
 }
 
 pub(super) fn project_parameter_argument(
+    stream: &FactStream,
     args: &[CallArgInfo],
     parameter: &ParameterBinding,
 ) -> Option<ValueId> {
@@ -329,15 +373,14 @@ pub(super) fn project_parameter_argument(
     if argument.spread {
         return None;
     }
+
     if parameter.rest {
-        let Some(ProjectionSegment::Index(index)) = parameter.path.first() else {
-            return None;
-        };
-        let argument = args.get(parameter.parameter_index.saturating_add(*index))?;
+        let index = stream.paths().first_index(parameter.path)?;
+        let argument = args.get(parameter.parameter_index.saturating_add(index as usize))?;
         if argument.spread {
             return None;
         }
-        let path = &parameter.path[1..];
+        let path = stream.paths().without_first(parameter.path)?;
         if path.is_empty() {
             return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
         }
@@ -348,9 +391,11 @@ pub(super) fn project_parameter_argument(
             .map(|projection| projection.value)
             .filter(|value| *value != ValueId::UNKNOWN);
     }
+
     if parameter.path.is_empty() {
         return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
     }
+
     argument
         .projections
         .iter()
@@ -377,14 +422,6 @@ fn add_sink(summary: &mut FunctionSummary, sink: FunctionSinkSummary) {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct CallProjection {
-    syntactic_chain: Option<String>,
-    rooted_chain: Option<String>,
-    target_function: Option<FunctionId>,
-    args: Vec<CallArgInfo>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,7 +442,8 @@ mod tests {
         assert_eq!(
             summaries
                 .by_id
-                .values()
+                .iter()
+                .filter_map(Option::as_ref)
                 .filter(|summary| summary.parameters.len() == 1)
                 .count(),
             2

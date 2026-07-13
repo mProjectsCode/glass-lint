@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'rules> ObjectFlowProjector<'rules> {
+impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     pub(super) fn assign(&mut self, target: ValueId, source: ValueId) {
         if target == ValueId::UNKNOWN {
             return;

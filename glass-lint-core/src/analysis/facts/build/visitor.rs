@@ -182,6 +182,7 @@ impl Visit for FactBuilder<'_> {
     fn visit_call_expr(&mut self, call: &CallExpr) {
         let Callee::Expr(callee_expr) = &call.callee else {
             let result = self.call_result(call.span());
+            let args = self.args_info(&call.args);
             self.emit(
                 FactKind::Call,
                 call.span(),
@@ -198,7 +199,7 @@ impl Visit for FactBuilder<'_> {
                     returned_member: None,
                     instance_class: None,
                     target_function: None,
-                    args: self.args_info(&call.args),
+                    args,
                     unwrap: None,
                 },
             );

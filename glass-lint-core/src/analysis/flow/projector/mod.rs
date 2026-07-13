@@ -75,6 +75,7 @@ pub(super) fn collect_with_limits(
         .collect::<BTreeMap<_, _>>();
 
     let mut projector = ObjectFlowProjector {
+        stream,
         flow_index,
         helpers,
         calls_by_result,
@@ -99,7 +100,8 @@ pub(super) fn collect_with_limits(
 }
 
 #[derive(Debug)]
-struct ObjectFlowProjector<'rules> {
+struct ObjectFlowProjector<'rules, 'stream> {
+    stream: &'stream FactStream,
     flow_index: FlowIndex<'rules>,
     helpers: FunctionSummaries,
     calls_by_result: BTreeMap<ValueId, SourceCall>,
@@ -170,7 +172,7 @@ struct SourceCall {
     rooted: bool,
 }
 
-impl<'rules> ObjectFlowProjector<'rules> {
+impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
         match &fact.payload {
             FactPayload::Function { boundary, .. } => match boundary {

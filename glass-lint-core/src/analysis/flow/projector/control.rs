@@ -1,6 +1,6 @@
 use super::*;
 
-impl<'rules> ObjectFlowProjector<'rules> {
+impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     pub(super) fn transfer_control(
         &mut self,
         kind: ControlKind,

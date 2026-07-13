@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_lookup_distinguishes_equal_span_kinds_and_ordinals() {
+    fn direct_lookup_and_linear_test_helper_preserve_fact_order() {
         let span = Span::new(BytePos(10), BytePos(20));
         let mut stream = FactStream::new();
         stream.push(test_fact(0, FactKind::Call, span));
@@ -188,18 +188,18 @@ mod tests {
             vec![FactId(0), FactId(2)]
         );
         assert_eq!(
-            stream.exact_lookup(&ExactEventKey {
-                lo: span.lo(),
-                hi: span.hi(),
-                kind: FactKind::Call,
-                ordinal: 1,
-            }),
-            vec![FactId(2)]
+            stream.fact(FactId(0)).map(|fact| fact.kind),
+            Some(FactKind::Call)
         );
+        assert_eq!(
+            stream.fact(FactId(2)).map(|fact| fact.kind),
+            Some(FactKind::Call)
+        );
+        assert!(stream.fact(FactId(3)).is_none());
     }
 
     #[test]
-    fn dense_exact_lookup_preserves_every_same_span_fact() {
+    fn dense_fact_stream_preserves_every_same_span_fact() {
         let span = Span::new(BytePos(100), BytePos(120));
         let mut stream = FactStream::new();
         for id in 0..10_001 {
@@ -210,14 +210,20 @@ mod tests {
         assert_eq!(calls.first().map(|fact| fact.id), Some(FactId(0)));
         assert_eq!(calls.last().map(|fact| fact.id), Some(FactId(10_000)));
         assert_eq!(
-            stream.exact_lookup(&ExactEventKey {
-                lo: span.lo(),
-                hi: span.hi(),
-                kind: FactKind::Call,
-                ordinal: 10_000,
-            }),
-            vec![FactId(10_000)]
+            stream.fact(FactId(10_000)).map(|fact| fact.id),
+            Some(FactId(10_000))
         );
+    }
+
+    #[test]
+    fn fact_ids_have_checked_collection_boundaries() {
+        assert_eq!(FactId::from_index(0), Some(FactId(0)));
+        assert_eq!(
+            FactId::from_index(MAX_FACTS - 1),
+            Some(FactId((MAX_FACTS - 1) as u32))
+        );
+        assert_eq!(FactId::from_index(MAX_FACTS), None);
+        assert_eq!(FactId(u32::MAX).index(), None);
     }
 
     #[test]

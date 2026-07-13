@@ -24,7 +24,7 @@ impl<'a> FactBuilder<'a> {
             self.parameter_bindings(
                 &parameter,
                 parameter_index,
-                &mut Vec::new(),
+                PathId::EMPTY,
                 None,
                 false,
                 &mut parameter_bindings,

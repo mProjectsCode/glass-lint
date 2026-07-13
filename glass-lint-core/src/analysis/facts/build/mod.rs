@@ -23,14 +23,14 @@ use swc_ecma_visit::{Visit, VisitWith};
 
 use super::{
     CallArgInfo, CallUnwrap, ControlKind, FactId, FactKind, FactPayload, FactStream,
-    FunctionBoundary, ParameterBinding, ProjectionSegment, SemanticFact, ValueProjection,
+    FunctionBoundary, ParameterBinding, SemanticFact, ValueProjection,
 };
 use crate::analysis::resolution::Resolver;
 use crate::analysis::scope::BoundArgument;
 use crate::analysis::syntax::{
     SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_prop_name,
 };
-use crate::analysis::value::ValueId;
+use crate::analysis::value::{PathId, PathSegment, ValueId};
 
 /// The single authoritative semantic fact builder.  After the lexical
 /// scope prepass, this visitor walks the AST exactly once and emits an
@@ -63,7 +63,7 @@ impl<'a> FactBuilder<'a> {
         if self.next_id as usize >= super::MAX_FACTS {
             return None;
         }
-        let id = FactId(self.next_id);
+        let id = FactId::from_index(self.next_id as usize)?;
         self.next_id = self.next_id.checked_add(1)?;
         Some(id)
     }
@@ -74,6 +74,12 @@ impl<'a> FactBuilder<'a> {
             .first()
             .copied()
             .unwrap_or(0)
+    }
+
+    fn append_path(&mut self, parent: PathId, segment: PathSegment) -> PathId {
+        self.stream
+            .intern_path(parent, segment)
+            .unwrap_or(PathId::EMPTY)
     }
 
     fn emit(&mut self, kind: FactKind, span: Span, payload: FactPayload) {

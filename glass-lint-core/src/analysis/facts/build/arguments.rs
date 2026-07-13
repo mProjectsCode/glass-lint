@@ -1,14 +1,14 @@
 use super::*;
 
 impl<'a> FactBuilder<'a> {
-    pub(super) fn arg_info(&self, expr: &Expr) -> CallArgInfo {
+    pub(super) fn arg_info(&mut self, expr: &Expr) -> CallArgInfo {
         let value = self.resolver.resolve_expr(expr).id;
         let (base_value, base_path) = self.expression_projection(expr);
         let mut projections = Vec::new();
-        self.collect_value_projections(expr, &mut Vec::new(), &mut projections);
+        self.collect_value_projections(expr, PathId::EMPTY, &mut projections);
         if projections.is_empty() {
             projections.push(ValueProjection {
-                path: Vec::new(),
+                path: PathId::EMPTY,
                 value,
             });
         }
@@ -24,39 +24,37 @@ impl<'a> FactBuilder<'a> {
         }
     }
 
-    pub(super) fn expression_projection(&self, expr: &Expr) -> (ValueId, Vec<ProjectionSegment>) {
+    pub(super) fn expression_projection(&mut self, expr: &Expr) -> (ValueId, PathId) {
         match expr {
             Expr::Member(member) => {
-                let (base, mut path) = self.expression_projection(&member.obj);
+                let (base, path) = self.expression_projection(&member.obj);
                 let Some(property) = member_prop_name(&member.prop) else {
-                    return (ValueId::UNKNOWN, Vec::new());
+                    return (ValueId::UNKNOWN, PathId::EMPTY);
                 };
-                if let Ok(index) = property.parse::<usize>() {
-                    path.push(ProjectionSegment::Index(index));
+                let path = if let Ok(index) = property.parse::<usize>() {
+                    self.append_path(path, PathSegment::Index(index as u32))
                 } else {
-                    path.push(ProjectionSegment::Property(property));
-                }
+                    self.append_path(path, PathSegment::Property(property))
+                };
                 (base, path)
             }
             Expr::Paren(paren) => self.expression_projection(&paren.expr),
-            Expr::Seq(sequence) => sequence
-                .exprs
-                .last()
-                .map_or((self.resolver.resolve_expr(expr).id, Vec::new()), |last| {
-                    self.expression_projection(last)
-                }),
-            _ => (self.resolver.resolve_expr(expr).id, Vec::new()),
+            Expr::Seq(sequence) => sequence.exprs.last().map_or(
+                (self.resolver.resolve_expr(expr).id, PathId::EMPTY),
+                |last| self.expression_projection(last),
+            ),
+            _ => (self.resolver.resolve_expr(expr).id, PathId::EMPTY),
         }
     }
 
     pub(super) fn collect_value_projections(
-        &self,
+        &mut self,
         expr: &Expr,
-        path: &mut Vec<ProjectionSegment>,
+        path: PathId,
         output: &mut Vec<ValueProjection>,
     ) {
         output.push(ValueProjection {
-            path: path.clone(),
+            path,
             value: self.resolver.resolve_expr(expr).id,
         });
         match expr {
@@ -71,17 +69,15 @@ impl<'a> FactBuilder<'a> {
                     let Some(name) = crate::analysis::syntax::prop_name(&property.key) else {
                         continue;
                     };
-                    path.push(ProjectionSegment::Property(name));
+                    let path = self.append_path(path, PathSegment::Property(name));
                     self.collect_value_projections(&property.value, path, output);
-                    path.pop();
                 }
             }
             Expr::Array(array) => {
                 for (index, element) in array.elems.iter().enumerate() {
                     let Some(element) = element else { continue };
-                    path.push(ProjectionSegment::Index(index));
+                    let path = self.append_path(path, PathSegment::Index(index as u32));
                     self.collect_value_projections(&element.expr, path, output);
-                    path.pop();
                 }
             }
             Expr::Paren(paren) => self.collect_value_projections(&paren.expr, path, output),
@@ -94,17 +90,17 @@ impl<'a> FactBuilder<'a> {
         }
     }
 
-    pub(super) fn bound_arg_info(&self, argument: &BoundArgument) -> CallArgInfo {
+    pub(super) fn bound_arg_info(&mut self, argument: &BoundArgument) -> CallArgInfo {
         match argument {
             BoundArgument::StaticString(value) => CallArgInfo {
                 value: ValueId::UNKNOWN,
                 base_value: ValueId::UNKNOWN,
-                base_path: Vec::new(),
+                base_path: PathId::EMPTY,
                 static_string: Some(value.clone()),
                 object_keys: None,
                 rooted_chain: None,
                 projections: vec![ValueProjection {
-                    path: Vec::new(),
+                    path: PathId::EMPTY,
                     value: ValueId::UNKNOWN,
                 }],
                 spread: false,
@@ -112,12 +108,12 @@ impl<'a> FactBuilder<'a> {
             BoundArgument::RootedExpression(chain) => CallArgInfo {
                 value: ValueId::UNKNOWN,
                 base_value: ValueId::UNKNOWN,
-                base_path: Vec::new(),
+                base_path: PathId::EMPTY,
                 static_string: None,
                 object_keys: None,
                 rooted_chain: Some(chain.to_string()),
                 projections: vec![ValueProjection {
-                    path: Vec::new(),
+                    path: PathId::EMPTY,
                     value: ValueId::UNKNOWN,
                 }],
                 spread: false,
@@ -125,7 +121,7 @@ impl<'a> FactBuilder<'a> {
         }
     }
 
-    pub(super) fn args_info(&self, args: &[ExprOrSpread]) -> Vec<CallArgInfo> {
+    pub(super) fn args_info(&mut self, args: &[ExprOrSpread]) -> Vec<CallArgInfo> {
         args.iter()
             .map(|arg| {
                 let mut info = self.arg_info(&arg.expr);

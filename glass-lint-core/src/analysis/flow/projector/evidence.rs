@@ -1,7 +1,7 @@
 use super::*;
 use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArgs};
 
-impl<'rules> ObjectFlowProjector<'rules> {
+impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     pub(super) fn record_configuration(
         &mut self,
         receiver: Option<ValueId>,
@@ -108,20 +108,21 @@ impl<'rules> ObjectFlowProjector<'rules> {
         let Some(summary) = self.helpers.get(function).cloned() else {
             return;
         };
-        if !invocation_is_compatible(&summary, args) {
+        if !invocation_is_compatible(self.stream, &summary, args) {
             return;
         }
         for sink in summary.sinks {
             let Some(parameter) = summary.parameters.iter().find(|parameter| {
                 parameter.parameter_index == sink.parameter_index
                     && (parameter.path == sink.path
-                        || (parameter.rest && sink.path.starts_with(&parameter.path)))
+                        || (parameter.rest
+                            && self.stream.paths().starts_with(sink.path, parameter.path)))
             }) else {
                 continue;
             };
             let mut parameter = parameter.clone();
-            parameter.path = sink.path.clone();
-            let Some(value) = project_parameter_argument(args, &parameter) else {
+            parameter.path = sink.path;
+            let Some(value) = project_parameter_argument(self.stream, args, &parameter) else {
                 continue;
             };
             let Some(object) = self.aliases.get(&value).copied() else {

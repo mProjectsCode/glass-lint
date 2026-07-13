@@ -20,12 +20,12 @@ impl<'a> FactBuilder<'a> {
                             || CallArgInfo {
                                 value: ValueId::UNKNOWN,
                                 base_value: ValueId::UNKNOWN,
-                                base_path: Vec::new(),
+                                base_path: PathId::EMPTY,
                                 static_string: None,
                                 object_keys: None,
                                 rooted_chain: None,
                                 projections: vec![ValueProjection {
-                                    path: Vec::new(),
+                                    path: PathId::EMPTY,
                                     value: ValueId::UNKNOWN,
                                 }],
                                 spread: false,
@@ -105,7 +105,7 @@ impl<'a> FactBuilder<'a> {
     }
 
     pub(super) fn pattern_write_targets(
-        &self,
+        &mut self,
         pattern: &Pat,
         targets: &mut Vec<(ValueId, Option<ValueId>)>,
     ) {
@@ -148,10 +148,10 @@ impl<'a> FactBuilder<'a> {
     }
 
     pub(super) fn parameter_bindings(
-        &self,
+        &mut self,
         pattern: &Pat,
         parameter_index: usize,
-        path: &mut Vec<ProjectionSegment>,
+        path: PathId,
         default: Option<ValueId>,
         rest: bool,
         output: &mut Vec<ParameterBinding>,
@@ -159,7 +159,7 @@ impl<'a> FactBuilder<'a> {
         match pattern {
             Pat::Ident(ident) => output.push(ParameterBinding {
                 parameter_index,
-                path: path.clone(),
+                path,
                 value: self.resolver.resolve_ident(&ident.id).id,
                 default,
                 rest,
@@ -185,9 +185,8 @@ impl<'a> FactBuilder<'a> {
             Pat::Array(array) => {
                 for (index, element) in array.elems.iter().enumerate() {
                     let Some(element) = element else { continue };
-                    path.push(ProjectionSegment::Index(index));
+                    let path = self.append_path(path, PathSegment::Index(index as u32));
                     self.parameter_bindings(element, parameter_index, path, default, rest, output);
-                    path.pop();
                 }
             }
             Pat::Object(object) => {
@@ -198,7 +197,7 @@ impl<'a> FactBuilder<'a> {
                             else {
                                 continue;
                             };
-                            path.push(ProjectionSegment::Property(name));
+                            let path = self.append_path(path, PathSegment::Property(name));
                             self.parameter_bindings(
                                 &property.value,
                                 parameter_index,
@@ -207,13 +206,15 @@ impl<'a> FactBuilder<'a> {
                                 rest,
                                 output,
                             );
-                            path.pop();
                         }
                         swc_ecma_ast::ObjectPatProp::Assign(property) => {
-                            path.push(ProjectionSegment::Property(property.key.sym.to_string()));
+                            let path = self.append_path(
+                                path,
+                                PathSegment::Property(property.key.sym.to_string()),
+                            );
                             output.push(ParameterBinding {
                                 parameter_index,
-                                path: path.clone(),
+                                path,
                                 value: self.resolver.resolve_ident(&property.key.id).id,
                                 default: property
                                     .value
@@ -221,7 +222,6 @@ impl<'a> FactBuilder<'a> {
                                     .map(|value| self.resolver.resolve_expr(value).id),
                                 rest,
                             });
-                            path.pop();
                         }
                         swc_ecma_ast::ObjectPatProp::Rest(property) => {
                             // Rest objects cannot be represented as a precise
@@ -334,7 +334,7 @@ impl<'a> FactBuilder<'a> {
         }
     }
 
-    pub(super) fn try_unwrap_apply_args(&self, args_expr: &Expr) -> Option<Vec<CallArgInfo>> {
+    pub(super) fn try_unwrap_apply_args(&mut self, args_expr: &Expr) -> Option<Vec<CallArgInfo>> {
         match args_expr {
             Expr::Array(array) => {
                 if array
@@ -362,12 +362,12 @@ impl<'a> FactBuilder<'a> {
                         .map(|v| CallArgInfo {
                             value: ValueId::UNKNOWN,
                             base_value: ValueId::UNKNOWN,
-                            base_path: Vec::new(),
+                            base_path: PathId::EMPTY,
                             static_string: Some(v),
                             object_keys: None,
                             rooted_chain: None,
                             projections: vec![ValueProjection {
-                                path: Vec::new(),
+                                path: PathId::EMPTY,
                                 value: ValueId::UNKNOWN,
                             }],
                             spread: false,
