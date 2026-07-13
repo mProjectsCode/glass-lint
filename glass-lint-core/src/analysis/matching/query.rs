@@ -91,7 +91,7 @@ impl MatcherFacts {
 
     fn collect_call_evidence(&self, calls: &[CallMatcher], evidence: &mut Vec<ApiEvidence>) {
         for call in calls {
-            if !call.arg_strings.is_empty() {
+            if !call.arguments.is_empty() {
                 continue;
             }
             let spans = match &call.provenance {
@@ -149,10 +149,7 @@ impl MatcherFacts {
         evidence: &mut Vec<ApiEvidence>,
     ) {
         for call in member_calls {
-            if !call.arg_strings.is_empty()
-                || !call.arg_object_keys.is_empty()
-                || !call.arg_rooted_exprs.is_empty()
-            {
+            if !call.arguments.is_empty() {
                 continue;
             }
             let spans = match &call.provenance {

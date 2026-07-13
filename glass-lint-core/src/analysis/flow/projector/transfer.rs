@@ -7,7 +7,8 @@ impl<'rules> ObjectFlowProjector<'rules> {
         }
         if let Some(call) = self.calls_by_result.get(&source).cloned()
             && let Some(chain) = call.chain.as_deref()
-            && let Some((object, states)) = self.source_match(chain, &call.args, call.fact_id)
+            && let Some((object, states)) =
+                self.source_match(chain, &call.args, call.fact_id, call.rooted)
         {
             if self.states.len().saturating_add(states.len()) > self.limits.max_states {
                 return;
@@ -30,6 +31,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
         chain: &str,
         args: &[CallArgInfo],
         source_fact: FactId,
+        rooted: bool,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
         let ids = self.flow_index.sources.get(chain)?;
         let matching = ids
@@ -39,21 +41,16 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 self.flow_index.get(*id).is_some_and(|flow| {
                     flow.sources.iter().any(|source| {
                         source.member_call == chain
-                            && source.arg_strings.iter().all(|matcher| {
+                            && crate::analysis::flow::matcher::member_call_matches_provenance(
+                                &source.provenance,
+                                rooted,
+                            )
+                            && source.arguments.iter().all(|matcher| {
                                 args.get(matcher.index).is_some_and(|arg| {
-                                    arg.static_string.as_ref().is_some_and(|value| {
-                                        matcher.predicate.as_ref().map_or_else(
-                                        || {
-                                            matcher.values.is_empty()
-                                                || matcher.values.contains(value)
-                                        },
-                                        |predicate| {
-                                            crate::analysis::flow::matcher::matches_static_value(
-                                                predicate, value,
-                                            )
-                                        },
+                                    crate::analysis::flow::matcher::argument_matches(
+                                        &matcher.matcher,
+                                        arg,
                                     )
-                                    })
                                 })
                             })
                     })

@@ -90,21 +90,9 @@ impl MatcherFacts {
             };
 
             if call_matches
-                && matcher.arg_strings.iter().all(|arg_matcher| {
+                && matcher.arguments.iter().all(|arg_matcher| {
                     args.get(arg_matcher.index).is_some_and(|arg| {
-                        arg.static_string.as_ref().is_some_and(|value| {
-                            arg_matcher.predicate.as_ref().map_or_else(
-                                || {
-                                    arg_matcher.values.is_empty()
-                                        || arg_matcher.values.iter().any(|e| e == value)
-                                },
-                                |predicate| {
-                                    crate::analysis::flow::matcher::matches_static_value(
-                                        predicate, value,
-                                    )
-                                },
-                            )
-                        })
+                        crate::analysis::flow::matcher::argument_matches(&arg_matcher.matcher, arg)
                     })
                 })
             {
@@ -150,43 +138,10 @@ impl MatcherFacts {
                 ),
             };
             if member_matches
-                && matcher.arg_strings.iter().all(|arg_matcher| {
+                && matcher.arguments.iter().all(|arg_matcher| {
                     args.get(arg_matcher.index).is_some_and(|arg| {
-                        arg.static_string.as_ref().is_some_and(|value| {
-                            arg_matcher.predicate.as_ref().map_or_else(
-                                || {
-                                    arg_matcher.values.is_empty()
-                                        || arg_matcher.values.iter().any(|e| e == value)
-                                },
-                                |predicate| {
-                                    crate::analysis::flow::matcher::matches_static_value(
-                                        predicate, value,
-                                    )
-                                },
-                            )
-                        })
+                        crate::analysis::flow::matcher::argument_matches(&arg_matcher.matcher, arg)
                     })
-                })
-                && matcher.arg_object_keys.iter().all(|key_matcher| {
-                    args.get(key_matcher.index)
-                        .and_then(|arg| arg.object_keys.as_ref())
-                        .is_some_and(|keys| {
-                            key_matcher
-                                .keys
-                                .iter()
-                                .all(|expected| keys.iter().any(|key| key == expected))
-                        })
-                })
-                && matcher.arg_rooted_exprs.iter().all(|root_matcher| {
-                    args.get(root_matcher.index)
-                        .and_then(|arg| arg.rooted_chain.as_ref())
-                        .map(|chain| canonical_rooted_chain(chain).to_string())
-                        .is_some_and(|chain| {
-                            root_matcher
-                                .chains
-                                .iter()
-                                .any(|expected| expected == &chain)
-                        })
                 })
             {
                 let symbol = match matcher.provenance {

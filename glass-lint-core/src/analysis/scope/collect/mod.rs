@@ -36,6 +36,7 @@ pub struct AliasCollector {
     pub assignments: Vec<AliasAssignment>,
     latest_assignments: BTreeMap<usize, BTreeMap<String, BindingProvenance>>,
     pub property_assignments: Vec<PropertyAliasAssignment>,
+    pub rooted_property_mutations: Vec<RootedPropertyMutation>,
     pub dynamic_evals: Vec<(usize, Span)>,
     pub(super) function_scopes: BTreeMap<(usize, String), (usize, Vec<Pat>)>,
     pub(super) function_aliases: BTreeMap<(usize, String), usize>,
@@ -56,6 +57,14 @@ pub(super) struct PropertyAliasAssignment {
     pub(super) property: String,
     pub(super) receiver: swc_ecma_ast::Ident,
     pub(super) target: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct RootedPropertyMutation {
+    pub(super) span: Span,
+    pub(super) scope: usize,
+    pub(super) receiver: String,
+    pub(super) property: Option<String>,
 }
 
 fn is_module_interop_wrapper(name: &str) -> bool {
@@ -83,6 +92,7 @@ impl AliasCollector {
             assignments: Vec::new(),
             latest_assignments: BTreeMap::new(),
             property_assignments: Vec::new(),
+            rooted_property_mutations: Vec::new(),
             dynamic_evals: Vec::new(),
             function_scopes: BTreeMap::new(),
             function_aliases: BTreeMap::new(),
@@ -750,12 +760,6 @@ impl RootedExprContext for AliasCollector {
             && function_prototype_builtin(&member.obj).is_none_or(|name| self.is_unbound(name))
         {
             return Some("Function".to_string());
-        }
-        if let Expr::Ident(root) = &*member.obj
-            && root.sym == *"globalThis"
-            && self.is_unbound("globalThis")
-        {
-            return member_prop_name(&member.prop);
         }
         let object = self.rooted_expr_name(&member.obj)?;
         let property = member_prop_name(&member.prop)?;

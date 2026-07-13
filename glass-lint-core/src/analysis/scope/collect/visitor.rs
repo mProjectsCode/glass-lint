@@ -189,6 +189,14 @@ impl Visit for AliasCollector {
                 }
             }
             AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
+                if let Some(receiver) = self.rooted_expr_name(&member.obj) {
+                    self.rooted_property_mutations.push(RootedPropertyMutation {
+                        span: assignment.span,
+                        scope: self.current_scope(),
+                        receiver,
+                        property: member_prop_name(&member.prop),
+                    });
+                }
                 self.invalidate_member_root(member, assignment.span);
                 if let (Some(property), Some(root)) =
                     (member_chain(member), member_root_ident(member))

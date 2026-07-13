@@ -25,6 +25,24 @@ let report = precise.lint(source, "bundle.js");
 Call `rule_catalog()` to obtain serializable metadata for every rule. Rule IDs
 are namespaced with `js:`, such as `js:network.request`.
 
+## Runtime environment
+
+`default_environment()` describes the browser, Node.js, and Electron globals
+used by this combined catalog. Extend it before constructing a linter when the
+runtime injects additional globals:
+
+```rust
+let mut environment = glass_lint_js::default_environment();
+environment.add_global_object_with_members("activeWindow", ["eval", "fetch"])?;
+let linter = glass_lint_js::recommended_linter_with_environment(environment);
+```
+
+Use `add_global` for an ordinary host binding and `add_global_object` for an
+unrestricted alias of the current realm's global object. Use
+`add_global_object_with_members` for a window-like object from another realm
+that should expose only explicitly proven global identities. The no-argument
+linter constructors use the provider default.
+
 ## Disclosures
 
 `disclosures_for_report(&report)` maps detected JavaScript capabilities to a

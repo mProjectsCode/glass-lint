@@ -39,6 +39,9 @@ Core is provider-neutral. It owns:
 - import, CommonJS, global, rooted-chain, alias, and value provenance
 - the shared semantic fact stream and bounded flow analysis
 - matcher validation, normalization, compilation, and execution
+- validated host-environment configuration for global bindings plus
+  unrestricted current-realm and member-restricted foreign-realm global
+  objects
 - rule catalogs, rule selection, deterministic findings, and diagnostics
 
 Core must not contain Obsidian module names, API knowledge, categories,
@@ -57,6 +60,18 @@ Rules should be declarative whenever the matcher API can express the intended
 semantics accurately. Extend the generic matcher vocabulary when a behavior is
 reusable. Provider-specific Rust callbacks are reserved for semantic rules
 that cannot be represented faithfully as generic matchers.
+
+Provider crates also own host assumptions. Core supplies a conservative
+ECMAScript environment only; browser, Node.js, Electron, Obsidian, and other
+runtime globals are declared by provider defaults and may be extended by
+library callers. Environment configuration is attached to a `RuleCatalog` and
+used by the shared semantic pass, not embedded in individual matchers.
+Member-restricted global objects prevent APIs injected into one realm from
+being inferred on another window-like realm.
+
+When generic JavaScript and provider rules run as one profile, they share the
+provider's host environment. Running the generic JavaScript catalog alone uses
+only its own browser/Node/Electron default.
 
 ### Harness and CLI
 
@@ -124,6 +139,7 @@ The engine is precision-first:
 
 - strict matches require lexical identity or supported provenance at the use
   position;
+- unbound names are global only when the catalog environment declares them;
 - local lookalikes and shadowed globals must not match;
 - reassignment invalidates provenance from that point forward;
 - dynamic or unsupported semantics fail closed;

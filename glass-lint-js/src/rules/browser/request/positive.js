@@ -4,6 +4,12 @@
 // Direct global fetch and a rooted browser member are detected.
 // @expect-error glass-lint rule=js:network.request message_id=detected
 fetch("https://example.com");
+// Standard global-object access resolves to the same global callable.
+// @expect-error glass-lint rule=js:network.request message_id=detected
+window.fetch("https://window.example");
+const fetchArgs = ["https://apply.example"];
+// @expect-error glass-lint rule=js:network.request message_id=detected
+self.fetch.apply(null, fetchArgs);
 const beacon = navigator;
 // @expect-error glass-lint rule=js:network.request message_id=detected
 beacon.sendBeacon("https://example.com", "{}");

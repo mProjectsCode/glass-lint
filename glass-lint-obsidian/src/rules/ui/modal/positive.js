@@ -1,12 +1,5 @@
-// @case description global, module, namespace, and CommonJS Modal forms
+// @case description module, namespace, and CommonJS Modal forms
 // @tool glass-lint rules=obsidian:ui.modal
-// @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
-new Modal(app);
-
-const GlobalAlias = Modal;
-// @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
-new GlobalAlias(app);
-
 import { Modal as ImportedModal } from "obsidian";
 // @expect-error glass-lint rule=obsidian:ui.modal message_id=detected
 new ImportedModal(app);

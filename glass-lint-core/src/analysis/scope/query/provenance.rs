@@ -1,6 +1,57 @@
 use super::*;
 
 impl ScopeGraph {
+    /// Resolve a direct member of a recognized host global object to the same
+    /// callable identity as its bare global binding. This is deliberately
+    /// limited to one property segment: `window.fetch` is the global `fetch`,
+    /// while deeper host paths remain ordinary rooted members.
+    pub(in crate::analysis) fn global_callable_member_at(
+        &self,
+        chain: &str,
+        span: Span,
+    ) -> Option<String> {
+        let (root, member) = chain.split_once('.')?;
+        if member.contains('.')
+            || !self.environment.is_global_member(root, member)
+            || !self.unshadowed_global_at(root, span)
+        {
+            return None;
+        }
+
+        let receiver = self.binding_key_for_name(root, span)?;
+        let path = vec![member.to_string()];
+        if self
+            .property_assignments
+            .get(&(receiver, path))
+            .is_some_and(|assignments| {
+                assignments.iter().any(|assignment| {
+                    assignment.span.lo <= span.lo
+                        && contains(self.scopes[assignment.scope].span, span)
+                })
+            })
+        {
+            return None;
+        }
+        if self
+            .rooted_property_mutations
+            .get(root)
+            .is_some_and(|mutations| {
+                mutations.iter().any(|mutation| {
+                    mutation.span.lo <= span.lo
+                        && mutation
+                            .property
+                            .as_deref()
+                            .is_none_or(|property| property == member)
+                        && contains(self.scopes[mutation.scope].span, span)
+                })
+            })
+        {
+            return None;
+        }
+
+        Some(member.to_string())
+    }
+
     pub(in crate::analysis) fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String> {
         let syntactic_chain = self.member_chain(member).or_else(|| {
             let object = crate::analysis::syntax::expr_name(&member.obj)?;
@@ -54,15 +105,26 @@ impl ScopeGraph {
         }
         let suffix = syntactic_chain.strip_prefix(root.sym.as_ref())?;
         match self.binding_at(root.sym.as_ref(), root.span) {
-            Some(BindingProvenance::ValueAlias { target }) => {
+            Some(BindingProvenance::ValueAlias { target })
+                if self.rooted_path_available(target) =>
+            {
                 Some(target.append_chain(suffix).to_string())
             }
-            Some(BindingProvenance::BoundCallable { target, .. }) => {
+            Some(BindingProvenance::BoundCallable { target, .. })
+                if self.rooted_path_available(target) =>
+            {
                 Some(target.append_chain(suffix).to_string())
             }
-            Some(BindingProvenance::ReturnedObject { source }) => {
+            Some(BindingProvenance::ReturnedObject { source })
+                if self.rooted_path_available(source) =>
+            {
                 Some(source.append_chain(suffix).to_string())
             }
+            Some(
+                BindingProvenance::ValueAlias { .. }
+                | BindingProvenance::BoundCallable { .. }
+                | BindingProvenance::ReturnedObject { .. },
+            ) => None,
             Some(
                 BindingProvenance::Local
                 | BindingProvenance::ModuleExport { .. }
@@ -76,8 +138,17 @@ impl ScopeGraph {
                 | BindingProvenance::StaticObjectKeys(_)
                 | BindingProvenance::StaticObjectValues(_),
             ) => None,
-            None => Some(syntactic_chain.to_string()),
+            None if self.environment.is_global(root.sym.as_ref()) => {
+                Some(syntactic_chain.to_string())
+            }
+            None => None,
         }
+    }
+
+    fn rooted_path_available(&self, path: &SymbolPath) -> bool {
+        let value = path.to_string();
+        let root = value.split('.').next().unwrap_or_default();
+        root == "this" || self.environment.is_global(root)
     }
 }
 
@@ -97,16 +168,17 @@ impl ScopeGraph {
                     export: export.clone(),
                 }
             }
-            Some(BindingProvenance::ValueAlias { target }) if target.is_root() => {
+            Some(BindingProvenance::ValueAlias { target })
+                if target.is_root() && self.environment.is_global(&target.to_string()) =>
+            {
                 SymbolCallProvenance::Global {
                     name: target.to_string(),
                 }
             }
             Some(BindingProvenance::ValueAlias { target })
-                if target
-                    .without_bind_suffix()
-                    .as_ref()
-                    .is_some_and(SymbolPath::is_root) =>
+                if target.without_bind_suffix().as_ref().is_some_and(|target| {
+                    target.is_root() && self.environment.is_global(&target.to_string())
+                }) =>
             {
                 SymbolCallProvenance::Global {
                     name: target
@@ -117,7 +189,9 @@ impl ScopeGraph {
             Some(BindingProvenance::ValueAlias { target }) => self
                 .module_export_for_chain(&target.to_string(), span)
                 .unwrap_or(SymbolCallProvenance::Local),
-            Some(BindingProvenance::BoundCallable { target, .. }) if target.is_root() => {
+            Some(BindingProvenance::BoundCallable { target, .. })
+                if target.is_root() && self.environment.is_global(&target.to_string()) =>
+            {
                 SymbolCallProvenance::Global {
                     name: target.to_string(),
                 }
@@ -140,9 +214,10 @@ impl ScopeGraph {
                 | BindingProvenance::StaticObjectKeys(_)
                 | BindingProvenance::StaticObjectValues(_),
             ) => SymbolCallProvenance::Local,
-            None => SymbolCallProvenance::Global {
+            None if self.environment.is_global(name) => SymbolCallProvenance::Global {
                 name: name.to_string(),
             },
+            None => SymbolCallProvenance::Local,
         }
     }
 
@@ -171,14 +246,20 @@ impl ScopeGraph {
             return None;
         }
         match self.binding_at(ident.sym.as_ref(), ident.span)? {
-            BindingProvenance::ValueAlias { target } => Some(
+            BindingProvenance::ValueAlias { target } if self.rooted_path_available(target) => Some(
                 target
                     .without_bind_suffix()
                     .map_or_else(|| target.to_string(), |root| root.to_string()),
             ),
-            BindingProvenance::BoundCallable { target, .. } => Some(target.to_string()),
+            BindingProvenance::BoundCallable { target, .. }
+                if self.rooted_path_available(target) =>
+            {
+                Some(target.to_string())
+            }
             BindingProvenance::BoundModuleCallable { .. } => None,
-            BindingProvenance::ReturnedObject { source } => Some(source.to_string()),
+            BindingProvenance::ReturnedObject { source } if self.rooted_path_available(source) => {
+                Some(source.to_string())
+            }
             _ => None,
         }
     }

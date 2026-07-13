@@ -1,40 +1,71 @@
 //! Shared value predicates for fact-driven flow analysis.
 
-use crate::api::rule::FlowValueMatcher;
+use crate::analysis::facts::CallArgInfo;
+use crate::api::rule::StaticStringPredicate;
+use crate::api::rule::{ArgumentMatcher, MemberCallProvenance, ValueMatcher, ValueMatcherKind};
 
-pub(in crate::analysis) fn matches_static_value(matcher: &FlowValueMatcher, value: &str) -> bool {
-    match matcher {
-        FlowValueMatcher::Any => true,
-        FlowValueMatcher::StaticExact(values) => values.iter().any(|expected| expected == value),
-        FlowValueMatcher::StaticPrefix(prefixes) => {
+pub(in crate::analysis) fn matches_static_value(matcher: &ValueMatcher, value: &str) -> bool {
+    match &matcher.kind {
+        ValueMatcherKind::Any => true,
+        ValueMatcherKind::StaticString(StaticStringPredicate::Any) => true,
+        ValueMatcherKind::StaticString(StaticStringPredicate::Exact(values)) => {
+            values.iter().any(|expected| expected == value)
+        }
+        ValueMatcherKind::StaticString(StaticStringPredicate::Prefix(prefixes)) => {
             prefixes.iter().any(|prefix| value.starts_with(prefix))
         }
-        FlowValueMatcher::StaticContainsAny(markers) => {
+        ValueMatcherKind::StaticString(StaticStringPredicate::ContainsAny(markers)) => {
             markers.iter().any(|marker| value.contains(marker))
         }
-        FlowValueMatcher::StaticContainsAll(markers) => {
+        ValueMatcherKind::StaticString(StaticStringPredicate::ContainsAll(markers)) => {
             markers.iter().all(|marker| value.contains(marker))
         }
     }
 }
 
 pub(in crate::analysis) fn flow_value_matches(
-    matcher: &FlowValueMatcher,
+    matcher: &ValueMatcher,
     static_value: Option<&str>,
-    allow_dynamic_for_any: bool,
+) -> bool {
+    match &matcher.kind {
+        ValueMatcherKind::Any => true,
+        ValueMatcherKind::StaticString(_) => {
+            static_value.is_some_and(|value| matches_static_value(matcher, value))
+        }
+    }
+}
+
+pub(in crate::analysis) fn argument_matches(
+    matcher: &ArgumentMatcher,
+    argument: &CallArgInfo,
 ) -> bool {
     match matcher {
-        FlowValueMatcher::Any => allow_dynamic_for_any || static_value.is_some(),
-        FlowValueMatcher::StaticExact(values) => {
-            static_value.is_some_and(|value| values.iter().any(|expected| expected == value))
+        ArgumentMatcher::Value(value) => {
+            flow_value_matches(value, argument.static_string.as_deref())
         }
-        FlowValueMatcher::StaticPrefix(prefixes) => static_value
-            .is_some_and(|value| prefixes.iter().any(|prefix| value.starts_with(prefix))),
-        FlowValueMatcher::StaticContainsAny(markers) => {
-            static_value.is_some_and(|value| markers.iter().any(|marker| value.contains(marker)))
+        ArgumentMatcher::ObjectKeys(expected) => {
+            argument.object_keys.as_ref().is_some_and(|keys| {
+                expected
+                    .iter()
+                    .all(|expected| keys.iter().any(|key| key == expected))
+            })
         }
-        FlowValueMatcher::StaticContainsAll(markers) => {
-            static_value.is_some_and(|value| markers.iter().all(|marker| value.contains(marker)))
+        ArgumentMatcher::RootedExpressions(expected) => {
+            argument.rooted_chain.as_ref().is_some_and(|chain| {
+                let chain = crate::api::rule::canonical_rooted_chain(chain);
+                expected.iter().any(|candidate| candidate == chain)
+            })
         }
+    }
+}
+
+pub(in crate::analysis) fn member_call_matches_provenance(
+    matcher: &MemberCallProvenance,
+    rooted: bool,
+) -> bool {
+    match matcher {
+        MemberCallProvenance::Any => true,
+        MemberCallProvenance::Rooted => rooted,
+        MemberCallProvenance::ModuleNamespace { .. } => false,
     }
 }

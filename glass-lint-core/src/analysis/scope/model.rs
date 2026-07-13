@@ -8,6 +8,7 @@ use swc_common::Span;
 
 #[derive(Debug, Default, Clone)]
 pub(in crate::analysis) struct ScopeGraph {
+    pub(in crate::analysis::scope) environment: crate::Environment,
     pub(in crate::analysis::scope) scopes: Vec<AliasScope>,
     pub(in crate::analysis::scope) scopes_by_start: Vec<usize>,
     pub(in crate::analysis::scope) assignments:
@@ -18,11 +19,20 @@ pub(in crate::analysis) struct ScopeGraph {
     pub(in crate::analysis::scope) function_aliases: BTreeMap<(usize, String), FunctionId>,
     pub(in crate::analysis::scope) property_assignments:
         BTreeMap<(BindingKey, Vec<String>), Vec<PropertyAliasFact>>,
+    pub(in crate::analysis::scope) rooted_property_mutations:
+        BTreeMap<String, Vec<RootedPropertyMutationFact>>,
     pub(in crate::analysis::scope) parameter_aliases:
         BTreeMap<(FunctionId, String), BindingProvenance>,
     pub(in crate::analysis::scope) dynamic_evals: Vec<(usize, Span)>,
     pub(in crate::analysis::scope) mutable_static_objects:
         std::collections::BTreeSet<(usize, String)>,
+}
+
+#[derive(Debug, Clone)]
+pub(in crate::analysis::scope) struct RootedPropertyMutationFact {
+    pub(in crate::analysis::scope) span: Span,
+    pub(in crate::analysis::scope) scope: usize,
+    pub(in crate::analysis::scope) property: Option<String>,
 }
 
 #[derive(Debug, Clone)]

@@ -4,7 +4,7 @@
 //! the matcher to prove each match without falling back to name-only matching.
 
 use glass_lint_core::{
-    Linter, RuleCatalog,
+    Environment, Linter, RuleCatalog,
     rules::{CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity},
 };
 
@@ -17,11 +17,21 @@ fn findings(source: &str, matcher: Matcher) -> usize {
         .matcher(matcher)
         .build()
         .unwrap();
-    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+    let catalog = RuleCatalog::with_environment("test", vec![rule], test_environment()).unwrap();
     Linter::new(catalog)
         .lint(source, "semantic-matching.js")
         .findings
         .len()
+}
+
+fn test_environment() -> Environment {
+    let mut environment = Environment::default();
+    environment
+        .add_globals([
+            "app", "client", "document", "fetch", "host", "require", "vault",
+        ])
+        .unwrap();
+    environment
 }
 
 fn assert_matches(source: &str, matcher: Matcher, expected: usize) {

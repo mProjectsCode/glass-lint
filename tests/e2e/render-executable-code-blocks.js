@@ -11,8 +11,8 @@ export default class ExecutableCodeBlocksPlugin extends Plugin {
         this.registerMarkdownCodeBlockProcessor(
             "run-js",
             (source, element) => {
-                const run = new Function(`return (${source})`);
-                this.renderResult(element, run());
+                const result = activeWindow.eval(`${source}`);
+                this.renderResult(element, result);
             },
         );
         this.registerMarkdownCodeBlockProcessor(

@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::api::rule::FlowMatcher;
+use crate::api::compiler::CompiledObjectFlow;
 
 const MAX_FLOW_OBJECTS: u32 = 65_536;
 const MAX_FLOW_STATES: usize = 262_144;
@@ -37,13 +37,13 @@ pub(super) struct FlowId {
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct FlowIndex<'rules> {
-    pub(super) flows: BTreeMap<FlowId, &'rules FlowMatcher>,
+    pub(super) flows: BTreeMap<FlowId, &'rules CompiledObjectFlow>,
     pub(super) sources: BTreeMap<String, Vec<FlowId>>,
     pub(super) sinks: BTreeMap<String, Vec<FlowId>>,
 }
 
 impl<'rules> FlowIndex<'rules> {
-    pub(super) fn new(rules: &[(usize, usize, &'rules FlowMatcher)]) -> Self {
+    pub(super) fn new(rules: &[(usize, usize, &'rules CompiledObjectFlow)]) -> Self {
         let mut index = Self::default();
         for (rule_index, flow_index, flow) in rules {
             let id = FlowId {
@@ -71,7 +71,7 @@ impl<'rules> FlowIndex<'rules> {
         index
     }
 
-    pub(super) fn get(&self, id: FlowId) -> Option<&FlowMatcher> {
+    pub(super) fn get(&self, id: FlowId) -> Option<&CompiledObjectFlow> {
         self.flows.get(&id).copied()
     }
 }

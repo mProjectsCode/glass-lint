@@ -13,7 +13,7 @@ use super::super::facts::{
 };
 use super::super::value::{FunctionId, ValueId};
 use super::index::{FlowId, FlowIndex};
-use crate::api::rule::FlowSinkArgs;
+use crate::api::compiler::CompiledObjectSinkArgs;
 
 const MAX_SUMMARY_ROUNDS: usize = 64;
 
@@ -360,10 +360,10 @@ pub(super) fn project_parameter_argument(
         .or_else(|| parameter.default.filter(|value| *value != ValueId::UNKNOWN))
 }
 
-fn sink_argument_indices(args: &FlowSinkArgs, argument_count: usize) -> Vec<usize> {
+fn sink_argument_indices(args: &CompiledObjectSinkArgs, argument_count: usize) -> Vec<usize> {
     match args {
-        FlowSinkArgs::Any => (0..argument_count).collect(),
-        FlowSinkArgs::Indices(indices) => indices
+        CompiledObjectSinkArgs::Any => (0..argument_count).collect(),
+        CompiledObjectSinkArgs::Indices(indices) => indices
             .iter()
             .copied()
             .filter(|index| *index < argument_count)

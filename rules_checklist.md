@@ -82,16 +82,16 @@ Record ownership and completion evidence directly below each group heading using
     - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment, listed methods, unlisted lookalike; limitation=only six configured methods; verified=targeted fixtures
   - [x] `js:crypto.operation` — [`glass-lint-js/src/rules/node/crypto_operation/`](glass-lint-js/src/rules/node/crypto_operation/)
     - Audit: module provenance/heuristic; intent-doc=[x]; coverage=all listed imports, similar module, shadowed loader, static Web Crypto call, unlisted method; limitation=reports imports rather than later API use and heuristic chains are syntactic; verified=targeted fixtures
-  - [x] `js:dom.remote-resource` — [`glass-lint-js/src/rules/network/remote_resource/`](glass-lint-js/src/rules/network/remote_resource/)
+  - [x] `js:dom.remote-resource` — [`glass-lint-js/src/rules/browser/remote_resource/`](glass-lint-js/src/rules/browser/remote_resource/)
     - Audit: flow; intent-doc=[x]; coverage=script/image source, alias, static computed write, setAttribute, insertion sink, dynamic/local values, unsupported tag; limitation=bounded direct flow and supported sinks only; verified=targeted fixtures
-  - [x] `js:dynamic-code.eval` — [`glass-lint-js/src/rules/network/eval/`](glass-lint-js/src/rules/network/eval/)
-    - Audit: rooted/global; intent-doc=[x]; coverage=direct eval, direct Function construction, derived async Function constructor aliases, shadowing, reassignment, bare alias, eval.call gap; limitation=bare-eval aliases and eval.call remain unsupported; verified=targeted fixtures and core provenance tests
-  - [x] `js:dynamic-code.script-injection` — [`glass-lint-js/src/rules/network/script_injection/`](glass-lint-js/src/rules/network/script_injection/)
+  - [x] `js:dynamic-code.eval` — [`glass-lint-js/src/rules/general/eval/`](glass-lint-js/src/rules/general/eval/)
+    - Audit: global callable; intent-doc=[x]; coverage=direct eval, global-object access, aliases, bind/call/apply, Function call/construction, derived async Function constructor aliases, shadowing, reassignment, and property mutation; limitation=dynamic metaprogramming and unresolved apply containers fail closed; verified=targeted fixtures and core provenance tests
+  - [x] `js:dynamic-code.script-injection` — [`glass-lint-js/src/rules/browser/script_injection/`](glass-lint-js/src/rules/browser/script_injection/)
     - Audit: heuristic; intent-doc=[x]; coverage=direct creation, alias, static concatenation, dynamic/static tag boundaries; limitation=does not prove document provenance and reports creation without insertion; verified=targeted fixtures
-  - [x] `js:dynamic-code.string-timer` — [`glass-lint-js/src/rules/network/string_timer/`](glass-lint-js/src/rules/network/string_timer/)
-    - Audit: global/heuristic; intent-doc=[x]; coverage=global and member forms, aliases, shadowing, reassignment, static strings, callback/dynamic values; limitation=member chains are syntactic heuristics and only listed timer APIs are covered; verified=targeted fixtures
+  - [x] `js:dynamic-code.string-timer` — [`glass-lint-js/src/rules/general/string_timer/`](glass-lint-js/src/rules/general/string_timer/)
+    - Audit: global callable; intent-doc=[x]; coverage=setTimeout/setInterval, global-object access, aliases, call/apply, shadowing, reassignment, property mutation, static strings, and callback/dynamic values; limitation=dynamic metaprogramming and unresolved apply containers fail closed; verified=targeted fixtures
 
-- [x] **Audit group 3 — JavaScript Electron and network (7 rules)**
+- [x] **Audit group 3 — JavaScript Electron and browser/general network (7 rules)**
   - Group audit: owner=Codex; claimed=2026-07-10; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
   - Exception log: `make test-rules` passed all 61 JavaScript cases; its unrelated Obsidian suite failures remain in `vault/resource_url/positive` (expected 1, found 0), `workspace/leaf_management/positive` (expected 1, found 0), and `workspace/open/positive` (expected 1, found 0).
   - [x] `js:electron.dialog` — [`glass-lint-js/src/rules/electron/dialog/`](glass-lint-js/src/rules/electron/dialog/)
@@ -102,21 +102,21 @@ Record ownership and completion evidence directly below each group heading using
     - Audit: module provenance; intent-doc=[x]; coverage=ESM imports, CommonJS and interop loads, similar module, shadowed require, load-time reporting; limitation=reports the module load and does not infer later API use; verified=targeted fixtures
   - [x] `js:electron.shell` — [`glass-lint-js/src/rules/electron/shell/`](glass-lint-js/src/rules/electron/shell/)
     - Audit: module provenance; intent-doc=[x]; coverage=direct calls, namespace aliases, CommonJS aliases, interop wrappers, shadowing, reassignment, lookalikes; limitation=inline require member chains are not followed and only openExternal/openPath are listed; verified=targeted fixtures
-  - [x] `js:network.header-indicator` — [`glass-lint-js/src/rules/network/header_indicator/`](glass-lint-js/src/rules/network/header_indicator/)
+  - [x] `js:network.header-indicator` — [`glass-lint-js/src/rules/general/header_indicator/`](glass-lint-js/src/rules/general/header_indicator/)
     - Audit: heuristic; intent-doc=[x]; coverage=marker substrings, configured casing, irrelevant context, casing lookalikes, concatenated and dynamic values; limitation=does not prove request-header use and only configured marker spellings are covered; verified=targeted fixtures
-  - [x] `js:network.private-address` — [`glass-lint-js/src/rules/network/private_address/`](glass-lint-js/src/rules/network/private_address/)
+  - [x] `js:network.private-address` — [`glass-lint-js/src/rules/general/private_address/`](glass-lint-js/src/rules/general/private_address/)
     - Audit: heuristic; intent-doc=[x]; coverage=all configured markers, public and unlisted ranges, partial markers, concatenated and dynamic values; limitation=does not parse IP/URL semantics or expand unlisted private ranges; verified=targeted fixtures
-  - [x] `js:network.request` — [`glass-lint-js/src/rules/network/request/`](glass-lint-js/src/rules/network/request/)
-    - Audit: rooted/global; intent-doc=[x]; coverage=direct calls, rooted/global aliases, constructors, shadowing, reassignment, local lookalikes, static and dynamic request values; limitation=only the five configured browser APIs are covered; verified=targeted fixtures
+  - [x] `js:network.request` — [`glass-lint-js/src/rules/browser/request/`](glass-lint-js/src/rules/browser/request/)
+    - Audit: rooted/global; intent-doc=[x]; coverage=direct calls, global-object access, call/apply, rooted/global aliases, constructors, shadowing, reassignment, property mutation, local lookalikes, and static/dynamic request values; limitation=only the five configured browser APIs are covered; verified=targeted fixtures
 
-- [x] **Audit group 4 — JavaScript network and Node.js (7 rules)**
+- [x] **Audit group 4 — JavaScript general and Node.js (7 rules)**
   - Group audit: owner=Codex; claimed=2026-07-10; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
   - Exception log: `make test-rules` passed all 64 JavaScript cases; its unrelated Obsidian suite failures remain in `vault/resource_url/positive` (expected 1, found 0), `workspace/leaf_management/positive` (expected 1, found 0), and `workspace/open/positive` (expected 1, found 0).
-  - [x] `js:network.service-indicator` — [`glass-lint-js/src/rules/network/service_indicator/`](glass-lint-js/src/rules/network/service_indicator/)
+  - [x] `js:network.service-indicator` — [`glass-lint-js/src/rules/general/service_indicator/`](glass-lint-js/src/rules/general/service_indicator/)
     - Audit: module provenance/heuristic; intent-doc=[x]; coverage=all listed SDK packages and endpoint markers, similar modules, static template fragments, concatenated and dynamic values; limitation=reports module loads and literal markers without proving network use or reconstructing concatenated/dynamic values; verified=targeted fixtures
-  - [x] `js:network.telemetry-indicator` — [`glass-lint-js/src/rules/network/telemetry_indicator/`](glass-lint-js/src/rules/network/telemetry_indicator/)
+  - [x] `js:network.telemetry-indicator` — [`glass-lint-js/src/rules/general/telemetry_indicator/`](glass-lint-js/src/rules/general/telemetry_indicator/)
     - Audit: module provenance/heuristic; intent-doc=[x]; coverage=all listed SDK packages and endpoint markers, similar modules, static template fragments, concatenated and dynamic values; limitation=reports module loads and literal markers without proving telemetry use or reconstructing concatenated/dynamic values; verified=targeted fixtures
-  - [x] `js:network.url-construction` — [`glass-lint-js/src/rules/network/url_construction/`](glass-lint-js/src/rules/network/url_construction/)
+  - [x] `js:network.url-construction` — [`glass-lint-js/src/rules/general/url_construction/`](glass-lint-js/src/rules/general/url_construction/)
     - Audit: rooted/global; intent-doc=[x]; coverage=both constructors, aliases, shadowing, reassignment, static and dynamic values, URL-like lookalikes; limitation=only `URL` and `URLSearchParams` construction is covered and arguments/static methods are not analyzed; verified=targeted fixtures
   - [x] `js:node.filesystem` — [`glass-lint-js/src/rules/node/filesystem/`](glass-lint-js/src/rules/node/filesystem/)
     - Audit: module provenance; intent-doc=[x]; coverage=all listed ESM/CommonJS loads, similar modules, shadowed loader, dynamic module name; limitation=reports exact static module loads rather than later API use; verified=targeted fixtures
@@ -187,13 +187,13 @@ Record ownership and completion evidence directly below each group heading using
   - [x] `obsidian:ui.menu` — [`glass-lint-obsidian/src/rules/ui/menu/`](glass-lint-obsidian/src/rules/ui/menu/)
     - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, reassignment, alias, dynamic property, other receiver, near-name method; limitation=does not prove Obsidian menu provenance or follow aliases, and only the exact `menu.addMenuItem` chain is covered; arguments are not analyzed; verified=targeted fixtures
   - [x] `obsidian:ui.modal` — [`glass-lint-obsidian/src/rules/ui/modal/`](glass-lint-obsidian/src/rules/ui/modal/)
-    - Audit: module provenance/heuristic; intent-doc=[x]; coverage=global and aliased constructor, ESM named and namespace imports, CommonJS destructuring, subclass, local/shadowed/reassigned aliases, dynamic module, lookalikes; limitation=only constructor and subclass syntax is matched, and constructor arguments/class bodies are not analyzed; unbound `Modal` remains a syntactic heuristic; verified=targeted fixtures
+    - Audit: module provenance; intent-doc=[x]; coverage=ESM named and namespace imports, CommonJS destructuring, constructor aliases, subclass, unbound/local/shadowed/reassigned aliases, dynamic module, lookalikes; limitation=only constructor and subclass syntax is matched, and constructor arguments/class bodies are not analyzed; verified=targeted fixtures and Obsidian 1.12.7 runtime probe
 
 - [x] **Audit group 8 — Obsidian UI and vault access (7 rules)**
   - Group audit: owner=Codex; claimed=2026-07-11; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
   - Exception log: `make test-rules` passed all 64 JavaScript cases and all 90 Obsidian cases; no exceptions.
   - [x] `obsidian:ui.notice` — [`glass-lint-obsidian/src/rules/ui/notice/`](glass-lint-obsidian/src/rules/ui/notice/)
-    - Audit: module provenance/heuristic; intent-doc=[x]; coverage=global and aliased constructors, ESM named/namespace/CommonJS imports, subclass, shadowing, reassignment, dynamic module, lookalike; limitation=unbound `Notice` remains a heuristic and constructor arguments/class bodies are not analyzed; verified=targeted fixtures
+    - Audit: global/module provenance; intent-doc=[x]; coverage=global-object and aliased constructors, ESM named/namespace/CommonJS imports, subclass, shadowing, reassignment, foreign realms, dynamic module, lookalike; limitation=global `Notice` subclasses are not matched, and constructor arguments/class bodies are not analyzed; verified=targeted fixtures and Obsidian 1.12.7 runtime probe
   - [x] `obsidian:ui.ribbon` — [`glass-lint-obsidian/src/rules/ui/ribbon/`](glass-lint-obsidian/src/rules/ui/ribbon/)
     - Audit: heuristic; intent-doc=[x]; coverage=direct call, static computed property, same-shaped receiver, reassignment, other receiver, alias, dynamic property, lookalike; limitation=does not prove an Obsidian receiver or follow aliases/reassignment, and arguments are not analyzed; verified=targeted fixtures
   - [x] `obsidian:ui.settings-tab` — [`glass-lint-obsidian/src/rules/ui/settings_tab/`](glass-lint-obsidian/src/rules/ui/settings_tab/)

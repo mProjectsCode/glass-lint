@@ -14,3 +14,12 @@ let schedule = globalThis.setTimeout;
 schedule = safeSchedule;
 // @expect-no-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
 schedule("code()", 10);
+
+function localWindow(window) {
+  // @expect-no-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
+  window.setInterval("localCode()", 10);
+}
+localWindow({ setInterval() {} });
+globalThis.setTimeout = safeSchedule;
+// @expect-no-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
+globalThis.setTimeout("mutated", 10);

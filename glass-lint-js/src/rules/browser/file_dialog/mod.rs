@@ -1,4 +1,7 @@
-use glass_lint_core::rules::{Confidence, FlowMatcher, FlowValueMatcher, Matcher, Rule, Severity};
+use glass_lint_core::rules::{
+    Confidence, FlowCompletion, FlowCondition, MemberCallMatcher, ObjectEventMatcher,
+    ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+};
 
 /// Detects an input created by `document.createElement("input")` whose direct
 /// `type` property is assigned the static value `"file"`. The bounded flow
@@ -11,16 +14,20 @@ pub(crate) fn rule() -> Rule {
         .category("browser/file-dialog")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .matcher(Matcher::flow(
-            FlowMatcher::new("file input element")
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["input"])
-                .property_write(
+        .matcher(
+            ObjectFlowMatcher::builder("file input element")
+                .source(ObjectSourceMatcher::returned_by(
+                    MemberCallMatcher::rooted("document.createElement")
+                        .arg(0, ValueMatcher::static_string().equals("input")),
+                ))
+                .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
                     "type",
-                    FlowValueMatcher::StaticExact(vec!["file".to_string()]),
-                )
-                .emit_when_requirements_met(),
-        ))
+                    ValueMatcher::static_string().equals("file"),
+                )))
+                .complete_at(FlowCompletion::configuration())
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()
 }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArgs};
 
 impl<'rules> ObjectFlowProjector<'rules> {
     pub(super) fn record_configuration(
@@ -32,17 +33,16 @@ impl<'rules> ObjectFlowProjector<'rules> {
                     continue;
                 };
                 for (index, requirement) in flow.requirements.iter().enumerate() {
-                    if let FlowRequirement::MemberCall {
+                    if let CompiledObjectRequirement::MemberCall {
                         member,
-                        args: matchers,
+                        arguments: matchers,
                     } = requirement
                         && (member == chain || chain.rsplit('.').next() == Some(member.as_str()))
                         && matchers.iter().all(|matcher| {
                             args.get(matcher.index).is_some_and(|arg| {
-                                crate::analysis::flow::matcher::flow_value_matches(
-                                    &matcher.value,
-                                    arg.static_string.as_deref(),
-                                    true,
+                                crate::analysis::flow::matcher::argument_matches(
+                                    &matcher.matcher,
+                                    arg,
                                 )
                             })
                         })
@@ -55,7 +55,13 @@ impl<'rules> ObjectFlowProjector<'rules> {
         }
     }
 
-    pub(super) fn record_sinks(&mut self, chain: &str, args: &[CallArgInfo], sink_fact: FactId) {
+    pub(super) fn record_sinks(
+        &mut self,
+        chain: &str,
+        args: &[CallArgInfo],
+        sink_fact: FactId,
+        rooted: bool,
+    ) {
         let Some(flow_ids) = self.flow_index.sinks.get(chain).cloned() else {
             return;
         };
@@ -75,9 +81,15 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 };
                 let matches = flow.sinks.iter().any(|sink| {
                     sink.member_calls.iter().any(|member| member == chain)
+                        && crate::analysis::flow::matcher::member_call_matches_provenance(
+                            &sink.provenance,
+                            rooted,
+                        )
                         && match &sink.args {
-                            FlowSinkArgs::Any => true,
-                            FlowSinkArgs::Indices(indices) => indices.contains(&argument_index),
+                            CompiledObjectSinkArgs::Any => true,
+                            CompiledObjectSinkArgs::Indices(indices) => {
+                                indices.contains(&argument_index)
+                            }
                         }
                 });
                 if matches {
@@ -139,7 +151,12 @@ impl<'rules> ObjectFlowProjector<'rules> {
         }
     }
 
-    pub(super) fn emit_state(&mut self, state: &FlowState, flow: &FlowMatcher, match_fact: FactId) {
+    pub(super) fn emit_state(
+        &mut self,
+        state: &FlowState,
+        flow: &CompiledObjectFlow,
+        match_fact: FactId,
+    ) {
         if !state_is_ready(state, flow) {
             return;
         }

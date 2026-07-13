@@ -4,7 +4,7 @@
 //! collection, semantic resolution, and matcher execution together.
 
 use glass_lint_core::{
-    Linter, RuleCatalog,
+    Environment, Linter, RuleCatalog,
     rules::{Builder, Confidence, Matcher, Rule, Severity},
 };
 
@@ -17,7 +17,11 @@ fn rule(id: &str) -> Builder {
 }
 
 fn assert_count(source: &str, rule: Rule, expected: usize) {
-    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+    let mut environment = Environment::default();
+    environment
+        .add_globals(["fetch", "host", "require"])
+        .unwrap();
+    let catalog = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
     let report = Linter::new(catalog).lint(source, "scope-precision.js");
     assert!(report.parse_diagnostics.is_empty(), "{source}");
     assert_eq!(report.findings.len(), expected, "{source}");

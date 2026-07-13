@@ -2,7 +2,8 @@
 
 use swc_ecma_ast::Program;
 
-use crate::api::{classification::ApiEvidence, rule::ApiMatcher};
+use crate::Environment;
+use crate::api::{classification::ApiEvidence, compiler::CompiledMatcherPlan};
 
 mod evidence;
 mod facts;
@@ -18,16 +19,17 @@ use facts::SemanticFacts;
 #[derive(Debug)]
 pub(crate) struct SemanticModel<'matchers> {
     facts: SemanticFacts,
-    matchers: Vec<&'matchers ApiMatcher>,
+    matchers: Vec<&'matchers CompiledMatcherPlan>,
 }
 
 impl<'matchers> SemanticModel<'matchers> {
     pub(crate) fn analyze_compiled(
         program: &Program,
-        matchers: &'matchers [&'matchers ApiMatcher],
+        matchers: &'matchers [&'matchers CompiledMatcherPlan],
         selected: &[usize],
+        environment: &Environment,
     ) -> Self {
-        let resolver = resolution::Resolver::collect(program);
+        let resolver = resolution::Resolver::collect_with_environment(program, environment);
         let facts = SemanticFacts::build(program, resolver, matchers, selected);
         Self {
             facts,
@@ -39,7 +41,10 @@ impl<'matchers> SemanticModel<'matchers> {
         if !self.facts.is_selected(rule_index) {
             return Vec::new();
         }
-        let mut evidence = self.facts.index.evidence_for(self.matchers[rule_index]);
+        let mut evidence = self
+            .facts
+            .index
+            .evidence_for(&self.matchers[rule_index].matcher);
         evidence.extend_from_slice(&self.facts.argument_evidence[rule_index]);
         evidence::normalize(evidence::annotate(evidence))
     }

@@ -9,7 +9,7 @@ use super::syntax::SymbolCallProvenance;
 #[cfg(test)]
 use super::value::{FunctionId, ValueId};
 use crate::api::classification::ApiEvidence;
-use crate::api::rule::ApiMatcher;
+use crate::api::compiler::CompiledMatcherPlan;
 use std::collections::BTreeSet;
 #[cfg(test)]
 use swc_common::Span;
@@ -38,7 +38,7 @@ impl SemanticFacts {
     pub(in crate::analysis) fn build(
         program: &Program,
         resolver: Resolver,
-        matchers: &[&ApiMatcher],
+        matchers: &[&CompiledMatcherPlan],
         selected: &[usize],
     ) -> Self {
         let selected = selected.iter().copied().collect::<BTreeSet<_>>();
@@ -52,13 +52,10 @@ impl SemanticFacts {
             .copied()
             .flat_map(|(rule_index, matcher)| {
                 matcher
+                    .matcher
                     .member_calls
                     .iter()
-                    .filter(|matcher| {
-                        !matcher.arg_strings.is_empty()
-                            || !matcher.arg_object_keys.is_empty()
-                            || !matcher.arg_rooted_exprs.is_empty()
-                    })
+                    .filter(|matcher| !matcher.arguments.is_empty())
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
@@ -67,9 +64,10 @@ impl SemanticFacts {
             .copied()
             .flat_map(|(rule_index, matcher)| {
                 matcher
+                    .matcher
                     .calls
                     .iter()
-                    .filter(|matcher| !matcher.arg_strings.is_empty())
+                    .filter(|matcher| !matcher.arguments.is_empty())
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
@@ -135,6 +133,7 @@ impl SemanticFacts {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::api::rule::ApiMatcher;
     use swc_common::BytePos;
 
     fn test_fact(id: u32, kind: FactKind, span: Span) -> SemanticFact {
@@ -251,7 +250,10 @@ mod tests {
             crate::api::rule::MemberCallMatcher::syntactic_heuristic("document.createElement"),
         )])
         .normalized();
-        let build = |matchers: Vec<&ApiMatcher>, selected: &[usize]| {
+        let first = crate::api::compiler::CompiledMatcherPlan::compile(&first);
+        let second = crate::api::compiler::CompiledMatcherPlan::compile(&second);
+        let build = |matchers: Vec<&crate::api::compiler::CompiledMatcherPlan>,
+                     selected: &[usize]| {
             let resolver = Resolver::collect(&parsed.program);
             SemanticFacts::build(&parsed.program, resolver, &matchers, selected)
                 .stream

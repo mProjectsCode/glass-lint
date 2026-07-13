@@ -19,11 +19,11 @@ use super::index::{FlowId, FlowIndex, FlowLimits};
 use super::state::{FlowState, state_is_ready};
 use super::summary::{FunctionSummaries, invocation_is_compatible, project_parameter_argument};
 use crate::api::classification::{ApiEvidence, ApiMatchKind};
-use crate::api::rule::{FlowMatcher, FlowRequirement, FlowSinkArgs};
+use crate::api::compiler::{CompiledObjectFlow, CompiledObjectRequirement};
 
 pub(in crate::analysis) fn collect(
     stream: &FactStream,
-    rules: &[(usize, usize, &FlowMatcher)],
+    rules: &[(usize, usize, &CompiledObjectFlow)],
     rule_count: usize,
 ) -> Vec<Vec<ApiEvidence>> {
     collect_with_limits(stream, rules, rule_count, FlowLimits::default())
@@ -31,7 +31,7 @@ pub(in crate::analysis) fn collect(
 
 pub(super) fn collect_with_limits(
     stream: &FactStream,
-    rules: &[(usize, usize, &FlowMatcher)],
+    rules: &[(usize, usize, &CompiledObjectFlow)],
     rule_count: usize,
     limits: FlowLimits,
 ) -> Vec<Vec<ApiEvidence>> {
@@ -66,6 +66,7 @@ pub(super) fn collect_with_limits(
                         chain,
                         args: effective_args,
                         fact_id: fact.id,
+                        rooted: rooted_chain.is_some(),
                     },
                 ))
             }
@@ -166,6 +167,7 @@ struct SourceCall {
     chain: Option<String>,
     args: Vec<CallArgInfo>,
     fact_id: FactId,
+    rooted: bool,
 }
 
 impl<'rules> ObjectFlowProjector<'rules> {
@@ -254,7 +256,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 );
                 if let Some(chain) = chain {
                     self.record_configuration(*receiver, chain, effective_args, fact.id);
-                    self.record_sinks(chain, effective_args, fact.id);
+                    self.record_sinks(chain, effective_args, fact.id, rooted_chain.is_some());
                 }
                 if let Some(function) = target_function {
                     self.record_helper_sink(*function, args, fact.id);
@@ -354,7 +356,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 continue;
             };
             for (index, requirement) in flow.requirements.iter().enumerate() {
-                if let FlowRequirement::PropertyWrite {
+                if let CompiledObjectRequirement::PropertyWrite {
                     property: expected,
                     value: matcher,
                 } = requirement
@@ -362,7 +364,7 @@ impl<'rules> ObjectFlowProjector<'rules> {
                 {
                     state.requirements.remove(&index);
                     if property == Some(expected.as_str())
-                        && crate::analysis::flow::matcher::flow_value_matches(matcher, value, true)
+                        && crate::analysis::flow::matcher::flow_value_matches(matcher, value)
                     {
                         state.requirements.insert(index, event);
                     }
@@ -401,13 +403,14 @@ impl<'rules> ObjectFlowProjector<'rules> {
 mod tests {
     use super::*;
     use crate::analysis::resolution::Resolver;
-    use crate::api::rule::FlowValueMatcher;
+    use crate::api::rule::{FlowMatcher, FlowValueMatcher};
 
     fn collect_source(source: &str, flow: &FlowMatcher) -> Vec<Vec<ApiEvidence>> {
         let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
         let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);
-        collect_with_limits(&stream, &[(0, 0, flow)], 1, FlowLimits::default())
+        let flow = crate::api::compiler::compile_legacy_flow(flow.clone());
+        collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default())
     }
 
     fn script_flow() -> FlowMatcher {
@@ -614,8 +617,8 @@ mod tests {
                 _ => None,
             })
             .expect("sink call should be present");
-        let evidence =
-            collect_with_limits(&stream, &[(0, 0, &script_flow())], 1, FlowLimits::default());
+        let flow = crate::api::compiler::compile_legacy_flow(script_flow());
+        let evidence = collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default());
         assert_eq!(evidence[0][0].spans, vec![sink_span]);
     }
 
@@ -639,6 +642,7 @@ mod tests {
                     .then_some((fact.id, fact.span))
             })
             .expect("configuration write should be present");
+        let flow = crate::api::compiler::compile_legacy_flow(flow);
         let evidence = collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default());
         assert_eq!(evidence[0][0].spans, vec![configuration.1]);
         assert_eq!(evidence[0][0].event_ids, vec![configuration.0.0]);

@@ -1,0 +1,9 @@
+{
+  "id": "glass-lint-global-probe",
+  "name": "Glass Lint Global Probe",
+  "version": "0.1.0",
+  "minAppVersion": "1.7.2",
+  "description": "Collects a value-free inventory of globals visible to an Obsidian plugin.",
+  "author": "Glass Lint contributors",
+  "isDesktopOnly": false
+}

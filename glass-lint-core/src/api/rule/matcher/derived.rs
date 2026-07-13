@@ -2,8 +2,8 @@ use super::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConstructorMatcher {
-    pub name: String,
-    pub provenance: CallProvenance,
+    pub(crate) name: String,
+    pub(crate) provenance: CallProvenance,
 }
 
 impl ConstructorMatcher {
@@ -37,7 +37,7 @@ impl ConstructorMatcher {
         }
     }
 
-    pub(super) fn sort_key(&self) -> (&str, &str) {
+    pub(crate) fn sort_key(&self) -> (&str, &str) {
         match &self.provenance {
             CallProvenance::Any => ("any", &self.name),
             CallProvenance::Global => ("global", &self.name),
@@ -48,8 +48,8 @@ impl ConstructorMatcher {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClassMatcher {
-    pub name: String,
-    pub provenance: CallProvenance,
+    pub(crate) name: String,
+    pub(crate) provenance: CallProvenance,
 }
 
 impl ClassMatcher {
@@ -76,7 +76,7 @@ impl ClassMatcher {
         }
     }
 
-    pub(super) fn sort_key(&self) -> (&str, &str) {
+    pub(crate) fn sort_key(&self) -> (&str, &str) {
         match &self.provenance {
             CallProvenance::Any => ("any", &self.name),
             CallProvenance::Global => ("global", &self.name),
@@ -87,19 +87,19 @@ impl ClassMatcher {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReturnedMemberCallMatcher {
-    pub source: String,
-    pub member: String,
+    pub(crate) source: String,
+    pub(crate) member: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReturnedMemberReadMatcher {
-    pub source: String,
-    pub member: String,
+    pub(crate) source: String,
+    pub(crate) member: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceMemberCallMatcher {
-    pub module: String,
-    pub export: String,
-    pub member: String,
+    pub(crate) module: String,
+    pub(crate) export: String,
+    pub(crate) member: String,
 }

@@ -1,6 +1,15 @@
 // @case description global and module-provenance Notice constructors/classes
 // @tool glass-lint rules=obsidian:ui.notice
-// The unbound spelling is a deliberate medium-confidence heuristic.
+// The active window may be the main window, so it shares the configured globals.
+// @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
+new activeWindow.Notice("active window");
+
+// @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
+new globalThis.Notice("global object");
+const GlobalNoticeAlias = window.Notice;
+// @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
+new GlobalNoticeAlias("global alias");
+
 // @expect-error glass-lint rule=obsidian:ui.notice message_id=detected
 new Notice("global");
 

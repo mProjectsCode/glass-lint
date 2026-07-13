@@ -1,5 +1,15 @@
 // @case description ESM, CommonJS, namespace, and aliased request APIs
 // @tool glass-lint rules=obsidian:network.request
+// The active window may be the main window, so it shares the configured globals.
+// @expect-error glass-lint rule=obsidian:network.request message_id=detected
+activeWindow.requestUrl("https://example.com/active-window");
+
+// @expect-error glass-lint rule=obsidian:network.request message_id=detected
+globalThis.request("https://example.com/global");
+const injectedRequest = window.requestUrl;
+// @expect-error glass-lint rule=obsidian:network.request message_id=detected
+injectedRequest("https://example.com/global-alias");
+
 import { request } from "obsidian";
 // @expect-error glass-lint rule=obsidian:network.request message_id=detected
 request("https://example.com");

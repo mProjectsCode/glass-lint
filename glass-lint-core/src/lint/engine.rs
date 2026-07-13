@@ -95,6 +95,7 @@ impl Linter {
             &self.compiled,
             &self.catalog.rules,
             &selected,
+            self.catalog.environment(),
         );
         let mut findings = Vec::new();
         for capability in classification.capabilities() {
@@ -179,7 +180,9 @@ mod tests {
             .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap();
-        RuleCatalog::new("test", vec![rule]).unwrap()
+        let mut environment = crate::Environment::default();
+        environment.add_global("fetch").unwrap();
+        RuleCatalog::with_environment("test", vec![rule], environment).unwrap()
     }
 
     #[test]
@@ -322,7 +325,12 @@ mod tests {
             .matcher(Matcher::global_call("XMLHttpRequest"))
             .build()
             .unwrap();
-        let catalog = RuleCatalog::new("test", vec![rule_a, rule_b]).unwrap();
+        let mut environment = crate::Environment::default();
+        environment
+            .add_globals(["fetch", "XMLHttpRequest"])
+            .unwrap();
+        let catalog =
+            RuleCatalog::with_environment("test", vec![rule_a, rule_b], environment).unwrap();
 
         let source = "fetch('/a'); new XMLHttpRequest();";
         let report_asc = Linter::with_rules(
@@ -371,7 +379,12 @@ mod tests {
             .matcher(Matcher::global_call("XMLHttpRequest"))
             .build()
             .unwrap();
-        let catalog = RuleCatalog::new("test", vec![rule_a, rule_b]).unwrap();
+        let mut environment = crate::Environment::default();
+        environment
+            .add_globals(["fetch", "XMLHttpRequest"])
+            .unwrap();
+        let catalog =
+            RuleCatalog::with_environment("test", vec![rule_a, rule_b], environment).unwrap();
         let report = Linter::with_rules(catalog, [RuleId::parse("test:beta.second").unwrap()])
             .unwrap()
             .lint("fetch(); XMLHttpRequest();", "subset.js");

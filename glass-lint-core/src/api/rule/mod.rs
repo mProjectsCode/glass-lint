@@ -5,12 +5,16 @@ mod taxonomy;
 mod validation;
 
 pub use error::{ApiCatalogError, ApiRuleBuildError};
+pub(crate) use matcher::ApiMatcher;
 pub use matcher::{
-    ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, FlowMatcher,
-    FlowRequirement, FlowSinkArgs, FlowValueMatcher, InstanceMemberCallMatcher, Matcher,
-    MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
-    ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, canonical_rooted_chain,
+    ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
+    ConstructorMatcher, FlowCompletion, FlowCondition, FlowMatcher, FlowSinkMatcher,
+    FlowValueMatcher, InstanceMemberCallMatcher, Matcher, MemberCallMatcher, MemberCallProvenance,
+    MemberReadMatcher, MemberReadProvenance, ObjectEventMatcher, ObjectFlowMatcher,
+    ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, ValueMatcher,
+    canonical_rooted_chain,
 };
+pub(crate) use matcher::{StaticStringPredicate, ValueMatcherKind};
 pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
 
 #[derive(Debug, Clone)]
@@ -21,7 +25,7 @@ pub struct ApiRule {
     severity: ApiSeverity,
     confidence: Confidence,
     matchers: Vec<Matcher>,
-    compiled_matcher: ApiMatcher,
+    compiled_matcher: crate::api::compiler::CompiledMatcherPlan,
 }
 
 impl ApiRule {
@@ -63,7 +67,7 @@ impl ApiRule {
     /// Clone the normalized matcher compiled at the rule boundary.  Catalog
     /// construction may copy this immutable plan, but must never normalize
     /// the rule again for each file.
-    pub(crate) fn matcher_for_compilation(&self) -> ApiMatcher {
+    pub(crate) fn matcher_for_compilation(&self) -> crate::api::compiler::CompiledMatcherPlan {
         self.compiled_matcher.clone()
     }
 }
@@ -125,7 +129,12 @@ impl ApiRuleBuilder {
             ));
         }
 
-        let candidate = ApiMatcher::from_matchers(self.matchers);
+        for (index, matcher) in self.matchers.iter().enumerate() {
+            validation::validate_matcher_at(matcher, index)
+                .map_err(ApiRuleBuildError::InvalidMatcher)?;
+        }
+
+        let candidate = matcher::ApiMatcher::from_matchers(self.matchers);
         candidate
             .validate()
             .map_err(ApiRuleBuildError::InvalidMatcher)?;
@@ -133,7 +142,7 @@ impl ApiRuleBuilder {
         if matcher.is_empty() {
             return Err(ApiRuleBuildError::MissingMatcher);
         }
-        let compiled_matcher = matcher.clone();
+        let compiled_matcher = crate::api::compiler::CompiledMatcherPlan::compile(&matcher);
         let matchers = matcher.into_matchers();
         Ok(ApiRule {
             id,

@@ -8,6 +8,15 @@ function localFetch(fetch) {
 }
 localFetch(() => {});
 
+function localWindow(window) {
+  // @expect-no-error glass-lint rule=js:network.request message_id=detected
+  window.fetch("/local-window");
+}
+localWindow({ fetch() {} });
+globalThis.fetch = localFetch;
+// @expect-no-error glass-lint rule=js:network.request message_id=detected
+globalThis.fetch("/mutated-global");
+
 // Local lookalike functions and constructors are not browser APIs.
 function localLookalike() { return null; }
 // @expect-no-error glass-lint rule=js:network.request message_id=detected

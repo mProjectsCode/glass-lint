@@ -112,8 +112,25 @@ fn rooted_value(chain: &str) -> Value {
 }
 
 impl Resolver {
+    #[cfg(test)]
     pub(in crate::analysis) fn collect(program: &Program) -> Self {
-        let scopes = ScopeGraph::collect(program);
+        let mut environment = crate::Environment::default();
+        environment
+            .add_globals([
+                "app", "client", "document", "fetch", "host", "require", "vault", "window",
+            ])
+            .expect("test globals are valid");
+        environment
+            .add_global_object("window")
+            .expect("test global object is valid");
+        Self::collect_with_environment(program, &environment)
+    }
+
+    pub(in crate::analysis) fn collect_with_environment(
+        program: &Program,
+        environment: &crate::Environment,
+    ) -> Self {
+        let scopes = ScopeGraph::collect_with_environment(program, environment);
         Self {
             scopes,
             values: RefCell::new(ValueArena::default()),

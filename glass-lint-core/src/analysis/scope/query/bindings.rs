@@ -1,6 +1,10 @@
 use super::*;
 
 impl ScopeGraph {
+    pub(in crate::analysis) fn is_configured_global(&self, name: &str) -> bool {
+        self.environment.is_global(name)
+    }
+
     pub(in crate::analysis) fn binding_at(
         &self,
         name: &str,
@@ -233,6 +237,8 @@ impl ScopeGraph {
     }
 
     pub(in crate::analysis) fn unshadowed_global_at(&self, name: &str, span: Span) -> bool {
-        !self.has_dynamic_lookup_at(span) && self.binding_at(name, span).is_none()
+        self.environment.is_global(name)
+            && !self.has_dynamic_lookup_at(span)
+            && self.binding_at(name, span).is_none()
     }
 }

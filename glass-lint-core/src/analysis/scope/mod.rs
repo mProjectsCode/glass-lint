@@ -21,7 +21,15 @@ mod model;
 pub(in crate::analysis) use model::*;
 
 impl ScopeGraph {
+    #[cfg(test)]
     pub(super) fn collect(program: &Program) -> Self {
+        Self::collect_with_environment(program, &crate::Environment::default())
+    }
+
+    pub(super) fn collect_with_environment(
+        program: &Program,
+        environment: &crate::Environment,
+    ) -> Self {
         let mut collector = AliasCollector::new(program.span());
         // Build declarations before collecting initializers and uses.  This
         // makes the resolver position-aware without making it traversal-order
@@ -97,7 +105,9 @@ impl ScopeGraph {
             })
             .collect();
         let collected_property_assignments = collector.property_assignments;
+        let collected_rooted_property_mutations = collector.rooted_property_mutations;
         let mut graph = Self {
+            environment: environment.clone(),
             scopes: collector.scopes,
             scopes_by_start,
             assignments,
@@ -106,6 +116,7 @@ impl ScopeGraph {
             function_bindings,
             function_aliases,
             property_assignments: BTreeMap::new(),
+            rooted_property_mutations: BTreeMap::new(),
             parameter_aliases,
             dynamic_evals: Vec::new(),
             mutable_static_objects: collector.mutable_static_objects.clone(),
@@ -136,6 +147,20 @@ impl ScopeGraph {
         }
         for assignments in graph.property_assignments.values_mut() {
             assignments.sort_by_key(|assignment| assignment.span.lo);
+        }
+        for mutation in collected_rooted_property_mutations {
+            graph
+                .rooted_property_mutations
+                .entry(mutation.receiver)
+                .or_default()
+                .push(RootedPropertyMutationFact {
+                    span: mutation.span,
+                    scope: mutation.scope,
+                    property: mutation.property,
+                });
+        }
+        for mutations in graph.rooted_property_mutations.values_mut() {
+            mutations.sort_by_key(|mutation| mutation.span.lo);
         }
         graph.dynamic_evals = collector
             .dynamic_evals

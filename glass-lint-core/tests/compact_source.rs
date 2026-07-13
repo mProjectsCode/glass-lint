@@ -4,7 +4,7 @@
 //! exactly as provider crates consume it.
 
 use glass_lint_core::{
-    Linter, RuleCatalog,
+    Environment, Linter, RuleCatalog,
     rules::{
         BuildError, Builder, CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity,
     },
@@ -19,12 +19,34 @@ fn rule(id: &str) -> Builder {
 }
 
 fn assert_count(source: &str, rule: Rule, expected: usize) {
-    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+    let catalog = RuleCatalog::with_environment("test", vec![rule], test_environment()).unwrap();
     let count = Linter::new(catalog)
         .lint(source, "minified.js")
         .findings
         .len();
     assert_eq!(count, expected, "{source}");
+}
+
+fn test_environment() -> Environment {
+    let mut environment = Environment::default();
+    environment
+        .add_globals([
+            "EventSource",
+            "URL",
+            "WebSocket",
+            "XMLHttpRequest",
+            "app",
+            "client",
+            "document",
+            "fetch",
+            "host",
+            "navigator",
+            "require",
+            "vault",
+        ])
+        .unwrap();
+    environment.add_global_object("window").unwrap();
+    environment
 }
 
 #[test]

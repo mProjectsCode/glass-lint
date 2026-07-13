@@ -30,8 +30,17 @@ impl Adapter for GlassLintAdapter {
 
     fn run(&self, case: &Case, expectation: &ToolExpectation) -> Result<Vec<Finding>> {
         let mut findings = Vec::new();
+        let combined_environment = expectation
+            .config
+            .as_deref()
+            .map(|_| glass_lint_obsidian::default_environment());
+        let js_linter = combined_environment
+            .as_ref()
+            .map_or_else(glass_lint_js::heuristic_linter, |environment| {
+                glass_lint_js::heuristic_linter_with_environment(environment.clone())
+            });
         for (prefix, configured) in [
-            ("js:", glass_lint_js::heuristic_linter()),
+            ("js:", js_linter),
             ("obsidian:", glass_lint_obsidian::heuristic_linter()),
         ] {
             if let Some(config) = expectation.config.as_deref() {

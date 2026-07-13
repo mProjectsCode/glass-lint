@@ -5,10 +5,9 @@
 //! from being sorted before its semantic argument shape is canonicalized.
 
 use super::matcher::{
-    ApiMatcher, CallProvenance, MemberCallProvenance, MemberReadProvenance, canonical_rooted_chain,
-    normalize_class_matchers, normalize_constructor_matchers, normalize_flow_value,
-    normalize_flows, normalize_instance_member_calls, normalize_member_chain,
-    normalize_member_chains, normalize_returned_member_calls, normalize_returned_member_reads,
+    ApiMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, MemberCallProvenance,
+    MemberReadProvenance, canonical_rooted_chain, normalize_flows, normalize_instance_member_calls,
+    normalize_member_chain, normalize_returned_member_calls, normalize_returned_member_reads,
     normalize_strings,
 };
 
@@ -87,52 +86,36 @@ pub(super) fn normalize(mut matcher: ApiMatcher) -> ApiMatcher {
 
 pub(super) fn normalize_arguments(matcher: &mut ApiMatcher) {
     for call in &mut matcher.calls {
-        for argument in &mut call.arg_strings {
-            normalize_strings(&mut argument.values);
-            if let Some(predicate) = &mut argument.predicate {
-                normalize_flow_value(predicate);
-            }
-        }
-        call.arg_strings.sort_by(|left, right| {
-            left.index
-                .cmp(&right.index)
-                .then_with(|| left.values.cmp(&right.values))
-                .then_with(|| {
-                    format!("{:?}", left.predicate).cmp(&format!("{:?}", right.predicate))
-                })
-        });
-        call.arg_strings.dedup();
+        super::matcher::normalize_arguments(&mut call.arguments);
     }
 
     for member_call in &mut matcher.member_calls {
-        for argument in &mut member_call.arg_strings {
-            normalize_strings(&mut argument.values);
-            if let Some(predicate) = &mut argument.predicate {
-                normalize_flow_value(predicate);
-            }
-        }
-        for argument in &mut member_call.arg_object_keys {
-            normalize_strings(&mut argument.keys);
-        }
-        for argument in &mut member_call.arg_rooted_exprs {
-            normalize_member_chains(&mut argument.chains);
-        }
-        member_call.arg_strings.sort_by(|left, right| {
-            left.index
-                .cmp(&right.index)
-                .then_with(|| left.values.cmp(&right.values))
-                .then_with(|| {
-                    format!("{:?}", left.predicate).cmp(&format!("{:?}", right.predicate))
-                })
-        });
-        member_call.arg_strings.dedup();
-        member_call
-            .arg_object_keys
-            .sort_by(|left, right| (left.index, &left.keys).cmp(&(right.index, &right.keys)));
-        member_call.arg_object_keys.dedup();
-        member_call
-            .arg_rooted_exprs
-            .sort_by(|left, right| (left.index, &left.chains).cmp(&(right.index, &right.chains)));
-        member_call.arg_rooted_exprs.dedup();
+        super::matcher::normalize_arguments(&mut member_call.arguments);
+    }
+}
+
+pub(crate) fn normalize_class_matchers(values: &mut Vec<ClassMatcher>) {
+    for value in values.iter_mut() {
+        value.name = value.name.trim().to_string();
+        normalize_call_provenance(&mut value.provenance);
+    }
+    values.retain(|value| !value.name.is_empty());
+    values.sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
+    values.dedup();
+}
+
+pub(crate) fn normalize_constructor_matchers(values: &mut Vec<ConstructorMatcher>) {
+    for value in values.iter_mut() {
+        value.name = value.name.trim().to_string();
+        normalize_call_provenance(&mut value.provenance);
+    }
+    values.retain(|value| !value.name.is_empty());
+    values.sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
+    values.dedup();
+}
+
+fn normalize_call_provenance(provenance: &mut CallProvenance) {
+    if let CallProvenance::ModuleExport { module } = provenance {
+        *module = module.trim().to_string();
     }
 }

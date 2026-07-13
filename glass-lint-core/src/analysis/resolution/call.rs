@@ -1,6 +1,23 @@
 use super::*;
 
 impl Resolver {
+    pub(super) fn call_provenance_at(
+        &self,
+        id: ValueId,
+        rooted: Option<&str>,
+        span: swc_common::Span,
+    ) -> SymbolCallProvenance {
+        let provenance = self.call_provenance_for_value(id);
+        if provenance != SymbolCallProvenance::Local {
+            return provenance;
+        }
+        rooted
+            .and_then(|chain| self.scopes.global_callable_member_at(chain, span))
+            .map_or(SymbolCallProvenance::Local, |name| {
+                SymbolCallProvenance::Global { name }
+            })
+    }
+
     pub(in crate::analysis) fn require_module_name(&self, call: &CallExpr) -> Option<String> {
         let Callee::Expr(callee) = &call.callee else {
             return None;
@@ -95,7 +112,9 @@ impl Resolver {
                 SymbolCallProvenance::ModuleExport { module, export }
             }
             Value::Callable(callable) => self.call_provenance_for_value(callable.target),
-            Value::RootedMember { root, path } if path.is_empty() => {
+            Value::RootedMember { root, path }
+                if path.is_empty() && self.scopes.is_configured_global(&root) =>
+            {
                 SymbolCallProvenance::Global { name: root }
             }
             _ => SymbolCallProvenance::Local,

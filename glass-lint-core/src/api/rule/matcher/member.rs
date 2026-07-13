@@ -1,103 +1,84 @@
-use super::*;
+use super::{ArgumentConstraint, ArgumentMatcher};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberCallMatcher {
-    pub chain: String,
-    pub provenance: MemberCallProvenance,
-    pub arg_strings: Vec<ArgStringMatcher>,
-    pub arg_object_keys: Vec<ArgObjectKeyMatcher>,
-    pub arg_rooted_exprs: Vec<ArgRootedExprMatcher>,
+    pub(crate) chain: String,
+    pub(crate) provenance: MemberCallProvenance,
+    pub(crate) arguments: Vec<ArgumentConstraint>,
 }
 
 impl MemberCallMatcher {
-    pub fn syntactic_heuristic(chain: impl Into<String>) -> Self {
-        Self {
-            chain: chain.into(),
-            provenance: MemberCallProvenance::Any,
-            arg_strings: Vec::new(),
-            arg_object_keys: Vec::new(),
-            arg_rooted_exprs: Vec::new(),
-        }
+    pub fn heuristic(chain: impl Into<String>) -> Self {
+        Self::new(chain, MemberCallProvenance::Any)
     }
 
-    pub fn rooted_chain(chain: impl Into<String>) -> Self {
-        Self {
-            chain: chain.into(),
-            provenance: MemberCallProvenance::Rooted,
-            arg_strings: Vec::new(),
-            arg_object_keys: Vec::new(),
-            arg_rooted_exprs: Vec::new(),
-        }
+    pub fn rooted(chain: impl Into<String>) -> Self {
+        Self::new(chain, MemberCallProvenance::Rooted)
     }
 
     pub fn module_member(module: impl Into<String>, member: impl Into<String>) -> Self {
-        Self {
-            chain: member.into(),
-            provenance: MemberCallProvenance::ModuleNamespace {
+        Self::new(
+            member,
+            MemberCallProvenance::ModuleNamespace {
                 module: module.into(),
             },
-            arg_strings: Vec::new(),
-            arg_object_keys: Vec::new(),
-            arg_rooted_exprs: Vec::new(),
+        )
+    }
+
+    fn new(chain: impl Into<String>, provenance: MemberCallProvenance) -> Self {
+        Self {
+            chain: chain.into(),
+            provenance,
+            arguments: Vec::new(),
         }
     }
 
-    pub fn arg_string<I, S>(mut self, index: usize, values: I) -> Self
+    pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
+        self.arguments.push(ArgumentConstraint {
+            index,
+            matcher: matcher.into(),
+        });
+        self
+    }
+
+    pub fn syntactic_heuristic(chain: impl Into<String>) -> Self {
+        Self::heuristic(chain)
+    }
+    pub fn rooted_chain(chain: impl Into<String>) -> Self {
+        Self::rooted(chain)
+    }
+    pub fn static_string_arg(self, index: usize) -> Self {
+        self.arg(index, super::ValueMatcher::static_string())
+    }
+    pub fn arg_string<I, S>(self, index: usize, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.arg_strings.push(ArgStringMatcher {
+        self.arg(
             index,
-            values: values.into_iter().map(Into::into).collect(),
-            predicate: None,
-        });
-        self
+            super::ValueMatcher::static_string().equals_any(values),
+        )
     }
-
-    pub fn static_string_arg(mut self, index: usize) -> Self {
-        self.arg_strings.push(ArgStringMatcher {
-            index,
-            values: Vec::new(),
-            predicate: None,
-        });
-        self
+    pub fn arg_value(self, index: usize, value: impl Into<super::ValueMatcher>) -> Self {
+        self.arg(index, value.into())
     }
-
-    pub fn arg_value(mut self, index: usize, value: FlowValueMatcher) -> Self {
-        self.arg_strings.push(ArgStringMatcher {
-            index,
-            values: Vec::new(),
-            predicate: Some(value),
-        });
-        self
-    }
-
-    pub fn arg_object_keys<I, S>(mut self, index: usize, keys: I) -> Self
+    pub fn arg_object_keys<I, S>(self, index: usize, keys: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.arg_object_keys.push(ArgObjectKeyMatcher {
-            index,
-            keys: keys.into_iter().map(Into::into).collect(),
-        });
-        self
+        self.arg(index, super::ArgumentMatcher::object_keys(keys))
     }
-
-    pub fn arg_rooted_exprs<I, S>(mut self, index: usize, chains: I) -> Self
+    pub fn arg_rooted_exprs<I, S>(self, index: usize, chains: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.arg_rooted_exprs.push(ArgRootedExprMatcher {
-            index,
-            chains: chains.into_iter().map(Into::into).collect(),
-        });
-        self
+        self.arg(index, super::ArgumentMatcher::rooted_expressions(chains))
     }
 
-    pub fn evidence_symbol(&self) -> String {
+    pub(crate) fn evidence_symbol(&self) -> String {
         match &self.provenance {
             MemberCallProvenance::Any | MemberCallProvenance::Rooted => self.chain.clone(),
             MemberCallProvenance::ModuleNamespace { module } => format!("{module}.{}", self.chain),
@@ -111,6 +92,14 @@ impl MemberCallMatcher {
             MemberCallProvenance::ModuleNamespace { module } => (module, &self.chain),
         }
     }
+
+    pub(crate) fn chain(&self) -> &str {
+        &self.chain
+    }
+
+    pub(crate) fn arguments(&self) -> &[ArgumentConstraint] {
+        &self.arguments
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,19 +111,19 @@ pub enum MemberCallProvenance {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberReadMatcher {
-    pub chain: String,
-    pub provenance: MemberReadProvenance,
+    pub(crate) chain: String,
+    pub(crate) provenance: MemberReadProvenance,
 }
 
 impl MemberReadMatcher {
-    pub fn syntactic_heuristic(chain: impl Into<String>) -> Self {
+    pub fn heuristic(chain: impl Into<String>) -> Self {
         Self {
             chain: chain.into(),
             provenance: MemberReadProvenance::Any,
         }
     }
 
-    pub fn rooted_chain(chain: impl Into<String>) -> Self {
+    pub fn rooted(chain: impl Into<String>) -> Self {
         Self {
             chain: chain.into(),
             provenance: MemberReadProvenance::Rooted,
@@ -150,7 +139,7 @@ impl MemberReadMatcher {
         }
     }
 
-    pub fn evidence_symbol(&self) -> String {
+    pub(crate) fn evidence_symbol(&self) -> String {
         match &self.provenance {
             MemberReadProvenance::Any | MemberReadProvenance::Rooted => self.chain.clone(),
             MemberReadProvenance::ModuleNamespace { module } => format!("{module}.{}", self.chain),

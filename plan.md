@@ -153,10 +153,9 @@ and reassignment.
 ## Suggested order
 
 1. Surface and classify semantic budget exhaustion.
-2. Split the largest modules along the stable fact-model boundaries.
-3. Add generated/reference semantic checks.
-4. Build the pinned transformation matrix.
-5. Reprofile periodically and promote a performance candidate only when new
+2. Add generated/reference semantic checks.
+3. Build the pinned transformation matrix.
+4. Reprofile periodically and promote a performance candidate only when new
    evidence shows a material bottleneck or regression.
 
 ## Definition of done

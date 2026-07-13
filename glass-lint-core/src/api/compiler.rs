@@ -2,7 +2,12 @@ mod catalog;
 mod rule;
 
 pub(crate) use catalog::CompiledCatalog;
-pub(crate) use rule::CompiledRule;
+#[cfg(test)]
+pub(crate) use rule::compile_legacy_flow;
+pub(crate) use rule::{
+    CompiledMatcherPlan, CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArgs,
+    CompiledRule,
+};
 
 pub fn validate_catalog(
     rules: &[super::rule::ApiRule],

@@ -20,7 +20,8 @@ impl RootedExprContext for ScopeGraph {
             Some(BindingProvenance::BoundModuleCallable { .. }) => None,
             Some(BindingProvenance::ReturnedObject { source }) => Some(source.to_string()),
             Some(_) => None,
-            None => Some(ident.sym.to_string()),
+            None if self.environment.is_global(ident.sym.as_ref()) => Some(ident.sym.to_string()),
+            None => None,
         }
     }
 

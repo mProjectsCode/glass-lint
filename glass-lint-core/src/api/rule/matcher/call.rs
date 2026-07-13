@@ -1,71 +1,63 @@
-use super::*;
+use super::{ArgumentConstraint, ArgumentMatcher, ValueMatcher};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallMatcher {
-    pub name: String,
-    pub provenance: CallProvenance,
-    pub arg_strings: Vec<ArgStringMatcher>,
+    pub(crate) name: String,
+    pub(crate) provenance: CallProvenance,
+    pub(crate) arguments: Vec<ArgumentConstraint>,
 }
 
 impl CallMatcher {
     pub fn heuristic(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            provenance: CallProvenance::Any,
-            arg_strings: Vec::new(),
-        }
+        Self::new(name, CallProvenance::Any)
     }
 
     pub fn global(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            provenance: CallProvenance::Global,
-            arg_strings: Vec::new(),
-        }
+        Self::new(name, CallProvenance::Global)
     }
 
     pub fn module_export(module: impl Into<String>, export: impl Into<String>) -> Self {
-        Self {
-            name: export.into(),
-            provenance: CallProvenance::ModuleExport {
+        Self::new(
+            export,
+            CallProvenance::ModuleExport {
                 module: module.into(),
             },
-            arg_strings: Vec::new(),
+        )
+    }
+
+    fn new(name: impl Into<String>, provenance: CallProvenance) -> Self {
+        Self {
+            name: name.into(),
+            provenance,
+            arguments: Vec::new(),
         }
     }
 
-    pub fn static_string_arg(mut self, index: usize) -> Self {
-        self.arg_strings.push(ArgStringMatcher {
+    pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
+        self.arguments.push(ArgumentConstraint {
             index,
-            values: Vec::new(),
-            predicate: None,
+            matcher: matcher.into(),
         });
         self
     }
 
-    pub fn arg_string<I, S>(mut self, index: usize, values: I) -> Self
+    pub fn static_string_arg(self, index: usize) -> Self {
+        self.arg(index, ValueMatcher::static_string())
+    }
+
+    pub fn arg_string<I, S>(self, index: usize, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.arg_strings.push(ArgStringMatcher {
-            index,
-            values: values.into_iter().map(Into::into).collect(),
-            predicate: None,
-        });
-        self
+        self.arg(index, ValueMatcher::static_string().equals_any(values))
     }
 
-    pub fn arg_value(mut self, index: usize, value: FlowValueMatcher) -> Self {
-        self.arg_strings.push(ArgStringMatcher {
-            index,
-            values: Vec::new(),
-            predicate: Some(value),
-        });
-        self
+    pub fn arg_value(self, index: usize, value: impl Into<ValueMatcher>) -> Self {
+        self.arg(index, value.into())
     }
 
-    pub fn evidence_symbol(&self) -> String {
+    pub(crate) fn evidence_symbol(&self) -> String {
         match &self.provenance {
             CallProvenance::Any | CallProvenance::Global => self.name.clone(),
             CallProvenance::ModuleExport { module } => format!("{module}.{}", self.name),
@@ -87,3 +79,6 @@ pub enum CallProvenance {
     Global,
     ModuleExport { module: String },
 }
+
+#[allow(dead_code)]
+fn _value_matcher_is_used(_: ValueMatcher) {}

@@ -28,7 +28,7 @@ impl Resolver {
             }
             value => self.intern_const_value(value, seed.binding),
         };
-        let call = self.call_provenance_for_value(id);
+        let call = self.call_provenance_at(id, rooted_chain.as_deref(), ident.span);
         let module_member = match &call {
             SymbolCallProvenance::ModuleExport { module, export } => {
                 Some(SymbolMemberProvenance::ModuleNamespace {
@@ -108,7 +108,7 @@ impl Resolver {
             None => SymbolCallProvenance::Local,
         };
         let id = self.intern_call_value(&scoped_call, rooted_chain.as_deref(), seed.binding);
-        let call = self.call_provenance_for_value(id);
+        let call = self.call_provenance_at(id, rooted_chain.as_deref(), member.span);
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values
                 .borrow_mut()

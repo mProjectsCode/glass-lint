@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use super::super::facts::FactId;
 use super::super::flow::index::FlowId;
 use super::super::value::ObjectId;
-use crate::api::rule::FlowMatcher;
+use crate::api::compiler::CompiledObjectFlow;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FlowState {
@@ -15,7 +15,7 @@ pub(super) struct FlowState {
     pub(super) requirements: BTreeMap<usize, FactId>,
 }
 
-pub(super) fn state_is_ready(state: &FlowState, flow: &FlowMatcher) -> bool {
+pub(super) fn state_is_ready(state: &FlowState, flow: &CompiledObjectFlow) -> bool {
     if flow.all_requirements_required {
         state.requirements.len() == flow.requirements.len()
     } else {

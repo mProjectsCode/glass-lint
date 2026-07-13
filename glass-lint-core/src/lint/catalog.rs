@@ -2,7 +2,7 @@ use crate::api::{
     compiler::{CompiledCatalog, validate_catalog},
     rule::{ApiRule, ApiSeverity},
 };
-use crate::{RuleId, RuleMetadata, Severity};
+use crate::{Environment, RuleId, RuleMetadata, Severity};
 use std::collections::BTreeMap;
 use std::{error::Error, fmt};
 
@@ -25,10 +25,19 @@ impl Error for RuleCatalogError {}
 pub struct RuleCatalog {
     pub(crate) rules: Vec<ApiRule>,
     namespaced: BTreeMap<String, RuleId>,
+    environment: Environment,
 }
 
 impl RuleCatalog {
     pub fn new(provider: impl Into<String>, rules: Vec<ApiRule>) -> Result<Self, RuleCatalogError> {
+        Self::with_environment(provider, rules, Environment::default())
+    }
+
+    pub fn with_environment(
+        provider: impl Into<String>,
+        rules: Vec<ApiRule>,
+        environment: Environment,
+    ) -> Result<Self, RuleCatalogError> {
         let provider = provider.into();
         RuleId::parse(format!("{provider}:placeholder"))?;
         validate_catalog(&rules).map_err(|error| match error {
@@ -43,7 +52,11 @@ impl RuleCatalog {
                 RuleId::parse(format!("{provider}:{}", rule.id()))?,
             );
         }
-        Ok(Self { rules, namespaced })
+        Ok(Self {
+            rules,
+            namespaced,
+            environment,
+        })
     }
     pub fn metadata(&self) -> Vec<RuleMetadata> {
         self.rules
@@ -66,6 +79,9 @@ impl RuleCatalog {
             .iter()
             .filter_map(|rule| self.namespaced_id(rule.id()).cloned())
             .collect()
+    }
+    pub fn environment(&self) -> &Environment {
+        &self.environment
     }
     pub(crate) fn namespaced_id(&self, id: &str) -> Option<&RuleId> {
         self.namespaced.get(id)

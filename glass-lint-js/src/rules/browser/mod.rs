@@ -8,6 +8,9 @@ mod permissions_geolocation;
 mod permissions_media;
 mod permissions_notifications;
 mod persistent_storage;
+mod remote_resource;
+mod request;
+mod script_injection;
 
 use glass_lint_core::rules::Rule;
 
@@ -23,5 +26,8 @@ pub(crate) fn rules() -> Vec<Rule> {
         environment::rule(),
         global_input_hook::rule(),
         file_dialog::rule(),
+        request::rule(),
+        remote_resource::rule(),
+        script_injection::rule(),
     ]
 }

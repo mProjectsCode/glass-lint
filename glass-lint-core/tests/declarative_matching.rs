@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use glass_lint_core::{
-    Linter, RuleCatalog,
+    Environment, Linter, RuleCatalog,
     rules::{
         CallMatcher, Confidence, FlowMatcher, FlowValueMatcher, Matcher, MemberCallMatcher, Rule,
         Severity,
@@ -30,7 +30,8 @@ fn rule(id: &str) -> glass_lint_core::rules::Builder {
 }
 
 fn classify(source: &str, rules: &[Rule]) -> Classification {
-    let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
+    let catalog =
+        RuleCatalog::with_environment("test", rules.to_vec(), test_environment()).unwrap();
     let report = Linter::new(catalog).lint(source, "matcher.js");
     Classification {
         finding_count: report.findings.len(),
@@ -40,6 +41,19 @@ fn classify(source: &str, rules: &[Rule]) -> Classification {
             .map(|finding| finding.rule_id.as_str().to_owned())
             .collect(),
     }
+}
+
+fn test_environment() -> Environment {
+    let mut environment = Environment::default();
+    environment
+        .add_globals([
+            "app", "client", "document", "fetch", "host", "require", "vault",
+        ])
+        .unwrap();
+    for object in ["window", "self", "global"] {
+        environment.add_global_object(object).unwrap();
+    }
+    environment
 }
 
 fn assert_capability_count(result: &Classification, id: &str, expected: usize) {
@@ -119,6 +133,112 @@ fn callable_transforms_use_effective_target_arguments() {
         &rule,
     );
     assert_capability_count(&result, "test.callable", 3);
+}
+
+#[test]
+fn global_call_matchers_cover_proven_global_object_callable_forms() {
+    let rules = [rule("test.global-callable")
+        .matcher(CallMatcher::global("eval").arg_string(0, ["direct", "alias", "call", "apply"]))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "globalThis.eval('direct');
+         const run = window.eval; run('alias');
+         self.eval.call(null, 'call');
+         const args = ['apply']; global.eval.apply(null, args);",
+        &rules,
+    );
+    assert_capability_count(&result, "test.global-callable", 4);
+}
+
+#[test]
+fn global_object_callable_forms_respect_shadowing_and_property_mutation() {
+    let rules = [rule("test.global-callable")
+        .matcher(CallMatcher::global("eval"))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "function local(window) { window.eval('local'); }
+         const globals = globalThis; globals.eval = safeEval;
+         globalThis.eval('mutated through alias');
+         const member = 'eval'; self[member] = safeEval;
+         self.eval('dynamically mutated');
+         globalThis.eval = safeEval;
+         globalThis.eval('mutated');",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 0);
+}
+
+#[test]
+fn host_globals_require_explicit_environment_configuration() {
+    let rule = rule("test.fetch")
+        .matcher(CallMatcher::global("fetch"))
+        .build()
+        .unwrap();
+    let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
+    assert!(
+        Linter::new(default_catalog)
+            .lint(
+                "fetch('/unconfigured'); const run = fetch; run('/alias')",
+                "matcher.js",
+            )
+            .findings
+            .is_empty()
+    );
+
+    let mut environment = Environment::default();
+    environment.add_global("fetch").unwrap();
+    environment.add_global_object("activeWindow").unwrap();
+    let configured = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
+    let report = Linter::new(configured).lint(
+        "fetch('/direct'); activeWindow.fetch('/window')",
+        "matcher.js",
+    );
+    assert_eq!(report.findings.len(), 2);
+}
+
+#[test]
+fn rooted_host_globals_also_require_environment_configuration() {
+    let rule = rule("test.host")
+        .matcher(Matcher::rooted_member_call("host.open"))
+        .build()
+        .unwrap();
+    let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
+    assert!(
+        Linter::new(default_catalog)
+            .lint("host.open()", "matcher.js")
+            .findings
+            .is_empty()
+    );
+
+    let mut environment = Environment::default();
+    environment.add_global("host").unwrap();
+    let configured = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
+    assert_eq!(
+        Linter::new(configured)
+            .lint("host.open()", "matcher.js")
+            .findings
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn custom_global_objects_do_not_make_unconfigured_members_global() {
+    let rule = rule("test.fetch")
+        .matcher(CallMatcher::global("fetch"))
+        .build()
+        .unwrap();
+    let mut environment = Environment::default();
+    environment.add_global_object("activeWindow").unwrap();
+    let catalog = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
+    assert!(
+        Linter::new(catalog)
+            .lint("activeWindow.fetch('/unknown')", "matcher.js")
+            .findings
+            .is_empty()
+    );
 }
 
 #[test]
