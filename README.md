@@ -107,5 +107,4 @@ test, profile, or contribute, start with [CONTRIBUTING.md](CONTRIBUTING.md) and
 
 ## License
 
-Glass Lint is licensed under the GNU General Public License v3.0 only
-(`GPL-3.0-only`).
+Glass Lint is licensed under the Mozilla Public License 2.0 only (`MPL-2.0`).

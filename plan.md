@@ -76,28 +76,6 @@ Exit criteria:
 - Existing findings, ordering, and precision regressions remain unchanged for
   files that do not exhaust a budget.
 
-## P1 — split responsibility-heavy semantic modules
-
-The fact migration left `fact_builder.rs` above 1,800 lines, while
-`scope/collector.rs`, `object_flow.rs`, and `index.rs` remain roughly 40 KiB or
-larger. Split them along established ownership boundaries without recreating
-visitors or parallel semantic models.
-
-Work:
-
-- Separate fact-stream storage and emission from call/value projection,
-  pattern/write handling, function/class handling, and control boundaries.
-- Separate lexical declaration construction from version/provenance state,
-  function/callback registration, and dynamic-scope invalidation.
-- Separate occurrence storage from index construction, argument predicates,
-  and evidence queries.
-- Separate object-flow transfer from control-flow joins/exits, alias/object
-  lifecycle, helper effects, and emission.
-- Keep `FactBuilder` as the only post-scope visitor, keep collector types
-  private, and retain the structural test preventing downstream AST access.
-- Remove dead compatibility helpers during the split and document each
-  module's invariants at its boundary.
-
 ## P1 — generated semantic reference checks
 
 - Add property tests for matcher normalization idempotence/permutation,
