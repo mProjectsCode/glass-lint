@@ -142,6 +142,10 @@ For implementation details, see [ARCHITECTURE.md](ARCHITECTURE.md). To build,
 test, profile, or contribute, start with [CONTRIBUTING.md](CONTRIBUTING.md) and
 [TESTING.md](TESTING.md).
 
+## AI Assistance Notice
+
+Parts of this project were vibe coded with AI assistance.
+
 ## License
 
 Glass Lint is licensed under the Mozilla Public License 2.0 only (`MPL-2.0`).
