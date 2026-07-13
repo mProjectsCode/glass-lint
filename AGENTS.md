@@ -7,8 +7,6 @@
 - Read [`TESTING.md`](TESTING.md) before changing matching behavior or adding a
   rule. Use [`CONTRIBUTING.md`](CONTRIBUTING.md) for the complete tooling and
   validation commands.
-- Treat [`plan.md`](plan.md) as the unfinished-work backlog and
-  [`rules_checklist.md`](rules_checklist.md) as a historical rule-audit record.
 - Inspect the worktree before editing. Preserve unrelated user changes and do
   not revert or reformat them.
 

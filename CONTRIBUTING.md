@@ -1,8 +1,8 @@
 # Contributing
 
 Glass Lint is a Rust workspace under active development. Contributions should
-preserve its provider boundaries, precision-first matching policy, bounded
-analysis, and deterministic output.
+preserve its provider boundaries, precision-first matching, bounded analysis,
+and deterministic output.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing analysis or matcher
 behavior. Read [TESTING.md](TESTING.md) before adding a rule or changing an
@@ -20,8 +20,6 @@ Build the complete workspace with:
 ```sh
 make build
 ```
-
-The project currently has no separate code-generation or database setup step.
 
 ## Development workflow
 
@@ -96,8 +94,7 @@ rules/<area>/<rule>/
 ```
 
 Document the rule's intended matches, precision boundary, and known
-limitations in a Rust doc comment. The completed historical audit is retained
-in [rules_checklist.md](rules_checklist.md).
+limitations in a Rust doc comment.
 
 ## Profiling
 
@@ -158,8 +155,6 @@ Keep docs close to their audience:
 - Each crate README explains that crate's purpose and public surface.
 - `ARCHITECTURE.md` records durable boundaries and data flow.
 - `TESTING.md` defines test layers and fixture authoring.
-- `plan.md` contains unfinished work only; completed work belongs in history,
-  code comments, or durable documentation.
 - `AGENTS.md` contains concise repository instructions for coding agents.
 
 When commands, rule IDs, schemas, or directory layouts change, update every

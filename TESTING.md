@@ -187,4 +187,4 @@ Before finishing a behavior change, confirm that:
 2. shadowed, reassigned, local, and dynamic lookalikes do not report;
 3. the narrow fixture or integration test passes;
 4. `make ci` passes; and
-5. documentation and historical audit records reflect any changed boundary.
+5. documentation reflects any changed boundary.

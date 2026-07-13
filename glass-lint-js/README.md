@@ -49,20 +49,5 @@ linter constructors use the provider default.
 deterministic set of disclosure identifiers. The provider owns this mapping;
 core reports remain policy-neutral.
 
-## Adding a rule
-
-Place the implementation under `src/rules/<area>/<rule>/` with colocated
-`positive.js` and `negative.js` harness fixtures. Prefer strict global,
-module-provenance, rooted, or connected-flow matchers. Name-only and broad
-literal matching belongs in the heuristic profile.
-
-Run the focused fixture and provider suite:
-
-```sh
-cargo run -p glass-lint-cli --bin glass-lint-harness -- \
-  verify glass-lint-js/src/rules/<area>/<rule>
-make test-rules
-```
-
-See [TESTING.md](../TESTING.md) for fixture syntax and required adversarial
-coverage.
+For rule authoring, fixture placement, and validation, see the repository
+[contributing guide](../CONTRIBUTING.md) and [testing guide](../TESTING.md).

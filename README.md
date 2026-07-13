@@ -27,8 +27,8 @@ supported. A source file is limited to 8 MiB by the core parser.
 
 ## Get started
 
-Glass Lint currently builds from source. Install a recent Rust toolchain, clone
-the repository, and run:
+Glass Lint currently builds from source. With a recent Rust toolchain installed,
+clone the repository and run:
 
 ```sh
 cargo build --workspace
@@ -102,8 +102,7 @@ example `js:network.request` and `obsidian:network.request`.
 
 For implementation details, see [ARCHITECTURE.md](ARCHITECTURE.md). To build,
 test, profile, or contribute, start with [CONTRIBUTING.md](CONTRIBUTING.md) and
-[TESTING.md](TESTING.md). The current development backlog is tracked in
-[plan.md](plan.md).
+[TESTING.md](TESTING.md).
 
 ## License
 

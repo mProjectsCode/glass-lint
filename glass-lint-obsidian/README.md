@@ -25,13 +25,16 @@ namespace, for example `obsidian:vault.read` and
 
 ## Runtime environment
 
-`default_environment()` describes the globals available in Obsidian's
-Electron renderer, including `app`, `activeDocument`, `Notice`, `moment`,
-`request`, and `requestUrl`. Note that pop-out windows are missing some globals 
-compared to the main window, but `activeWindow` is intentionally treated as having
-the same environment: at analysis time it is not possible to know whether it
-refers to the main window or a pop-out window. The environment can be extended
-for another host integration:
+`default_environment()` describes the globals available in Obsidian's Electron
+renderer, including `app`, `activeDocument`, `Notice`, `moment`, `request`, and
+`requestUrl`.
+
+Pop-out windows do not expose every global available in the main window. The
+analyzer nevertheless gives `activeWindow` the same environment because it
+cannot know at analysis time whether that value refers to the main window or a
+pop-out window.
+
+Extend the environment when targeting another host:
 
 ```rust
 let mut environment = glass_lint_obsidian::default_environment();
@@ -58,17 +61,5 @@ literal fragments remain in the heuristic profile.
 The promotion criteria and accepted matching mechanisms are documented in
 [ACCURACY.md](ACCURACY.md).
 
-## Adding a rule
-
-Place each rule under `src/rules/<area>/<rule>/` with `positive.js` and
-`negative.js` beside `mod.rs`. Describe its intended semantics and precision
-boundary in a Rust doc comment, then cover direct behavior and relevant alias,
-shadowing, reassignment, provenance, and lookalike cases.
-
-```sh
-cargo run -p glass-lint-cli --bin glass-lint-harness -- \
-  verify glass-lint-obsidian/src/rules/<area>/<rule>
-make test-rules
-```
-
-See [TESTING.md](../TESTING.md) for the complete fixture format.
+For rule authoring, fixture placement, and validation, see the repository
+[contributing guide](../CONTRIBUTING.md) and [testing guide](../TESTING.md).
