@@ -6,9 +6,8 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             return;
         }
         if let Some(call) = self.calls_by_result.get(&source).cloned()
-            && let Some(chain) = call.chain.as_deref()
             && let Some((object, states)) =
-                self.source_match(chain, &call.args, call.fact_id, call.rooted)
+                self.source_match(&call.chain, &call.args, call.fact_id, call.rooted)
         {
             if self.states.len().saturating_add(states.len()) > self.limits.max_states {
                 return;

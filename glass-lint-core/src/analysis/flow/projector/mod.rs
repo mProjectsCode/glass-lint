@@ -41,35 +41,7 @@ pub(super) fn collect_with_limits(
         .facts()
         .iter()
         .filter_map(|fact| match &fact.payload {
-            FactPayload::Call {
-                result,
-                rooted_chain,
-                syntactic_chain,
-                callee_name,
-                args,
-                unwrap,
-                ..
-            } => {
-                let (chain, effective_args) = unwrap.as_deref().map_or(
-                    (
-                        rooted_chain
-                            .clone()
-                            .or_else(|| syntactic_chain.clone())
-                            .or_else(|| callee_name.clone()),
-                        args.clone(),
-                    ),
-                    |unwrap| (Some(unwrap.chain.clone()), unwrap.effective_args.clone()),
-                );
-                Some((
-                    *result,
-                    SourceCall {
-                        chain,
-                        args: effective_args,
-                        fact_id: fact.id,
-                        rooted: rooted_chain.is_some(),
-                    },
-                ))
-            }
+            FactPayload::Call { result, .. } => Some((*result, SourceCall::from_fact(fact)?)),
             _ => None,
         })
         .collect::<BTreeMap<_, _>>();
@@ -116,6 +88,11 @@ struct ObjectFlowProjector<'rules, 'stream> {
     reachable: bool,
 }
 
+/// The portion of projector state that can cross a control-flow boundary.
+///
+/// Keeping this separate from `ObjectFlowProjector` makes branch joins
+/// explicit: a join combines only facts that are true on every reachable
+/// incoming path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FlowEnvironment {
     aliases: BTreeMap<ValueId, ObjectId>,
@@ -166,10 +143,129 @@ enum AbruptExit {
 
 #[derive(Debug, Clone)]
 struct SourceCall {
-    chain: Option<String>,
+    chain: String,
     args: Vec<CallArgInfo>,
     fact_id: FactId,
     rooted: bool,
+}
+
+impl FlowEnvironment {
+    fn unreachable() -> Self {
+        Self {
+            aliases: BTreeMap::new(),
+            states: BTreeMap::new(),
+            reachable: false,
+        }
+    }
+
+    /// Intersect two path states. An alias or requirement is retained only
+    /// when both paths agree, which prevents one-arm configuration from
+    /// leaking through a join.
+    fn join(left: &Self, right: &Self) -> Self {
+        if !left.reachable {
+            return right.clone();
+        }
+        if !right.reachable {
+            return left.clone();
+        }
+        let aliases = left
+            .aliases
+            .iter()
+            .filter_map(|(binding, object)| {
+                (right.aliases.get(binding) == Some(object)).then_some((*binding, *object))
+            })
+            .collect();
+        let states = left
+            .states
+            .iter()
+            .filter_map(|(key, left_state)| {
+                let right_state = right.states.get(key)?;
+                let mut state = left_state.clone();
+                state
+                    .requirements
+                    .retain(|requirement, _| right_state.requirements.contains_key(requirement));
+                Some((*key, state))
+            })
+            .collect();
+        Self {
+            aliases,
+            states,
+            reachable: true,
+        }
+    }
+
+    /// Join all candidate exits, ignoring paths that are already unreachable.
+    fn join_many(environments: &[Self]) -> Self {
+        let Some(first) = environments
+            .iter()
+            .find(|environment| environment.reachable)
+        else {
+            return Self::unreachable();
+        };
+        environments
+            .iter()
+            .filter(|environment| environment.reachable)
+            .skip(1)
+            .fold(first.clone(), |joined, environment| {
+                Self::join(&joined, environment)
+            })
+    }
+}
+
+impl SourceCall {
+    /// Build the canonical source-call view used by both indexing and transfer.
+    /// Unwrapped calls replace the wrapper's chain and arguments with the
+    /// effective call that the flow matcher should inspect.
+    fn from_fact(fact: &crate::analysis::facts::SemanticFact) -> Option<Self> {
+        let FactPayload::Call {
+            rooted_chain,
+            syntactic_chain,
+            callee_name,
+            args,
+            unwrap,
+            ..
+        } = &fact.payload
+        else {
+            return None;
+        };
+        Self::from_parts(
+            fact.id,
+            rooted_chain,
+            syntactic_chain,
+            callee_name,
+            args,
+            unwrap.as_deref(),
+        )
+    }
+
+    fn from_parts(
+        fact_id: FactId,
+        rooted_chain: &Option<String>,
+        syntactic_chain: &Option<String>,
+        callee_name: &Option<String>,
+        args: &[CallArgInfo],
+        unwrap: Option<&crate::analysis::facts::CallUnwrap>,
+    ) -> Option<Self> {
+        let (chain, args) = unwrap.map_or_else(
+            || {
+                (
+                    rooted_chain
+                        .as_deref()
+                        .or(syntactic_chain.as_deref())
+                        .or(callee_name.as_deref())
+                        .map(str::to_owned),
+                    args.to_vec(),
+                )
+            },
+            |unwrap| (Some(unwrap.chain.clone()), unwrap.effective_args.clone()),
+        );
+        Some(Self {
+            chain: chain?,
+            args,
+            fact_id,
+            rooted: rooted_chain.is_some(),
+        })
+    }
 }
 
 impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
@@ -241,24 +337,21 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 if !self.reachable {
                     return;
                 }
-                let (chain, effective_args) = unwrap.as_deref().map_or(
-                    (
-                        rooted_chain
-                            .as_deref()
-                            .or(syntactic_chain.as_deref())
-                            .or(callee_name.as_deref()),
-                        args.as_slice(),
-                    ),
-                    |unwrap| {
-                        (
-                            Some(unwrap.chain.as_str()),
-                            unwrap.effective_args.as_slice(),
-                        )
-                    },
-                );
-                if let Some(chain) = chain {
-                    self.record_configuration(*receiver, chain, effective_args, fact.id);
-                    self.record_sinks(chain, effective_args, fact.id, rooted_chain.is_some());
+                if let Some(source) = SourceCall::from_parts(
+                    fact.id,
+                    rooted_chain,
+                    syntactic_chain,
+                    callee_name,
+                    args,
+                    unwrap.as_deref(),
+                ) {
+                    self.record_configuration(
+                        *receiver,
+                        &source.chain,
+                        &source.args,
+                        source.fact_id,
+                    );
+                    self.record_sinks(&source.chain, &source.args, source.fact_id, source.rooted);
                 }
                 if let Some(function) = target_function {
                     self.record_helper_sink(*function, args, fact.id);
@@ -280,58 +373,6 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         self.aliases = environment.aliases;
         self.states = environment.states;
         self.reachable = environment.reachable;
-    }
-
-    fn join(left: &FlowEnvironment, right: &FlowEnvironment) -> FlowEnvironment {
-        if !left.reachable {
-            return right.clone();
-        }
-        if !right.reachable {
-            return left.clone();
-        }
-        let aliases = left
-            .aliases
-            .iter()
-            .filter_map(|(binding, object)| {
-                (right.aliases.get(binding) == Some(object)).then_some((*binding, *object))
-            })
-            .collect();
-        let states = left
-            .states
-            .iter()
-            .filter_map(|(key, left_state)| {
-                let right_state = right.states.get(key)?;
-                let mut state = left_state.clone();
-                state
-                    .requirements
-                    .retain(|requirement, _| right_state.requirements.contains_key(requirement));
-                Some((*key, state))
-            })
-            .collect();
-        FlowEnvironment {
-            aliases,
-            states,
-            reachable: true,
-        }
-    }
-
-    fn join_many(environments: &[FlowEnvironment]) -> FlowEnvironment {
-        let mut joined = environments
-            .iter()
-            .find(|environment| environment.reachable)
-            .cloned()
-            .unwrap_or(FlowEnvironment {
-                aliases: BTreeMap::new(),
-                states: BTreeMap::new(),
-                reachable: false,
-            });
-        for environment in environments {
-            if std::ptr::eq(&joined, environment) {
-                continue;
-            }
-            joined = Self::join(&joined, environment);
-        }
-        joined
     }
 
     fn record_property_write(

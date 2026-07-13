@@ -56,8 +56,8 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 }
                 let current = self.environment();
                 let joined = then_exit.as_ref().map_or_else(
-                    || Self::join(&base, &current),
-                    |then_exit| Self::join(then_exit, &current),
+                    || FlowEnvironment::join(&base, &current),
+                    |then_exit| FlowEnvironment::join(then_exit, &current),
                 );
                 self.restore(joined);
             }
@@ -75,7 +75,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 {
                     let mut paths = vec![current];
                     paths.extend(continues.iter().cloned());
-                    self.restore(Self::join_many(&paths));
+                    self.restore(FlowEnvironment::join_many(&paths));
                 }
             }
             ControlKind::LoopEnd => {
@@ -101,7 +101,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 // therefore reach the loop exit.
                 paths.extend(continues);
                 paths.push(self.environment());
-                self.restore(Self::join_many(&paths));
+                self.restore(FlowEnvironment::join_many(&paths));
             }
             ControlKind::SwitchStart => self.control.push(ControlFrame::Switch {
                 region,
@@ -123,7 +123,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     // The current environment is the fall-through input
                     // from the preceding case. Joining it with baseline
                     // also admits direct entry at this case.
-                    restore = Some(Self::join(&current, baseline));
+                    restore = Some(FlowEnvironment::join(&current, baseline));
                     *default |= is_default;
                 }
                 if let Some(environment) = restore {
@@ -149,7 +149,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 if !has_default {
                     exits.push(baseline);
                 }
-                self.restore(Self::join_many(&exits));
+                self.restore(FlowEnvironment::join_many(&exits));
             }
             ControlKind::TryStart => self.control.push(ControlFrame::Try {
                 region,
@@ -196,9 +196,9 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     *has_finally = true;
                     let mut normal = try_exit.clone();
                     if current.reachable {
-                        normal = Some(
-                            normal.map_or(current.clone(), |normal| Self::join(&normal, &current)),
-                        );
+                        normal = Some(normal.map_or(current.clone(), |normal| {
+                            FlowEnvironment::join(&normal, &current)
+                        }));
                     }
                     *normal_exit = normal.clone();
                     let mut incoming = Vec::new();
@@ -210,7 +210,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                             .iter()
                             .map(|(_, environment)| environment.clone()),
                     );
-                    restore = Some(Self::join_many(&incoming));
+                    restore = Some(FlowEnvironment::join_many(&incoming));
                 }
                 if let Some(environment) = restore {
                     self.restore(environment);
@@ -241,24 +241,16 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                         if normal.reachable {
                             self.restore(after_finally);
                         } else {
-                            self.restore(FlowEnvironment {
-                                aliases: BTreeMap::new(),
-                                states: BTreeMap::new(),
-                                reachable: false,
-                            });
+                            self.restore(FlowEnvironment::unreachable());
                         }
                     } else {
-                        self.restore(FlowEnvironment {
-                            aliases: BTreeMap::new(),
-                            states: BTreeMap::new(),
-                            reachable: false,
-                        });
+                        self.restore(FlowEnvironment::unreachable());
                     }
                     return;
                 }
                 if let Some(try_exit) = try_exit {
                     let catch_exit = catch_exit.unwrap_or_else(|| self.environment());
-                    self.restore(Self::join(&try_exit, &catch_exit));
+                    self.restore(FlowEnvironment::join(&try_exit, &catch_exit));
                 }
             }
             ControlKind::Break => {
