@@ -1,51 +1,38 @@
+use std::collections::BTreeSet;
+
 use crate::Environment;
+use crate::analysis::SemanticModel;
 use crate::api::{
     classification::ApiClassificationResult, compiler::CompiledCatalog, rule::ApiRule,
 };
 use swc_ecma_ast::Program;
 
-#[allow(dead_code)]
-pub fn classify_api_usage(program: &Program, rules: &[ApiRule]) -> ApiClassificationResult {
-    let catalog = CompiledCatalog::from_rules(rules);
-    let selected = (0..rules.len()).collect::<Vec<_>>();
-    classify_compiled_api_usage(program, &catalog, rules, &selected, &Environment::default())
-}
-
 pub(crate) fn classify_compiled_api_usage(
     program: &Program,
     catalog: &CompiledCatalog,
     rules: &[ApiRule],
-    selected: &[usize],
+    selected: &BTreeSet<usize>,
     environment: &Environment,
 ) -> ApiClassificationResult {
     debug_assert_eq!(catalog.rules.len(), rules.len());
-    let matcher_refs = catalog
-        .rules
-        .iter()
-        .map(|rule| &rule.matcher)
-        .collect::<Vec<_>>();
-    let semantic = crate::analysis::SemanticModel::analyze_compiled(
-        program,
-        &matcher_refs,
-        selected,
-        environment,
-    );
-    let selected = selected
-        .iter()
-        .copied()
-        .collect::<std::collections::BTreeSet<_>>();
+
+    let semantic =
+        SemanticModel::analyze_compiled(program, catalog.to_matcher_catalog(selected), environment);
+
     let mut result = ApiClassificationResult::default();
-    for index in 0..rules.len() {
-        if !selected.contains(&index) {
+    for rule_index in 0..rules.len() {
+        if !selected.contains(&rule_index) {
             continue;
         }
-        let Some(rule) = rules.get(index) else {
+        let Some(rule) = rules.get(rule_index) else {
             continue;
         };
-        let evidence = semantic.evidence_for(index);
+
+        let evidence = semantic.evidence_for(rule_index);
         if evidence.is_empty() {
             continue;
         }
+
         result
             .capabilities
             .push(crate::api::classification::ApiCapability {

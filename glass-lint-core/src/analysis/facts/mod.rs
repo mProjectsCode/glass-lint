@@ -9,17 +9,15 @@ use super::syntax::SymbolCallProvenance;
 #[cfg(test)]
 use super::value::{FunctionId, ValueId};
 use crate::api::classification::ApiEvidence;
-use crate::api::compiler::CompiledMatcherPlan;
-use std::collections::BTreeSet;
+use crate::api::compiler::CompiledMatcherCatalog;
 #[cfg(test)]
 use swc_common::Span;
 use swc_ecma_ast::Program;
 
-#[path = "build/mod.rs"]
 pub(super) mod build;
 mod model;
-#[path = "stream.rs"]
 mod stream;
+
 pub(in crate::analysis) use model::*;
 pub(in crate::analysis) use stream::FactStream;
 
@@ -27,29 +25,18 @@ pub(in crate::analysis) use stream::FactStream;
 
 #[derive(Debug)]
 pub(in crate::analysis) struct SemanticFacts {
-    #[allow(dead_code)]
-    pub(in crate::analysis) stream: FactStream,
     pub(in crate::analysis) index: MatcherFacts,
     pub(in crate::analysis) argument_evidence: Vec<Vec<ApiEvidence>>,
-    selected: BTreeSet<usize>,
 }
 
 impl SemanticFacts {
     pub(in crate::analysis) fn build(
         program: &Program,
         resolver: Resolver,
-        matchers: &[&CompiledMatcherPlan],
-        selected: &[usize],
+        matchers: &CompiledMatcherCatalog<'_>,
     ) -> Self {
-        let selected = selected.iter().copied().collect::<BTreeSet<_>>();
-        let active_matchers = matchers
-            .iter()
-            .enumerate()
-            .filter(|(rule_index, _)| selected.contains(rule_index))
-            .collect::<Vec<_>>();
-        let member_argument_matchers = active_matchers
-            .iter()
-            .copied()
+        let member_argument_matchers = matchers
+            .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
                 matcher
                     .matcher
@@ -59,9 +46,8 @@ impl SemanticFacts {
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
-        let call_argument_matchers = active_matchers
-            .iter()
-            .copied()
+        let call_argument_matchers = matchers
+            .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
                 matcher
                     .matcher
@@ -71,9 +57,8 @@ impl SemanticFacts {
                     .map(move |matcher| (rule_index, matcher))
             })
             .collect::<Vec<_>>();
-        let flow_matchers = active_matchers
-            .iter()
-            .copied()
+        let flow_matchers = matchers
+            .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
                 matcher
                     .flows
@@ -90,10 +75,8 @@ impl SemanticFacts {
 
         if !stream.is_valid() {
             return Self {
-                stream,
                 index: MatcherFacts::default(),
                 argument_evidence: vec![Vec::new(); matchers.len()],
-                selected,
             };
         }
 
@@ -117,22 +100,20 @@ impl SemanticFacts {
             argument_evidence[rule_index].extend(evidence);
         }
         index.normalize_occurrences();
+
         Self {
-            stream,
             index,
             argument_evidence,
-            selected,
         }
-    }
-
-    pub(in crate::analysis) fn is_selected(&self, rule_index: usize) -> bool {
-        self.selected.contains(&rule_index)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeSet;
+
+    use crate::api::compiler::{CompiledMatcherCatalog, CompiledMatcherPlan};
     use crate::api::rule::ApiMatcher;
     use swc_common::BytePos;
 
@@ -240,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_selection_and_order_cannot_change_fact_fingerprint() {
+    fn catalog_selection_and_order_cannot_change_fact_index() {
         let source = "fetch('/api'); document.createElement('script');";
         let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
         let first =
@@ -250,14 +231,17 @@ mod tests {
             crate::api::rule::MemberCallMatcher::syntactic_heuristic("document.createElement"),
         )])
         .normalized();
-        let first = crate::api::compiler::CompiledMatcherPlan::compile(&first);
-        let second = crate::api::compiler::CompiledMatcherPlan::compile(&second);
+        let first = CompiledMatcherPlan::compile(&first);
+        let second = CompiledMatcherPlan::compile(&second);
         let build = |matchers: Vec<&crate::api::compiler::CompiledMatcherPlan>,
                      selected: &[usize]| {
             let resolver = Resolver::collect(&parsed.program);
-            SemanticFacts::build(&parsed.program, resolver, &matchers, selected)
-                .stream
-                .fingerprint()
+            let selected = selected.iter().copied().collect::<BTreeSet<_>>();
+            let catalog = CompiledMatcherCatalog::new(matchers, &selected);
+            format!(
+                "{:?}",
+                SemanticFacts::build(&parsed.program, resolver, &catalog).index
+            )
         };
 
         let forward = build(vec![&first, &second], &[0, 1]);

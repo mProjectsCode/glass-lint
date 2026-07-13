@@ -78,7 +78,8 @@ impl Linter {
                 };
             }
         };
-        let selected: Vec<_> = self
+
+        let selected: BTreeSet<_> = self
             .catalog
             .rules
             .iter()
@@ -90,6 +91,7 @@ impl Linter {
             })
             .map(|(index, _)| index)
             .collect();
+
         let classification = classify_compiled_api_usage(
             &parsed.program,
             &self.compiled,
@@ -97,20 +99,25 @@ impl Linter {
             &selected,
             self.catalog.environment(),
         );
+
         let mut findings = Vec::new();
         for capability in classification.capabilities() {
             let Some(rule_id) = self.catalog.namespaced_id(capability.id()).cloned() else {
                 continue;
             };
+
             let mut ranges: Vec<_> = capability
                 .evidence()
                 .iter()
                 .flat_map(|evidence| evidence_ranges(&parsed.source_map, &evidence.spans))
                 .collect();
+
             remove_contained_ranges(&mut ranges);
+
             if ranges.is_empty() {
                 ranges.push(source_range(source, 0, 0));
             }
+
             for range in ranges {
                 findings.push(Finding {
                     rule_id: rule_id.clone(),

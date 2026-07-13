@@ -1,3 +1,7 @@
+use std::collections::BTreeSet;
+
+use crate::api::compiler::CompiledMatcherCatalog;
+
 use super::super::rule::{ApiCatalogError, ApiRule};
 use super::CompiledRule;
 
@@ -22,7 +26,20 @@ impl CompiledCatalog {
                 .collect(),
         })
     }
+
     pub(crate) fn from_rules(rules: &[ApiRule]) -> Self {
         Self::try_from_rules(rules).expect("validated rule catalog")
+    }
+
+    pub(crate) fn to_matcher_catalog<'a>(
+        &'a self,
+        selected: &'a BTreeSet<usize>,
+    ) -> CompiledMatcherCatalog<'a> {
+        let matchers = self
+            .rules
+            .iter()
+            .map(|rule| &rule.matcher)
+            .collect::<Vec<_>>();
+        CompiledMatcherCatalog::new(matchers, selected)
     }
 }

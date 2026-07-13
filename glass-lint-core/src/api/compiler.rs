@@ -5,8 +5,8 @@ pub(crate) use catalog::CompiledCatalog;
 #[cfg(test)]
 pub(crate) use rule::compile_legacy_flow;
 pub(crate) use rule::{
-    CompiledMatcherPlan, CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArgs,
-    CompiledRule,
+    CompiledMatcherCatalog, CompiledMatcherPlan, CompiledObjectFlow, CompiledObjectRequirement,
+    CompiledObjectSinkArgs, CompiledRule,
 };
 
 pub fn validate_catalog(

@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 #[cfg(test)]
 use super::super::rule::FlowMatcher;
 use super::super::rule::{
@@ -12,6 +14,12 @@ use super::super::rule::{
 pub(crate) struct CompiledMatcherPlan {
     pub(crate) matcher: ApiMatcher,
     pub(crate) flows: Vec<CompiledObjectFlow>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompiledMatcherCatalog<'a> {
+    pub(crate) matchers: Vec<&'a CompiledMatcherPlan>,
+    pub(crate) selected: &'a BTreeSet<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +76,36 @@ impl CompiledMatcherPlan {
             matcher: matcher.clone(),
             flows: matcher.flows.iter().map(compile_flow).collect(),
         }
+    }
+}
+
+impl<'a> CompiledMatcherCatalog<'a> {
+    pub(crate) fn new(
+        matchers: Vec<&'a CompiledMatcherPlan>,
+        selected: &'a BTreeSet<usize>,
+    ) -> Self {
+        Self { matchers, selected }
+    }
+
+    pub(crate) fn selected_matchers(&self) -> impl Iterator<Item = (usize, &CompiledMatcherPlan)> {
+        self.matchers
+            .iter()
+            .enumerate()
+            .filter_map(move |(index, matcher)| {
+                self.selected.contains(&index).then_some((index, *matcher))
+            })
+    }
+
+    pub(crate) fn is_selected(&self, index: usize) -> bool {
+        self.selected.contains(&index)
+    }
+
+    pub(crate) fn get(&self, index: usize) -> Option<&'a CompiledMatcherPlan> {
+        self.matchers.get(index).copied()
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.matchers.len()
     }
 }
 
