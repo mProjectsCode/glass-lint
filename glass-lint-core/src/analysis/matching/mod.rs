@@ -26,6 +26,10 @@ pub struct MatcherFacts {
     // Each map represents a different confidence/provenance level. Do not
     // collapse these into one index: a global spelling, rooted alias, and
     // imported member have intentionally different matching semantics.
+    //
+    // The fields are deliberately grouped by semantic family rather than by
+    // the order in which facts are emitted. That makes it easier to audit a
+    // matcher query against the indexes it is allowed to consume.
     pub(super) calls: Occurrences,
     pub(super) global_calls: Occurrences,
     pub(super) module_calls: ModuleOccurrences,

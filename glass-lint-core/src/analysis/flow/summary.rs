@@ -11,7 +11,6 @@ use super::super::facts::FactId;
 use super::super::facts::{CallArgInfo, FactPayload, FactStream, ParameterBinding};
 use super::super::value::{FunctionId, PathId, ValueId};
 use super::index::{FlowId, FlowIndex};
-use crate::api::compiler::CompiledObjectSinkArgs;
 
 const MAX_SUMMARY_ROUNDS: usize = 64;
 
@@ -77,6 +76,19 @@ impl FunctionSummaries {
             self.by_id.resize_with(index + 1, || None);
         }
         self.by_id[index] = Some(summary);
+    }
+}
+
+impl FunctionSummary {
+    /// Add a sink projection once. Summaries are propagated to a fixed point,
+    /// so deduplication belongs with the summary invariant rather than at
+    /// every call site that discovers a projection.
+    fn add_sink(&mut self, sink: FunctionSinkSummary) -> bool {
+        if self.sinks.contains(&sink) {
+            return false;
+        }
+        self.sinks.push(sink);
+        true
     }
 }
 
@@ -196,7 +208,7 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                     if !sink.member_calls.iter().any(|member| member == chain) {
                         continue;
                     }
-                    for argument_index in sink_argument_indices(&sink.args, args.len()) {
+                    for argument_index in sink.args.present_indices(args.len()) {
                         let Some(argument) = args.get(argument_index) else {
                             continue;
                         };
@@ -209,14 +221,11 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                             else {
                                 continue;
                             };
-                            add_sink(
-                                summary,
-                                FunctionSinkSummary {
-                                    flow: *flow_id,
-                                    parameter_index: parameter.parameter_index,
-                                    path,
-                                },
-                            );
+                            summary.add_sink(FunctionSinkSummary {
+                                flow: *flow_id,
+                                parameter_index: parameter.parameter_index,
+                                path,
+                            });
                         }
                     }
                 }
@@ -257,7 +266,7 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                 let Some(target_summary) = summaries.get(target).cloned() else {
                     continue;
                 };
-                if !invocation_is_compatible(stream, &target_summary, args) {
+                if !target_summary.is_invocation_compatible(stream, args) {
                     continue;
                 }
                 for sink in target_summary.sinks {
@@ -273,9 +282,7 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                     };
                     let mut target_parameter = target_parameter.clone();
                     target_parameter.path = sink.path;
-                    let Some(argument) =
-                        project_parameter_argument(stream, args, &target_parameter)
-                    else {
+                    let Some(argument) = target_parameter.project_argument(stream, args) else {
                         continue;
                     };
                     let Some(caller_parameter) = caller_parameters.iter().find(|parameter| {
@@ -297,8 +304,7 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                     else {
                         continue;
                     };
-                    if !caller_summary.sinks.contains(&projection) {
-                        caller_summary.sinks.push(projection);
+                    if caller_summary.add_sink(projection) {
                         changed = true;
                     }
                 }
@@ -318,107 +324,101 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
     summaries
 }
 
-pub(super) fn invocation_is_compatible(
-    stream: &FactStream,
-    summary: &FunctionSummary,
-    args: &[CallArgInfo],
-) -> bool {
-    if args.iter().any(|argument| argument.spread) {
-        return false;
-    }
-    if !summary.has_rest && args.len() > summary.parameter_count {
-        return false;
-    }
-    for argument in args.iter().take(summary.parameter_count) {
-        if argument.value == ValueId::UNKNOWN {
+/// Check whether a call provides enough proven values for a function summary.
+/// Unknown and spread arguments fail closed because they cannot safely support
+/// a parameter-path projection.
+impl FunctionSummary {
+    /// Check whether a call provides enough proven values for this summary.
+    /// Unknown and spread arguments fail closed because they cannot safely
+    /// support a parameter-path projection.
+    pub(super) fn is_invocation_compatible(
+        &self,
+        stream: &FactStream,
+        args: &[CallArgInfo],
+    ) -> bool {
+        if args.iter().any(|argument| argument.spread) {
             return false;
         }
-    }
-    for parameter in &summary.parameters {
-        if parameter.rest || parameter.parameter_index >= args.len() {
-            if parameter.parameter_index >= args.len()
-                && parameter.default.is_none()
-                && !parameter.rest
-            {
+        if !self.has_rest && args.len() > self.parameter_count {
+            return false;
+        }
+        for argument in args.iter().take(self.parameter_count) {
+            if argument.value == ValueId::UNKNOWN {
                 return false;
             }
-            continue;
         }
-        if parameter.path.is_empty() {
-            continue;
+        for parameter in &self.parameters {
+            if parameter.rest || parameter.parameter_index >= args.len() {
+                if parameter.parameter_index >= args.len()
+                    && parameter.default.is_none()
+                    && !parameter.rest
+                {
+                    return false;
+                }
+                continue;
+            }
+            if parameter.path.is_empty() {
+                continue;
+            }
+            // A missing nested property is unknown unless the leaf has a
+            // default.
+            if parameter.project_argument(stream, args).is_none() && parameter.default.is_none() {
+                return false;
+            }
         }
-        // A missing nested property is unknown unless the leaf has a default.
-        if project_parameter_argument(stream, args, parameter).is_none()
-            && parameter.default.is_none()
-        {
-            return false;
-        }
+        true
     }
-    true
 }
 
-pub(super) fn project_parameter_argument(
-    stream: &FactStream,
-    args: &[CallArgInfo],
-    parameter: &ParameterBinding,
-) -> Option<ValueId> {
-    let Some(argument) = args.get(parameter.parameter_index) else {
-        return parameter
-            .path
-            .is_empty()
-            .then_some(parameter.default)
-            .flatten()
-            .filter(|value| *value != ValueId::UNKNOWN);
-    };
-    if argument.spread {
-        return None;
-    }
-
-    if parameter.rest {
-        let index = stream.paths().first_index(parameter.path)?;
-        let argument = args.get(parameter.parameter_index.saturating_add(index as usize))?;
+impl ParameterBinding {
+    /// Resolve this parameter against a concrete call's argument facts.
+    /// Defaults are used only for the exact missing leaf they cover.
+    pub(super) fn project_argument(
+        &self,
+        stream: &FactStream,
+        args: &[CallArgInfo],
+    ) -> Option<ValueId> {
+        let Some(argument) = args.get(self.parameter_index) else {
+            return self
+                .path
+                .is_empty()
+                .then_some(self.default)
+                .flatten()
+                .filter(|value| *value != ValueId::UNKNOWN);
+        };
         if argument.spread {
             return None;
         }
-        let path = stream.paths().without_first(parameter.path)?;
-        if path.is_empty() {
+
+        if self.rest {
+            let index = stream.paths().first_index(self.path)?;
+            let argument = args.get(self.parameter_index.saturating_add(index as usize))?;
+            if argument.spread {
+                return None;
+            }
+            let path = stream.paths().without_first(self.path)?;
+            if path.is_empty() {
+                return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
+            }
+            return argument
+                .projections
+                .iter()
+                .find(|projection| projection.path == path)
+                .map(|projection| projection.value)
+                .filter(|value| *value != ValueId::UNKNOWN);
+        }
+
+        if self.path.is_empty() {
             return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
         }
-        return argument
+
+        argument
             .projections
             .iter()
-            .find(|projection| projection.path == path)
+            .find(|projection| projection.path == self.path)
             .map(|projection| projection.value)
-            .filter(|value| *value != ValueId::UNKNOWN);
-    }
-
-    if parameter.path.is_empty() {
-        return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
-    }
-
-    argument
-        .projections
-        .iter()
-        .find(|projection| projection.path == parameter.path)
-        .map(|projection| projection.value)
-        .filter(|value| *value != ValueId::UNKNOWN)
-        .or_else(|| parameter.default.filter(|value| *value != ValueId::UNKNOWN))
-}
-
-fn sink_argument_indices(args: &CompiledObjectSinkArgs, argument_count: usize) -> Vec<usize> {
-    match args {
-        CompiledObjectSinkArgs::Any => (0..argument_count).collect(),
-        CompiledObjectSinkArgs::Indices(indices) => indices
-            .iter()
-            .copied()
-            .filter(|index| *index < argument_count)
-            .collect(),
-    }
-}
-
-fn add_sink(summary: &mut FunctionSummary, sink: FunctionSinkSummary) {
-    if !summary.sinks.contains(&sink) {
-        summary.sinks.push(sink);
+            .filter(|value| *value != ValueId::UNKNOWN)
+            .or_else(|| self.default.filter(|value| *value != ValueId::UNKNOWN))
     }
 }
 

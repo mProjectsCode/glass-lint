@@ -3,14 +3,162 @@
 use std::collections::BTreeMap;
 
 use swc_common::Span;
-use swc_ecma_ast::{CallExpr, Callee, Expr, Pat};
+use swc_ecma_ast::{CallExpr, Callee, Expr, ObjectPatProp, Pat};
 
 use super::super::super::syntax::member_prop_name;
+use super::super::super::syntax::prop_name;
 use super::super::BindingProvenance;
 use super::AliasCollector;
-use super::project_parameter_pattern;
 
 impl AliasCollector {
+    /// Resolve the proven parameter aliases shared by all compatible calls to
+    /// a helper. Conflicting call sites are discarded rather than merged:
+    /// retaining an ambiguous alias would leak one caller's provenance into
+    /// another.
+    pub fn parameter_aliases(&self) -> BTreeMap<(usize, String), BindingProvenance> {
+        let mut aliases = BTreeMap::<(usize, String), Option<BindingProvenance>>::new();
+        for (caller_scope, callee, arguments) in &self.calls {
+            let Some((scope, parameters)) = self.function_for_call(*caller_scope, callee) else {
+                continue;
+            };
+            for (index, parameter) in parameters.iter().enumerate() {
+                let mut projected = BTreeMap::new();
+                if *caller_scope != *scope
+                    && let Some(Some(target)) = arguments.get(index)
+                {
+                    Self::project_parameter_pattern(parameter, target, &mut projected);
+                }
+                for name in Self::parameter_binding_names(parameter) {
+                    let target = projected.get(&name).cloned();
+                    let entry = aliases.entry((*scope, name)).or_insert(target.clone());
+                    if *entry != target {
+                        *entry = None;
+                    }
+                }
+            }
+            if arguments.len() != parameters.len() {
+                for parameter in parameters {
+                    for name in Self::parameter_binding_names(parameter) {
+                        aliases.insert((*scope, name), None);
+                    }
+                }
+            }
+        }
+        aliases
+            .into_iter()
+            .filter_map(|(key, value)| value.map(|value| (key, value)))
+            .collect()
+    }
+
+    /// Return every binding introduced by a parameter pattern in stable order.
+    /// Destructuring can bind the same name through several syntactic paths;
+    /// sorting and deduplicating keeps the call projection deterministic.
+    fn parameter_binding_names(pattern: &Pat) -> Vec<String> {
+        let mut names = Vec::new();
+        Self::collect_parameter_binding_names(pattern, &mut names);
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    fn collect_parameter_binding_names(pattern: &Pat, names: &mut Vec<String>) {
+        match pattern {
+            Pat::Ident(ident) => names.push(ident.id.sym.to_string()),
+            Pat::Assign(assign) => Self::collect_parameter_binding_names(&assign.left, names),
+            Pat::Object(object) => {
+                for property in &object.props {
+                    match property {
+                        ObjectPatProp::KeyValue(property) => {
+                            Self::collect_parameter_binding_names(&property.value, names)
+                        }
+                        ObjectPatProp::Assign(property) => names.push(property.key.sym.to_string()),
+                        ObjectPatProp::Rest(property) => {
+                            Self::collect_parameter_binding_names(&property.arg, names)
+                        }
+                    }
+                }
+            }
+            Pat::Array(array) => {
+                for element in array.elems.iter().flatten() {
+                    Self::collect_parameter_binding_names(element, names);
+                }
+            }
+            Pat::Rest(rest) => Self::collect_parameter_binding_names(&rest.arg, names),
+            Pat::Expr(_) | Pat::Invalid(_) => {}
+        }
+    }
+
+    /// Project a proven object argument through a destructured parameter.
+    /// Unsupported patterns intentionally contribute no bindings: callers
+    /// must not infer aliases from a shape that the collector cannot prove.
+    pub(super) fn project_parameter_pattern(
+        pattern: &Pat,
+        value: &BindingProvenance,
+        output: &mut BTreeMap<String, BindingProvenance>,
+    ) {
+        match pattern {
+            Pat::Ident(ident) => {
+                output.insert(ident.id.sym.to_string(), value.clone());
+            }
+            Pat::Assign(assign) => Self::project_parameter_pattern(&assign.left, value, output),
+            Pat::Object(object) => {
+                let BindingProvenance::StaticObjectValues(values) = value else {
+                    return;
+                };
+                for property in &object.props {
+                    match property {
+                        ObjectPatProp::KeyValue(property) => {
+                            let Some(key) = prop_name(&property.key) else {
+                                continue;
+                            };
+                            let Some(target) = values.get(&key) else {
+                                continue;
+                            };
+                            Self::project_parameter_pattern(
+                                &property.value,
+                                &BindingProvenance::ValueAlias {
+                                    target: target.clone(),
+                                },
+                                output,
+                            );
+                        }
+                        ObjectPatProp::Assign(property) => {
+                            if let Some(target) = values.get(property.key.sym.as_ref()) {
+                                output.insert(
+                                    property.key.sym.to_string(),
+                                    BindingProvenance::ValueAlias {
+                                        target: target.clone(),
+                                    },
+                                );
+                            }
+                        }
+                        ObjectPatProp::Rest(_) => {}
+                    }
+                }
+            }
+            Pat::Array(_) | Pat::Rest(_) | Pat::Invalid(_) | Pat::Expr(_) => {}
+        }
+    }
+
+    fn function_for_call(&self, mut scope: usize, name: &str) -> Option<&(usize, Vec<Pat>)> {
+        loop {
+            if let Some(function) = self.function_scopes.get(&(scope, name.to_string())) {
+                return Some(function);
+            }
+            scope = self.scopes.get(scope)?.parent?;
+        }
+    }
+
+    pub(super) fn function_scope_for_name(&self, name: &str) -> Option<usize> {
+        let mut scope = self.current_scope();
+        loop {
+            if let Some((function, _)) = self.function_scopes.get(&(scope, name.to_string())) {
+                return Some(*function);
+            }
+            scope = self.scopes.get(scope)?.parent?;
+        }
+    }
+
     fn bind_inline_parameters<'a>(
         &mut self,
         span: Span,
@@ -23,7 +171,7 @@ impl AliasCollector {
         let mut bindings = BTreeMap::new();
         for (parameter, argument) in parameters.into_iter().zip(arguments) {
             if let Some(argument) = argument {
-                project_parameter_pattern(parameter, &argument, &mut bindings);
+                Self::project_parameter_pattern(parameter, &argument, &mut bindings);
             }
         }
         if !bindings.is_empty() {

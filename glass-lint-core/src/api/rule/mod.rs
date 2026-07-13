@@ -120,7 +120,7 @@ impl ApiRuleBuilder {
         if id.is_empty() {
             return Err(ApiRuleBuildError::MissingId);
         }
-        if !valid_local_rule_id(&id) {
+        if !crate::RuleId::valid_name(&id) {
             return Err(ApiRuleBuildError::InvalidId(id));
         }
         if !category.is_valid() {
@@ -154,22 +154,6 @@ impl ApiRuleBuilder {
             compiled_matcher,
         })
     }
-}
-
-fn valid_local_rule_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.chars().enumerate().all(|(index, character)| {
-            (index == 0 && character.is_ascii_lowercase())
-                || (index > 0
-                    && (character.is_ascii_lowercase()
-                        || character.is_ascii_digit()
-                        || character == '-'
-                        || character == '_'
-                        || character == '.'))
-        })
-        && !value.starts_with(['-', '_', '.'])
-        && !value.ends_with(['-', '_', '.'])
-        && !value.contains("..")
 }
 
 fn required_string(

@@ -17,6 +17,8 @@ pub(in crate::analysis) struct FactStream {
 }
 
 impl FactStream {
+    /// Create an empty, valid stream. Fact IDs are assigned by the builder;
+    /// this type verifies the resulting sequence as facts are appended.
     pub(super) fn new() -> Self {
         Self {
             facts: Vec::new(),
@@ -26,6 +28,8 @@ impl FactStream {
     }
 
     pub(super) fn push(&mut self, fact: SemanticFact) {
+        // Once an invariant is broken, discard subsequent input rather than
+        // exposing a partially trustworthy stream to matcher indexes.
         if !self.valid || self.facts.len() >= MAX_FACTS {
             self.valid = false;
             return;
@@ -58,6 +62,8 @@ impl FactStream {
         parent: PathId,
         segment: PathSegment,
     ) -> Option<PathId> {
+        // Path interning is the one mutable sub-index needed after the fact
+        // walk. RefCell keeps the public stream immutable to query callers.
         self.paths.borrow_mut().append(parent, segment)
     }
 

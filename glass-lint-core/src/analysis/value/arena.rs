@@ -68,6 +68,17 @@ impl ValueArena {
         self.ids.insert(value, id);
         id
     }
+
+    /// Intern a value and, when present, preserve the binding identity that
+    /// made the value observable at a particular source position.
+    pub(in crate::analysis) fn intern_with_binding(
+        &mut self,
+        value: Value,
+        binding: Option<BindingKey>,
+    ) -> ValueId {
+        let target = self.intern(value);
+        binding.map_or(target, |key| self.intern(Value::Binding { key, target }))
+    }
     pub(in crate::analysis) fn allocate_object_id(&mut self) -> Option<ObjectId> {
         if self.next_object >= MAX_OBJECTS {
             return None;

@@ -1,7 +1,16 @@
+//! SWC visitor that turns syntax into the canonical semantic fact stream.
+//!
+//! Each visit method records semantic roles in evaluation order. Matcher
+//! selection never reaches this visitor; all values, provenance, and control
+//! regions are computed once for every file.
+
 use super::*;
 
 impl Visit for FactBuilder<'_> {
     fn visit_ident(&mut self, ident: &Ident) {
+        // References are intentionally emitted even when the resolver cannot
+        // prove their value. Unknown facts preserve source locations while
+        // keeping downstream matchers fail-closed.
         let resolved = self.resolver.resolve_ident(ident);
         self.emit(
             FactKind::Reference,
@@ -14,6 +23,8 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
+        // A member expression is a read role at this node; its object and
+        // property children are visited separately for their own references.
         let resolved = self.resolver.resolve_member(member);
         let syntactic_chain = self.resolver.member_chain(member);
         self.emit(
@@ -123,6 +134,9 @@ impl Visit for FactBuilder<'_> {
                 }
             }
             swc_ecma_ast::AssignTarget::Pat(pattern) => {
+                // Destructuring targets do not have one value identity. Emit
+                // conservative writes for each proven target so flow state is
+                // invalidated without inventing a shared source value.
                 assignment.right.visit_with(self);
                 let pattern: Pat = pattern.clone().into();
                 let mut targets = Vec::new();
@@ -206,7 +220,9 @@ impl Visit for FactBuilder<'_> {
             return;
         };
 
-        // Detect .call()/.apply() wrapper pattern.
+        // Detect .call()/.apply() wrapper patterns before ordinary call
+        // resolution. The wrapper fact retains the effective target and
+        // arguments so all consumers agree on the same invocation shape.
         if let Expr::Member(member) = effective_callee_expr(callee_expr)
             && matches!(
                 member_prop_name(&member.prop).as_deref(),
@@ -231,7 +247,8 @@ impl Visit for FactBuilder<'_> {
         match &*chain.base {
             OptChainBase::Call(call) => {
                 let callee_expr = &call.callee;
-                // Detect .call()/.apply() inside optional chain.
+                // Optional chaining has the same effective-call semantics as
+                // ordinary calls, but its callee can itself be another chain.
                 let optional_member = match effective_callee_expr(callee_expr) {
                     Expr::Member(member) => Some(member),
                     Expr::OptChain(inner) => match &*inner.base {
@@ -452,6 +469,8 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_function(&mut self, function: &Function) {
+        // Function boundaries let flow analysis save and restore caller state;
+        // parameters are captured on the enter and exit markers themselves.
         self.emit_function_fact(
             function.span(),
             function
@@ -524,6 +543,8 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_if_stmt(&mut self, stmt: &IfStmt) {
+        // Control markers are balanced around child traversal. The projector
+        // uses their order to join only environments that reach each exit.
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::BranchStart, region);
         stmt.test.visit_with(self);
@@ -627,6 +648,8 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_try_stmt(&mut self, stmt: &TryStmt) {
+        // Try/catch/finally markers preserve separate normal and abrupt exits;
+        // do not collapse them into one linear region here.
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::TryStart, region);
         stmt.block.visit_with(self);

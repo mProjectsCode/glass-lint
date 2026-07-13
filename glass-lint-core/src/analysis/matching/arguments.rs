@@ -72,30 +72,7 @@ impl MatcherFacts {
     ) {
         for (rule_index, matcher) in matchers {
             let matcher = *matcher;
-            let call_matches = match &matcher.provenance {
-                CallProvenance::Any => {
-                    callee_name.is_some_and(|name| name == matcher.name.as_str())
-                }
-                CallProvenance::Global => matches!(
-                    call_provenance,
-                    SymbolCallProvenance::Global { name } if name == &matcher.name
-                ),
-                CallProvenance::ModuleExport { module } => matches!(
-                    call_provenance,
-                    SymbolCallProvenance::ModuleExport {
-                        module: found_module,
-                        export
-                    } if found_module == module && export == &matcher.name
-                ),
-            };
-
-            if call_matches
-                && matcher.arguments.iter().all(|arg_matcher| {
-                    args.get(arg_matcher.index).is_some_and(|arg| {
-                        crate::analysis::flow::matcher::argument_matches(&arg_matcher.matcher, arg)
-                    })
-                })
-            {
+            if matcher.matches_call(callee_name, call_provenance, args) {
                 evidence[*rule_index].push(ApiEvidence {
                     kind: ApiMatchKind::CallArgument,
                     symbol: matcher.evidence_symbol(),
@@ -121,29 +98,7 @@ impl MatcherFacts {
     ) {
         for (rule_index, matcher) in matchers {
             let matcher = *matcher;
-            let member_matches = match &matcher.provenance {
-                MemberCallProvenance::Any => {
-                    syntactic_chain == Some(&matcher.chain)
-                        || resolved_chain == Some(&matcher.chain)
-                }
-                MemberCallProvenance::Rooted => resolved_chain
-                    .map(canonical_rooted_chain)
-                    .is_some_and(|chain| chain == matcher.chain),
-                MemberCallProvenance::ModuleNamespace { module } => matches!(
-                    module_member,
-                    Some(SymbolMemberProvenance::ModuleNamespace {
-                        module: found_module,
-                        member
-                    }) if found_module == module && member == &matcher.chain
-                ),
-            };
-            if member_matches
-                && matcher.arguments.iter().all(|arg_matcher| {
-                    args.get(arg_matcher.index).is_some_and(|arg| {
-                        crate::analysis::flow::matcher::argument_matches(&arg_matcher.matcher, arg)
-                    })
-                })
-            {
+            if matcher.matches_member(syntactic_chain, resolved_chain, module_member, args) {
                 let symbol = match matcher.provenance {
                     MemberCallProvenance::Any => matcher.evidence_symbol(),
                     MemberCallProvenance::Rooted | MemberCallProvenance::ModuleNamespace { .. } => {
@@ -159,5 +114,69 @@ impl MatcherFacts {
                 });
             }
         }
+    }
+}
+
+impl CallMatcher {
+    /// Match a call fact using the matcher’s provenance and argument rules.
+    /// The fact already contains all AST-independent projections needed here.
+    fn matches_call(
+        &self,
+        callee_name: Option<&str>,
+        call_provenance: &SymbolCallProvenance,
+        args: &[CallArgInfo],
+    ) -> bool {
+        let provenance_matches = match &self.provenance {
+            CallProvenance::Any => callee_name.is_some_and(|name| name == self.name),
+            CallProvenance::Global => matches!(
+                call_provenance,
+                SymbolCallProvenance::Global { name } if name == &self.name
+            ),
+            CallProvenance::ModuleExport { module } => matches!(
+                call_provenance,
+                SymbolCallProvenance::ModuleExport {
+                    module: found_module,
+                    export
+                } if found_module == module && export == &self.name
+            ),
+        };
+        provenance_matches
+            && self.arguments.iter().all(|argument| {
+                args.get(argument.index)
+                    .is_some_and(|arg| argument.matcher.matches(arg))
+            })
+    }
+}
+
+impl MemberCallMatcher {
+    /// Match a member-call fact using syntactic, rooted, or module provenance.
+    fn matches_member(
+        &self,
+        syntactic_chain: Option<&str>,
+        resolved_chain: Option<&str>,
+        module_member: Option<&SymbolMemberProvenance>,
+        args: &[CallArgInfo],
+    ) -> bool {
+        let provenance_matches = match &self.provenance {
+            MemberCallProvenance::Any => {
+                syntactic_chain == Some(self.chain.as_str())
+                    || resolved_chain == Some(self.chain.as_str())
+            }
+            MemberCallProvenance::Rooted => resolved_chain
+                .map(canonical_rooted_chain)
+                .is_some_and(|chain| chain == self.chain),
+            MemberCallProvenance::ModuleNamespace { module } => matches!(
+                module_member,
+                Some(SymbolMemberProvenance::ModuleNamespace {
+                    module: found_module,
+                    member
+                }) if found_module == module && member == &self.chain
+            ),
+        };
+        provenance_matches
+            && self.arguments.iter().all(|argument| {
+                args.get(argument.index)
+                    .is_some_and(|arg| argument.matcher.matches(arg))
+            })
     }
 }

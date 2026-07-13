@@ -14,7 +14,6 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use self::aliases::{collect_assignment_aliases, collect_require_aliases, collect_value_aliases};
 use super::super::syntax::constant::{self, ConstValue};
 use super::super::syntax::{
     collect_pat_bindings, function_prototype_builtin, is_function_constructor_member, member_chain,
@@ -31,8 +30,10 @@ mod predeclare;
 mod visitor;
 
 pub struct AliasCollector {
+    /// Lexical scopes in predeclaration/traversal order.
     pub scopes: Vec<AliasScope>,
     stack: Vec<usize>,
+    /// Assignment events retain source order for use-position provenance.
     pub assignments: Vec<AliasAssignment>,
     latest_assignments: BTreeMap<usize, BTreeMap<String, BindingProvenance>>,
     pub property_assignments: Vec<PropertyAliasAssignment>,
@@ -40,6 +41,7 @@ pub struct AliasCollector {
     pub dynamic_evals: Vec<(usize, Span)>,
     pub(super) function_scopes: BTreeMap<(usize, String), (usize, Vec<Pat>)>,
     pub(super) function_aliases: BTreeMap<(usize, String), usize>,
+    /// Calls retained for the later, scope-aware helper parameter pass.
     calls: Vec<(usize, String, Vec<Option<BindingProvenance>>)>,
     inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
     pub mutable_static_objects: BTreeSet<(usize, String)>,
@@ -65,17 +67,6 @@ pub(super) struct RootedPropertyMutation {
     pub(super) scope: usize,
     pub(super) receiver: String,
     pub(super) property: Option<String>,
-}
-
-fn is_module_interop_wrapper(name: &str) -> bool {
-    matches!(
-        name,
-        "__toESM"
-            | "__importStar"
-            | "__importDefault"
-            | "_interopRequireWildcard"
-            | "_interopRequireDefault"
-    )
 }
 
 impl AliasCollector {
@@ -126,6 +117,20 @@ impl AliasCollector {
 
     fn current_scope(&self) -> usize {
         self.stack.last().copied().unwrap_or(0)
+    }
+
+    /// Bundlers emit these wrappers around CommonJS imports. They are
+    /// recognized only while the wrapper name is itself unbound; a local
+    /// function with the same spelling must remain local.
+    fn is_module_interop_wrapper(name: &str) -> bool {
+        matches!(
+            name,
+            "__toESM"
+                | "__importStar"
+                | "__importDefault"
+                | "_interopRequireWildcard"
+                | "_interopRequireDefault"
+        )
     }
 
     fn binding_scope(&self, kind: VarDeclKind) -> usize {
@@ -342,7 +347,7 @@ impl AliasCollector {
             let Expr::Ident(wrapper) = &**callee else {
                 return None;
             };
-            (is_module_interop_wrapper(wrapper.sym.as_ref())
+            (Self::is_module_interop_wrapper(wrapper.sym.as_ref())
                 && self.is_unbound(wrapper.sym.as_ref()))
             .then(|| call.args.first())
             .flatten()
@@ -556,6 +561,9 @@ impl AliasCollector {
         self.record_assignment(span, *scope, root.sym.to_string(), BindingProvenance::Local);
     }
 
+    /// Copy parameter patterns into the function metadata used by the later
+    /// call-site projection pass. Keeping this conversion here makes the
+    /// collector's function metadata independent of SWC's parameter wrapper.
     fn function_parameters(function: &Function) -> Vec<Pat> {
         function
             .params
@@ -604,144 +612,6 @@ impl AliasCollector {
             Expr::Paren(paren) => self.register_function_expression(name, &paren.expr),
             _ => false,
         }
-    }
-
-    pub fn parameter_aliases(&self) -> BTreeMap<(usize, String), BindingProvenance> {
-        let mut aliases = BTreeMap::<(usize, String), Option<BindingProvenance>>::new();
-        for (caller_scope, callee, arguments) in &self.calls {
-            let Some((scope, parameters)) = self.function_for_call(*caller_scope, callee) else {
-                continue;
-            };
-            for (index, parameter) in parameters.iter().enumerate() {
-                let mut projected = BTreeMap::new();
-                if *caller_scope != *scope
-                    && let Some(Some(target)) = arguments.get(index)
-                {
-                    project_parameter_pattern(parameter, target, &mut projected);
-                }
-                for name in parameter_binding_names(parameter) {
-                    let target = projected.get(&name).cloned();
-                    let entry = aliases.entry((*scope, name)).or_insert(target.clone());
-                    if *entry != target {
-                        *entry = None;
-                    }
-                }
-            }
-            if arguments.len() != parameters.len() {
-                for parameter in parameters {
-                    for name in parameter_binding_names(parameter) {
-                        aliases.insert((*scope, name), None);
-                    }
-                }
-            }
-        }
-        aliases
-            .into_iter()
-            .filter_map(|(key, value)| value.map(|value| (key, value)))
-            .collect()
-    }
-
-    fn function_for_call(&self, mut scope: usize, name: &str) -> Option<&(usize, Vec<Pat>)> {
-        loop {
-            if let Some(function) = self.function_scopes.get(&(scope, name.to_string())) {
-                return Some(function);
-            }
-            scope = self.scopes.get(scope)?.parent?;
-        }
-    }
-
-    fn function_scope_for_name(&self, name: &str) -> Option<usize> {
-        let mut scope = self.current_scope();
-        loop {
-            if let Some((function, _)) = self.function_scopes.get(&(scope, name.to_string())) {
-                return Some(*function);
-            }
-            scope = self.scopes.get(scope)?.parent?;
-        }
-    }
-}
-
-fn parameter_binding_names(pattern: &Pat) -> Vec<String> {
-    let mut names = Vec::new();
-    collect_parameter_binding_names(pattern, &mut names);
-    names.sort();
-    names.dedup();
-    names
-}
-
-fn collect_parameter_binding_names(pattern: &Pat, names: &mut Vec<String>) {
-    match pattern {
-        Pat::Ident(ident) => names.push(ident.id.sym.to_string()),
-        Pat::Assign(assign) => collect_parameter_binding_names(&assign.left, names),
-        Pat::Object(object) => {
-            for property in &object.props {
-                match property {
-                    ObjectPatProp::KeyValue(property) => {
-                        collect_parameter_binding_names(&property.value, names)
-                    }
-                    ObjectPatProp::Assign(property) => names.push(property.key.sym.to_string()),
-                    ObjectPatProp::Rest(property) => {
-                        collect_parameter_binding_names(&property.arg, names)
-                    }
-                }
-            }
-        }
-        Pat::Array(array) => {
-            for element in array.elems.iter().flatten() {
-                collect_parameter_binding_names(element, names);
-            }
-        }
-        Pat::Rest(rest) => collect_parameter_binding_names(&rest.arg, names),
-        Pat::Expr(_) | Pat::Invalid(_) => {}
-    }
-}
-
-pub(super) fn project_parameter_pattern(
-    pattern: &Pat,
-    value: &BindingProvenance,
-    output: &mut BTreeMap<String, BindingProvenance>,
-) {
-    match pattern {
-        Pat::Ident(ident) => {
-            output.insert(ident.id.sym.to_string(), value.clone());
-        }
-        Pat::Assign(assign) => project_parameter_pattern(&assign.left, value, output),
-        Pat::Object(object) => {
-            let BindingProvenance::StaticObjectValues(values) = value else {
-                return;
-            };
-            for property in &object.props {
-                match property {
-                    ObjectPatProp::KeyValue(property) => {
-                        let Some(key) = prop_name(&property.key) else {
-                            continue;
-                        };
-                        let Some(target) = values.get(&key) else {
-                            continue;
-                        };
-                        project_parameter_pattern(
-                            &property.value,
-                            &BindingProvenance::ValueAlias {
-                                target: target.clone(),
-                            },
-                            output,
-                        );
-                    }
-                    ObjectPatProp::Assign(property) => {
-                        if let Some(target) = values.get(property.key.sym.as_ref()) {
-                            output.insert(
-                                property.key.sym.to_string(),
-                                BindingProvenance::ValueAlias {
-                                    target: target.clone(),
-                                },
-                            );
-                        }
-                    }
-                    ObjectPatProp::Rest(_) => {}
-                }
-            }
-        }
-        Pat::Array(_) | Pat::Rest(_) | Pat::Invalid(_) | Pat::Expr(_) => {}
     }
 }
 

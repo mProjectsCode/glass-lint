@@ -38,24 +38,16 @@ impl Resolver {
             }
             _ => None,
         };
-        let returned_member = None;
         let resolved = ResolvedValue {
             id,
             rooted_chain,
             call,
             module_member,
-            returned_member,
+            returned_member: None,
             bound_arguments: seed.bound_arguments,
             syntactic_chain: None,
         };
-        self.resolved_values
-            .borrow_mut()
-            .insert(key, resolved.clone());
-        self.resolving.borrow_mut().remove(&ResolutionKey::Ident {
-            lo: ident.span.lo.0,
-            hi: ident.span.hi.0,
-            symbol: ident.sym.to_string(),
-        });
+        self.cache_resolution(key, resolved.clone());
         resolved
     }
 
@@ -125,13 +117,7 @@ impl Resolver {
             bound_arguments: None,
             syntactic_chain: syntactic,
         };
-        self.resolved_values
-            .borrow_mut()
-            .insert(key, resolved.clone());
-        self.resolving.borrow_mut().remove(&ResolutionKey::Member {
-            lo: member.span.lo.0,
-            hi: member.span.hi.0,
-        });
+        self.cache_resolution(key, resolved.clone());
         resolved
     }
 
@@ -178,20 +164,17 @@ impl Resolver {
                 // projection. The constant evaluator already applies the
                 // depth, node, spread, and mutation bounds used elsewhere.
                 let id = self.intern_const_value(syntax_constant::evaluate(expr, self), None);
-                ResolvedValue {
-                    id,
-                    rooted_chain: None,
-                    call: SymbolCallProvenance::Local,
-                    module_member: None,
-                    returned_member: None,
-                    bound_arguments: None,
-                    syntactic_chain: None,
-                }
+                ResolvedValue::local(id)
             }
             Expr::Call(call) => self.resolve_call_expression(call),
             Expr::New(new_expr) => self.fresh_object_value_at(new_expr.span),
             _ => self.unknown(),
         }
+    }
+
+    fn cache_resolution(&self, key: ResolutionKey, value: ResolvedValue) {
+        self.resolved_values.borrow_mut().insert(key.clone(), value);
+        self.resolving.borrow_mut().remove(&key);
     }
 
     pub(in crate::analysis) fn static_string_expr(&self, expr: &Expr) -> Option<String> {
@@ -272,28 +255,12 @@ impl Resolver {
     }
 
     pub(in crate::analysis) fn unknown(&self) -> ResolvedValue {
-        ResolvedValue {
-            id: ValueId::UNKNOWN,
-            rooted_chain: None,
-            call: SymbolCallProvenance::Local,
-            module_member: None,
-            returned_member: None,
-            bound_arguments: None,
-            syntactic_chain: None,
-        }
+        ResolvedValue::local(ValueId::UNKNOWN)
     }
 
     pub(in crate::analysis) fn static_value(&self, value: Value) -> ResolvedValue {
         let id = self.values.borrow_mut().intern(value);
-        ResolvedValue {
-            id,
-            rooted_chain: None,
-            call: SymbolCallProvenance::Local,
-            module_member: None,
-            returned_member: None,
-            bound_arguments: None,
-            syntactic_chain: None,
-        }
+        ResolvedValue::local(id)
     }
 
     pub(in crate::analysis) fn fresh_object_value(&self) -> ResolvedValue {
@@ -309,15 +276,7 @@ impl Resolver {
     ) -> ResolvedValue {
         let key = (span.lo.0, span.hi.0);
         if let Some(value) = self.fresh_values.borrow().get(&key).copied() {
-            return ResolvedValue {
-                id: value,
-                rooted_chain: None,
-                call: SymbolCallProvenance::Local,
-                module_member: None,
-                returned_member: None,
-                bound_arguments: None,
-                syntactic_chain: None,
-            };
+            return ResolvedValue::local(value);
         }
         let value = self.fresh_object_value();
         self.fresh_values.borrow_mut().insert(key, value.id);

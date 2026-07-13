@@ -5,7 +5,11 @@ use super::ranges::{
     evidence_ranges, remove_contained_ranges, source_range, source_range_from_span,
 };
 use crate::api::rule::ApiSeverity;
-use crate::api::{classifier::classify_compiled_api_usage, compiler::CompiledCatalog};
+use crate::api::{
+    classification::{ApiCapability, ApiClassificationResult},
+    classifier::classify_compiled_api_usage,
+    compiler::CompiledCatalog,
+};
 use crate::diagnostic::{Evidence, Finding, LintReport};
 use crate::{REPORT_VERSION, RuleId};
 use swc_common::SourceMapper;
@@ -79,18 +83,7 @@ impl Linter {
             }
         };
 
-        let selected: BTreeSet<_> = self
-            .catalog
-            .rules
-            .iter()
-            .enumerate()
-            .filter(|(_, rule)| {
-                self.catalog
-                    .namespaced_id(rule.id())
-                    .is_some_and(|id| self.enabled.contains(id))
-            })
-            .map(|(index, _)| index)
-            .collect();
+        let selected = self.selected_rule_indices();
 
         let classification = classify_compiled_api_usage(
             &parsed.program,
@@ -100,58 +93,7 @@ impl Linter {
             self.catalog.environment(),
         );
 
-        let mut findings = Vec::new();
-        for capability in classification.capabilities() {
-            let Some(rule_id) = self.catalog.namespaced_id(capability.id()).cloned() else {
-                continue;
-            };
-
-            let mut ranges: Vec<_> = capability
-                .evidence()
-                .iter()
-                .flat_map(|evidence| evidence_ranges(&parsed.source_map, &evidence.spans))
-                .collect();
-
-            remove_contained_ranges(&mut ranges);
-
-            if ranges.is_empty() {
-                ranges.push(source_range(source, 0, 0));
-            }
-
-            for range in ranges {
-                findings.push(Finding {
-                    rule_id: rule_id.clone(),
-                    message_id: "detected".into(),
-                    message: capability.label().into(),
-                    severity: match capability.severity() {
-                        ApiSeverity::Info => crate::Severity::Info,
-                        ApiSeverity::Warning => crate::Severity::Warning,
-                        ApiSeverity::Error => crate::Severity::Error,
-                    },
-                    range,
-                    evidence: capability
-                        .evidence()
-                        .iter()
-                        .map(|evidence| {
-                            let span = evidence.spans.iter().find(|span| !span.is_dummy()).copied();
-                            Evidence {
-                                message: format!(
-                                    "{}: {} ({} occurrence{})",
-                                    evidence.kind().as_str(),
-                                    evidence.symbol(),
-                                    evidence.count(),
-                                    if evidence.count() == 1 { "" } else { "s" }
-                                ),
-                                range: span
-                                    .map(|span| source_range_from_span(&parsed.source_map, span)),
-                                source: span
-                                    .and_then(|span| parsed.source_map.span_to_snippet(span).ok()),
-                            }
-                        })
-                        .collect(),
-                });
-            }
-        }
+        let mut findings = self.findings_for(&classification, &parsed, source);
         findings.sort_by(|left, right| {
             (
                 &left.range.start.line,
@@ -169,6 +111,95 @@ impl Linter {
             tool_version: env!("CARGO_PKG_VERSION").into(),
             findings,
             parse_diagnostics: Vec::new(),
+        }
+    }
+
+    fn selected_rule_indices(&self) -> BTreeSet<usize> {
+        self.catalog
+            .rules
+            .iter()
+            .enumerate()
+            .filter(|(_, rule)| {
+                self.catalog
+                    .namespaced_id(rule.id())
+                    .is_some_and(|id| self.enabled.contains(id))
+            })
+            .map(|(index, _)| index)
+            .collect()
+    }
+
+    /// Turn classifier capabilities into report findings. Classification is
+    /// kept separate from report assembly so source-range policy remains in
+    /// this layer and semantic analysis stays provider-neutral.
+    fn findings_for(
+        &self,
+        classification: &ApiClassificationResult,
+        parsed: &crate::parse::ParsedSource,
+        source: &str,
+    ) -> Vec<Finding> {
+        classification
+            .capabilities()
+            .iter()
+            .flat_map(|capability| self.findings_for_capability(capability, parsed, source))
+            .collect()
+    }
+
+    fn findings_for_capability(
+        &self,
+        capability: &ApiCapability,
+        parsed: &crate::parse::ParsedSource,
+        source: &str,
+    ) -> Vec<Finding> {
+        let Some(rule_id) = self.catalog.namespaced_id(capability.id()).cloned() else {
+            return Vec::new();
+        };
+        let mut ranges: Vec<_> = capability
+            .evidence()
+            .iter()
+            .flat_map(|evidence| evidence_ranges(&parsed.source_map, &evidence.spans))
+            .collect();
+        remove_contained_ranges(&mut ranges);
+        if ranges.is_empty() {
+            ranges.push(source_range(source, 0, 0));
+        }
+
+        ranges
+            .into_iter()
+            .map(|range| Finding {
+                rule_id: rule_id.clone(),
+                message_id: "detected".into(),
+                message: capability.label().into(),
+                severity: match capability.severity() {
+                    ApiSeverity::Info => crate::Severity::Info,
+                    ApiSeverity::Warning => crate::Severity::Warning,
+                    ApiSeverity::Error => crate::Severity::Error,
+                },
+                range,
+                evidence: capability
+                    .evidence()
+                    .iter()
+                    .map(|evidence| self.report_evidence(evidence, parsed))
+                    .collect(),
+            })
+            .collect()
+    }
+
+    fn report_evidence(
+        &self,
+        evidence: &crate::api::classification::ApiEvidence,
+        parsed: &crate::parse::ParsedSource,
+    ) -> Evidence {
+        let span = evidence.spans.iter().find(|span| !span.is_dummy()).copied();
+        Evidence {
+            message: format!(
+                "{}: {} ({} occurrence{})",
+                evidence.kind().as_str(),
+                evidence.symbol(),
+                evidence.count(),
+                if evidence.count() == 1 { "" } else { "s" }
+            ),
+            range: span.map(|span| source_range_from_span(&parsed.source_map, span)),
+            source: span.and_then(|span| parsed.source_map.span_to_snippet(span).ok()),
         }
     }
 }

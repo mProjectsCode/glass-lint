@@ -1,3 +1,5 @@
+//! Evidence emission and flow requirement updates.
+
 use super::*;
 use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArgs};
 
@@ -9,6 +11,10 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         args: &[CallArgInfo],
         event: FactId,
     ) {
+        // A missing receiver represents a call through a helper summary or a
+        // rooted operation whose object identity is not available. In that
+        // case conservatively try every live object, while receiver-bearing
+        // calls stay scoped to their proven alias.
         let objects = match receiver {
             Some(value) => self
                 .aliases
@@ -39,12 +45,8 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     } = requirement
                         && (member == chain || chain.rsplit('.').next() == Some(member.as_str()))
                         && matchers.iter().all(|matcher| {
-                            args.get(matcher.index).is_some_and(|arg| {
-                                crate::analysis::flow::matcher::argument_matches(
-                                    &matcher.matcher,
-                                    arg,
-                                )
-                            })
+                            args.get(matcher.index)
+                                .is_some_and(|arg| matcher.matcher.matches(arg))
                         })
                     {
                         state.requirements.insert(index, event);
@@ -81,10 +83,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 };
                 let matches = flow.sinks.iter().any(|sink| {
                     sink.member_calls.iter().any(|member| member == chain)
-                        && crate::analysis::flow::matcher::member_call_matches_provenance(
-                            &sink.provenance,
-                            rooted,
-                        )
+                        && sink.provenance.matches_rooted(rooted)
                         && match &sink.args {
                             CompiledObjectSinkArgs::Any => true,
                             CompiledObjectSinkArgs::Indices(indices) => {
@@ -108,7 +107,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         let Some(summary) = self.helpers.get(function).cloned() else {
             return;
         };
-        if !invocation_is_compatible(self.stream, &summary, args) {
+        if !summary.is_invocation_compatible(self.stream, args) {
             return;
         }
         for sink in summary.sinks {
@@ -122,7 +121,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             };
             let mut parameter = parameter.clone();
             parameter.path = sink.path;
-            let Some(value) = project_parameter_argument(self.stream, args, &parameter) else {
+            let Some(value) = parameter.project_argument(self.stream, args) else {
                 continue;
             };
             let Some(object) = self.aliases.get(&value).copied() else {
@@ -134,7 +133,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             let Some(flow) = self.flow_index.get(sink.flow).cloned() else {
                 continue;
             };
-            if state_is_ready(&state, &flow) {
+            if state.is_ready(&flow) {
                 self.emit_state(&state, &flow, sink_fact);
             }
         }
@@ -158,7 +157,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         flow: &CompiledObjectFlow,
         match_fact: FactId,
     ) {
-        if !state_is_ready(state, flow) {
+        if !state.is_ready(flow) {
             return;
         }
         debug_assert!(state.source_event <= match_fact);

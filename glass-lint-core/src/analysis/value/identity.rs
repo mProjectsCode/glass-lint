@@ -6,18 +6,24 @@ use std::fmt;
 pub struct ValueId(pub(in crate::analysis) u32);
 
 impl ValueId {
+    /// Sentinel used whenever analysis cannot prove a value identity.
     pub const UNKNOWN: Self = Self(0);
 }
 
+/// Stable identity for a lexical binding declaration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BindingId(pub(in crate::analysis) u32);
 
+/// Monotonic version of a binding after a source-order assignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BindingVersion(pub(in crate::analysis) u32);
 
+/// Stable identity of a function used by helper-flow summaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FunctionId(pub(in crate::analysis) u32);
 
+/// Canonical member path represented as individual segments rather than a
+/// formatted string, so identity and display concerns stay separate.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SymbolPath(Vec<String>);
 

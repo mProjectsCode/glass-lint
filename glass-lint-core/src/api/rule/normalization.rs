@@ -5,20 +5,17 @@
 //! from being sorted before its semantic argument shape is canonicalized.
 
 use super::matcher::{
-    ApiMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, MemberCallProvenance,
-    MemberReadProvenance, canonical_rooted_chain, normalize_flows, normalize_instance_member_calls,
-    normalize_member_chain, normalize_returned_member_calls, normalize_returned_member_reads,
+    ApiMatcher, ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
+    ConstructorMatcher, InstanceMemberCallMatcher, MemberCallMatcher, MemberCallProvenance,
+    MemberReadProvenance, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, ValueMatcher,
+    ValueMatcherKind, canonical_rooted_chain, normalize_flows, normalize_member_chain,
     normalize_strings,
 };
 
 pub(super) fn normalize(mut matcher: ApiMatcher) -> ApiMatcher {
     normalize_arguments(&mut matcher);
     for call in &mut matcher.calls {
-        call.name = call.name.trim().to_string();
-        match &mut call.provenance {
-            CallProvenance::Any | CallProvenance::Global => {}
-            CallProvenance::ModuleExport { module } => *module = module.trim().to_string(),
-        }
+        call.normalize();
     }
     matcher.calls.retain(|call| {
         !call.name.is_empty()
@@ -33,13 +30,7 @@ pub(super) fn normalize(mut matcher: ApiMatcher) -> ApiMatcher {
     matcher.calls.dedup();
 
     for member_call in &mut matcher.member_calls {
-        member_call.chain = normalize_member_chain(&member_call.chain);
-        if member_call.provenance == MemberCallProvenance::Rooted {
-            member_call.chain = canonical_rooted_chain(&member_call.chain).to_string();
-        }
-        if let MemberCallProvenance::ModuleNamespace { module } = &mut member_call.provenance {
-            *module = module.trim().to_string();
-        }
+        member_call.normalize();
     }
     matcher.member_calls.retain(|call| {
         !call.chain.is_empty()
@@ -75,47 +66,178 @@ pub(super) fn normalize(mut matcher: ApiMatcher) -> ApiMatcher {
     matcher.member_reads.dedup();
     normalize_strings(&mut matcher.imports);
     normalize_strings(&mut matcher.string_literals);
-    normalize_class_matchers(&mut matcher.classes);
-    normalize_constructor_matchers(&mut matcher.constructors);
+    ClassMatcher::normalize_all(&mut matcher.classes);
+    ConstructorMatcher::normalize_all(&mut matcher.constructors);
     normalize_flows(&mut matcher.flows);
-    normalize_returned_member_calls(&mut matcher.returned_member_calls);
-    normalize_returned_member_reads(&mut matcher.returned_member_reads);
-    normalize_instance_member_calls(&mut matcher.instance_member_calls);
+    ReturnedMemberCallMatcher::normalize_all(&mut matcher.returned_member_calls);
+    ReturnedMemberReadMatcher::normalize_all(&mut matcher.returned_member_reads);
+    InstanceMemberCallMatcher::normalize_all(&mut matcher.instance_member_calls);
     matcher
 }
 
 pub(super) fn normalize_arguments(matcher: &mut ApiMatcher) {
     for call in &mut matcher.calls {
-        super::matcher::normalize_arguments(&mut call.arguments);
+        ArgumentConstraint::normalize_all(&mut call.arguments);
     }
 
     for member_call in &mut matcher.member_calls {
-        super::matcher::normalize_arguments(&mut member_call.arguments);
+        ArgumentConstraint::normalize_all(&mut member_call.arguments);
     }
 }
 
-pub(crate) fn normalize_class_matchers(values: &mut Vec<ClassMatcher>) {
-    for value in values.iter_mut() {
-        value.name = value.name.trim().to_string();
-        normalize_call_provenance(&mut value.provenance);
+impl ClassMatcher {
+    fn normalize(&mut self) {
+        self.name = self.name.trim().to_string();
+        self.provenance.normalize();
     }
-    values.retain(|value| !value.name.is_empty());
-    values.sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
-    values.dedup();
+
+    pub(crate) fn normalize_all(values: &mut Vec<Self>) {
+        for value in values.iter_mut() {
+            value.normalize();
+        }
+        values.retain(|value| !value.name.is_empty());
+        values.sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
+        values.dedup();
+    }
 }
 
-pub(crate) fn normalize_constructor_matchers(values: &mut Vec<ConstructorMatcher>) {
-    for value in values.iter_mut() {
-        value.name = value.name.trim().to_string();
-        normalize_call_provenance(&mut value.provenance);
+impl ConstructorMatcher {
+    fn normalize(&mut self) {
+        self.name = self.name.trim().to_string();
+        self.provenance.normalize();
     }
-    values.retain(|value| !value.name.is_empty());
-    values.sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
-    values.dedup();
+
+    pub(crate) fn normalize_all(values: &mut Vec<Self>) {
+        for value in values.iter_mut() {
+            value.normalize();
+        }
+        values.retain(|value| !value.name.is_empty());
+        values.sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
+        values.dedup();
+    }
 }
 
-fn normalize_call_provenance(provenance: &mut CallProvenance) {
-    if let CallProvenance::ModuleExport { module } = provenance {
-        *module = module.trim().to_string();
+impl ReturnedMemberCallMatcher {
+    fn normalize(&mut self) {
+        self.source = canonical_rooted_chain(&normalize_member_chain(&self.source)).to_string();
+        self.member = self.member.trim().to_string();
+    }
+
+    pub(crate) fn normalize_all(values: &mut Vec<Self>) {
+        for value in values.iter_mut() {
+            value.normalize();
+        }
+        values.retain(|value| !value.source.is_empty() && !value.member.is_empty());
+        values.sort_by(|left, right| {
+            (&left.source, &left.member).cmp(&(&right.source, &right.member))
+        });
+        values.dedup();
+    }
+}
+
+impl ReturnedMemberReadMatcher {
+    fn normalize(&mut self) {
+        self.source = canonical_rooted_chain(&normalize_member_chain(&self.source)).to_string();
+        self.member = self.member.trim().to_string();
+    }
+
+    pub(crate) fn normalize_all(values: &mut Vec<Self>) {
+        for value in values.iter_mut() {
+            value.normalize();
+        }
+        values.retain(|value| !value.source.is_empty() && !value.member.is_empty());
+        values.sort_by(|left, right| {
+            (&left.source, &left.member).cmp(&(&right.source, &right.member))
+        });
+        values.dedup();
+    }
+}
+
+impl InstanceMemberCallMatcher {
+    fn normalize(&mut self) {
+        self.module = self.module.trim().to_string();
+        self.export = self.export.trim().to_string();
+        self.member = self.member.trim().to_string();
+    }
+
+    pub(crate) fn normalize_all(values: &mut Vec<Self>) {
+        for value in values.iter_mut() {
+            value.normalize();
+        }
+        values.retain(|value| {
+            !value.module.is_empty() && !value.export.is_empty() && !value.member.is_empty()
+        });
+        values.sort_by(|left, right| {
+            (&left.module, &left.export, &left.member).cmp(&(
+                &right.module,
+                &right.export,
+                &right.member,
+            ))
+        });
+        values.dedup();
+    }
+}
+
+impl CallProvenance {
+    pub(crate) fn normalize(&mut self) {
+        if let Self::ModuleExport { module } = self {
+            *module = module.trim().to_string();
+        }
+    }
+}
+
+impl CallMatcher {
+    pub(crate) fn normalize(&mut self) {
+        self.name = self.name.trim().to_string();
+        self.provenance.normalize();
+        ArgumentConstraint::normalize_all(&mut self.arguments);
+    }
+}
+
+impl MemberCallMatcher {
+    pub(crate) fn normalize(&mut self) {
+        self.chain = normalize_member_chain(&self.chain);
+        if self.provenance == MemberCallProvenance::Rooted {
+            self.chain = canonical_rooted_chain(&self.chain).to_string();
+        }
+        if let MemberCallProvenance::ModuleNamespace { module } = &mut self.provenance {
+            *module = module.trim().to_string();
+        }
+        ArgumentConstraint::normalize_all(&mut self.arguments);
+    }
+}
+
+impl ValueMatcher {
+    pub(crate) fn normalize(&mut self) {
+        if let ValueMatcherKind::StaticString(predicate) = &mut self.kind {
+            match predicate {
+                super::matcher::StaticStringPredicate::Any => {}
+                super::matcher::StaticStringPredicate::Exact(values)
+                | super::matcher::StaticStringPredicate::Prefix(values)
+                | super::matcher::StaticStringPredicate::ContainsAny(values)
+                | super::matcher::StaticStringPredicate::ContainsAll(values) => {
+                    normalize_strings(values)
+                }
+            }
+        }
+    }
+}
+
+impl ArgumentMatcher {
+    pub(crate) fn normalize(&mut self) {
+        match self {
+            Self::Value(value) => value.normalize(),
+            Self::ObjectKeys(keys) | Self::RootedExpressions(keys) => normalize_strings(keys),
+        }
+    }
+}
+
+impl ArgumentConstraint {
+    pub(crate) fn normalize_all(arguments: &mut Vec<Self>) {
+        for argument in arguments.iter_mut() {
+            argument.matcher.normalize();
+        }
+        arguments.sort_by_key(|argument| argument.index);
+        arguments.dedup();
     }
 }

@@ -52,26 +52,42 @@ impl<'rules> FlowIndex<'rules> {
             };
             index.flows.insert(id, *flow);
             for source in &flow.sources {
-                index
-                    .sources
-                    .entry(source.member_call.clone())
-                    .or_default()
-                    .push(id);
+                index.add_source(&source.member_call, id);
             }
             for sink in &flow.sinks {
                 for member_call in &sink.member_calls {
-                    index.sinks.entry(member_call.clone()).or_default().push(id);
+                    index.add_sink(member_call, id);
                 }
             }
         }
-        for ids in index.sources.values_mut().chain(index.sinks.values_mut()) {
-            ids.sort_unstable();
-            ids.dedup();
-        }
+        index.normalize_ids();
         index
     }
 
     pub(super) fn get(&self, id: FlowId) -> Option<&CompiledObjectFlow> {
         self.flows.get(&id).copied()
+    }
+
+    fn add_source(&mut self, member_call: &str, id: FlowId) {
+        self.sources
+            .entry(member_call.to_string())
+            .or_default()
+            .push(id);
+    }
+
+    fn add_sink(&mut self, member_call: &str, id: FlowId) {
+        self.sinks
+            .entry(member_call.to_string())
+            .or_default()
+            .push(id);
+    }
+
+    /// Normalize lookup buckets once after construction. Query code can then
+    /// treat every bucket as a deterministic set without repeating dedup work.
+    fn normalize_ids(&mut self) {
+        for ids in self.sources.values_mut().chain(self.sinks.values_mut()) {
+            ids.sort_unstable();
+            ids.dedup();
+        }
     }
 }

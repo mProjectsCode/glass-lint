@@ -109,7 +109,7 @@ impl Visit for AliasCollector {
                     if let ObjectPatProp::KeyValue(property) = property
                         && prop_name(&property.key).as_deref() == Some("constructor")
                     {
-                        collect_value_aliases(&property.value, "Function", scope, self);
+                        self.collect_value_aliases(&property.value, "Function", scope);
                     }
                 }
                 true
@@ -126,11 +126,11 @@ impl Visit for AliasCollector {
             } else if let Some(BindingProvenance::ModuleNamespace { module }) =
                 module_alias.as_ref()
             {
-                collect_require_aliases(&declarator.name, module.clone(), scope, self);
+                self.collect_require_aliases(&declarator.name, module.clone(), scope);
             } else if let Some(init) = declarator.init.as_deref()
                 && let Some(module) = self.require_module_expr_name(init)
             {
-                collect_require_aliases(&declarator.name, module, scope, self);
+                self.collect_require_aliases(&declarator.name, module, scope);
             } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, const_value) {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
             } else if let (Pat::Ident(ident), Some(provenance)) =
@@ -144,7 +144,7 @@ impl Visit for AliasCollector {
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
             } else if !derived_function_pattern && let Some(target) = value_alias {
-                collect_value_aliases(&declarator.name, &target, scope, self);
+                self.collect_value_aliases(&declarator.name, &target, scope);
             }
             if let Some(init) = init {
                 init.visit_with(self);
@@ -213,12 +213,11 @@ impl Visit for AliasCollector {
             AssignTarget::Pat(pattern) => {
                 let pattern: Pat = pattern.clone().into();
                 if let Some(target) = self.rooted_expr_name(&assignment.right) {
-                    collect_assignment_aliases(
+                    self.collect_assignment_aliases(
                         &pattern,
                         &target,
                         assignment.span,
                         self.current_scope(),
-                        self,
                     );
                 }
             }

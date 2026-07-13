@@ -22,6 +22,11 @@ pub(crate) enum StaticStringPredicate {
 }
 
 impl ValueMatcher {
+    fn with_static_predicate(mut self, predicate: StaticStringPredicate) -> Self {
+        self.kind = ValueMatcherKind::StaticString(predicate);
+        self
+    }
+
     /// Matches both proven static values and dynamic or unknown values.
     pub fn any_value() -> Self {
         Self {
@@ -36,54 +41,48 @@ impl ValueMatcher {
         }
     }
 
-    pub fn equals(mut self, value: impl Into<String>) -> Self {
-        self.kind =
-            ValueMatcherKind::StaticString(StaticStringPredicate::Exact(vec![value.into()]));
-        self
+    pub fn equals(self, value: impl Into<String>) -> Self {
+        self.with_static_predicate(StaticStringPredicate::Exact(vec![value.into()]))
     }
 
-    pub fn equals_any<I, S>(mut self, values: I) -> Self
+    pub fn equals_any<I, S>(self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.kind = ValueMatcherKind::StaticString(StaticStringPredicate::Exact(
+        self.with_static_predicate(StaticStringPredicate::Exact(
             values.into_iter().map(Into::into).collect(),
-        ));
-        self
+        ))
     }
 
-    pub fn starts_with_any<I, S>(mut self, values: I) -> Self
+    pub fn starts_with_any<I, S>(self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.kind = ValueMatcherKind::StaticString(StaticStringPredicate::Prefix(
+        self.with_static_predicate(StaticStringPredicate::Prefix(
             values.into_iter().map(Into::into).collect(),
-        ));
-        self
+        ))
     }
 
-    pub fn contains_any<I, S>(mut self, values: I) -> Self
+    pub fn contains_any<I, S>(self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.kind = ValueMatcherKind::StaticString(StaticStringPredicate::ContainsAny(
+        self.with_static_predicate(StaticStringPredicate::ContainsAny(
             values.into_iter().map(Into::into).collect(),
-        ));
-        self
+        ))
     }
 
-    pub fn contains_all<I, S>(mut self, values: I) -> Self
+    pub fn contains_all<I, S>(self, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.kind = ValueMatcherKind::StaticString(StaticStringPredicate::ContainsAll(
+        self.with_static_predicate(StaticStringPredicate::ContainsAll(
             values.into_iter().map(Into::into).collect(),
-        ));
-        self
+        ))
     }
 }
 
@@ -303,6 +302,8 @@ impl ObjectFlowMatcherBuilder {
     }
 
     pub fn configured_by(mut self, condition: FlowCondition) -> Self {
+        // Keep the first invalid operation so the builder reports a stable,
+        // actionable error instead of silently choosing one configuration.
         if self.condition.is_some() {
             self.invalid_operation = Some("configured_by may only be specified once");
         } else {
@@ -403,6 +404,9 @@ impl FlowMatcher {
                 .clone()
                 .arg(index, ValueMatcher::static_string().equals_any(values));
         } else {
+            // Preserve the legacy builder's deferred validation behavior: a
+            // source predicate before a source call creates an invalid
+            // placeholder that the normal matcher validator rejects.
             self.sources
                 .push(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(
                     "",

@@ -1,3 +1,9 @@
+//! Control-flow state transitions for the object-flow projector.
+//!
+//! The fact builder emits balanced control markers. This module translates
+//! those markers into snapshots and joins; it does not attempt to rediscover
+//! JavaScript control flow from individual call facts.
+
 use super::*;
 
 impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
@@ -55,6 +61,8 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     return;
                 }
                 let current = self.environment();
+                // The current environment is the else path when one exists,
+                // and the then path otherwise (for an if without an else).
                 let joined = then_exit.as_ref().map_or_else(
                     || FlowEnvironment::join(&base, &current),
                     |then_exit| FlowEnvironment::join(then_exit, &current),

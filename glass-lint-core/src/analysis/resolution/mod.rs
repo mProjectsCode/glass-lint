@@ -34,9 +34,31 @@ pub(super) struct ResolvedValue {
     /// Namespace provenance for member matchers, retained independently from
     /// `call` because a namespace member can also be read without being called.
     pub(super) module_member: Option<SymbolMemberProvenance>,
+    /// Provenance for a member read from a function or constructor result.
     pub(super) returned_member: Option<(String, String)>,
+    /// Arguments captured by a modeled callable value such as `bind`.
     pub(super) bound_arguments: Option<Vec<Option<super::scope::BoundArgument>>>,
+    /// The source spelling before aliases are expanded.
     pub(super) syntactic_chain: Option<String>,
+}
+
+impl ResolvedValue {
+    /// Build a value with no callable or member provenance.
+    ///
+    /// Unknown, static, and freshly allocated object values all use this
+    /// representation. Keeping the default fields here prevents a new
+    /// resolution path from accidentally inheriting provenance.
+    pub(super) fn local(id: ValueId) -> Self {
+        Self {
+            id,
+            rooted_chain: None,
+            call: SymbolCallProvenance::Local,
+            module_member: None,
+            returned_member: None,
+            bound_arguments: None,
+            syntactic_chain: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -102,16 +124,19 @@ impl Lookup for Resolver {
     }
 }
 
-fn rooted_value(chain: &str) -> Value {
-    let mut segments = chain.split('.');
-    let root = segments.next().unwrap_or_default().to_string();
-    Value::RootedMember {
-        root,
-        path: segments.map(str::to_string).collect(),
-    }
-}
-
 impl Resolver {
+    /// Convert a canonical member chain into the arena's structured value.
+    /// Keeping this conversion beside `Resolver` ensures callers do not need
+    /// to know how rooted values are represented internally.
+    pub(super) fn rooted_value(chain: &str) -> Value {
+        let mut segments = chain.split('.');
+        let root = segments.next().unwrap_or_default().to_string();
+        Value::RootedMember {
+            root,
+            path: segments.map(str::to_string).collect(),
+        }
+    }
+
     #[cfg(test)]
     pub(in crate::analysis) fn collect(program: &Program) -> Self {
         let mut environment = crate::Environment::default();

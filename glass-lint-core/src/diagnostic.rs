@@ -6,6 +6,7 @@ use crate::RuleId;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(rename_all = "lowercase")]
+/// Severity exposed by the provider-neutral report schema.
 pub enum Severity {
     Info,
     Warning,
@@ -13,18 +14,21 @@ pub enum Severity {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// One-based Unicode display position in a source file.
 pub struct Position {
     pub line: u32,
     pub column: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Inclusive-start, exclusive-end source range used by findings.
 pub struct SourceRange {
     pub start: Position,
     pub end: Position,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// Human-readable evidence attached to a finding.
 pub struct Evidence {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -34,6 +38,7 @@ pub struct Evidence {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+/// One rule finding with its primary range and optional evidence.
 pub struct Finding {
     pub rule_id: RuleId,
     pub message_id: String,
@@ -45,6 +50,7 @@ pub struct Finding {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+/// Complete serialized result for one lint invocation.
 pub struct LintReport {
     pub schema_version: u32,
     pub tool_version: String,
@@ -53,6 +59,7 @@ pub struct LintReport {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+/// Provider rule metadata exposed to front ends and integrations.
 pub struct RuleMetadata {
     pub id: RuleId,
     pub description: String,

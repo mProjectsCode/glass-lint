@@ -3,6 +3,10 @@
 use super::*;
 
 impl MatcherFacts {
+    /// Sort and deduplicate every occurrence index after fact collection.
+    /// Queries rely on this normalization for deterministic output and binary
+    /// search; keeping it as one operation prevents a newly added index from
+    /// being accidentally left in insertion order.
     pub(in crate::analysis) fn normalize_occurrences(&mut self) {
         self.calls.normalize();
         self.global_calls.normalize();
@@ -26,6 +30,8 @@ impl MatcherFacts {
     }
 
     pub(in crate::analysis) fn build_from_stream(&mut self, stream: &FactStream) {
+        // This is the sole projection from semantic facts into shared matcher
+        // indexes. Rule selection must happen later, in query code.
         for fact in stream.facts() {
             match &fact.payload {
                 FactPayload::Call {

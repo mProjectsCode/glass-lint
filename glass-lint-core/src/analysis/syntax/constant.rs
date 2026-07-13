@@ -29,6 +29,17 @@ pub(in crate::analysis) enum ConstValue {
 }
 
 impl ConstValue {
+    /// Construct a string only when it fits the evaluator's global bound.
+    /// Keeping the limit at the value boundary prevents one evaluation path
+    /// from accidentally returning an oversized string.
+    fn bounded_string(value: String) -> Self {
+        if value.len() <= MAX_STRING_BYTES {
+            Self::String(value)
+        } else {
+            Self::Unknown
+        }
+    }
+
     pub(in crate::analysis) fn string(&self) -> Option<&str> {
         match self {
             Self::String(value) => Some(value),
@@ -103,11 +114,7 @@ pub(in crate::analysis) fn property_name_with_state(
     lookup: &impl Lookup,
     state: &mut EvalState,
 ) -> Option<String> {
-    match prop {
-        MemberProp::Ident(ident) => Some(ident.sym.to_string()),
-        MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
-        MemberProp::Computed(computed) => state.evaluate(&computed.expr, lookup).property_key(),
-    }
+    state.member_property_name(prop, lookup)
 }
 
 #[derive(Default)]
@@ -135,7 +142,9 @@ impl EvalState {
 
     fn evaluate_inner(&mut self, expr: &Expr, lookup: &impl Lookup) -> ConstValue {
         match expr {
-            Expr::Lit(Lit::Str(value)) => bounded_string(value.value.to_string_lossy().to_string()),
+            Expr::Lit(Lit::Str(value)) => {
+                ConstValue::bounded_string(value.value.to_string_lossy().to_string())
+            }
             Expr::Lit(Lit::Num(value))
                 if value.value.is_finite()
                     && value.value >= 0.0
@@ -163,7 +172,7 @@ impl EvalState {
                         .as_ref()
                         .map(|value| value.to_string_lossy().to_string())
                         .unwrap_or_else(|| quasi.raw.to_string());
-                    if !append_bounded(&mut output, &cooked) {
+                    if !self.append_bounded(&mut output, &cooked) {
                         return ConstValue::Unknown;
                     }
                     if let Some(expression) = template.exprs.get(index) {
@@ -171,7 +180,7 @@ impl EvalState {
                         else {
                             return ConstValue::Unknown;
                         };
-                        if !append_bounded(&mut output, &value) {
+                        if !self.append_bounded(&mut output, &value) {
                             return ConstValue::Unknown;
                         }
                     }
@@ -213,7 +222,7 @@ impl EvalState {
                     return ConstValue::Unknown;
                 };
                 let mut value = left;
-                if !append_bounded(&mut value, &right) {
+                if !self.append_bounded(&mut value, &right) {
                     return ConstValue::Unknown;
                 }
                 ConstValue::String(value)
@@ -246,7 +255,7 @@ impl EvalState {
                             self.evaluate(&Expr::Ident(ident.clone()), lookup),
                         ),
                         Prop::KeyValue(property) => {
-                            let Some(key) = prop_name(&property.key, lookup, self) else {
+                            let Some(key) = self.property_name(&property.key, lookup) else {
                                 return ConstValue::Unknown;
                             };
                             (key, self.evaluate(&property.value, lookup))
@@ -314,6 +323,45 @@ impl EvalState {
         self.lookups += 1;
         true
     }
+
+    /// Resolve a property name using the same bounded evaluator state as its
+    /// surrounding expression. Computed keys therefore consume depth, node,
+    /// and lookup budget instead of silently starting a second evaluation.
+    fn property_name(&mut self, prop: &PropName, lookup: &impl Lookup) -> Option<String> {
+        match prop {
+            PropName::Ident(ident) => Some(ident.sym.to_string()),
+            PropName::Str(value) => {
+                ConstValue::bounded_string(value.value.to_string_lossy().to_string()).property_key()
+            }
+            PropName::Num(value)
+                if value.value.is_finite()
+                    && value.value >= 0.0
+                    && value.value.fract() == 0.0
+                    && value.value <= usize::MAX as f64 =>
+            {
+                Some((value.value as usize).to_string())
+            }
+            PropName::Num(_) => None,
+            PropName::Computed(computed) => self.evaluate(&computed.expr, lookup).property_key(),
+            PropName::BigInt(_) => None,
+        }
+    }
+
+    fn member_property_name(&mut self, prop: &MemberProp, lookup: &impl Lookup) -> Option<String> {
+        match prop {
+            MemberProp::Ident(ident) => Some(ident.sym.to_string()),
+            MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
+            MemberProp::Computed(computed) => self.evaluate(&computed.expr, lookup).property_key(),
+        }
+    }
+
+    fn append_bounded(&self, output: &mut String, value: &str) -> bool {
+        if output.len().saturating_add(value.len()) > MAX_STRING_BYTES {
+            return false;
+        }
+        output.push_str(value);
+        true
+    }
 }
 
 impl ConstValue {
@@ -324,42 +372,6 @@ impl ConstValue {
             _ => None,
         }
     }
-}
-
-fn prop_name(prop: &PropName, lookup: &impl Lookup, state: &mut EvalState) -> Option<String> {
-    match prop {
-        PropName::Ident(ident) => Some(ident.sym.to_string()),
-        PropName::Str(value) => {
-            bounded_string(value.value.to_string_lossy().to_string()).property_key()
-        }
-        PropName::Num(value)
-            if value.value.is_finite()
-                && value.value >= 0.0
-                && value.value.fract() == 0.0
-                && value.value <= usize::MAX as f64 =>
-        {
-            Some((value.value as usize).to_string())
-        }
-        PropName::Num(_) => None,
-        PropName::Computed(computed) => state.evaluate(&computed.expr, lookup).property_key(),
-        PropName::BigInt(_) => None,
-    }
-}
-
-fn bounded_string(value: String) -> ConstValue {
-    if value.len() <= MAX_STRING_BYTES {
-        ConstValue::String(value)
-    } else {
-        ConstValue::Unknown
-    }
-}
-
-fn append_bounded(output: &mut String, value: &str) -> bool {
-    if output.len().saturating_add(value.len()) > MAX_STRING_BYTES {
-        return false;
-    }
-    output.push_str(value);
-    true
 }
 
 #[cfg(test)]

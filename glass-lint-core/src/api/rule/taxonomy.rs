@@ -57,6 +57,14 @@ impl ApiSeverity {
             Self::Error => "error",
         }
     }
+
+    pub(crate) fn as_diagnostic_severity(self) -> Severity {
+        match self {
+            Self::Info => Severity::Info,
+            Self::Warning => Severity::Warning,
+            Self::Error => Severity::Error,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
@@ -76,3 +84,4 @@ impl Confidence {
         }
     }
 }
+use crate::Severity;

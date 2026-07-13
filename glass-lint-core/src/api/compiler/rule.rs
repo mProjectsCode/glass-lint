@@ -36,6 +36,46 @@ impl CompiledObjectFlow {
     pub(crate) fn evidence_symbol(&self) -> String {
         self.symbol.clone()
     }
+
+    fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
+        let (requirements, all_requirements_required) = match flow.condition.as_ref() {
+            Some(FlowCondition::AnyOf(events)) => (
+                events
+                    .iter()
+                    .map(CompiledObjectRequirement::from_matcher)
+                    .collect(),
+                false,
+            ),
+            Some(FlowCondition::AllOf(events)) => (
+                events
+                    .iter()
+                    .map(CompiledObjectRequirement::from_matcher)
+                    .collect(),
+                true,
+            ),
+            None => (Vec::new(), false),
+        };
+        let (sinks, emit_on_requirements) = match flow.completion.as_ref() {
+            Some(FlowCompletion::Configuration) => (Vec::new(), true),
+            Some(FlowCompletion::AnySink(sinks)) => (
+                sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
+                false,
+            ),
+            None => (Vec::new(), false),
+        };
+        Self {
+            symbol: flow.symbol.clone(),
+            sources: flow
+                .sources
+                .iter()
+                .map(CompiledObjectSource::from_matcher)
+                .collect(),
+            requirements,
+            sinks,
+            all_requirements_required,
+            emit_on_requirements,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -43,6 +83,16 @@ pub(crate) struct CompiledObjectSource {
     pub(crate) member_call: String,
     pub(crate) arguments: Vec<ArgumentConstraint>,
     pub(crate) provenance: MemberCallProvenance,
+}
+
+impl CompiledObjectSource {
+    fn from_matcher(source: &ObjectSourceMatcher) -> Self {
+        Self {
+            member_call: source.call.chain().to_string(),
+            arguments: source.call.arguments().to_vec(),
+            provenance: source.call.provenance.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -57,10 +107,42 @@ pub(crate) enum CompiledObjectRequirement {
     },
 }
 
+impl CompiledObjectRequirement {
+    fn from_matcher(event: &ObjectEventMatcher) -> Self {
+        match event {
+            ObjectEventMatcher::PropertyWrite { property, value } => Self::PropertyWrite {
+                property: property.clone(),
+                value: value.clone(),
+            },
+            ObjectEventMatcher::MemberCall { member, arguments } => Self::MemberCall {
+                member: member.clone(),
+                arguments: arguments.clone(),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum CompiledObjectSinkArgs {
     Any,
     Indices(Vec<usize>),
+}
+
+impl CompiledObjectSinkArgs {
+    /// Return only sink argument positions that exist at this call site.
+    ///
+    /// Keeping the bounds check here makes callers unable to accidentally
+    /// treat a rule's configured index as proof that the argument was passed.
+    pub(crate) fn present_indices(&self, argument_count: usize) -> Vec<usize> {
+        match self {
+            Self::Any => (0..argument_count).collect(),
+            Self::Indices(indices) => indices
+                .iter()
+                .copied()
+                .filter(|index| *index < argument_count)
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -70,11 +152,32 @@ pub(crate) struct CompiledObjectSink {
     pub(crate) provenance: MemberCallProvenance,
 }
 
+impl CompiledObjectSink {
+    fn from_matcher(sink: &FlowSinkMatcher) -> Self {
+        match sink {
+            FlowSinkMatcher::ArgumentOf { call, index } => Self {
+                member_calls: vec![call.chain().to_string()],
+                args: CompiledObjectSinkArgs::Indices(vec![*index]),
+                provenance: call.provenance.clone(),
+            },
+            FlowSinkMatcher::AnyArgumentOf { call } => Self {
+                member_calls: vec![call.chain().to_string()],
+                args: CompiledObjectSinkArgs::Any,
+                provenance: call.provenance.clone(),
+            },
+        }
+    }
+}
+
 impl CompiledMatcherPlan {
     pub(crate) fn compile(matcher: &ApiMatcher) -> Self {
         Self {
             matcher: matcher.clone(),
-            flows: matcher.flows.iter().map(compile_flow).collect(),
+            flows: matcher
+                .flows
+                .iter()
+                .map(CompiledObjectFlow::from_matcher)
+                .collect(),
         }
     }
 }
@@ -109,71 +212,10 @@ impl<'a> CompiledMatcherCatalog<'a> {
     }
 }
 
-fn compile_flow(flow: &ObjectFlowMatcher) -> CompiledObjectFlow {
-    let (requirements, all_requirements_required) = match flow.condition.as_ref() {
-        Some(FlowCondition::AnyOf(events)) => (events.iter().map(compile_event).collect(), false),
-        Some(FlowCondition::AllOf(events)) => (events.iter().map(compile_event).collect(), true),
-        None => (Vec::new(), false),
-    };
-    let (sinks, emit_on_requirements) = match flow.completion.as_ref() {
-        Some(FlowCompletion::Configuration) => (Vec::new(), true),
-        Some(FlowCompletion::AnySink(sinks)) => (sinks.iter().map(compile_sink).collect(), false),
-        None => (Vec::new(), false),
-    };
-    CompiledObjectFlow {
-        symbol: flow.symbol.clone(),
-        sources: flow.sources.iter().map(compile_source).collect(),
-        requirements,
-        sinks,
-        all_requirements_required,
-        emit_on_requirements,
-    }
-}
-
 #[cfg(test)]
 pub(crate) fn compile_legacy_flow(flow: FlowMatcher) -> CompiledObjectFlow {
     let flow: ObjectFlowMatcher = flow.into();
-    compile_flow(&flow)
-}
-
-fn compile_source(source: &ObjectSourceMatcher) -> CompiledObjectSource {
-    CompiledObjectSource {
-        member_call: source.call.chain().to_string(),
-        arguments: source.call.arguments().to_vec(),
-        provenance: source.call.provenance.clone(),
-    }
-}
-
-fn compile_event(event: &ObjectEventMatcher) -> CompiledObjectRequirement {
-    match event {
-        ObjectEventMatcher::PropertyWrite { property, value } => {
-            CompiledObjectRequirement::PropertyWrite {
-                property: property.clone(),
-                value: value.clone(),
-            }
-        }
-        ObjectEventMatcher::MemberCall { member, arguments } => {
-            CompiledObjectRequirement::MemberCall {
-                member: member.clone(),
-                arguments: arguments.clone(),
-            }
-        }
-    }
-}
-
-fn compile_sink(sink: &FlowSinkMatcher) -> CompiledObjectSink {
-    match sink {
-        FlowSinkMatcher::ArgumentOf { call, index } => CompiledObjectSink {
-            member_calls: vec![call.chain().to_string()],
-            args: CompiledObjectSinkArgs::Indices(vec![*index]),
-            provenance: call.provenance.clone(),
-        },
-        FlowSinkMatcher::AnyArgumentOf { call } => CompiledObjectSink {
-            member_calls: vec![call.chain().to_string()],
-            args: CompiledObjectSinkArgs::Any,
-            provenance: call.provenance.clone(),
-        },
-    }
+    CompiledObjectFlow::from_matcher(&flow)
 }
 
 #[derive(Debug, Clone)]

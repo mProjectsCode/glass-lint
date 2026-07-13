@@ -253,133 +253,58 @@ impl ApiMatcher {
     }
 }
 
-pub(crate) fn normalize_returned_member_calls(values: &mut Vec<ReturnedMemberCallMatcher>) {
-    for matcher in values.iter_mut() {
-        matcher.source =
-            canonical_rooted_chain(&normalize_member_chain(&matcher.source)).to_string();
-        matcher.member = matcher.member.trim().to_string();
-    }
-    values.retain(|matcher| !matcher.source.is_empty() && !matcher.member.is_empty());
-    values.sort_by(|left, right| (&left.source, &left.member).cmp(&(&right.source, &right.member)));
-    values.dedup();
-}
-
-pub(crate) fn normalize_returned_member_reads(values: &mut Vec<ReturnedMemberReadMatcher>) {
-    for matcher in values.iter_mut() {
-        matcher.source =
-            canonical_rooted_chain(&normalize_member_chain(&matcher.source)).to_string();
-        matcher.member = matcher.member.trim().to_string();
-    }
-    values.retain(|matcher| !matcher.source.is_empty() && !matcher.member.is_empty());
-    values.sort_by(|left, right| (&left.source, &left.member).cmp(&(&right.source, &right.member)));
-    values.dedup();
-}
-
-pub(crate) fn normalize_instance_member_calls(values: &mut Vec<InstanceMemberCallMatcher>) {
-    for matcher in values.iter_mut() {
-        matcher.module = matcher.module.trim().to_string();
-        matcher.export = matcher.export.trim().to_string();
-        matcher.member = matcher.member.trim().to_string();
-    }
-    values.retain(|matcher| {
-        !matcher.module.is_empty() && !matcher.export.is_empty() && !matcher.member.is_empty()
-    });
-    values.sort_by(|left, right| {
-        (&left.module, &left.export, &left.member).cmp(&(
-            &right.module,
-            &right.export,
-            &right.member,
-        ))
-    });
-    values.dedup();
-}
-
 pub(crate) fn normalize_flows(values: &mut Vec<ObjectFlowMatcher>) {
     for flow in values.iter_mut() {
         flow.symbol = flow.symbol.trim().to_string();
         for source in &mut flow.sources {
-            normalize_member_call(&mut source.call);
+            source.call.normalize();
         }
         if let Some(condition) = &mut flow.condition {
-            normalize_condition(condition);
+            condition.normalize();
         }
         if let Some(completion) = &mut flow.completion {
-            normalize_completion(completion);
+            completion.normalize();
         }
     }
     values.sort_by(|left, right| left.symbol.cmp(&right.symbol));
     values.dedup();
 }
 
-fn normalize_condition(condition: &mut FlowCondition) {
-    let events = match condition {
-        FlowCondition::AnyOf(events) | FlowCondition::AllOf(events) => events,
-    };
-    for event in events {
-        normalize_event(event);
-    }
-}
-
-fn normalize_event(event: &mut ObjectEventMatcher) {
-    match event {
-        ObjectEventMatcher::PropertyWrite { property, value } => {
-            *property = property.trim().to_string();
-            normalize_value(value);
-        }
-        ObjectEventMatcher::MemberCall { member, arguments } => {
-            *member = member.trim().to_string();
-            normalize_arguments(arguments);
+impl FlowCondition {
+    fn normalize(&mut self) {
+        let events = match self {
+            Self::AnyOf(events) | Self::AllOf(events) => events,
+        };
+        for event in events {
+            event.normalize();
         }
     }
 }
 
-fn normalize_completion(completion: &mut FlowCompletion) {
-    if let FlowCompletion::AnySink(sinks) = completion {
-        for sink in sinks {
-            match sink {
-                FlowSinkMatcher::ArgumentOf { call, .. }
-                | FlowSinkMatcher::AnyArgumentOf { call } => normalize_member_call(call),
+impl ObjectEventMatcher {
+    fn normalize(&mut self) {
+        match self {
+            Self::PropertyWrite { property, value } => {
+                *property = property.trim().to_string();
+                value.normalize();
+            }
+            Self::MemberCall { member, arguments } => {
+                *member = member.trim().to_string();
+                ArgumentConstraint::normalize_all(arguments);
             }
         }
     }
 }
 
-fn normalize_member_call(call: &mut MemberCallMatcher) {
-    call.chain = normalize_member_chain(&call.chain);
-    if call.provenance == MemberCallProvenance::Rooted {
-        call.chain = canonical_rooted_chain(&call.chain).to_string();
-    }
-    if let MemberCallProvenance::ModuleNamespace { module } = &mut call.provenance {
-        *module = module.trim().to_string();
-    }
-    normalize_arguments(&mut call.arguments);
-}
-
-pub(crate) fn normalize_arguments(arguments: &mut Vec<ArgumentConstraint>) {
-    for argument in &mut *arguments {
-        normalize_argument(&mut argument.matcher);
-    }
-    arguments.sort_by_key(|argument| argument.index);
-    arguments.dedup();
-}
-
-fn normalize_argument(argument: &mut ArgumentMatcher) {
-    match argument {
-        ArgumentMatcher::Value(value) => normalize_value(value),
-        ArgumentMatcher::ObjectKeys(keys) | ArgumentMatcher::RootedExpressions(keys) => {
-            normalize_strings(keys)
-        }
-    }
-}
-
-pub(crate) fn normalize_value(value: &mut ValueMatcher) {
-    if let ValueMatcherKind::StaticString(predicate) = &mut value.kind {
-        match predicate {
-            StaticStringPredicate::Any => {}
-            StaticStringPredicate::Exact(values)
-            | StaticStringPredicate::Prefix(values)
-            | StaticStringPredicate::ContainsAny(values)
-            | StaticStringPredicate::ContainsAll(values) => normalize_strings(values),
+impl FlowCompletion {
+    fn normalize(&mut self) {
+        if let Self::AnySink(sinks) = self {
+            for sink in sinks {
+                match sink {
+                    FlowSinkMatcher::ArgumentOf { call, .. }
+                    | FlowSinkMatcher::AnyArgumentOf { call } => call.normalize(),
+                }
+            }
         }
     }
 }

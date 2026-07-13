@@ -15,10 +15,21 @@ pub(super) struct FlowState {
     pub(super) requirements: BTreeMap<usize, FactId>,
 }
 
-pub(super) fn state_is_ready(state: &FlowState, flow: &CompiledObjectFlow) -> bool {
-    if flow.all_requirements_required {
-        state.requirements.len() == flow.requirements.len()
-    } else {
-        !state.requirements.is_empty()
+impl FlowState {
+    pub(super) fn new(flow: FlowId, source_event: FactId, object_id: ObjectId) -> Self {
+        Self {
+            flow,
+            source_event,
+            object_id,
+            requirements: BTreeMap::new(),
+        }
+    }
+
+    pub(super) fn is_ready(&self, flow: &CompiledObjectFlow) -> bool {
+        if flow.all_requirements_required {
+            self.requirements.len() == flow.requirements.len()
+        } else {
+            !self.requirements.is_empty()
+        }
     }
 }

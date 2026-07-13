@@ -1,3 +1,9 @@
+//! Provenance queries over the lexical scope graph.
+//!
+//! These methods deliberately keep identity, shadowing, and mutation checks
+//! together. A rooted spelling is useful only when every relevant binding and
+//! property write remains proven at the use position.
+
 use super::*;
 
 impl ScopeGraph {
@@ -19,33 +25,10 @@ impl ScopeGraph {
         }
 
         let receiver = self.binding_key_for_name(root, span)?;
-        let path = vec![member.to_string()];
-        if self
-            .property_assignments
-            .get(&(receiver, path))
-            .is_some_and(|assignments| {
-                assignments.iter().any(|assignment| {
-                    assignment.span.lo <= span.lo
-                        && contains(self.scopes[assignment.scope].span, span)
-                })
-            })
-        {
+        if self.property_was_written_at(&receiver, &[member.to_string()], span) {
             return None;
         }
-        if self
-            .rooted_property_mutations
-            .get(root)
-            .is_some_and(|mutations| {
-                mutations.iter().any(|mutation| {
-                    mutation.span.lo <= span.lo
-                        && mutation
-                            .property
-                            .as_deref()
-                            .is_none_or(|property| property == member)
-                        && contains(self.scopes[mutation.scope].span, span)
-                })
-            })
-        {
+        if self.rooted_property_was_mutated_at(root, Some(member), span) {
             return None;
         }
 
@@ -149,6 +132,36 @@ impl ScopeGraph {
         let value = path.to_string();
         let root = value.split('.').next().unwrap_or_default();
         root == "this" || self.environment.is_global(root)
+    }
+
+    fn property_was_written_at(&self, receiver: &BindingKey, path: &[String], span: Span) -> bool {
+        self.property_assignments
+            .get(&(receiver.clone(), path.to_vec()))
+            .is_some_and(|assignments| {
+                assignments.iter().any(|assignment| {
+                    assignment.span.lo <= span.lo
+                        && contains(self.scopes[assignment.scope].span, span)
+                })
+            })
+    }
+
+    fn rooted_property_was_mutated_at(
+        &self,
+        root: &str,
+        property: Option<&str>,
+        span: Span,
+    ) -> bool {
+        self.rooted_property_mutations
+            .get(root)
+            .is_some_and(|mutations| {
+                mutations.iter().any(|mutation| {
+                    mutation.span.lo <= span.lo
+                        && mutation.property.as_deref().is_none_or(|written| {
+                            property.is_none_or(|expected| written == expected)
+                        })
+                        && contains(self.scopes[mutation.scope].span, span)
+                })
+            })
     }
 }
 

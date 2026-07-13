@@ -1,4 +1,8 @@
 //! Bounded prefix-interned paths used by semantic projections.
+//!
+//! A path is stored leaf-first as parent links, but public operations expose
+//! segments in source order. The interner is the single place that translates
+//! between those representations.
 
 #![allow(dead_code)]
 
@@ -112,19 +116,34 @@ impl PathInterner {
     }
 
     pub(in crate::analysis) fn first_index(&self, path: PathId) -> Option<u32> {
-        let mut current = path;
-        let mut first = None;
-        while !current.is_empty() {
-            first = Some(current);
-            current = self.nodes.get(current.index()?)?.parent;
-        }
-        match self.nodes.get(first?.index()?)?.segment.as_ref()? {
+        match self.segments(path)?.first()? {
             PathSegment::Index(index) => Some(*index),
             PathSegment::Property(_) => None,
         }
     }
 
     pub(in crate::analysis) fn without_first(&self, path: PathId) -> Option<PathId> {
+        let mut segments = self.segments(path)?;
+        segments.first()?;
+        segments.remove(0);
+        let mut result = PathId::EMPTY;
+        for segment in segments {
+            result = self.by_edge.get(&(result, segment)).copied()?;
+        }
+        Some(result)
+    }
+
+    pub(in crate::analysis) fn concat(&mut self, prefix: PathId, suffix: PathId) -> Option<PathId> {
+        let segments = self.segments(suffix)?;
+        let mut result = prefix;
+        for segment in segments {
+            result = self.append(result, segment)?;
+        }
+        Some(result)
+    }
+
+    /// Return a path's segments from root to leaf.
+    fn segments(&self, path: PathId) -> Option<Vec<PathSegment>> {
         let mut segments = Vec::new();
         let mut current = path;
         while !current.is_empty() {
@@ -132,27 +151,8 @@ impl PathInterner {
             segments.push(node.segment.as_ref()?.clone());
             current = node.parent;
         }
-        segments.pop()?;
-        let mut result = PathId::EMPTY;
-        for segment in segments.into_iter().rev() {
-            result = self.by_edge.get(&(result, segment)).copied()?;
-        }
-        Some(result)
-    }
-
-    pub(in crate::analysis) fn concat(&mut self, prefix: PathId, suffix: PathId) -> Option<PathId> {
-        let mut segments = Vec::new();
-        let mut current = suffix;
-        while current != PathId::EMPTY {
-            let node = self.nodes.get(current.index()?)?;
-            segments.push(node.segment.as_ref()?.clone());
-            current = node.parent;
-        }
-        let mut result = prefix;
-        for segment in segments.into_iter().rev() {
-            result = self.append(result, segment)?;
-        }
-        Some(result)
+        segments.reverse();
+        Some(segments)
     }
 
     #[cfg(test)]

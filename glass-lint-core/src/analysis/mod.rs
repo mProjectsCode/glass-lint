@@ -45,6 +45,6 @@ impl<'matchers> SemanticModel<'matchers> {
         let mut evidence = self.facts.index.evidence_for(&matcher.matcher);
         evidence.extend_from_slice(&self.facts.argument_evidence[rule_index]);
 
-        evidence::normalize(evidence::annotate(evidence))
+        evidence::AnnotatedEvidence::from_evidence(evidence).into_evidence()
     }
 }

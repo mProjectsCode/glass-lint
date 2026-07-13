@@ -43,6 +43,24 @@ impl Default for Environment {
 }
 
 impl Environment {
+    /// Validate one JavaScript binding name.
+    ///
+    /// Environment entries represent bindings, not member paths, so dots and
+    /// other punctuation are intentionally rejected here.
+    fn validated_identifier(name: String) -> Result<String, EnvironmentError> {
+        let valid = !name.is_empty()
+            && name.chars().enumerate().all(|(index, character)| {
+                if index == 0 {
+                    character == '$' || character == '_' || character.is_ascii_alphabetic()
+                } else {
+                    character == '$' || character == '_' || character.is_ascii_alphanumeric()
+                }
+            });
+        valid
+            .then_some(name.clone())
+            .ok_or(EnvironmentError { name })
+    }
+
     /// A conservative, host-independent ECMAScript environment.
     pub fn ecmascript() -> Self {
         let global_bindings = ECMASCRIPT_GLOBALS
@@ -61,7 +79,7 @@ impl Environment {
 
     /// Add a global binding supplied by the host environment.
     pub fn add_global(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
-        let name = validated_identifier(name.into())?;
+        let name = Self::validated_identifier(name.into())?;
         self.global_bindings.insert(name);
         Ok(())
     }
@@ -83,7 +101,7 @@ impl Environment {
     /// A global-object alias is also a global binding. Direct properties of
     /// this object can share callable identity with configured global bindings.
     pub fn add_global_object(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
-        let name = validated_identifier(name.into())?;
+        let name = Self::validated_identifier(name.into())?;
         self.global_bindings.insert(name.clone());
         self.global_objects
             .insert(name, GlobalObjectMembers::ConfiguredGlobals);
@@ -105,10 +123,10 @@ impl Environment {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let name = validated_identifier(name.into())?;
+        let name = Self::validated_identifier(name.into())?;
         let members = members
             .into_iter()
-            .map(|member| validated_identifier(member.into()))
+            .map(|member| Self::validated_identifier(member.into()))
             .collect::<Result<BTreeSet<_>, _>>()?;
         self.global_bindings.insert(name.clone());
         self.global_objects
@@ -158,20 +176,6 @@ impl Environment {
             None => false,
         }
     }
-}
-
-fn validated_identifier(name: String) -> Result<String, EnvironmentError> {
-    let valid = !name.is_empty()
-        && name.chars().enumerate().all(|(index, character)| {
-            if index == 0 {
-                character == '$' || character == '_' || character.is_ascii_alphabetic()
-            } else {
-                character == '$' || character == '_' || character.is_ascii_alphanumeric()
-            }
-        });
-    valid
-        .then_some(name.clone())
-        .ok_or(EnvironmentError { name })
 }
 
 const ECMASCRIPT_GLOBALS: &[&str] = &[

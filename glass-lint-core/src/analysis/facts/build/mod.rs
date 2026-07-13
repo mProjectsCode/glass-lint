@@ -36,13 +36,21 @@ use crate::analysis::value::{PathId, PathSegment, ValueId};
 /// scope prepass, this visitor walks the AST exactly once and emits an
 /// immutable `FactStream` containing all semantic facts.
 pub(super) struct FactBuilder<'a> {
+    /// Scope and provenance answers are prepared before this AST walk.
     resolver: &'a Resolver,
+    /// Facts are appended in source traversal order and never rewritten.
     stream: FactStream,
+    /// Monotonic semantic fact identity, bounded by `MAX_FACTS`.
     next_id: u32,
+    /// Control regions let the flow projector pair balanced boundaries.
     next_control_region: u32,
+    /// The active class stack supplies `this`/instance provenance to calls.
     class_stack: Vec<Option<(String, String)>>,
+    /// Function depth distinguishes top-level calls from nested helper bodies.
     function_depth: usize,
+    /// Static methods do not inherit instance receiver provenance.
     static_method_depth: usize,
+    /// Call results are retained for effective-call and value-flow projections.
     call_results: BTreeMap<(u32, u32), ValueId>,
 }
 impl<'a> FactBuilder<'a> {
@@ -84,6 +92,9 @@ impl<'a> FactBuilder<'a> {
 
     fn emit(&mut self, kind: FactKind, span: Span, payload: FactPayload) {
         let Some(id) = self.next_fact_id() else {
+            // Keep the stream structurally usable after the budget is spent.
+            // The synthetic ID cannot participate in normal indexed lookups,
+            // but callers can still observe a deterministic fail-closed tail.
             self.stream.push(SemanticFact {
                 id: FactId(self.next_id),
                 span,

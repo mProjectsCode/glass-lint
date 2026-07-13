@@ -1,8 +1,8 @@
 use crate::api::{
     compiler::{CompiledCatalog, validate_catalog},
-    rule::{ApiRule, ApiSeverity},
+    rule::ApiRule,
 };
-use crate::{Environment, RuleId, RuleMetadata, Severity};
+use crate::{Environment, RuleId, RuleMetadata};
 use std::collections::BTreeMap;
 use std::{error::Error, fmt};
 
@@ -65,7 +65,7 @@ impl RuleCatalog {
                 self.namespaced_id(rule.id()).map(|id| RuleMetadata {
                     id: id.clone(),
                     description: rule.label().to_string(),
-                    default_severity: severity(rule.severity()),
+                    default_severity: rule.severity().as_diagnostic_severity(),
                     messages: BTreeMap::from([(
                         String::from("detected"),
                         String::from("Detected matching capability"),
@@ -88,13 +88,5 @@ impl RuleCatalog {
     }
     pub(crate) fn compiled(&self) -> CompiledCatalog {
         CompiledCatalog::from_rules(&self.rules)
-    }
-}
-
-fn severity(value: ApiSeverity) -> Severity {
-    match value {
-        ApiSeverity::Info => Severity::Info,
-        ApiSeverity::Warning => Severity::Warning,
-        ApiSeverity::Error => Severity::Error,
     }
 }

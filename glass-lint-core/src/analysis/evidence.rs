@@ -22,89 +22,93 @@ pub(super) struct AnnotatedEvidence {
     symbols: Vec<String>,
 }
 
-pub(super) fn annotate(evidence: Vec<ApiEvidence>) -> AnnotatedEvidence {
-    let mut symbols = Vec::with_capacity(evidence.len());
-    let mut groups = BTreeMap::<(ApiMatchKind, String), usize>::new();
-    let mut occurrences = Vec::new();
-    for evidence in evidence {
-        let ApiEvidence {
-            kind,
-            symbol,
-            spans,
-            event_ids,
-            ..
-        } = evidence;
-        let symbol_group = if let Some(group) = groups.get(&(kind, symbol.clone())) {
-            *group
-        } else {
-            let group = symbols.len();
-            groups.insert((kind, symbol.clone()), group);
-            symbols.push(symbol);
-            group
-        };
-        occurrences.extend(
-            spans
-                .into_iter()
-                .filter(|span| !span.is_dummy())
-                .enumerate()
-                .map(|(position, span)| EvidenceOccurrence {
-                    event: event_ids
-                        .get(position)
-                        .and_then(|event| (*event != u32::MAX).then_some(facts::FactId(*event))),
-                    span,
-                    kind,
-                    symbol_group,
-                }),
-        );
+impl AnnotatedEvidence {
+    /// Convert rule-local evidence into sortable occurrences while retaining
+    /// the symbol table needed to reconstruct grouped output later.
+    pub(super) fn from_evidence(evidence: Vec<ApiEvidence>) -> Self {
+        let mut symbols = Vec::with_capacity(evidence.len());
+        let mut groups = BTreeMap::<(ApiMatchKind, String), usize>::new();
+        let mut occurrences = Vec::new();
+        for evidence in evidence {
+            let ApiEvidence {
+                kind,
+                symbol,
+                spans,
+                event_ids,
+                ..
+            } = evidence;
+            let symbol_group = if let Some(group) = groups.get(&(kind, symbol.clone())) {
+                *group
+            } else {
+                let group = symbols.len();
+                groups.insert((kind, symbol.clone()), group);
+                symbols.push(symbol);
+                group
+            };
+            occurrences.extend(
+                spans
+                    .into_iter()
+                    .filter(|span| !span.is_dummy())
+                    .enumerate()
+                    .map(|(position, span)| EvidenceOccurrence {
+                        event: event_ids.get(position).and_then(|event| {
+                            (*event != u32::MAX).then_some(facts::FactId(*event))
+                        }),
+                        span,
+                        kind,
+                        symbol_group,
+                    }),
+            );
+        }
+        Self {
+            occurrences,
+            symbols,
+        }
     }
-    AnnotatedEvidence {
-        occurrences,
-        symbols,
-    }
-}
 
-pub(super) fn normalize(mut annotated: AnnotatedEvidence) -> Vec<ApiEvidence> {
-    let symbols = &annotated.symbols;
-    let occurrences = &mut annotated.occurrences;
-    occurrences.sort_by_key(|item| {
-        (
-            item.event.map(|event| event.0).unwrap_or(u32::MAX),
-            item.span.lo,
-            item.span.hi,
-            item.kind,
-            item.symbol_group,
-        )
-    });
-    occurrences.dedup();
-    occurrences.truncate(ApiRule::EVIDENCE_LIMIT);
-    let mut grouped = BTreeMap::<(ApiMatchKind, usize), Vec<(Option<facts::FactId>, Span)>>::new();
-    for occurrence in occurrences {
-        grouped
-            .entry((occurrence.kind, occurrence.symbol_group))
-            .or_default()
-            .push((occurrence.event, occurrence.span));
+    /// Sort, bound, deduplicate, and regroup occurrences into public evidence.
+    pub(super) fn into_evidence(mut self) -> Vec<ApiEvidence> {
+        self.occurrences.sort_by_key(|item| {
+            (
+                item.event.map(|event| event.0).unwrap_or(u32::MAX),
+                item.span.lo,
+                item.span.hi,
+                item.kind,
+                item.symbol_group,
+            )
+        });
+        self.occurrences.dedup();
+        self.occurrences.truncate(ApiRule::EVIDENCE_LIMIT);
+        let mut grouped =
+            BTreeMap::<(ApiMatchKind, usize), Vec<(Option<facts::FactId>, Span)>>::new();
+        for occurrence in &self.occurrences {
+            grouped
+                .entry((occurrence.kind, occurrence.symbol_group))
+                .or_default()
+                .push((occurrence.event, occurrence.span));
+        }
+        let mut normalized = grouped
+            .into_iter()
+            .map(|((kind, symbol_group), occurrences)| ApiEvidence {
+                kind,
+                symbol: self.symbols[symbol_group].clone(),
+                count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
+                spans: occurrences.iter().map(|(_, span)| *span).collect(),
+                event_ids: occurrences
+                    .iter()
+                    .map(|(event, _)| event.map_or(u32::MAX, |event| event.0))
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
+        normalized.sort_by_key(|item| {
+            (
+                item.spans.first().map(|span| (span.lo, span.hi)),
+                item.kind,
+                item.symbol.clone(),
+            )
+        });
+        normalized
     }
-    let mut normalized = grouped
-        .into_iter()
-        .map(|((kind, symbol_group), occurrences)| ApiEvidence {
-            kind,
-            symbol: symbols[symbol_group].clone(),
-            count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
-            spans: occurrences.iter().map(|(_, span)| *span).collect(),
-            event_ids: occurrences
-                .iter()
-                .map(|(event, _)| event.map_or(u32::MAX, |event| event.0))
-                .collect(),
-        })
-        .collect::<Vec<_>>();
-    normalized.sort_by_key(|item| {
-        (
-            item.spans.first().map(|span| (span.lo, span.hi)),
-            item.kind,
-            item.symbol.clone(),
-        )
-    });
-    normalized
 }
 
 #[cfg(test)]
@@ -127,11 +131,12 @@ mod tests {
 
     #[test]
     fn symbol_groups_preserve_order_and_merge_only_equal_symbols() {
-        let normalized = normalize(annotate(vec![
+        let normalized = AnnotatedEvidence::from_evidence(vec![
             evidence("request", &[2, 4]),
             evidence("request", &[6]),
             evidence("other", &[8]),
-        ]));
+        ])
+        .into_evidence();
         assert_eq!(normalized.len(), 2);
         assert_eq!(normalized[0].symbol, "request");
         assert_eq!(normalized[0].count, 3);

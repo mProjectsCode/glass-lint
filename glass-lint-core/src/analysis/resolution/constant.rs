@@ -44,8 +44,6 @@ impl Resolver {
                     .collect(),
             ),
         };
-        let mut arena = self.values.borrow_mut();
-        let target = arena.intern(value);
-        binding.map_or(target, |key| arena.intern(Value::Binding { key, target }))
+        self.values.borrow_mut().intern_with_binding(value, binding)
     }
 }

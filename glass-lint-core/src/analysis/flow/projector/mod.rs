@@ -9,6 +9,8 @@ mod control;
 mod evidence;
 mod transfer;
 
+use transfer::SourceCall;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::facts::{
@@ -16,8 +18,8 @@ use super::super::facts::{
 };
 use super::super::value::{ObjectId, ValueId};
 use super::index::{FlowId, FlowIndex, FlowLimits};
-use super::state::{FlowState, state_is_ready};
-use super::summary::{FunctionSummaries, invocation_is_compatible, project_parameter_argument};
+use super::state::FlowState;
+use super::summary::FunctionSummaries;
 use crate::api::classification::{ApiEvidence, ApiMatchKind};
 use crate::api::compiler::{CompiledObjectFlow, CompiledObjectRequirement};
 
@@ -37,34 +39,7 @@ pub(super) fn collect_with_limits(
 ) -> Vec<Vec<ApiEvidence>> {
     let flow_index = FlowIndex::new(rules);
     let helpers = super::summary::collect(stream, &flow_index);
-    let calls_by_result = stream
-        .facts()
-        .iter()
-        .filter_map(|fact| match &fact.payload {
-            FactPayload::Call { result, .. } => Some((*result, SourceCall::from_fact(fact)?)),
-            _ => None,
-        })
-        .collect::<BTreeMap<_, _>>();
-
-    let mut projector = ObjectFlowProjector {
-        stream,
-        flow_index,
-        helpers,
-        calls_by_result,
-        fact_spans: stream
-            .facts()
-            .iter()
-            .map(|fact| (fact.id, fact.span))
-            .collect(),
-        evidence: vec![Vec::new(); rule_count],
-        aliases: BTreeMap::new(),
-        states: BTreeMap::new(),
-        emitted: BTreeSet::new(),
-        next_object_id: 0,
-        limits,
-        control: Vec::new(),
-        reachable: true,
-    };
+    let mut projector = ObjectFlowProjector::new(stream, flow_index, helpers, rule_count, limits);
     for fact in stream.facts() {
         projector.transfer(fact);
     }
@@ -73,18 +48,30 @@ pub(super) fn collect_with_limits(
 
 #[derive(Debug)]
 struct ObjectFlowProjector<'rules, 'stream> {
+    /// The canonical facts are the projector's only input. In particular, it
+    /// must never inspect the AST or reconstruct resolution decisions.
     stream: &'stream FactStream,
     flow_index: FlowIndex<'rules>,
     helpers: FunctionSummaries,
+    /// Call results are indexed once so later assignments can start a flow
+    /// without rescanning the fact stream.
     calls_by_result: BTreeMap<ValueId, SourceCall>,
+    /// Evidence uses the exact fact that established a match as its anchor.
     fact_spans: BTreeMap<FactId, swc_common::Span>,
+    /// Evidence is grouped by rule index to preserve catalog ordering.
     evidence: Vec<Vec<ApiEvidence>>,
+    /// Each value identity points to at most one object-flow identity.
     aliases: BTreeMap<ValueId, ObjectId>,
+    /// Live flow state is keyed by object and compiled flow, not by syntax.
     states: BTreeMap<(ObjectId, FlowId), FlowState>,
+    /// Prevent duplicate evidence for the same object/flow/event combination.
     emitted: BTreeSet<(usize, usize, ObjectId, FactId)>,
+    /// Object IDs are local to one projection and bounded by `limits`.
     next_object_id: u32,
     limits: FlowLimits,
     control: Vec<ControlFrame>,
+    /// Facts after an unreachable branch are ignored until a join restores a
+    /// reachable environment.
     reachable: bool,
 }
 
@@ -139,14 +126,6 @@ enum AbruptExit {
     Break,
     Continue,
     Return,
-}
-
-#[derive(Debug, Clone)]
-struct SourceCall {
-    chain: String,
-    args: Vec<CallArgInfo>,
-    fact_id: FactId,
-    rooted: bool,
 }
 
 impl FlowEnvironment {
@@ -210,65 +189,55 @@ impl FlowEnvironment {
                 Self::join(&joined, environment)
             })
     }
-}
 
-impl SourceCall {
-    /// Build the canonical source-call view used by both indexing and transfer.
-    /// Unwrapped calls replace the wrapper's chain and arguments with the
-    /// effective call that the flow matcher should inspect.
-    fn from_fact(fact: &crate::analysis::facts::SemanticFact) -> Option<Self> {
-        let FactPayload::Call {
-            rooted_chain,
-            syntactic_chain,
-            callee_name,
-            args,
-            unwrap,
-            ..
-        } = &fact.payload
-        else {
-            return None;
-        };
-        Self::from_parts(
-            fact.id,
-            rooted_chain,
-            syntactic_chain,
-            callee_name,
-            args,
-            unwrap.as_deref(),
-        )
-    }
-
-    fn from_parts(
-        fact_id: FactId,
-        rooted_chain: &Option<String>,
-        syntactic_chain: &Option<String>,
-        callee_name: &Option<String>,
-        args: &[CallArgInfo],
-        unwrap: Option<&crate::analysis::facts::CallUnwrap>,
-    ) -> Option<Self> {
-        let (chain, args) = unwrap.map_or_else(
-            || {
-                (
-                    rooted_chain
-                        .as_deref()
-                        .or(syntactic_chain.as_deref())
-                        .or(callee_name.as_deref())
-                        .map(str::to_owned),
-                    args.to_vec(),
-                )
-            },
-            |unwrap| (Some(unwrap.chain.clone()), unwrap.effective_args.clone()),
-        );
-        Some(Self {
-            chain: chain?,
-            args,
-            fact_id,
-            rooted: rooted_chain.is_some(),
-        })
+    fn capture(projector: &ObjectFlowProjector<'_, '_>) -> Self {
+        Self {
+            aliases: projector.aliases.clone(),
+            states: projector.states.clone(),
+            reachable: projector.reachable,
+        }
     }
 }
 
 impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
+    fn new(
+        stream: &'stream FactStream,
+        flow_index: FlowIndex<'rules>,
+        helpers: FunctionSummaries,
+        rule_count: usize,
+        limits: FlowLimits,
+    ) -> Self {
+        let calls_by_result = stream
+            .facts()
+            .iter()
+            .filter_map(|fact| match &fact.payload {
+                FactPayload::Call { result, .. } => Some((*result, SourceCall::from_fact(fact)?)),
+                _ => None,
+            })
+            .collect();
+        let fact_spans = stream
+            .facts()
+            .iter()
+            .map(|fact| (fact.id, fact.span))
+            .collect();
+
+        Self {
+            stream,
+            flow_index,
+            helpers,
+            calls_by_result,
+            fact_spans,
+            evidence: vec![Vec::new(); rule_count],
+            aliases: BTreeMap::new(),
+            states: BTreeMap::new(),
+            emitted: BTreeSet::new(),
+            next_object_id: 0,
+            limits,
+            control: Vec::new(),
+            reachable: true,
+        }
+    }
+
     fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
         match &fact.payload {
             FactPayload::Function { boundary, .. } => match boundary {
@@ -362,11 +331,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     }
 
     fn environment(&self) -> FlowEnvironment {
-        FlowEnvironment {
-            aliases: self.aliases.clone(),
-            states: self.states.clone(),
-            reachable: self.reachable,
-        }
+        FlowEnvironment::capture(self)
     }
 
     fn restore(&mut self, environment: FlowEnvironment) {
@@ -406,9 +371,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     && (property.is_none() || property == Some(expected.as_str()))
                 {
                     state.requirements.remove(&index);
-                    if property == Some(expected.as_str())
-                        && crate::analysis::flow::matcher::flow_value_matches(matcher, value)
-                    {
+                    if property == Some(expected.as_str()) && matcher.matches_flow_value(value) {
                         state.requirements.insert(index, event);
                     }
                 }

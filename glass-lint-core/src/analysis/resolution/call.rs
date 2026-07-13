@@ -83,12 +83,9 @@ impl Resolver {
                 module: module.clone(),
                 export: export.clone(),
             },
-            SymbolCallProvenance::Local => rooted.map_or(Value::Local, rooted_value),
+            SymbolCallProvenance::Local => rooted.map_or(Value::Local, Resolver::rooted_value),
         };
-        let mut arena = self.values.borrow_mut();
-        let target = arena.intern(value);
-        let id = binding.map_or(target, |key| arena.intern(Value::Binding { key, target }));
-        drop(arena);
+        let id = self.values.borrow_mut().intern_with_binding(value, binding);
         debug_assert!(self.values.borrow().get(id).is_some());
         id
     }
