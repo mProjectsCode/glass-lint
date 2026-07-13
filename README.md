@@ -1,105 +1,111 @@
 # Glass Lint
 
-Glass Lint is a general JavaScript lint engine, an Obsidian rule pack, and a snippet-first conformance harness.
+Glass Lint is a precision-first JavaScript analysis engine for identifying API
+and platform capabilities in source files and bundled code. The repository
+includes rule providers for JavaScript runtimes and Obsidian plugins, a JSON
+CLI, and a snippet-based conformance harness.
+
+Glass Lint favors proven lexical identity, module provenance, and connected
+value flow over name-only matching. The default `recommended` profiles include
+high-confidence rules; broader discovery rules are available through the
+opt-in `heuristic` profiles.
+
+> [!NOTE]
+> Glass Lint is under active development. Rust APIs, report schemas, and rule
+> IDs may change before a stable release.
+
+## What it analyzes
+
+- JavaScript and JSX source, including minified bundles
+- Browser, Node.js, and Electron capabilities through the `js` provider
+- Obsidian API usage through the `obsidian` provider
+- Imports, CommonJS loads, aliases, shadowing, reassignment, rooted member
+  chains, static arguments, and bounded value flow
+
+TypeScript syntax, automatic fixes, and suggestions are not currently
+supported. A source file is limited to 8 MiB by the core parser.
+
+## Get started
+
+Glass Lint currently builds from source. Install a recent Rust toolchain, clone
+the repository, and run:
 
 ```sh
+cargo build --workspace
 cargo run -p glass-lint-cli --bin glass-lint -- rules
-cargo run -p glass-lint-cli --bin glass-lint -- check main.js
-cargo run -p glass-lint-cli --bin glass-lint -- --provider js check main.js
-cargo run -p glass-lint-cli --bin glass-lint-harness -- verify tests/e2e
+cargo run -p glass-lint-cli --bin glass-lint -- check path/to/main.js
 ```
 
-## Folder profiling
+`check` accepts either one JavaScript file or a directory, which is searched
+recursively for `.js` files. Results are emitted as formatted JSON.
 
-The harness can profile arbitrary JavaScript files without case metadata.
-Run it on one subfolder of a large production corpus:
+Use the generic JavaScript provider or enable the broader profile as needed:
 
-    cargo run -p glass-lint-cli --bin glass-lint-harness -- profile --path /path/to/a/plugin/subfolder --provider obsidian --profile recommended --quiet
+```sh
+cargo run -p glass-lint-cli --bin glass-lint -- \
+  --provider js check path/to/bundle.js
 
-Use repeated --path options for multiple roots. Discovery is recursive,
-deterministic, and does not follow symlinks. --include and --exclude use
-glob::Pattern syntax with slash-separated paths. Patterns without a slash
-also match basenames. --sample N --seed S selects a deterministic sample
-after filtering. --warm-up N, --repeat N, --workers N, and
---continue-on-error control execution; the default is one worker.
+cargo run -p glass-lint-cli --bin glass-lint -- \
+  check path/to/main.js --profile heuristic
 
-The selected sources are read into memory before the measured phase. Per-file
-timings and lint wall time cover only Linter::lint calls; setup and total
-process time are reported separately. This keeps file reads and decoding out
-of the useful timings.
+cargo run -p glass-lint-cli --bin glass-lint -- \
+  check path/to/main.js --rule obsidian:network.request
+```
 
-Install Samply, then run:
+The global `--provider` option accepts `obsidian` (the default) or `js`.
+Explicit `--rule` values must belong to that provider. Run `rules` with the
+same provider to inspect rule metadata.
 
-    make profile PROFILE_PATH=/path/to/a/plugin/subfolder PROFILE_ARGS="--quiet --sample 20 --seed 20260712"
+### Exit status
 
-The Make target builds the release harness with debug symbols and invokes
-samply record. Its default corpus is the small tests/e2e directory. Point
-PROFILE_PATH at one subfolder of a large production corpus rather than the
-entire release tree.
+The CLI exits with status `0` when analysis succeeds without a finding at or
+above `--fail-on`, `1` when the configured threshold is met or parsing fails,
+and `2` for invalid arguments or operational errors. The default threshold is
+`error`; accepted values are `info`, `warning`, `error`, and `never`.
 
-`glass-lint-core` owns parsing, provenance and alias-flow analysis, declarative rule matching, configuration, and reports. It contains no product policy. `glass-lint-obsidian` owns Obsidian rules, while `glass-lint-js` owns generic JavaScript, browser, Node.js, and Electron rules. Rule IDs use `provider:name`, such as `obsidian:network.request` and `js:network.request`.
+## Use as a Rust library
+
+Provider crates expose ready-to-use linters:
 
 ```rust
 let report = glass_lint_obsidian::recommended_linter()
     .lint(source, "main.js");
-
-let configured = glass_lint_obsidian::heuristic_linter();
-let selected = [glass_lint_core::RuleId::parse("obsidian:network.request")?];
-let custom = glass_lint_core::Linter::with_rules(
-    configured.catalog().clone(),
-    selected,
-)?;
 ```
 
-The parser accepts JavaScript (including JSX). TypeScript, fixes, and suggestions are intentionally out of scope.
+Select individual rules from a provider catalog when you need a focused
+analysis:
 
-Core analysis is precision-first and bounded: strict matchers require lexical
-and provenance evidence, dynamic/unsupported semantics fail closed, source
-files over 8 MiB receive a structured parse diagnostic, and each rule keeps at
-most 16 source occurrences in deterministic order. `Evidence` entries include
-the first matching range and source snippet; report finding ranges are the
-outermost non-contained matching spans.
+```rust
+use glass_lint_core::{Linter, RuleId};
 
-## Harness Cases
-
-Harness cases are ordinary `.js` files. Rule-level conformance fixtures live alongside their Rust definitions as `positive.js` and `negative.js`; run `make provider-fixtures` to verify them. The remaining `tests/` tree is reserved for end-to-end scenarios, and `make harness` runs `tests/e2e` by default.
-
-The case ID is the path below the suite root without `.js`, unless the file sets `// @case id ...`.
-
-Configuration comments must be at the very top of the file, before executable code:
-
-```js
-// @case description Each fetch call produces a located finding
-// @case tags network,browser
-// @tool glass-lint rules=js:network.request
-// @tool glass-lint config=heuristic
-// @tool eslint-obsidianmd rules=obsidianmd/no-global-this
+let provider = glass_lint_obsidian::heuristic_linter();
+let selected = [RuleId::parse("obsidian:network.request")?];
+let linter = Linter::with_rules(provider.catalog().clone(), selected)?;
+let report = linter.lint(source, "main.js");
 ```
 
-Only configured tools run a case. When a report includes a registered tool that is not mentioned by a case, that tool is marked `skip` for that case instead of failing coverage.
-The built-in `glass-lint` adapter accepts `config=heuristic` to run the complete
-JavaScript and Obsidian rule catalogs. Use explicit `rules=` for focused rule
-fixtures.
+Reports contain deterministic findings, one-based source locations, bounded
+evidence, and structured parse diagnostics. Rule IDs use `provider:name`, for
+example `js:network.request` and `obsidian:network.request`.
 
-Expected diagnostics use assertion comments next to the relevant source line:
+## Repository guide
 
-```js
-// @expect-error glass-lint rule=js:network.request message_id=detected
-fetch('/before');
+| Path | Purpose |
+|---|---|
+| [`glass-lint-core/`](glass-lint-core/) | Provider-neutral parser, semantic analysis, matcher API, and report model |
+| [`glass-lint-js/`](glass-lint-js/) | JavaScript, browser, Node.js, and Electron rules |
+| [`glass-lint-obsidian/`](glass-lint-obsidian/) | Obsidian rules, profiles, and disclosure mappings |
+| [`glass-lint-harness/`](glass-lint-harness/) | Reusable conformance-case runner and profiling library |
+| [`glass-lint-cli/`](glass-lint-cli/) | `glass-lint` and `glass-lint-harness` binaries |
+| [`adapters/`](adapters/) | External harness integrations |
+| [`tests/e2e/`](tests/e2e/) | Cross-rule, end-to-end JavaScript scenarios |
 
-fetch('/inline'); // @expect-error glass-lint rule=js:network.request message_id=detected
+For implementation details, see [ARCHITECTURE.md](ARCHITECTURE.md). To build,
+test, profile, or contribute, start with [CONTRIBUTING.md](CONTRIBUTING.md) and
+[TESTING.md](TESTING.md). The current development backlog is tracked in
+[plan.md](plan.md).
 
-fetch('/after');
-// @expect-error-after glass-lint rule=js:network.request message_id=detected
-```
+## License
 
-Use `@expect-no-error` (or `@expect-no-error-after`) to assert that a selected rule
-does not report a particular lookalike while allowing other expected diagnostics in
-the same snippet:
-
-```js
-fetch('/remote'); // @expect-error glass-lint rule=js:network.request
-function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=js:network.request
-```
-
-Supported assertion fields are `rule`, `message_id`, `severity`, `count`, `line`, `column`, and `message`. Use `count=any`, `line=any`, or `column=any` only when the behavior under test is aggregate capability presence rather than exact evidence shape or location. Prefer one assertion comment per expected diagnostic and keep fields as specific as needed for precision. A case with configured rules and no assertions verifies that the selected tool produces no diagnostics.
+Glass Lint is licensed under the GNU General Public License v3.0 only
+(`GPL-3.0-only`).

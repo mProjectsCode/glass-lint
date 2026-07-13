@@ -1,0 +1,17 @@
+use super::*;
+
+impl<'a> FactBuilder<'a> {
+    pub(super) fn next_control_region(&mut self) -> u32 {
+        let region = self.next_control_region;
+        self.next_control_region = self.next_control_region.saturating_add(1);
+        region
+    }
+
+    pub(super) fn emit_control(&mut self, span: Span, kind: ControlKind, region: u32) {
+        self.emit(
+            FactKind::Control,
+            span,
+            FactPayload::Control { kind, region },
+        );
+    }
+}

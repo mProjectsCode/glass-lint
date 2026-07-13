@@ -1,8 +1,9 @@
-# Glass Lint open work plan
+# Open work plan
 
 ## Scope and current baseline
 
-This file contains only unfinished work. `glass-lint-core` owns the generic
+This living backlog contains only unfinished work; completed items should be
+removed or moved to durable documentation. `glass-lint-core` owns the generic
 JavaScript engine; JavaScript platform policy belongs in `glass-lint-js`, and
 Obsidian policy belongs in `glass-lint-obsidian`.
 

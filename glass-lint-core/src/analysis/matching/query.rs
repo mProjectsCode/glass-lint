@@ -1,0 +1,273 @@
+//! Matcher-specific occurrence queries and evidence construction.
+
+use super::*;
+
+impl MatcherFacts {
+    pub fn evidence_for(&self, matcher: &ApiMatcher) -> Vec<ApiEvidence> {
+        let mut evidence = Vec::new();
+        self.collect_call_evidence(&matcher.calls, &mut evidence);
+        self.collect_member_call_evidence(&matcher.member_calls, &mut evidence);
+        self.collect_member_read_evidence(&matcher.member_reads, &mut evidence);
+        self.collect_evidence(ApiMatchKind::Import, &matcher.imports, &mut evidence);
+        self.collect_string_literal_evidence(&matcher.string_literals, &mut evidence);
+        self.collect_class_evidence(&matcher.classes, &mut evidence);
+        self.collect_constructor_evidence(&matcher.constructors, &mut evidence);
+        self.collect_returned_member_call_evidence(&matcher.returned_member_calls, &mut evidence);
+        self.collect_returned_member_read_evidence(&matcher.returned_member_reads, &mut evidence);
+        self.collect_instance_member_call_evidence(&matcher.instance_member_calls, &mut evidence);
+
+        evidence
+    }
+
+    fn collect_returned_member_call_evidence(
+        &self,
+        matchers: &[crate::api::rule::ReturnedMemberCallMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for matcher in matchers {
+            let spans = self
+                .returned_member_calls
+                .iter()
+                .filter(|((source, member), _)| {
+                    (source == &matcher.source
+                        || source.starts_with(&format!("{}.", matcher.source)))
+                        && member == &matcher.member
+                })
+                .flat_map(|(_, occurrences)| occurrences.iter().copied())
+                .collect::<Vec<_>>();
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::MemberCall,
+                format!("{}.{}", matcher.source, matcher.member),
+                (!spans.is_empty()).then_some(spans),
+            );
+        }
+    }
+
+    fn collect_returned_member_read_evidence(
+        &self,
+        matchers: &[crate::api::rule::ReturnedMemberReadMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for matcher in matchers {
+            let spans = self
+                .returned_member_reads
+                .iter()
+                .filter(|((source, member), _)| {
+                    (source == &matcher.source
+                        || source.starts_with(&format!("{}.", matcher.source)))
+                        && member == &matcher.member
+                })
+                .flat_map(|(_, occurrences)| occurrences.iter().copied())
+                .collect::<Vec<_>>();
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::MemberRead,
+                format!("{}.{}", matcher.source, matcher.member),
+                (!spans.is_empty()).then_some(spans),
+            );
+        }
+    }
+
+    fn collect_instance_member_call_evidence(
+        &self,
+        matchers: &[crate::api::rule::InstanceMemberCallMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for matcher in matchers {
+            let key = (
+                matcher.module.clone(),
+                matcher.export.clone(),
+                matcher.member.clone(),
+            );
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::MemberCall,
+                format!("{}:{}.{}", matcher.module, matcher.export, matcher.member),
+                self.instance_member_calls.get(&key).cloned(),
+            );
+        }
+    }
+
+    fn collect_call_evidence(&self, calls: &[CallMatcher], evidence: &mut Vec<ApiEvidence>) {
+        for call in calls {
+            if !call.arg_strings.is_empty() {
+                continue;
+            }
+            let spans = match &call.provenance {
+                CallProvenance::Any => self.calls.get(&call.name),
+                CallProvenance::Global => self.global_calls.get(&call.name),
+                CallProvenance::ModuleExport { module } => {
+                    self.module_calls.get(&(module.clone(), call.name.clone()))
+                }
+            };
+            push_evidence(evidence, ApiMatchKind::Call, call.evidence_symbol(), spans);
+        }
+    }
+
+    fn collect_member_read_evidence(
+        &self,
+        member_reads: &[MemberReadMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for read in member_reads {
+            let spans = match &read.provenance {
+                MemberReadProvenance::Any => {
+                    if read.chain.contains('.') {
+                        self.member_reads.get(&read.chain).cloned()
+                    } else {
+                        let suffix = format!(".{}", read.chain);
+                        let spans = self
+                            .member_reads
+                            .iter()
+                            .filter(|(member_read, _)| {
+                                *member_read == &read.chain || member_read.ends_with(&suffix)
+                            })
+                            .flat_map(|(_, occurrences)| occurrences.iter().copied())
+                            .collect::<Vec<_>>();
+                        (!spans.is_empty()).then_some(spans)
+                    }
+                }
+                MemberReadProvenance::Rooted => self.rooted_member_reads.get(&read.chain).cloned(),
+                MemberReadProvenance::ModuleNamespace { module } => self
+                    .module_member_reads
+                    .get(&(module.clone(), read.chain.clone()))
+                    .cloned(),
+            };
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::MemberRead,
+                read.evidence_symbol(),
+                spans,
+            );
+        }
+    }
+
+    fn collect_member_call_evidence(
+        &self,
+        member_calls: &[MemberCallMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for call in member_calls {
+            if !call.arg_strings.is_empty()
+                || !call.arg_object_keys.is_empty()
+                || !call.arg_rooted_exprs.is_empty()
+            {
+                continue;
+            }
+            let spans = match &call.provenance {
+                MemberCallProvenance::Any => self.member_calls.get(&call.chain),
+                MemberCallProvenance::Rooted => self.rooted_member_calls.get(&call.chain),
+                MemberCallProvenance::ModuleNamespace { module } => self
+                    .module_member_calls
+                    .get(&(module.clone(), call.chain.clone())),
+            };
+            push_evidence(
+                evidence,
+                ApiMatchKind::MemberCall,
+                call.evidence_symbol(),
+                spans,
+            );
+        }
+    }
+
+    fn collect_class_evidence(&self, classes: &[ClassMatcher], evidence: &mut Vec<ApiEvidence>) {
+        for class in classes {
+            let spans = match &class.provenance {
+                CallProvenance::Any | CallProvenance::Global => self.classes.get(&class.name),
+                CallProvenance::ModuleExport { module } => self
+                    .module_classes
+                    .get(&(module.clone(), class.name.clone())),
+            };
+            push_evidence(
+                evidence,
+                ApiMatchKind::Class,
+                class.evidence_symbol(),
+                spans,
+            );
+        }
+    }
+
+    fn collect_constructor_evidence(
+        &self,
+        constructors: &[ConstructorMatcher],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for constructor in constructors {
+            let spans = match &constructor.provenance {
+                CallProvenance::Any => self.global_constructors.get(&constructor.name),
+                CallProvenance::Global => self.global_constructors.get(&constructor.name),
+                CallProvenance::ModuleExport { module } => self
+                    .module_constructors
+                    .get(&(module.clone(), constructor.name.clone())),
+            };
+            push_evidence(
+                evidence,
+                ApiMatchKind::Constructor,
+                constructor.evidence_symbol(),
+                spans,
+            );
+        }
+    }
+
+    fn collect_evidence(
+        &self,
+        kind: ApiMatchKind,
+        symbols: &[String],
+        evidence: &mut Vec<ApiEvidence>,
+    ) {
+        for symbol in symbols {
+            let spans = match kind {
+                ApiMatchKind::Import => self.imports.get(symbol),
+                _ => None,
+            };
+            push_evidence(evidence, kind, symbol.clone(), spans);
+        }
+    }
+
+    fn collect_string_literal_evidence(&self, markers: &[String], evidence: &mut Vec<ApiEvidence>) {
+        for marker in markers {
+            let spans = self
+                .string_literals
+                .iter()
+                .filter(|(literal, _)| literal.contains(marker))
+                .flat_map(|(_, occurrences)| occurrences.iter().copied())
+                .collect::<Vec<_>>();
+            push_owned_evidence(
+                evidence,
+                ApiMatchKind::StringLiteral,
+                marker.clone(),
+                (!spans.is_empty()).then_some(spans),
+            );
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn record(&mut self, kind: ApiMatchKind, symbol: impl Into<String>, span: Span) {
+        let symbol = symbol.into();
+        match kind {
+            ApiMatchKind::Call => {
+                self.calls.push(symbol, FactId(u32::MAX), span);
+            }
+            ApiMatchKind::MemberCall => {
+                self.member_calls.push(symbol, FactId(u32::MAX), span);
+            }
+            ApiMatchKind::MemberRead => {
+                self.member_reads.push(symbol, FactId(u32::MAX), span);
+            }
+            ApiMatchKind::Import => {
+                self.imports.push(symbol, FactId(u32::MAX), span);
+            }
+            ApiMatchKind::StringLiteral => {
+                self.string_literals.push(symbol, FactId(u32::MAX), span);
+            }
+            ApiMatchKind::Class => {
+                self.classes.push(symbol, FactId(u32::MAX), span);
+            }
+            ApiMatchKind::Constructor => {
+                self.constructors.push(symbol, FactId(u32::MAX), span);
+            }
+            ApiMatchKind::CallArgument => {}
+        }
+    }
+}

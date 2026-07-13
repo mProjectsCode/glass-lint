@@ -1,10 +1,17 @@
-# Rule and Test Audit Checklist
+# Rule and test audit record
 
-This checklist covers every rule currently registered by the JavaScript (`js`) and Obsidian (`obsidian`) providers. Complete audit groups in order; each group contains 5–10 rules.
+This document records the completed precision and fixture audit for the rules
+registered by the JavaScript (`js`) and Obsidian (`obsidian`) providers at the
+time of the audit. Keep it as historical evidence; use
+[`TESTING.md`](TESTING.md) for current test-authoring guidance.
 
-## Agent audit instructions
+If new unaudited rules are appended, group them in sets of 5–10 and follow the
+protocol below.
 
-Each agent must pick the first incomplete audit group, then audit every rule in that group and then stop. For each rule:
+## Audit instructions
+
+An auditor picks the first incomplete group, audits every rule in that group,
+and then stops. For each rule:
 
 1. Read the rule implementation and its existing tests.
 2. Determine the rule's intended behavior, including its precision boundaries and relevant provenance, alias, reassignment, and shadowing behavior.
@@ -67,21 +74,21 @@ Record ownership and completion evidence directly below each group heading using
 - [x] **Audit group 2 — JavaScript browser and dynamic code (8 rules)**
   - Group audit: owner=Codex; claimed=2026-07-10; targeted-fixtures=[x]; workspace-tests=[x]; clippy=[x]; full-suite=[x]; exception-log=reference
   - Exception log: `make test-rules` passed all 60 JavaScript cases but reports the pre-existing unrelated Obsidian failures in `vault/resource_url/positive` (expected 1, found 0), `workspace/leaf_management/positive` (expected 1, found 0), and `workspace/open/positive` (expected 1, found 0).
-- [x] `js:browser.permissions-media` — [`glass-lint-js/src/rules/browser/permissions_media/`](glass-lint-js/src/rules/browser/permissions_media/)
+  - [x] `js:browser.permissions-media` — [`glass-lint-js/src/rules/browser/permissions_media/`](glass-lint-js/src/rules/browser/permissions_media/)
     - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment, static constraints; limitation=getUserMedia only; verified=targeted fixtures
-- [x] `js:browser.permissions-notifications` — [`glass-lint-js/src/rules/browser/permissions_notifications/`](glass-lint-js/src/rules/browser/permissions_notifications/)
+  - [x] `js:browser.permissions-notifications` — [`glass-lint-js/src/rules/browser/permissions_notifications/`](glass-lint-js/src/rules/browser/permissions_notifications/)
     - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment; limitation=requestPermission only; verified=targeted fixtures
-- [x] `js:browser.persistent-storage` — [`glass-lint-js/src/rules/browser/persistent_storage/`](glass-lint-js/src/rules/browser/persistent_storage/)
+  - [x] `js:browser.persistent-storage` — [`glass-lint-js/src/rules/browser/persistent_storage/`](glass-lint-js/src/rules/browser/persistent_storage/)
     - Audit: rooted; intent-doc=[x]; coverage=direct calls, aliases, shadowing, reassignment, listed methods, unlisted lookalike; limitation=only six configured methods; verified=targeted fixtures
-- [x] `js:crypto.operation` — [`glass-lint-js/src/rules/node/crypto_operation/`](glass-lint-js/src/rules/node/crypto_operation/)
+  - [x] `js:crypto.operation` — [`glass-lint-js/src/rules/node/crypto_operation/`](glass-lint-js/src/rules/node/crypto_operation/)
     - Audit: module provenance/heuristic; intent-doc=[x]; coverage=all listed imports, similar module, shadowed loader, static Web Crypto call, unlisted method; limitation=reports imports rather than later API use and heuristic chains are syntactic; verified=targeted fixtures
-- [x] `js:dom.remote-resource` — [`glass-lint-js/src/rules/network/remote_resource/`](glass-lint-js/src/rules/network/remote_resource/)
+  - [x] `js:dom.remote-resource` — [`glass-lint-js/src/rules/network/remote_resource/`](glass-lint-js/src/rules/network/remote_resource/)
     - Audit: flow; intent-doc=[x]; coverage=script/image source, alias, static computed write, setAttribute, insertion sink, dynamic/local values, unsupported tag; limitation=bounded direct flow and supported sinks only; verified=targeted fixtures
-- [x] `js:dynamic-code.eval` — [`glass-lint-js/src/rules/network/eval/`](glass-lint-js/src/rules/network/eval/)
+  - [x] `js:dynamic-code.eval` — [`glass-lint-js/src/rules/network/eval/`](glass-lint-js/src/rules/network/eval/)
     - Audit: rooted/global; intent-doc=[x]; coverage=direct eval, direct Function construction, derived async Function constructor aliases, shadowing, reassignment, bare alias, eval.call gap; limitation=bare-eval aliases and eval.call remain unsupported; verified=targeted fixtures and core provenance tests
-- [x] `js:dynamic-code.script-injection` — [`glass-lint-js/src/rules/network/script_injection/`](glass-lint-js/src/rules/network/script_injection/)
+  - [x] `js:dynamic-code.script-injection` — [`glass-lint-js/src/rules/network/script_injection/`](glass-lint-js/src/rules/network/script_injection/)
     - Audit: heuristic; intent-doc=[x]; coverage=direct creation, alias, static concatenation, dynamic/static tag boundaries; limitation=does not prove document provenance and reports creation without insertion; verified=targeted fixtures
-- [x] `js:dynamic-code.string-timer` — [`glass-lint-js/src/rules/network/string_timer/`](glass-lint-js/src/rules/network/string_timer/)
+  - [x] `js:dynamic-code.string-timer` — [`glass-lint-js/src/rules/network/string_timer/`](glass-lint-js/src/rules/network/string_timer/)
     - Audit: global/heuristic; intent-doc=[x]; coverage=global and member forms, aliases, shadowing, reassignment, static strings, callback/dynamic values; limitation=member chains are syntactic heuristics and only listed timer APIs are covered; verified=targeted fixtures
 
 - [x] **Audit group 3 — JavaScript Electron and network (7 rules)**

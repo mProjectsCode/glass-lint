@@ -1,0 +1,326 @@
+use super::*;
+
+impl Resolver {
+    /// Returns a CommonJS module only when the callee is proven to be the
+    /// unshadowed global loader. Import collection and alias provenance both
+    /// depend on this conservative distinction.
+    pub(in crate::analysis) fn resolve_ident(&self, ident: &Ident) -> ResolvedValue {
+        self.resolve_ident_uncached(ident)
+    }
+
+    fn resolve_ident_uncached(&self, ident: &Ident) -> ResolvedValue {
+        let key = ResolutionKey::Ident {
+            lo: ident.span.lo.0,
+            hi: ident.span.hi.0,
+            symbol: ident.sym.to_string(),
+        };
+        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
+            return value;
+        }
+        if !self.resolving.borrow_mut().insert(key.clone()) {
+            return self.unknown();
+        }
+        let seed = self.scopes.ident_value_seed(ident);
+        let rooted_chain = seed.rooted_chain.map(|chain| chain.to_string());
+        let id = match seed.constant {
+            ConstValue::Unknown => {
+                self.intern_call_value(&seed.call, rooted_chain.as_deref(), seed.binding)
+            }
+            value => self.intern_const_value(value, seed.binding),
+        };
+        let call = self.call_provenance_for_value(id);
+        let module_member = match &call {
+            SymbolCallProvenance::ModuleExport { module, export } => {
+                Some(SymbolMemberProvenance::ModuleNamespace {
+                    module: module.clone(),
+                    member: export.clone(),
+                })
+            }
+            _ => None,
+        };
+        let returned_member = None;
+        let resolved = ResolvedValue {
+            id,
+            rooted_chain,
+            call,
+            module_member,
+            returned_member,
+            bound_arguments: seed.bound_arguments,
+            syntactic_chain: None,
+        };
+        self.resolved_values
+            .borrow_mut()
+            .insert(key, resolved.clone());
+        self.resolving.borrow_mut().remove(&ResolutionKey::Ident {
+            lo: ident.span.lo.0,
+            hi: ident.span.hi.0,
+            symbol: ident.sym.to_string(),
+        });
+        resolved
+    }
+
+    pub(in crate::analysis) fn scope_chain_at(&self, span: swc_common::Span) -> Vec<usize> {
+        self.scopes.scope_chain_at(span)
+    }
+
+    pub(in crate::analysis) fn function_id_for_scope(
+        &self,
+        scope: usize,
+    ) -> crate::analysis::value::FunctionId {
+        self.scopes.function_id_for_scope(scope)
+    }
+
+    pub(in crate::analysis) fn function_id_for_expr(
+        &self,
+        expr: &Expr,
+    ) -> Option<crate::analysis::value::FunctionId> {
+        self.scopes.function_id_for_expr(expr)
+    }
+
+    pub(in crate::analysis) fn resolve_member(&self, member: &MemberExpr) -> ResolvedValue {
+        self.resolve_member_uncached(member)
+    }
+
+    fn resolve_member_uncached(&self, member: &MemberExpr) -> ResolvedValue {
+        let key = ResolutionKey::Member {
+            lo: member.span.lo.0,
+            hi: member.span.hi.0,
+        };
+        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
+            return value;
+        }
+        if !self.resolving.borrow_mut().insert(key.clone()) {
+            return self.unknown();
+        }
+        let seed = self.scopes.member_value_seed(member);
+        let syntactic = seed.syntactic_chain.map(|chain| chain.to_string());
+        // Prefer the alias-expanded path. Falling back to a rooted member keeps
+        // direct global/`this` access available when no local alias is present.
+        let rooted_chain = seed.rooted_chain.map(|chain| chain.to_string());
+        let module_member = seed.module_member;
+        let scoped_call = match &module_member {
+            Some(SymbolMemberProvenance::ModuleNamespace { module, member }) => {
+                SymbolCallProvenance::ModuleExport {
+                    module: module.clone(),
+                    export: member.clone(),
+                }
+            }
+            None => SymbolCallProvenance::Local,
+        };
+        let id = self.intern_call_value(&scoped_call, rooted_chain.as_deref(), seed.binding);
+        let call = self.call_provenance_for_value(id);
+        if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
+            self.values
+                .borrow_mut()
+                .intern(Value::ModuleNamespace(module.clone()));
+        }
+        let resolved = ResolvedValue {
+            id,
+            rooted_chain,
+            call,
+            module_member,
+            returned_member: seed
+                .returned_member
+                .map(|(source, member)| (source.to_string(), member)),
+            bound_arguments: None,
+            syntactic_chain: syntactic,
+        };
+        self.resolved_values
+            .borrow_mut()
+            .insert(key, resolved.clone());
+        self.resolving.borrow_mut().remove(&ResolutionKey::Member {
+            lo: member.span.lo.0,
+            hi: member.span.hi.0,
+        });
+        resolved
+    }
+
+    pub(in crate::analysis) fn resolve_expr(&self, expr: &Expr) -> ResolvedValue {
+        match expr {
+            Expr::Ident(ident) => self.resolve_ident(ident),
+            Expr::Member(member) => self.resolve_member(member),
+            Expr::Paren(paren) => self.resolve_expr(&paren.expr),
+            Expr::Assign(assignment) => match &assignment.left {
+                swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Ident(
+                    ident,
+                )) => self.resolve_ident(&ident.id),
+                _ => self.resolve_expr(&assignment.right),
+            },
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .map_or_else(|| self.unknown(), |last| self.resolve_expr(last)),
+            Expr::Lit(Lit::Str(value)) => self.static_value(Value::StaticString(
+                value.value.to_string_lossy().to_string(),
+            )),
+            Expr::Lit(Lit::Num(value))
+                if value.value.is_finite()
+                    && value.value >= 0.0
+                    && value.value.fract() == 0.0
+                    && value.value <= usize::MAX as f64 =>
+            {
+                self.static_value(Value::StaticNumber(value.value as usize))
+            }
+            Expr::Array(array) => {
+                let values = array
+                    .elems
+                    .iter()
+                    .map(|element| {
+                        element.as_ref().map_or(ValueId::UNKNOWN, |element| {
+                            self.resolve_expr(&element.expr).id
+                        })
+                    })
+                    .collect();
+                self.static_value(Value::StaticArray(values))
+            }
+            Expr::Object(_) => {
+                // Preserve finite object structure for helper parameter
+                // projection. The constant evaluator already applies the
+                // depth, node, spread, and mutation bounds used elsewhere.
+                let id = self.intern_const_value(syntax_constant::evaluate(expr, self), None);
+                ResolvedValue {
+                    id,
+                    rooted_chain: None,
+                    call: SymbolCallProvenance::Local,
+                    module_member: None,
+                    returned_member: None,
+                    bound_arguments: None,
+                    syntactic_chain: None,
+                }
+            }
+            Expr::Call(call) => self.resolve_call_expression(call),
+            Expr::New(new_expr) => self.fresh_object_value_at(new_expr.span),
+            _ => self.unknown(),
+        }
+    }
+
+    pub(in crate::analysis) fn static_string_expr(&self, expr: &Expr) -> Option<String> {
+        let value = syntax_constant::evaluate(expr, self).string()?.to_string();
+        self.values
+            .borrow_mut()
+            .intern(Value::StaticString(value.clone()));
+        Some(value)
+    }
+
+    pub(in crate::analysis) fn static_string_array_expr(&self, expr: &Expr) -> Option<Vec<String>> {
+        match syntax_constant::evaluate(expr, self) {
+            ConstValue::Array(values) => values
+                .into_iter()
+                .map(|value| value.string().map(str::to_owned))
+                .collect(),
+            _ => None,
+        }
+    }
+
+    pub(in crate::analysis) fn object_keys_expr(&self, expr: &Expr) -> Option<Vec<String>> {
+        let keys = syntax_constant::evaluate(expr, self).object_keys()?;
+        let mut values = self.values.borrow_mut();
+        let unknown = ValueId::UNKNOWN;
+        values.intern(Value::StaticObject(
+            keys.iter().cloned().map(|key| (key, unknown)).collect(),
+        ));
+        Some(keys)
+    }
+
+    pub(in crate::analysis) fn rooted_expr_chain(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Ident(ident) => self
+                .resolve_ident(ident)
+                .rooted_chain
+                .or_else(|| ident.span.is_dummy().then(|| ident.sym.to_string())),
+            Expr::Member(member) => self.resolve_member(member).rooted_chain,
+            Expr::Call(call) => match &call.callee {
+                Callee::Expr(callee) => self.rooted_expr_chain(callee),
+                Callee::Super(_) | Callee::Import(_) => None,
+            },
+            Expr::OptChain(chain) => match &*chain.base {
+                swc_ecma_ast::OptChainBase::Member(member) => {
+                    self.resolve_member(member).rooted_chain
+                }
+                swc_ecma_ast::OptChainBase::Call(call) => self.rooted_expr_chain(&call.callee),
+            },
+            Expr::Paren(paren) => self.rooted_expr_chain(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.rooted_expr_chain(expr)),
+            Expr::TsAs(value) => self.rooted_expr_chain(&value.expr),
+            Expr::TsNonNull(value) => self.rooted_expr_chain(&value.expr),
+            Expr::TsSatisfies(value) => self.rooted_expr_chain(&value.expr),
+            Expr::TsTypeAssertion(value) => self.rooted_expr_chain(&value.expr),
+            _ => None,
+        }
+    }
+
+    pub(in crate::analysis) fn member_chain(&self, member: &MemberExpr) -> Option<String> {
+        let key = ResolutionKey::Member {
+            lo: member.span.lo.0,
+            hi: member.span.hi.0,
+        };
+        self.resolved_values
+            .borrow()
+            .get(&key)
+            .and_then(|value| value.syntactic_chain.clone())
+            .or_else(|| crate::analysis::syntax::member_chain(member))
+    }
+
+    pub(in crate::analysis) fn class_provenance(&self, expr: &Expr) -> Option<(String, String)> {
+        match self.resolve_expr(expr).call {
+            SymbolCallProvenance::ModuleExport { module, export } => Some((module, export)),
+            _ => None,
+        }
+    }
+
+    pub(in crate::analysis) fn unknown(&self) -> ResolvedValue {
+        ResolvedValue {
+            id: ValueId::UNKNOWN,
+            rooted_chain: None,
+            call: SymbolCallProvenance::Local,
+            module_member: None,
+            returned_member: None,
+            bound_arguments: None,
+            syntactic_chain: None,
+        }
+    }
+
+    pub(in crate::analysis) fn static_value(&self, value: Value) -> ResolvedValue {
+        let id = self.values.borrow_mut().intern(value);
+        ResolvedValue {
+            id,
+            rooted_chain: None,
+            call: SymbolCallProvenance::Local,
+            module_member: None,
+            returned_member: None,
+            bound_arguments: None,
+            syntactic_chain: None,
+        }
+    }
+
+    pub(in crate::analysis) fn fresh_object_value(&self) -> ResolvedValue {
+        let Some(object) = self.values.borrow_mut().allocate_object_id() else {
+            return self.unknown();
+        };
+        self.static_value(Value::Object(object))
+    }
+
+    pub(in crate::analysis) fn fresh_object_value_at(
+        &self,
+        span: swc_common::Span,
+    ) -> ResolvedValue {
+        let key = (span.lo.0, span.hi.0);
+        if let Some(value) = self.fresh_values.borrow().get(&key).copied() {
+            return ResolvedValue {
+                id: value,
+                rooted_chain: None,
+                call: SymbolCallProvenance::Local,
+                module_member: None,
+                returned_member: None,
+                bound_arguments: None,
+                syntactic_chain: None,
+            };
+        }
+        let value = self.fresh_object_value();
+        self.fresh_values.borrow_mut().insert(key, value.id);
+        value
+    }
+}

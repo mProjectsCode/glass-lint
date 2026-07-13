@@ -1,0 +1,225 @@
+//! Rule-independent semantic fact identities and payloads.
+
+use super::super::syntax::{SymbolCallProvenance, SymbolMemberProvenance};
+use super::super::value::{FunctionId, ValueId};
+use swc_common::{BytePos, Span};
+
+// ── Fact stream types ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[allow(dead_code)]
+pub(in crate::analysis) struct FactId(pub(in crate::analysis) u32);
+
+/// Semantic categories for facts stored in the stream.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[allow(dead_code)]
+pub(in crate::analysis) enum FactKind {
+    Declaration,
+    Assignment,
+    PropertyWrite,
+    Call,
+    Construction,
+    Reference,
+    MemberRead,
+    Function,
+    Control,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::analysis) enum ControlKind {
+    BranchStart,
+    BranchThen,
+    BranchElse,
+    BranchEnd,
+    LoopStart { guaranteed: bool },
+    LoopUpdate,
+    LoopEnd,
+    SwitchStart,
+    SwitchCase { is_default: bool },
+    SwitchEnd,
+    TryStart,
+    CatchStart,
+    FinallyStart,
+    TryEnd,
+    Break,
+    Continue,
+    Return,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::analysis) enum FunctionBoundary {
+    Enter,
+    Exit,
+}
+
+/// Pre-computed evaluation of a single argument at a call site.  Stored in
+/// the `Call` fact so argument predicates never need to reach back to the AST.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(in crate::analysis) struct CallArgInfo {
+    pub(in crate::analysis) value: ValueId,
+    pub(in crate::analysis) base_value: ValueId,
+    pub(in crate::analysis) base_path: Vec<ProjectionSegment>,
+    pub(in crate::analysis) static_string: Option<String>,
+    pub(in crate::analysis) object_keys: Option<Vec<String>>,
+    pub(in crate::analysis) rooted_chain: Option<String>,
+    /// Values reachable from this argument through a statically known object
+    /// or array shape. The root is included with an empty path.
+    pub(in crate::analysis) projections: Vec<ValueProjection>,
+    /// A spread argument is intentionally not projected: its arity and
+    /// element identities are not known to the summary pass.
+    pub(in crate::analysis) spread: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(in crate::analysis) enum ProjectionSegment {
+    Property(String),
+    Index(usize),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::analysis) struct ValueProjection {
+    pub(in crate::analysis) path: Vec<ProjectionSegment>,
+    pub(in crate::analysis) value: ValueId,
+}
+
+/// One binding introduced by a function parameter pattern. `path` identifies
+/// the value inside the corresponding top-level argument.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(in crate::analysis) struct ParameterBinding {
+    pub(in crate::analysis) parameter_index: usize,
+    pub(in crate::analysis) path: Vec<ProjectionSegment>,
+    pub(in crate::analysis) value: ValueId,
+    pub(in crate::analysis) default: Option<ValueId>,
+    pub(in crate::analysis) rest: bool,
+}
+
+/// Information about a `.call()`/`.apply()` unwrapping at a call site.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(in crate::analysis) struct CallUnwrap {
+    /// The chain spelling of the target being called (e.g. `"fetch"` or `"mod.fn"`).
+    pub(in crate::analysis) chain: String,
+    /// Receiver expression for `.call(receiver, ...)` / `.apply(receiver, ...)`.
+    pub(in crate::analysis) receiver: Option<String>,
+    /// Effective arguments after removing the receiver and options/array wrapper.
+    pub(in crate::analysis) effective_args: Vec<CallArgInfo>,
+}
+
+/// Compact, typed payloads carried by facts.  Must not contain borrowed AST
+/// nodes, formatted identity strings used as matcher/rule indexes, or
+/// matcher-specific state.  All provenance is resolved once at build time.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(in crate::analysis) enum FactPayload {
+    /// Identifier or literal reference. A static string is a projection of
+    /// this value/reference fact, not a parallel `StringLiteral` fact kind;
+    /// string matchers consume the projection through the occurrence index.
+    Reference {
+        value: ValueId,
+        static_string: Option<String>,
+    },
+    /// Member expression read.
+    MemberRead {
+        value: ValueId,
+        syntactic_chain: Option<String>,
+        rooted_chain: Option<String>,
+        module_member: Option<SymbolMemberProvenance>,
+        returned_member: Option<(String, String)>,
+    },
+    /// Variable declaration.
+    Declaration {
+        target: ValueId,
+        source: ValueId,
+    },
+    /// Assignment expression.
+    Assignment {
+        target: ValueId,
+        source: ValueId,
+        receiver: Option<ValueId>,
+    },
+    /// Property write (obj.prop = value).
+    PropertyWrite {
+        target: ValueId,
+        receiver: ValueId,
+        source: ValueId,
+        property: Option<String>,
+        static_value: Option<String>,
+    },
+    /// Function or method call.
+    Call {
+        callee: ValueId,
+        receiver: Option<ValueId>,
+        result: ValueId,
+        callee_span: Span,
+        callee_name: Option<String>,
+        call_provenance: SymbolCallProvenance,
+        syntactic_chain: Option<String>,
+        rooted_chain: Option<String>,
+        module_member: Option<SymbolMemberProvenance>,
+        returned_member: Option<(String, String)>,
+        instance_class: Option<(String, String)>,
+        target_function: Option<FunctionId>,
+        /// Pre-computed argument evaluation for predicates.
+        args: Vec<CallArgInfo>,
+        /// Present when this is a `.call()`/`.apply()` wrapper; the effective
+        /// target and arguments after unwrapping.
+        unwrap: Option<Box<CallUnwrap>>,
+    },
+    /// A function declaration/expression and its parameter value identities.
+    Function {
+        id: FunctionId,
+        owner: FunctionId,
+        name: Option<String>,
+        parameters: Vec<ParameterBinding>,
+        boundary: FunctionBoundary,
+    },
+    Control {
+        kind: ControlKind,
+        region: u32,
+    },
+    /// `new Constructor()`.
+    Construction {
+        callee: ValueId,
+        result: ValueId,
+        callee_span: Span,
+        callee_name: Option<String>,
+        provenance: SymbolCallProvenance,
+    },
+    /// Import declaration.
+    Import {
+        module: String,
+    },
+    /// Class declaration or expression, or `instanceof` operand.
+    Class {
+        name: String,
+        provenance: Option<(String, String)>,
+    },
+}
+
+/// A single, immutable semantic fact in the canonical stream.
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub(in crate::analysis) struct SemanticFact {
+    pub(in crate::analysis) id: FactId,
+    pub(in crate::analysis) span: Span,
+    pub(in crate::analysis) scope: usize,
+    pub(in crate::analysis) function: FunctionId,
+    pub(in crate::analysis) kind: FactKind,
+    pub(in crate::analysis) payload: FactPayload,
+}
+
+/// Key for exact event lookup: `(lo, hi, kind, ordinal)` identifies
+/// individual facts at a given source position and semantic role.
+/// The ordinal distinguishes canonical same-span facts in deterministic
+/// insertion order.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[allow(dead_code)]
+pub(in crate::analysis) struct ExactEventKey {
+    pub(in crate::analysis) lo: BytePos,
+    pub(in crate::analysis) hi: BytePos,
+    pub(in crate::analysis) kind: FactKind,
+    pub(in crate::analysis) ordinal: u32,
+}
+
+pub(in crate::analysis) const MAX_FACTS: usize = 1 << 20;

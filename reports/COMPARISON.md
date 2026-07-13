@@ -1,4 +1,10 @@
-# Glass Lint vs ESLint comparison
+# Glass Lint and ESLint comparison
+
+This generated snapshot compares findings from Glass Lint's heuristic profile
+with `eslint-plugin-obsidianmd` on the end-to-end harness suite. Counts measure
+different rule catalogs and are descriptive, not a precision or recall score.
+Regenerate the report with `make compare`; adapter setup is documented in
+[`adapters/eslint-obsidianmd/README.md`](../adapters/eslint-obsidianmd/README.md).
 
 | Case | eslint-obsidianmd | glass-lint |
 |---|---:|---:|
