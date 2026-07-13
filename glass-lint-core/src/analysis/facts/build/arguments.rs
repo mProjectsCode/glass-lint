@@ -1,6 +1,9 @@
-use super::*;
+use super::{
+    BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegment, ValueId,
+    ValueProjection, member_prop_name,
+};
 
-impl<'a> FactBuilder<'a> {
+impl FactBuilder<'_> {
     pub(super) fn arg_info(&mut self, expr: &Expr) -> CallArgInfo {
         let value = self.resolver.resolve_expr(expr).id;
         let (base_value, base_path) = self.expression_projection(expr);

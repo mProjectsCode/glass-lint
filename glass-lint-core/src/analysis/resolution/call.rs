@@ -1,4 +1,6 @@
-use super::*;
+use super::{
+    CallExpr, Callee, Expr, Lit, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
+};
 
 impl Resolver {
     pub(super) fn call_provenance_at(

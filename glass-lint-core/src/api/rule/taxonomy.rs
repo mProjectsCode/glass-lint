@@ -7,6 +7,7 @@ impl ApiCategory {
         Self(value.into().trim().to_string())
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -50,6 +51,7 @@ pub enum ApiSeverity {
 }
 
 impl ApiSeverity {
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Info => "info",
@@ -76,6 +78,7 @@ pub enum Confidence {
 }
 
 impl Confidence {
+    #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::High => "high",

@@ -1,6 +1,11 @@
-use super::*;
+use super::{
+    BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Expr, ExprOrSpread, FactBuilder, FactKind,
+    FactPayload, MemberExpr, OptChainBase, ParameterBinding, Pat, PathId, PathSegment, Span,
+    Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId, ValueProjection, VisitWith,
+    member_prop_name,
+};
 
-impl<'a> FactBuilder<'a> {
+impl FactBuilder<'_> {
     pub(super) fn emit_call(
         &mut self,
         span: Span,
@@ -89,13 +94,13 @@ impl<'a> FactBuilder<'a> {
                 for property in &object.props {
                     match property {
                         swc_ecma_ast::ObjectPatProp::KeyValue(property) => {
-                            self.pattern_values(&property.value, values)
+                            self.pattern_values(&property.value, values);
                         }
                         swc_ecma_ast::ObjectPatProp::Assign(property) => {
-                            values.push(self.resolver.resolve_ident(&property.key.id).id)
+                            values.push(self.resolver.resolve_ident(&property.key.id).id);
                         }
                         swc_ecma_ast::ObjectPatProp::Rest(property) => {
-                            self.pattern_values(&property.arg, values)
+                            self.pattern_values(&property.arg, values);
                         }
                     }
                 }
@@ -122,13 +127,13 @@ impl<'a> FactBuilder<'a> {
                 for property in &object.props {
                     match property {
                         swc_ecma_ast::ObjectPatProp::KeyValue(property) => {
-                            self.pattern_write_targets(&property.value, targets)
+                            self.pattern_write_targets(&property.value, targets);
                         }
                         swc_ecma_ast::ObjectPatProp::Assign(property) => {
-                            targets.push((self.resolver.resolve_ident(&property.key.id).id, None))
+                            targets.push((self.resolver.resolve_ident(&property.key.id).id, None));
                         }
                         swc_ecma_ast::ObjectPatProp::Rest(property) => {
-                            self.pattern_write_targets(&property.arg, targets)
+                            self.pattern_write_targets(&property.arg, targets);
                         }
                     }
                 }
@@ -409,9 +414,10 @@ impl<'a> FactBuilder<'a> {
                 }
             }
             Expr::Member(member) => self.resolve_member_callee(member),
-            Expr::OptChain(chain) => match &*chain.base {
-                OptChainBase::Member(member) => self.resolve_member_callee(member),
-                _ => {
+            Expr::OptChain(chain) => {
+                if let OptChainBase::Member(member) = &*chain.base {
+                    self.resolve_member_callee(member)
+                } else {
                     let resolved = self.resolver.resolve_expr(effective);
                     ResolvedCallee {
                         value: resolved.id,
@@ -428,7 +434,7 @@ impl<'a> FactBuilder<'a> {
                         target_function: self.resolver.function_id_for_expr(effective),
                     }
                 }
-            },
+            }
             _ => {
                 let resolved = self.resolver.resolve_expr(effective);
                 ResolvedCallee {

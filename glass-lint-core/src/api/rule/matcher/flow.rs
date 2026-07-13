@@ -28,6 +28,7 @@ impl ValueMatcher {
     }
 
     /// Matches both proven static values and dynamic or unknown values.
+    #[must_use]
     pub fn any_value() -> Self {
         Self {
             kind: ValueMatcherKind::Any,
@@ -35,6 +36,7 @@ impl ValueMatcher {
     }
 
     /// Starts a predicate that requires a proven static string.
+    #[must_use]
     pub fn static_string() -> Self {
         Self {
             kind: ValueMatcherKind::StaticString(StaticStringPredicate::Any),
@@ -131,6 +133,7 @@ pub struct ObjectSourceMatcher {
 }
 
 impl ObjectSourceMatcher {
+    #[must_use]
     pub fn returned_by(call: MemberCallMatcher) -> Self {
         Self { call }
     }
@@ -231,6 +234,7 @@ pub enum FlowCompletion {
 }
 
 impl FlowCompletion {
+    #[must_use]
     pub fn configuration() -> Self {
         Self::Configuration
     }
@@ -256,10 +260,12 @@ pub enum FlowSinkMatcher {
 }
 
 impl FlowSinkMatcher {
+    #[must_use]
     pub fn argument_of(call: MemberCallMatcher, index: usize) -> Self {
         Self::ArgumentOf { call, index }
     }
 
+    #[must_use]
     pub fn any_argument_of(call: MemberCallMatcher) -> Self {
         Self::AnyArgumentOf { call }
     }
@@ -433,10 +439,12 @@ impl FlowMatcher {
         self.events.push(event);
         self
     }
+    #[must_use]
     pub fn require_all(mut self) -> Self {
         self.all = true;
         self
     }
+    #[must_use]
     pub fn emit_when_requirements_met(mut self) -> Self {
         self.completion = Some(FlowCompletion::Configuration);
         self

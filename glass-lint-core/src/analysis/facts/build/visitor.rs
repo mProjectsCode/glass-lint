@@ -4,7 +4,14 @@
 //! selection never reaches this visitor; all values, provenance, and control
 //! regions are computed once for every file.
 
-use super::*;
+use super::{
+    ArrowExpr, AssignExpr, BinExpr, BinaryOp, CallExpr, Callee, ClassDecl, ClassExpr, CondExpr,
+    ControlKind, DoWhileStmt, ExportDecl, Expr, FactBuilder, FactKind, FactPayload, FnDecl,
+    ForInStmt, ForOfStmt, ForStmt, Function, FunctionBoundary, Ident, IfStmt, ImportDecl,
+    MemberExpr, NewExpr, OptChainBase, OptChainExpr, Pat, Spanned, Str, SwitchStmt,
+    SymbolCallProvenance, SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr,
+    ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr, member_prop_name,
+};
 
 impl Visit for FactBuilder<'_> {
     fn visit_ident(&mut self, ident: &Ident) {
@@ -45,8 +52,7 @@ impl Visit for FactBuilder<'_> {
         let mut source = declarator
             .init
             .as_ref()
-            .map(|init| self.value_for_expr(init))
-            .unwrap_or(ValueId::UNKNOWN);
+            .map_or(ValueId::UNKNOWN, |init| self.value_for_expr(init));
         // Initializers are evaluated before the declaration becomes visible.
         // Emit the declaration after visiting the initializer so fact order is
         // an evaluation order, not merely an AST preorder.
@@ -389,11 +395,10 @@ impl Visit for FactBuilder<'_> {
 
     fn visit_tpl(&mut self, template: &Tpl) {
         for quasi in &template.quasis {
-            let literal = quasi
-                .cooked
-                .as_ref()
-                .map(|value| value.to_string_lossy().to_string())
-                .unwrap_or_else(|| quasi.raw.to_string());
+            let literal = quasi.cooked.as_ref().map_or_else(
+                || quasi.raw.to_string(),
+                |value| value.to_string_lossy().to_string(),
+            );
             self.emit(
                 FactKind::Reference,
                 quasi.span,

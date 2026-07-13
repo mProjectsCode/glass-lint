@@ -1,6 +1,10 @@
 //! Argument predicate evaluation over precomputed fact projections.
 
-use super::*;
+use super::{
+    ApiEvidence, ApiMatchKind, CallArgInfo, CallMatcher, CallProvenance, FactId, FactPayload,
+    FactStream, MatcherFacts, MemberCallMatcher, MemberCallProvenance, Span, SymbolCallProvenance,
+    SymbolMemberProvenance, canonical_rooted_chain,
+};
 
 impl MatcherFacts {
     pub(in crate::analysis) fn compute_argument_evidence_from_stream(

@@ -30,7 +30,7 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
                     .extension()
                     .is_some_and(|extension| extension == "js")
         })
-        .map(|entry| entry.into_path())
+        .map(walkdir::DirEntry::into_path)
         .collect();
     paths.sort();
 
@@ -65,8 +65,7 @@ fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
         .replace(std::path::MAIN_SEPARATOR, "/");
     let filename = path
         .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_else(default_filename);
+        .map_or_else(default_filename, |name| name.to_string_lossy().into_owned());
     let mut case = Case {
         id: id.clone(),
         description: id,

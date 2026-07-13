@@ -1,9 +1,12 @@
 //! Evidence emission and flow requirement updates.
 
-use super::*;
+use super::{
+    ApiEvidence, ApiMatchKind, BTreeSet, CallArgInfo, CompiledObjectFlow, FactId, FlowId,
+    FlowState, ObjectFlowProjector, ObjectId, ValueId,
+};
 use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArgs};
 
-impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
+impl ObjectFlowProjector<'_, '_> {
     pub(super) fn record_configuration(
         &mut self,
         receiver: Option<ValueId>,

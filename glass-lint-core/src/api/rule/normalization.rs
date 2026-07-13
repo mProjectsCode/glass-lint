@@ -216,7 +216,7 @@ impl ValueMatcher {
                 | super::matcher::StaticStringPredicate::Prefix(values)
                 | super::matcher::StaticStringPredicate::ContainsAny(values)
                 | super::matcher::StaticStringPredicate::ContainsAll(values) => {
-                    normalize_strings(values)
+                    normalize_strings(values);
                 }
             }
         }

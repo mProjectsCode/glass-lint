@@ -1,6 +1,6 @@
-use super::*;
+use super::{FactBuilder, FactKind, FactPayload, FunctionBoundary, Pat, PathId, Span};
 
-impl<'a> FactBuilder<'a> {
+impl FactBuilder<'_> {
     pub(super) fn current_class(&self) -> Option<(String, String)> {
         self.class_stack.last().and_then(Clone::clone)
     }

@@ -291,7 +291,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     property.as_deref(),
                     static_value.as_deref(),
                     fact.id,
-                )
+                );
             }
             FactPayload::Call {
                 syntactic_chain,

@@ -58,6 +58,7 @@ impl RuleCatalog {
             environment,
         })
     }
+    #[must_use]
     pub fn metadata(&self) -> Vec<RuleMetadata> {
         self.rules
             .iter()
@@ -74,12 +75,14 @@ impl RuleCatalog {
             })
             .collect()
     }
+    #[must_use]
     pub fn rule_ids(&self) -> Vec<RuleId> {
         self.rules
             .iter()
             .filter_map(|rule| self.namespaced_id(rule.id()).cloned())
             .collect()
     }
+    #[must_use]
     pub fn environment(&self) -> &Environment {
         &self.environment
     }

@@ -1,4 +1,4 @@
-use super::*;
+use super::CallProvenance;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConstructorMatcher {
@@ -30,6 +30,7 @@ impl ConstructorMatcher {
         }
     }
 
+    #[must_use]
     pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             CallProvenance::Any | CallProvenance::Global => self.name.clone(),
@@ -69,6 +70,7 @@ impl ClassMatcher {
         }
     }
 
+    #[must_use]
     pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             CallProvenance::Any | CallProvenance::Global => self.name.clone(),

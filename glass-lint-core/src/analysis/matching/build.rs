@@ -1,6 +1,9 @@
 //! Projection from the immutable fact stream into occurrence indexes.
 
-use super::*;
+use super::{
+    FactPayload, FactStream, MatcherFacts, SymbolCallProvenance, SymbolMemberProvenance,
+    canonical_rooted_chain,
+};
 
 impl MatcherFacts {
     /// Sort and deduplicate every occurrence index after fact collection.

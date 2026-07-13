@@ -1,6 +1,13 @@
 //! Matcher-specific occurrence queries and evidence construction.
 
-use super::*;
+#[cfg(test)]
+use swc_common::Span;
+
+use super::{
+    ApiEvidence, ApiMatchKind, ApiMatcher, CallMatcher, CallProvenance, ClassMatcher,
+    ConstructorMatcher, MatcherFacts, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher,
+    MemberReadProvenance, push_evidence, push_owned_evidence,
+};
 
 impl MatcherFacts {
     pub fn evidence_for(&self, matcher: &ApiMatcher) -> Vec<ApiEvidence> {
@@ -241,6 +248,8 @@ impl MatcherFacts {
 
     #[cfg(test)]
     pub(super) fn record(&mut self, kind: ApiMatchKind, symbol: impl Into<String>, span: Span) {
+        use crate::analysis::facts::FactId;
+        
         let symbol = symbol.into();
         match kind {
             ApiMatchKind::Call => {

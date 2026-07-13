@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    BindingProvenance, ConstValue, EvalState, Expr, Ident, Lookup, MemberExpr, ScopeGraph, Span,
+    Spanned, constant,
+};
 
 impl ScopeGraph {
     pub(in crate::analysis) fn mutable_static_object_at(&self, expr: &Expr) -> bool {

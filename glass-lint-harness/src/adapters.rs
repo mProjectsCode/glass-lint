@@ -20,7 +20,7 @@ pub trait Adapter {
 pub struct GlassLintAdapter;
 
 impl Adapter for GlassLintAdapter {
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "glass-lint"
     }
 

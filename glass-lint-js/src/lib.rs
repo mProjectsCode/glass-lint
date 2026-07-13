@@ -6,15 +6,18 @@ use std::collections::BTreeSet;
 mod disclosures;
 mod rules;
 
+#[must_use]
 pub fn rule_catalog() -> Vec<RuleMetadata> {
     catalog(default_environment()).metadata()
 }
 
+#[must_use]
 pub fn recommended_linter() -> Linter {
     recommended_linter_with_environment(default_environment())
 }
 
 /// Build the recommended linter with an exact caller-supplied environment.
+#[must_use]
 pub fn recommended_linter_with_environment(environment: Environment) -> Linter {
     let catalog = catalog(environment);
     let enabled = rules::all()
@@ -24,15 +27,18 @@ pub fn recommended_linter_with_environment(environment: Environment) -> Linter {
     Linter::with_rules(catalog, enabled).unwrap()
 }
 
+#[must_use]
 pub fn heuristic_linter() -> Linter {
     heuristic_linter_with_environment(default_environment())
 }
 
 /// Build the complete linter with an exact caller-supplied environment.
+#[must_use]
 pub fn heuristic_linter_with_environment(environment: Environment) -> Linter {
     Linter::new(catalog(environment))
 }
 
+#[must_use]
 pub fn disclosures_for_report(report: &LintReport) -> BTreeSet<&'static str> {
     report
         .findings
@@ -49,6 +55,7 @@ pub fn disclosures_for_report(report: &LintReport) -> BTreeSet<&'static str> {
 }
 
 /// Browser, Node.js, and Electron globals used by the combined JavaScript catalog.
+#[must_use]
 pub fn default_environment() -> Environment {
     let mut environment = Environment::default();
     environment

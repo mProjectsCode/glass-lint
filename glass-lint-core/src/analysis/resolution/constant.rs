@@ -1,4 +1,4 @@
-use super::*;
+use super::{BindingKey, ConstValue, Resolver, Value, ValueId};
 
 impl Resolver {
     pub(in crate::analysis) fn const_value(&self, id: ValueId) -> ConstValue {

@@ -1,6 +1,6 @@
-use super::*;
+use super::{ControlKind, FactBuilder, FactKind, FactPayload, Span};
 
-impl<'a> FactBuilder<'a> {
+impl FactBuilder<'_> {
     pub(super) fn next_control_region(&mut self) -> u32 {
         let region = self.next_control_region;
         self.next_control_region = self.next_control_region.saturating_add(1);

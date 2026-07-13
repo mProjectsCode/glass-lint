@@ -39,6 +39,7 @@ pub enum Matcher {
 }
 
 impl Matcher {
+    #[must_use]
     pub fn call(value: CallMatcher) -> Self {
         value.into()
     }
@@ -51,6 +52,7 @@ impl Matcher {
     pub fn module_call(module: impl Into<String>, export: impl Into<String>) -> Self {
         CallMatcher::module_export(module, export).into()
     }
+    #[must_use]
     pub fn member_call(value: MemberCallMatcher) -> Self {
         value.into()
     }
@@ -63,6 +65,7 @@ impl Matcher {
     pub fn module_member_call(module: impl Into<String>, member: impl Into<String>) -> Self {
         MemberCallMatcher::module_member(module, member).into()
     }
+    #[must_use]
     pub fn member_read(value: MemberReadMatcher) -> Self {
         value.into()
     }
@@ -81,6 +84,7 @@ impl Matcher {
     pub fn string_literal(value: impl Into<String>) -> Self {
         Self::StringLiteral(value.into())
     }
+    #[must_use]
     pub fn class(value: ClassMatcher) -> Self {
         value.into()
     }
@@ -90,6 +94,7 @@ impl Matcher {
     pub fn module_class(module: impl Into<String>, export: impl Into<String>) -> Self {
         ClassMatcher::module_export(module, export).into()
     }
+    #[must_use]
     pub fn constructor(value: ConstructorMatcher) -> Self {
         value.into()
     }

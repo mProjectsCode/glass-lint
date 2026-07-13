@@ -3,6 +3,7 @@ use glass_lint_core::LintReport;
 
 use crate::types::SuiteReport;
 
+#[must_use]
 pub fn summary(report: &SuiteReport) -> String {
     let cases = report.cases.len();
     let tool_runs = report
@@ -36,6 +37,7 @@ pub fn summary(report: &SuiteReport) -> String {
     )
 }
 
+#[must_use]
 pub fn failure_details(report: &SuiteReport) -> String {
     let mut out = String::new();
     for case in &report.cases {
@@ -68,6 +70,7 @@ pub fn failure_details(report: &SuiteReport) -> String {
     out
 }
 
+#[must_use]
 pub fn markdown(report: &SuiteReport) -> String {
     let mut out = String::from(
         "# Glass Lint conformance report\n\n| Case | Tool | Result | Findings |\n|---|---|---:|---:|\n",
@@ -111,6 +114,7 @@ pub fn markdown(report: &SuiteReport) -> String {
     out
 }
 
+#[must_use]
 pub fn comparison(report: &SuiteReport) -> String {
     let tool_names: Vec<String> = report
         .cases
@@ -137,16 +141,16 @@ pub fn comparison(report: &SuiteReport) -> String {
         let counts: Vec<String> = tool_names
             .iter()
             .map(|name| {
-                case.tools
-                    .get(name)
-                    .map(|r| {
+                case.tools.get(name).map_or_else(
+                    || "-".into(),
+                    |r| {
                         if r.skipped {
                             "skip".into()
                         } else {
                             r.findings.len().to_string()
                         }
-                    })
-                    .unwrap_or_else(|| "-".into())
+                    },
+                )
             })
             .collect();
         out.push_str(&format!("| {} | {} |\n", case.id, counts.join(" | ")));

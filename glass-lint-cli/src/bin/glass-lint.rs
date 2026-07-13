@@ -164,7 +164,7 @@ fn analyze_paths(
                 entry.file_type().is_file()
                     && entry.path().extension().is_some_and(|ext| ext == "js")
             })
-            .map(|entry| entry.into_path())
+            .map(walkdir::DirEntry::into_path)
             .collect()
     } else {
         vec![path.to_owned()]

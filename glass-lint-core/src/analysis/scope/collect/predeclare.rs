@@ -29,8 +29,7 @@ impl PredeclareVisitor<'_> {
                     let export = named
                         .imported
                         .as_ref()
-                        .map(module_export_name)
-                        .unwrap_or_else(|| local.clone());
+                        .map_or_else(|| local.clone(), module_export_name);
                     self.collector.insert(
                         scope,
                         local,

@@ -62,6 +62,7 @@ impl Environment {
     }
 
     /// A conservative, host-independent ECMAScript environment.
+    #[must_use]
     pub fn ecmascript() -> Self {
         let global_bindings = ECMASCRIPT_GLOBALS
             .iter()

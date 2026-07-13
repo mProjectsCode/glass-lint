@@ -45,21 +45,27 @@ impl ApiRule {
         }
     }
 
+    #[must_use]
     pub fn id(&self) -> &str {
         &self.id
     }
+    #[must_use]
     pub fn label(&self) -> &str {
         &self.label
     }
+    #[must_use]
     pub fn category(&self) -> &ApiCategory {
         &self.category
     }
+    #[must_use]
     pub fn severity(&self) -> ApiSeverity {
         self.severity
     }
+    #[must_use]
     pub fn confidence(&self) -> Confidence {
         self.confidence
     }
+    #[must_use]
     pub fn matchers(&self) -> &[Matcher] {
         &self.matchers
     }
@@ -98,11 +104,13 @@ impl ApiRuleBuilder {
         self
     }
 
+    #[must_use]
     pub fn severity(mut self, severity: ApiSeverity) -> Self {
         self.severity = Some(severity);
         self
     }
 
+    #[must_use]
     pub fn confidence(mut self, confidence: Confidence) -> Self {
         self.confidence = Some(confidence);
         self

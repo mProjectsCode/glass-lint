@@ -41,6 +41,7 @@ impl CallMatcher {
         self
     }
 
+    #[must_use]
     pub fn static_string_arg(self, index: usize) -> Self {
         self.arg(index, ValueMatcher::static_string())
     }

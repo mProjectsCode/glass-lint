@@ -4,9 +4,9 @@
 //! those markers into snapshots and joins; it does not attempt to rediscover
 //! JavaScript control flow from individual call facts.
 
-use super::*;
+use super::{AbruptExit, ControlFrame, ControlKind, FlowEnvironment, ObjectFlowProjector};
 
-impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
+impl ObjectFlowProjector<'_, '_> {
     pub(super) fn transfer_control(
         &mut self,
         kind: ControlKind,
@@ -272,7 +272,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 }) {
                     match frame {
                         ControlFrame::Loop { breaks, .. } | ControlFrame::Switch { breaks, .. } => {
-                            breaks.push(current)
+                            breaks.push(current);
                         }
                         _ => unreachable!(),
                     }
@@ -317,8 +317,10 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         let frames = self.control.iter_mut().rev();
         for frame in frames {
             let targets = match (kind, frame) {
-                (AbruptExit::Break, ControlFrame::Loop { breaks, .. })
-                | (AbruptExit::Break, ControlFrame::Switch { breaks, .. }) => Some(breaks),
+                (
+                    AbruptExit::Break,
+                    ControlFrame::Loop { breaks, .. } | ControlFrame::Switch { breaks, .. },
+                ) => Some(breaks),
                 (AbruptExit::Continue, ControlFrame::Loop { continues, .. }) => Some(continues),
                 _ => None,
             };

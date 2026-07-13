@@ -7,15 +7,18 @@ use glass_lint_core::{Environment, LintReport, Linter, RuleCatalog, RuleId, Rule
 mod catalog;
 mod rules;
 
+#[must_use]
 pub fn rule_catalog() -> Vec<RuleMetadata> {
     catalog(default_environment()).metadata()
 }
 
+#[must_use]
 pub fn recommended_linter() -> Linter {
     recommended_linter_with_environment(default_environment())
 }
 
 /// Build the recommended linter with an exact caller-supplied environment.
+#[must_use]
 pub fn recommended_linter_with_environment(environment: Environment) -> Linter {
     let catalog = catalog(environment);
     let enabled = catalog::obsidian_api_rules()
@@ -25,15 +28,18 @@ pub fn recommended_linter_with_environment(environment: Environment) -> Linter {
     Linter::with_rules(catalog, enabled).unwrap()
 }
 
+#[must_use]
 pub fn heuristic_linter() -> Linter {
     heuristic_linter_with_environment(default_environment())
 }
 
 /// Build the complete linter with an exact caller-supplied environment.
+#[must_use]
 pub fn heuristic_linter_with_environment(environment: Environment) -> Linter {
     Linter::new(catalog(environment))
 }
 
+#[must_use]
 pub fn disclosures_for_report(report: &LintReport) -> BTreeSet<&'static str> {
     report
         .findings
@@ -54,6 +60,7 @@ pub fn disclosures_for_report(report: &LintReport) -> BTreeSet<&'static str> {
 /// `activeWindow` is treated as sharing the same environment as the current
 /// window. The runtime may return either the main window or a pop-out window,
 /// and static analysis cannot determine which one is in use at a call site.
+#[must_use]
 pub fn default_environment() -> Environment {
     let mut environment = Environment::default();
     environment

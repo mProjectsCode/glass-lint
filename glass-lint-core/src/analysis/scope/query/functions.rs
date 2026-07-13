@@ -1,4 +1,4 @@
-use super::*;
+use super::{BindingProvenance, Expr, FunctionId, ScopeGraph, Span};
 
 impl ScopeGraph {
     pub(in crate::analysis) fn function_scope_at(&self, scope: usize) -> FunctionId {

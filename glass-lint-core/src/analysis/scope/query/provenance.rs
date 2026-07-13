@@ -4,7 +4,11 @@
 //! together. A rooted spelling is useful only when every relevant binding and
 //! property write remains proven at the use position.
 
-use super::*;
+use super::{
+    BindingKey, BindingProvenance, Expr, Ident, IdentValueSeed, MemberExpr, MemberValueSeed,
+    ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant,
+    contains, member_prefix_ends, member_root_ident,
+};
 
 impl ScopeGraph {
     /// Resolve a direct member of a recognized host global object to the same
@@ -112,10 +116,8 @@ impl ScopeGraph {
                 BindingProvenance::Local
                 | BindingProvenance::ModuleExport { .. }
                 | BindingProvenance::ModuleNamespace { .. }
-                | BindingProvenance::BoundModuleCallable { .. },
-            )
-            | Some(
-                BindingProvenance::StaticString(_)
+                | BindingProvenance::BoundModuleCallable { .. }
+                | BindingProvenance::StaticString(_)
                 | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
                 | BindingProvenance::StaticObjectKeys(_)
@@ -218,10 +220,11 @@ impl ScopeGraph {
                     export: export.clone(),
                 }
             }
-            Some(BindingProvenance::Local | BindingProvenance::ModuleNamespace { .. })
-            | Some(BindingProvenance::ReturnedObject { .. })
-            | Some(
-                BindingProvenance::StaticString(_)
+            Some(
+                BindingProvenance::Local
+                | BindingProvenance::ModuleNamespace { .. }
+                | BindingProvenance::ReturnedObject { .. }
+                | BindingProvenance::StaticString(_)
                 | BindingProvenance::StaticNumber(_)
                 | BindingProvenance::StaticStringArray(_)
                 | BindingProvenance::StaticObjectKeys(_)

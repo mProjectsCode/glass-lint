@@ -39,6 +39,7 @@ impl RuleId {
             && !part.contains("..")
     }
 
+    #[must_use]
     pub fn as_str(&self) -> &str {
         &self.0
     }

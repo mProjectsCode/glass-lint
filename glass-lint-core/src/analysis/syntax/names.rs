@@ -48,7 +48,7 @@ pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<String>) {
             for prop in &object.props {
                 match prop {
                     ObjectPatProp::KeyValue(key_value) => {
-                        collect_pat_bindings(&key_value.value, bindings)
+                        collect_pat_bindings(&key_value.value, bindings);
                     }
                     ObjectPatProp::Assign(assign) => {
                         bindings.insert(assign.key.sym.to_string());

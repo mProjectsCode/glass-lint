@@ -79,6 +79,7 @@ pub struct SuiteReport {
 }
 
 impl SuiteReport {
+    #[must_use]
     pub fn passed(&self) -> bool {
         self.cases
             .iter()

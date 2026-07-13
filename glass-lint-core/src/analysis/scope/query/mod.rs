@@ -1,4 +1,6 @@
-use super::*;
+use super::{
+    BindingProvenance, BoundArgument, IdentValueSeed, MemberValueSeed, ScopeGraph, ScopeKind,
+};
 use crate::analysis::scope::collect::aliases::{contains, member_prefix_ends};
 use crate::analysis::syntax::constant::{self, ConstValue, EvalState, Lookup};
 use crate::analysis::syntax::{

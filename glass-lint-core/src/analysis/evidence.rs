@@ -70,7 +70,7 @@ impl AnnotatedEvidence {
     pub(super) fn into_evidence(mut self) -> Vec<ApiEvidence> {
         self.occurrences.sort_by_key(|item| {
             (
-                item.event.map(|event| event.0).unwrap_or(u32::MAX),
+                item.event.map_or(u32::MAX, |event| event.0),
                 item.span.lo,
                 item.span.hi,
                 item.kind,

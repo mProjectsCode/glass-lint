@@ -1,4 +1,11 @@
-use super::*;
+use super::{
+    AliasCollector, ArrowExpr, AssignExpr, AssignTarget, BindingProvenance, BlockStmt, CallExpr,
+    Callee, CatchClause, ClassDecl, Expr, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function,
+    ImportDecl, ImportSpecifier, ObjectPatProp, Pat, PropertyAliasAssignment,
+    RootedPropertyMutation, ScopeKind, SimpleAssignTarget, Spanned, SwitchStmt, VarDecl,
+    VarDeclKind, Visit, VisitWith, WithStmt, function_prototype_builtin, member_chain,
+    member_prop_name, member_root_ident, module_export_name, prop_name,
+};
 
 impl Visit for AliasCollector {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
@@ -11,8 +18,7 @@ impl Visit for AliasCollector {
                     let export = named
                         .imported
                         .as_ref()
-                        .map(module_export_name)
-                        .unwrap_or_else(|| local.clone());
+                        .map_or_else(|| local.clone(), module_export_name);
                     self.insert(
                         scope,
                         local,
@@ -174,7 +180,7 @@ impl Visit for AliasCollector {
             .unwrap_or(BindingProvenance::Local);
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
-                if let Some((scope, _)) = self.stack.iter().rev().find_map(|scope| {
+                if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
                     self.scopes[*scope]
                         .bindings
                         .contains_key(ident.id.sym.as_ref())

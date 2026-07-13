@@ -167,11 +167,10 @@ impl EvalState {
             Expr::Tpl(template) => {
                 let mut output = String::new();
                 for (index, quasi) in template.quasis.iter().enumerate() {
-                    let cooked = quasi
-                        .cooked
-                        .as_ref()
-                        .map(|value| value.to_string_lossy().to_string())
-                        .unwrap_or_else(|| quasi.raw.to_string());
+                    let cooked = quasi.cooked.as_ref().map_or_else(
+                        || quasi.raw.to_string(),
+                        |value| value.to_string_lossy().to_string(),
+                    );
                     if !self.append_bounded(&mut output, &cooked) {
                         return ConstValue::Unknown;
                     }

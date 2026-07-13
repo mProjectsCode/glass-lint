@@ -142,7 +142,7 @@ impl ScopeGraph {
                 .push(PropertyAliasFact {
                     span: assignment.span,
                     scope: assignment.scope,
-                    target: assignment.target.map(|target| target.into()),
+                    target: assignment.target.map(std::convert::Into::into),
                 });
         }
         for assignments in graph.property_assignments.values_mut() {

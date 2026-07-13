@@ -47,6 +47,7 @@ impl MemberCallMatcher {
     pub fn rooted_chain(chain: impl Into<String>) -> Self {
         Self::rooted(chain)
     }
+    #[must_use]
     pub fn static_string_arg(self, index: usize) -> Self {
         self.arg(index, super::ValueMatcher::static_string())
     }

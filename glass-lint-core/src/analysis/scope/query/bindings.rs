@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr, Ident,
+    ScopeGraph, ScopeKind, Span, contains,
+};
 
 impl ScopeGraph {
     pub(in crate::analysis) fn is_configured_global(&self, name: &str) -> bool {
@@ -104,14 +107,13 @@ impl ScopeGraph {
         self.assignments
             .get(&scope)
             .and_then(|assignments| assignments.get(name))
-            .map(|assignments| {
+            .map_or(BindingVersion(0), |assignments| {
                 assignments
                     .partition_point(|assignment| assignment.span.lo <= span.lo)
                     .checked_sub(1)
                     .and_then(|index| assignments.get(index))
                     .map_or(BindingVersion(0), |assignment| assignment.version)
             })
-            .unwrap_or(BindingVersion(0))
     }
 
     pub(in crate::analysis) fn binding_key_for_name(

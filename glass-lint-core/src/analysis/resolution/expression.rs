@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
+    SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,
+};
 
 impl Resolver {
     /// Returns a CommonJS module only when the callee is proven to be the

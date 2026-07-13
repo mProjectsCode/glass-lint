@@ -34,6 +34,7 @@ pub struct Linter {
 }
 
 impl Linter {
+    #[must_use]
     pub fn new(catalog: RuleCatalog) -> Self {
         let enabled = catalog.rule_ids().into_iter().collect();
         let compiled = catalog.compiled();
@@ -61,6 +62,7 @@ impl Linter {
         })
     }
 
+    #[must_use]
     pub fn catalog(&self) -> &RuleCatalog {
         &self.catalog
     }
@@ -70,6 +72,7 @@ impl Linter {
     /// Parsing stops after the first parser diagnostic.  Findings contain
     /// source ranges in one-based Unicode display columns, while evidence is
     /// bounded and carries the first matching source snippet for each group.
+    #[must_use]
     pub fn lint(&self, source: &str, filename: &str) -> LintReport {
         let parsed = match crate::parse::parse(source, filename) {
             Ok(parsed) => parsed,

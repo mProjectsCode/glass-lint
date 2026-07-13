@@ -69,11 +69,11 @@ impl AliasCollector {
                 for property in &object.props {
                     match property {
                         ObjectPatProp::KeyValue(property) => {
-                            Self::collect_parameter_binding_names(&property.value, names)
+                            Self::collect_parameter_binding_names(&property.value, names);
                         }
                         ObjectPatProp::Assign(property) => names.push(property.key.sym.to_string()),
                         ObjectPatProp::Rest(property) => {
-                            Self::collect_parameter_binding_names(&property.arg, names)
+                            Self::collect_parameter_binding_names(&property.arg, names);
                         }
                     }
                 }

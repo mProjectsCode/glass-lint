@@ -1,6 +1,6 @@
 //! Value transfer and source matching for object-flow states.
 
-use super::*;
+use super::{CallArgInfo, FactId, FactPayload, FlowState, ObjectFlowProjector, ObjectId, ValueId};
 
 #[derive(Debug, Clone)]
 pub(super) struct SourceCall {
@@ -72,7 +72,7 @@ impl SourceCall {
     }
 }
 
-impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
+impl ObjectFlowProjector<'_, '_> {
     pub(super) fn assign(&mut self, target: ValueId, source: ValueId) {
         if target == ValueId::UNKNOWN {
             return;

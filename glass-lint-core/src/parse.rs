@@ -26,8 +26,7 @@ pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseD
         return Err(ParseDiagnostic {
             code: "source_too_large".into(),
             message: format!(
-                "JavaScript source exceeds the {} byte analysis limit",
-                MAX_SOURCE_BYTES
+                "JavaScript source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"
             ),
             filename: filename.into(),
             range: None,
