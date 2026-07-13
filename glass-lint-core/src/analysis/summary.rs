@@ -7,11 +7,11 @@
 
 use std::collections::BTreeMap;
 
-use super::super::rule::FlowSinkArgs;
 use super::facts::FactId;
 use super::facts::{CallArgInfo, FactPayload, FactStream, ParameterBinding, ProjectionSegment};
 use super::flow_index::{FlowId, FlowIndex};
 use super::value::{FunctionId, ValueId};
+use crate::api::rule::FlowSinkArgs;
 
 const MAX_SUMMARY_ROUNDS: usize = 64;
 
@@ -385,8 +385,8 @@ pub(super) struct CallProjection {
 
 #[cfg(test)]
 mod tests {
+    use super::super::resolution::Resolver;
     use super::*;
-    use crate::matcher::semantic::resolver::Resolver;
 
     #[test]
     fn same_name_siblings_are_keyed_by_function_id() {
@@ -396,8 +396,7 @@ mod tests {
         )
         .expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
-        let stream =
-            crate::matcher::semantic::fact_builder::build_test_stream(&parsed.program, &resolver);
+        let stream = super::super::fact_builder::build_test_stream(&parsed.program, &resolver);
         let summaries = collect(&stream, &FlowIndex::new(&[]));
         assert!(summaries.by_id.len() >= 2);
         assert_eq!(

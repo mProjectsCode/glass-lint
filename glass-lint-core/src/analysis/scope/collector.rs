@@ -20,9 +20,7 @@ use super::super::ast::{
 };
 use super::super::constant::{self, ConstValue};
 use super::super::value::BindingVersion;
-use super::collector_helpers::{
-    collect_assignment_aliases, collect_require_aliases, collect_value_aliases,
-};
+use super::aliases::{collect_assignment_aliases, collect_require_aliases, collect_value_aliases};
 use super::rooted::{RootedExprContext, rooted_expr_chain_with};
 use super::{AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeKind};
 

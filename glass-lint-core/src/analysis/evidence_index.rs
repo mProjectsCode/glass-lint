@@ -12,13 +12,13 @@ use std::{
 
 use swc_common::Span;
 
-use super::super::result::{ApiEvidence, ApiMatchKind};
-use super::super::rule::{
+use super::ast::{SymbolCallProvenance, SymbolMemberProvenance};
+use super::facts::{CallArgInfo, FactId, FactPayload, FactStream};
+use crate::api::classification::{ApiEvidence, ApiMatchKind};
+use crate::api::rule::{
     ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, MemberCallMatcher,
     MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, canonical_rooted_chain,
 };
-use super::ast::{SymbolCallProvenance, SymbolMemberProvenance};
-use super::facts::{CallArgInfo, FactId, FactPayload, FactStream};
 
 /// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different
@@ -558,7 +558,7 @@ impl MatcherFacts {
 
     fn collect_returned_member_call_evidence(
         &self,
-        matchers: &[super::super::rule::ReturnedMemberCallMatcher],
+        matchers: &[crate::api::rule::ReturnedMemberCallMatcher],
         evidence: &mut Vec<ApiEvidence>,
     ) {
         for matcher in matchers {
@@ -583,7 +583,7 @@ impl MatcherFacts {
 
     fn collect_returned_member_read_evidence(
         &self,
-        matchers: &[super::super::rule::ReturnedMemberReadMatcher],
+        matchers: &[crate::api::rule::ReturnedMemberReadMatcher],
         evidence: &mut Vec<ApiEvidence>,
     ) {
         for matcher in matchers {
@@ -608,7 +608,7 @@ impl MatcherFacts {
 
     fn collect_instance_member_call_evidence(
         &self,
-        matchers: &[super::super::rule::InstanceMemberCallMatcher],
+        matchers: &[crate::api::rule::InstanceMemberCallMatcher],
         evidence: &mut Vec<ApiEvidence>,
     ) {
         for matcher in matchers {
@@ -882,10 +882,9 @@ mod tests {
         facts.record(ApiMatchKind::MemberCall, "client.request", span(10, 24));
         facts.normalize_occurrences();
 
-        let matcher =
-            ApiMatcher::from_matchers(vec![super::super::super::rule::Matcher::member_call(
-                MemberCallMatcher::syntactic_heuristic("client.request"),
-            )]);
+        let matcher = ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::member_call(
+            MemberCallMatcher::syntactic_heuristic("client.request"),
+        )]);
         let evidence = facts.evidence_for(&matcher);
         let reference = facts
             .member_calls
@@ -900,7 +899,7 @@ mod tests {
     #[test]
     fn build_from_stream_populates_all_occurrence_indexes() {
         use super::super::fact_builder::build_test_stream;
-        use super::super::resolver::Resolver;
+        use super::super::resolution::Resolver;
 
         let src = r#"
             import { foo } from 'mod';

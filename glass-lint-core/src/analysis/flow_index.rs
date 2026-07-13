@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use super::super::rule::FlowMatcher;
+use crate::api::rule::FlowMatcher;
 
 const MAX_FLOW_OBJECTS: u32 = 65_536;
 const MAX_FLOW_STATES: usize = 262_144;

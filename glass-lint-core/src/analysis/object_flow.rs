@@ -7,13 +7,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::super::result::{ApiEvidence, ApiMatchKind};
-use super::super::rule::{FlowMatcher, FlowRequirement, FlowSinkArgs};
 use super::facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary};
 use super::flow_index::{FlowId, FlowIndex, FlowLimits};
 use super::flow_state::{FlowState, state_is_ready};
 use super::summary::{FunctionSummaries, invocation_is_compatible, project_parameter_argument};
 use super::value::{ObjectId, ValueId};
+use crate::api::classification::{ApiEvidence, ApiMatchKind};
+use crate::api::rule::{FlowMatcher, FlowRequirement, FlowSinkArgs};
 
 pub(super) fn collect(
     stream: &FactStream,
@@ -963,15 +963,14 @@ impl<'rules> ObjectFlowProjector<'rules> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::resolution::Resolver;
     use super::*;
-    use crate::matcher::rule::FlowValueMatcher;
-    use crate::matcher::semantic::resolver::Resolver;
+    use crate::api::rule::FlowValueMatcher;
 
     fn collect_source(source: &str, flow: &FlowMatcher) -> Vec<Vec<ApiEvidence>> {
         let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
-        let stream =
-            crate::matcher::semantic::fact_builder::build_test_stream(&parsed.program, &resolver);
+        let stream = super::super::fact_builder::build_test_stream(&parsed.program, &resolver);
         collect_with_limits(&stream, &[(0, 0, flow)], 1, FlowLimits::default())
     }
 
@@ -1167,8 +1166,7 @@ mod tests {
         let source = "const script = document.createElement('script'); script.src = url; document.head.appendChild(script);";
         let parsed = crate::parse(source, "flow-location.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
-        let stream =
-            crate::matcher::semantic::fact_builder::build_test_stream(&parsed.program, &resolver);
+        let stream = super::super::fact_builder::build_test_stream(&parsed.program, &resolver);
         let sink_span = stream
             .facts()
             .iter()
@@ -1196,8 +1194,7 @@ mod tests {
         let parsed =
             crate::parse(source, "flow-requirement-location.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
-        let stream =
-            crate::matcher::semantic::fact_builder::build_test_stream(&parsed.program, &resolver);
+        let stream = super::super::fact_builder::build_test_stream(&parsed.program, &resolver);
         let configuration = stream
             .facts()
             .iter()

@@ -22,7 +22,7 @@ use super::facts::{
     CallArgInfo, CallUnwrap, ControlKind, FactId, FactKind, FactPayload, FactStream,
     FunctionBoundary, ParameterBinding, ProjectionSegment, SemanticFact, ValueProjection,
 };
-use super::resolver::Resolver;
+use super::resolution::Resolver;
 use super::scope::BoundArgument;
 use super::value::ValueId;
 

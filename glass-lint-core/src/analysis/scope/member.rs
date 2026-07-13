@@ -3,7 +3,7 @@
 use swc_ecma_ast::MemberExpr;
 
 use super::super::ast::member_root_ident;
-use super::collector_helpers::{contains, member_prefix_ends};
+use super::aliases::{contains, member_prefix_ends};
 use super::{BindingProvenance, ScopeGraph};
 
 impl ScopeGraph {

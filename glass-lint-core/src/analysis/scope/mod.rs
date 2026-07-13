@@ -14,11 +14,11 @@ use swc_ecma_visit::VisitWith;
 use super::ast::{SymbolCallProvenance, SymbolMemberProvenance, member_root_ident};
 use super::constant::{self, ConstValue};
 use super::value::{BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, SymbolPath};
+use aliases::contains;
 use collector::AliasCollector;
-use collector_helpers::contains;
 
+mod aliases;
 mod collector;
-mod collector_helpers;
 mod constants;
 mod member;
 mod rooted;

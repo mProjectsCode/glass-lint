@@ -1,66 +1,27 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
-use swc_common::{SourceMap, SourceMapper, Span, sync::Lrc};
-
-use crate::matcher::{
-    ApiRule, ApiSeverity, CompiledCatalog, classify_compiled_api_usage, validate_catalog,
+use super::catalog::RuleCatalog;
+use super::ranges::{
+    evidence_ranges, remove_contained_ranges, source_range, source_range_from_span,
 };
-use crate::{
-    Evidence, Finding, LintConfigError, LintReport, Position, RegistryError, RuleId, RuleMetadata,
-    Severity, SourceRange,
-};
+use crate::api::rule::ApiSeverity;
+use crate::api::{classifier::classify_compiled_api_usage, compiler::CompiledCatalog};
+use crate::diagnostic::{Evidence, Finding, LintReport};
+use crate::{REPORT_VERSION, RuleId};
+use swc_common::SourceMapper;
 
-#[derive(Clone, Debug)]
-pub struct RuleCatalog {
-    rules: Vec<ApiRule>,
-    namespaced: BTreeMap<String, RuleId>,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LintConfigError {
+    UnknownRule(RuleId),
 }
-
-impl RuleCatalog {
-    pub fn new(provider: impl Into<String>, rules: Vec<ApiRule>) -> Result<Self, RegistryError> {
-        let provider = provider.into();
-        RuleId::parse(format!("{provider}:placeholder"))?;
-        validate_catalog(&rules).map_err(|error| match error {
-            crate::matcher::ApiCatalogError::DuplicateRule(id) => {
-                RegistryError::InvalidRule(format!("{provider}:{id}"), "duplicate rule".into())
-            }
-        })?;
-        let mut namespaced = BTreeMap::new();
-        for rule in &rules {
-            let id = RuleId::parse(format!("{provider}:{}", rule.id()))?;
-            namespaced.insert(rule.id().to_string(), id);
+impl std::fmt::Display for LintConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownRule(id) => write!(f, "unknown rule `{id}`"),
         }
-        Ok(Self { rules, namespaced })
-    }
-
-    pub fn metadata(&self) -> Vec<RuleMetadata> {
-        self.rules
-            .iter()
-            .filter_map(|rule| {
-                self.namespaced_id(rule.id()).map(|id| RuleMetadata {
-                    id: id.clone(),
-                    description: rule.label().to_string(),
-                    default_severity: severity(rule.severity()),
-                    messages: BTreeMap::from([(
-                        "detected".into(),
-                        "Detected matching capability".into(),
-                    )]),
-                })
-            })
-            .collect()
-    }
-
-    pub fn rule_ids(&self) -> Vec<RuleId> {
-        self.rules
-            .iter()
-            .filter_map(|rule| self.namespaced_id(rule.id()).cloned())
-            .collect()
-    }
-
-    fn namespaced_id(&self, id: &str) -> Option<&RuleId> {
-        self.namespaced.get(id)
     }
 }
+impl std::error::Error for LintConfigError {}
 
 pub struct Linter {
     catalog: RuleCatalog,
@@ -71,7 +32,7 @@ pub struct Linter {
 impl Linter {
     pub fn new(catalog: RuleCatalog) -> Self {
         let enabled = catalog.rule_ids().into_iter().collect();
-        let compiled = CompiledCatalog::from_rules(&catalog.rules);
+        let compiled = catalog.compiled();
         Self {
             catalog,
             enabled,
@@ -88,7 +49,7 @@ impl Linter {
         if let Some(id) = enabled.iter().find(|id| !known.contains(*id)) {
             return Err(LintConfigError::UnknownRule(id.clone()));
         }
-        let compiled = CompiledCatalog::from_rules(&catalog.rules);
+        let compiled = catalog.compiled();
         Ok(Self {
             catalog,
             enabled,
@@ -106,11 +67,11 @@ impl Linter {
     /// source ranges in one-based Unicode display columns, while evidence is
     /// bounded and carries the first matching source snippet for each group.
     pub fn lint(&self, source: &str, filename: &str) -> LintReport {
-        let parsed = match crate::parse(source, filename) {
+        let parsed = match crate::parse::parse(source, filename) {
             Ok(parsed) => parsed,
             Err(error) => {
                 return LintReport {
-                    schema_version: crate::REPORT_VERSION,
+                    schema_version: REPORT_VERSION,
                     tool_version: env!("CARGO_PKG_VERSION").into(),
                     findings: Vec::new(),
                     parse_diagnostics: vec![error],
@@ -154,7 +115,11 @@ impl Linter {
                     rule_id: rule_id.clone(),
                     message_id: "detected".into(),
                     message: capability.label().into(),
-                    severity: severity(capability.severity()),
+                    severity: match capability.severity() {
+                        ApiSeverity::Info => crate::Severity::Info,
+                        ApiSeverity::Warning => crate::Severity::Warning,
+                        ApiSeverity::Error => crate::Severity::Error,
+                    },
                     range,
                     evidence: capability
                         .evidence()
@@ -192,7 +157,7 @@ impl Linter {
                 ))
         });
         LintReport {
-            schema_version: crate::REPORT_VERSION,
+            schema_version: REPORT_VERSION,
             tool_version: env!("CARGO_PKG_VERSION").into(),
             findings,
             parse_diagnostics: Vec::new(),
@@ -200,92 +165,11 @@ impl Linter {
     }
 }
 
-fn severity(value: ApiSeverity) -> Severity {
-    match value {
-        ApiSeverity::Info => Severity::Info,
-        ApiSeverity::Warning => Severity::Warning,
-        ApiSeverity::Error => Severity::Error,
-    }
-}
-
-fn evidence_ranges(source_map: &Lrc<SourceMap>, spans: &[Span]) -> Vec<SourceRange> {
-    spans
-        .iter()
-        .filter(|span| !span.is_dummy())
-        .map(|span| source_range_from_span(source_map, *span))
-        .collect()
-}
-
-fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
-    // Sorting longer same-start intervals first means a single running end is
-    // enough to recognize every contained interval. This preserves the prior
-    // outermost-range behavior without comparing every pair of occurrences.
-    ranges.sort_by(|left, right| {
-        (left.start.line, left.start.column)
-            .cmp(&(right.start.line, right.start.column))
-            .then_with(|| (right.end.line, right.end.column).cmp(&(left.end.line, left.end.column)))
-    });
-    let mut enclosing_end = None;
-    ranges.retain(|range| {
-        let end = (range.end.line, range.end.column);
-        if enclosing_end.is_some_and(|outer_end| end <= outer_end) {
-            return false;
-        }
-        enclosing_end = Some(end);
-        true
-    });
-}
-
-fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) -> SourceRange {
-    let start = source_map.lookup_char_pos(span.lo());
-    let end = source_map.lookup_char_pos(span.hi());
-    SourceRange {
-        start: Position {
-            line: u32::try_from(start.line).unwrap_or(u32::MAX),
-            column: u32::try_from(start.col_display)
-                .unwrap_or(u32::MAX)
-                .saturating_add(1),
-        },
-        end: Position {
-            line: u32::try_from(end.line).unwrap_or(u32::MAX),
-            column: u32::try_from(end.col_display)
-                .unwrap_or(u32::MAX)
-                .saturating_add(1),
-        },
-    }
-}
-
-fn position(source: &str, offset: usize) -> Position {
-    let mut end = offset.min(source.len());
-    while end > 0 && !source.is_char_boundary(end) {
-        end -= 1;
-    }
-    let prefix = &source[..end];
-    Position {
-        line: u32::try_from(prefix.bytes().filter(|byte| *byte == b'\n').count())
-            .unwrap_or(u32::MAX)
-            .saturating_add(1),
-        column: prefix
-            .rsplit_once('\n')
-            .map_or(prefix.chars().count(), |(_, tail)| tail.chars().count())
-            .try_into()
-            .unwrap_or(u32::MAX)
-            .saturating_add(1),
-    }
-}
-
-fn source_range(source: &str, start: usize, length: usize) -> SourceRange {
-    SourceRange {
-        start: position(source, start),
-        end: position(source, start.saturating_add(length)),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::matcher::{ApiRule, Confidence, Matcher};
-
+    use crate::api::rule::{ApiRule, Confidence, Matcher};
+    use crate::{Position, SourceRange};
     fn catalog() -> RuleCatalog {
         let rule = ApiRule::builder("network.fetch")
             .label("Uses fetch")

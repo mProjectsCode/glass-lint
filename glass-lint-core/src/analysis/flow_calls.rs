@@ -1,6 +1,6 @@
 //! Shared value predicates for fact-driven flow analysis.
 
-use super::super::rule::FlowValueMatcher;
+use crate::api::rule::FlowValueMatcher;
 
 pub(super) fn matches_static_value(matcher: &FlowValueMatcher, value: &str) -> bool {
     match matcher {

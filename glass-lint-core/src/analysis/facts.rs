@@ -9,14 +9,14 @@ use std::collections::{BTreeMap, BTreeSet};
 use swc_common::{BytePos, Span};
 use swc_ecma_ast::Program;
 
-use super::super::result::ApiEvidence;
-use super::super::rule::ApiMatcher;
 use super::ast::{SymbolCallProvenance, SymbolMemberProvenance};
+use super::evidence_index::MatcherFacts;
 use super::fact_builder::FactBuilder;
-use super::index::MatcherFacts;
 use super::object_flow;
-use super::resolver::Resolver;
+use super::resolution::Resolver;
 use super::value::{FunctionId, ValueId};
+use crate::api::classification::ApiEvidence;
+use crate::api::rule::ApiMatcher;
 
 // ── Fact stream types ───────────────────────────────────────────────────
 
@@ -563,17 +563,12 @@ mod tests {
         let source = "fetch('/api'); document.createElement('script');";
         let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
         let first =
-            ApiMatcher::from_matchers(vec![super::super::super::rule::Matcher::global_call(
-                "fetch",
-            )])
-            .normalized();
-        let second =
-            ApiMatcher::from_matchers(vec![super::super::super::rule::Matcher::member_call(
-                super::super::super::rule::MemberCallMatcher::syntactic_heuristic(
-                    "document.createElement",
-                ),
-            )])
-            .normalized();
+            ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
+                .normalized();
+        let second = ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::member_call(
+            crate::api::rule::MemberCallMatcher::syntactic_heuristic("document.createElement"),
+        )])
+        .normalized();
         let build = |matchers: Vec<&ApiMatcher>, selected: &[usize]| {
             let resolver = Resolver::collect(&parsed.program);
             SemanticFacts::build(&parsed.program, resolver, &matchers, selected)

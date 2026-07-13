@@ -2,10 +2,10 @@
 
 use std::collections::BTreeMap;
 
-use super::super::rule::FlowMatcher;
 use super::facts::FactId;
 use super::flow_index::FlowId;
 use super::value::ObjectId;
+use crate::api::rule::FlowMatcher;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct FlowState {
