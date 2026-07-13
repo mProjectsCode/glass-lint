@@ -6,3 +6,6 @@ license.workspace = true
 
 [dependencies]
 glass-lint-core = { path = "../glass-lint-core" }
+
+[lints]
+workspace = true

@@ -16,6 +16,9 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 walkdir.workspace = true
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "glass-lint"
 path = "src/bin/glass-lint.rs"
