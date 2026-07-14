@@ -2,19 +2,25 @@
 
 mod analysis;
 mod api;
+mod config;
 mod diagnostic;
 mod environment;
 mod lint;
 mod parse;
+pub mod report;
 mod rule_id;
+#[cfg(feature = "telemetry")]
+pub mod telemetry;
 
 pub use api::rule::{ApiRule as Rule, ApiRuleBuildError as BuildError};
+pub use config::CoreConfig;
 pub use diagnostic::{
     Evidence, Finding, LintReport, Position, RuleMetadata, Severity, SourceRange,
 };
 pub use environment::{Environment, EnvironmentError};
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
 pub use parse::ParseDiagnostic;
+pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
 pub use rule_id::RuleId;
 
 pub const REPORT_VERSION: u32 = 2;

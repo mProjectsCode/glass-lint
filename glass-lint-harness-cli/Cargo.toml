@@ -1,5 +1,5 @@
 [package]
-name = "glass-lint-cli"
+name = "glass-lint-harness-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,17 +9,14 @@ anyhow.workspace = true
 clap.workspace = true
 console.workspace = true
 glass-lint-core = { path = "../glass-lint-core", features = ["telemetry"] }
-glass-lint-obsidian = { path = "../glass-lint-obsidian" }
-glass-lint-js = { path = "../glass-lint-js" }
-serde.workspace = true
+glass-lint-harness = { path = "../glass-lint-harness" }
 serde_json.workspace = true
-toml.workspace = true
 tracing.workspace = true
-walkdir.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true
 
 [[bin]]
-name = "glass-lint"
+name = "glass-lint-harness"
 path = "src/bin.rs"

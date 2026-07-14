@@ -106,7 +106,7 @@ Use one representative subfolder of a production corpus rather than an entire
 release archive:
 
 ```sh
-cargo run -p glass-lint-cli --bin glass-lint-harness -- profile \
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- profile \
   --path /path/to/plugin/bundles \
   --provider obsidian \
   --profile recommended \

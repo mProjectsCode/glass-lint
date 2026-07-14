@@ -1,13 +1,6 @@
 use crate::diagnostic::{Position, SourceRange};
 use swc_common::{SourceMap, Span, sync::Lrc};
 
-pub(crate) fn evidence_ranges(source_map: &Lrc<SourceMap>, spans: &[Span]) -> Vec<SourceRange> {
-    spans
-        .iter()
-        .filter(|span| !span.is_dummy())
-        .map(|span| source_range_from_span(source_map, *span))
-        .collect()
-}
 pub(crate) fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
     ranges.sort_by(|left, right| {
         (left.start.line, left.start.column)

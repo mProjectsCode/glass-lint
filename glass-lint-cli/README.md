@@ -1,11 +1,11 @@
 # glass-lint-cli
 
-`glass-lint-cli` provides the workspace's two command-line programs:
+`glass-lint-cli` provides the workspace's `glass-lint` command:
 
-- `glass-lint` analyzes JavaScript files and directories and prints JSON
-  reports.
-- `glass-lint-harness` verifies annotated snippets, renders reports, compares
-  adapters, and profiles folders.
+- `glass-lint` analyzes JavaScript files and directories and prints reports.
+
+The harness executable is provided by the separate `glass-lint-harness-cli`
+package.
 
 The package is a front end. Reusable analysis belongs in `glass-lint-core` and
 provider crates; reusable case execution belongs in `glass-lint-harness`.
@@ -18,23 +18,30 @@ cargo run -p glass-lint-cli --bin glass-lint -- check path/to/main.js
 cargo run -p glass-lint-cli --bin glass-lint -- snippet path/to/snippet.js
 ```
 
-Use the global `--provider js|obsidian` option to choose a catalog. Both
-`check` and `snippet` accept repeated `--rule` options, a
-`--profile recommended|heuristic`, and `--fail-on info|warning|error|never`.
-`check` recursively discovers `.js` files in directories and enforces its
-configurable `--max-bytes` filesystem limit. `snippet` analyzes the specified
-path without that front-end size check; the core 8 MiB parser limit still
-applies.
+Use `--config PATH` or `--config-json JSON`; without either, configuration is
+discovered from the current directory. `check` recursively discovers `.js`
+files and `snippet` requires a file. Policy lives in the versioned `[core]` and
+`[cli]` sections.
 
-Output is a JSON array of `(filename, report)` pairs. Exit status is `0` for a
-successful run below the failure threshold, `1` for matching findings or parse
-diagnostics, and `2` for usage or operational errors.
+The default Obsidian provider runs both generic `js:*` rules and
+Obsidian-specific `obsidian:*` rules in one analysis pass using the Obsidian
+host environment. The `heuristic` profile enables all rules; set 
+`cli.profile = "recommended"` to only include high-confidence discovery rules.
+
+Pretty output is the default; JSON uses a named versioned envelope. Results are
+on stdout, while operational errors and telemetry are on stderr. Exit status is
+`0` below the threshold, `1` for findings/parse diagnostics meeting it, and
+`2` for operational errors.
+
+Pretty output and tracing use color by default. Set `cli.color = false` in
+`glass-lint.toml` (or `"color": false` in inline JSON) for plain output. JSON
+output is always uncolored.
 
 ## `glass-lint-harness`
 
 ```sh
-cargo run -p glass-lint-cli --bin glass-lint-harness -- verify tests/e2e
-cargo run -p glass-lint-cli --bin glass-lint-harness -- \
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- verify tests/e2e
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   report tests/e2e --format json
 ```
 

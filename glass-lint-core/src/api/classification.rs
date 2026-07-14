@@ -4,6 +4,8 @@ use super::rule::{ApiCategory, ApiSeverity, Confidence};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ApiCapability {
+    #[serde(skip)]
+    pub(crate) rule_index: usize,
     pub id: String,
     pub label: String,
     pub category: ApiCategory,
@@ -65,10 +67,6 @@ impl ApiMatchKind {
 }
 
 impl ApiCapability {
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
     pub fn label(&self) -> &str {
         &self.label
     }
@@ -89,9 +87,5 @@ impl ApiEvidence {
 
     pub fn symbol(&self) -> &str {
         &self.symbol
-    }
-
-    pub fn count(&self) -> u32 {
-        self.count
     }
 }

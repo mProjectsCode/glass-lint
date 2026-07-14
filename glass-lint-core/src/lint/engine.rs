@@ -1,16 +1,14 @@
 use std::collections::BTreeSet;
 
 use super::catalog::RuleCatalog;
-use super::ranges::{
-    evidence_ranges, remove_contained_ranges, source_range, source_range_from_span,
-};
+use super::ranges::{remove_contained_ranges, source_range, source_range_from_span};
 use crate::api::rule::ApiSeverity;
 use crate::api::{
     classification::{ApiCapability, ApiClassificationResult},
     classifier::classify_compiled_api_usage,
     compiler::CompiledCatalog,
 };
-use crate::diagnostic::{Evidence, Finding, LintReport};
+use crate::diagnostic::{Evidence, Finding, LintReport, SourceRange};
 use crate::{REPORT_VERSION, RuleId};
 use swc_common::SourceMapper;
 
@@ -34,6 +32,13 @@ pub struct Linter {
 }
 
 impl Linter {
+    /// Apply provider-neutral engine configuration to this linter.
+    pub fn configured(self, config: &crate::CoreConfig) -> Result<Self, LintConfigError> {
+        match &config.rules {
+            Some(rules) => Self::with_rules(self.catalog, rules.clone()),
+            None => Ok(self),
+        }
+    }
     #[must_use]
     pub fn new(catalog: RuleCatalog) -> Self {
         let enabled = catalog.rule_ids().into_iter().collect();
@@ -62,6 +67,23 @@ impl Linter {
         })
     }
 
+    /// Combine provider linters into one analysis pass under a shared host
+    /// environment while preserving each linter's enabled rule selection.
+    pub fn combine_with_environment(
+        linters: impl IntoIterator<Item = Self>,
+        environment: crate::Environment,
+    ) -> Result<Self, crate::RuleCatalogError> {
+        let mut catalogs = Vec::new();
+        let mut enabled = BTreeSet::new();
+        for linter in linters {
+            catalogs.push(linter.catalog);
+            enabled.extend(linter.enabled);
+        }
+        let catalog = RuleCatalog::combine_with_environment(catalogs, environment)?;
+        Ok(Self::with_rules(catalog, enabled)
+            .expect("combined catalog retains every selected rule"))
+    }
+
     #[must_use]
     pub fn catalog(&self) -> &RuleCatalog {
         &self.catalog
@@ -70,13 +92,17 @@ impl Linter {
     /// Lints one JavaScript/JSX source file.
     ///
     /// Parsing stops after the first parser diagnostic.  Findings contain
-    /// source ranges in one-based Unicode display columns, while evidence is
-    /// bounded and carries the first matching source snippet for each group.
+    /// source ranges in one-based Unicode display columns. Evidence is bounded
+    /// and each finding carries only the located occurrences enclosed by its
+    /// primary range.
     #[must_use]
     pub fn lint(&self, source: &str, filename: &str) -> LintReport {
+        let _span = tracing::info_span!(target: "glass_lint::lint", "lint", filename, source_bytes = source.len(), selected_rules = self.enabled.len()).entered();
+        tracing::debug!(target: "glass_lint::parse", "parsing source");
         let parsed = match crate::parse::parse(source, filename) {
             Ok(parsed) => parsed,
             Err(error) => {
+                tracing::debug!(target: "glass_lint::parse", diagnostics = 1, "parse failed");
                 return LintReport {
                     schema_version: REPORT_VERSION,
                     tool_version: env!("CARGO_PKG_VERSION").into(),
@@ -88,15 +114,21 @@ impl Linter {
 
         let selected = self.selected_rule_indices();
 
-        let classification = classify_compiled_api_usage(
-            &parsed.program,
-            &self.compiled,
-            &self.catalog.rules,
-            &selected,
-            self.catalog.environment(),
-        );
+        let classification = {
+            let _span = tracing::debug_span!(target: "glass_lint::semantic", "semantic").entered();
+            classify_compiled_api_usage(
+                &parsed.program,
+                &self.compiled,
+                &self.catalog.rules,
+                &selected,
+                self.catalog.environment(),
+            )
+        };
 
-        let mut findings = self.findings_for(&classification, &parsed, source);
+        let mut findings = {
+            let _span = tracing::debug_span!(target: "glass_lint::matching", "matching").entered();
+            self.findings_for(&classification, &parsed, source)
+        };
         findings.sort_by(|left, right| {
             (
                 &left.range.start.line,
@@ -109,6 +141,8 @@ impl Linter {
                     &right.rule_id,
                 ))
         });
+        tracing::debug!(target: "glass_lint::lint", findings = findings.len(), "report assembled");
+        tracing::info!(target: "glass_lint::lint", findings = findings.len(), parse_diagnostics = 0, "lint complete");
         LintReport {
             schema_version: REPORT_VERSION,
             tool_version: env!("CARGO_PKG_VERSION").into(),
@@ -122,9 +156,9 @@ impl Linter {
             .rules
             .iter()
             .enumerate()
-            .filter(|(_, rule)| {
+            .filter(|(index, _)| {
                 self.catalog
-                    .namespaced_id(rule.id())
+                    .rule_id(*index)
                     .is_some_and(|id| self.enabled.contains(id))
             })
             .map(|(index, _)| index)
@@ -153,13 +187,24 @@ impl Linter {
         parsed: &crate::parse::ParsedSource,
         source: &str,
     ) -> Vec<Finding> {
-        let Some(rule_id) = self.catalog.namespaced_id(capability.id()).cloned() else {
+        let Some(rule_id) = self.catalog.rule_id(capability.rule_index).cloned() else {
             return Vec::new();
         };
-        let mut ranges: Vec<_> = capability
+        let evidence: Vec<_> = capability
             .evidence()
             .iter()
-            .flat_map(|evidence| evidence_ranges(&parsed.source_map, &evidence.spans))
+            .flat_map(|evidence| {
+                evidence
+                    .spans
+                    .iter()
+                    .copied()
+                    .filter(|span| !span.is_dummy())
+                    .map(|span| Self::report_evidence(evidence, span, parsed))
+            })
+            .collect();
+        let mut ranges: Vec<_> = evidence
+            .iter()
+            .filter_map(|evidence| evidence.range.clone())
             .collect();
         remove_contained_ranges(&mut ranges);
         if ranges.is_empty() {
@@ -168,42 +213,52 @@ impl Linter {
 
         ranges
             .into_iter()
-            .map(|range| Finding {
-                rule_id: rule_id.clone(),
-                message_id: "detected".into(),
-                message: capability.label().into(),
-                severity: match capability.severity() {
-                    ApiSeverity::Info => crate::Severity::Info,
-                    ApiSeverity::Warning => crate::Severity::Warning,
-                    ApiSeverity::Error => crate::Severity::Error,
-                },
-                range,
-                evidence: capability
-                    .evidence()
+            .map(|range| {
+                let local_evidence = evidence
                     .iter()
-                    .map(|evidence| Self::report_evidence(evidence, parsed))
-                    .collect(),
+                    .filter(|evidence| {
+                        evidence
+                            .range
+                            .as_ref()
+                            .is_some_and(|evidence_range| contains_range(&range, evidence_range))
+                    })
+                    .cloned()
+                    .collect();
+                Finding {
+                    rule_id: rule_id.clone(),
+                    message_id: "detected".into(),
+                    message: capability.label().into(),
+                    severity: match capability.severity() {
+                        ApiSeverity::Info => crate::Severity::Info,
+                        ApiSeverity::Warning => crate::Severity::Warning,
+                        ApiSeverity::Error => crate::Severity::Error,
+                    },
+                    range,
+                    evidence: local_evidence,
+                }
             })
             .collect()
     }
 
     fn report_evidence(
         evidence: &crate::api::classification::ApiEvidence,
+        span: swc_common::Span,
         parsed: &crate::parse::ParsedSource,
     ) -> Evidence {
-        let span = evidence.spans.iter().find(|span| !span.is_dummy()).copied();
         Evidence {
-            message: format!(
-                "{}: {} ({} occurrence{})",
-                evidence.kind().as_str(),
-                evidence.symbol(),
-                evidence.count(),
-                if evidence.count() == 1 { "" } else { "s" }
-            ),
-            range: span.map(|span| source_range_from_span(&parsed.source_map, span)),
-            source: span.and_then(|span| parsed.source_map.span_to_snippet(span).ok()),
+            message: format!("{} of \"{}\"", evidence.kind().as_str(), evidence.symbol()),
+            range: Some(source_range_from_span(&parsed.source_map, span)),
+            source: parsed.source_map.span_to_snippet(span).ok(),
         }
     }
+}
+
+fn contains_range(outer: &SourceRange, inner: &SourceRange) -> bool {
+    let outer_start = (outer.start.line, outer.start.column);
+    let outer_end = (outer.end.line, outer.end.column);
+    let inner_start = (inner.start.line, inner.start.column);
+    let inner_end = (inner.end.line, inner.end.column);
+    outer_start <= inner_start && inner_end <= outer_end
 }
 
 #[cfg(test)]
@@ -231,6 +286,46 @@ mod tests {
         assert_eq!(report.findings.len(), 2);
         assert_eq!(report.findings[0].range.start.line, 1);
         assert_eq!(report.findings[1].range.start.line, 2);
+        assert_eq!(report.findings[0].evidence.len(), 1);
+        assert_eq!(report.findings[1].evidence.len(), 1);
+        assert_eq!(report.findings[0].evidence[0].message, "call of \"fetch\"");
+        assert_eq!(
+            report.findings[0].evidence[0].range.as_ref(),
+            Some(&report.findings[0].range)
+        );
+        assert_eq!(
+            report.findings[1].evidence[0].range.as_ref(),
+            Some(&report.findings[1].range)
+        );
+    }
+
+    #[test]
+    fn findings_only_carry_evidence_for_their_own_location() {
+        let rule = ApiRule::builder("vault.write")
+            .label("Writes vault files")
+            .category("vault")
+            .severity(ApiSeverity::Info)
+            .confidence(Confidence::High)
+            .matcher(Matcher::rooted_member_call("app.vault.create"))
+            .matcher(Matcher::rooted_member_call("app.vault.createFolder"))
+            .build()
+            .unwrap();
+        let report = Linter::new(RuleCatalog::new("test", vec![rule]).unwrap()).lint(
+            "this.app.vault.create('a');\nthis.app.vault.createFolder('b');",
+            "input.js",
+        );
+
+        assert_eq!(report.findings.len(), 2);
+        assert_eq!(report.findings[0].evidence.len(), 1);
+        assert_eq!(
+            report.findings[0].evidence[0].message,
+            "member_call of \"app.vault.create\""
+        );
+        assert_eq!(report.findings[1].evidence.len(), 1);
+        assert_eq!(
+            report.findings[1].evidence[0].message,
+            "member_call of \"app.vault.createFolder\""
+        );
     }
 
     #[test]
@@ -262,6 +357,13 @@ mod tests {
         assert_eq!(report.findings.len(), 1);
         assert_eq!(report.findings[0].range.start.column, 1);
         assert_eq!(report.findings[0].range.end.column, 36);
+        assert_eq!(report.findings[0].evidence.len(), 2);
+        assert!(report.findings[0].evidence.iter().all(|evidence| {
+            evidence
+                .range
+                .as_ref()
+                .is_some_and(|range| contains_range(&report.findings[0].range, range))
+        }));
     }
 
     #[test]
@@ -430,5 +532,76 @@ mod tests {
             .lint("fetch(); XMLHttpRequest();", "subset.js");
         assert_eq!(report.findings.len(), 1);
         assert_eq!(report.findings[0].rule_id.as_str(), "test:beta.second");
+    }
+
+    #[test]
+    fn combines_provider_rules_with_overlapping_local_ids() {
+        let first = ApiRule::builder("network.request")
+            .label("First provider request")
+            .category("network")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap();
+        let second = ApiRule::builder("network.request")
+            .label("Second provider request")
+            .category("network")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("requestUrl"))
+            .build()
+            .unwrap();
+        let mut environment = crate::Environment::default();
+        environment.add_globals(["fetch", "requestUrl"]).unwrap();
+        let linter = Linter::combine_with_environment(
+            [
+                Linter::new(RuleCatalog::new("first", vec![first]).unwrap()),
+                Linter::new(RuleCatalog::new("second", vec![second]).unwrap()),
+            ],
+            environment,
+        )
+        .unwrap();
+
+        let report = linter.lint("fetch('/a'); requestUrl('/b');", "combined.js");
+        assert_eq!(report.findings.len(), 2);
+        assert_eq!(report.findings[0].rule_id.as_str(), "first:network.request");
+        assert_eq!(
+            report.findings[1].rule_id.as_str(),
+            "second:network.request"
+        );
+    }
+
+    #[test]
+    fn combined_linter_preserves_each_input_rule_selection() {
+        let enabled_rule = ApiRule::builder("enabled")
+            .label("Enabled")
+            .category("test")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap();
+        let disabled_rule = ApiRule::builder("disabled")
+            .label("Disabled")
+            .category("test")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("requestUrl"))
+            .build()
+            .unwrap();
+        let enabled = Linter::new(RuleCatalog::new("first", vec![enabled_rule]).unwrap());
+        let disabled =
+            Linter::with_rules(RuleCatalog::new("second", vec![disabled_rule]).unwrap(), [])
+                .unwrap();
+        let mut environment = crate::Environment::default();
+        environment.add_globals(["fetch", "requestUrl"]).unwrap();
+
+        let report = Linter::combine_with_environment([enabled, disabled], environment)
+            .unwrap()
+            .lint("fetch(); requestUrl();", "selection.js");
+
+        assert_eq!(report.findings.len(), 1);
+        assert_eq!(report.findings[0].rule_id.as_str(), "first:enabled");
     }
 }

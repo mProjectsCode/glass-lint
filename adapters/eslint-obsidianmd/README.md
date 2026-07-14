@@ -15,7 +15,7 @@ cd ../..
 Then register the Bun-powered executable with the harness:
 
 ```sh
-cargo run -p glass-lint-cli --bin glass-lint-harness -- \
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   --adapter eslint-obsidianmd=adapters/eslint-obsidianmd/adapter.ts \
   verify tests/e2e
 ```

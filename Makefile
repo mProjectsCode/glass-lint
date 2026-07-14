@@ -1,7 +1,7 @@
 .PHONY: all build check clippy fmt fmt-check test test-e2e test-rules profile ci clean
 
 CARGO ?= cargo
-HARNESS ?= $(CARGO) run -p glass-lint-cli --bin glass-lint-harness --
+HARNESS ?= $(CARGO) run -p glass-lint-harness-cli --bin glass-lint-harness --
 HARNESS_SUITE ?= tests/e2e
 SAMPLY ?= samply
 PROFILE_PATH ?= tests/e2e
@@ -37,7 +37,7 @@ test-rules:
 	$(HARNESS) verify glass-lint-obsidian/src/rules
 
 profile:
-	$(CARGO) build --profile profiling -p glass-lint-cli --bin glass-lint-harness
+	$(CARGO) build --profile profiling -p glass-lint-harness-cli --bin glass-lint-harness
 	$(SAMPLY) record target/profiling/glass-lint-harness profile --path "$(PROFILE_PATH)" --provider "$(PROFILE_PROVIDER)" --profile "$(PROFILE_MODE)" $(PROFILE_ARGS)
 
 compare:

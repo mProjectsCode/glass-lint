@@ -24,7 +24,9 @@ impl CompiledCatalog {
     }
 
     pub(crate) fn from_rules(rules: &[ApiRule]) -> Self {
-        Self::try_from_rules(rules).expect("validated rule catalog")
+        Self {
+            rules: rules.iter().map(CompiledRule::new).collect(),
+        }
     }
 
     pub(crate) fn to_matcher_catalog<'a>(

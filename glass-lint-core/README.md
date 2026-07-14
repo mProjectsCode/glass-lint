@@ -42,6 +42,12 @@ assert_eq!(report.findings[0].rule_id.as_str(), "example:network.request");
 `Linter::new` enables every rule in a catalog. Use `Linter::with_rules` with
 parsed `RuleId` values to enable a validated subset.
 
+Use `Linter::combine_with_environment` to run several provider profiles in one
+parse and semantic-analysis pass. The combined linter preserves the enabled
+rule selection from each input linter, permits provider catalogs to reuse local
+rule names, rejects duplicate namespaced IDs, and applies the explicit shared
+host environment to every rule.
+
 ## Host environments
 
 `Environment::default()` contains only host-independent ECMAScript globals,
@@ -96,7 +102,8 @@ catalog is constructed.
 
 `Linter::lint` accepts one source string and filename. A `LintReport` contains
 schema and tool versions, sorted findings, bounded evidence, and parse
-diagnostics. Finding locations use one-based Unicode display columns.
+diagnostics. Finding locations use one-based Unicode display columns, and each
+finding contains only the evidence occurrences at its location.
 
 JavaScript sources larger than `MAX_SOURCE_BYTES` (8 MiB) return a structured
 parse diagnostic. Parsing stops after the first parser diagnostic. Each rule
@@ -105,3 +112,13 @@ remains bounded.
 
 See the repository [architecture](../ARCHITECTURE.md) for the internal
 pipeline and [testing guide](../TESTING.md) for matcher test expectations.
+
+`CoreConfig` is the provider-neutral analysis configuration. Its optional
+`rules` field preserves a provider profile when omitted, disables all rules
+when empty, or selects an exact validated set. Apply it through
+`Linter::configured` after constructing a provider catalog. `PrettyReport` and
+`PrettyOptions` provide bounded human rendering, including optional ANSI
+styling and terminal display-width handling. Human output is grouped by rule;
+each rule's evidence is sorted by file and source location, and every row
+retains a copyable `path:line:column`. Presentation data is not added to
+`LintReport`.

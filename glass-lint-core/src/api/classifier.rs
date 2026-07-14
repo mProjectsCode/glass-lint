@@ -36,6 +36,7 @@ pub(crate) fn classify_compiled_api_usage(
         result
             .capabilities
             .push(crate::api::classification::ApiCapability {
+                rule_index,
                 id: rule.id().to_string(),
                 label: rule.label().to_string(),
                 category: rule.category().clone(),

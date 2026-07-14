@@ -21,7 +21,7 @@ command first:
 ```sh
 cargo test -p glass-lint-core --test scope_precision
 cargo test -p glass-lint-obsidian
-cargo run -p glass-lint-cli --bin glass-lint-harness -- \
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   verify glass-lint-obsidian/src/rules/network/request
 ```
 
@@ -162,15 +162,15 @@ diagnostics.
 Verify cases and fail on mismatches:
 
 ```sh
-cargo run -p glass-lint-cli --bin glass-lint-harness -- verify tests/e2e
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- verify tests/e2e
 ```
 
 Render results without verification:
 
 ```sh
-cargo run -p glass-lint-cli --bin glass-lint-harness -- \
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   report tests/e2e --format markdown
-cargo run -p glass-lint-cli --bin glass-lint-harness -- \
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   report tests/e2e --format json
 ```
 

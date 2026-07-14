@@ -9,7 +9,7 @@ Most users invoke it through the `glass-lint-harness` binary in
 `glass-lint-cli`:
 
 ```sh
-cargo run -p glass-lint-cli --bin glass-lint-harness -- verify tests/e2e
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- verify tests/e2e
 ```
 
 ## Library surface
@@ -39,7 +39,7 @@ The CLI front end supports:
 Register external tools with a global `--adapter NAME=COMMAND` option:
 
 ```sh
-cargo run -p glass-lint-cli --bin glass-lint-harness -- \
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   --adapter eslint-obsidianmd=adapters/eslint-obsidianmd/adapter.ts \
   verify tests/e2e
 ```

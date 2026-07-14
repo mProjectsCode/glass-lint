@@ -13,6 +13,20 @@ pub enum Severity {
     Error,
 }
 
+impl std::fmt::Display for Severity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::Info => "info",
+                Self::Warning => "warning",
+                Self::Error => "error",
+            }
+        )
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 /// One-based Unicode display position in a source file.
 pub struct Position {

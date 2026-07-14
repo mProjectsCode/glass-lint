@@ -9,7 +9,7 @@ declarative matchers, and front ends select rules and serialize reports.
 ```text
                     +----------------------+
                     |   glass-lint-cli     |
-                    | CLI and harness bins |
+                    |  glass-lint binary   |
                     +----------+-----------+
                                |
              +-----------------+-----------------+
@@ -80,10 +80,10 @@ external adapters, checks diagnostic expectations, produces reports, and
 profiles folders. It depends on providers to offer the built-in Glass Lint
 adapter but does not implement lint semantics.
 
-`glass-lint-cli` is deliberately thin. It owns argument parsing, filesystem
-discovery, JSON output, process exit behavior, and the two executable entry
-points. Reusable harness behavior stays in `glass-lint-harness`; lint behavior
-stays in core and providers.
+`glass-lint-cli` is deliberately thin. It owns argument parsing, configuration,
+filesystem discovery, human/JSON output, process exit behavior, and the
+`glass-lint` executable. `glass-lint-harness-cli` owns the harness executable;
+reusable harness behavior stays in `glass-lint-harness`.
 
 ## Per-file analysis pipeline
 
