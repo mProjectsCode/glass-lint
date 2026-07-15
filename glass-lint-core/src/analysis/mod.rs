@@ -189,6 +189,22 @@ impl ProjectSemanticModel {
         self.modules.values()
     }
 
+    pub(in crate::analysis) fn source_call_result(
+        &self,
+        module: ModuleId,
+        fact: crate::analysis::facts::FactId,
+    ) -> crate::analysis::value::ValueId {
+        self.modules
+            .get(&module)
+            .into_iter()
+            .flat_map(|module| module.local().effects().iter_effects())
+            .flat_map(crate::analysis::flow::effect::FunctionEffect::calls)
+            .find(|call| call.event() == fact)
+            .map_or(crate::analysis::value::ValueId::UNKNOWN, |call| {
+                call.result()
+            })
+    }
+
     pub(crate) fn fact_location(
         &self,
         module: ModuleId,
@@ -274,82 +290,82 @@ impl ProjectSemanticModel {
             .interface()
             .authored_requests(module.path(), module.source_map())
     }
+
+    pub(crate) fn classify(
+        &self,
+        catalog: &crate::api::compiler::CompiledCatalog,
+        rules: &[crate::api::rule::ApiRule],
+        selected: &std::collections::BTreeSet<usize>,
+    ) -> BTreeMap<ModuleId, crate::api::classification::ApiClassificationResult> {
+        let matcher_catalog = self.project(catalog.to_matcher_catalog(selected));
+        self.modules()
+            .map(|module| {
+                let mut result = crate::api::classification::ApiClassificationResult::default();
+                for rule_index in 0..rules.len() {
+                    if !selected.contains(&rule_index) {
+                        continue;
+                    }
+                    let Some(rule) = rules.get(rule_index) else {
+                        continue;
+                    };
+                    let evidence = matcher_catalog.evidence_for(module, rule_index);
+                    if evidence.is_empty() {
+                        continue;
+                    }
+                    result
+                        .capabilities
+                        .push(crate::api::classification::ApiCapability {
+                            rule_index,
+                            id: rule.id().to_string(),
+                            label: rule.label().to_string(),
+                            category: rule.category().clone(),
+                            severity: rule.severity(),
+                            confidence: rule.confidence(),
+                            evidence,
+                        });
+                }
+                (module.id(), result)
+            })
+            .collect()
+    }
+
+    pub(in crate::analysis) fn static_export_string(
+        &self,
+        module: ModuleId,
+        export: &str,
+    ) -> Option<String> {
+        self.modules
+            .get(&module)
+            .and_then(|module| module.local().interface().static_string(export))
+            .cloned()
+    }
 }
 
-fn linked_identity(resolution: ExportResolution) -> matching::LinkedModuleIdentity {
-    match resolution {
-        ExportResolution::External { module, export } => {
-            matching::LinkedModuleIdentity::External { module, export }
-        }
-        ExportResolution::Global { name } => matching::LinkedModuleIdentity::Global { name },
-        ExportResolution::StaticString { value } => {
-            matching::LinkedModuleIdentity::StaticString { value }
-        }
-        ExportResolution::Qualified { module, export } => {
-            matching::LinkedModuleIdentity::Qualified {
-                module: module.0,
-                export,
+impl From<ExportResolution> for matching::LinkedModuleIdentity {
+    fn from(resolution: ExportResolution) -> Self {
+        match resolution {
+            ExportResolution::External { module, export } => {
+                matching::LinkedModuleIdentity::External { module, export }
             }
-        }
-        ExportResolution::Unknown | ExportResolution::Ambiguous => {
-            matching::LinkedModuleIdentity::Unknown
+            ExportResolution::Global { name } => matching::LinkedModuleIdentity::Global { name },
+            ExportResolution::StaticString { value } => {
+                matching::LinkedModuleIdentity::StaticString { value }
+            }
+            ExportResolution::Qualified { module, export } => {
+                matching::LinkedModuleIdentity::Qualified {
+                    module: module.0,
+                    export,
+                }
+            }
+            ExportResolution::Unknown | ExportResolution::Ambiguous => {
+                matching::LinkedModuleIdentity::Unknown
+            }
         }
     }
 }
 
-fn project_module_static_string(
-    project: &ProjectSemanticModel,
-    module: ModuleId,
-    export: &str,
-) -> Option<String> {
-    project
-        .modules
-        .get(&module)
-        .and_then(|module| module.local().interface().static_string(export))
-        .cloned()
-}
-
 fn is_internal_request(request: &str) -> bool {
     request.starts_with('.') || request.starts_with('/') || request.starts_with('#')
-}
-
-pub(crate) fn classify_project(
-    project: &ProjectSemanticModel,
-    catalog: &crate::api::compiler::CompiledCatalog,
-    rules: &[crate::api::rule::ApiRule],
-    selected: &std::collections::BTreeSet<usize>,
-) -> BTreeMap<ModuleId, crate::api::classification::ApiClassificationResult> {
-    let matcher_catalog = project.project(catalog.to_matcher_catalog(selected));
-    project
-        .modules()
-        .map(|module| {
-            let mut result = crate::api::classification::ApiClassificationResult::default();
-            for rule_index in 0..rules.len() {
-                if !selected.contains(&rule_index) {
-                    continue;
-                }
-                let Some(rule) = rules.get(rule_index) else {
-                    continue;
-                };
-                let evidence = matcher_catalog.evidence_for(module, rule_index);
-                if evidence.is_empty() {
-                    continue;
-                }
-                result
-                    .capabilities
-                    .push(crate::api::classification::ApiCapability {
-                        rule_index,
-                        id: rule.id().to_string(),
-                        label: rule.label().to_string(),
-                        category: rule.category().clone(),
-                        severity: rule.severity(),
-                        confidence: rule.confidence(),
-                        evidence,
-                    });
-            }
-            (module.id(), result)
-        })
-        .collect()
 }
 
 #[cfg(test)]

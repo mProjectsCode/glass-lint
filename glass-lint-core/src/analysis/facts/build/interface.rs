@@ -1,8 +1,14 @@
 //! Module-interface recording performed during the canonical fact walk.
 
 use super::FactBuilder;
+use crate::analysis::module::{ModuleExport, ModuleRequestRole, ReExportBinding};
+use crate::project::ResolutionRequestKind;
 use swc_common::{Span, Spanned};
-use swc_ecma_ast::{CallExpr, Callee, Expr, ImportDecl};
+use swc_ecma_ast::{
+    CallExpr, Callee, DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr,
+    ExportSpecifier, Expr, ImportDecl, NamedExport,
+};
+use swc_ecma_visit::VisitWith;
 
 impl FactBuilder<'_> {
     pub(super) fn record_local_imports(&mut self, import: &ImportDecl) {
@@ -111,6 +117,196 @@ impl FactBuilder<'_> {
             }
             Callee::Super(_) => {}
         }
+    }
+
+    pub(super) fn record_named_export(&mut self, export: &NamedExport) {
+        if export.type_only {
+            return;
+        }
+        if let Some(source) = export.src.as_ref() {
+            self.record_reexports(export, source);
+        } else {
+            self.record_local_named_exports(&export.specifiers);
+        }
+    }
+
+    fn record_local_named_exports(&mut self, specifiers: &[ExportSpecifier]) {
+        for specifier in specifiers {
+            if let ExportSpecifier::Named(named) = specifier
+                && !named.is_type_only
+            {
+                let original = crate::analysis::syntax::module_export_name(&named.orig);
+                let exported = named.exported.as_ref().map_or_else(
+                    || original.clone(),
+                    crate::analysis::syntax::module_export_name,
+                );
+                if let swc_ecma_ast::ModuleExportName::Ident(ident) = &named.orig
+                    && let Some(id) = self
+                        .resolver
+                        .function_id_for_expr(&Expr::Ident(ident.clone()))
+                {
+                    self.interface.add_function_export(exported.clone(), id);
+                }
+                self.interface
+                    .add_export(exported, ModuleExport::Local { name: original });
+            }
+        }
+    }
+
+    fn record_reexports(&mut self, export: &NamedExport, source: &swc_ecma_ast::Str) {
+        let specifiers = export
+            .specifiers
+            .iter()
+            .filter(|specifier| {
+                !matches!(specifier, ExportSpecifier::Named(named) if named.is_type_only)
+            })
+            .collect::<Vec<_>>();
+        if specifiers.is_empty() {
+            return;
+        }
+        let request = self.interface.add_request(
+            source.span,
+            ResolutionRequestKind::Import,
+            source.value.to_string_lossy(),
+            ModuleRequestRole::ReExport {
+                bindings: export
+                    .specifiers
+                    .iter()
+                    .filter(|specifier| {
+                        !matches!(specifier, ExportSpecifier::Named(named) if named.is_type_only)
+                    })
+                    .map(|specifier| match specifier {
+                        ExportSpecifier::Named(named) => ReExportBinding::new(
+                            crate::analysis::syntax::module_export_name(&named.orig),
+                            named.exported.as_ref().map_or_else(
+                                || crate::analysis::syntax::module_export_name(&named.orig),
+                                crate::analysis::syntax::module_export_name,
+                            ),
+                            false,
+                        ),
+                        ExportSpecifier::Namespace(namespace) => ReExportBinding::new(
+                            "*".into(),
+                            crate::analysis::syntax::module_export_name(&namespace.name),
+                            true,
+                        ),
+                        ExportSpecifier::Default(default) => ReExportBinding::new(
+                            "default".into(),
+                            default.exported.sym.to_string(),
+                            false,
+                        ),
+                    })
+                    .collect(),
+            },
+        );
+        for specifier in specifiers {
+            match specifier {
+                ExportSpecifier::Named(named) => {
+                    let original = crate::analysis::syntax::module_export_name(&named.orig);
+                    let exported = named.exported.as_ref().map_or_else(
+                        || original.clone(),
+                        crate::analysis::syntax::module_export_name,
+                    );
+                    self.interface.add_export(
+                        exported,
+                        ModuleExport::ReExport {
+                            request,
+                            imported: original,
+                        },
+                    );
+                }
+                ExportSpecifier::Namespace(namespace) => self.interface.add_export(
+                    crate::analysis::syntax::module_export_name(&namespace.name),
+                    ModuleExport::Namespace { request },
+                ),
+                ExportSpecifier::Default(default) => self.interface.add_export(
+                    default.exported.sym.to_string(),
+                    ModuleExport::ReExport {
+                        request,
+                        imported: "default".into(),
+                    },
+                ),
+            }
+        }
+    }
+
+    pub(super) fn record_export_all(&mut self, export: &ExportAll) {
+        if export.type_only {
+            return;
+        }
+        let request = self.interface.add_request(
+            export.src.span,
+            ResolutionRequestKind::Import,
+            export.src.value.to_string_lossy(),
+            ModuleRequestRole::StarExport,
+        );
+        self.interface.add_star_export(request);
+    }
+
+    pub(super) fn record_default_expr(&mut self, export: &ExportDefaultExpr) {
+        if let Expr::Ident(ident) = &*export.expr {
+            if let Some(id) = self
+                .resolver
+                .function_id_for_expr(&Expr::Ident(ident.clone()))
+            {
+                self.interface.add_function_export("default", id);
+            }
+            self.interface.add_export(
+                "default",
+                ModuleExport::Local {
+                    name: ident.sym.to_string(),
+                },
+            );
+        } else {
+            if let Some(id) = self.resolver.function_id_for_span(export.expr.span()) {
+                self.interface.add_function_export("default", id);
+            }
+            self.interface.add_export("default", ModuleExport::Value);
+        }
+        export.expr.visit_with(self);
+    }
+
+    pub(super) fn record_default_decl(&mut self, export: &ExportDefaultDecl) {
+        match &export.decl {
+            DefaultDecl::Fn(function) => {
+                if let Some(ident) = &function.ident {
+                    self.record_local(ident.sym.to_string());
+                    if let Some(id) = self
+                        .resolver
+                        .function_id_for_expr(&Expr::Ident(ident.clone()))
+                    {
+                        self.interface.add_function_export("default", id);
+                    }
+                    self.interface.add_export(
+                        "default",
+                        ModuleExport::Local {
+                            name: ident.sym.to_string(),
+                        },
+                    );
+                } else {
+                    if let Some(id) = self.resolver.function_id_for_span(function.function.span()) {
+                        self.interface.add_function_export("default", id);
+                    }
+                    self.interface.add_export("default", ModuleExport::Value);
+                }
+            }
+            DefaultDecl::Class(class) => {
+                if let Some(ident) = &class.ident {
+                    self.record_local(ident.sym.to_string());
+                    self.interface.add_export(
+                        "default",
+                        ModuleExport::Local {
+                            name: ident.sym.to_string(),
+                        },
+                    );
+                } else {
+                    self.interface.add_export("default", ModuleExport::Value);
+                }
+            }
+            DefaultDecl::TsInterfaceDecl(_) => {
+                self.interface.add_export("default", ModuleExport::Unknown);
+            }
+        }
+        export.decl.visit_with(self);
     }
 
     pub(super) fn record_commonjs_export(&mut self, assignment: &swc_ecma_ast::AssignExpr) {

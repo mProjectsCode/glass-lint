@@ -115,6 +115,16 @@ pub enum MemberCallProvenance {
     ModuleNamespace { module: String },
 }
 
+impl MemberCallProvenance {
+    pub(crate) fn matches_rooted(&self, rooted: bool) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Rooted => rooted,
+            Self::ModuleNamespace { .. } => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberReadMatcher {
     pub(crate) chain: String,

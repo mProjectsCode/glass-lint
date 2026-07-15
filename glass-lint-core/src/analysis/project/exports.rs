@@ -2,7 +2,7 @@
 
 use super::super::{
     BTreeSet, ExportResolution, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
-    ResolutionRequestKey, ResolvedModule, is_internal_request, project_module_static_string,
+    ResolutionRequestKey, ResolvedModule, is_internal_request,
 };
 use super::super::{SymbolCallProvenance, module};
 use crate::analysis::module::ModuleRequestRole;
@@ -47,14 +47,15 @@ impl ProjectSemanticModel {
                     }
                 }
             }
-            module::ModuleExport::Value => project_module_static_string(self, module, export_name)
-                .map_or_else(
+            module::ModuleExport::Value => {
+                self.static_export_string(module, export_name).map_or_else(
                     || ExportResolution::Qualified {
                         module,
                         export: export_name.to_owned(),
                     },
                     |value| ExportResolution::StaticString { value },
-                ),
+                )
+            }
             module::ModuleExport::Unknown => ExportResolution::Unknown,
             module::ModuleExport::ReExport { request, imported } => {
                 self.resolve_request_export(module, *request, imported)

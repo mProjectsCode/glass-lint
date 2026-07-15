@@ -2,7 +2,7 @@
 
 use crate::analysis::facts::CallArgInfo;
 use crate::api::rule::StaticStringPredicate;
-use crate::api::rule::{ArgumentMatcher, MemberCallProvenance, ValueMatcher, ValueMatcherKind};
+use crate::api::rule::{ArgumentMatcher, ValueMatcher, ValueMatcherKind};
 
 impl ValueMatcher {
     /// Match a value against a known static string without widening unknowns.
@@ -53,16 +53,6 @@ impl ArgumentMatcher {
                     expected.iter().any(|candidate| candidate == chain)
                 })
             }
-        }
-    }
-}
-
-impl MemberCallProvenance {
-    pub(in crate::analysis) fn matches_rooted(&self, rooted: bool) -> bool {
-        match self {
-            Self::Any => true,
-            Self::Rooted => rooted,
-            Self::ModuleNamespace { .. } => false,
         }
     }
 }

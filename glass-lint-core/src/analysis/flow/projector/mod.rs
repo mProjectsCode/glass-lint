@@ -40,7 +40,7 @@ pub(super) fn collect_with_limits(
     limits: FlowLimits,
 ) -> Vec<Vec<ApiEvidence>> {
     let flow_index = FlowIndex::new(rules);
-    let helpers = super::summary::collect(stream, &flow_index);
+    let helpers = FunctionSummaries::collect(stream, &flow_index);
     let mut projector = ObjectFlowProjector::new(stream, flow_index, helpers, rule_count, limits);
     for fact in stream.facts() {
         projector.transfer(fact);
@@ -112,19 +112,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
 
     fn transfer(&mut self, fact: &crate::analysis::facts::SemanticFact) {
         match &fact.payload {
-            FactPayload::Function { boundary, .. } => match boundary {
-                FunctionBoundary::Enter => {
-                    let caller = self.environment();
-                    self.control.push(ControlFrame::Function { caller });
-                    self.flow_state.clear();
-                    self.reachable = true;
-                }
-                FunctionBoundary::Exit => {
-                    if let Some(ControlFrame::Function { caller }) = self.control.pop() {
-                        self.restore(caller);
-                    }
-                }
-            },
+            FactPayload::Function { boundary, .. } => self.transfer_function(*boundary),
             FactPayload::Control { kind, region, .. } => {
                 self.transfer_control(*kind, *region, fact.span);
             }
@@ -164,45 +152,67 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     fact.id,
                 );
             }
-            FactPayload::Call {
-                syntactic_chain,
-                rooted_chain,
-                callee_name,
-                receiver,
-                args,
-                unwrap,
-                target_function,
-                ..
-            } => {
-                if !self.reachable {
-                    return;
-                }
-                if let Some(source) = SourceCall::from_parts(
-                    fact.id,
-                    rooted_chain.as_deref(),
-                    syntactic_chain.as_deref(),
-                    callee_name.as_deref(),
-                    args,
-                    unwrap.as_deref(),
-                ) {
-                    self.record_configuration(
-                        *receiver,
-                        source.chain(),
-                        source.arguments(),
-                        source.event(),
-                    );
-                    self.record_sinks(
-                        source.chain(),
-                        source.arguments(),
-                        source.event(),
-                        source.has_rooted_provenance(),
-                    );
-                }
-                if let Some(function) = target_function {
-                    self.record_helper_sink(*function, args, fact.id);
+            FactPayload::Call { .. } => self.transfer_call(fact),
+            _ => {}
+        }
+    }
+
+    fn transfer_function(&mut self, boundary: FunctionBoundary) {
+        match boundary {
+            FunctionBoundary::Enter => {
+                let caller = self.environment();
+                self.control.push(ControlFrame::Function { caller });
+                self.flow_state.clear();
+                self.reachable = true;
+            }
+            FunctionBoundary::Exit => {
+                if let Some(ControlFrame::Function { caller }) = self.control.pop() {
+                    self.restore(caller);
                 }
             }
-            _ => {}
+        }
+    }
+
+    fn transfer_call(&mut self, fact: &crate::analysis::facts::SemanticFact) {
+        if !self.reachable {
+            return;
+        }
+        let FactPayload::Call {
+            syntactic_chain,
+            rooted_chain,
+            callee_name,
+            receiver,
+            args,
+            unwrap,
+            target_function,
+            ..
+        } = &fact.payload
+        else {
+            return;
+        };
+        if let Some(source) = SourceCall::from_parts(
+            fact.id,
+            rooted_chain.as_deref(),
+            syntactic_chain.as_deref(),
+            callee_name.as_deref(),
+            args,
+            unwrap.as_deref(),
+        ) {
+            self.record_configuration(
+                *receiver,
+                source.chain(),
+                source.arguments(),
+                source.event(),
+            );
+            self.record_sinks(
+                source.chain(),
+                source.arguments(),
+                source.event(),
+                source.has_rooted_provenance(),
+            );
+        }
+        if let Some(function) = target_function {
+            self.record_helper_sink(*function, args, fact.id);
         }
     }
 

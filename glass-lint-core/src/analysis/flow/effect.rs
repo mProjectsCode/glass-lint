@@ -188,133 +188,156 @@ impl FunctionEffects {
     pub(in crate::analysis) fn budget_exhausted(&self) -> bool {
         self.budget_exhausted
     }
+
+    pub(in crate::analysis) fn collect(stream: &FactStream) -> Self {
+        let mut effects = Self::default();
+        let budget = BudgetTracker::default();
+        let mut value_provenance = BTreeMap::new();
+        effects.initialize(stream, &budget);
+
+        for fact in stream.facts() {
+            let Some(effect) = effects.by_id.get_mut(fact.function) else {
+                continue;
+            };
+            match &fact.payload {
+                FactPayload::Reference {
+                    value,
+                    static_string,
+                    provenance,
+                } => effect.record_reference(
+                    *value,
+                    static_string.as_ref(),
+                    provenance,
+                    &mut value_provenance,
+                ),
+                FactPayload::Declaration { target, source }
+                | FactPayload::Assignment {
+                    target,
+                    source,
+                    receiver: None,
+                } => effect.record_copy(*target, *source),
+                FactPayload::Assignment {
+                    receiver: Some(_), ..
+                } => effect.invalid = true,
+                FactPayload::PropertyWrite {
+                    receiver,
+                    property,
+                    static_value,
+                    ..
+                } => effect.record_property_write(
+                    fact.id,
+                    *receiver,
+                    property.as_ref(),
+                    static_value.as_ref(),
+                    &budget,
+                ),
+                FactPayload::Call { .. } => effect.record_call(fact, &budget),
+                FactPayload::Control {
+                    kind: ControlKind::Return,
+                    value,
+                    ..
+                } => effect.record_return(*value, &value_provenance, &budget),
+                FactPayload::Control { kind, .. }
+                    if !matches!(
+                        kind,
+                        ControlKind::BranchStart
+                            | ControlKind::BranchThen
+                            | ControlKind::BranchElse
+                            | ControlKind::BranchEnd
+                            | ControlKind::LoopStart { .. }
+                            | ControlKind::LoopUpdate
+                            | ControlKind::LoopEnd
+                            | ControlKind::SwitchStart
+                            | ControlKind::SwitchCase { .. }
+                            | ControlKind::SwitchEnd
+                            | ControlKind::TryStart
+                            | ControlKind::CatchStart
+                            | ControlKind::FinallyStart
+                            | ControlKind::TryEnd
+                            | ControlKind::Break
+                            | ControlKind::Continue
+                            | ControlKind::Return
+                    ) => {}
+                _ => {}
+            }
+            effect.mark_unsupported_control(&fact.payload);
+        }
+        effects.budget_exhausted = budget.is_exhausted();
+        effects
+    }
+
+    fn initialize(&mut self, stream: &FactStream, budget: &BudgetTracker) {
+        for fact in stream.facts() {
+            let FactPayload::Function {
+                id,
+                parameters,
+                boundary: crate::analysis::facts::FunctionBoundary::Enter,
+                ..
+            } = &fact.payload
+            else {
+                continue;
+            };
+            if !self.by_id.contains(*id) && self.by_id.len() >= MAX_FUNCTION_EFFECTS {
+                mark_budget(budget);
+                continue;
+            }
+            self.by_id.insert(
+                *id,
+                FunctionEffect {
+                    id: *id,
+                    parameters: parameters.clone(),
+                    calls: Vec::new(),
+                    uses: Vec::new(),
+                    returns: Vec::new(),
+                    invalid: false,
+                    value_roots: parameters
+                        .iter()
+                        .map(|parameter| (parameter.value, parameter.value))
+                        .collect(),
+                },
+            );
+        }
+        self.by_id.insert(
+            FunctionId(0),
+            FunctionEffect {
+                id: FunctionId(0),
+                parameters: Vec::new(),
+                calls: Vec::new(),
+                uses: Vec::new(),
+                returns: Vec::new(),
+                invalid: false,
+                value_roots: BTreeMap::new(),
+            },
+        );
+    }
 }
 
 fn mark_budget(budget: &BudgetTracker) {
     budget.mark_exhausted();
 }
 
-pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
-    let mut effects = FunctionEffects::default();
-    let budget = BudgetTracker::default();
-    let mut value_provenance = BTreeMap::new();
-    initialize_effects(stream, &mut effects, &budget);
-
-    for fact in stream.facts() {
-        let Some(effect) = effects.by_id.get_mut(fact.function) else {
-            continue;
-        };
-        match &fact.payload {
-            FactPayload::Reference {
-                value,
-                static_string,
-                provenance,
-            } => record_reference(
-                effect,
-                *value,
-                static_string.as_ref(),
-                provenance,
-                &mut value_provenance,
-            ),
-            FactPayload::Declaration { target, source }
-            | FactPayload::Assignment {
-                target,
-                source,
-                receiver: None,
-            } => record_copy(effect, *target, *source),
-            FactPayload::Assignment {
-                receiver: Some(_), ..
-            } => effect.invalid = true,
-            FactPayload::PropertyWrite {
-                receiver,
-                property,
-                static_value,
-                ..
-            } => record_property_write(
-                effect,
-                fact.id,
-                *receiver,
-                property.as_ref(),
-                static_value.as_ref(),
-                &budget,
-            ),
-            FactPayload::Call {
-                syntactic_chain,
-                rooted_chain,
-                args,
-                target_function,
-                result,
-                unwrap,
-                call_provenance,
-                receiver,
-                ..
-            } => record_call(CallInput {
-                effect,
-                event: fact.id,
-                syntactic_chain: syntactic_chain.as_ref(),
-                rooted_chain: rooted_chain.as_ref(),
-                args,
-                target_function: *target_function,
-                result: *result,
-                unwrap: unwrap.as_deref(),
-                call_provenance,
-                receiver: *receiver,
-                budget: &budget,
-            }),
-            FactPayload::Control {
-                kind: ControlKind::Return,
-                value,
-                ..
-            } => record_return(effect, *value, &value_provenance, &budget),
-            FactPayload::Control { kind, .. }
-                if !matches!(
-                    kind,
-                    ControlKind::BranchStart
-                        | ControlKind::BranchThen
-                        | ControlKind::BranchElse
-                        | ControlKind::BranchEnd
-                        | ControlKind::LoopStart { .. }
-                        | ControlKind::LoopUpdate
-                        | ControlKind::LoopEnd
-                        | ControlKind::SwitchStart
-                        | ControlKind::SwitchCase { .. }
-                        | ControlKind::SwitchEnd
-                        | ControlKind::TryStart
-                        | ControlKind::CatchStart
-                        | ControlKind::FinallyStart
-                        | ControlKind::TryEnd
-                        | ControlKind::Break
-                        | ControlKind::Continue
-                        | ControlKind::Return
-                ) => {}
-            _ => {}
+impl FunctionEffect {
+    fn record_property_write(
+        &mut self,
+        event: super::super::facts::FactId,
+        receiver: ValueId,
+        property: Option<&String>,
+        static_value: Option<&String>,
+        budget: &BudgetTracker,
+    ) {
+        if self.uses.len() >= MAX_EFFECT_USES {
+            self.invalid = true;
+            mark_budget(budget);
+            return;
         }
-        effect.mark_unsupported_control(&fact.payload);
+        self.uses.push(EffectUse::PropertyWrite {
+            event,
+            receiver: self.parameter_for(receiver),
+            value: receiver,
+            property: property.cloned(),
+            static_value: static_value.cloned(),
+        });
     }
-    effects.budget_exhausted = budget.is_exhausted();
-    effects
-}
-
-fn record_property_write(
-    effect: &mut FunctionEffect,
-    event: super::super::facts::FactId,
-    receiver: ValueId,
-    property: Option<&String>,
-    static_value: Option<&String>,
-    budget: &BudgetTracker,
-) {
-    if effect.uses.len() >= MAX_EFFECT_USES {
-        effect.invalid = true;
-        mark_budget(budget);
-        return;
-    }
-    effect.uses.push(EffectUse::PropertyWrite {
-        event,
-        receiver: effect.parameter_for(receiver),
-        value: receiver,
-        property: property.cloned(),
-        static_value: static_value.cloned(),
-    });
 }
 
 impl FunctionEffect {
@@ -357,6 +380,85 @@ impl FunctionEffect {
         }
     }
 
+    fn record_call(&mut self, fact: &super::super::facts::SemanticFact, budget: &BudgetTracker) {
+        let FactPayload::Call {
+            syntactic_chain,
+            rooted_chain,
+            args,
+            target_function,
+            result,
+            unwrap,
+            call_provenance,
+            receiver,
+            ..
+        } = &fact.payload
+        else {
+            return;
+        };
+
+        let (chain, call_args) = unwrap.as_deref().map_or_else(
+            || {
+                (
+                    rooted_chain.clone().or_else(|| syntactic_chain.clone()),
+                    args.as_slice(),
+                )
+            },
+            |unwrap| (Some(unwrap.chain.clone()), unwrap.effective_args.as_slice()),
+        );
+        let arguments = call_args
+            .iter()
+            .enumerate()
+            .map(|(index, argument)| EffectArgument {
+                index,
+                value: argument.base_value,
+                path: argument.base_path,
+                parameter: self.parameter_for(argument.base_value),
+            })
+            .collect::<Vec<_>>();
+        if self.calls.len() < MAX_EFFECT_CALLS {
+            self.calls.push(EffectCall {
+                event: fact.id,
+                chain: chain.clone(),
+                rooted: rooted_chain.is_some(),
+                target: *target_function,
+                result: *result,
+                provenance: call_provenance.clone(),
+                arguments: arguments.clone(),
+                call_arguments: call_args.to_vec(),
+            });
+        } else {
+            self.invalid = true;
+            mark_budget(budget);
+        }
+        if let Some(receiver) = receiver.and_then(|value| self.parameter_for(value)) {
+            if self.uses.len() < MAX_EFFECT_USES {
+                self.uses.push(EffectUse::CallReceiver {
+                    event: fact.id,
+                    chain: chain.clone(),
+                    receiver,
+                    call_arguments: call_args.to_vec(),
+                });
+            } else {
+                self.invalid = true;
+                mark_budget(budget);
+            }
+        }
+        for argument in arguments {
+            if self.uses.len() >= MAX_EFFECT_USES {
+                self.invalid = true;
+                mark_budget(budget);
+                break;
+            }
+            self.uses.push(EffectUse::CallArgument {
+                event: fact.id,
+                chain: chain.clone(),
+                rooted: rooted_chain.is_some(),
+                argument,
+            });
+        }
+        self.value_roots.entry(*result).or_insert(*result);
+    }
+
     fn record_copy(&mut self, target: ValueId, source: ValueId) {
         self.copy_root(target, source);
         if self.parameter_for(source).is_some() {
@@ -386,193 +488,53 @@ impl FunctionEffect {
                 path: parameter.path,
             })
     }
-}
 
-struct CallInput<'a> {
-    effect: &'a mut FunctionEffect,
-    event: super::super::facts::FactId,
-    syntactic_chain: Option<&'a String>,
-    rooted_chain: Option<&'a String>,
-    args: &'a [CallArgInfo],
-    target_function: Option<FunctionId>,
-    result: ValueId,
-    unwrap: Option<&'a super::super::facts::CallUnwrap>,
-    call_provenance: &'a SymbolCallProvenance,
-    receiver: Option<ValueId>,
-    budget: &'a BudgetTracker,
-}
-
-fn initialize_effects(stream: &FactStream, effects: &mut FunctionEffects, budget: &BudgetTracker) {
-    for fact in stream.facts() {
-        let FactPayload::Function {
-            id,
-            parameters,
-            boundary: crate::analysis::facts::FunctionBoundary::Enter,
-            ..
-        } = &fact.payload
-        else {
-            continue;
-        };
-        if !effects.by_id.contains(*id) && effects.by_id.len() >= MAX_FUNCTION_EFFECTS {
-            mark_budget(budget);
-            continue;
-        }
-        effects.by_id.insert(
-            *id,
-            FunctionEffect {
-                id: *id,
-                parameters: parameters.clone(),
-                calls: Vec::new(),
-                uses: Vec::new(),
-                returns: Vec::new(),
-                invalid: false,
-                value_roots: parameters
-                    .iter()
-                    .map(|parameter| (parameter.value, parameter.value))
-                    .collect(),
-            },
-        );
-    }
-    effects.by_id.insert(
-        FunctionId(0),
-        FunctionEffect {
-            id: FunctionId(0),
-            parameters: Vec::new(),
-            calls: Vec::new(),
-            uses: Vec::new(),
-            returns: Vec::new(),
-            invalid: false,
-            value_roots: BTreeMap::new(),
-        },
-    );
-}
-
-fn record_reference(
-    effect: &mut FunctionEffect,
-    value: ValueId,
-    static_string: Option<&String>,
-    provenance: &SymbolCallProvenance,
-    value_provenance: &mut BTreeMap<ValueId, (SymbolCallProvenance, Option<String>)>,
-) {
-    value_provenance.insert(value, (provenance.clone(), static_string.cloned()));
-    if value != ValueId::UNKNOWN {
-        effect.value_roots.entry(value).or_insert(value);
-    }
-}
-
-fn record_copy(effect: &mut FunctionEffect, target: ValueId, source: ValueId) {
-    effect.record_copy(target, source);
-}
-
-fn record_call(input: CallInput<'_>) {
-    let CallInput {
-        effect,
-        event,
-        syntactic_chain,
-        rooted_chain,
-        args,
-        target_function,
-        result,
-        unwrap,
-        call_provenance,
-        receiver,
-        budget,
-    } = input;
-    let (chain, call_args) = unwrap.map_or_else(
-        || {
-            (
-                rooted_chain.cloned().or_else(|| syntactic_chain.cloned()),
-                args,
-            )
-        },
-        |unwrap| (Some(unwrap.chain.clone()), &unwrap.effective_args),
-    );
-    let arguments = call_args
-        .iter()
-        .enumerate()
-        .map(|(index, argument)| EffectArgument {
-            index,
-            value: argument.base_value,
-            path: argument.base_path,
-            parameter: effect.parameter_for(argument.base_value),
-        })
-        .collect::<Vec<_>>();
-    if effect.calls.len() < MAX_EFFECT_CALLS {
-        effect.calls.push(EffectCall {
-            event,
-            chain: chain.clone(),
-            rooted: rooted_chain.is_some(),
-            target: target_function,
-            result,
-            provenance: call_provenance.clone(),
-            arguments: arguments.clone(),
-            call_arguments: call_args.to_vec(),
-        });
-    } else {
-        effect.invalid = true;
-        mark_budget(budget);
-    }
-    if let Some(receiver) = receiver.and_then(|value| effect.parameter_for(value)) {
-        if effect.uses.len() < MAX_EFFECT_USES {
-            effect.uses.push(EffectUse::CallReceiver {
-                event,
-                chain: chain.clone(),
-                receiver,
-                call_arguments: call_args.to_vec(),
-            });
-        } else {
-            effect.invalid = true;
-            mark_budget(budget);
-        }
-    }
-    for argument in arguments {
-        if effect.uses.len() >= MAX_EFFECT_USES {
-            effect.invalid = true;
-            mark_budget(budget);
-            break;
-        }
-        effect.uses.push(EffectUse::CallArgument {
-            event,
-            chain: chain.clone(),
-            rooted: rooted_chain.is_some(),
-            argument,
-        });
-    }
-    effect.value_roots.entry(result).or_insert(result);
-}
-
-fn record_return(
-    effect: &mut FunctionEffect,
-    value: ValueId,
-    value_provenance: &BTreeMap<ValueId, (SymbolCallProvenance, Option<String>)>,
-    budget: &BudgetTracker,
-) {
-    let parameter = effect.parameter_for(value);
-    if parameter.is_none()
-        && (value == ValueId::UNKNOWN || !effect.value_roots.contains_key(&value))
-    {
+    fn record_reference(
+        &mut self,
+        value: ValueId,
+        static_string: Option<&String>,
+        provenance: &SymbolCallProvenance,
+        value_provenance: &mut BTreeMap<ValueId, (SymbolCallProvenance, Option<String>)>,
+    ) {
+        value_provenance.insert(value, (provenance.clone(), static_string.cloned()));
         if value != ValueId::UNKNOWN {
-            effect.invalid = true;
+            self.value_roots.entry(value).or_insert(value);
         }
-        return;
     }
-    if effect.returns.len() >= MAX_EFFECT_RETURNS {
-        effect.invalid = true;
-        mark_budget(budget);
-        return;
-    }
-    let provenance = value_provenance
-        .get(&value)
-        .map_or(SymbolCallProvenance::Local, |(provenance, _)| {
-            provenance.clone()
+
+    fn record_return(
+        &mut self,
+        value: ValueId,
+        value_provenance: &BTreeMap<ValueId, (SymbolCallProvenance, Option<String>)>,
+        budget: &BudgetTracker,
+    ) {
+        let parameter = self.parameter_for(value);
+        if parameter.is_none()
+            && (value == ValueId::UNKNOWN || !self.value_roots.contains_key(&value))
+        {
+            if value != ValueId::UNKNOWN {
+                self.invalid = true;
+            }
+            return;
+        }
+        if self.returns.len() >= MAX_EFFECT_RETURNS {
+            self.invalid = true;
+            mark_budget(budget);
+            return;
+        }
+        let provenance = value_provenance
+            .get(&value)
+            .map_or(SymbolCallProvenance::Local, |(provenance, _)| {
+                provenance.clone()
+            });
+        let static_string = value_provenance
+            .get(&value)
+            .and_then(|(_, value)| value.clone());
+        self.returns.push(ReturnProjection {
+            value,
+            parameter,
+            provenance,
+            static_string,
         });
-    let static_string = value_provenance
-        .get(&value)
-        .and_then(|(_, value)| value.clone());
-    effect.returns.push(ReturnProjection {
-        value,
-        parameter,
-        provenance,
-        static_string,
-    });
+    }
 }

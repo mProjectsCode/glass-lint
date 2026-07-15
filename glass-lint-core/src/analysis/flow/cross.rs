@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use super::effect::{EffectCall, EffectUse, FunctionEffect};
+use super::effect::{EffectUse, FunctionEffect};
 use super::index::FlowId;
 use super::requirements::RequirementSet;
 use crate::analysis::ProjectSemanticModel;
@@ -90,6 +90,127 @@ struct Context {
     crossed: bool,
 }
 
+#[derive(Default)]
+struct ContextWorklist {
+    pending: VecDeque<Context>,
+    seen: BTreeSet<Context>,
+}
+
+impl ContextWorklist {
+    fn push(&mut self, context: Context) {
+        if self.seen.insert(context.clone()) {
+            self.pending.push_back(context);
+        }
+    }
+
+    fn pop_front(&mut self) -> Option<Context> {
+        self.pending.pop_front()
+    }
+
+    fn len(&self) -> usize {
+        self.seen.len()
+    }
+
+    fn enqueue_parameters(
+        &mut self,
+        project: &ProjectSemanticModel,
+        module: ModuleId,
+        function: FunctionId,
+        argument_index: usize,
+        state: &State,
+        crossed: bool,
+    ) {
+        let Some(effect) = project
+            .modules()
+            .find(|candidate| candidate.id() == module)
+            .and_then(|candidate| candidate.local().effects().get(function))
+        else {
+            return;
+        };
+        for parameter in effect.parameters().iter().filter(|parameter| {
+            parameter.parameter_index == argument_index && parameter.path.is_empty()
+        }) {
+            self.push(Context {
+                module,
+                function,
+                parameter: Some(parameter.parameter_index),
+                source_root: None,
+                state: state.clone(),
+                crossed,
+            });
+        }
+    }
+
+    fn seed(project: &ProjectSemanticModel, sources: &FlowSources) -> Self {
+        let mut worklist = Self::default();
+        // A returned value gets a fresh caller-side identity and therefore
+        // needs a direct context even when no qualified call consumes it.
+        for ((module, function, value), candidates) in sources.iter() {
+            for (flow, source_fact) in candidates {
+                worklist.push(Context {
+                    module: *module,
+                    function: *function,
+                    parameter: None,
+                    source_root: Some(*value),
+                    state: State {
+                        flow: *flow,
+                        source: QualifiedEvent {
+                            module: *module,
+                            fact: *source_fact,
+                        },
+                        requirements: RequirementSet::default(),
+                    },
+                    crossed: *value != project.source_call_result(*module, *source_fact),
+                });
+            }
+        }
+        for module in project.modules() {
+            for effect in module.local().effects().iter_effects() {
+                for call in effect.calls() {
+                    let Some((target_module, target_function)) = project.qualified_function_target(
+                        module.id(),
+                        call.target(),
+                        call.provenance(),
+                    ) else {
+                        continue;
+                    };
+                    for argument in call.arguments() {
+                        if !argument.is_root() {
+                            continue;
+                        }
+                        let root = effect
+                            .value_root(argument.value())
+                            .unwrap_or(argument.value());
+                        let Some(candidates) = sources.get(&(module.id(), effect.id(), root))
+                        else {
+                            continue;
+                        };
+                        for (flow, source_fact) in candidates {
+                            let state = State {
+                                flow: *flow,
+                                source: QualifiedEvent {
+                                    module: module.id(),
+                                    fact: *source_fact,
+                                },
+                                requirements: RequirementSet::default(),
+                            };
+                            worklist.enqueue_parameters(
+                                project,
+                                target_module,
+                                target_function,
+                                argument.index(),
+                                &state,
+                                target_module != module.id(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        worklist
+    }
+}
+
 type SourceKey = (ModuleId, FunctionId, ValueId);
 type SourceCandidate = (FlowId, FactId);
 
@@ -121,6 +242,14 @@ impl FlowSources {
         entry.len() != before
     }
 
+    fn extend_optional(
+        &mut self,
+        key: SourceKey,
+        candidates: Option<Vec<SourceCandidate>>,
+    ) -> bool {
+        candidates.is_some_and(|candidates| self.extend(key, candidates))
+    }
+
     fn normalize(&mut self) {
         for values in self.0.values_mut() {
             values.sort_unstable();
@@ -147,11 +276,11 @@ pub(in crate::analysis) fn collect(
         return (evidence, false, 0);
     }
 
-    let (sources, return_budget_exhausted) = collect_sources(project, &flows);
-    let (mut queue, mut seen) = seed_contexts(project, &sources);
+    let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows);
+    let mut worklist = ContextWorklist::seed(project, &sources);
 
     let mut budget = CrossBudget::default();
-    while let Some(context) = queue.pop_front() {
+    while let Some(context) = worklist.pop_front() {
         budget.projection();
         if !budget.step() {
             break;
@@ -171,7 +300,7 @@ pub(in crate::analysis) fn collect(
         };
         let mut current_state = context.state.clone();
         let mut propagated_calls = BTreeSet::new();
-        project_usages(&mut UsageProjection {
+        UsageProjection {
             project,
             evidence: &mut evidence,
             context: &context,
@@ -179,10 +308,10 @@ pub(in crate::analysis) fn collect(
             flow,
             state: &mut current_state,
             propagated: &mut propagated_calls,
-            queue: &mut queue,
-            seen: &mut seen,
-        });
-        propagate_calls_at(&mut Propagation {
+            worklist: &mut worklist,
+        }
+        .project();
+        Propagation {
             project,
             effect,
             module: context.module,
@@ -190,14 +319,14 @@ pub(in crate::analysis) fn collect(
             propagated: &mut propagated_calls,
             through: None,
             state: &current_state,
-            queue: &mut queue,
-            seen: &mut seen,
-        });
-        if seen.len() >= MAX_CONTEXTS {
+            worklist: &mut worklist,
+        }
+        .propagate();
+        if worklist.len() >= MAX_CONTEXTS {
             break;
         }
     }
-    let exhausted = return_budget_exhausted || budget.exhausted || seen.len() >= MAX_CONTEXTS;
+    let exhausted = return_budget_exhausted || budget.exhausted || worklist.len() >= MAX_CONTEXTS;
     if exhausted {
         for values in evidence.values_mut() {
             for rule in values {
@@ -216,332 +345,241 @@ struct UsageProjection<'a> {
     flow: &'a CompiledObjectFlow,
     state: &'a mut State,
     propagated: &'a mut BTreeSet<FactId>,
-    queue: &'a mut VecDeque<Context>,
-    seen: &'a mut BTreeSet<Context>,
+    worklist: &'a mut ContextWorklist,
 }
 
-fn project_usages(input: &mut UsageProjection<'_>) {
-    for usage in input.effect.uses() {
-        if !usage_matches_context(
-            input.project,
-            input.context.module,
-            input.effect,
-            usage,
-            input.context,
-        ) {
-            continue;
-        }
-        propagate_calls_at(&mut Propagation {
-            project: input.project,
-            effect: input.effect,
-            module: input.context.module,
-            context: input.context,
-            propagated: input.propagated,
-            through: Some(effect_use_event(usage)),
-            state: input.state,
-            queue: input.queue,
-            seen: input.seen,
-        });
-        match usage {
-            EffectUse::PropertyWrite {
-                event,
-                property,
-                static_value,
-                ..
-            } => apply_property_usage(input, *event, property.as_ref(), static_value.as_ref()),
-            EffectUse::CallReceiver {
-                event,
-                chain,
-                call_arguments,
-                ..
-            } => apply_receiver_usage(input, *event, chain.as_ref(), call_arguments),
-            EffectUse::CallArgument {
-                event,
-                chain,
-                rooted,
-                argument,
-            } => apply_argument_usage(input, *event, chain.as_ref(), *rooted, argument.index()),
-        }
-    }
-}
-
-fn apply_property_usage(
-    input: &mut UsageProjection<'_>,
-    event: FactId,
-    property: Option<&String>,
-    static_value: Option<&String>,
-) {
-    let mut next = input.state.clone();
-    for (index, requirement) in input.flow.requirements.iter().enumerate() {
-        if let CompiledObjectRequirement::PropertyWrite {
-            property: expected,
-            value,
-        } = requirement
-            && property == Some(expected)
-            && value.matches_flow_value(static_value.map(String::as_str))
-        {
-            next.requirements.insert(
-                index,
-                QualifiedEvent {
-                    module: input.context.module,
-                    fact: event,
-                },
-            );
-        }
-    }
-    emit_requirements(input, &next, event);
-    *input.state = next;
-}
-
-fn apply_receiver_usage(
-    input: &mut UsageProjection<'_>,
-    event: FactId,
-    chain: Option<&String>,
-    call_arguments: &[crate::analysis::facts::CallArgInfo],
-) {
-    let mut next = input.state.clone();
-    for (index, requirement) in input.flow.requirements.iter().enumerate() {
-        if let CompiledObjectRequirement::MemberCall { member, arguments } = requirement
-            && chain_matches(chain.map(String::as_str), member)
-            && arguments.iter().all(|matcher| {
-                call_arguments
-                    .get(matcher.index)
-                    .is_some_and(|argument| matcher.matcher.matches(argument))
-            })
-        {
-            next.requirements.insert(
-                index,
-                QualifiedEvent {
-                    module: input.context.module,
-                    fact: event,
-                },
-            );
-        }
-    }
-    emit_requirements(input, &next, event);
-    *input.state = next;
-}
-
-fn apply_argument_usage(
-    input: &mut UsageProjection<'_>,
-    event: FactId,
-    chain: Option<&String>,
-    rooted: bool,
-    argument_index: usize,
-) {
-    if matching_sink(
-        input.flow,
-        chain.map(String::as_str),
-        rooted,
-        argument_index,
-    )
-    .is_some()
-        && ready(input.flow, input.state)
-        && input.context.crossed
-    {
-        emit(
-            input.project,
-            input.evidence,
-            input.context.module,
-            input.context.state.flow,
-            input.state,
-            event,
-            input.flow,
-        );
-    }
-}
-
-fn emit_requirements(input: &mut UsageProjection<'_>, state: &State, event: FactId) {
-    if input.flow.emit_on_requirements && ready(input.flow, state) && input.context.crossed {
-        emit(
-            input.project,
-            input.evidence,
-            input.context.module,
-            input.context.state.flow,
-            state,
-            event,
-            input.flow,
-        );
-    }
-}
-
-fn collect_sources(
-    project: &ProjectSemanticModel,
-    flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
-) -> (FlowSources, bool) {
-    let mut sources = FlowSources::default();
-    for module in project.modules() {
-        for effect in module.local().effects().iter_effects() {
-            for call in effect.calls() {
-                for (flow_id, flow) in flows {
-                    if call.matches_source(flow) {
-                        sources.add(
-                            (module.id(), effect.id(), call.result()),
-                            (*flow_id, call.event()),
-                        );
-                    }
-                }
+impl UsageProjection<'_> {
+    fn project(&mut self) {
+        for usage in self.effect.uses() {
+            if !usage_matches_context(self.effect, usage, self.context) {
+                continue;
+            }
+            Propagation {
+                project: self.project,
+                effect: self.effect,
+                module: self.context.module,
+                context: self.context,
+                propagated: self.propagated,
+                through: Some(effect_use_event(usage)),
+                state: self.state,
+                worklist: self.worklist,
+            }
+            .propagate();
+            match usage {
+                EffectUse::PropertyWrite {
+                    event,
+                    property,
+                    static_value,
+                    ..
+                } => self.apply_property(*event, property.as_ref(), static_value.as_ref()),
+                EffectUse::CallReceiver {
+                    event,
+                    chain,
+                    call_arguments,
+                    ..
+                } => self.apply_receiver(*event, chain.as_ref(), call_arguments),
+                EffectUse::CallArgument {
+                    event,
+                    chain,
+                    rooted,
+                    argument,
+                } => self.apply_argument(*event, chain.as_ref(), *rooted, argument.index()),
             }
         }
     }
-    // Returned parameter/object identities are composed before invocation
-    // contexts are seeded. The bounded monotone loop also handles forwarding
-    // helpers without revisiting an AST.
-    let mut budget = SourceBudget::new();
-    while budget.next_round() {
-        let mut changed = false;
+
+    fn apply_property(
+        &mut self,
+        event: FactId,
+        property: Option<&String>,
+        static_value: Option<&String>,
+    ) {
+        let mut next = self.state.clone();
+        for (index, requirement) in self.flow.requirements.iter().enumerate() {
+            if let CompiledObjectRequirement::PropertyWrite {
+                property: expected,
+                value,
+            } = requirement
+                && property == Some(expected)
+                && value.matches_flow_value(static_value.map(String::as_str))
+            {
+                next.requirements.insert(
+                    index,
+                    QualifiedEvent {
+                        module: self.context.module,
+                        fact: event,
+                    },
+                );
+            }
+        }
+        self.emit_requirements(&next, event);
+        *self.state = next;
+    }
+
+    fn apply_receiver(
+        &mut self,
+        event: FactId,
+        chain: Option<&String>,
+        call_arguments: &[crate::analysis::facts::CallArgInfo],
+    ) {
+        let mut next = self.state.clone();
+        for (index, requirement) in self.flow.requirements.iter().enumerate() {
+            if let CompiledObjectRequirement::MemberCall { member, arguments } = requirement
+                && chain_matches(chain.map(String::as_str), member)
+                && arguments.iter().all(|matcher| {
+                    call_arguments
+                        .get(matcher.index)
+                        .is_some_and(|argument| matcher.matcher.matches(argument))
+                })
+            {
+                next.requirements.insert(
+                    index,
+                    QualifiedEvent {
+                        module: self.context.module,
+                        fact: event,
+                    },
+                );
+            }
+        }
+        self.emit_requirements(&next, event);
+        *self.state = next;
+    }
+
+    fn apply_argument(
+        &mut self,
+        event: FactId,
+        chain: Option<&String>,
+        rooted: bool,
+        argument: usize,
+    ) {
+        if self
+            .flow
+            .sink_matches(chain.map(String::as_str), rooted, argument)
+            && self.flow.requirements_ready(self.state.requirements.len())
+            && self.context.crossed
+        {
+            emit(
+                self.project,
+                self.evidence,
+                self.context.module,
+                self.context.state.flow,
+                self.state,
+                event,
+                self.flow,
+            );
+        }
+    }
+
+    fn emit_requirements(&mut self, state: &State, event: FactId) {
+        if self.flow.emit_on_requirements
+            && self.flow.requirements_ready(state.requirements.len())
+            && self.context.crossed
+        {
+            emit(
+                self.project,
+                self.evidence,
+                self.context.module,
+                self.context.state.flow,
+                state,
+                event,
+                self.flow,
+            );
+        }
+    }
+}
+
+impl FlowSources {
+    fn collect(
+        project: &ProjectSemanticModel,
+        flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
+    ) -> (Self, bool) {
+        let mut sources = FlowSources::default();
         for module in project.modules() {
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
-                    let Some((target_module, target_function)) = project.qualified_function_target(
-                        module.id(),
-                        call.target(),
-                        call.provenance(),
-                    ) else {
-                        continue;
-                    };
-                    let Some(target) = project
-                        .modules()
-                        .find(|candidate| candidate.id() == target_module)
-                        .and_then(|candidate| candidate.local().effects().get(target_function))
-                    else {
-                        continue;
-                    };
-                    for returned in target
-                        .returns()
-                        .iter()
-                        .filter(|returned| returned.parameter().is_none())
-                    {
-                        let returned_root = target
-                            .value_root(returned.value())
-                            .unwrap_or(returned.value());
-                        let candidates = sources
-                            .get(&(target_module, target_function, returned_root))
-                            .cloned();
-                        changed |= extend_sources(
-                            &mut sources,
-                            (module.id(), effect.id(), call.result()),
-                            candidates,
-                        );
-                    }
-                    for argument in call.arguments() {
-                        if !argument.is_root()
-                            || !target.returns().iter().any(|returned| {
-                                returned.parameter().is_some_and(|parameter| {
-                                    parameter.index() == argument.index() && parameter.is_root()
-                                })
-                            })
-                        {
-                            continue;
+                    for (flow_id, flow) in flows {
+                        if call.matches_source(flow) {
+                            sources.add(
+                                (module.id(), effect.id(), call.result()),
+                                (*flow_id, call.event()),
+                            );
                         }
-                        let root = effect
-                            .value_root(argument.value())
-                            .unwrap_or(argument.value());
-                        let candidates = sources.get(&(module.id(), effect.id(), root)).cloned();
-                        changed |= extend_sources(
-                            &mut sources,
-                            (module.id(), effect.id(), call.result()),
-                            candidates,
-                        );
                     }
                 }
             }
         }
-        if !changed {
-            budget.stabilized();
-            break;
-        }
-    }
-    sources.normalize();
-    (sources, budget.exhausted)
-}
-
-fn seed_contexts(
-    project: &ProjectSemanticModel,
-    sources: &FlowSources,
-) -> (VecDeque<Context>, BTreeSet<Context>) {
-    let mut queue = VecDeque::new();
-    let mut seen = BTreeSet::new();
-    // A returned value gets a fresh caller-side identity and therefore needs
-    // a direct context even when no qualified call consumes it.
-    for ((module, function, value), candidates) in sources.iter() {
-        for (flow, source_fact) in candidates {
-            let context = Context {
-                module: *module,
-                function: *function,
-                parameter: None,
-                source_root: Some(*value),
-                state: State {
-                    flow: *flow,
-                    source: QualifiedEvent {
-                        module: *module,
-                        fact: *source_fact,
-                    },
-                    requirements: RequirementSet::default(),
-                },
-                crossed: *value != source_fact_value(project, *module, *source_fact),
-            };
-            if seen.insert(context.clone()) {
-                queue.push_back(context);
-            }
-        }
-    }
-    for module in project.modules() {
-        for effect in module.local().effects().iter_effects() {
-            for call in effect.calls() {
-                let Some((target_module, target_function)) = project.qualified_function_target(
-                    module.id(),
-                    call.target(),
-                    call.provenance(),
-                ) else {
-                    continue;
-                };
-                for argument in call.arguments() {
-                    if !argument.is_root() {
-                        continue;
-                    }
-                    let root = effect
-                        .value_root(argument.value())
-                        .unwrap_or(argument.value());
-                    let Some(candidates) = sources.get(&(module.id(), effect.id(), root)) else {
-                        continue;
-                    };
-                    for (flow, source_fact) in candidates {
-                        let state = State {
-                            flow: *flow,
-                            source: QualifiedEvent {
-                                module: module.id(),
-                                fact: *source_fact,
-                            },
-                            requirements: RequirementSet::default(),
+        // Returned parameter/object identities are composed before invocation
+        // contexts are seeded. The bounded monotone loop also handles forwarding
+        // helpers without revisiting an AST.
+        let mut budget = SourceBudget::new();
+        while budget.next_round() {
+            let mut changed = false;
+            for module in project.modules() {
+                for effect in module.local().effects().iter_effects() {
+                    for call in effect.calls() {
+                        let Some((target_module, target_function)) = project
+                            .qualified_function_target(
+                                module.id(),
+                                call.target(),
+                                call.provenance(),
+                            )
+                        else {
+                            continue;
                         };
-                        enqueue_parameters(&mut ParameterEnqueue {
-                            project,
-                            module: target_module,
-                            function: target_function,
-                            argument_index: argument.index(),
-                            state: &state,
-                            crossed: target_module != module.id(),
-                            queue: &mut queue,
-                            seen: &mut seen,
-                        });
+                        let Some(target) = project
+                            .modules()
+                            .find(|candidate| candidate.id() == target_module)
+                            .and_then(|candidate| candidate.local().effects().get(target_function))
+                        else {
+                            continue;
+                        };
+                        for returned in target
+                            .returns()
+                            .iter()
+                            .filter(|returned| returned.parameter().is_none())
+                        {
+                            let returned_root = target
+                                .value_root(returned.value())
+                                .unwrap_or(returned.value());
+                            let candidates = sources
+                                .get(&(target_module, target_function, returned_root))
+                                .cloned();
+                            changed |= sources.extend_optional(
+                                (module.id(), effect.id(), call.result()),
+                                candidates,
+                            );
+                        }
+                        for argument in call.arguments() {
+                            if !argument.is_root()
+                                || !target.returns().iter().any(|returned| {
+                                    returned.parameter().is_some_and(|parameter| {
+                                        parameter.index() == argument.index() && parameter.is_root()
+                                    })
+                                })
+                            {
+                                continue;
+                            }
+                            let root = effect
+                                .value_root(argument.value())
+                                .unwrap_or(argument.value());
+                            let candidates =
+                                sources.get(&(module.id(), effect.id(), root)).cloned();
+                            changed |= sources.extend_optional(
+                                (module.id(), effect.id(), call.result()),
+                                candidates,
+                            );
+                        }
                     }
                 }
             }
+            if !changed {
+                budget.stabilized();
+                break;
+            }
         }
+        sources.normalize();
+        (sources, budget.exhausted)
     }
-    (queue, seen)
-}
-
-fn extend_sources(
-    sources: &mut FlowSources,
-    key: SourceKey,
-    candidates: Option<Vec<SourceCandidate>>,
-) -> bool {
-    let Some(candidates) = candidates else {
-        return false;
-    };
-    sources.extend(key, candidates)
 }
 
 fn effect_use_event(usage: &EffectUse) -> FactId {
@@ -549,79 +587,6 @@ fn effect_use_event(usage: &EffectUse) -> FactId {
         EffectUse::PropertyWrite { event, .. }
         | EffectUse::CallArgument { event, .. }
         | EffectUse::CallReceiver { event, .. } => *event,
-    }
-}
-
-fn propagate_calls_at(input: &mut Propagation<'_>) {
-    for call in input.effect.calls() {
-        if input.through.is_some_and(|event| call.event() > event)
-            || !input.propagated.insert(call.event())
-        {
-            continue;
-        }
-        let Some((target_module, target_function)) =
-            input
-                .project
-                .qualified_function_target(input.module, call.target(), call.provenance())
-        else {
-            continue;
-        };
-        for argument in call.arguments() {
-            let connected = argument.parameter().is_some_and(|parameter| {
-                input
-                    .context
-                    .parameter
-                    .is_some_and(|index| parameter.index() == index)
-                    && parameter.is_root()
-                    && argument.is_root()
-            }) || (input.context.parameter.is_none()
-                && input.context.source_root.is_some_and(|root| {
-                    input
-                        .effect
-                        .value_root(argument.value())
-                        .unwrap_or(argument.value())
-                        == root
-                })
-                && argument.is_root());
-            if connected {
-                enqueue_parameters(&mut ParameterEnqueue {
-                    project: input.project,
-                    module: target_module,
-                    function: target_function,
-                    argument_index: argument.index(),
-                    state: input.state,
-                    crossed: input.context.crossed || target_module != input.module,
-                    queue: input.queue,
-                    seen: input.seen,
-                });
-            }
-        }
-    }
-}
-
-fn enqueue_parameters(input: &mut ParameterEnqueue<'_>) {
-    let Some(effect) = input
-        .project
-        .modules()
-        .find(|candidate| candidate.id() == input.module)
-        .and_then(|candidate| candidate.local().effects().get(input.function))
-    else {
-        return;
-    };
-    for parameter in effect.parameters().iter().filter(|parameter| {
-        parameter.parameter_index == input.argument_index && parameter.path.is_empty()
-    }) {
-        let context = Context {
-            module: input.module,
-            function: input.function,
-            parameter: Some(parameter.parameter_index),
-            source_root: None,
-            state: input.state.clone(),
-            crossed: input.crossed,
-        };
-        if input.seen.insert(context.clone()) {
-            input.queue.push_back(context);
-        }
     }
 }
 
@@ -633,28 +598,55 @@ struct Propagation<'a> {
     propagated: &'a mut BTreeSet<FactId>,
     through: Option<FactId>,
     state: &'a State,
-    queue: &'a mut VecDeque<Context>,
-    seen: &'a mut BTreeSet<Context>,
+    worklist: &'a mut ContextWorklist,
 }
 
-struct ParameterEnqueue<'a> {
-    project: &'a ProjectSemanticModel,
-    module: ModuleId,
-    function: FunctionId,
-    argument_index: usize,
-    state: &'a State,
-    crossed: bool,
-    queue: &'a mut VecDeque<Context>,
-    seen: &'a mut BTreeSet<Context>,
+impl Propagation<'_> {
+    fn propagate(&mut self) {
+        for call in self.effect.calls() {
+            if self.through.is_some_and(|event| call.event() > event)
+                || !self.propagated.insert(call.event())
+            {
+                continue;
+            }
+            let Some((target_module, target_function)) = self.project.qualified_function_target(
+                self.module,
+                call.target(),
+                call.provenance(),
+            ) else {
+                continue;
+            };
+            for argument in call.arguments() {
+                let connected = argument.parameter().is_some_and(|parameter| {
+                    self.context
+                        .parameter
+                        .is_some_and(|index| parameter.index() == index)
+                        && parameter.is_root()
+                        && argument.is_root()
+                }) || (self.context.parameter.is_none()
+                    && self.context.source_root.is_some_and(|root| {
+                        self.effect
+                            .value_root(argument.value())
+                            .unwrap_or(argument.value())
+                            == root
+                    })
+                    && argument.is_root());
+                if connected {
+                    self.worklist.enqueue_parameters(
+                        self.project,
+                        target_module,
+                        target_function,
+                        argument.index(),
+                        self.state,
+                        self.context.crossed || target_module != self.module,
+                    );
+                }
+            }
+        }
+    }
 }
 
-fn usage_matches_context(
-    _project: &ProjectSemanticModel,
-    _module: ModuleId,
-    effect: &FunctionEffect,
-    usage: &EffectUse,
-    context: &Context,
-) -> bool {
+fn usage_matches_context(effect: &FunctionEffect, usage: &EffectUse, context: &Context) -> bool {
     match usage {
         EffectUse::PropertyWrite {
             receiver, value, ..
@@ -687,52 +679,8 @@ fn usage_matches_context(
     }
 }
 
-fn source_fact_value(project: &ProjectSemanticModel, module: ModuleId, fact: FactId) -> ValueId {
-    project
-        .modules()
-        .find(|candidate| candidate.id() == module)
-        .and_then(|candidate| {
-            candidate
-                .local()
-                .effects()
-                .iter_effects()
-                .flat_map(|effect| effect.calls().iter())
-                .find(|call| call.event() == fact)
-        })
-        .map_or(ValueId::UNKNOWN, EffectCall::result)
-}
-
 fn chain_matches(chain: Option<&str>, member: &str) -> bool {
     chain.is_some_and(|chain| chain == member || chain.rsplit('.').next() == Some(member))
-}
-
-fn matching_sink(
-    flow: &CompiledObjectFlow,
-    chain: Option<&str>,
-    rooted: bool,
-    argument: usize,
-) -> Option<()> {
-    flow.sinks.iter().find_map(|sink| {
-        sink.member_calls
-            .iter()
-            .any(|member| chain == Some(member.as_str()))
-            .then_some(())
-            .filter(|()| sink.provenance.matches_rooted(rooted))
-            .filter(|()| match &sink.args {
-                crate::api::compiler::CompiledObjectSinkArgs::Any => true,
-                crate::api::compiler::CompiledObjectSinkArgs::Indices(indices) => {
-                    indices.contains(&argument)
-                }
-            })
-    })
-}
-
-fn ready(flow: &CompiledObjectFlow, state: &State) -> bool {
-    if flow.all_requirements_required {
-        state.requirements.len() == flow.requirements.len()
-    } else {
-        !state.requirements.is_empty()
-    }
 }
 
 fn emit(

@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::{
     ExportResolution, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel, ResolvedModule,
-    linked_identity,
 };
 use crate::analysis::matching::LinkedModuleIdentity;
 use crate::analysis::module::ModuleRequestRole;
@@ -58,7 +57,7 @@ impl ProjectSemanticModel {
                             })
                     }
                 };
-                identities.insert(call.result(), linked_identity(resolution));
+                identities.insert(call.result(), resolution.into());
             }
         }
         identities
@@ -86,7 +85,7 @@ impl ProjectSemanticModel {
                 let identity = self.resolve_imported_identity(module, request.specifier(), export);
                 identities.insert(
                     (request.specifier().to_owned(), export.to_owned()),
-                    linked_identity(identity),
+                    identity.into(),
                 );
             }
         }
@@ -108,12 +107,12 @@ impl ProjectSemanticModel {
                         if let Some(resolved) =
                             self.lookup_export(target, &export, &mut BTreeSet::new())
                         {
-                            identities.insert((prefix.clone(), export), linked_identity(resolved));
+                            identities.insert((prefix.clone(), export), resolved.into());
                         }
                     }
                 }
                 other => {
-                    identities.insert((prefix, "*".into()), linked_identity(other));
+                    identities.insert((prefix, "*".into()), other.into());
                 }
             }
         }

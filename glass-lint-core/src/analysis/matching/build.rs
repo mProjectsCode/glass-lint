@@ -5,35 +5,6 @@ use super::{
     canonical_rooted_chain,
 };
 
-struct CallFact<'a> {
-    event: super::super::facts::FactId,
-    span: swc_common::Span,
-    callee_name: Option<&'a String>,
-    call_provenance: &'a SymbolCallProvenance,
-    syntactic_chain: Option<&'a String>,
-    rooted_chain: Option<&'a String>,
-    module_member: Option<&'a SymbolMemberProvenance>,
-    returned_member: Option<&'a (String, String)>,
-    instance_class: Option<&'a (String, String)>,
-    unwrap: Option<&'a super::super::facts::CallUnwrap>,
-}
-
-struct MemberReadFact<'a> {
-    event: super::super::facts::FactId,
-    span: swc_common::Span,
-    syntactic_chain: Option<&'a String>,
-    rooted_chain: Option<&'a String>,
-    module_member: Option<&'a SymbolMemberProvenance>,
-    returned_member: Option<&'a (String, String)>,
-}
-
-struct ConstructionFact<'a> {
-    event: super::super::facts::FactId,
-    span: swc_common::Span,
-    callee_name: Option<&'a String>,
-    provenance: &'a SymbolCallProvenance,
-}
-
 impl MatcherFacts {
     /// Sort and deduplicate every occurrence index after fact collection.
     /// Queries rely on this normalization for deterministic output and binary
@@ -72,56 +43,11 @@ impl MatcherFacts {
 
     fn record_fact(&mut self, fact: &super::super::facts::SemanticFact) {
         match &fact.payload {
-            FactPayload::Call {
-                callee_name,
-                callee_span,
-                call_provenance,
-                syntactic_chain,
-                rooted_chain,
-                module_member,
-                returned_member,
-                instance_class,
-                unwrap,
-                ..
-            } => self.record_call_fact(&CallFact {
-                event: fact.id,
-                span: *callee_span,
-                callee_name: callee_name.as_ref(),
-                call_provenance,
-                syntactic_chain: syntactic_chain.as_ref(),
-                rooted_chain: rooted_chain.as_ref(),
-                module_member: module_member.as_ref(),
-                returned_member: returned_member.as_ref(),
-                instance_class: instance_class.as_ref(),
-                unwrap: unwrap.as_deref(),
-            }),
+            FactPayload::Call { .. } => self.record_call_fact(fact),
 
-            FactPayload::MemberRead {
-                syntactic_chain,
-                rooted_chain,
-                module_member,
-                returned_member,
-                ..
-            } => self.record_member_read_fact(&MemberReadFact {
-                event: fact.id,
-                span: fact.span,
-                syntactic_chain: syntactic_chain.as_ref(),
-                rooted_chain: rooted_chain.as_ref(),
-                module_member: module_member.as_ref(),
-                returned_member: returned_member.as_ref(),
-            }),
+            FactPayload::MemberRead { .. } => self.record_member_read_fact(fact),
 
-            FactPayload::Construction {
-                callee_name,
-                callee_span,
-                provenance,
-                ..
-            } => self.record_construction_fact(&ConstructionFact {
-                event: fact.id,
-                span: *callee_span,
-                callee_name: callee_name.as_ref(),
-                provenance,
-            }),
+            FactPayload::Construction { .. } => self.record_construction_fact(fact),
 
             FactPayload::Import { module } => {
                 self.literals
@@ -167,150 +93,192 @@ impl MatcherFacts {
         }
     }
 
-    fn record_call_fact(&mut self, input: &CallFact<'_>) {
-        if let Some(name) = input.callee_name {
+    fn record_call_fact(&mut self, fact: &super::super::facts::SemanticFact) {
+        let FactPayload::Call {
+            callee_name,
+            callee_span,
+            call_provenance,
+            ..
+        } = &fact.payload
+        else {
+            return;
+        };
+        if let Some(name) = callee_name {
             self.call_indexes
                 .calls
-                .push(name.clone(), input.event, input.span);
+                .push(name.clone(), fact.id, *callee_span);
         }
-        match input.call_provenance {
+        match call_provenance {
             SymbolCallProvenance::Global { name } => {
                 self.call_indexes
                     .global_calls
-                    .push(name.clone(), input.event, input.span);
+                    .push(name.clone(), fact.id, *callee_span);
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
                 self.call_indexes.module_calls.push(
                     (module.clone(), export.clone()),
-                    input.event,
-                    input.span,
+                    fact.id,
+                    *callee_span,
                 );
                 self.members.module_calls.push(
                     (module.clone(), export.clone()),
-                    input.event,
-                    input.span,
+                    fact.id,
+                    *callee_span,
                 );
             }
             SymbolCallProvenance::Local => {}
         }
-        if let Some(chain) = input.syntactic_chain {
-            self.members
-                .calls
-                .push(chain.clone(), input.event, input.span);
+        self.record_call_paths(fact);
+        self.record_call_special_cases(fact);
+    }
+
+    fn record_call_paths(&mut self, fact: &super::super::facts::SemanticFact) {
+        let FactPayload::Call {
+            syntactic_chain,
+            rooted_chain,
+            module_member,
+            returned_member,
+            instance_class,
+            callee_span,
+            ..
+        } = &fact.payload
+        else {
+            return;
+        };
+        let span = *callee_span;
+        if let Some(chain) = syntactic_chain {
+            self.members.calls.push(chain.clone(), fact.id, span);
         }
-        if let Some(chain) = input.rooted_chain {
+        if let Some(chain) = rooted_chain {
             self.members.rooted_calls.push(
                 canonical_rooted_chain(chain).to_string(),
-                input.event,
-                input.span,
+                fact.id,
+                span,
             );
         }
-        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
-            input.module_member
-        {
-            self.call_indexes.module_calls.push(
-                (module.clone(), member.clone()),
-                input.event,
-                input.span,
-            );
-            self.members.module_calls.push(
-                (module.clone(), member.clone()),
-                input.event,
-                input.span,
-            );
+        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
+            self.call_indexes
+                .module_calls
+                .push((module.clone(), member.clone()), fact.id, span);
+            self.members
+                .module_calls
+                .push((module.clone(), member.clone()), fact.id, span);
         }
-        if let Some((source, member)) = input.returned_member {
-            self.members.returned_calls.push(
-                (source.clone(), member.clone()),
-                input.event,
-                input.span,
-            );
+        if let Some((source, member)) = returned_member {
+            self.members
+                .returned_calls
+                .push((source.clone(), member.clone()), fact.id, span);
         }
-        if let Some((module, export)) = input.instance_class
-            && let Some(member_name) = input
-                .syntactic_chain
+        if let Some((module, export)) = instance_class
+            && let Some(member_name) = syntactic_chain
                 .as_ref()
                 .and_then(|chain| chain.rsplit('.').next())
         {
             self.members.instance_calls.push(
                 (module.clone(), export.clone(), member_name.to_string()),
-                input.event,
-                input.span,
+                fact.id,
+                span,
             );
         }
-        if input.rooted_chain.is_some_and(|chain| chain == "Function") {
+    }
+
+    fn record_call_special_cases(&mut self, fact: &super::super::facts::SemanticFact) {
+        let FactPayload::Call {
+            rooted_chain,
+            unwrap,
+            callee_span,
+            ..
+        } = &fact.payload
+        else {
+            return;
+        };
+        if rooted_chain
+            .as_deref()
+            .is_some_and(|chain| chain == "Function")
+        {
             self.call_indexes
                 .global_calls
-                .push("Function".to_string(), input.event, input.span);
+                .push("Function".to_string(), fact.id, *callee_span);
             self.call_indexes
                 .calls
-                .push("Function".to_string(), input.event, input.span);
+                .push("Function".to_string(), fact.id, *callee_span);
         }
-        if let Some(unwrap) = input.unwrap
+        if let Some(unwrap) = unwrap
             && !unwrap.chain.is_empty()
         {
             self.members
                 .calls
-                .push(unwrap.chain.clone(), input.event, input.span);
+                .push(unwrap.chain.clone(), fact.id, *callee_span);
             self.members.rooted_calls.push(
                 canonical_rooted_chain(&unwrap.chain).to_string(),
-                input.event,
-                input.span,
+                fact.id,
+                *callee_span,
             );
         }
     }
 
-    fn record_member_read_fact(&mut self, input: &MemberReadFact<'_>) {
-        if let Some(chain) = input.syntactic_chain {
-            self.members
-                .reads
-                .push(chain.clone(), input.event, input.span);
+    fn record_member_read_fact(&mut self, fact: &super::super::facts::SemanticFact) {
+        let FactPayload::MemberRead {
+            syntactic_chain,
+            rooted_chain,
+            module_member,
+            returned_member,
+            ..
+        } = &fact.payload
+        else {
+            return;
+        };
+        if let Some(chain) = syntactic_chain {
+            self.members.reads.push(chain.clone(), fact.id, fact.span);
         }
-        if let Some(chain) = input.rooted_chain {
+        if let Some(chain) = rooted_chain {
             self.members.rooted_reads.push(
                 canonical_rooted_chain(chain).to_string(),
-                input.event,
-                input.span,
+                fact.id,
+                fact.span,
             );
         }
-        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
-            input.module_member
-        {
-            self.members.module_reads.push(
-                (module.clone(), member.clone()),
-                input.event,
-                input.span,
-            );
+        if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
+            self.members
+                .module_reads
+                .push((module.clone(), member.clone()), fact.id, fact.span);
             self.constructions
                 .classes
-                .push(member.clone(), input.event, input.span);
+                .push(member.clone(), fact.id, fact.span);
         }
-        if let Some((source, member)) = input.returned_member {
-            self.members.returned_reads.push(
-                (source.clone(), member.clone()),
-                input.event,
-                input.span,
-            );
+        if let Some((source, member)) = returned_member {
+            self.members
+                .returned_reads
+                .push((source.clone(), member.clone()), fact.id, fact.span);
         }
     }
 
-    fn record_construction_fact(&mut self, input: &ConstructionFact<'_>) {
-        if let Some(name) = input.callee_name {
+    fn record_construction_fact(&mut self, fact: &super::super::facts::SemanticFact) {
+        let FactPayload::Construction {
+            callee_name,
+            callee_span,
+            provenance,
+            ..
+        } = &fact.payload
+        else {
+            return;
+        };
+        if let Some(name) = callee_name {
             self.constructions
                 .constructors
-                .push(name.clone(), input.event, input.span);
+                .push(name.clone(), fact.id, *callee_span);
         }
-        match input.provenance {
+        match provenance {
             SymbolCallProvenance::Global { name } => {
                 self.constructions
                     .global_constructors
-                    .push(name.clone(), input.event, input.span);
+                    .push(name.clone(), fact.id, *callee_span);
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
                 self.constructions.module_constructors.push(
                     (module.clone(), export.clone()),
-                    input.event,
-                    input.span,
+                    fact.id,
+                    *callee_span,
                 );
             }
             SymbolCallProvenance::Local => {}

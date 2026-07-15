@@ -13,5 +13,5 @@ pub(crate) fn classify_compiled_api_usage(
     selected: &BTreeSet<usize>,
 ) -> BTreeMap<ModuleId, ApiClassificationResult> {
     debug_assert_eq!(catalog.rules.len(), rules.len());
-    crate::analysis::classify_project(project, catalog, rules, selected)
+    project.classify(catalog, rules, selected)
 }

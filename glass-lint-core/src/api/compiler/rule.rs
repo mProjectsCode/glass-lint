@@ -35,6 +35,27 @@ impl CompiledObjectFlow {
         self.symbol.clone()
     }
 
+    pub(crate) fn sink_matches(&self, chain: Option<&str>, rooted: bool, argument: usize) -> bool {
+        self.sinks.iter().any(|sink| {
+            sink.member_calls
+                .iter()
+                .any(|member| chain == Some(member.as_str()))
+                && sink.provenance.matches_rooted(rooted)
+                && match &sink.args {
+                    CompiledObjectSinkArgs::Any => true,
+                    CompiledObjectSinkArgs::Indices(indices) => indices.contains(&argument),
+                }
+        })
+    }
+
+    pub(crate) fn requirements_ready(&self, completed: usize) -> bool {
+        if self.all_requirements_required {
+            completed == self.requirements.len()
+        } else {
+            completed != 0
+        }
+    }
+
     pub(crate) fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
         let (requirements, all_requirements_required) = match flow.condition.as_ref() {
             Some(FlowCondition::AnyOf(events)) => (

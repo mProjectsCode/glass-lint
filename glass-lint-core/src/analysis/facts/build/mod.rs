@@ -5,6 +5,7 @@
 //! each semantic role.  It does not receive matchers or populate evidence.
 
 mod arguments;
+mod assignments;
 mod call_results;
 mod calls;
 mod control;

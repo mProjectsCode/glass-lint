@@ -1,11 +1,66 @@
 use super::{
-    BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Expr, ExprOrSpread, FactBuilder, FactKind,
-    FactPayload, MemberExpr, OptChainBase, ParameterBinding, Pat, PathId, PathSegment, Span,
-    Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId, ValueProjection, VisitWith,
-    member_prop_name,
+    BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
+    FactKind, FactPayload, MemberExpr, OptChainBase, ParameterBinding, Pat, PathId, PathSegment,
+    Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId, ValueProjection,
+    VisitWith, effective_callee_expr, member_prop_name,
 };
 
 impl FactBuilder<'_> {
+    pub(super) fn record_call_expr(&mut self, call: &CallExpr) {
+        self.record_module_call_request(call);
+        let Callee::Expr(callee_expr) = &call.callee else {
+            let result = if matches!(call.callee, Callee::Import(_)) {
+                self.resolver.resolve_expr(&Expr::Call(call.clone())).id
+            } else {
+                self.call_result(call.span())
+            };
+            let args = self.args_info(&call.args);
+            self.emit(
+                FactKind::Call,
+                call.span(),
+                FactPayload::Call {
+                    callee: ValueId::UNKNOWN,
+                    receiver: None,
+                    result,
+                    callee_span: call.span,
+                    callee_name: None,
+                    call_provenance: self.resolver.resolve_expr(&Expr::Call(call.clone())).call,
+                    syntactic_chain: None,
+                    rooted_chain: None,
+                    module_member: None,
+                    returned_member: None,
+                    instance_class: None,
+                    target_function: None,
+                    args,
+                    unwrap: None,
+                },
+            );
+            return;
+        };
+
+        // Detect .call()/.apply() wrapper patterns before ordinary call
+        // resolution. The wrapper fact retains the effective target and
+        // arguments so all consumers agree on the same invocation shape.
+        if let Expr::Member(member) = effective_callee_expr(callee_expr)
+            && matches!(
+                member_prop_name(&member.prop).as_deref(),
+                Some("call" | "apply")
+            )
+        {
+            self.visit_callee_children(callee_expr);
+            call.args.visit_with(self);
+            self.try_emit_callable_wrapper(member, call);
+            self.emit_require_import(call);
+            return;
+        }
+
+        let resolved = self.resolve_call_callee(callee_expr);
+        self.visit_callee_children(callee_expr);
+        call.args.visit_with(self);
+        self.emit_call(call.span, resolved, &call.args, None);
+        self.emit_require_import(call);
+    }
+
     pub(super) fn emit_call(
         &mut self,
         span: Span,

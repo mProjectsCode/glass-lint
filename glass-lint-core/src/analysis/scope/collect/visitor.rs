@@ -1,13 +1,14 @@
 use super::{
-    AliasCollector, ArrowExpr, AssignExpr, AssignTarget, BindingProvenance, BlockStmt, CallExpr,
-    Callee, CatchClause, ClassDecl, Expr, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function,
-    ImportDecl, ImportSpecifier, ObjectPatProp, Pat, PropertyAliasAssignment,
-    RootedPropertyMutation, ScopeKind, SimpleAssignTarget, Spanned, SwitchStmt, VarDecl,
-    VarDeclKind, Visit, VisitWith, WithStmt, function_prototype_builtin, member_chain,
-    member_prop_name, member_root_ident, module_export_name, prop_name,
+    AliasCollector, ArrowExpr, AssignExpr, AssignTarget, BindingProvenance, BlockStmt, CatchClause,
+    ClassDecl, Expr, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, ImportDecl, ImportSpecifier,
+    ObjectPatProp, Pat, PropertyAliasAssignment, RootedPropertyMutation, ScopeKind,
+    SimpleAssignTarget, Spanned, SwitchStmt, VarDecl, VarDeclKind, Visit, VisitWith, WithStmt,
+    function_prototype_builtin, member_chain, member_prop_name, member_root_ident,
+    module_export_name,
 };
 
-use swc_ecma_ast::VarDeclarator;
+use super::super::super::syntax::prop_name;
+use swc_ecma_ast::{CallExpr, Callee, VarDeclarator};
 
 impl Visit for AliasCollector {
     fn visit_import_decl(&mut self, import: &ImportDecl) {

@@ -5,16 +5,15 @@
 //! regions are computed once for every file.
 
 use super::{
-    ArrowExpr, AssignExpr, BinExpr, BinaryOp, CallExpr, Callee, ClassDecl, ClassExpr, CondExpr,
-    ControlKind, DoWhileStmt, ExportDecl, Expr, FactBuilder, FactKind, FactPayload, FnDecl,
-    ForInStmt, ForOfStmt, ForStmt, Function, FunctionBoundary, Ident, IfStmt, ImportDecl,
-    MemberExpr, NewExpr, OptChainBase, OptChainExpr, Pat, Spanned, Str, SwitchStmt,
+    ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, DoWhileStmt, ExportDecl, Expr,
+    FactBuilder, FactKind, FactPayload, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, Ident,
+    IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase, OptChainExpr, Spanned, Str, SwitchStmt,
     SymbolCallProvenance, SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr,
     ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr, member_prop_name,
 };
-use crate::analysis::module::{ImportedBinding, ModuleExport, ModuleRequestRole, ReExportBinding};
+use crate::analysis::module::{ImportedBinding, ModuleRequestRole};
 use crate::project::ResolutionRequestKind;
-use swc_ecma_ast::{DefaultDecl, ExportDefaultExpr, ExportSpecifier};
+use swc_ecma_ast::ExportDefaultExpr;
 
 impl Visit for FactBuilder<'_> {
     fn visit_ident(&mut self, ident: &Ident) {
@@ -83,103 +82,7 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
-        if assignment.op == swc_ecma_ast::AssignOp::Assign
-            && let swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Ident(
-                ident,
-            )) = &assignment.left
-            && (self
-                .resolver
-                .is_unshadowed_commonjs_name(&ident.id, "exports")
-                || self
-                    .resolver
-                    .is_unshadowed_commonjs_name(&ident.id, "module"))
-        {
-            self.interface.mark_unknown_exports();
-        }
-        self.record_commonjs_export(assignment);
-        let source = self.value_for_expr(&assignment.right);
-        match &assignment.left {
-            swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Ident(ident)) => {
-                assignment.right.visit_with(self);
-                let target = self.resolver.resolve_ident(&ident.id).id;
-                self.emit(
-                    FactKind::Assignment,
-                    assignment.span(),
-                    FactPayload::Assignment {
-                        target,
-                        source,
-                        receiver: None,
-                    },
-                );
-            }
-            swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Member(
-                member,
-            )) => {
-                // Evaluate the member reference (including computed keys) and
-                // the RHS before emitting the write/kill fact.
-                member.obj.visit_with(self);
-                member.prop.visit_with(self);
-                let resolved_member = self.resolver.resolve_member(member);
-                self.emit(
-                    FactKind::MemberRead,
-                    member.span(),
-                    FactPayload::MemberRead {
-                        value: resolved_member.id,
-                        syntactic_chain: self.resolver.member_chain(member),
-                        rooted_chain: resolved_member.rooted_chain.clone(),
-                        module_member: resolved_member.module_member.clone(),
-                        returned_member: resolved_member.returned_member.clone(),
-                    },
-                );
-                assignment.right.visit_with(self);
-                let target = resolved_member.id;
-                let property = member_prop_name(&member.prop);
-                if assignment.op == swc_ecma_ast::AssignOp::Assign {
-                    self.emit(
-                        FactKind::PropertyWrite,
-                        assignment.span(),
-                        FactPayload::PropertyWrite {
-                            target,
-                            receiver: self.resolver.resolve_expr(&member.obj).id,
-                            source,
-                            property,
-                            static_value: self.resolver.static_string_expr(&assignment.right),
-                        },
-                    );
-                } else {
-                    self.emit(
-                        FactKind::Assignment,
-                        assignment.span(),
-                        FactPayload::Assignment {
-                            target,
-                            source: ValueId::UNKNOWN,
-                            receiver: Some(self.resolver.resolve_expr(&member.obj).id),
-                        },
-                    );
-                }
-            }
-            swc_ecma_ast::AssignTarget::Pat(pattern) => {
-                // Destructuring targets do not have one value identity. Emit
-                // conservative writes for each proven target so flow state is
-                // invalidated without inventing a shared source value.
-                assignment.right.visit_with(self);
-                let pattern: Pat = pattern.clone().into();
-                let mut targets = Vec::new();
-                self.pattern_write_targets(&pattern, &mut targets);
-                for (target, receiver) in targets {
-                    self.emit(
-                        FactKind::Assignment,
-                        assignment.span(),
-                        FactPayload::Assignment {
-                            target,
-                            source: ValueId::UNKNOWN,
-                            receiver,
-                        },
-                    );
-                }
-            }
-            swc_ecma_ast::AssignTarget::Simple(_) => {}
-        }
+        self.record_assignment(assignment);
     }
 
     fn visit_update_expr(&mut self, update: &UpdateExpr) {
@@ -219,58 +122,7 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
-        self.record_module_call_request(call);
-        let Callee::Expr(callee_expr) = &call.callee else {
-            let result = if matches!(call.callee, Callee::Import(_)) {
-                self.resolver.resolve_expr(&Expr::Call(call.clone())).id
-            } else {
-                self.call_result(call.span())
-            };
-            let args = self.args_info(&call.args);
-            self.emit(
-                FactKind::Call,
-                call.span(),
-                FactPayload::Call {
-                    callee: ValueId::UNKNOWN,
-                    receiver: None,
-                    result,
-                    callee_span: call.span,
-                    callee_name: None,
-                    call_provenance: self.resolver.resolve_expr(&Expr::Call(call.clone())).call,
-                    syntactic_chain: None,
-                    rooted_chain: None,
-                    module_member: None,
-                    returned_member: None,
-                    instance_class: None,
-                    target_function: None,
-                    args,
-                    unwrap: None,
-                },
-            );
-            return;
-        };
-
-        // Detect .call()/.apply() wrapper patterns before ordinary call
-        // resolution. The wrapper fact retains the effective target and
-        // arguments so all consumers agree on the same invocation shape.
-        if let Expr::Member(member) = effective_callee_expr(callee_expr)
-            && matches!(
-                member_prop_name(&member.prop).as_deref(),
-                Some("call" | "apply")
-            )
-        {
-            self.visit_callee_children(callee_expr);
-            call.args.visit_with(self);
-            self.try_emit_callable_wrapper(member, call);
-            self.emit_require_import(call);
-            return;
-        }
-
-        let resolved = self.resolve_call_callee(callee_expr);
-        self.visit_callee_children(callee_expr);
-        call.args.visit_with(self);
-        self.emit_call(call.span, resolved, &call.args, None);
-        self.emit_require_import(call);
+        self.record_call_expr(call);
     }
 
     fn visit_opt_chain_expr(&mut self, chain: &OptChainExpr) {
@@ -470,275 +322,68 @@ impl Visit for FactBuilder<'_> {
         template.visit_children_with(self);
     }
 
-    fn visit_class_decl(&mut self, class_decl: &ClassDecl) {
-        self.record_local(class_decl.ident.sym.to_string());
-        let name = class_decl.ident.sym.to_string();
-        let provenance = class_decl
-            .class
-            .super_class
-            .as_deref()
-            .and_then(|expr| self.resolver.class_provenance(expr));
-        self.emit(
-            FactKind::Declaration,
-            class_decl.ident.span(),
-            FactPayload::Class {
-                name,
-                provenance: provenance.clone(),
-            },
-        );
-        self.traversal.enter_class(provenance);
-        class_decl.visit_children_with(self);
-        self.traversal.leave_class();
+    fn visit_class_decl(&mut self, class_decl: &swc_ecma_ast::ClassDecl) {
+        self.record_class_decl(class_decl);
     }
 
-    fn visit_class_expr(&mut self, class_expr: &ClassExpr) {
-        let provenance = class_expr
-            .class
-            .super_class
-            .as_deref()
-            .and_then(|expr| self.resolver.class_provenance(expr));
-        if let Some(ident) = &class_expr.ident {
-            self.emit(
-                FactKind::Declaration,
-                ident.span(),
-                FactPayload::Class {
-                    name: ident.sym.to_string(),
-                    provenance: provenance.clone(),
-                },
-            );
-        }
-        self.traversal.enter_class(provenance);
-        class_expr.visit_children_with(self);
-        self.traversal.leave_class();
+    fn visit_class_expr(&mut self, class_expr: &swc_ecma_ast::ClassExpr) {
+        self.record_class_expr(class_expr);
     }
 
     fn visit_bin_expr(&mut self, binary: &BinExpr) {
-        if binary.op == BinaryOp::InstanceOf {
-            let provenance = self.resolver.class_provenance(&binary.right);
-            self.emit(
-                FactKind::Reference,
-                binary.right.span(),
-                FactPayload::Class {
-                    name: String::new(),
-                    provenance,
-                },
-            );
-        }
-        binary.visit_children_with(self);
+        self.record_instanceof(binary);
     }
 
     fn visit_fn_decl(&mut self, function: &FnDecl) {
-        self.record_local(function.ident.sym.to_string());
-        self.traversal.enter_function();
-        function.visit_children_with(self);
-        self.traversal.leave_function();
+        self.record_function_decl(function);
     }
 
     fn visit_function(&mut self, function: &Function) {
-        // Function boundaries let flow analysis save and restore caller state;
-        // parameters are captured on the enter and exit markers themselves.
-        self.emit_function_fact(
-            function.span(),
-            function
-                .params
-                .iter()
-                .enumerate()
-                .map(|(index, p)| (index, p.pat.clone())),
-            FunctionBoundary::Enter,
-        );
-        self.traversal.enter_function();
-        function.visit_children_with(self);
-        self.traversal.leave_function();
-        self.emit_function_fact(
-            function.span(),
-            function
-                .params
-                .iter()
-                .enumerate()
-                .map(|(index, p)| (index, p.pat.clone())),
-            FunctionBoundary::Exit,
-        );
+        self.record_function(function);
     }
 
     fn visit_arrow_expr(&mut self, arrow: &ArrowExpr) {
-        self.emit_function_fact(
-            arrow.span(),
-            arrow.params.iter().cloned().enumerate(),
-            FunctionBoundary::Enter,
-        );
-        arrow.body.visit_with(self);
-        self.emit_function_fact(
-            arrow.span(),
-            arrow.params.iter().cloned().enumerate(),
-            FunctionBoundary::Exit,
-        );
+        self.record_arrow(arrow);
     }
 
     fn visit_class_method(&mut self, method: &swc_ecma_ast::ClassMethod) {
-        self.emit_function_fact(
-            method.function.span(),
-            method
-                .function
-                .params
-                .iter()
-                .enumerate()
-                .map(|(index, parameter)| (index, parameter.pat.clone())),
-            FunctionBoundary::Enter,
-        );
-        if method.is_static {
-            self.traversal.enter_static_method();
-        }
-        // Visit only the method body so the method gets one function boundary
-        // pair, rather than a nested duplicate Function walk.
-        if let Some(body) = method.function.body.as_ref() {
-            body.visit_with(self);
-        }
-        self.emit_function_fact(
-            method.function.span(),
-            method
-                .function
-                .params
-                .iter()
-                .enumerate()
-                .map(|(index, parameter)| (index, parameter.pat.clone())),
-            FunctionBoundary::Exit,
-        );
-        if method.is_static {
-            self.traversal.leave_static_method();
-        }
+        self.record_class_method(method);
     }
 
     fn visit_if_stmt(&mut self, stmt: &IfStmt) {
-        // Control markers are balanced around child traversal. The projector
-        // uses their order to join only environments that reach each exit.
-        let region = self.next_control_region();
-        self.emit_control(stmt.span(), ControlKind::BranchStart, region);
-        stmt.test.visit_with(self);
-        self.emit_control(stmt.cons.span(), ControlKind::BranchThen, region);
-        stmt.cons.visit_with(self);
-        if let Some(alt) = &stmt.alt {
-            self.emit_control(alt.span(), ControlKind::BranchElse, region);
-            alt.visit_with(self);
-        }
-        self.emit_control(stmt.span(), ControlKind::BranchEnd, region);
+        self.record_if(stmt);
     }
 
     fn visit_for_stmt(&mut self, stmt: &ForStmt) {
-        if let Some(init) = &stmt.init {
-            init.visit_with(self);
-        }
-        let region = self.next_control_region();
-        self.emit_control(
-            stmt.span(),
-            ControlKind::LoopStart { guaranteed: false },
-            region,
-        );
-        // The test is evaluated before the first iteration. The update is
-        // evaluated after the body, matching JavaScript evaluation order.
-        if let Some(test) = &stmt.test {
-            test.visit_with(self);
-        }
-        stmt.body.visit_with(self);
-        if let Some(update) = &stmt.update {
-            self.emit_control(stmt.span(), ControlKind::LoopUpdate, region);
-            update.visit_with(self);
-        }
-        self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
+        self.record_for(stmt);
     }
 
     fn visit_for_in_stmt(&mut self, stmt: &ForInStmt) {
-        let region = self.next_control_region();
-        self.emit_control(
-            stmt.span(),
-            ControlKind::LoopStart { guaranteed: false },
-            region,
-        );
-        stmt.left.visit_with(self);
-        stmt.right.visit_with(self);
-        stmt.body.visit_with(self);
-        self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
+        self.record_for_in(stmt);
     }
 
     fn visit_for_of_stmt(&mut self, stmt: &ForOfStmt) {
-        let region = self.next_control_region();
-        self.emit_control(
-            stmt.span(),
-            ControlKind::LoopStart { guaranteed: false },
-            region,
-        );
-        stmt.left.visit_with(self);
-        stmt.right.visit_with(self);
-        stmt.body.visit_with(self);
-        self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
+        self.record_for_of(stmt);
     }
 
     fn visit_while_stmt(&mut self, stmt: &WhileStmt) {
-        let region = self.next_control_region();
-        self.emit_control(
-            stmt.span(),
-            ControlKind::LoopStart { guaranteed: false },
-            region,
-        );
-        stmt.test.visit_with(self);
-        stmt.body.visit_with(self);
-        self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
+        self.record_while(stmt);
     }
 
     fn visit_do_while_stmt(&mut self, stmt: &DoWhileStmt) {
-        let region = self.next_control_region();
-        self.emit_control(
-            stmt.span(),
-            ControlKind::LoopStart { guaranteed: true },
-            region,
-        );
-        stmt.body.visit_with(self);
-        stmt.test.visit_with(self);
-        self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
+        self.record_do_while(stmt);
     }
 
     fn visit_switch_stmt(&mut self, stmt: &SwitchStmt) {
-        let region = self.next_control_region();
-        self.emit_control(stmt.span(), ControlKind::SwitchStart, region);
-        stmt.discriminant.visit_with(self);
-        for case in &stmt.cases {
-            self.emit_control(
-                case.span(),
-                ControlKind::SwitchCase {
-                    is_default: case.test.is_none(),
-                },
-                region,
-            );
-            case.visit_with(self);
-        }
-        self.emit_control(stmt.span(), ControlKind::SwitchEnd, region);
+        self.record_switch(stmt);
     }
 
     fn visit_try_stmt(&mut self, stmt: &TryStmt) {
-        // Try/catch/finally markers preserve separate normal and abrupt exits;
-        // do not collapse them into one linear region here.
-        let region = self.next_control_region();
-        self.emit_control(stmt.span(), ControlKind::TryStart, region);
-        stmt.block.visit_with(self);
-        if let Some(handler) = &stmt.handler {
-            self.emit_control(handler.span(), ControlKind::CatchStart, region);
-            handler.visit_with(self);
-        }
-        if let Some(finalizer) = &stmt.finalizer {
-            self.emit_control(finalizer.span(), ControlKind::FinallyStart, region);
-            finalizer.visit_with(self);
-        }
-        self.emit_control(stmt.span(), ControlKind::TryEnd, region);
+        self.record_try(stmt);
     }
 
     fn visit_cond_expr(&mut self, expr: &CondExpr) {
-        let region = self.next_control_region();
-        self.emit_control(expr.span(), ControlKind::BranchStart, region);
-        expr.test.visit_with(self);
-        self.emit_control(expr.cons.span(), ControlKind::BranchThen, region);
-        expr.cons.visit_with(self);
-        self.emit_control(expr.alt.span(), ControlKind::BranchElse, region);
-        expr.alt.visit_with(self);
-        self.emit_control(expr.span(), ControlKind::BranchEnd, region);
+        self.record_conditional(expr);
     }
 
     fn visit_break_stmt(&mut self, stmt: &swc_ecma_ast::BreakStmt) {
@@ -774,177 +419,18 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_named_export(&mut self, export: &swc_ecma_ast::NamedExport) {
-        if export.type_only {
-            return;
-        }
-        let Some(source) = export.src.as_ref() else {
-            for specifier in &export.specifiers {
-                if let ExportSpecifier::Named(named) = specifier
-                    && !named.is_type_only
-                {
-                    let original = crate::analysis::syntax::module_export_name(&named.orig);
-                    let exported = named.exported.as_ref().map_or_else(
-                        || original.clone(),
-                        crate::analysis::syntax::module_export_name,
-                    );
-                    if let swc_ecma_ast::ModuleExportName::Ident(ident) = &named.orig
-                        && let Some(id) = self
-                            .resolver
-                            .function_id_for_expr(&Expr::Ident(ident.clone()))
-                    {
-                        self.interface.add_function_export(exported.clone(), id);
-                    }
-                    self.interface
-                        .add_export(exported, ModuleExport::Local { name: original });
-                }
-            }
-            return;
-        };
-        let specifiers = export
-            .specifiers
-            .iter()
-            .filter(|specifier| {
-                !matches!(specifier, ExportSpecifier::Named(named) if named.is_type_only)
-            })
-            .collect::<Vec<_>>();
-        if specifiers.is_empty() {
-            return;
-        }
-        let request = self.interface.add_request(
-            source.span,
-            ResolutionRequestKind::Import,
-            source.value.to_string_lossy(),
-            ModuleRequestRole::ReExport {
-                bindings: export
-                    .specifiers
-                    .iter()
-                    .filter(|specifier| {
-                        !matches!(specifier, ExportSpecifier::Named(named) if named.is_type_only)
-                    })
-                    .map(|specifier| match specifier {
-                        ExportSpecifier::Named(named) => ReExportBinding::new(
-                            crate::analysis::syntax::module_export_name(&named.orig),
-                            named.exported.as_ref().map_or_else(
-                                || crate::analysis::syntax::module_export_name(&named.orig),
-                                crate::analysis::syntax::module_export_name,
-                            ), false),
-                        ExportSpecifier::Namespace(namespace) => ReExportBinding::new(
-                            "*".into(),
-                            crate::analysis::syntax::module_export_name(&namespace.name), true),
-                        ExportSpecifier::Default(default) => ReExportBinding::new(
-                            "default".into(), default.exported.sym.to_string(), false),
-                    })
-                    .collect(),
-            },
-        );
-        for specifier in specifiers {
-            match specifier {
-                ExportSpecifier::Named(named) => {
-                    let original = crate::analysis::syntax::module_export_name(&named.orig);
-                    let exported = named.exported.as_ref().map_or_else(
-                        || original.clone(),
-                        crate::analysis::syntax::module_export_name,
-                    );
-                    self.interface.add_export(
-                        exported,
-                        ModuleExport::ReExport {
-                            request,
-                            imported: original,
-                        },
-                    );
-                }
-                ExportSpecifier::Namespace(namespace) => self.interface.add_export(
-                    crate::analysis::syntax::module_export_name(&namespace.name),
-                    ModuleExport::Namespace { request },
-                ),
-                ExportSpecifier::Default(default) => self.interface.add_export(
-                    default.exported.sym.to_string(),
-                    ModuleExport::ReExport {
-                        request,
-                        imported: "default".into(),
-                    },
-                ),
-            }
-        }
+        self.record_named_export(export);
     }
 
     fn visit_export_all(&mut self, export: &swc_ecma_ast::ExportAll) {
-        if export.type_only {
-            return;
-        }
-        let request = self.interface.add_request(
-            export.src.span,
-            ResolutionRequestKind::Import,
-            export.src.value.to_string_lossy(),
-            ModuleRequestRole::StarExport,
-        );
-        self.interface.add_star_export(request);
+        self.record_export_all(export);
     }
 
     fn visit_export_default_expr(&mut self, export: &ExportDefaultExpr) {
-        if let Expr::Ident(ident) = &*export.expr {
-            if let Some(id) = self
-                .resolver
-                .function_id_for_expr(&Expr::Ident(ident.clone()))
-            {
-                self.interface.add_function_export("default", id);
-            }
-            self.interface.add_export(
-                "default",
-                ModuleExport::Local {
-                    name: ident.sym.to_string(),
-                },
-            );
-        } else {
-            if let Some(id) = self.resolver.function_id_for_span(export.expr.span()) {
-                self.interface.add_function_export("default", id);
-            }
-            self.interface.add_export("default", ModuleExport::Value);
-        }
-        export.expr.visit_with(self);
+        self.record_default_expr(export);
     }
 
     fn visit_export_default_decl(&mut self, export: &swc_ecma_ast::ExportDefaultDecl) {
-        match &export.decl {
-            DefaultDecl::Fn(function) => {
-                if let Some(ident) = &function.ident {
-                    self.record_local(ident.sym.to_string());
-                    if let Some(id) = self
-                        .resolver
-                        .function_id_for_expr(&Expr::Ident(ident.clone()))
-                    {
-                        self.interface.add_function_export("default", id);
-                    }
-                    self.interface.add_export(
-                        "default",
-                        ModuleExport::Local {
-                            name: ident.sym.to_string(),
-                        },
-                    );
-                } else {
-                    if let Some(id) = self.resolver.function_id_for_span(function.function.span()) {
-                        self.interface.add_function_export("default", id);
-                    }
-                    self.interface.add_export("default", ModuleExport::Value);
-                }
-            }
-            DefaultDecl::Class(class) => {
-                if let Some(ident) = &class.ident {
-                    self.record_local(ident.sym.to_string());
-                    self.interface.add_export(
-                        "default",
-                        ModuleExport::Local {
-                            name: ident.sym.to_string(),
-                        },
-                    );
-                } else {
-                    self.interface.add_export("default", ModuleExport::Value);
-                }
-            }
-            DefaultDecl::TsInterfaceDecl(_) => {
-                self.interface.add_export("default", ModuleExport::Unknown);
-            }
-        }
-        export.decl.visit_with(self);
+        self.record_default_decl(export);
     }
 }

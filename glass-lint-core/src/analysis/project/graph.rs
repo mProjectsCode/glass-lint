@@ -9,7 +9,24 @@ use crate::analysis::module::ModuleRequestRole;
 impl ProjectSemanticModel {
     pub(in crate::analysis) fn build_graph_and_exports(&mut self) {
         self.collect_graph_edges();
+        self.resolve_export_table();
+        self.validate_imported_exports();
+        self.diagnostics.sort_by(|left, right| {
+            (
+                &left.code,
+                left.location.as_ref().map(|l| &l.path),
+                left.location.as_ref().map(|l| &l.range),
+            )
+                .cmp(&(
+                    &right.code,
+                    right.location.as_ref().map(|l| &l.path),
+                    right.location.as_ref().map(|l| &l.range),
+                ))
+        });
+        self.diagnostics.dedup();
+    }
 
+    fn resolve_export_table(&mut self) {
         // Resolve exports in a bounded, monotone pass.  The fixed point is
         // intentionally conservative: a cycle that does not stabilize stays
         // unknown instead of depending on module iteration order.
@@ -52,7 +69,9 @@ impl ProjectSemanticModel {
                 location: None,
             });
         }
+    }
 
+    fn validate_imported_exports(&mut self) {
         for module in self.modules.values() {
             for request in module.local().interface().requests() {
                 let key = crate::project::ResolutionRequestKey {
@@ -95,26 +114,13 @@ impl ProjectSemanticModel {
                 }
             }
         }
-        self.diagnostics.sort_by(|left, right| {
-            (
-                &left.code,
-                left.location.as_ref().map(|l| &l.path),
-                left.location.as_ref().map(|l| &l.range),
-            )
-                .cmp(&(
-                    &right.code,
-                    right.location.as_ref().map(|l| &l.path),
-                    right.location.as_ref().map(|l| &l.range),
-                ))
-        });
-        self.diagnostics.dedup();
     }
 
     fn collect_graph_edges(&mut self) {
         let mut edge_budget = crate::budget::Budget::new(MAX_GRAPH_EDGES);
         for module in self.modules.values() {
             self.graph.ensure_node(module.id());
-            self.diagnostics.extend(module_diagnostics(module));
+            self.diagnostics.extend(module.diagnostics());
             for request in Self::authored_requests(module) {
                 let Some(resolution) = self.resolutions.get(&request.key) else {
                     if is_internal_request(&request.request) {
@@ -208,31 +214,6 @@ impl ProjectSemanticModel {
             }),
         }
     }
-}
-
-fn module_diagnostics(module: &super::super::ProjectModule) -> Vec<crate::ProjectDiagnostic> {
-    let mut diagnostics = Vec::new();
-    if module.local().effects().budget_exhausted() {
-        diagnostics.push(crate::ProjectDiagnostic {
-            code: "effect_size_budget_exhausted".into(),
-            message: format!(
-                "function-effect extraction exceeded a bounded budget in `{}`",
-                module.path()
-            ),
-            location: None,
-        });
-    }
-    if module.local().interface().is_unknown() {
-        diagnostics.push(crate::ProjectDiagnostic {
-            code: "unsupported_commonjs_exports".into(),
-            message: format!(
-                "CommonJS export shape in `{}` is dynamic or ambiguous",
-                module.path()
-            ),
-            location: None,
-        });
-    }
-    diagnostics
 }
 
 fn strongly_connected_components(

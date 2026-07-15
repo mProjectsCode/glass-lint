@@ -39,7 +39,7 @@ impl LocalModuleModel {
                 | module::ModuleExport::Unknown => None,
             })
             .collect();
-        let effects = flow::effect::collect(facts.stream());
+        let effects = flow::effect::FunctionEffects::collect(facts.stream());
         Self {
             facts,
             export_origins,
@@ -98,5 +98,30 @@ impl ProjectModule {
     }
     pub(crate) fn local(&self) -> &LocalModuleModel {
         &self.local
+    }
+
+    pub(in crate::analysis) fn diagnostics(&self) -> Vec<crate::ProjectDiagnostic> {
+        let mut diagnostics = Vec::new();
+        if self.local.effects().budget_exhausted() {
+            diagnostics.push(crate::ProjectDiagnostic {
+                code: "effect_size_budget_exhausted".into(),
+                message: format!(
+                    "function-effect extraction exceeded a bounded budget in `{}`",
+                    self.path
+                ),
+                location: None,
+            });
+        }
+        if self.local.interface().is_unknown() {
+            diagnostics.push(crate::ProjectDiagnostic {
+                code: "unsupported_commonjs_exports".into(),
+                message: format!(
+                    "CommonJS export shape in `{}` is dynamic or ambiguous",
+                    self.path
+                ),
+                location: None,
+            });
+        }
+        diagnostics
     }
 }
