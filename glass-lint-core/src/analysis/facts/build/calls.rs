@@ -98,7 +98,7 @@ impl FactBuilder<'_> {
             })
             .unwrap_or_default();
         effective_args.extend(self.args_info(args));
-        
+
         self.emit(
             FactKind::Call,
             span,

@@ -10,8 +10,6 @@ use super::matcher::{
 const MAX_ARGUMENT_INDEX: usize = 1 << 20;
 const MAX_EXPRESSION_NODES: usize = 4096;
 
-// TODO: these free floating methods should probably me member methods on the structs they validate
-
 pub(super) fn validate(matcher: &ApiMatcher) -> Result<(), String> {
     for call in &matcher.calls {
         validate_name_at(&call.name, "call name")?;

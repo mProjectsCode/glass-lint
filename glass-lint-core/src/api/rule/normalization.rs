@@ -12,68 +12,66 @@ use super::matcher::{
     normalize_strings,
 };
 
-// TODO: this should be a member method on ApiMatcher
-pub(super) fn normalize(mut matcher: ApiMatcher) -> ApiMatcher {
-    normalize_arguments(&mut matcher);
-    for call in &mut matcher.calls {
-        call.normalize();
-    }
-    matcher.calls.retain(|call| {
-        !call.name.is_empty()
-            && match &call.provenance {
-                CallProvenance::Any | CallProvenance::Global => true,
-                CallProvenance::ModuleExport { module } => !module.is_empty(),
-            }
-    });
-    matcher
-        .calls
-        .sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
-    matcher.calls.dedup();
-
-    for member_call in &mut matcher.member_calls {
-        member_call.normalize();
-    }
-    matcher.member_calls.retain(|call| {
-        !call.chain.is_empty()
-            && match &call.provenance {
-                MemberCallProvenance::Any | MemberCallProvenance::Rooted => true,
-                MemberCallProvenance::ModuleNamespace { module } => !module.is_empty(),
-            }
-    });
-    matcher
-        .member_calls
-        .sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
-    matcher.member_calls.dedup();
-
-    for member_read in &mut matcher.member_reads {
-        member_read.chain = normalize_member_chain(&member_read.chain);
-        if member_read.provenance == MemberReadProvenance::Rooted {
-            member_read.chain = canonical_rooted_chain(&member_read.chain).to_string();
+impl ApiMatcher {
+    pub(super) fn normalize(mut self) -> Self {
+        normalize_arguments(&mut self);
+        for call in &mut self.calls {
+            call.normalize();
         }
-        if let MemberReadProvenance::ModuleNamespace { module } = &mut member_read.provenance {
-            *module = module.trim().to_string();
+        self.calls.retain(|call| {
+            !call.name.is_empty()
+                && match &call.provenance {
+                    CallProvenance::Any | CallProvenance::Global => true,
+                    CallProvenance::ModuleExport { module } => !module.is_empty(),
+                }
+        });
+        self.calls
+            .sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
+        self.calls.dedup();
+
+        for member_call in &mut self.member_calls {
+            member_call.normalize();
         }
-    }
-    matcher.member_reads.retain(|read| {
-        !read.chain.is_empty()
-            && match &read.provenance {
-                MemberReadProvenance::Any | MemberReadProvenance::Rooted => true,
-                MemberReadProvenance::ModuleNamespace { module } => !module.is_empty(),
+        self.member_calls.retain(|call| {
+            !call.chain.is_empty()
+                && match &call.provenance {
+                    MemberCallProvenance::Any | MemberCallProvenance::Rooted => true,
+                    MemberCallProvenance::ModuleNamespace { module } => !module.is_empty(),
+                }
+        });
+        self.member_calls
+            .sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
+        self.member_calls.dedup();
+
+        for member_read in &mut self.member_reads {
+            member_read.chain = normalize_member_chain(&member_read.chain);
+            if member_read.provenance == MemberReadProvenance::Rooted {
+                member_read.chain = canonical_rooted_chain(&member_read.chain).to_string();
             }
-    });
-    matcher
-        .member_reads
-        .sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
-    matcher.member_reads.dedup();
-    normalize_strings(&mut matcher.imports);
-    normalize_strings(&mut matcher.string_literals);
-    ClassMatcher::normalize_all(&mut matcher.classes);
-    ConstructorMatcher::normalize_all(&mut matcher.constructors);
-    normalize_flows(&mut matcher.flows);
-    ReturnedMemberCallMatcher::normalize_all(&mut matcher.returned_member_calls);
-    ReturnedMemberReadMatcher::normalize_all(&mut matcher.returned_member_reads);
-    InstanceMemberCallMatcher::normalize_all(&mut matcher.instance_member_calls);
-    matcher
+            if let MemberReadProvenance::ModuleNamespace { module } = &mut member_read.provenance {
+                *module = module.trim().to_string();
+            }
+        }
+        self.member_reads.retain(|read| {
+            !read.chain.is_empty()
+                && match &read.provenance {
+                    MemberReadProvenance::Any | MemberReadProvenance::Rooted => true,
+                    MemberReadProvenance::ModuleNamespace { module } => !module.is_empty(),
+                }
+        });
+        self.member_reads
+            .sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
+        self.member_reads.dedup();
+        normalize_strings(&mut self.imports);
+        normalize_strings(&mut self.string_literals);
+        ClassMatcher::normalize_all(&mut self.classes);
+        ConstructorMatcher::normalize_all(&mut self.constructors);
+        normalize_flows(&mut self.flows);
+        ReturnedMemberCallMatcher::normalize_all(&mut self.returned_member_calls);
+        ReturnedMemberReadMatcher::normalize_all(&mut self.returned_member_reads);
+        InstanceMemberCallMatcher::normalize_all(&mut self.instance_member_calls);
+        self
+    }
 }
 
 pub(super) fn normalize_arguments(matcher: &mut ApiMatcher) {

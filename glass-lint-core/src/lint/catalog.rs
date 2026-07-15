@@ -6,10 +6,7 @@ use std::{
 
 use crate::{
     Environment, RuleId, RuleMetadata,
-    api::{
-        compiler::{CompiledCatalog, validate_catalog},
-        rule::ApiRule,
-    },
+    api::{compiler::CompiledCatalog, rule::ApiRule},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -49,8 +46,7 @@ impl RuleCatalog {
         let provider = provider.into();
         RuleId::parse(format!("{provider}:placeholder"))?;
 
-        // TODO: inline this call and think if this really needs to compile and throw away the compiled catalog. We could probably just validate the rules in place.
-        validate_catalog(&rules).map_err(|error| match error {
+        CompiledCatalog::try_from_rules(&rules).map_err(|error| match error {
             crate::api::rule::ApiCatalogError::DuplicateRule(id) => {
                 RuleCatalogError::InvalidRule(format!("{provider}:{id}"), "duplicate rule".into())
             }

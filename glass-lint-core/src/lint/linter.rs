@@ -5,13 +5,18 @@ use crate::{
     CoreConfig, Environment, ProjectInput, ProjectInputError, ProjectReport, ProjectSession,
     REPORT_VERSION, RuleCatalogError, RuleId, SourceLanguage,
     analysis::{LocalModuleModel, ProjectSemanticModel},
-    api::{
-        classification::ApiClassificationResult, classifier::classify_compiled_api_usage,
-        compiler::CompiledCatalog,
-    },
+    api::{classification::ApiClassificationResult, compiler::CompiledCatalog},
     diagnostic::LintReport,
     project::ModuleId,
 };
+
+type AnalyzedModules = BTreeMap<
+    String,
+    (
+        swc_common::sync::Lrc<swc_common::SourceMap>,
+        LocalModuleModel,
+    ),
+>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LintConfigError {
@@ -140,7 +145,7 @@ impl Linter {
 
             let project = ProjectSemanticModel::single(filename, parsed.source_map.clone(), local);
 
-            classify_compiled_api_usage(&project, &self.compiled, &self.catalog.rules, &selected)
+            project.classify(&self.compiled, &self.catalog.rules, &selected)
         };
 
         let mut findings = {
@@ -193,18 +198,9 @@ impl Linter {
     pub(crate) fn lint_analyzed_project_timed(
         &self,
         input: ProjectInput,
-        analyzed: BTreeMap<
-            String,
-            (
-                swc_common::sync::Lrc<swc_common::SourceMap>,
-                LocalModuleModel,
-            ),
-        >,
+        analyzed: AnalyzedModules,
         parse_diagnostics: BTreeMap<String, crate::ParseDiagnostic>,
     ) -> Result<(ProjectReport, std::time::Duration, std::time::Duration), ProjectInputError> {
-        // TODO: simplify this method, both in terms of the type complexity of the
-        // signature and in terms of the function body length.
-
         let input = input.validate()?;
         let mut authored = std::collections::BTreeSet::new();
         for (path, (source_map, local)) in &analyzed {
@@ -244,8 +240,7 @@ impl Linter {
         let project = ProjectSemanticModel::link(input, analyzed)?;
         let linking_elapsed = linking_start.elapsed();
         let matching_start = std::time::Instant::now();
-        let classifications = classify_compiled_api_usage(
-            &project,
+        let classifications = project.classify(
             &self.compiled,
             &self.catalog.rules,
             &self.selected_rule_indices(),
@@ -298,37 +293,8 @@ impl Linter {
             let Some(source) = sources.get(module.path()) else {
                 continue;
             };
-            // TODO: What is this mess of mapping and filtering. We should really introduce a newtype
-            // around Vec<Finding>
-            let mut findings = self
-                .findings_for(classification, module.source_map(), source)
-                .into_iter()
-                .map(|finding| {
-                    let mut project_finding =
-                        crate::ProjectFinding::from_finding(finding, module.path());
-                    let finding_rule_id = project_finding.rule_id.clone();
-                    let related = classification
-                        .capabilities()
-                        .iter()
-                        .filter(|capability| {
-                            self.catalog
-                                .rule_id(capability.rule_index)
-                                .is_some_and(|id| id == &finding_rule_id)
-                        })
-                        .flat_map(crate::api::classification::ApiCapability::evidence)
-                        .flat_map(|evidence| &evidence.related)
-                        .filter_map(|related| {
-                            project
-                                .fact_location(ModuleId(related.module), related.event)
-                                .map(|mut location| {
-                                    location.message.clone_from(&related.symbol);
-                                    location
-                                })
-                        });
-                    project_finding.append_related(related);
-                    project_finding
-                })
-                .collect::<Vec<_>>();
+            let mut findings =
+                self.project_findings_for_module(project, module, classification, source);
             findings.sort_by_key(|finding| {
                 (
                     finding.location.range.start.line,
@@ -346,6 +312,43 @@ impl Linter {
                 },
             );
         }
+    }
+
+    fn project_findings_for_module(
+        &self,
+        project: &ProjectSemanticModel,
+        module: &crate::analysis::ProjectModule,
+        classification: &ApiClassificationResult,
+        source: &str,
+    ) -> Vec<crate::ProjectFinding> {
+        self.findings_for(classification, module.source_map(), source)
+            .into_iter()
+            .map(|finding| {
+                let mut project_finding =
+                    crate::ProjectFinding::from_finding(finding, module.path());
+                let finding_rule_id = project_finding.rule_id.clone();
+                let related = classification
+                    .capabilities()
+                    .iter()
+                    .filter(|capability| {
+                        self.catalog
+                            .rule_id(capability.rule_index)
+                            .is_some_and(|id| id == &finding_rule_id)
+                    })
+                    .flat_map(crate::api::classification::ApiCapability::evidence)
+                    .flat_map(|evidence| &evidence.related)
+                    .filter_map(|related| {
+                        project
+                            .fact_location(ModuleId(related.module), related.event)
+                            .map(|mut location| {
+                                location.message.clone_from(&related.symbol);
+                                location
+                            })
+                    });
+                project_finding.append_related(related);
+                project_finding
+            })
+            .collect()
     }
 
     fn selected_rule_indices(&self) -> BTreeSet<usize> {

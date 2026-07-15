@@ -278,7 +278,7 @@ impl ApiMatcher {
     }
 
     pub(crate) fn normalized(self) -> Self {
-        super::normalization::normalize(self)
+        self.normalize()
     }
 }
 

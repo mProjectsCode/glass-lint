@@ -34,11 +34,50 @@ pub struct Position {
     pub column: u32,
 }
 
+impl Position {
+    pub(crate) fn from_source(source: &str, offset: usize) -> Self {
+        let mut end = offset.min(source.len());
+        while end > 0 && !source.is_char_boundary(end) {
+            end -= 1;
+        }
+        let prefix = &source[..end];
+
+        Self {
+            line: prefix
+                .bytes()
+                .filter(|byte| *byte == b'\n')
+                .count()
+                .try_into()
+                .unwrap_or(u32::MAX)
+                .saturating_add(1),
+            column: prefix
+                .rsplit_once('\n')
+                .map_or(prefix.chars().count(), |(_, tail)| tail.chars().count())
+                .try_into()
+                .unwrap_or(u32::MAX)
+                .saturating_add(1),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 /// Inclusive-start, exclusive-end source range used by findings.
 pub struct SourceRange {
     pub start: Position,
     pub end: Position,
+}
+
+impl SourceRange {
+    pub(crate) fn from_source(source: &str, start: usize, length: usize) -> Self {
+        Self {
+            start: Position::from_source(source, start),
+            end: Position::from_source(source, start.saturating_add(length)),
+        }
+    }
+
+    pub(crate) fn contains(&self, inner: &Self) -> bool {
+        self.start <= inner.start && inner.end <= self.end
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
