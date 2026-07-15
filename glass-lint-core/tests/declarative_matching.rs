@@ -5,8 +5,9 @@ use std::collections::BTreeSet;
 use glass_lint_core::{
     Environment, Linter, RuleCatalog,
     rules::{
-        CallMatcher, Confidence, FlowMatcher, FlowValueMatcher, Matcher, MemberCallMatcher, Rule,
-        Severity,
+        CallMatcher, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
+        MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
+        Severity, ValueMatcher,
     },
 };
 
@@ -27,6 +28,26 @@ fn rule(id: &str) -> glass_lint_core::rules::Builder {
         .category("test")
         .severity(Severity::Info)
         .confidence(Confidence::High)
+}
+
+fn script_insertion_flow() -> Matcher {
+    Matcher::flow(
+        ObjectFlowMatcher::builder("script insertion")
+            .source(ObjectSourceMatcher::returned_by(
+                MemberCallMatcher::rooted("document.createElement")
+                    .arg(0, ValueMatcher::static_string().equals("script")),
+            ))
+            .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                "src",
+                ValueMatcher::any_value(),
+            )))
+            .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                MemberCallMatcher::rooted("document.head.appendChild"),
+                0,
+            )]))
+            .build()
+            .expect("script insertion flow should build"),
+    )
 }
 
 fn classify(source: &str, rules: &[Rule]) -> Classification {
@@ -451,13 +472,7 @@ fn projects_const_object_aliases_into_destructured_parameters() {
 #[test]
 fn tracks_configured_values_into_later_member_sinks() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -470,13 +485,7 @@ fn tracks_configured_values_into_later_member_sinks() {
 #[test]
 fn flow_calls_use_effective_call_and_apply_arguments() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -492,13 +501,7 @@ fn flow_calls_use_effective_call_and_apply_arguments() {
 #[test]
 fn flow_control_boundaries_fail_closed_after_loops_try_and_destructuring() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -515,13 +518,7 @@ fn flow_control_boundaries_fail_closed_after_loops_try_and_destructuring() {
 #[test]
 fn flow_state_does_not_cross_conditional_branches_or_duplicate_sinks() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     assert_eq!(
@@ -545,13 +542,7 @@ fn flow_state_does_not_cross_conditional_branches_or_duplicate_sinks() {
 #[test]
 fn value_flow_respects_reassignment_and_order() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -565,13 +556,7 @@ fn value_flow_respects_reassignment_and_order() {
 #[test]
 fn flow_kills_object_state_for_compound_writes_updates_and_delete() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -586,19 +571,24 @@ fn flow_kills_object_state_for_compound_writes_updates_and_delete() {
 #[test]
 fn value_flow_supports_member_call_configuration_and_helper_sinks() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .member_call_config(
-                    "setAttribute",
-                    [
-                        (0, FlowValueMatcher::StaticExact(vec!["src".into()])),
-                        (1, FlowValueMatcher::Any),
-                    ],
-                )
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(Matcher::flow(
+            ObjectFlowMatcher::builder("script insertion")
+                .source(ObjectSourceMatcher::returned_by(
+                    MemberCallMatcher::rooted("document.createElement")
+                        .arg(0, ValueMatcher::static_string().equals("script")),
+                ))
+                .configured_by(FlowCondition::event(
+                    ObjectEventMatcher::member_call("setAttribute")
+                        .arg(0, ValueMatcher::static_string().equals("src"))
+                        .arg(1, ValueMatcher::any_value()),
+                ))
+                .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                    MemberCallMatcher::rooted("document.head.appendChild"),
+                    0,
+                )]))
+                .build()
+                .unwrap(),
+        ))
         .build()
         .unwrap()];
     let result = classify(
@@ -612,13 +602,7 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
 #[test]
 fn flow_helpers_are_scope_and_assignment_aware() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -635,13 +619,7 @@ fn flow_helpers_are_scope_and_assignment_aware() {
 #[test]
 fn value_flow_supports_const_arrow_helper_sinks() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -655,13 +633,7 @@ fn value_flow_supports_const_arrow_helper_sinks() {
 #[test]
 fn value_flow_projects_nested_destructured_helper_arguments() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -686,13 +658,7 @@ fn value_flow_projects_nested_destructured_helper_arguments() {
 #[test]
 fn value_flow_reaches_sinks_through_mutually_recursive_helpers() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -707,13 +673,7 @@ fn value_flow_reaches_sinks_through_mutually_recursive_helpers() {
 #[test]
 fn value_flow_uses_precise_helper_parameter_defaults() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -744,13 +704,7 @@ fn value_flow_uses_precise_helper_parameter_defaults() {
 #[test]
 fn value_flow_follows_function_aliases_by_function_id() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -765,13 +719,7 @@ fn value_flow_follows_function_aliases_by_function_id() {
 #[test]
 fn helper_summaries_fail_closed_for_incompatible_invocations() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("script insertion".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["script"])
-                .property_write("src", FlowValueMatcher::Any)
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(
@@ -786,16 +734,23 @@ fn helper_summaries_fail_closed_for_incompatible_invocations() {
 #[test]
 fn value_flow_static_prefix_requires_static_values() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("remote element".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["img"])
-                .property_write(
+        .matcher(Matcher::flow(
+            ObjectFlowMatcher::builder("remote element")
+                .source(ObjectSourceMatcher::returned_by(
+                    MemberCallMatcher::rooted("document.createElement")
+                        .arg(0, ValueMatcher::static_string().equals("img")),
+                ))
+                .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
                     "src",
-                    FlowValueMatcher::StaticPrefix(vec!["https://".into(), "http://".into()]),
-                )
-                .sink_member_call_arg_indices(["document.body.appendChild"], [0]),
-        )
+                    ValueMatcher::static_string().starts_with_any(["https://", "http://"]),
+                )))
+                .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                    MemberCallMatcher::rooted("document.body.appendChild"),
+                    0,
+                )]))
+                .build()
+                .unwrap(),
+        ))
         .build()
         .unwrap()];
     let result = classify(
@@ -810,21 +765,29 @@ fn value_flow_static_prefix_requires_static_values() {
 #[test]
 fn flow_can_require_all_requirements() {
     let rules = [rule("test.flow")
-        .matcher(
-            FlowMatcher::new("remote stylesheet".to_string())
-                .source_member_call("document.createElement")
-                .source_arg_string(0, ["link"])
-                .property_write(
-                    "rel",
-                    FlowValueMatcher::StaticExact(vec!["stylesheet".into()]),
-                )
-                .property_write(
-                    "href",
-                    FlowValueMatcher::StaticPrefix(vec!["https://".into()]),
-                )
-                .require_all()
-                .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
-        )
+        .matcher(Matcher::flow(
+            ObjectFlowMatcher::builder("remote stylesheet")
+                .source(ObjectSourceMatcher::returned_by(
+                    MemberCallMatcher::rooted("document.createElement")
+                        .arg(0, ValueMatcher::static_string().equals("link")),
+                ))
+                .configured_by(FlowCondition::all_of([
+                    ObjectEventMatcher::property_write(
+                        "rel",
+                        ValueMatcher::static_string().equals("stylesheet"),
+                    ),
+                    ObjectEventMatcher::property_write(
+                        "href",
+                        ValueMatcher::static_string().starts_with_any(["https://"]),
+                    ),
+                ]))
+                .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                    MemberCallMatcher::rooted("document.head.appendChild"),
+                    0,
+                )]))
+                .build()
+                .unwrap(),
+        ))
         .build()
         .unwrap()];
     let result = classify(

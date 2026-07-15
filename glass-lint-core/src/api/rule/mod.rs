@@ -8,11 +8,10 @@ pub use error::{ApiCatalogError, ApiRuleBuildError};
 pub(crate) use matcher::ApiMatcher;
 pub use matcher::{
     ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
-    ConstructorMatcher, FlowCompletion, FlowCondition, FlowMatcher, FlowSinkMatcher,
-    FlowValueMatcher, InstanceMemberCallMatcher, Matcher, MemberCallMatcher, MemberCallProvenance,
-    MemberReadMatcher, MemberReadProvenance, ObjectEventMatcher, ObjectFlowMatcher,
-    ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, ValueMatcher,
-    canonical_rooted_chain,
+    ConstructorMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher,
+    Matcher, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher,
+    ReturnedMemberReadMatcher, ValueMatcher, canonical_rooted_chain,
 };
 pub(crate) use matcher::{StaticStringPredicate, ValueMatcherKind};
 pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
@@ -232,15 +231,12 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error, ApiRuleBuildError::InvalidMatcher(_)));
 
-        let flow = FlowMatcher::new("incomplete").source_member_call("document.createElement");
-        let error = ApiRule::builder("network.flow")
-            .label("rule")
-            .category("network")
-            .severity(ApiSeverity::Info)
-            .confidence(Confidence::High)
-            .matcher(flow)
+        let error = ObjectFlowMatcher::builder("incomplete")
+            .source(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(
+                "document.createElement",
+            )))
             .build()
             .unwrap_err();
-        assert!(matches!(error, ApiRuleBuildError::InvalidMatcher(_)));
+        assert!(error.contains("condition"));
     }
 }

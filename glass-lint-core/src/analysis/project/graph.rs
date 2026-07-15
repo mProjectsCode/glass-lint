@@ -1,0 +1,295 @@
+//! Project graph construction and bounded SCC analysis.
+
+use super::super::{
+    BTreeMap, ExportResolution, MAX_EXPORT_ENTRIES, MAX_GRAPH_EDGES, MAX_SCC_SIZE, ModuleId,
+    ProjectSemanticModel, ResolvedModule, is_internal_request,
+};
+use crate::analysis::module::ModuleRequestRole;
+
+impl ProjectSemanticModel {
+    #[allow(clippy::too_many_lines)]
+    pub(in crate::analysis) fn build_graph_and_exports(&mut self) {
+        for module in self.modules.values() {
+            self.adjacency.entry(module.id).or_default();
+            if module.local.effects.budget_exhausted {
+                self.diagnostics.push(crate::ProjectDiagnostic {
+                    code: "effect_size_budget_exhausted".into(),
+                    message: format!(
+                        "function-effect extraction exceeded a bounded budget in `{}`",
+                        module.path
+                    ),
+                    location: None,
+                });
+            }
+            if module.local.interface().unknown_exports {
+                self.diagnostics.push(crate::ProjectDiagnostic {
+                    code: "unsupported_commonjs_exports".into(),
+                    message: format!(
+                        "CommonJS export shape in `{}` is dynamic or ambiguous",
+                        module.path
+                    ),
+                    location: None,
+                });
+            }
+            for request in Self::authored_requests(module) {
+                let Some(resolution) = self.resolutions.get(&request.key) else {
+                    if is_internal_request(&request.request) {
+                        self.diagnostics.push(crate::ProjectDiagnostic {
+                            code: "unresolved_internal_request".into(),
+                            message: format!(
+                                "internal-looking module request `{}` has no resolution",
+                                request.request
+                            ),
+                            location: Some(crate::SourceLocation {
+                                path: module.path.clone(),
+                                range: request.key.range.clone(),
+                            }),
+                        });
+                    }
+                    continue;
+                };
+                if let ResolvedModule::Internal { id, .. } = resolution {
+                    let edges = self.adjacency.values().map(Vec::len).sum::<usize>();
+                    if edges >= MAX_GRAPH_EDGES {
+                        self.link_budget_exhausted = true;
+                    } else {
+                        self.adjacency.entry(module.id).or_default().push(*id);
+                        self.reverse_adjacency
+                            .entry(*id)
+                            .or_default()
+                            .push(module.id);
+                    }
+                } else if matches!(resolution, ResolvedModule::Missing)
+                    && is_internal_request(&request.request)
+                {
+                    self.diagnostics.push(crate::ProjectDiagnostic {
+                        code: "unresolved_internal_request".into(),
+                        message: format!(
+                            "internal module request `{}` is missing",
+                            request.request
+                        ),
+                        location: Some(crate::SourceLocation {
+                            path: module.path.clone(),
+                            range: request.key.range.clone(),
+                        }),
+                    });
+                } else if matches!(resolution, ResolvedModule::OutsideProject { .. }) {
+                    self.diagnostics.push(crate::ProjectDiagnostic {
+                        code: "outside_project_target".into(),
+                        message: format!(
+                            "module request `{}` resolves outside the project",
+                            request.request
+                        ),
+                        location: Some(crate::SourceLocation {
+                            path: module.path.clone(),
+                            range: request.key.range.clone(),
+                        }),
+                    });
+                } else if matches!(resolution, ResolvedModule::Unsupported { .. }) {
+                    self.diagnostics.push(crate::ProjectDiagnostic {
+                        code: "unsupported_project_target".into(),
+                        message: format!(
+                            "module request `{}` is not an analyzable project target",
+                            request.request
+                        ),
+                        location: Some(crate::SourceLocation {
+                            path: module.path.clone(),
+                            range: request.key.range.clone(),
+                        }),
+                    });
+                }
+            }
+        }
+        for targets in self.adjacency.values_mut() {
+            targets.sort_unstable();
+            targets.dedup();
+        }
+        for sources in self.reverse_adjacency.values_mut() {
+            sources.sort_unstable();
+            sources.dedup();
+        }
+        self.components =
+            strongly_connected_components(&self.adjacency, self.modules.keys().copied());
+        if self
+            .components
+            .iter()
+            .any(|component| component.len() > MAX_SCC_SIZE)
+        {
+            self.diagnostics.push(crate::ProjectDiagnostic {
+                code: "scc_size_budget_exhausted".into(),
+                message: format!("a module SCC exceeds the bounded size of {MAX_SCC_SIZE}"),
+                location: None,
+            });
+            self.link_budget_exhausted = true;
+        }
+
+        // Resolve exports in a bounded, monotone pass.  The fixed point is
+        // intentionally conservative: a cycle that does not stabilize stays
+        // unknown instead of depending on module iteration order.
+        let mut changed = true;
+        let mut rounds = 0;
+        while changed && rounds < self.modules.len().saturating_add(1) {
+            changed = false;
+            rounds += 1;
+            for module in self.modules.values() {
+                for (name, export) in &module.local.interface().exports {
+                    let resolved = self.resolve_export(module.id, name, export);
+                    let key = (module.id, name.clone());
+                    if !self.exports.contains_key(&key) && self.exports.len() >= MAX_EXPORT_ENTRIES
+                    {
+                        self.link_budget_exhausted = true;
+                        continue;
+                    }
+                    if self.exports.get(&key) != Some(&resolved) {
+                        self.exports.insert(key, resolved);
+                        changed = true;
+                    }
+                }
+            }
+        }
+        self.link_rounds = rounds;
+        if changed {
+            self.diagnostics.push(crate::ProjectDiagnostic {
+                code: "graph_link_budget_exhausted".into(),
+                message: "module export linking did not reach a stable fixed point".into(),
+                location: None,
+            });
+            for value in self.exports.values_mut() {
+                *value = ExportResolution::Unknown;
+            }
+            self.link_budget_exhausted = true;
+        }
+        if self.link_budget_exhausted {
+            self.diagnostics.push(crate::ProjectDiagnostic {
+                code: "graph_link_budget_exhausted".into(),
+                message: "project graph linking exceeded a bounded linker budget".into(),
+                location: None,
+            });
+        }
+
+        for module in self.modules.values() {
+            for request in &module.local.interface().requests {
+                let key = crate::project::ResolutionRequestKey {
+                    importer: module.path.clone(),
+                    kind: request.kind,
+                    range: crate::lint::source_range_from_span(&module.source_map, request.span),
+                };
+                let Some(ResolvedModule::Internal { id, .. }) = self.resolutions.get(&key) else {
+                    continue;
+                };
+                let ModuleRequestRole::Import { bindings } = &request.role else {
+                    continue;
+                };
+                for binding in bindings.iter().filter(|binding| !binding.namespace) {
+                    let Some(imported) = binding.imported.as_deref() else {
+                        continue;
+                    };
+                    match self.lookup_export(*id, imported, &mut std::collections::BTreeSet::new())
+                    {
+                        Some(ExportResolution::Ambiguous) => {
+                            self.diagnostics.push(crate::ProjectDiagnostic {
+                                code: "ambiguous_star_export".into(),
+                                message: format!("module export `{imported}` is ambiguous"),
+                                location: Some(crate::SourceLocation {
+                                    path: module.path.clone(),
+                                    range: key.range.clone(),
+                                }),
+                            });
+                        }
+                        None => self.diagnostics.push(crate::ProjectDiagnostic {
+                            code: "missing_imported_export".into(),
+                            message: format!("module does not export `{imported}`"),
+                            location: Some(crate::SourceLocation {
+                                path: module.path.clone(),
+                                range: key.range.clone(),
+                            }),
+                        }),
+                        Some(_) => {}
+                    }
+                }
+            }
+        }
+        self.diagnostics.sort_by(|left, right| {
+            (
+                &left.code,
+                left.location.as_ref().map(|l| &l.path),
+                left.location.as_ref().map(|l| &l.range),
+            )
+                .cmp(&(
+                    &right.code,
+                    right.location.as_ref().map(|l| &l.path),
+                    right.location.as_ref().map(|l| &l.range),
+                ))
+        });
+        self.diagnostics.dedup();
+    }
+}
+
+fn strongly_connected_components(
+    adjacency: &BTreeMap<ModuleId, Vec<ModuleId>>,
+    nodes: impl IntoIterator<Item = ModuleId>,
+) -> Vec<Vec<ModuleId>> {
+    // A deterministic iterative Kosaraju pass avoids stack growth from a
+    // large explicit project graph.
+    let nodes = nodes.into_iter().collect::<Vec<_>>();
+    let mut seen = BTreeMap::new();
+    let mut order = Vec::new();
+    for node in nodes.iter().copied() {
+        if seen.contains_key(&node) {
+            continue;
+        }
+        let mut stack = vec![(node, false)];
+        while let Some((current, expanded)) = stack.pop() {
+            if expanded {
+                order.push(current);
+                continue;
+            }
+            if seen.insert(current, true).is_some() {
+                continue;
+            }
+            stack.push((current, true));
+            for next in adjacency.get(&current).into_iter().flatten().rev().copied() {
+                if !seen.contains_key(&next) {
+                    stack.push((next, false));
+                }
+            }
+        }
+    }
+    let mut reverse = adjacency.iter().fold(
+        BTreeMap::<ModuleId, Vec<ModuleId>>::new(),
+        |mut reverse, (from, tos)| {
+            for to in tos {
+                reverse.entry(*to).or_default().push(*from);
+            }
+            reverse
+        },
+    );
+    for values in reverse.values_mut() {
+        values.sort_unstable();
+    }
+    seen.clear();
+    let mut components = Vec::new();
+    for node in order.into_iter().rev() {
+        if seen.get(&node).copied().unwrap_or(false) {
+            continue;
+        }
+        let mut component = Vec::new();
+        let mut stack = vec![node];
+        seen.insert(node, true);
+        while let Some(current) = stack.pop() {
+            component.push(current);
+            for next in reverse.get(&current).into_iter().flatten().rev().copied() {
+                if let std::collections::btree_map::Entry::Vacant(entry) = seen.entry(next) {
+                    entry.insert(true);
+                    stack.push(next);
+                }
+            }
+        }
+        if !component.is_empty() {
+            component.sort_unstable();
+            components.push(component);
+        }
+    }
+    components.sort();
+    components
+}

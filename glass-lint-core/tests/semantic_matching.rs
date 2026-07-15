@@ -5,7 +5,11 @@
 
 use glass_lint_core::{
     Environment, Linter, RuleCatalog,
-    rules::{CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity},
+    rules::{
+        CallMatcher, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
+        MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
+        Severity, ValueMatcher,
+    },
 };
 
 fn findings(source: &str, matcher: Matcher) -> usize {
@@ -300,11 +304,21 @@ fn tracks_object_argument_keys_through_member_function_aliases() {
 
 fn script_insertion_matcher() -> Matcher {
     Matcher::flow(
-        glass_lint_core::rules::FlowMatcher::new("script insertion")
-            .source_member_call("document.createElement")
-            .source_arg_string(0, ["script"])
-            .property_write("src", glass_lint_core::rules::FlowValueMatcher::Any)
-            .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+        ObjectFlowMatcher::builder("script insertion")
+            .source(ObjectSourceMatcher::returned_by(
+                MemberCallMatcher::rooted("document.createElement")
+                    .arg(0, ValueMatcher::static_string().equals("script")),
+            ))
+            .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                "src",
+                ValueMatcher::any_value(),
+            )))
+            .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                MemberCallMatcher::rooted("document.head.appendChild"),
+                0,
+            )]))
+            .build()
+            .unwrap(),
     )
 }
 

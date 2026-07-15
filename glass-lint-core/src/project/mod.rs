@@ -499,7 +499,9 @@ fn dedup_evidence_in_order(evidence: &mut Vec<ProjectEvidence>) {
 mod tests {
     use super::*;
     use crate::api::rule::{
-        ApiRule, ApiSeverity, CallMatcher, Confidence, FlowMatcher, FlowValueMatcher, Matcher,
+        ApiRule, ApiSeverity, CallMatcher, Confidence, FlowCompletion, FlowCondition,
+        FlowSinkMatcher, Matcher, MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher,
+        ObjectSourceMatcher, ValueMatcher,
     };
     use crate::{Position, SourceRange};
 
@@ -526,11 +528,21 @@ mod tests {
             .severity(ApiSeverity::Warning)
             .confidence(Confidence::High)
             .matcher(
-                FlowMatcher::new("script insertion")
-                    .source_member_call("document.createElement")
-                    .source_arg_string(0, ["script"])
-                    .property_write("src", FlowValueMatcher::Any)
-                    .sink_member_call_arg_indices(["document.head.appendChild"], [0]),
+                ObjectFlowMatcher::builder("script insertion")
+                    .source(ObjectSourceMatcher::returned_by(
+                        MemberCallMatcher::rooted("document.createElement")
+                            .arg(0, ValueMatcher::static_string().equals("script")),
+                    ))
+                    .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                        "src",
+                        ValueMatcher::any_value(),
+                    )))
+                    .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                        MemberCallMatcher::rooted("document.head.appendChild"),
+                        0,
+                    )]))
+                    .build()
+                    .unwrap(),
             )
             .build()
             .unwrap();

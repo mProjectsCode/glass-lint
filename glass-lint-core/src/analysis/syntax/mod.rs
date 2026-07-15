@@ -5,4 +5,4 @@ mod names;
 mod provenance;
 
 pub use names::*;
-pub use provenance::{SymbolCallProvenance, SymbolMemberProvenance};
+pub(in crate::analysis) use provenance::{SymbolCallProvenance, SymbolMemberProvenance};

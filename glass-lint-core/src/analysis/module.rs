@@ -59,7 +59,7 @@ pub(crate) struct ModuleInterface {
     pub(crate) star_exports: Vec<usize>,
     pub(crate) locals: BTreeSet<String>,
     pub(crate) unknown_exports: bool,
-    pub(crate) function_exports: BTreeMap<String, FunctionId>,
+    pub(in crate::analysis) function_exports: BTreeMap<String, FunctionId>,
     pub(crate) static_strings: BTreeMap<String, String>,
 }
 
@@ -107,7 +107,11 @@ impl ModuleInterface {
         }
     }
 
-    pub(crate) fn add_function_export(&mut self, name: impl Into<String>, function: FunctionId) {
+    pub(in crate::analysis) fn add_function_export(
+        &mut self,
+        name: impl Into<String>,
+        function: FunctionId,
+    ) {
         let name = name.into();
         match self.function_exports.get(&name) {
             None => {

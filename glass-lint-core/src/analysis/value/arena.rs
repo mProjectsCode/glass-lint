@@ -7,7 +7,7 @@ const MAX_VALUES: usize = 65_536;
 const MAX_OBJECTS: u32 = 65_536;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Value {
+pub(in crate::analysis) enum Value {
     Unknown,
     Global(String),
     Local,
@@ -24,17 +24,17 @@ pub enum Value {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CallableValue {
+pub(in crate::analysis) struct CallableValue {
     pub(in crate::analysis) target: ValueId,
     pub(in crate::analysis) receiver: Option<ValueId>,
     pub(in crate::analysis) bound_arguments: Vec<ValueId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ObjectId(pub(in crate::analysis) u32);
+pub(in crate::analysis) struct ObjectId(pub(in crate::analysis) u32);
 
 #[derive(Debug)]
-pub struct ValueArena {
+pub(in crate::analysis) struct ValueArena {
     values: Vec<Value>,
     ids: HashMap<Value, ValueId>,
     next_object: u32,

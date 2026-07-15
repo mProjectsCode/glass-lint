@@ -37,10 +37,10 @@ pub mod rules {
     pub use crate::api::rule::{
         ApiCategory as Category, ApiRule as Rule, ApiRuleBuildError as BuildError,
         ApiRuleBuilder as Builder, ApiSeverity as Severity, ArgumentMatcher, CallMatcher,
-        ClassMatcher, Confidence, ConstructorMatcher, FlowCompletion, FlowCondition, FlowMatcher,
-        FlowSinkMatcher, FlowValueMatcher, InstanceMemberCallMatcher, Matcher, MemberCallMatcher,
-        MemberReadMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher,
-        ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, ValueMatcher,
+        ClassMatcher, Confidence, ConstructorMatcher, FlowCompletion, FlowCondition,
+        FlowSinkMatcher, InstanceMemberCallMatcher, Matcher, MemberCallMatcher, MemberReadMatcher,
+        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher,
+        ReturnedMemberReadMatcher, ValueMatcher,
     };
 }
 #[cfg(test)]

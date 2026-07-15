@@ -3,7 +3,7 @@
 use std::fmt;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ValueId(pub(in crate::analysis) u32);
+pub(in crate::analysis) struct ValueId(pub(in crate::analysis) u32);
 
 impl ValueId {
     /// Sentinel used whenever analysis cannot prove a value identity.
@@ -12,20 +12,20 @@ impl ValueId {
 
 /// Stable identity for a lexical binding declaration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BindingId(pub(in crate::analysis) u32);
+pub(in crate::analysis) struct BindingId(pub(in crate::analysis) u32);
 
 /// Monotonic version of a binding after a source-order assignment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BindingVersion(pub(in crate::analysis) u32);
+pub(in crate::analysis) struct BindingVersion(pub(in crate::analysis) u32);
 
 /// Stable identity of a function used by helper-flow summaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct FunctionId(pub(in crate::analysis) u32);
+pub(in crate::analysis) struct FunctionId(pub(in crate::analysis) u32);
 
 /// Canonical member path represented as individual segments rather than a
 /// formatted string, so identity and display concerns stay separate.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SymbolPath(Vec<String>);
+pub(in crate::analysis) struct SymbolPath(Vec<String>);
 
 impl SymbolPath {
     pub(in crate::analysis) fn from_chain(chain: &str) -> Self {
@@ -77,7 +77,7 @@ impl fmt::Display for SymbolPath {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum BindingRoot {
+pub(in crate::analysis) enum BindingRoot {
     Binding {
         function: FunctionId,
         binding: BindingId,
@@ -87,7 +87,7 @@ pub enum BindingRoot {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BindingKey {
+pub(in crate::analysis) struct BindingKey {
     pub(in crate::analysis) root: BindingRoot,
     pub(in crate::analysis) path: Vec<String>,
 }

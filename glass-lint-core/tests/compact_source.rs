@@ -9,6 +9,7 @@ use glass_lint_core::{
     Environment, Linter, RuleCatalog,
     rules::{
         BuildError, Builder, CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity,
+        ValueMatcher,
     },
 };
 
@@ -293,10 +294,7 @@ fn ordinary_member_argument_predicates_reuse_static_values() {
         rule("test.event")
             .matcher(MemberCallMatcher::rooted_chain("app.vault.on").arg_value(
                 0,
-                glass_lint_core::rules::FlowValueMatcher::StaticExact(vec![
-                    "delete".into(),
-                    "rename".into(),
-                ]),
+                ValueMatcher::static_string().equals_any(["delete", "rename"]),
             ))
             .build()
             .unwrap(),

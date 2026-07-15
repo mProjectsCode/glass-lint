@@ -409,22 +409,35 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
 mod tests {
     use super::*;
     use crate::analysis::resolution::Resolver;
-    use crate::api::rule::{FlowMatcher, FlowValueMatcher};
+    use crate::api::rule::{
+        FlowCompletion, FlowCondition, FlowSinkMatcher, MemberCallMatcher, ObjectEventMatcher,
+        ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+    };
 
-    fn collect_source(source: &str, flow: &FlowMatcher) -> Vec<Vec<ApiEvidence>> {
+    fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<ApiEvidence>> {
         let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
         let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);
-        let flow = crate::api::compiler::compile_legacy_flow(flow.clone());
+        let flow = CompiledObjectFlow::from_matcher(flow);
         collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default())
     }
 
-    fn script_flow() -> FlowMatcher {
-        FlowMatcher::new("script insertion")
-            .source_member_call("document.createElement")
-            .source_arg_string(0, ["script"])
-            .property_write("src", FlowValueMatcher::Any)
-            .sink_member_call_arg_indices(["document.head.appendChild"], [0])
+    fn script_flow() -> ObjectFlowMatcher {
+        ObjectFlowMatcher::builder("script insertion")
+            .source(ObjectSourceMatcher::returned_by(
+                MemberCallMatcher::rooted("document.createElement")
+                    .arg(0, ValueMatcher::static_string().equals("script")),
+            ))
+            .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                "src",
+                ValueMatcher::any_value(),
+            )))
+            .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                MemberCallMatcher::rooted("document.head.appendChild"),
+                0,
+            )]))
+            .build()
+            .expect("script flow should build")
     }
 
     #[test]
@@ -438,14 +451,21 @@ mod tests {
 
     #[test]
     fn member_call_configuration_stays_with_its_receiver() {
-        let flow = FlowMatcher::new("configured script")
-            .source_member_call("document.createElement")
-            .source_arg_string(0, ["script"])
-            .member_call_config(
-                "configure",
-                [(0, FlowValueMatcher::StaticExact(vec!["yes".into()]))],
-            )
-            .sink_member_call_arg_indices(["document.head.appendChild"], [0]);
+        let flow = ObjectFlowMatcher::builder("configured script")
+            .source(ObjectSourceMatcher::returned_by(
+                MemberCallMatcher::rooted("document.createElement")
+                    .arg(0, ValueMatcher::static_string().equals("script")),
+            ))
+            .configured_by(FlowCondition::event(
+                ObjectEventMatcher::member_call("configure")
+                    .arg(0, ValueMatcher::static_string().equals("yes")),
+            ))
+            .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
+                MemberCallMatcher::rooted("document.head.appendChild"),
+                0,
+            )]))
+            .build()
+            .expect("configured script flow should build");
         let evidence = collect_source(
             "const first = document.createElement('script'); const second = document.createElement('script'); first.configure('yes'); document.head.appendChild(second); document.head.appendChild(first);",
             &flow,
@@ -623,18 +643,25 @@ mod tests {
                 _ => None,
             })
             .expect("sink call should be present");
-        let flow = crate::api::compiler::compile_legacy_flow(script_flow());
+        let flow = CompiledObjectFlow::from_matcher(&script_flow());
         let evidence = collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default());
         assert_eq!(evidence[0][0].spans, vec![sink_span]);
     }
 
     #[test]
     fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
-        let flow = FlowMatcher::new("configured input")
-            .source_member_call("document.createElement")
-            .source_arg_string(0, ["input"])
-            .property_write("type", FlowValueMatcher::StaticExact(vec!["file".into()]))
-            .emit_when_requirements_met();
+        let flow = ObjectFlowMatcher::builder("configured input")
+            .source(ObjectSourceMatcher::returned_by(
+                MemberCallMatcher::rooted("document.createElement")
+                    .arg(0, ValueMatcher::static_string().equals("input")),
+            ))
+            .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                "type",
+                ValueMatcher::static_string().equals("file"),
+            )))
+            .complete_at(FlowCompletion::configuration())
+            .build()
+            .expect("configured input flow should build");
         let source = "const input = document.createElement('input'); input.type = 'file';";
         let parsed =
             crate::parse(source, "flow-requirement-location.js").expect("source should parse");
@@ -648,7 +675,7 @@ mod tests {
                     .then_some((fact.id, fact.span))
             })
             .expect("configuration write should be present");
-        let flow = crate::api::compiler::compile_legacy_flow(flow);
+        let flow = CompiledObjectFlow::from_matcher(&flow);
         let evidence = collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default());
         assert_eq!(evidence[0][0].spans, vec![configuration.1]);
         assert_eq!(evidence[0][0].event_ids, vec![configuration.0.0]);

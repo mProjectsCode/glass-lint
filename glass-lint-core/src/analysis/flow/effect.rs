@@ -87,7 +87,7 @@ pub(in crate::analysis) struct ReturnProjection {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FunctionEffects {
-    pub(crate) by_id: BTreeMap<FunctionId, FunctionEffect>,
+    pub(in crate::analysis) by_id: BTreeMap<FunctionId, FunctionEffect>,
     /// Local effect limits fail closed and are surfaced as a project
     /// diagnostic instead of looking like a clean analysis.
     pub(crate) budget_exhausted: bool,
@@ -400,9 +400,4 @@ fn relation(effect: &FunctionEffect, value: ValueId) -> Option<ParameterRef> {
             index: parameter.parameter_index,
             path: parameter.path,
         })
-}
-
-#[allow(dead_code)]
-fn _argument_value(argument: &CallArgInfo) -> ValueId {
-    argument.base_value
 }

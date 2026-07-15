@@ -169,11 +169,13 @@ impl AliasCollector {
     }
 }
 
-pub fn contains(outer: Span, inner: Span) -> bool {
+pub(in crate::analysis::scope) fn contains(outer: Span, inner: Span) -> bool {
     outer.lo <= inner.lo && outer.hi >= inner.hi
 }
 
-pub fn member_prefix_ends(chain: &str) -> impl Iterator<Item = usize> + '_ {
+pub(in crate::analysis::scope) fn member_prefix_ends(
+    chain: &str,
+) -> impl Iterator<Item = usize> + '_ {
     // Visit the complete chain first, then progressively shorter prefixes so a
     // direct write to `a.b.c` takes precedence over an older `a.b` write.
     std::iter::once(chain.len()).chain(chain.rmatch_indices('.').map(|(index, _)| index))

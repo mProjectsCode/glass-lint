@@ -29,22 +29,22 @@ mod constants;
 mod predeclare;
 mod visitor;
 
-pub struct AliasCollector {
+pub(super) struct AliasCollector {
     /// Lexical scopes in predeclaration/traversal order.
-    pub scopes: Vec<AliasScope>,
+    pub(super) scopes: Vec<AliasScope>,
     stack: Vec<usize>,
     /// Assignment events retain source order for use-position provenance.
-    pub assignments: Vec<AliasAssignment>,
+    pub(super) assignments: Vec<AliasAssignment>,
     latest_assignments: BTreeMap<usize, BTreeMap<String, BindingProvenance>>,
-    pub property_assignments: Vec<PropertyAliasAssignment>,
-    pub rooted_property_mutations: Vec<RootedPropertyMutation>,
-    pub dynamic_evals: Vec<(usize, Span)>,
+    pub(super) property_assignments: Vec<PropertyAliasAssignment>,
+    pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
+    pub(super) dynamic_evals: Vec<(usize, Span)>,
     pub(super) function_scopes: BTreeMap<(usize, String), (usize, Vec<Pat>)>,
     pub(super) function_aliases: BTreeMap<(usize, String), usize>,
     /// Calls retained for the later, scope-aware helper parameter pass.
     calls: Vec<(usize, String, Vec<Option<BindingProvenance>>)>,
     inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
-    pub mutable_static_objects: BTreeSet<(usize, String)>,
+    pub(super) mutable_static_objects: BTreeSet<(usize, String)>,
     reuse_scopes: bool,
     predeclared_scope_order: Vec<usize>,
     next_predeclared_scope: usize,

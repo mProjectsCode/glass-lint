@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-#[cfg(test)]
-use super::super::rule::FlowMatcher;
 use super::super::rule::{
     ApiMatcher, ApiRule, ArgumentConstraint, FlowCompletion, FlowCondition, FlowSinkMatcher,
     MemberCallProvenance, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
@@ -37,7 +35,7 @@ impl CompiledObjectFlow {
         self.symbol.clone()
     }
 
-    fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
+    pub(crate) fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
         let (requirements, all_requirements_required) = match flow.condition.as_ref() {
             Some(FlowCondition::AnyOf(events)) => (
                 events
@@ -210,12 +208,6 @@ impl<'a> CompiledMatcherCatalog<'a> {
     pub(crate) fn len(&self) -> usize {
         self.matchers.len()
     }
-}
-
-#[cfg(test)]
-pub(crate) fn compile_legacy_flow(flow: FlowMatcher) -> CompiledObjectFlow {
-    let flow: ObjectFlowMatcher = flow.into();
-    CompiledObjectFlow::from_matcher(&flow)
 }
 
 #[derive(Debug, Clone)]
