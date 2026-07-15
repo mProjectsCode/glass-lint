@@ -47,10 +47,10 @@ pub enum ResolutionResult {
 #[derive(
     Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
 )]
-pub struct ModuleId(pub u32);
+pub(crate) struct ModuleId(pub u32);
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub enum ResolvedModule {
+pub(crate) enum ResolvedModule {
     Internal { id: ModuleId, path: String },
     External { package: String },
     Builtin { name: String },
@@ -132,6 +132,7 @@ pub enum ProjectInputError {
     DuplicateResolution(ResolutionRequestKey),
     InvalidTarget(String),
     UnknownRequest(ResolutionRequestKey),
+    BudgetExceeded(String),
 }
 impl fmt::Display for ProjectInputError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -151,6 +152,7 @@ impl fmt::Display for ProjectInputError {
                 "resolution does not match an authored request in `{}`",
                 key.importer
             ),
+            Self::BudgetExceeded(message) => write!(f, "project input budget exceeded: {message}"),
         }
     }
 }
@@ -159,6 +161,23 @@ impl std::error::Error for ProjectInputError {}
 impl ProjectInput {
     /// Canonicalizes project identities and validates all cross-record references.
     pub fn validate(mut self) -> Result<Self, ProjectInputError> {
+        if self.sources.len() > 100_000 {
+            return Err(ProjectInputError::BudgetExceeded("source count".into()));
+        }
+        if self.resolutions.len() > 500_000 {
+            return Err(ProjectInputError::BudgetExceeded("resolution count".into()));
+        }
+        if self
+            .sources
+            .iter()
+            .map(|source| source.source.len())
+            .sum::<usize>()
+            > 512 * 1024 * 1024
+        {
+            return Err(ProjectInputError::BudgetExceeded(
+                "project source bytes".into(),
+            ));
+        }
         self.root = normalize_root(&self.root)?;
         let mut sources = BTreeMap::new();
         for mut source in self.sources {
@@ -200,7 +219,7 @@ impl ProjectInput {
 
     /// Assigns stable IDs from normalized project-relative paths.
     #[must_use]
-    pub fn module_ids(&self) -> BTreeMap<String, ModuleId> {
+    pub(crate) fn module_ids(&self) -> BTreeMap<String, ModuleId> {
         let mut paths = self
             .sources
             .iter()
@@ -318,6 +337,12 @@ impl<'a> ProjectSession<'a> {
     }
 
     pub fn finish(self) -> Result<ProjectReport, ProjectInputError> {
+        self.finish_with_timings().map(|(report, _, _)| report)
+    }
+
+    pub fn finish_with_timings(
+        self,
+    ) -> Result<(ProjectReport, std::time::Duration, std::time::Duration), ProjectInputError> {
         let input = ProjectInput {
             root: self.root,
             sources: self.sources.into_values().collect(),
@@ -325,7 +350,7 @@ impl<'a> ProjectSession<'a> {
         }
         .validate()?;
         self.linter
-            .lint_analyzed_project(input, self.analyzed, self.parse_diagnostics)
+            .lint_analyzed_project_timed(input, self.analyzed, self.parse_diagnostics)
     }
 }
 
@@ -443,45 +468,31 @@ impl ProjectFinding {
                 })
                 .collect(),
         };
-        // A project report is a serialized boundary, so normalize evidence
-        // here rather than relying on matcher projection order. This also
-        // makes repeated re-export paths collapse to one report entry.
-        finding.evidence.sort_by(|left, right| {
-            (
-                left.location.as_ref().map(|location| &location.path),
-                left.location.as_ref().map(|location| &location.range),
-                &left.message,
-                &left.source,
-            )
-                .cmp(&(
-                    right.location.as_ref().map(|location| &location.path),
-                    right.location.as_ref().map(|location| &location.range),
-                    &right.message,
-                    &right.source,
-                ))
-        });
-        finding.evidence.dedup();
+        dedup_evidence_in_order(&mut finding.evidence);
         finding
     }
 
     pub(crate) fn append_related(&mut self, evidence: impl IntoIterator<Item = ProjectEvidence>) {
         self.evidence.extend(evidence);
-        self.evidence.sort_by(|left, right| {
-            (
-                left.location.as_ref().map(|location| &location.path),
-                left.location.as_ref().map(|location| &location.range),
-                &left.message,
-                &left.source,
-            )
-                .cmp(&(
-                    right.location.as_ref().map(|location| &location.path),
-                    right.location.as_ref().map(|location| &location.range),
-                    &right.message,
-                    &right.source,
-                ))
-        });
-        self.evidence.dedup();
+        dedup_evidence_in_order(&mut self.evidence);
     }
+}
+
+fn dedup_evidence_in_order(evidence: &mut Vec<ProjectEvidence>) {
+    let mut seen = Vec::new();
+    evidence.retain(|item| {
+        let key = (
+            item.message.clone(),
+            item.location.clone(),
+            item.source.clone(),
+        );
+        if seen.iter().any(|existing| existing == &key) {
+            false
+        } else {
+            seen.push(key);
+            true
+        }
+    });
 }
 
 #[cfg(test)]
@@ -790,6 +801,48 @@ mod tests {
     }
 
     #[test]
+    fn project_flow_preserves_requirements_through_a_helper_chain() {
+        let linter = flow_linter();
+        let mut session = linter.begin_project("/project").unwrap();
+        session
+            .add_source(SourceFile::new(
+                "sink.js",
+                "export function finish(element) { document.head.appendChild(element); }",
+            ))
+            .unwrap();
+        let helper_request = session
+            .add_source(SourceFile::new(
+                "helper.js",
+                "import { finish } from './sink'; export function append(element) { element.src = url; finish(element); }",
+            ))
+            .unwrap();
+        let main_request = session
+            .add_source(SourceFile::new(
+                "main.js",
+                "import { append } from './helper'; const element = document.createElement('script'); append(element);",
+            ))
+            .unwrap();
+        session
+            .record_resolution(
+                helper_request[0].key.clone(),
+                ResolutionResult::Internal {
+                    path: "sink.js".into(),
+                },
+            )
+            .unwrap();
+        session
+            .record_resolution(
+                main_request[0].key.clone(),
+                ResolutionResult::Internal {
+                    path: "helper.js".into(),
+                },
+            )
+            .unwrap();
+        let report = session.finish().unwrap();
+        assert!(report.files.iter().any(|file| !file.findings.is_empty()));
+    }
+
+    #[test]
     fn project_flow_follows_a_returned_parameter() {
         let linter = flow_linter();
         let mut session = linter.begin_project("/project").unwrap();
@@ -1093,6 +1146,176 @@ mod tests {
             .find(|file| file.path == "main.js")
             .unwrap();
         assert_eq!(main_report.findings.len(), 1);
+    }
+
+    #[test]
+    fn static_dynamic_imports_follow_namespace_exports() {
+        let rule = ApiRule::builder("network.request")
+            .label("Uses request")
+            .category("network")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::module_call("web", "request"))
+            .build()
+            .unwrap();
+        let linter = crate::Linter::new(
+            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
+                .unwrap(),
+        );
+        let mut session = linter.begin_project("/project").unwrap();
+        let helper = session
+            .add_source(SourceFile::new(
+                "helper.js",
+                "import { request } from 'web'; export { request };",
+            ))
+            .unwrap();
+        let main = session
+            .add_source(SourceFile::new(
+                "main.js",
+                "async function run() { const api = await import('./helper'); api.request(); }",
+            ))
+            .unwrap();
+        session
+            .record_resolution(
+                helper[0].key.clone(),
+                ResolutionResult::External {
+                    package: "web".into(),
+                },
+            )
+            .unwrap();
+        session
+            .record_resolution(
+                main[0].key.clone(),
+                ResolutionResult::Internal {
+                    path: "helper.js".into(),
+                },
+            )
+            .unwrap();
+        let report = session.finish().unwrap();
+        assert_eq!(
+            report
+                .files
+                .iter()
+                .find(|file| file.path == "main.js")
+                .unwrap()
+                .findings
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn anonymous_commonjs_functions_remain_callable_across_modules() {
+        let rule = ApiRule::builder("network.request")
+            .label("Uses request")
+            .category("network")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::module_call("web", "request"))
+            .build()
+            .unwrap();
+        let linter = crate::Linter::new(
+            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
+                .unwrap(),
+        );
+        let mut session = linter.begin_project("/project").unwrap();
+        let helper = session
+            .add_source(SourceFile::new(
+                "helper.js",
+                "const { request } = require('web'); exports.send = () => request();",
+            ))
+            .unwrap();
+        let main = session
+            .add_source(SourceFile::new(
+                "main.js",
+                "const { send } = require('./helper'); send();",
+            ))
+            .unwrap();
+        session
+            .record_resolution(
+                helper[0].key.clone(),
+                ResolutionResult::External {
+                    package: "web".into(),
+                },
+            )
+            .unwrap();
+        session
+            .record_resolution(
+                main[0].key.clone(),
+                ResolutionResult::Internal {
+                    path: "helper.js".into(),
+                },
+            )
+            .unwrap();
+        let report = session.finish().unwrap();
+        assert_eq!(
+            report
+                .files
+                .iter()
+                .find(|file| file.path == "helper.js")
+                .unwrap()
+                .findings
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn returned_callable_provenance_crosses_an_exported_function() {
+        let rule = ApiRule::builder("network.request")
+            .label("Uses request")
+            .category("network")
+            .severity(ApiSeverity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::call(
+                CallMatcher::module_export("web", "request").static_string_arg(0),
+            ))
+            .build()
+            .unwrap();
+        let linter = crate::Linter::new(
+            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
+                .unwrap(),
+        );
+        let mut session = linter.begin_project("/project").unwrap();
+        let helper = session
+            .add_source(SourceFile::new(
+                "helper.js",
+                "import { request } from 'web'; export function get() { return request; }",
+            ))
+            .unwrap();
+        let main = session
+            .add_source(SourceFile::new(
+                "main.js",
+                "import { get } from './helper'; get()('/remote');",
+            ))
+            .unwrap();
+        session
+            .record_resolution(
+                helper[0].key.clone(),
+                ResolutionResult::External {
+                    package: "web".into(),
+                },
+            )
+            .unwrap();
+        session
+            .record_resolution(
+                main[0].key.clone(),
+                ResolutionResult::Internal {
+                    path: "helper.js".into(),
+                },
+            )
+            .unwrap();
+        let report = session.finish().unwrap();
+        assert_eq!(
+            report
+                .files
+                .iter()
+                .find(|file| file.path == "main.js")
+                .unwrap()
+                .findings
+                .len(),
+            1
+        );
     }
 
     #[test]

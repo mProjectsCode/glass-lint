@@ -33,6 +33,12 @@ use matching::MatcherFacts;
 use module::{ModuleInterface, ModuleRequestRole};
 use syntax::SymbolCallProvenance;
 
+const MAX_EXPORT_DEPTH: usize = 1024;
+const MAX_GRAPH_EDGES: usize = 1_000_000;
+const MAX_EXPORT_ENTRIES: usize = 1_000_000;
+const MAX_SCC_SIZE: usize = 4_096;
+const MAX_PROJECT_REQUESTS: usize = 500_000;
+
 /// The immutable, matcher-independent result of analyzing one source.
 #[derive(Debug)]
 pub(crate) struct LocalModuleModel {
@@ -95,12 +101,15 @@ pub(crate) struct ProjectSemanticModel {
     link_rounds: usize,
     diagnostics: Vec<crate::ProjectDiagnostic>,
     flow_budget_exhausted: Cell<bool>,
+    link_budget_exhausted: bool,
+    effect_projections: Cell<usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ExportResolution {
     External { module: String, export: String },
     Global { name: String },
+    StaticString { value: String },
     Qualified { module: ModuleId, export: String },
     Unknown,
     Ambiguous,
@@ -132,6 +141,8 @@ impl ProjectSemanticModel {
             link_rounds: 0,
             diagnostics: Vec::new(),
             flow_budget_exhausted: Cell::new(false),
+            link_budget_exhausted: false,
+            effect_projections: Cell::new(0),
         }
     }
 
@@ -160,6 +171,39 @@ impl ProjectSemanticModel {
                     local,
                 },
             );
+        }
+
+        // Resolution records are part of the authored project contract, not a
+        // free-form edge list. Validate their exact source spans after local
+        // construction so repeated requests with the same specifier cannot be
+        // accidentally collapsed onto the first request.
+        let authored = modules
+            .values()
+            .flat_map(Self::authored_requests)
+            .map(|request| request.key)
+            .collect::<BTreeSet<_>>();
+        for (key, _) in &input.resolutions {
+            if !authored.contains(key) {
+                return Err(ProjectInputError::UnknownRequest(key.clone()));
+            }
+        }
+        let request_count = modules
+            .values()
+            .map(|module| module.local.interface().requests.len())
+            .sum::<usize>();
+        if request_count > MAX_PROJECT_REQUESTS {
+            return Err(ProjectInputError::BudgetExceeded(
+                "authored request count".into(),
+            ));
+        }
+        let export_count = modules
+            .values()
+            .map(|module| module.local.interface().exports.len())
+            .sum::<usize>();
+        if export_count > MAX_EXPORT_ENTRIES {
+            return Err(ProjectInputError::BudgetExceeded(
+                "export table size".into(),
+            ));
         }
 
         let resolutions = input
@@ -197,6 +241,8 @@ impl ProjectSemanticModel {
             link_rounds: 0,
             diagnostics: Vec::new(),
             flow_budget_exhausted: Cell::new(false),
+            link_budget_exhausted: false,
+            effect_projections: Cell::new(0),
         };
         project.build_graph_and_exports();
         Ok(project)
@@ -256,7 +302,8 @@ impl ProjectSemanticModel {
                     .function_exports
                     .get(&target_export)
             })
-            .copied()?;
+            .copied();
+        let function = function?;
         Some((target, function))
     }
 
@@ -284,11 +331,7 @@ impl ProjectSemanticModel {
             edges: self.adjacency.values().map(Vec::len).sum(),
             exports: self.exports.len(),
             scc_rounds: self.link_rounds,
-            effect_projections: self
-                .modules
-                .values()
-                .map(|module| module.local.effects.by_id.len())
-                .sum(),
+            effect_projections: self.effect_projections.get(),
             evidence,
         }
     }
@@ -300,10 +343,72 @@ impl ProjectSemanticModel {
             .authored_requests(&module.path, &module.source_map)
     }
 
+    fn call_result_identities(
+        &self,
+        importer: ModuleId,
+    ) -> BTreeMap<crate::analysis::value::ValueId, matching::LinkedModuleIdentity> {
+        let mut identities = BTreeMap::new();
+        let Some(module) = self.modules.get(&importer) else {
+            return identities;
+        };
+        for effect in module.local.effects.by_id.values() {
+            for call in &effect.calls {
+                let Some((target_module, target_function)) =
+                    self.qualified_function_target(importer, call.target, &call.provenance)
+                else {
+                    continue;
+                };
+                let Some(target) = self
+                    .modules
+                    .get(&target_module)
+                    .and_then(|module| module.local.effects.get(target_function))
+                else {
+                    continue;
+                };
+                let Some(returned) = target
+                    .returns
+                    .iter()
+                    .find(|returned| returned.parameter.is_none())
+                else {
+                    continue;
+                };
+                let resolution = match &returned.provenance {
+                    SymbolCallProvenance::ModuleExport { module, export } => self
+                        .resolve_imported_identity(target_module, module.as_str(), export.as_str()),
+                    SymbolCallProvenance::Global { name } => {
+                        ExportResolution::Global { name: name.clone() }
+                    }
+                    SymbolCallProvenance::Local => {
+                        returned
+                            .static_string
+                            .as_ref()
+                            .map_or(ExportResolution::Unknown, |value| {
+                                ExportResolution::StaticString {
+                                    value: value.clone(),
+                                }
+                            })
+                    }
+                };
+                identities.insert(call.result, linked_identity(resolution));
+            }
+        }
+        identities
+    }
+
     #[allow(clippy::too_many_lines)]
     fn build_graph_and_exports(&mut self) {
         for module in self.modules.values() {
             self.adjacency.entry(module.id).or_default();
+            if module.local.effects.budget_exhausted {
+                self.diagnostics.push(crate::ProjectDiagnostic {
+                    code: "effect_size_budget_exhausted".into(),
+                    message: format!(
+                        "function-effect extraction exceeded a bounded budget in `{}`",
+                        module.path
+                    ),
+                    location: None,
+                });
+            }
             if module.local.interface().unknown_exports {
                 self.diagnostics.push(crate::ProjectDiagnostic {
                     code: "unsupported_commonjs_exports".into(),
@@ -332,11 +437,16 @@ impl ProjectSemanticModel {
                     continue;
                 };
                 if let ResolvedModule::Internal { id, .. } = resolution {
-                    self.adjacency.entry(module.id).or_default().push(*id);
-                    self.reverse_adjacency
-                        .entry(*id)
-                        .or_default()
-                        .push(module.id);
+                    let edges = self.adjacency.values().map(Vec::len).sum::<usize>();
+                    if edges >= MAX_GRAPH_EDGES {
+                        self.link_budget_exhausted = true;
+                    } else {
+                        self.adjacency.entry(module.id).or_default().push(*id);
+                        self.reverse_adjacency
+                            .entry(*id)
+                            .or_default()
+                            .push(module.id);
+                    }
                 } else if matches!(resolution, ResolvedModule::Missing)
                     && is_internal_request(&request.request)
                 {
@@ -388,6 +498,18 @@ impl ProjectSemanticModel {
         }
         self.components =
             strongly_connected_components(&self.adjacency, self.modules.keys().copied());
+        if self
+            .components
+            .iter()
+            .any(|component| component.len() > MAX_SCC_SIZE)
+        {
+            self.diagnostics.push(crate::ProjectDiagnostic {
+                code: "scc_size_budget_exhausted".into(),
+                message: format!("a module SCC exceeds the bounded size of {MAX_SCC_SIZE}"),
+                location: None,
+            });
+            self.link_budget_exhausted = true;
+        }
 
         // Resolve exports in a bounded, monotone pass.  The fixed point is
         // intentionally conservative: a cycle that does not stabilize stays
@@ -399,8 +521,13 @@ impl ProjectSemanticModel {
             rounds += 1;
             for module in self.modules.values() {
                 for (name, export) in &module.local.interface().exports {
-                    let resolved = self.resolve_export(module.id, export);
+                    let resolved = self.resolve_export(module.id, name, export);
                     let key = (module.id, name.clone());
+                    if !self.exports.contains_key(&key) && self.exports.len() >= MAX_EXPORT_ENTRIES
+                    {
+                        self.link_budget_exhausted = true;
+                        continue;
+                    }
                     if self.exports.get(&key) != Some(&resolved) {
                         self.exports.insert(key, resolved);
                         changed = true;
@@ -418,6 +545,14 @@ impl ProjectSemanticModel {
             for value in self.exports.values_mut() {
                 *value = ExportResolution::Unknown;
             }
+            self.link_budget_exhausted = true;
+        }
+        if self.link_budget_exhausted {
+            self.diagnostics.push(crate::ProjectDiagnostic {
+                code: "graph_link_budget_exhausted".into(),
+                message: "project graph linking exceeded a bounded linker budget".into(),
+                location: None,
+            });
         }
 
         for module in self.modules.values() {
@@ -477,7 +612,12 @@ impl ProjectSemanticModel {
         self.diagnostics.dedup();
     }
 
-    fn resolve_export(&self, module: ModuleId, export: &module::ModuleExport) -> ExportResolution {
+    fn resolve_export(
+        &self,
+        module: ModuleId,
+        export_name: &str,
+        export: &module::ModuleExport,
+    ) -> ExportResolution {
         match export {
             module::ModuleExport::Local { name } => {
                 let Some(project_module) = self.modules.get(&module) else {
@@ -496,16 +636,30 @@ impl ProjectSemanticModel {
                     Some(SymbolCallProvenance::Global { name }) => {
                         ExportResolution::Global { name: name.clone() }
                     }
-                    Some(SymbolCallProvenance::Local) | None => ExportResolution::Qualified {
-                        module,
-                        export: name.clone(),
-                    },
+                    Some(SymbolCallProvenance::Local) | None => {
+                        if let Some(value) =
+                            project_module.local.interface().static_strings.get(name)
+                        {
+                            ExportResolution::StaticString {
+                                value: value.clone(),
+                            }
+                        } else {
+                            ExportResolution::Qualified {
+                                module,
+                                export: name.clone(),
+                            }
+                        }
+                    }
                 }
             }
-            module::ModuleExport::Value => ExportResolution::Qualified {
-                module,
-                export: "default".into(),
-            },
+            module::ModuleExport::Value => project_module_static_string(self, module, export_name)
+                .map_or_else(
+                    || ExportResolution::Qualified {
+                        module,
+                        export: export_name.to_owned(),
+                    },
+                    |value| ExportResolution::StaticString { value },
+                ),
             module::ModuleExport::Unknown => ExportResolution::Unknown,
             module::ModuleExport::ReExport { request, imported } => {
                 self.resolve_request_export(module, *request, imported)
@@ -636,14 +790,18 @@ impl ProjectSemanticModel {
         name: &str,
         visiting: &mut std::collections::BTreeSet<(ModuleId, String)>,
     ) -> Option<ExportResolution> {
-        if !visiting.insert((module, name.to_string())) {
+        let visit_key = (module, name.to_string());
+        if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(visit_key.clone()) {
             return None;
         }
         if let Some(resolved) = self.exports.get(&(module, name.to_string())) {
-            return Some(resolved.clone());
+            let resolved = resolved.clone();
+            visiting.remove(&visit_key);
+            return Some(resolved);
         }
         // ECMAScript `export *` intentionally does not forward `default`.
         if name == "default" {
+            visiting.remove(&visit_key);
             return None;
         }
         let interface = self.modules.get(&module).map(|m| m.local.interface())?;
@@ -694,6 +852,7 @@ impl ProjectSemanticModel {
                 None => saw_unknown = true,
             }
         }
+        visiting.remove(&visit_key);
         if saw_unknown { None } else { candidate }
     }
 
@@ -744,18 +903,24 @@ impl ProjectSemanticModel {
             .map(|module| {
                 let mut facts = module.local.facts.index.clone();
                 let identities = self.module_identities(module.id);
+                let result_identities = self.call_result_identities(module.id);
                 facts.apply_module_overlay(&identities);
                 (
                     module.id,
                     ProjectModuleProjection {
                         index: facts,
-                        arguments: module.local.facts.project(&matchers, Some(&identities)),
+                        arguments: module.local.facts.project(
+                            &matchers,
+                            Some(&identities),
+                            Some(&result_identities),
+                        ),
                     },
                 )
             })
             .collect();
-        let (cross, exhausted) = flow::cross::collect(self, &matchers);
+        let (cross, exhausted, projection_count) = flow::cross::collect(self, &matchers);
         self.flow_budget_exhausted.set(exhausted);
+        self.effect_projections.set(projection_count);
         let mut projections = projections;
         for (module, evidence) in cross {
             if let Some(projection) = projections.get_mut(&module) {
@@ -809,10 +974,8 @@ impl ProjectSemanticModel {
                 // has no binding list. A wildcard overlay is the precise
                 // project-level equivalent and still requires a proven export
                 // for internal modules.
-                ModuleRequestRole::Require => true,
-                ModuleRequestRole::ReExport { .. }
-                | ModuleRequestRole::StarExport
-                | ModuleRequestRole::DynamicImport => false,
+                ModuleRequestRole::Require | ModuleRequestRole::DynamicImport => true,
+                ModuleRequestRole::ReExport { .. } | ModuleRequestRole::StarExport => false,
             };
             if is_namespace_import {
                 let prefix = request.specifier.clone();
@@ -842,7 +1005,7 @@ impl ProjectSemanticModel {
         module: ModuleId,
         visiting: &mut BTreeSet<ModuleId>,
     ) -> BTreeSet<String> {
-        if !visiting.insert(module) {
+        if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(module) {
             return BTreeSet::new();
         }
         let Some(project_module) = self.modules.get(&module) else {
@@ -859,6 +1022,7 @@ impl ProjectSemanticModel {
                 names.extend(self.exported_names(*id, visiting));
             }
         }
+        visiting.remove(&module);
         names
     }
 
@@ -895,11 +1059,31 @@ fn linked_identity(resolution: ExportResolution) -> matching::LinkedModuleIdenti
             matching::LinkedModuleIdentity::External { module, export }
         }
         ExportResolution::Global { name } => matching::LinkedModuleIdentity::Global { name },
-        ExportResolution::Qualified { .. } => matching::LinkedModuleIdentity::Qualified,
+        ExportResolution::StaticString { value } => {
+            matching::LinkedModuleIdentity::StaticString { value }
+        }
+        ExportResolution::Qualified { module, export } => {
+            matching::LinkedModuleIdentity::Qualified {
+                module: module.0,
+                export,
+            }
+        }
         ExportResolution::Unknown | ExportResolution::Ambiguous => {
             matching::LinkedModuleIdentity::Unknown
         }
     }
+}
+
+fn project_module_static_string(
+    project: &ProjectSemanticModel,
+    module: ModuleId,
+    export: &str,
+) -> Option<String> {
+    project
+        .modules
+        .get(&module)
+        .and_then(|module| module.local.interface().static_strings.get(export))
+        .cloned()
 }
 
 fn is_internal_request(request: &str) -> bool {
@@ -910,41 +1094,31 @@ fn strongly_connected_components(
     adjacency: &BTreeMap<ModuleId, Vec<ModuleId>>,
     nodes: impl IntoIterator<Item = ModuleId>,
 ) -> Vec<Vec<ModuleId>> {
-    // A deterministic Kosaraju pass is sufficient here; the graph is already
-    // sorted and deduplicated by the linker.
-    fn visit(
-        node: ModuleId,
-        graph: &BTreeMap<ModuleId, Vec<ModuleId>>,
-        seen: &mut BTreeMap<ModuleId, bool>,
-        order: &mut Vec<ModuleId>,
-    ) {
-        if seen.insert(node, true).is_some() {
-            return;
-        }
-        for next in graph.get(&node).into_iter().flatten().copied() {
-            visit(next, graph, seen, order);
-        }
-        order.push(node);
-    }
-    fn collect(
-        node: ModuleId,
-        reverse: &BTreeMap<ModuleId, Vec<ModuleId>>,
-        seen: &mut BTreeMap<ModuleId, bool>,
-        component: &mut Vec<ModuleId>,
-    ) {
-        if seen.insert(node, true).is_some() {
-            return;
-        }
-        component.push(node);
-        for next in reverse.get(&node).into_iter().flatten().copied() {
-            collect(next, reverse, seen, component);
-        }
-    }
+    // A deterministic iterative Kosaraju pass avoids stack growth from a
+    // large explicit project graph.
     let nodes = nodes.into_iter().collect::<Vec<_>>();
     let mut seen = BTreeMap::new();
     let mut order = Vec::new();
     for node in nodes.iter().copied() {
-        visit(node, adjacency, &mut seen, &mut order);
+        if seen.contains_key(&node) {
+            continue;
+        }
+        let mut stack = vec![(node, false)];
+        while let Some((current, expanded)) = stack.pop() {
+            if expanded {
+                order.push(current);
+                continue;
+            }
+            if seen.insert(current, true).is_some() {
+                continue;
+            }
+            stack.push((current, true));
+            for next in adjacency.get(&current).into_iter().flatten().rev().copied() {
+                if !seen.contains_key(&next) {
+                    stack.push((next, false));
+                }
+            }
+        }
     }
     let mut reverse = adjacency.iter().fold(
         BTreeMap::<ModuleId, Vec<ModuleId>>::new(),
@@ -961,8 +1135,21 @@ fn strongly_connected_components(
     seen.clear();
     let mut components = Vec::new();
     for node in order.into_iter().rev() {
+        if seen.get(&node).copied().unwrap_or(false) {
+            continue;
+        }
         let mut component = Vec::new();
-        collect(node, &reverse, &mut seen, &mut component);
+        let mut stack = vec![node];
+        seen.insert(node, true);
+        while let Some(current) = stack.pop() {
+            component.push(current);
+            for next in reverse.get(&current).into_iter().flatten().rev().copied() {
+                if let std::collections::btree_map::Entry::Vacant(entry) = seen.entry(next) {
+                    entry.insert(true);
+                    stack.push(next);
+                }
+            }
+        }
         if !component.is_empty() {
             component.sort_unstable();
             components.push(component);

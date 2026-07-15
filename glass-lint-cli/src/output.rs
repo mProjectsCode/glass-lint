@@ -17,12 +17,6 @@ pub struct FileOutput {
     pub(crate) source: String,
 }
 
-#[derive(Serialize)]
-struct JsonFileOutput<'a> {
-    path: &'a str,
-    report: &'a LintReport,
-}
-
 #[derive(Clone, Copy, Serialize)]
 pub struct Summary {
     pub(crate) files: usize,
@@ -36,23 +30,6 @@ pub struct ProjectSummary {
     pub(crate) findings: usize,
     pub(crate) parse_diagnostics: usize,
     pub(crate) project_diagnostics: usize,
-}
-
-#[derive(Serialize)]
-struct Envelope<'a> {
-    schema_version: u32,
-    files: Vec<JsonFileOutput<'a>>,
-    summary: Summary,
-}
-
-#[derive(Serialize)]
-struct ProjectEnvelope<'a> {
-    schema_version: u32,
-    tool_version: &'a str,
-    files: &'a [glass_lint_core::ProjectFileReport],
-    diagnostics: &'a [glass_lint_core::ProjectDiagnostic],
-    summary: ProjectSummary,
-    operations: &'a glass_lint_core::ProjectOperationCounts,
 }
 
 pub fn write_rules(config: &Config) -> Result<bool> {
@@ -129,19 +106,59 @@ fn write_report_to<W: Write>(
 fn write_json<W: Write>(files: &[FileOutput], summary: Summary, out: &mut W) -> Result<()> {
     let files = files
         .iter()
-        .map(|file| JsonFileOutput {
-            path: &file.path,
-            report: &file.report,
+        .map(|file| glass_lint_core::ProjectFileReport {
+            path: file.path.clone(),
+            findings: file
+                .report
+                .findings
+                .iter()
+                .cloned()
+                .map(|finding| glass_lint_core::ProjectFinding {
+                    rule_id: finding.rule_id,
+                    message_id: finding.message_id,
+                    message: finding.message,
+                    severity: finding.severity,
+                    location: glass_lint_core::SourceLocation {
+                        path: file.path.clone(),
+                        range: finding.range,
+                    },
+                    evidence: finding
+                        .evidence
+                        .into_iter()
+                        .map(|evidence| glass_lint_core::ProjectEvidence {
+                            message: evidence.message,
+                            location: evidence.range.map(|range| glass_lint_core::SourceLocation {
+                                path: file.path.clone(),
+                                range,
+                            }),
+                            source: evidence.source,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            parse_diagnostics: file.report.parse_diagnostics.clone(),
         })
-        .collect();
-    serde_json::to_writer_pretty(
-        &mut *out,
-        &Envelope {
-            schema_version: glass_lint_core::REPORT_VERSION,
-            files,
-            summary,
+        .collect::<Vec<_>>();
+    let report = glass_lint_core::ProjectReport {
+        schema_version: glass_lint_core::REPORT_VERSION,
+        tool_version: env!("CARGO_PKG_VERSION").into(),
+        operations: glass_lint_core::ProjectOperationCounts {
+            files: summary.files,
+            evidence: files
+                .iter()
+                .map(|file| {
+                    file.findings
+                        .iter()
+                        .map(|finding| finding.evidence.len())
+                        .sum::<usize>()
+                })
+                .sum(),
+            ..glass_lint_core::ProjectOperationCounts::default()
         },
-    )?;
+        files,
+        diagnostics: Vec::new(),
+    };
+    serde_json::to_writer_pretty(&mut *out, &report)?;
     writeln!(out)?;
     Ok(())
 }
@@ -201,17 +218,7 @@ fn write_project_report_to<W: Write>(
     };
     match config.cli.output {
         Output::Json => {
-            serde_json::to_writer_pretty(
-                &mut *out,
-                &ProjectEnvelope {
-                    schema_version: report.schema_version,
-                    tool_version: &report.tool_version,
-                    files: &report.files,
-                    diagnostics: &report.diagnostics,
-                    summary,
-                    operations: &report.operations,
-                },
-            )?;
+            serde_json::to_writer_pretty(&mut *out, report)?;
             writeln!(out)?;
         }
         Output::Pretty => write_project_pretty(config, report, summary, out)?,
@@ -241,31 +248,43 @@ fn write_project_pretty<W: Write>(
                     .apply_to(finding.rule_id.to_string()),
                 finding.message,
             )?;
-            let evidence = if finding.evidence.is_empty() {
-                None
-            } else {
-                finding.evidence.first()
-            };
-            if let Some(evidence) = evidence {
+            writeln!(
+                out,
+                "  {}:{}:{}",
+                finding.location.path,
+                finding.location.range.start.line,
+                finding.location.range.start.column
+            )?;
+            for evidence in &finding.evidence {
                 if let Some(location) = &evidence.location {
                     writeln!(
                         out,
-                        "  {}:{}:{} - {}",
+                        "    {}:{}:{} - {}",
                         location.path,
                         location.range.start.line,
                         location.range.start.column,
                         evidence.message
                     )?;
                 }
-            } else {
-                writeln!(
-                    out,
-                    "  {}:{}:{}",
-                    finding.location.path,
-                    finding.location.range.start.line,
-                    finding.location.range.start.column
-                )?;
             }
+        }
+    }
+    for file in &report.files {
+        for diagnostic in &file.parse_diagnostics {
+            writeln!(
+                out,
+                "diagnostic [parse] {} ({}:{}:{})",
+                diagnostic.message,
+                file.path,
+                diagnostic
+                    .range
+                    .as_ref()
+                    .map_or(0, |range| range.start.line),
+                diagnostic
+                    .range
+                    .as_ref()
+                    .map_or(0, |range| range.start.column)
+            )?;
         }
     }
     for diagnostic in &report.diagnostics {

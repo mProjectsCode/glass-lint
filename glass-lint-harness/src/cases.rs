@@ -323,8 +323,22 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
             if entry.rules.is_empty() {
                 entry.rules = expectation.rules;
             }
-            entry.required.extend(expectation.required);
-            entry.forbidden.extend(expectation.forbidden);
+            entry
+                .required
+                .extend(expectation.required.into_iter().map(|mut expected| {
+                    if expected.path.is_none() {
+                        expected.path = Some(file.path.clone());
+                    }
+                    expected
+                }));
+            entry
+                .forbidden
+                .extend(expectation.forbidden.into_iter().map(|mut expected| {
+                    if expected.path.is_none() {
+                        expected.path = Some(file.path.clone());
+                    }
+                    expected
+                }));
         }
     }
 
@@ -431,6 +445,7 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
         .get_mut(tool)
         .with_context(|| format!("@expect-error references unconfigured tool `{tool}`"))?;
     let mut diagnostic = DiagnosticExpectation {
+        path: None,
         rule_id: String::new(),
         message_id: None,
         severity: None,

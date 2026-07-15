@@ -58,6 +58,12 @@ impl SemanticFacts {
         identities: Option<
             &std::collections::BTreeMap<(String, String), super::matching::LinkedModuleIdentity>,
         >,
+        result_identities: Option<
+            &std::collections::BTreeMap<
+                super::value::ValueId,
+                super::matching::LinkedModuleIdentity,
+            >,
+        >,
     ) -> Vec<Vec<crate::api::classification::ApiEvidence>> {
         let member_argument_matchers = matchers
             .selected_matchers()
@@ -102,6 +108,7 @@ impl SemanticFacts {
             &call_argument_matchers,
             &mut argument_evidence,
             identities,
+            result_identities,
         );
         for (rule_index, evidence) in
             object_flow::collect(&self.stream, &flow_matchers, matchers.len())
@@ -156,6 +163,7 @@ mod tests {
                 FactKind::Reference => FactPayload::Reference {
                     value: ValueId::UNKNOWN,
                     static_string: None,
+                    provenance: SymbolCallProvenance::Local,
                 },
                 FactKind::Function => FactPayload::Function {
                     id: FunctionId(0),

@@ -6,6 +6,7 @@ use super::{
 impl FactBuilder<'_> {
     pub(super) fn arg_info(&mut self, expr: &Expr) -> CallArgInfo {
         let value = self.resolver.resolve_expr(expr).id;
+        let provenance = self.resolver.resolve_expr(expr).call;
         let (base_value, base_path) = self.expression_projection(expr);
         let mut projections = Vec::new();
         self.collect_value_projections(expr, PathId::EMPTY, &mut projections);
@@ -24,6 +25,7 @@ impl FactBuilder<'_> {
             rooted_chain: self.resolver.rooted_expr_chain(expr),
             projections,
             spread: false,
+            provenance,
         }
     }
 
@@ -113,6 +115,7 @@ impl FactBuilder<'_> {
                     value: ValueId::UNKNOWN,
                 }],
                 spread: false,
+                provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
             },
             BoundArgument::RootedExpression(chain) => CallArgInfo {
                 value: ValueId::UNKNOWN,
@@ -126,6 +129,7 @@ impl FactBuilder<'_> {
                     value: ValueId::UNKNOWN,
                 }],
                 spread: false,
+                provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
             },
         }
     }

@@ -320,6 +320,14 @@ impl AliasCollector {
                 .require_module_name(call)
                 .map(|module| BindingProvenance::ModuleNamespace { module })
                 .or_else(|| {
+                    if matches!(call.callee, Callee::Import(_))
+                        && let Some(Expr::Lit(Lit::Str(specifier))) =
+                            call.args.first().map(|argument| &*argument.expr)
+                    {
+                        return Some(BindingProvenance::ModuleNamespace {
+                            module: specifier.value.to_string_lossy().to_string(),
+                        });
+                    }
                     let Callee::Expr(callee) = &call.callee else {
                         return None;
                     };
@@ -330,6 +338,7 @@ impl AliasCollector {
                         .then(|| self.module_alias_provenance(&member.obj))
                         .flatten()
                 }),
+            Expr::Await(await_expr) => self.module_alias_provenance(&await_expr.arg),
             Expr::Paren(paren) => self.module_alias_provenance(&paren.expr),
             Expr::Seq(sequence) => sequence
                 .exprs

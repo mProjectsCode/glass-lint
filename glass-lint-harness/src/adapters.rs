@@ -219,6 +219,7 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
                 .find(|(candidate, importer)| {
                     importer == &resolution.importer
                         && candidate.key.kind == kind
+                        && candidate.key.range == resolution.range
                         && candidate.request == resolution.request
                 })
                 .map(|(request, _)| request.key.clone())
@@ -321,7 +322,29 @@ impl Adapter for ExternalAdapter {
         Ok("external".into())
     }
 
+    fn supports_projects(&self) -> bool {
+        true
+    }
+
+    fn run_with_locations(&self, case: &Case, expectation: &ToolExpectation) -> Result<AdapterRun> {
+        let (findings, finding_locations) = self.run_protocol(case, expectation)?;
+        Ok(AdapterRun {
+            findings,
+            finding_locations,
+        })
+    }
+
     fn run(&self, case: &Case, expectation: &ToolExpectation) -> Result<Vec<Finding>> {
+        Ok(self.run_protocol(case, expectation)?.0)
+    }
+}
+
+impl ExternalAdapter {
+    fn run_protocol(
+        &self,
+        case: &Case,
+        expectation: &ToolExpectation,
+    ) -> Result<(Vec<Finding>, Vec<FindingLocation>)> {
         let mut child = Command::new(&self.command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -367,7 +390,7 @@ impl Adapter for ExternalAdapter {
                 self.name
             );
         }
-        Ok(response.findings)
+        Ok((response.findings, response.finding_locations))
     }
 }
 

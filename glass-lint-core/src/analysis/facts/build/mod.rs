@@ -193,6 +193,14 @@ impl<'a> FactBuilder<'a> {
                             name.clone(),
                             crate::analysis::module::ModuleExport::Local { name },
                         );
+                        if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
+                            && let Some(value) = self
+                                .resolver
+                                .static_string_value(self.resolver.resolve_ident(&binding.id).id)
+                        {
+                            self.interface
+                                .add_static_string(binding.id.sym.to_string(), value);
+                        }
                     }
                 }
             }
@@ -241,6 +249,7 @@ impl<'a> FactBuilder<'a> {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn record_commonjs_export(&mut self, assignment: &swc_ecma_ast::AssignExpr) {
         if assignment.op != swc_ecma_ast::AssignOp::Assign {
             return;
@@ -264,7 +273,33 @@ impl<'a> FactBuilder<'a> {
                 };
                 self.interface
                     .add_export("default", crate::analysis::module::ModuleExport::Value);
+                for prop in &object.props {
+                    let swc_ecma_ast::PropOrSpread::Prop(prop) = prop else {
+                        continue;
+                    };
+                    match &**prop {
+                        swc_ecma_ast::Prop::KeyValue(value) => {
+                            let Some(name) = crate::analysis::syntax::prop_name(&value.key) else {
+                                continue;
+                            };
+                            self.add_function_export_if_expr(&name, &value.value);
+                            if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = &*value.value {
+                                self.interface
+                                    .add_static_string(name, value.value.to_string_lossy());
+                            }
+                        }
+                        swc_ecma_ast::Prop::Method(method) => {
+                            if let Some(name) = crate::analysis::syntax::prop_name(&method.key) {
+                                self.add_function_export_if_span(&name, method.function.span());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 for (name, local) in entries {
+                    if let Some(local) = &local {
+                        self.add_function_export_if_name(&name, local, assignment.span());
+                    }
                     self.interface.add_export(
                         name,
                         local.map_or(crate::analysis::module::ModuleExport::Value, |name| {
@@ -273,6 +308,9 @@ impl<'a> FactBuilder<'a> {
                     );
                 }
             } else {
+                if let Some(id) = self.resolver.function_id_for_span(assignment.right.span()) {
+                    self.interface.add_function_export("default", id);
+                }
                 self.interface
                     .add_export("default", crate::analysis::module::ModuleExport::Value);
             }
@@ -281,10 +319,24 @@ impl<'a> FactBuilder<'a> {
         if is_unshadowed(&member.obj, "exports") {
             if let Some(property) = property {
                 let export = match &*assignment.right {
-                    Expr::Ident(ident) => crate::analysis::module::ModuleExport::Local {
-                        name: ident.sym.to_string(),
-                    },
-                    _ => crate::analysis::module::ModuleExport::Value,
+                    Expr::Ident(ident) => {
+                        self.add_function_export_if_name(
+                            &property,
+                            ident.sym.as_ref(),
+                            assignment.span(),
+                        );
+                        crate::analysis::module::ModuleExport::Local {
+                            name: ident.sym.to_string(),
+                        }
+                    }
+                    expr => {
+                        self.add_function_export_if_expr(&property, expr);
+                        if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = expr {
+                            self.interface
+                                .add_static_string(&property, value.value.to_string_lossy());
+                        }
+                        crate::analysis::module::ModuleExport::Value
+                    }
                 };
                 self.interface.add_export(property, export);
             } else {
@@ -305,12 +357,38 @@ impl<'a> FactBuilder<'a> {
             return;
         };
         let export = match &*assignment.right {
-            Expr::Ident(ident) => crate::analysis::module::ModuleExport::Local {
-                name: ident.sym.to_string(),
-            },
-            _ => crate::analysis::module::ModuleExport::Value,
+            Expr::Ident(ident) => {
+                self.add_function_export_if_name(&property, ident.sym.as_ref(), assignment.span());
+                crate::analysis::module::ModuleExport::Local {
+                    name: ident.sym.to_string(),
+                }
+            }
+            expr => {
+                self.add_function_export_if_expr(&property, expr);
+                if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = expr {
+                    self.interface
+                        .add_static_string(&property, value.value.to_string_lossy());
+                }
+                crate::analysis::module::ModuleExport::Value
+            }
         };
         self.interface.add_export(property, export);
+    }
+
+    fn add_function_export_if_name(&mut self, export: &str, local: &str, span: Span) {
+        if let Some(id) = self.resolver.function_id_for_name(local, span) {
+            self.interface.add_function_export(export, id);
+        }
+    }
+
+    fn add_function_export_if_expr(&mut self, export: &str, expr: &Expr) {
+        self.add_function_export_if_span(export, expr.span());
+    }
+
+    fn add_function_export_if_span(&mut self, export: &str, span: Span) {
+        if let Some(id) = self.resolver.function_id_for_span(span) {
+            self.interface.add_function_export(export, id);
+        }
     }
 
     fn commonjs_object_export_entries(

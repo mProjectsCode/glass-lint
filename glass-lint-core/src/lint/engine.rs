@@ -11,6 +11,7 @@ use crate::api::{
     compiler::CompiledCatalog,
 };
 use crate::diagnostic::{Evidence, Finding, LintReport, SourceRange};
+use crate::project::ModuleId;
 use crate::{REPORT_VERSION, RuleId, SourceLanguage};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -144,7 +145,7 @@ impl Linter {
         let mut findings = {
             let _span = tracing::debug_span!(target: "glass_lint::matching", "matching").entered();
             classifications
-                .get(&crate::ModuleId(0))
+                .get(&ModuleId(0))
                 .map_or_else(Vec::new, |classification| {
                     self.findings_for(classification, &parsed.source_map, source)
                 })
@@ -216,6 +217,30 @@ impl Linter {
         >,
         parse_diagnostics: std::collections::BTreeMap<String, crate::ParseDiagnostic>,
     ) -> Result<crate::ProjectReport, crate::ProjectInputError> {
+        self.lint_analyzed_project_timed(input, analyzed, parse_diagnostics)
+            .map(|(report, _, _)| report)
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub(crate) fn lint_analyzed_project_timed(
+        &self,
+        input: crate::ProjectInput,
+        analyzed: std::collections::BTreeMap<
+            String,
+            (
+                swc_common::sync::Lrc<swc_common::SourceMap>,
+                crate::analysis::LocalModuleModel,
+            ),
+        >,
+        parse_diagnostics: std::collections::BTreeMap<String, crate::ParseDiagnostic>,
+    ) -> Result<
+        (
+            crate::ProjectReport,
+            std::time::Duration,
+            std::time::Duration,
+        ),
+        crate::ProjectInputError,
+    > {
         let input = input.validate()?;
         let mut authored = std::collections::BTreeSet::new();
         for (path, (source_map, local)) in &analyzed {
@@ -251,13 +276,17 @@ impl Linter {
             })
             .collect::<std::collections::BTreeMap<_, _>>();
 
+        let linking_start = std::time::Instant::now();
         let project = crate::analysis::ProjectSemanticModel::link(input, analyzed)?;
+        let linking_elapsed = linking_start.elapsed();
+        let matching_start = std::time::Instant::now();
         let classifications = classify_compiled_api_usage(
             &project,
             &self.compiled,
             &self.catalog.rules,
             &self.selected_rule_indices(),
         );
+        let matching_elapsed = matching_start.elapsed();
         for module in project.modules() {
             let Some(classification) = classifications.get(&module.id) else {
                 continue;
@@ -284,7 +313,7 @@ impl Linter {
                         .flat_map(|evidence| &evidence.related)
                         .filter_map(|related| {
                             project
-                                .fact_location(crate::ModuleId(related.module), related.event)
+                                .fact_location(ModuleId(related.module), related.event)
                                 .map(|mut location| {
                                     location.message.clone_from(&related.symbol);
                                     location
@@ -336,13 +365,14 @@ impl Linter {
                     .sum::<usize>()
             })
             .sum();
-        Ok(crate::ProjectReport {
+        let report = crate::ProjectReport {
             schema_version: crate::REPORT_VERSION,
             tool_version: env!("CARGO_PKG_VERSION").into(),
             files: files.into_values().collect(),
             diagnostics,
             operations: project.operation_counts(evidence),
-        })
+        };
+        Ok((report, linking_elapsed, matching_elapsed))
     }
 
     fn selected_rule_indices(&self) -> BTreeSet<usize> {

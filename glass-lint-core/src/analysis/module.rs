@@ -60,6 +60,7 @@ pub(crate) struct ModuleInterface {
     pub(crate) locals: BTreeSet<String>,
     pub(crate) unknown_exports: bool,
     pub(crate) function_exports: BTreeMap<String, FunctionId>,
+    pub(crate) static_strings: BTreeMap<String, String>,
 }
 
 impl ModuleInterface {
@@ -117,6 +118,10 @@ impl ModuleInterface {
                 self.function_exports.remove(&name);
             }
         }
+    }
+
+    pub(crate) fn add_static_string(&mut self, name: impl Into<String>, value: impl Into<String>) {
+        self.static_strings.insert(name.into(), value.into());
     }
 
     pub(crate) fn add_star_export(&mut self, request: usize) {

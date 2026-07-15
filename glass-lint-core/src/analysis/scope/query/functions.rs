@@ -71,4 +71,16 @@ impl ScopeGraph {
             scope = self.scopes.get(scope)?.parent?;
         }
     }
+
+    pub(in crate::analysis) fn function_id_for_span(&self, span: Span) -> Option<FunctionId> {
+        self.function_ids
+            .iter()
+            .filter_map(|(scope, function)| {
+                let candidate = self.scopes.get(*scope)?;
+                (candidate.span.lo <= span.lo && candidate.span.hi >= span.hi)
+                    .then_some((candidate.span.hi.0 - candidate.span.lo.0, *function))
+            })
+            .min_by_key(|(size, _)| *size)
+            .map(|(_, function)| function)
+    }
 }

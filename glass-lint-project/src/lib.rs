@@ -127,6 +127,10 @@ pub enum ProjectLoadError {
     InvalidOptions(String),
     SelectionNotFound(PathBuf),
     SelectionNotFile(PathBuf),
+    SelectionOutsideRoot {
+        selection: PathBuf,
+        root: PathBuf,
+    },
     UnsupportedSource(PathBuf),
     Io {
         path: PathBuf,
@@ -152,6 +156,12 @@ impl fmt::Display for ProjectLoadError {
             Self::SelectionNotFile(path) => {
                 write!(f, "project entry is not a file: {}", path.display())
             }
+            Self::SelectionOutsideRoot { selection, root } => write!(
+                f,
+                "project selection {} is outside project root {}",
+                selection.display(),
+                root.display()
+            ),
             Self::UnsupportedSource(path) => {
                 write!(f, "unsupported project source: {}", path.display())
             }
@@ -198,6 +208,8 @@ pub struct ProjectLoadMetrics {
     pub parse_and_local_analysis: Duration,
     pub resolution: Duration,
     pub linking_and_matching: Duration,
+    pub linking: Duration,
+    pub matching: Duration,
     pub total: Duration,
     pub files: usize,
     pub requests: usize,
@@ -249,6 +261,12 @@ impl ProjectLoader {
         }
         let selection_path = realpath(&selection_path)?;
         let root = realpath(&self.project_root(selection, &selection_path))?;
+        if !inside_root(&root, &selection_path) {
+            return Err(ProjectLoadError::SelectionOutsideRoot {
+                selection: selection_path,
+                root,
+            });
+        }
         let import_resolver = Resolver::new(self.resolver_options(&root, selection, false));
         let require_resolver =
             import_resolver.clone_with_options(self.resolver_options(&root, selection, true));
@@ -313,7 +331,9 @@ impl ProjectLoader {
             }
         }
         let link_start = Instant::now();
-        let report = session.finish()?;
+        let (report, linking, matching) = session.finish_with_timings()?;
+        metrics.linking += linking;
+        metrics.matching += matching;
         metrics.linking_and_matching += link_start.elapsed();
         Ok(report)
     }
@@ -353,6 +373,12 @@ impl ProjectLoader {
                 self.discover_tsconfig(config, path.parent().unwrap_or(root))?
             }
         };
+        if paths.iter().any(|path| !inside_root(root, path)) {
+            return Err(ProjectLoadError::SelectionOutsideRoot {
+                selection: path.to_path_buf(),
+                root: root.to_path_buf(),
+            });
+        }
         paths.retain(|path| inside_root(root, path));
         paths.sort();
         paths.dedup();
@@ -388,29 +414,39 @@ impl ProjectLoader {
         config: &Path,
         directory: &Path,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
+        let mut visited = BTreeSet::new();
+        let mut selected = BTreeSet::new();
+        self.collect_tsconfig(&realpath(config)?, directory, &mut visited, &mut selected)?;
+        Ok(selected.into_iter().collect())
+    }
+
+    fn collect_tsconfig(
+        &self,
+        config: &Path,
+        fallback_directory: &Path,
+        visited: &mut BTreeSet<PathBuf>,
+        selected: &mut BTreeSet<PathBuf>,
+    ) -> Result<(), ProjectLoadError> {
         let config = realpath(config)?;
-        let all = self.discover(directory)?;
-        let mut text = fs::read_to_string(&config).map_err(|source| ProjectLoadError::Io {
-            path: config.clone(),
-            source,
-        })?;
-        json_strip_comments::strip(&mut text).map_err(|error| {
-            ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
-        })?;
-        let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
-            ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
-        })?;
-        let base = config.parent().unwrap_or(directory);
+        if !visited.insert(config.clone()) {
+            return Ok(());
+        }
+        let parsed = self.read_tsconfig_with_extends(&config, fallback_directory, visited)?;
+        let base = config.parent().unwrap_or(fallback_directory);
+        let all = self.discover(base)?;
         let includes = parsed
             .get("include")
             .and_then(serde_json::Value::as_array)
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(serde_json::Value::as_str)
-                    .collect::<Vec<_>>()
-            });
-        let excludes = parsed
+            .map_or_else(
+                || vec!["**/*"],
+                |values| {
+                    values
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .collect::<Vec<_>>()
+                },
+            );
+        let mut excludes = parsed
             .get("exclude")
             .and_then(serde_json::Value::as_array)
             .map(|values| {
@@ -420,38 +456,95 @@ impl ProjectLoader {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        let files = parsed
-            .get("files")
-            .and_then(serde_json::Value::as_array)
-            .map(|values| {
-                values
-                    .iter()
-                    .filter_map(serde_json::Value::as_str)
-                    .map(|path| base.join(path))
-                    .collect::<BTreeSet<_>>()
-            });
-        Ok(all
-            .into_iter()
-            .filter(|path| {
+        excludes.extend(["**/node_modules", "**/bower_components"]);
+        if let Some(options) = parsed.get("compilerOptions") {
+            for option in ["outDir", "declarationDir"] {
+                if let Some(directory) = options.get(option).and_then(serde_json::Value::as_str) {
+                    excludes.push(directory);
+                }
+            }
+        }
+        if let Some(files) = parsed.get("files").and_then(serde_json::Value::as_array) {
+            for file in files.iter().filter_map(serde_json::Value::as_str) {
+                let path = base.join(file);
+                if path.exists() && supported_path(&path, &self.options.extensions) {
+                    selected.insert(realpath(&path)?);
+                }
+            }
+        } else {
+            for path in all {
                 let relative = path
                     .strip_prefix(base)
-                    .unwrap_or(path)
+                    .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                if let Some(files) = &files {
-                    return files.contains(path);
-                }
-                let matches_include = includes.as_ref().is_none_or(|patterns| {
-                    patterns
-                        .iter()
-                        .any(|pattern| tsconfig_pattern_matches(pattern, &relative))
-                });
-                matches_include
+                if includes
+                    .iter()
+                    .any(|pattern| tsconfig_pattern_matches(pattern, &relative))
                     && !excludes
                         .iter()
                         .any(|pattern| tsconfig_pattern_matches(pattern, &relative))
-            })
-            .collect())
+                {
+                    selected.insert(realpath(&path)?);
+                }
+            }
+        }
+        if let Some(references) = parsed
+            .get("references")
+            .and_then(serde_json::Value::as_array)
+        {
+            for reference in references {
+                let Some(path) = reference.get("path").and_then(serde_json::Value::as_str) else {
+                    continue;
+                };
+                let mut target = base.join(path);
+                if target.is_dir() {
+                    target = target.join("tsconfig.json");
+                }
+                if target.exists() {
+                    self.collect_tsconfig(&target, base, visited, selected)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Materialize inherited options before selecting runtime sources. A child
+    /// config overrides scalar/array fields, while object fields such as
+    /// `compilerOptions` are merged recursively.
+    #[allow(clippy::self_only_used_in_recursion)]
+    fn read_tsconfig_with_extends(
+        &self,
+        config: &Path,
+        fallback_directory: &Path,
+        visited: &mut BTreeSet<PathBuf>,
+    ) -> Result<serde_json::Value, ProjectLoadError> {
+        let mut text = fs::read_to_string(config).map_err(|source| ProjectLoadError::Io {
+            path: config.to_path_buf(),
+            source,
+        })?;
+        json_strip_comments::strip(&mut text).map_err(|error| {
+            ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
+        })?;
+        let parsed: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
+            ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
+        })?;
+        let mut effective = serde_json::Value::Object(serde_json::Map::new());
+        if let Some(extends) = parsed.get("extends").and_then(serde_json::Value::as_str)
+            && let Some(parent) = resolve_tsconfig_extends(config, extends, fallback_directory)
+            && parent.exists()
+        {
+            let parent = realpath(&parent)?;
+            if visited.insert(parent.clone()) {
+                effective = self.read_tsconfig_with_extends(
+                    &parent,
+                    parent.parent().unwrap_or(fallback_directory),
+                    visited,
+                )?;
+            }
+        }
+        merge_tsconfig_json(&mut effective, parsed);
+        Ok(effective)
     }
     fn include_dir(&self, entry: &DirEntry) -> bool {
         !entry.file_type().is_dir()
@@ -568,6 +661,11 @@ impl ProjectLoader {
             };
         }
         if excluded_path(root, &path, &self.options.excluded_directories) {
+            if !is_internal_request(request) {
+                return ResolutionResult::External {
+                    package: package_name(request),
+                };
+            }
             return ResolutionResult::Unsupported {
                 reason: format!("excluded target `{}`", path.display()),
             };
@@ -644,12 +742,55 @@ fn tsconfig_pattern_matches(pattern: &str, relative: &str) -> bool {
                     .is_some_and(|name| pattern.matches(name)))
     })
 }
+
+fn resolve_tsconfig_extends(
+    config: &Path,
+    extends: &str,
+    fallback_directory: &Path,
+) -> Option<PathBuf> {
+    // Package-based `extends` is resolver policy rather than source
+    // membership. Relative and absolute configs cover the project-boundary
+    // contract without accidentally admitting a dependency's sources.
+    if !extends.starts_with('.') && !Path::new(extends).is_absolute() {
+        return None;
+    }
+    let base = config.parent().unwrap_or(fallback_directory);
+    let mut path = if Path::new(extends).is_absolute() {
+        PathBuf::from(extends)
+    } else {
+        base.join(extends)
+    };
+    if path.extension().is_none() {
+        path.set_extension("json");
+    }
+    Some(path)
+}
+
+fn merge_tsconfig_json(base: &mut serde_json::Value, child: serde_json::Value) {
+    match (base, child) {
+        (serde_json::Value::Object(base), serde_json::Value::Object(child)) => {
+            for (key, value) in child {
+                if let Some(existing) = base.get_mut(&key) {
+                    if key == "compilerOptions" {
+                        merge_tsconfig_json(existing, value);
+                    } else {
+                        *existing = value;
+                    }
+                } else {
+                    base.insert(key, value);
+                }
+            }
+        }
+        (base, child) => *base = child,
+    }
+}
+
 fn is_internal_request(request: &str) -> bool {
     request.starts_with('.') || request.starts_with('/') || request.starts_with('#')
 }
 fn package_name(request: &str) -> String {
-    if let Some(rest) = request.strip_prefix('@') {
-        rest.split('/').take(2).collect::<Vec<_>>().join("/")
+    if request.starts_with('@') {
+        request.split('/').take(2).collect::<Vec<_>>().join("/")
     } else {
         request.split('/').next().unwrap_or(request).to_owned()
     }
@@ -798,6 +939,61 @@ mod tests {
                 .map(|file| file.path.as_str())
                 .collect::<Vec<_>>(),
             ["src/main.ts"]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn tsconfig_membership_inherits_extends_and_collects_references() {
+        let root = std::env::temp_dir().join(format!(
+            "glass-lint-project-tsconfig-inherited-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::create_dir_all(root.join("generated")).unwrap();
+        fs::create_dir_all(root.join("packages/child/src")).unwrap();
+        fs::write(root.join("src/main.ts"), "export const main = 1;").unwrap();
+        fs::write(
+            root.join("generated/main.ts"),
+            "export const generated = 1;",
+        )
+        .unwrap();
+        fs::write(
+            root.join("packages/child/src/value.ts"),
+            "export const value = 1;",
+        )
+        .unwrap();
+        fs::write(
+            root.join("base.json"),
+            "{\"include\":[\"src/**/*.ts\"],\"compilerOptions\":{\"outDir\":\"generated\"}}",
+        )
+        .unwrap();
+        fs::write(
+            root.join("packages/child/tsconfig.json"),
+            "{\"include\":[\"src/**/*.ts\"]}",
+        )
+        .unwrap();
+        fs::write(
+            root.join("tsconfig.json"),
+            "{\"extends\":\"./base.json\",\"references\":[{\"path\":\"packages/child\"}]}",
+        )
+        .unwrap();
+
+        let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
+        let report = loader
+            .load_and_lint(
+                &linter(),
+                ProjectSelection::tsconfig(root.join("tsconfig.json")),
+            )
+            .unwrap();
+        assert_eq!(
+            report
+                .files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            ["packages/child/src/value.ts", "src/main.ts"]
         );
         fs::remove_dir_all(root).unwrap();
     }

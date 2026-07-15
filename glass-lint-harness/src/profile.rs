@@ -82,6 +82,7 @@ pub struct ProfilePhaseTimings {
     pub reads: Duration,
     pub parse_and_local_analysis: Duration,
     pub resolution: Duration,
+    pub linking: Duration,
     pub linking_and_matching: Duration,
     pub matching: Duration,
     pub total: Duration,
@@ -245,7 +246,8 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
                             phases.parse_and_local_analysis += metrics.parse_and_local_analysis;
                             phases.resolution += metrics.resolution;
                             phases.linking_and_matching += metrics.linking_and_matching;
-                            phases.matching += metrics.linking_and_matching;
+                            phases.linking += metrics.linking;
+                            phases.matching += metrics.matching;
                             counts.requests += metrics.requests;
                             counts.edges += metrics.edges;
                             counts.exports += report.operations.exports;
@@ -289,7 +291,10 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         errors,
         runs,
         setup_elapsed: phases.discovery + phases.reads,
-        elapsed: phases.parse_and_local_analysis + phases.resolution + phases.linking_and_matching,
+        elapsed: phases.parse_and_local_analysis
+            + phases.resolution
+            + phases.linking
+            + phases.matching,
         total_elapsed: phases.total,
         file_results,
         phase_timings: phases,

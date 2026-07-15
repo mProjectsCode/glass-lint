@@ -72,6 +72,21 @@ impl Resolver {
         self.scopes.function_id_for_expr(expr)
     }
 
+    pub(in crate::analysis) fn function_id_for_name(
+        &self,
+        name: &str,
+        span: swc_common::Span,
+    ) -> Option<crate::analysis::value::FunctionId> {
+        self.scopes.function_binding_at(name, span)
+    }
+
+    pub(in crate::analysis) fn function_id_for_span(
+        &self,
+        span: swc_common::Span,
+    ) -> Option<crate::analysis::value::FunctionId> {
+        self.scopes.function_id_for_span(span)
+    }
+
     pub(in crate::analysis) fn resolve_member(&self, member: &MemberExpr) -> ResolvedValue {
         self.resolve_member_uncached(member)
     }
@@ -175,6 +190,7 @@ impl Resolver {
                 ResolvedValue::local(id)
             }
             Expr::Call(call) => self.resolve_call_expression(call),
+            Expr::Await(await_expr) => self.resolve_expr(&await_expr.arg),
             Expr::New(new_expr) => self.fresh_object_value_at(new_expr.span),
             _ => Self::unknown(),
         }

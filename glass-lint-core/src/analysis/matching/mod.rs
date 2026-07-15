@@ -58,7 +58,8 @@ pub struct MatcherFacts {
 pub(in crate::analysis) enum LinkedModuleIdentity {
     External { module: String, export: String },
     Global { name: String },
-    Qualified,
+    Qualified { module: u32, export: String },
+    StaticString { value: String },
     Unknown,
 }
 
@@ -85,7 +86,8 @@ impl MatcherFacts {
                 Some(LinkedModuleIdentity::External { module, export }) => Some((module, export)),
                 Some(
                     LinkedModuleIdentity::Global { .. }
-                    | LinkedModuleIdentity::Qualified
+                    | LinkedModuleIdentity::Qualified { .. }
+                    | LinkedModuleIdentity::StaticString { .. }
                     | LinkedModuleIdentity::Unknown,
                 ) => None,
                 None => Some(key.clone()),

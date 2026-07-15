@@ -65,6 +65,7 @@ pub struct ToolExpectation {
 
 #[derive(Clone, Debug)]
 pub struct DiagnosticExpectation {
+    pub path: Option<String>,
     pub rule_id: String,
     pub message_id: Option<String>,
     pub severity: Option<Severity>,
@@ -130,6 +131,8 @@ pub struct AdapterResponse {
     pub tool: String,
     pub tool_version: String,
     pub findings: Vec<Finding>,
+    #[serde(default)]
+    pub finding_locations: Vec<FindingLocation>,
 }
 
 #[derive(Clone, Debug)]
@@ -160,7 +163,7 @@ pub struct ToolResult {
 
 /// File-qualified locations retained by the harness report. The core
 /// `Finding` remains the stable single-file compatibility shape.
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FindingLocation {
     pub primary: Option<String>,
     pub evidence: Vec<Option<String>>,

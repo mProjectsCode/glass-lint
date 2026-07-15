@@ -34,6 +34,7 @@ impl FactBuilder<'_> {
                                     value: ValueId::UNKNOWN,
                                 }],
                                 spread: false,
+                                provenance: super::SymbolCallProvenance::Local,
                             },
                             FactBuilder::bound_arg_info,
                         )
@@ -75,6 +76,9 @@ impl FactBuilder<'_> {
 
     pub(super) fn value_for_expr(&mut self, expr: &Expr) -> ValueId {
         if let Expr::Call(call) = expr {
+            if matches!(call.callee, swc_ecma_ast::Callee::Import(_)) {
+                return self.resolver.resolve_expr(expr).id;
+            }
             return self.call_result(call.span());
         }
         self.resolver.resolve_expr(expr).id
@@ -371,6 +375,7 @@ impl FactBuilder<'_> {
                                 value: ValueId::UNKNOWN,
                             }],
                             spread: false,
+                            provenance: super::SymbolCallProvenance::Local,
                         })
                         .collect()
                 }),

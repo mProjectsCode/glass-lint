@@ -28,6 +28,7 @@ impl Visit for FactBuilder<'_> {
             FactPayload::Reference {
                 value: resolved.id,
                 static_string: None,
+                provenance: resolved.call,
             },
         );
     }
@@ -220,7 +221,11 @@ impl Visit for FactBuilder<'_> {
     fn visit_call_expr(&mut self, call: &CallExpr) {
         self.record_module_call_request(call);
         let Callee::Expr(callee_expr) = &call.callee else {
-            let result = self.call_result(call.span());
+            let result = if matches!(call.callee, Callee::Import(_)) {
+                self.resolver.resolve_expr(&Expr::Call(call.clone())).id
+            } else {
+                self.call_result(call.span())
+            };
             let args = self.args_info(&call.args);
             self.emit(
                 FactKind::Call,
@@ -231,7 +236,7 @@ impl Visit for FactBuilder<'_> {
                     result,
                     callee_span: call.span,
                     callee_name: None,
-                    call_provenance: SymbolCallProvenance::Local,
+                    call_provenance: self.resolver.resolve_expr(&Expr::Call(call.clone())).call,
                     syntactic_chain: None,
                     rooted_chain: None,
                     module_member: None,
@@ -443,6 +448,7 @@ impl Visit for FactBuilder<'_> {
                     .resolve_expr(&Expr::Lit(swc_ecma_ast::Lit::Str(value.clone())))
                     .id,
                 static_string: Some(literal),
+                provenance: SymbolCallProvenance::Local,
             },
         );
     }
@@ -459,6 +465,7 @@ impl Visit for FactBuilder<'_> {
                 FactPayload::Reference {
                     value: ValueId::UNKNOWN,
                     static_string: Some(literal),
+                    provenance: SymbolCallProvenance::Local,
                 },
             );
         }
@@ -898,6 +905,9 @@ impl Visit for FactBuilder<'_> {
                 },
             );
         } else {
+            if let Some(id) = self.resolver.function_id_for_span(export.expr.span()) {
+                self.interface.add_function_export("default", id);
+            }
             self.interface.add_export("default", ModuleExport::Value);
         }
         export.expr.visit_with(self);
@@ -921,6 +931,9 @@ impl Visit for FactBuilder<'_> {
                         },
                     );
                 } else {
+                    if let Some(id) = self.resolver.function_id_for_span(function.function.span()) {
+                        self.interface.add_function_export("default", id);
+                    }
                     self.interface.add_export("default", ModuleExport::Value);
                 }
             }

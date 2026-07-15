@@ -10,14 +10,19 @@ use super::super::facts::{CallArgInfo, ControlKind, FactPayload, FactStream, Par
 use super::super::syntax::SymbolCallProvenance;
 use super::super::value::{FunctionId, PathId, ValueId};
 
+const MAX_FUNCTION_EFFECTS: usize = 65_536;
+const MAX_EFFECT_CALLS: usize = 65_536;
+const MAX_EFFECT_USES: usize = 131_072;
+const MAX_EFFECT_RETURNS: usize = 65_536;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct ParameterRef {
+pub(in crate::analysis) struct ParameterRef {
     pub(super) index: usize,
     pub(super) path: PathId,
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct EffectArgument {
+pub(in crate::analysis) struct EffectArgument {
     pub(super) index: usize,
     pub(super) value: ValueId,
     pub(super) path: PathId,
@@ -25,19 +30,19 @@ pub(super) struct EffectArgument {
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct EffectCall {
-    pub(super) event: super::super::facts::FactId,
-    pub(super) chain: Option<String>,
-    pub(super) rooted: bool,
-    pub(super) target: Option<FunctionId>,
-    pub(super) result: ValueId,
-    pub(super) provenance: SymbolCallProvenance,
-    pub(super) arguments: Vec<EffectArgument>,
-    pub(super) call_arguments: Vec<CallArgInfo>,
+pub(in crate::analysis) struct EffectCall {
+    pub(in crate::analysis) event: super::super::facts::FactId,
+    pub(in crate::analysis) chain: Option<String>,
+    pub(in crate::analysis) rooted: bool,
+    pub(in crate::analysis) target: Option<FunctionId>,
+    pub(in crate::analysis) result: ValueId,
+    pub(in crate::analysis) provenance: SymbolCallProvenance,
+    pub(in crate::analysis) arguments: Vec<EffectArgument>,
+    pub(in crate::analysis) call_arguments: Vec<CallArgInfo>,
 }
 
 #[derive(Clone, Debug)]
-pub(super) enum EffectUse {
+pub(in crate::analysis) enum EffectUse {
     PropertyWrite {
         event: super::super::facts::FactId,
         receiver: Option<ParameterRef>,
@@ -61,31 +66,48 @@ pub(super) enum EffectUse {
 
 #[derive(Clone, Debug)]
 pub(crate) struct FunctionEffect {
-    pub(super) id: FunctionId,
-    pub(super) parameters: Vec<ParameterBinding>,
-    pub(super) calls: Vec<EffectCall>,
-    pub(super) uses: Vec<EffectUse>,
-    pub(super) returns: Vec<ParameterRef>,
-    pub(super) invalid: bool,
+    pub(in crate::analysis) id: FunctionId,
+    pub(in crate::analysis) parameters: Vec<ParameterBinding>,
+    pub(in crate::analysis) calls: Vec<EffectCall>,
+    pub(in crate::analysis) uses: Vec<EffectUse>,
+    pub(in crate::analysis) returns: Vec<ReturnProjection>,
+    pub(in crate::analysis) invalid: bool,
     /// Source-order value copies. Project flow uses this to connect a source
     /// call result through local declarations before a qualified call.
-    pub(super) value_roots: BTreeMap<ValueId, ValueId>,
+    pub(in crate::analysis) value_roots: BTreeMap<ValueId, ValueId>,
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::analysis) struct ReturnProjection {
+    pub(in crate::analysis) value: ValueId,
+    pub(in crate::analysis) parameter: Option<ParameterRef>,
+    pub(in crate::analysis) provenance: SymbolCallProvenance,
+    pub(in crate::analysis) static_string: Option<String>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FunctionEffects {
     pub(crate) by_id: BTreeMap<FunctionId, FunctionEffect>,
+    /// Local effect limits fail closed and are surfaced as a project
+    /// diagnostic instead of looking like a clean analysis.
+    pub(crate) budget_exhausted: bool,
 }
 
 impl FunctionEffects {
-    pub(super) fn get(&self, id: FunctionId) -> Option<&FunctionEffect> {
+    pub(in crate::analysis) fn get(&self, id: FunctionId) -> Option<&FunctionEffect> {
         self.by_id.get(&id)
     }
+}
+
+fn mark_budget(exhausted: &mut bool) {
+    *exhausted = true;
 }
 
 #[allow(clippy::too_many_lines)]
 pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
     let mut effects = FunctionEffects::default();
+    let mut budget_exhausted = false;
+    let mut value_provenance = BTreeMap::new();
     for fact in stream.facts() {
         if let FactPayload::Function {
             id,
@@ -94,6 +116,10 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
             ..
         } = &fact.payload
         {
+            if !effects.by_id.contains_key(id) && effects.by_id.len() >= MAX_FUNCTION_EFFECTS {
+                mark_budget(&mut budget_exhausted);
+                continue;
+            }
             effects.by_id.entry(*id).or_insert_with(|| {
                 let mut value_roots = BTreeMap::new();
                 for parameter in parameters {
@@ -129,6 +155,16 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
             continue;
         };
         match &fact.payload {
+            FactPayload::Reference {
+                value,
+                static_string,
+                provenance,
+            } => {
+                value_provenance.insert(*value, (provenance.clone(), static_string.clone()));
+                if *value != ValueId::UNKNOWN {
+                    effect.value_roots.entry(*value).or_insert(*value);
+                }
+            }
             FactPayload::Declaration { target, source }
             | FactPayload::Assignment {
                 target,
@@ -153,21 +189,31 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                 ..
             } => {
                 if let Some(parameter) = relation(effect, *receiver) {
-                    effect.uses.push(EffectUse::PropertyWrite {
-                        event: fact.id,
-                        receiver: Some(parameter),
-                        value: *receiver,
-                        property: property.clone(),
-                        static_value: static_value.clone(),
-                    });
+                    if effect.uses.len() < MAX_EFFECT_USES {
+                        effect.uses.push(EffectUse::PropertyWrite {
+                            event: fact.id,
+                            receiver: Some(parameter),
+                            value: *receiver,
+                            property: property.clone(),
+                            static_value: static_value.clone(),
+                        });
+                    } else {
+                        effect.invalid = true;
+                        mark_budget(&mut budget_exhausted);
+                    }
                 } else {
-                    effect.uses.push(EffectUse::PropertyWrite {
-                        event: fact.id,
-                        receiver: None,
-                        value: *receiver,
-                        property: property.clone(),
-                        static_value: static_value.clone(),
-                    });
+                    if effect.uses.len() < MAX_EFFECT_USES {
+                        effect.uses.push(EffectUse::PropertyWrite {
+                            event: fact.id,
+                            receiver: None,
+                            value: *receiver,
+                            property: property.clone(),
+                            static_value: static_value.clone(),
+                        });
+                    } else {
+                        effect.invalid = true;
+                        mark_budget(&mut budget_exhausted);
+                    }
                 }
             }
             FactPayload::Call {
@@ -200,25 +246,40 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                         parameter: relation(effect, argument.base_value),
                     })
                     .collect::<Vec<_>>();
-                effect.calls.push(EffectCall {
-                    event: fact.id,
-                    chain: chain.clone(),
-                    rooted: rooted_chain.is_some(),
-                    target: *target_function,
-                    result: *result,
-                    provenance: call_provenance.clone(),
-                    arguments: arguments.clone(),
-                    call_arguments: call_args.clone(),
-                });
-                if let Some(receiver) = receiver.and_then(|value| relation(effect, value)) {
-                    effect.uses.push(EffectUse::CallReceiver {
+                if effect.calls.len() < MAX_EFFECT_CALLS {
+                    effect.calls.push(EffectCall {
                         event: fact.id,
                         chain: chain.clone(),
-                        receiver,
+                        rooted: rooted_chain.is_some(),
+                        target: *target_function,
+                        result: *result,
+                        provenance: call_provenance.clone(),
+                        arguments: arguments.clone(),
                         call_arguments: call_args.clone(),
                     });
+                } else {
+                    effect.invalid = true;
+                    mark_budget(&mut budget_exhausted);
+                }
+                if let Some(receiver) = receiver.and_then(|value| relation(effect, value)) {
+                    if effect.uses.len() < MAX_EFFECT_USES {
+                        effect.uses.push(EffectUse::CallReceiver {
+                            event: fact.id,
+                            chain: chain.clone(),
+                            receiver,
+                            call_arguments: call_args.clone(),
+                        });
+                    } else {
+                        effect.invalid = true;
+                        mark_budget(&mut budget_exhausted);
+                    }
                 }
                 for argument in arguments {
+                    if effect.uses.len() >= MAX_EFFECT_USES {
+                        effect.invalid = true;
+                        mark_budget(&mut budget_exhausted);
+                        break;
+                    }
                     effect.uses.push(EffectUse::CallArgument {
                         event: fact.id,
                         chain: chain.clone(),
@@ -234,9 +295,45 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                 ..
             } => {
                 if let Some(parameter) = relation(effect, *value) {
-                    effect.returns.push(parameter);
+                    if effect.returns.len() < MAX_EFFECT_RETURNS {
+                        effect.returns.push(ReturnProjection {
+                            value: *value,
+                            parameter: Some(parameter),
+                            provenance: value_provenance
+                                .get(value)
+                                .map_or(SymbolCallProvenance::Local, |(provenance, _)| {
+                                    provenance.clone()
+                                }),
+                            static_string: value_provenance
+                                .get(value)
+                                .and_then(|(_, value)| value.clone()),
+                        });
+                    } else {
+                        effect.invalid = true;
+                        mark_budget(&mut budget_exhausted);
+                    }
                 } else if *value != ValueId::UNKNOWN {
-                    effect.invalid = true;
+                    if effect.value_roots.contains_key(value) {
+                        if effect.returns.len() < MAX_EFFECT_RETURNS {
+                            effect.returns.push(ReturnProjection {
+                                value: *value,
+                                parameter: None,
+                                provenance: value_provenance
+                                    .get(value)
+                                    .map_or(SymbolCallProvenance::Local, |(provenance, _)| {
+                                        provenance.clone()
+                                    }),
+                                static_string: value_provenance
+                                    .get(value)
+                                    .and_then(|(_, value)| value.clone()),
+                            });
+                        } else {
+                            effect.invalid = true;
+                            mark_budget(&mut budget_exhausted);
+                        }
+                    } else {
+                        effect.invalid = true;
+                    }
                 }
             }
             FactPayload::Control { kind, .. }
@@ -277,6 +374,7 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
             effect.invalid = true;
         }
     }
+    effects.budget_exhausted = budget_exhausted;
     effects
 }
 

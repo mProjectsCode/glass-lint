@@ -45,7 +45,7 @@ struct Context {
 pub(in crate::analysis) fn collect(
     project: &ProjectSemanticModel,
     matchers: &CompiledMatcherCatalog<'_>,
-) -> (BTreeMap<ModuleId, Vec<Vec<ApiEvidence>>>, bool) {
+) -> (BTreeMap<ModuleId, Vec<Vec<ApiEvidence>>>, bool, usize) {
     let mut flows = BTreeMap::<FlowId, &CompiledObjectFlow>::new();
     for (rule_index, matcher) in matchers.selected_matchers() {
         for (flow_index, flow) in matcher.flows.iter().enumerate() {
@@ -63,7 +63,7 @@ pub(in crate::analysis) fn collect(
         .map(|module| (module.id, vec![Vec::new(); matchers.len()]))
         .collect::<BTreeMap<_, _>>();
     if flows.is_empty() {
-        return (evidence, false);
+        return (evidence, false, 0);
     }
 
     let mut sources = BTreeMap::<(ModuleId, FunctionId, ValueId), Vec<(FlowId, FactId)>>::new();
@@ -102,10 +102,37 @@ pub(in crate::analysis) fn collect(
                     else {
                         continue;
                     };
+                    for returned in target
+                        .returns
+                        .iter()
+                        .filter(|returned| returned.parameter.is_none())
+                    {
+                        let returned_root = target
+                            .value_roots
+                            .get(&returned.value)
+                            .copied()
+                            .unwrap_or(returned.value);
+                        let Some(candidates) = sources
+                            .get(&(target_module, target_function, returned_root))
+                            .cloned()
+                        else {
+                            continue;
+                        };
+                        let entry = sources
+                            .entry((module.id, effect.id, call.result))
+                            .or_default();
+                        let before = entry.len();
+                        entry.extend(candidates);
+                        entry.sort_unstable();
+                        entry.dedup();
+                        changed |= entry.len() != before;
+                    }
                     for argument in &call.arguments {
                         if !argument.path.is_empty()
                             || !target.returns.iter().any(|returned| {
-                                returned.index == argument.index && returned.path.is_empty()
+                                returned.parameter.as_ref().is_some_and(|parameter| {
+                                    parameter.index == argument.index && parameter.path.is_empty()
+                                })
                             })
                         {
                             continue;
@@ -213,7 +240,9 @@ pub(in crate::analysis) fn collect(
     }
 
     let mut steps = 0usize;
+    let mut projections = 0usize;
     while let Some(context) = queue.pop_front() {
+        projections = projections.saturating_add(1);
         steps = steps.saturating_add(1);
         if steps > MAX_STEPS {
             break;
@@ -232,10 +261,22 @@ pub(in crate::analysis) fn collect(
             continue;
         };
         let mut current_state = context.state.clone();
+        let mut propagated_calls = BTreeSet::new();
         for usage in &effect.uses {
             if !usage_matches_context(project, context.module, effect, usage, &context) {
                 continue;
             }
+            propagate_calls_at(
+                project,
+                effect,
+                context.module,
+                &context,
+                &mut propagated_calls,
+                Some(effect_use_event(usage)),
+                &current_state,
+                &mut queue,
+                &mut seen,
+            );
             match usage {
                 EffectUse::PropertyWrite {
                     event,
@@ -339,45 +380,19 @@ pub(in crate::analysis) fn collect(
                 }
             }
         }
+        propagate_calls_at(
+            project,
+            effect,
+            context.module,
+            &context,
+            &mut propagated_calls,
+            None,
+            &current_state,
+            &mut queue,
+            &mut seen,
+        );
         if seen.len() >= MAX_CONTEXTS {
             break;
-        }
-        for call in &effect.calls {
-            let Some((target_module, target_function)) =
-                project.qualified_function_target(context.module, call.target, &call.provenance)
-            else {
-                continue;
-            };
-            for argument in &call.arguments {
-                if argument.parameter.as_ref().is_some_and(|parameter| {
-                    context
-                        .parameter
-                        .is_some_and(|index| parameter.index == index)
-                        && parameter.path.is_empty()
-                        && argument.path.is_empty()
-                }) || (context.parameter.is_none()
-                    && context.source_root.is_some_and(|root| {
-                        effect
-                            .value_roots
-                            .get(&argument.value)
-                            .copied()
-                            .unwrap_or(argument.value)
-                            == root
-                    })
-                    && argument.path.is_empty())
-                {
-                    enqueue_parameters(
-                        project,
-                        target_module,
-                        target_function,
-                        argument.index,
-                        &context.state,
-                        context.crossed || target_module != context.module,
-                        &mut queue,
-                        &mut seen,
-                    );
-                }
-            }
         }
     }
     let exhausted = return_budget_exhausted || steps > MAX_STEPS || seen.len() >= MAX_CONTEXTS;
@@ -388,7 +403,69 @@ pub(in crate::analysis) fn collect(
             }
         }
     }
-    (evidence, exhausted)
+    (evidence, exhausted, projections)
+}
+
+fn effect_use_event(usage: &EffectUse) -> FactId {
+    match usage {
+        EffectUse::PropertyWrite { event, .. }
+        | EffectUse::CallArgument { event, .. }
+        | EffectUse::CallReceiver { event, .. } => *event,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn propagate_calls_at(
+    project: &ProjectSemanticModel,
+    effect: &FunctionEffect,
+    module: ModuleId,
+    context: &Context,
+    propagated: &mut BTreeSet<FactId>,
+    through: Option<FactId>,
+    state: &State,
+    queue: &mut VecDeque<Context>,
+    seen: &mut BTreeSet<Context>,
+) {
+    for call in &effect.calls {
+        if through.is_some_and(|event| call.event > event) || !propagated.insert(call.event) {
+            continue;
+        }
+        let Some((target_module, target_function)) =
+            project.qualified_function_target(module, call.target, &call.provenance)
+        else {
+            continue;
+        };
+        for argument in &call.arguments {
+            let connected = argument.parameter.as_ref().is_some_and(|parameter| {
+                context
+                    .parameter
+                    .is_some_and(|index| parameter.index == index)
+                    && parameter.path.is_empty()
+                    && argument.path.is_empty()
+            }) || (context.parameter.is_none()
+                && context.source_root.is_some_and(|root| {
+                    effect
+                        .value_roots
+                        .get(&argument.value)
+                        .copied()
+                        .unwrap_or(argument.value)
+                        == root
+                })
+                && argument.path.is_empty());
+            if connected {
+                enqueue_parameters(
+                    project,
+                    target_module,
+                    target_function,
+                    argument.index,
+                    state,
+                    context.crossed || target_module != module,
+                    queue,
+                    seen,
+                );
+            }
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -590,8 +667,8 @@ fn related_evidence(
         kind: ApiMatchKind::CallArgument,
         symbol: "flow sink".into(),
     });
-    related.sort_by_key(|item| (item.module, item.event, item.kind, item.symbol.clone()));
-    related.dedup();
+    let mut seen = BTreeSet::new();
+    related.retain(|item| seen.insert((item.module, item.event, item.kind, item.symbol.clone())));
     related.truncate(8);
     related
 }

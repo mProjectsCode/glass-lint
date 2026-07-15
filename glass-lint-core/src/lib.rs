@@ -22,10 +22,9 @@ pub use environment::{Environment, EnvironmentError};
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{
-    ModuleId, ProjectDiagnostic, ProjectEvidence, ProjectFileReport, ProjectFinding, ProjectInput,
+    ProjectDiagnostic, ProjectEvidence, ProjectFileReport, ProjectFinding, ProjectInput,
     ProjectInputError, ProjectOperationCounts, ProjectReport, ProjectSession, ResolutionRequest,
-    ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, ResolvedModule, SourceFile,
-    SourceLocation,
+    ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile, SourceLocation,
 };
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
 pub use rule_id::RuleId;

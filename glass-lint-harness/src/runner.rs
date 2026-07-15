@@ -64,14 +64,15 @@ pub fn run_suite(
                 );
                 continue;
             }
-            let (findings, finding_locations, errors) =
-                match adapter.run_with_locations(case, expectation) {
-                    Ok(output) => {
-                        let errors = compare(&output.findings, expectation);
-                        (output.findings, output.finding_locations, errors)
-                    }
-                    Err(error) => (vec![], vec![], vec![error.to_string()]),
-                };
+            let (findings, finding_locations, errors) = match adapter
+                .run_with_locations(case, expectation)
+            {
+                Ok(output) => {
+                    let errors = compare(&output.findings, &output.finding_locations, expectation);
+                    (output.findings, output.finding_locations, errors)
+                }
+                Err(error) => (vec![], vec![], vec![error.to_string()]),
+            };
             timings.insert(adapter.name().into(), tool_start.elapsed());
             tools.insert(
                 adapter.name().into(),
@@ -131,12 +132,25 @@ fn matches(finding: &Finding, expected: &DiagnosticExpectation) -> bool {
             .is_none_or(|message| &finding.message == message)
 }
 
-fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
+fn compare(
+    findings: &[Finding],
+    locations: &[crate::types::FindingLocation],
+    expectation: &ToolExpectation,
+) -> Vec<String> {
     let mut errors = Vec::new();
     for expected in &expectation.required {
         let actual = findings
             .iter()
-            .filter(|finding| matches(finding, expected))
+            .enumerate()
+            .filter(|(index, finding)| {
+                matches(finding, expected)
+                    && expected.path.as_ref().is_none_or(|path| {
+                        locations
+                            .get(*index)
+                            .and_then(|location| location.primary.as_ref())
+                            == Some(path)
+                    })
+            })
             .count();
         if expected.count.is_some_and(|count| actual != count) {
             errors.push(format!(
@@ -150,7 +164,16 @@ fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
     for forbidden in &expectation.forbidden {
         let actual = findings
             .iter()
-            .filter(|finding| matches(finding, forbidden))
+            .enumerate()
+            .filter(|(index, finding)| {
+                matches(finding, forbidden)
+                    && forbidden.path.as_ref().is_none_or(|path| {
+                        locations
+                            .get(*index)
+                            .and_then(|location| location.primary.as_ref())
+                            == Some(path)
+                    })
+            })
             .count();
         if actual > 0 {
             errors.push(format!(
@@ -159,15 +182,25 @@ fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
             ));
         }
     }
-    for finding in findings {
-        let is_required = expectation
-            .required
-            .iter()
-            .any(|expected| matches(finding, expected));
-        let is_forbidden = expectation
-            .forbidden
-            .iter()
-            .any(|forbidden| matches(finding, forbidden));
+    for (index, finding) in findings.iter().enumerate() {
+        let is_required = expectation.required.iter().any(|expected| {
+            matches(finding, expected)
+                && expected.path.as_ref().is_none_or(|path| {
+                    locations
+                        .get(index)
+                        .and_then(|location| location.primary.as_ref())
+                        == Some(path)
+                })
+        });
+        let is_forbidden = expectation.forbidden.iter().any(|forbidden| {
+            matches(finding, forbidden)
+                && forbidden.path.as_ref().is_none_or(|path| {
+                    locations
+                        .get(index)
+                        .and_then(|location| location.primary.as_ref())
+                        == Some(path)
+                })
+        });
         if !is_required && !is_forbidden {
             errors.push(format!(
                 "unexpected {}:{} at {:?}",
@@ -204,6 +237,7 @@ mod tests {
             config: None,
             rules: vec![],
             required: vec![DiagnosticExpectation {
+                path: None,
                 rule_id: "test:a.b".into(),
                 message_id: None,
                 severity: None,
@@ -214,7 +248,7 @@ mod tests {
             }],
             forbidden: vec![],
         };
-        assert_eq!(compare(&[finding()], &expected).len(), 1);
+        assert_eq!(compare(&[finding()], &[], &expected).len(), 1);
     }
 
     #[test]
@@ -225,7 +259,7 @@ mod tests {
             required: vec![],
             forbidden: vec![],
         };
-        assert_eq!(compare(&[finding()], &expected).len(), 1);
+        assert_eq!(compare(&[finding()], &[], &expected).len(), 1);
     }
 
     #[test]
@@ -235,6 +269,7 @@ mod tests {
             rules: vec![],
             required: vec![],
             forbidden: vec![DiagnosticExpectation {
+                path: None,
                 rule_id: "test:a.b".into(),
                 message_id: None,
                 severity: None,
@@ -244,6 +279,6 @@ mod tests {
                 message: None,
             }],
         };
-        assert_eq!(compare(&[finding()], &expected).len(), 1);
+        assert_eq!(compare(&[finding()], &[], &expected).len(), 1);
     }
 }

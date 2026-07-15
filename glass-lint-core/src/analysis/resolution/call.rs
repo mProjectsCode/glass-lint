@@ -52,6 +52,28 @@ impl Resolver {
         &self,
         call: &swc_ecma_ast::CallExpr,
     ) -> ResolvedValue {
+        if matches!(call.callee, Callee::Import(_))
+            && let Some(Expr::Lit(Lit::Str(specifier))) = call.args.first().map(|arg| &*arg.expr)
+        {
+            let module = specifier.value.to_string_lossy().to_string();
+            let id = self.intern_call_value(
+                &SymbolCallProvenance::ModuleExport {
+                    module,
+                    export: "*".into(),
+                },
+                None,
+                None,
+            );
+            return ResolvedValue {
+                id,
+                rooted_chain: None,
+                call: self.call_provenance_for_value(id),
+                module_member: None,
+                returned_member: None,
+                bound_arguments: None,
+                syntactic_chain: None,
+            };
+        }
         // Calls normally produce fresh, opaque values. `.bind` is the modeled
         // exception because it preserves a callable's target and arguments.
         let Callee::Expr(callee) = &call.callee else {

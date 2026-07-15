@@ -80,6 +80,7 @@ pub(in crate::analysis) struct CallArgInfo {
     /// A spread argument is intentionally not projected: its arity and
     /// element identities are not known to the summary pass.
     pub(in crate::analysis) spread: bool,
+    pub(in crate::analysis) provenance: SymbolCallProvenance,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,6 +123,7 @@ pub(in crate::analysis) enum FactPayload {
         #[allow(dead_code)]
         value: ValueId,
         static_string: Option<String>,
+        provenance: SymbolCallProvenance,
     },
     /// Member expression read.
     MemberRead {
