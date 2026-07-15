@@ -1,4 +1,4 @@
-//! Matcher-independent effects extracted from the canonical fact tape.
+//! ApiMatcher-independent effects extracted from the canonical fact tape.
 //!
 //! Effects intentionally describe values and observable uses, never rules or
 //! flow IDs.  The project linker supplies qualified call targets later; this

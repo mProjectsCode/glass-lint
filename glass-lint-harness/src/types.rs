@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use glass_lint_core::{Finding, Severity};
+use glass_lint_core::{Finding, ResolutionRequestKind, ResolutionResult, Severity};
 use serde::{Deserialize, Serialize};
 
 pub const ADAPTER_PROTOCOL_VERSION: u32 = 3;
@@ -24,111 +24,18 @@ pub struct Case {
 pub struct ProjectCase {
     pub root: std::path::PathBuf,
     pub entries: Vec<String>,
-    pub files: Vec<ProjectFile>,
-    pub resolutions: Vec<ProjectResolution>,
+    pub files: Vec<AdapterFile>,
+    pub resolutions: Vec<AdapterResolution>,
     pub filesystem: bool,
 }
 
-#[derive(Clone, Debug)]
-pub struct ProjectFile {
-    pub path: String,
-    pub language: String,
-    pub source: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct ProjectResolution {
-    pub importer: String,
-    pub kind: String,
-    pub request: String,
-    pub range: glass_lint_core::SourceRange,
-    pub result: ProjectResolutionResult,
-}
-
-#[derive(Clone, Debug)]
-pub enum ProjectResolutionResult {
-    Internal { path: String },
-    External { package: String },
-    Builtin { name: String },
-    Missing,
-    OutsideProject { path: String },
-    Unsupported { reason: String },
-}
-
-impl From<ProjectFile> for AdapterFile {
-    fn from(file: ProjectFile) -> Self {
-        Self {
-            path: file.path,
-            language: file.language,
-            source: file.source,
-        }
-    }
-}
-impl From<AdapterFile> for ProjectFile {
-    fn from(file: AdapterFile) -> Self {
-        Self {
-            path: file.path,
-            language: file.language,
-            source: file.source,
-        }
-    }
-}
-
-impl From<ProjectResolutionResult> for AdapterResolutionResult {
-    fn from(result: ProjectResolutionResult) -> Self {
-        match result {
-            ProjectResolutionResult::Internal { path } => Self::Internal { path },
-            ProjectResolutionResult::External { package } => Self::External { package },
-            ProjectResolutionResult::Builtin { name } => Self::Builtin { name },
-            ProjectResolutionResult::Missing => Self::Missing,
-            ProjectResolutionResult::OutsideProject { path } => Self::OutsideProject { path },
-            ProjectResolutionResult::Unsupported { reason } => Self::Unsupported { reason },
-        }
-    }
-}
-impl From<AdapterResolutionResult> for ProjectResolutionResult {
-    fn from(result: AdapterResolutionResult) -> Self {
-        match result {
-            AdapterResolutionResult::Internal { path } => Self::Internal { path },
-            AdapterResolutionResult::External { package } => Self::External { package },
-            AdapterResolutionResult::Builtin { name } => Self::Builtin { name },
-            AdapterResolutionResult::Missing => Self::Missing,
-            AdapterResolutionResult::OutsideProject { path } => Self::OutsideProject { path },
-            AdapterResolutionResult::Unsupported { reason } => Self::Unsupported { reason },
-        }
-    }
-}
-
-impl From<ProjectResolution> for AdapterResolution {
-    fn from(resolution: ProjectResolution) -> Self {
-        Self {
-            importer: resolution.importer,
-            kind: resolution.kind,
-            request: resolution.request,
-            range: resolution.range,
-            result: resolution.result.into(),
-        }
-    }
-}
-impl From<AdapterResolution> for ProjectResolution {
-    fn from(resolution: AdapterResolution) -> Self {
-        Self {
-            importer: resolution.importer,
-            kind: resolution.kind,
-            request: resolution.request,
-            range: resolution.range,
-            result: resolution.result.into(),
-        }
-    }
-}
-
-impl From<ProjectCase> for AdapterProject {
-    fn from(project: ProjectCase) -> Self {
+impl From<&ProjectCase> for AdapterProject {
+    fn from(project: &ProjectCase) -> Self {
         Self {
             root: project.root.to_string_lossy().into_owned(),
-            entries: project.entries,
-            files: project.files.into_iter().map(Into::into).collect(),
-            resolutions: project.resolutions.into_iter().map(Into::into).collect(),
+            entries: project.entries.clone(),
+            files: project.files.clone(),
+            resolutions: project.resolutions.clone(),
         }
     }
 }
@@ -137,8 +44,8 @@ impl From<AdapterProject> for ProjectCase {
         Self {
             root: project.root.into(),
             entries: project.entries,
-            files: project.files.into_iter().map(Into::into).collect(),
-            resolutions: project.resolutions.into_iter().map(Into::into).collect(),
+            files: project.files,
+            resolutions: project.resolutions,
             filesystem: false,
         }
     }
@@ -178,7 +85,7 @@ pub struct AdapterRequest {
     pub project: Option<AdapterProject>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AdapterProject {
     pub root: String,
     pub entries: Vec<String>,
@@ -187,23 +94,31 @@ pub struct AdapterProject {
     pub resolutions: Vec<AdapterResolution>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AdapterFile {
     pub path: String,
     pub language: String,
     pub source: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct AdapterResolution {
     pub importer: String,
-    pub kind: String,
+    pub kind: AdapterResolutionKind,
     pub request: String,
     pub range: glass_lint_core::SourceRange,
     pub result: AdapterResolutionResult,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AdapterResolutionKind {
+    Import,
+    DynamicImport,
+    Require,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AdapterResolutionResult {
     Internal { path: String },
@@ -212,6 +127,40 @@ pub enum AdapterResolutionResult {
     Missing,
     OutsideProject { path: String },
     Unsupported { reason: String },
+}
+
+/// Converts the protocol's validated resolution representation at the core
+/// project-session boundary. Keeping this conversion here prevents adapters
+/// and manifest parsing from maintaining parallel core-facing DTOs.
+impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolutionResult) {
+    type Error = String;
+
+    fn try_from(resolution: &AdapterResolution) -> Result<Self, Self::Error> {
+        let kind = match resolution.kind {
+            AdapterResolutionKind::Import => ResolutionRequestKind::Import,
+            AdapterResolutionKind::DynamicImport => ResolutionRequestKind::DynamicImport,
+            AdapterResolutionKind::Require => ResolutionRequestKind::Require,
+        };
+        let result = match &resolution.result {
+            AdapterResolutionResult::Internal { path } => {
+                ResolutionResult::Internal { path: path.clone() }
+            }
+            AdapterResolutionResult::External { package } => ResolutionResult::External {
+                package: package.clone(),
+            },
+            AdapterResolutionResult::Builtin { name } => {
+                ResolutionResult::Builtin { name: name.clone() }
+            }
+            AdapterResolutionResult::Missing => ResolutionResult::Missing,
+            AdapterResolutionResult::OutsideProject { path } => {
+                ResolutionResult::OutsideProject { path: path.clone() }
+            }
+            AdapterResolutionResult::Unsupported { reason } => ResolutionResult::Unsupported {
+                reason: reason.clone(),
+            },
+        };
+        Ok((kind, result))
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -270,5 +219,100 @@ impl SuiteReport {
         self.cases
             .iter()
             .all(|case| case.tools.values().all(|tool| tool.passed))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resolution(
+        kind: AdapterResolutionKind,
+        result: AdapterResolutionResult,
+    ) -> AdapterResolution {
+        AdapterResolution {
+            importer: "main.js".into(),
+            kind,
+            request: "request".into(),
+            range: glass_lint_core::SourceRange {
+                start: glass_lint_core::Position { line: 1, column: 2 },
+                end: glass_lint_core::Position { line: 1, column: 8 },
+            },
+            result,
+        }
+    }
+
+    #[test]
+    fn adapter_project_protocol_json_preserves_all_resolution_variants() {
+        let project = AdapterProject {
+            root: "/tmp/project".into(),
+            entries: vec!["main.js".into()],
+            files: vec![AdapterFile {
+                path: "main.js".into(),
+                language: "javascript".into(),
+                source: "import x from 'x';".into(),
+            }],
+            resolutions: vec![
+                resolution(
+                    AdapterResolutionKind::Import,
+                    AdapterResolutionResult::Internal {
+                        path: "lib.js".into(),
+                    },
+                ),
+                resolution(
+                    AdapterResolutionKind::DynamicImport,
+                    AdapterResolutionResult::External {
+                        package: "pkg".into(),
+                    },
+                ),
+                resolution(
+                    AdapterResolutionKind::Require,
+                    AdapterResolutionResult::Builtin { name: "fs".into() },
+                ),
+                resolution(
+                    AdapterResolutionKind::Import,
+                    AdapterResolutionResult::Missing,
+                ),
+                resolution(
+                    AdapterResolutionKind::DynamicImport,
+                    AdapterResolutionResult::OutsideProject {
+                        path: "../outside.js".into(),
+                    },
+                ),
+                resolution(
+                    AdapterResolutionKind::Require,
+                    AdapterResolutionResult::Unsupported {
+                        reason: "dynamic target".into(),
+                    },
+                ),
+            ],
+        };
+        let json = serde_json::to_value(&project).unwrap();
+        assert_eq!(json["resolutions"][0]["kind"], "import");
+        assert_eq!(json["resolutions"][1]["kind"], "dynamic_import");
+        assert_eq!(json["resolutions"][2]["kind"], "require");
+        assert_eq!(json["resolutions"][0]["result"]["kind"], "internal");
+        assert_eq!(json["resolutions"][1]["result"]["kind"], "external");
+        assert_eq!(json["resolutions"][2]["result"]["kind"], "builtin");
+        assert_eq!(json["resolutions"][3]["result"]["kind"], "missing");
+        assert_eq!(json["resolutions"][4]["result"]["kind"], "outside_project");
+        assert_eq!(json["resolutions"][5]["result"]["kind"], "unsupported");
+    }
+
+    #[test]
+    fn adapter_project_round_trips_protocol_data() {
+        let project = AdapterProject {
+            root: "/tmp/project".into(),
+            entries: vec!["main.js".into()],
+            files: vec![AdapterFile {
+                path: "main.js".into(),
+                language: "javascript".into(),
+                source: "fetch('/');".into(),
+            }],
+            resolutions: Vec::new(),
+        };
+        let encoded = serde_json::to_string(&project).unwrap();
+        let decoded: AdapterProject = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, project);
     }
 }

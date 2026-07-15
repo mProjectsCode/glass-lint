@@ -7,7 +7,7 @@ use swc_common::Span;
 use super::facts;
 use crate::api::{
     classification::{ApiEvidence, ApiMatchKind},
-    rule::ApiRule,
+    rule::Rule,
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -87,7 +87,7 @@ impl AnnotatedEvidence {
             )
         });
         self.occurrences.dedup();
-        self.occurrences.truncate(ApiRule::EVIDENCE_LIMIT);
+        self.occurrences.truncate(Rule::EVIDENCE_LIMIT);
         let mut grouped =
             BTreeMap::<(ApiMatchKind, usize), Vec<(Option<facts::FactId>, Span)>>::new();
         for occurrence in &self.occurrences {

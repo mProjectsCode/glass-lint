@@ -42,6 +42,27 @@ pub struct ProjectLoadMetrics {
     pub bytes: u64,
 }
 
+impl std::ops::AddAssign for ProjectLoadMetrics {
+    fn add_assign(&mut self, rhs: Self) {
+        self.discovery = self.discovery.saturating_add(rhs.discovery);
+        self.reads = self.reads.saturating_add(rhs.reads);
+        self.parse_and_local_analysis = self
+            .parse_and_local_analysis
+            .saturating_add(rhs.parse_and_local_analysis);
+        self.resolution = self.resolution.saturating_add(rhs.resolution);
+        self.linking_and_matching = self
+            .linking_and_matching
+            .saturating_add(rhs.linking_and_matching);
+        self.linking = self.linking.saturating_add(rhs.linking);
+        self.matching = self.matching.saturating_add(rhs.matching);
+        self.total = self.total.saturating_add(rhs.total);
+        self.files = self.files.saturating_add(rhs.files);
+        self.requests = self.requests.saturating_add(rhs.requests);
+        self.edges = self.edges.saturating_add(rhs.edges);
+        self.bytes = self.bytes.saturating_add(rhs.bytes);
+    }
+}
+
 impl ProjectLoader {
     pub fn new(options: ProjectLoadOptions) -> Result<Self, ProjectLoadError> {
         options.validate()?;

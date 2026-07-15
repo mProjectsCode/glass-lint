@@ -11,8 +11,8 @@ use glass_lint_core::{Severity, SourceLanguage};
 use walkdir::WalkDir;
 
 use crate::types::{
-    Case, DiagnosticExpectation, ProjectCase, ProjectFile, ProjectResolution,
-    ProjectResolutionResult, ToolExpectation,
+    AdapterFile, AdapterResolution, AdapterResolutionKind, AdapterResolutionResult, Case,
+    DiagnosticExpectation, ProjectCase, ToolExpectation,
 };
 
 fn language_for_path(path: &Path) -> &'static str {
@@ -242,15 +242,15 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
         .into_iter()
         .map(|resolution| {
             let result = if resolution.missing {
-                ProjectResolutionResult::Missing
+                AdapterResolutionResult::Missing
             } else if let Some(path) = resolution.path {
-                ProjectResolutionResult::Internal { path }
+                AdapterResolutionResult::Internal { path }
             } else if let Some(package) = resolution.package {
-                ProjectResolutionResult::External { package }
+                AdapterResolutionResult::External { package }
             } else if let Some(name) = resolution.name {
-                ProjectResolutionResult::Builtin { name }
+                AdapterResolutionResult::Builtin { name }
             } else if let Some(reason) = resolution.reason {
-                ProjectResolutionResult::Unsupported { reason }
+                AdapterResolutionResult::Unsupported { reason }
             } else {
                 bail!(
                     "resolution {} {} has no result",
@@ -258,9 +258,14 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
                     resolution.request
                 )
             };
-            Ok(ProjectResolution {
+            Ok(AdapterResolution {
                 importer: resolution.importer,
-                kind: resolution.kind,
+                kind: match resolution.kind.as_str() {
+                    "import" => AdapterResolutionKind::Import,
+                    "dynamic_import" | "dynamic-import" => AdapterResolutionKind::DynamicImport,
+                    "require" => AdapterResolutionKind::Require,
+                    other => bail!("unknown project request kind `{other}`"),
+                },
                 request: resolution.request,
                 range: glass_lint_core::SourceRange {
                     start: glass_lint_core::Position {
@@ -303,7 +308,7 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
     })
 }
 
-fn load_project_files(directory: &Path, paths: Vec<PathBuf>) -> Result<Vec<ProjectFile>> {
+fn load_project_files(directory: &Path, paths: Vec<PathBuf>) -> Result<Vec<AdapterFile>> {
     paths
         .into_iter()
         .map(|path| {
@@ -312,7 +317,7 @@ fn load_project_files(directory: &Path, paths: Vec<PathBuf>) -> Result<Vec<Proje
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            Ok(ProjectFile {
+            Ok(AdapterFile {
                 language: language_for_path(&path).into(),
                 path: relative,
                 source: fs::read_to_string(&path)
@@ -325,7 +330,7 @@ fn load_project_files(directory: &Path, paths: Vec<PathBuf>) -> Result<Vec<Proje
 fn load_project_tools(
     directory: &Path,
     manifests: &BTreeMap<String, ProjectToolManifest>,
-    files: &[ProjectFile],
+    files: &[AdapterFile],
 ) -> Result<BTreeMap<String, ToolExpectation>> {
     let mut tools = BTreeMap::new();
     for (name, tool) in manifests {

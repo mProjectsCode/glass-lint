@@ -98,6 +98,31 @@ pub struct ProjectReport {
     pub diagnostics: Vec<ProjectDiagnostic>,
     pub operations: ProjectOperationCounts,
 }
+
+/// Counts used by front ends when rendering a project report.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProjectReportSummary {
+    pub files: usize,
+    pub findings: usize,
+    pub parse_diagnostics: usize,
+    pub project_diagnostics: usize,
+}
+
+impl ProjectReport {
+    /// Summarize the report from its canonical file and diagnostic collections.
+    pub fn summary(&self) -> ProjectReportSummary {
+        ProjectReportSummary {
+            files: self.files.len(),
+            findings: self.files.iter().map(|file| file.findings.len()).sum(),
+            parse_diagnostics: self
+                .files
+                .iter()
+                .map(|file| file.parse_diagnostics.len())
+                .sum(),
+            project_diagnostics: self.diagnostics.len(),
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct ProjectOperationCounts {
     pub files: usize,
@@ -107,6 +132,20 @@ pub struct ProjectOperationCounts {
     pub scc_rounds: usize,
     pub effect_projections: usize,
     pub evidence: usize,
+}
+
+impl std::ops::AddAssign for ProjectOperationCounts {
+    fn add_assign(&mut self, rhs: Self) {
+        self.files = self.files.saturating_add(rhs.files);
+        self.requests = self.requests.saturating_add(rhs.requests);
+        self.edges = self.edges.saturating_add(rhs.edges);
+        self.exports = self.exports.saturating_add(rhs.exports);
+        self.scc_rounds = self.scc_rounds.saturating_add(rhs.scc_rounds);
+        self.effect_projections = self
+            .effect_projections
+            .saturating_add(rhs.effect_projections);
+        self.evidence = self.evidence.saturating_add(rhs.evidence);
+    }
 }
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct ProjectInput {

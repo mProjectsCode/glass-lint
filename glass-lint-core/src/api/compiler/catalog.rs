@@ -1,7 +1,5 @@
-use std::collections::BTreeSet;
-
 use super::{
-    super::rule::{ApiCatalogError, ApiRule},
+    super::rule::{CatalogError, Rule},
     CompiledRule,
 };
 use crate::api::compiler::CompiledMatcherCatalog;
@@ -12,11 +10,11 @@ pub(crate) struct CompiledCatalog {
 }
 
 impl CompiledCatalog {
-    pub(crate) fn try_from_rules(rules: &[ApiRule]) -> Result<Self, ApiCatalogError> {
+    pub(crate) fn try_from_rules(rules: &[Rule]) -> Result<Self, CatalogError> {
         let mut ids = std::collections::BTreeSet::new();
         for rule in rules {
             if !ids.insert(rule.id().to_string()) {
-                return Err(ApiCatalogError::DuplicateRule(rule.id().to_string()));
+                return Err(CatalogError::DuplicateRule(rule.id().to_string()));
             }
         }
         Ok(Self {
@@ -24,7 +22,7 @@ impl CompiledCatalog {
         })
     }
 
-    pub(crate) fn from_rules(rules: &[ApiRule]) -> Self {
+    pub(crate) fn from_rules(rules: &[Rule]) -> Self {
         Self {
             rules: rules.iter().map(CompiledRule::new).collect(),
         }
@@ -32,13 +30,8 @@ impl CompiledCatalog {
 
     pub(crate) fn to_matcher_catalog<'a>(
         &'a self,
-        selected: &'a BTreeSet<usize>,
+        selected: &'a [usize],
     ) -> CompiledMatcherCatalog<'a> {
-        let matchers = self
-            .rules
-            .iter()
-            .map(|rule| &rule.matcher)
-            .collect::<Vec<_>>();
-        CompiledMatcherCatalog::new(matchers, selected)
+        CompiledMatcherCatalog::new(&self.rules, selected)
     }
 }

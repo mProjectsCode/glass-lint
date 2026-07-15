@@ -1,4 +1,4 @@
-//! Matcher-independent module requests and export interfaces.
+//! ApiMatcher-independent module requests and export interfaces.
 //!
 //! These records deliberately contain syntax-level names and source spans,
 //! not matcher state or filesystem decisions.  The project linker turns the

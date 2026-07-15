@@ -2,7 +2,6 @@
 
 use std::{
     collections::BTreeMap,
-    fs,
     path::{Path, PathBuf},
     sync::{
         Arc, Barrier, Mutex, OnceLock,
@@ -13,10 +12,11 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::{Linter, RuleId, SourceLanguage};
-use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
+use glass_lint_core::{Linter, RuleId};
+use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection, SourceCorpus};
 use glob::{MatchOptions, Pattern};
-use walkdir::WalkDir;
+
+use crate::builtins::{self, BuiltInProfile};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProfileProvider {
@@ -88,6 +88,23 @@ pub struct ProfilePhaseTimings {
     pub total: Duration,
 }
 
+impl std::ops::AddAssign for ProfilePhaseTimings {
+    fn add_assign(&mut self, rhs: Self) {
+        self.discovery = self.discovery.saturating_add(rhs.discovery);
+        self.reads = self.reads.saturating_add(rhs.reads);
+        self.parse_and_local_analysis = self
+            .parse_and_local_analysis
+            .saturating_add(rhs.parse_and_local_analysis);
+        self.resolution = self.resolution.saturating_add(rhs.resolution);
+        self.linking = self.linking.saturating_add(rhs.linking);
+        self.linking_and_matching = self
+            .linking_and_matching
+            .saturating_add(rhs.linking_and_matching);
+        self.matching = self.matching.saturating_add(rhs.matching);
+        self.total = self.total.saturating_add(rhs.total);
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ProfileOperationCounts {
     pub files: usize,
@@ -97,6 +114,64 @@ pub struct ProfileOperationCounts {
     pub scc_rounds: usize,
     pub effect_projections: usize,
     pub evidence: usize,
+}
+
+impl std::ops::AddAssign for ProfileOperationCounts {
+    fn add_assign(&mut self, rhs: Self) {
+        self.files = self.files.saturating_add(rhs.files);
+        self.requests = self.requests.saturating_add(rhs.requests);
+        self.edges = self.edges.saturating_add(rhs.edges);
+        self.exports = self.exports.saturating_add(rhs.exports);
+        self.scc_rounds = self.scc_rounds.saturating_add(rhs.scc_rounds);
+        self.effect_projections = self
+            .effect_projections
+            .saturating_add(rhs.effect_projections);
+        self.evidence = self.evidence.saturating_add(rhs.evidence);
+    }
+}
+
+#[derive(Default)]
+struct RunOutcome {
+    findings: usize,
+    diagnostics: usize,
+    bytes: u64,
+    phases: ProfilePhaseTimings,
+    counts: ProfileOperationCounts,
+}
+
+fn project_run_outcome(
+    report: &glass_lint_core::ProjectReport,
+    metrics: &glass_lint_project::ProjectLoadMetrics,
+) -> RunOutcome {
+    RunOutcome {
+        findings: report.files.iter().map(|file| file.findings.len()).sum(),
+        diagnostics: report.diagnostics.len()
+            + report
+                .files
+                .iter()
+                .map(|file| file.parse_diagnostics.len())
+                .sum::<usize>(),
+        bytes: metrics.bytes,
+        phases: ProfilePhaseTimings {
+            discovery: metrics.discovery,
+            reads: metrics.reads,
+            parse_and_local_analysis: metrics.parse_and_local_analysis,
+            resolution: metrics.resolution,
+            linking_and_matching: metrics.linking_and_matching,
+            linking: metrics.linking,
+            matching: metrics.matching,
+            total: metrics.total,
+        },
+        counts: ProfileOperationCounts {
+            files: metrics.files,
+            requests: metrics.requests,
+            edges: metrics.edges,
+            exports: report.operations.exports,
+            scc_rounds: report.operations.scc_rounds,
+            effect_projections: report.operations.effect_projections,
+            evidence: report.operations.evidence,
+        },
+    }
 }
 
 struct ProfileLinter(Arc<Linter>);
@@ -124,9 +199,15 @@ pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
     let setup_start = Instant::now();
     let mut prepared = Vec::with_capacity(paths.len());
     let mut file_results = Vec::new();
+    let corpus_options = ProjectLoadOptions::default();
+    let corpus = SourceCorpus::new(&corpus_options)?;
     for path in &paths {
-        match prepare_file(path) {
-            Ok(file) => prepared.push(file),
+        match corpus.load(path) {
+            Ok(file) => prepared.push(PreparedFile {
+                path: file.path,
+                bytes: file.bytes,
+                source: file.source,
+            }),
             Err(error) => {
                 let result = ProfileFileSummary {
                     path: path.clone(),
@@ -208,8 +289,9 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     let mut findings = 0;
     let mut diagnostics = 0;
     let mut errors = 0;
-    let mut bytes = 0;
+    let mut bytes: u64 = 0;
     let mut runs = 0;
+    let mut files: usize = 0;
 
     for path in &config.paths {
         let selection = if path.is_dir() {
@@ -228,32 +310,13 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
                 match loader.load_and_lint_with_metrics(linter, &selection) {
                     Ok((report, metrics)) => {
                         if iteration >= config.warm_up {
-                            project_findings += report
-                                .files
-                                .iter()
-                                .map(|file| file.findings.len())
-                                .sum::<usize>();
-                            project_diagnostics += report.diagnostics.len()
-                                + report
-                                    .files
-                                    .iter()
-                                    .map(|file| file.parse_diagnostics.len())
-                                    .sum::<usize>();
-                            project_files = project_files.max(metrics.files);
-                            project_bytes = project_bytes.max(metrics.bytes);
-                            phases.discovery += metrics.discovery;
-                            phases.reads += metrics.reads;
-                            phases.parse_and_local_analysis += metrics.parse_and_local_analysis;
-                            phases.resolution += metrics.resolution;
-                            phases.linking_and_matching += metrics.linking_and_matching;
-                            phases.linking += metrics.linking;
-                            phases.matching += metrics.matching;
-                            counts.requests += metrics.requests;
-                            counts.edges += metrics.edges;
-                            counts.exports += report.operations.exports;
-                            counts.scc_rounds += report.operations.scc_rounds;
-                            counts.effect_projections += report.operations.effect_projections;
-                            counts.evidence += report.operations.evidence;
+                            let outcome = project_run_outcome(&report, &metrics);
+                            project_findings += outcome.findings;
+                            project_diagnostics += outcome.diagnostics;
+                            project_files = project_files.max(outcome.counts.files);
+                            project_bytes = project_bytes.max(outcome.bytes);
+                            phases += outcome.phases;
+                            counts += outcome.counts;
                             runs += 1;
                         }
                     }
@@ -271,20 +334,20 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         }
         findings += project_findings;
         diagnostics += project_diagnostics;
-        bytes += project_bytes;
+        bytes = bytes.saturating_add(project_bytes);
+        files = files.saturating_add(project_files);
         file_results.push(ProfileFileSummary {
             path: path.clone(),
-            bytes,
+            bytes: project_bytes,
             findings: project_findings,
             diagnostics: project_diagnostics,
             elapsed: started.elapsed(),
             error: project_error,
         });
-        counts.files += project_files;
     }
     phases.total = total_start.elapsed();
     Ok(ProfileSummary {
-        files: counts.files,
+        files,
         bytes,
         findings,
         diagnostics,
@@ -309,36 +372,14 @@ pub fn discover_profile_files(
 ) -> Result<Vec<PathBuf>> {
     let includes = compile_globs(includes)?;
     let excludes = compile_globs(excludes)?;
+    let corpus_options = ProjectLoadOptions::default();
+    let corpus = SourceCorpus::new(&corpus_options)?;
     let mut paths = BTreeMap::<PathBuf, ()>::new();
     for root in roots {
-        let metadata = fs::symlink_metadata(root)
-            .with_context(|| format!("inspect profiling path {}", root.display()))?;
-        if metadata.file_type().is_symlink() {
-            continue;
-        }
-        if metadata.is_file() {
-            if is_source_file(root)
-                && matches_filters(root, root.parent().unwrap_or(root), &includes, &excludes)
-            {
-                paths.insert(root.clone(), ());
-            }
-            continue;
-        }
-        if !metadata.is_dir() {
-            bail!(
-                "profiling path is not a file or directory: {}",
-                root.display()
-            );
-        }
-        for entry in WalkDir::new(root).follow_links(false) {
-            let entry = entry?;
-            if entry.file_type().is_file()
-                && is_source_file(entry.path())
-                && matches_filters(entry.path(), root, &includes, &excludes)
-            {
-                paths.insert(entry.into_path(), ());
-            }
-        }
+        let found = corpus.discover_filtered(std::slice::from_ref(root), |path| {
+            matches_filters(path, root, &includes, &excludes)
+        })?;
+        paths.extend(found.into_iter().map(|path| (path, ())));
     }
     Ok(paths.into_keys().collect())
 }
@@ -357,20 +398,6 @@ fn validate_config(config: &ProfileConfig) -> Result<()> {
         bail!("--sample must be at least 1");
     }
     Ok(())
-}
-
-fn prepare_file(path: &Path) -> Result<PreparedFile> {
-    let metadata = fs::metadata(path).with_context(|| format!("inspect {}", path.display()))?;
-    let source = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-    Ok(PreparedFile {
-        path: path.to_owned(),
-        bytes: metadata.len(),
-        source,
-    })
-}
-
-fn is_source_file(path: &Path) -> bool {
-    SourceLanguage::is_supported_filename(&path.to_string_lossy())
 }
 
 fn matches_filters(path: &Path, root: &Path, includes: &[Pattern], excludes: &[Pattern]) -> bool {
@@ -446,13 +473,21 @@ fn build_linters(
         if !rules.is_empty() && selected.is_empty() {
             continue;
         }
-        let linter = match (prefix, mode) {
-            ("js", ProfileMode::Recommended) => glass_lint_js::recommended_linter(),
-            ("js", ProfileMode::Heuristic) => glass_lint_js::heuristic_linter(),
-            ("obsidian", ProfileMode::Recommended) => glass_lint_obsidian::recommended_linter(),
-            ("obsidian", ProfileMode::Heuristic) => glass_lint_obsidian::heuristic_linter(),
-            _ => unreachable!(),
+        let environment = if provider == ProfileProvider::Both {
+            Some(glass_lint_obsidian::default_environment())
+        } else {
+            None
         };
+        let provider = builtins::provider(prefix)?;
+        let profile = match mode {
+            ProfileMode::Recommended => BuiltInProfile::Recommended,
+            ProfileMode::Heuristic => BuiltInProfile::Heuristic,
+        };
+        let linter = builtins::linter(
+            provider,
+            profile,
+            environment.unwrap_or_else(glass_lint_core::Environment::default),
+        );
         let linter = if rules.is_empty() {
             linter
         } else {
@@ -650,6 +685,36 @@ mod tests {
         sample_paths(&mut left, 5, 42);
         sample_paths(&mut right, 5, 42);
         assert_eq!(left, right);
+    }
+
+    #[test]
+    fn typed_accumulators_saturate_without_cross_item_bytes() {
+        let mut phases = ProfilePhaseTimings {
+            discovery: Duration::MAX,
+            ..ProfilePhaseTimings::default()
+        };
+        phases += ProfilePhaseTimings {
+            discovery: Duration::from_secs(1),
+            ..ProfilePhaseTimings::default()
+        };
+        assert_eq!(phases.discovery, Duration::MAX);
+
+        let mut counts = ProfileOperationCounts {
+            files: usize::MAX,
+            ..ProfileOperationCounts::default()
+        };
+        counts += ProfileOperationCounts {
+            files: 1,
+            ..ProfileOperationCounts::default()
+        };
+        assert_eq!(counts.files, usize::MAX);
+
+        let first_bytes = 7_u64;
+        let second_bytes = 11_u64;
+        let suite_bytes = first_bytes.saturating_add(second_bytes);
+        assert_eq!(first_bytes, 7);
+        assert_eq!(second_bytes, 11);
+        assert_eq!(suite_bytes, 18);
     }
 
     #[cfg(unix)]

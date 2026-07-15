@@ -4,7 +4,7 @@ mod normalization;
 mod taxonomy;
 mod validation;
 
-pub use error::{ApiCatalogError, ApiRuleBuildError};
+pub use error::{CatalogError, RuleBuildError};
 pub(crate) use matcher::{ApiMatcher, StaticStringPredicate, ValueMatcherKind};
 pub use matcher::{
     ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
@@ -13,29 +13,26 @@ pub use matcher::{
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher,
     ReturnedMemberReadMatcher, ValueMatcher, canonical_rooted_chain,
 };
-pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
-
-use crate::api::compiler::CompiledMatcherPlan;
+pub use taxonomy::{Category, Confidence, Severity};
 
 #[derive(Debug, Clone)]
-pub struct ApiRule {
+pub struct Rule {
     id: String,
     label: String,
-    category: ApiCategory,
-    severity: ApiSeverity,
+    category: Category,
+    severity: Severity,
     confidence: Confidence,
     matchers: Vec<Matcher>,
-    compiled_matcher: CompiledMatcherPlan,
 }
 
-impl ApiRule {
+impl Rule {
     /// Retain enough matcher evidence for provider rules with several
     /// configured members without dropping valid capabilities during report
     /// construction. The limit remains finite to keep reports bounded.
     pub const EVIDENCE_LIMIT: usize = 16;
 
-    pub fn builder(id: impl Into<String>) -> ApiRuleBuilder {
-        ApiRuleBuilder {
+    pub fn builder(id: impl Into<String>) -> RuleBuilder {
+        RuleBuilder {
             id: id.into(),
             label: None,
             category: None,
@@ -56,12 +53,12 @@ impl ApiRule {
     }
 
     #[must_use]
-    pub fn category(&self) -> &ApiCategory {
+    pub fn category(&self) -> &Category {
         &self.category
     }
 
     #[must_use]
-    pub fn severity(&self) -> ApiSeverity {
+    pub fn severity(&self) -> Severity {
         self.severity
     }
 
@@ -74,26 +71,19 @@ impl ApiRule {
     pub fn matchers(&self) -> &[Matcher] {
         &self.matchers
     }
-
-    /// Clone the normalized matcher compiled at the rule boundary.  Catalog
-    /// construction may copy this immutable plan, but must never normalize
-    /// the rule again for each file.
-    pub(crate) fn matcher_for_compilation(&self) -> CompiledMatcherPlan {
-        self.compiled_matcher.clone()
-    }
 }
 
 #[derive(Debug, Clone)]
-pub struct ApiRuleBuilder {
+pub struct RuleBuilder {
     id: String,
     label: Option<String>,
-    category: Option<ApiCategory>,
-    severity: Option<ApiSeverity>,
+    category: Option<Category>,
+    severity: Option<Severity>,
     confidence: Option<Confidence>,
     matchers: Vec<Matcher>,
 }
 
-impl ApiRuleBuilder {
+impl RuleBuilder {
     #[must_use]
     pub fn matcher(mut self, matcher: impl Into<Matcher>) -> Self {
         self.matchers.push(matcher.into());
@@ -107,13 +97,13 @@ impl ApiRuleBuilder {
     }
 
     #[must_use]
-    pub fn category(mut self, category: impl Into<ApiCategory>) -> Self {
+    pub fn category(mut self, category: impl Into<Category>) -> Self {
         self.category = Some(category.into());
         self
     }
 
     #[must_use]
-    pub fn severity(mut self, severity: ApiSeverity) -> Self {
+    pub fn severity(mut self, severity: Severity) -> Self {
         self.severity = Some(severity);
         self
     }
@@ -124,59 +114,55 @@ impl ApiRuleBuilder {
         self
     }
 
-    pub fn build(self) -> Result<ApiRule, ApiRuleBuildError> {
-        let label = required_string(self.label, ApiRuleBuildError::MissingLabel)?;
-        let category = self.category.ok_or(ApiRuleBuildError::MissingCategory)?;
-        let severity = self.severity.ok_or(ApiRuleBuildError::MissingSeverity)?;
-        let confidence = self
-            .confidence
-            .ok_or(ApiRuleBuildError::MissingConfidence)?;
+    pub fn build(self) -> Result<Rule, RuleBuildError> {
+        let label = required_string(self.label, RuleBuildError::MissingLabel)?;
+        let category = self.category.ok_or(RuleBuildError::MissingCategory)?;
+        let severity = self.severity.ok_or(RuleBuildError::MissingSeverity)?;
+        let confidence = self.confidence.ok_or(RuleBuildError::MissingConfidence)?;
 
         let id = self.id.trim().to_string();
         if id.is_empty() {
-            return Err(ApiRuleBuildError::MissingId);
+            return Err(RuleBuildError::MissingId);
         }
         if !crate::RuleId::valid_name(&id) {
-            return Err(ApiRuleBuildError::InvalidId(id));
+            return Err(RuleBuildError::InvalidId(id));
         }
         if !category.is_valid() {
-            return Err(ApiRuleBuildError::InvalidCategory(
+            return Err(RuleBuildError::InvalidCategory(
                 category.as_str().to_string(),
             ));
         }
 
         for (index, matcher) in self.matchers.iter().enumerate() {
             validation::validate_matcher_at(matcher, index)
-                .map_err(ApiRuleBuildError::InvalidMatcher)?;
+                .map_err(RuleBuildError::InvalidMatcher)?;
         }
 
         let candidate = matcher::ApiMatcher::from_matchers(self.matchers);
         candidate
             .validate()
-            .map_err(ApiRuleBuildError::InvalidMatcher)?;
+            .map_err(RuleBuildError::InvalidMatcher)?;
         let matcher = candidate.normalized();
         if matcher.is_empty() {
-            return Err(ApiRuleBuildError::MissingMatcher);
+            return Err(RuleBuildError::MissingMatcher);
         }
-        let compiled_matcher = CompiledMatcherPlan::compile(&matcher);
         let matchers = matcher.into_matchers();
 
-        Ok(ApiRule {
+        Ok(Rule {
             id,
             label,
             category,
             severity,
             confidence,
             matchers,
-            compiled_matcher,
         })
     }
 }
 
 fn required_string(
     value: Option<String>,
-    missing_error: ApiRuleBuildError,
-) -> Result<String, ApiRuleBuildError> {
+    missing_error: RuleBuildError,
+) -> Result<String, RuleBuildError> {
     let value = value.ok_or_else(|| missing_error.clone())?;
     if value.trim().is_empty() {
         return Err(missing_error);
@@ -189,11 +175,11 @@ fn required_string(
 mod tests {
     use super::*;
 
-    fn build(id: &str, category: &str) -> Result<ApiRule, ApiRuleBuildError> {
-        ApiRule::builder(id)
+    fn build(id: &str, category: &str) -> Result<Rule, RuleBuildError> {
+        Rule::builder(id)
             .label("rule")
             .category(category)
-            .severity(ApiSeverity::Info)
+            .severity(Severity::Info)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("fetch"))
             .build()
@@ -210,12 +196,12 @@ mod tests {
         ] {
             assert!(matches!(
                 build(id, "network"),
-                Err(ApiRuleBuildError::InvalidId(_))
+                Err(RuleBuildError::InvalidId(_))
             ));
         }
         assert!(matches!(
             build("network.fetch", "  "),
-            Err(ApiRuleBuildError::InvalidCategory(_))
+            Err(RuleBuildError::InvalidCategory(_))
         ));
     }
 
@@ -228,15 +214,15 @@ mod tests {
 
     #[test]
     fn rejects_invalid_matcher_shapes_at_the_builder_boundary() {
-        let error = ApiRule::builder("network.fetch")
+        let error = Rule::builder("network.fetch")
             .label("rule")
             .category("network")
-            .severity(ApiSeverity::Info)
+            .severity(Severity::Info)
             .confidence(Confidence::High)
             .matcher(Matcher::rooted_member_call("client..request"))
             .build()
             .unwrap_err();
-        assert!(matches!(error, ApiRuleBuildError::InvalidMatcher(_)));
+        assert!(matches!(error, RuleBuildError::InvalidMatcher(_)));
 
         let error = ObjectFlowMatcher::builder("incomplete")
             .source(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(

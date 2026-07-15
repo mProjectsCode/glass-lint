@@ -5,7 +5,7 @@ use crate::{
     CoreConfig, Environment, ProjectInput, ProjectInputError, ProjectReport, ProjectSession,
     REPORT_VERSION, RuleCatalogError, RuleId, SourceLanguage,
     analysis::{LocalModuleModel, ProjectSemanticModel},
-    api::{classification::ApiClassificationResult, compiler::CompiledCatalog},
+    api::classification::ApiClassificationResult,
     diagnostic::LintReport,
     project::ModuleId,
 };
@@ -35,8 +35,7 @@ impl std::error::Error for LintConfigError {}
 
 pub struct Linter {
     catalog: RuleCatalog,
-    enabled: BTreeSet<RuleId>,
-    compiled: CompiledCatalog,
+    enabled: Vec<usize>,
 }
 
 impl Linter {
@@ -58,29 +57,40 @@ impl Linter {
 
     #[must_use]
     pub fn new(catalog: RuleCatalog) -> Self {
-        let enabled = catalog.rule_ids().into_iter().collect();
-        let compiled = catalog.compiled();
-        Self {
-            catalog,
-            enabled,
-            compiled,
-        }
+        let enabled = (0..catalog.rules.len()).collect();
+        Self { catalog, enabled }
+    }
+
+    /// Select all rules at or above the requested confidence level.
+    pub fn with_confidence(catalog: RuleCatalog, confidence: crate::api::rule::Confidence) -> Self {
+        let enabled = catalog
+            .rules
+            .iter()
+            .enumerate()
+            .filter_map(|(index, rule)| {
+                (rule.confidence() as u8 <= confidence as u8).then_some(index)
+            })
+            .collect();
+        Self { catalog, enabled }
     }
 
     pub fn with_rules(
         catalog: RuleCatalog,
         enabled: impl IntoIterator<Item = RuleId>,
     ) -> Result<Self, LintConfigError> {
-        let known: BTreeSet<_> = catalog.rule_ids().into_iter().collect();
-        let enabled: BTreeSet<_> = enabled.into_iter().collect();
-        if let Some(id) = enabled.iter().find(|id| !known.contains(*id)) {
-            return Err(LintConfigError::UnknownRule(id.clone()));
-        }
-        let compiled = catalog.compiled();
+        let mut indices = enabled
+            .into_iter()
+            .map(|id| {
+                catalog
+                    .rule_index(&id)
+                    .ok_or(LintConfigError::UnknownRule(id))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        indices.sort_unstable();
+        indices.dedup();
         Ok(Self {
             catalog,
-            enabled,
-            compiled,
+            enabled: indices,
         })
     }
 
@@ -93,8 +103,8 @@ impl Linter {
         let mut catalogs = Vec::new();
         let mut enabled = BTreeSet::new();
         for linter in linters {
+            enabled.extend(linter.enabled_rule_ids());
             catalogs.push(linter.catalog);
-            enabled.extend(linter.enabled);
         }
         let catalog = RuleCatalog::combine_with_environment(catalogs, environment)?;
         Ok(Self::with_rules(catalog, enabled)
@@ -104,6 +114,15 @@ impl Linter {
     #[must_use]
     pub fn catalog(&self) -> &RuleCatalog {
         &self.catalog
+    }
+
+    /// Returns the enabled rule IDs in deterministic catalog order.
+    #[must_use]
+    pub fn enabled_rule_ids(&self) -> Vec<RuleId> {
+        self.enabled
+            .iter()
+            .filter_map(|&index| self.catalog.rule_id(index).cloned())
+            .collect()
     }
 
     pub(crate) fn analysis_environment(&self) -> &Environment {
@@ -136,8 +155,6 @@ impl Linter {
             }
         };
 
-        let selected = self.selected_rule_indices();
-
         let classifications = {
             let _span = tracing::debug_span!(target: "glass_lint::semantic", "semantic").entered();
 
@@ -145,7 +162,7 @@ impl Linter {
 
             let project = ProjectSemanticModel::single(filename, parsed.source_map.clone(), local);
 
-            project.classify(&self.compiled, &self.catalog.rules, &selected)
+            project.classify(self.catalog.compiled(), &self.catalog.rules, &self.enabled)
         };
 
         let mut findings = {
@@ -240,11 +257,8 @@ impl Linter {
         let project = ProjectSemanticModel::link(input, analyzed)?;
         let linking_elapsed = linking_start.elapsed();
         let matching_start = std::time::Instant::now();
-        let classifications = project.classify(
-            &self.compiled,
-            &self.catalog.rules,
-            &self.selected_rule_indices(),
-        );
+        let classifications =
+            project.classify(self.catalog.compiled(), &self.catalog.rules, &self.enabled);
         let matching_elapsed = matching_start.elapsed();
         self.populate_project_files(&project, &classifications, &sources, &mut files);
 
@@ -350,20 +364,6 @@ impl Linter {
             })
             .collect()
     }
-
-    fn selected_rule_indices(&self) -> BTreeSet<usize> {
-        self.catalog
-            .rules
-            .iter()
-            .enumerate()
-            .filter(|(index, _)| {
-                self.catalog
-                    .rule_id(*index)
-                    .is_some_and(|id| self.enabled.contains(id))
-            })
-            .map(|(index, _)| index)
-            .collect()
-    }
 }
 
 #[cfg(test)]
@@ -371,14 +371,14 @@ mod tests {
     use super::*;
     use crate::{
         Position, SourceRange,
-        api::rule::{ApiRule, ApiSeverity, Confidence, Matcher},
+        api::rule::{Confidence, Matcher, Rule, Severity},
         lint::{findings::contains_range, ranges::remove_contained_ranges},
     };
     fn catalog() -> RuleCatalog {
-        let rule = ApiRule::builder("network.fetch")
+        let rule = Rule::builder("network.fetch")
             .label("Uses fetch")
             .category("network")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("fetch"))
             .build()
@@ -409,10 +409,10 @@ mod tests {
 
     #[test]
     fn findings_only_carry_evidence_for_their_own_location() {
-        let rule = ApiRule::builder("vault.write")
+        let rule = Rule::builder("vault.write")
             .label("Writes vault files")
             .category("vault")
-            .severity(ApiSeverity::Info)
+            .severity(Severity::Info)
             .confidence(Confidence::High)
             .matcher(Matcher::rooted_member_call("app.vault.create"))
             .matcher(Matcher::rooted_member_call("app.vault.createFolder"))
@@ -447,10 +447,10 @@ mod tests {
 
     #[test]
     fn collapses_contained_ranges_for_same_rule() {
-        let rule = ApiRule::builder("metadata.read")
+        let rule = Rule::builder("metadata.read")
             .label("Reads metadata")
             .category("metadata")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::rooted_member_read("app.metadataCache"))
             .matcher(Matcher::rooted_member_call(
@@ -559,18 +559,18 @@ mod tests {
 
     #[test]
     fn enabled_rule_order_does_not_affect_findings() {
-        let rule_a = ApiRule::builder("alpha.first")
+        let rule_a = Rule::builder("alpha.first")
             .label("First")
             .category("network")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap();
-        let rule_b = ApiRule::builder("beta.second")
+        let rule_b = Rule::builder("beta.second")
             .label("Second")
             .category("network")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("XMLHttpRequest"))
             .build()
@@ -613,18 +613,18 @@ mod tests {
 
     #[test]
     fn disabled_catalog_rules_do_not_produce_findings() {
-        let rule_a = ApiRule::builder("alpha.first")
+        let rule_a = Rule::builder("alpha.first")
             .label("First")
             .category("network")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap();
-        let rule_b = ApiRule::builder("beta.second")
+        let rule_b = Rule::builder("beta.second")
             .label("Second")
             .category("network")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("XMLHttpRequest"))
             .build()
@@ -644,18 +644,18 @@ mod tests {
 
     #[test]
     fn combines_provider_rules_with_overlapping_local_ids() {
-        let first = ApiRule::builder("network.request")
+        let first = Rule::builder("network.request")
             .label("First provider request")
             .category("network")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap();
-        let second = ApiRule::builder("network.request")
+        let second = Rule::builder("network.request")
             .label("Second provider request")
             .category("network")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("requestUrl"))
             .build()
@@ -682,18 +682,18 @@ mod tests {
 
     #[test]
     fn combined_linter_preserves_each_input_rule_selection() {
-        let enabled_rule = ApiRule::builder("enabled")
+        let enabled_rule = Rule::builder("enabled")
             .label("Enabled")
             .category("test")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap();
-        let disabled_rule = ApiRule::builder("disabled")
+        let disabled_rule = Rule::builder("disabled")
             .label("Disabled")
             .category("test")
-            .severity(ApiSeverity::Warning)
+            .severity(Severity::Warning)
             .confidence(Confidence::High)
             .matcher(Matcher::global_call("requestUrl"))
             .build()

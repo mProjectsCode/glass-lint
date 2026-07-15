@@ -1,4 +1,4 @@
-//! Matcher-specific occurrence queries and evidence construction.
+//! ApiMatcher-specific occurrence queries and evidence construction.
 
 #[cfg(test)]
 use swc_common::Span;

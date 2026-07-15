@@ -5,10 +5,10 @@ use super::{
     ranges::{remove_contained_ranges, source_range, source_range_from_span},
 };
 use crate::{
-    Severity,
+    Severity as DiagnosticSeverity,
     api::{
         classification::{ApiCapability, ApiClassificationResult, ApiEvidence},
-        rule::ApiSeverity,
+        rule::Severity as RuleSeverity,
     },
     diagnostic::{Evidence, Finding, SourceRange},
 };
@@ -82,9 +82,9 @@ impl Linter {
                     message_id: "detected".into(),
                     message: capability.label().into(),
                     severity: match capability.severity() {
-                        ApiSeverity::Info => Severity::Info,
-                        ApiSeverity::Warning => Severity::Warning,
-                        ApiSeverity::Error => Severity::Error,
+                        RuleSeverity::Info => DiagnosticSeverity::Info,
+                        RuleSeverity::Warning => DiagnosticSeverity::Warning,
+                        RuleSeverity::Error => DiagnosticSeverity::Error,
                     },
                     range,
                     evidence: local_evidence,

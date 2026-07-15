@@ -1,11 +1,10 @@
 //! Filesystem discovery and per-file lint execution.
 
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::{Linter, SourceLanguage};
-use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
-use walkdir::WalkDir;
+use glass_lint_core::Linter;
+use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection, SourceCorpus};
 
 use crate::{
     args::Command,
@@ -21,7 +20,14 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
             if !path.is_file() {
                 bail!("snippet path is not a file: {}", path.display())
             }
-            let paths = discover_paths(&path)?;
+            let options = ProjectLoadOptions {
+                max_source_bytes: config.cli.max_bytes,
+                ..ProjectLoadOptions::default()
+            };
+            let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;
+            let paths = corpus
+                .discover(std::slice::from_ref(&path))
+                .map_err(|error| anyhow::anyhow!(error))?;
             if paths.is_empty() {
                 bail!(
                     "no JavaScript or TypeScript files found at {}",
@@ -63,44 +69,20 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
     Ok(failed)
 }
 
-fn discover_paths(path: &PathBuf) -> Result<Vec<PathBuf>> {
-    let mut paths = if path.is_dir() {
-        tracing::debug!(target: "glass_lint::cli", path = %path.display(), "discovery started");
-        WalkDir::new(path)
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .filter(|entry| {
-                entry.file_type().is_file()
-                    && SourceLanguage::is_supported_filename(&entry.path().to_string_lossy())
-            })
-            .map(walkdir::DirEntry::into_path)
-            .collect()
-    } else {
-        vec![path.clone()]
-    };
-    paths.sort();
-    tracing::debug!(target: "glass_lint::cli", files = paths.len(), "discovery completed");
-    Ok(paths)
-}
-
 fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<bool> {
+    let options = ProjectLoadOptions {
+        max_source_bytes: config.cli.max_bytes,
+        ..ProjectLoadOptions::default()
+    };
+    let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;
     let mut files = Vec::with_capacity(paths.len());
     let mut failed = false;
 
     for path in paths {
-        let metadata =
-            fs::metadata(&path).with_context(|| format!("inspect {}", path.display()))?;
-        if metadata.len() > config.cli.max_bytes {
-            bail!(
-                "{} exceeds max_bytes {}",
-                path.display(),
-                config.cli.max_bytes
-            )
-        }
-
-        let source =
-            fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let source = corpus
+            .load(&path)
+            .map_err(|error| anyhow::anyhow!(error))?
+            .source;
         let name = path.to_string_lossy().into_owned();
         tracing::debug!(
             target: "glass_lint::cli",
@@ -139,7 +121,7 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
 mod tests {
     use std::fs;
 
-    use super::discover_paths;
+    use glass_lint_project::{ProjectLoadOptions, SourceCorpus};
 
     #[test]
     fn discovers_sorted_runtime_javascript_and_typescript_files() {
@@ -150,7 +132,10 @@ mod tests {
             fs::write(root.join(filename), "").unwrap();
         }
 
-        let paths = discover_paths(&root).unwrap();
+        let paths = SourceCorpus::new(&ProjectLoadOptions::default())
+            .unwrap()
+            .discover(std::slice::from_ref(&root))
+            .unwrap();
         let names: Vec<_> = paths
             .iter()
             .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())

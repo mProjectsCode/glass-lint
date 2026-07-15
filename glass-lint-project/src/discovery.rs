@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glass_lint_core::{SourceFile, SourceLanguage};
+use glass_lint_core::SourceFile;
 use serde_json::Value;
 use walkdir::{DirEntry, WalkDir};
 
@@ -233,34 +233,7 @@ impl<'a> ProjectDiscovery<'a> {
         root: &Path,
         path: &Path,
     ) -> Result<SourceFile, ProjectLoadError> {
-        if !supported_path(path, &self.options.extensions) {
-            return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
-        }
-        let metadata = fs::metadata(path).map_err(|source| ProjectLoadError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        if metadata.len() > self.options.max_source_bytes {
-            return Err(ProjectLoadError::SourceTooLarge {
-                path: path.to_path_buf(),
-                bytes: metadata.len(),
-                limit: self.options.max_source_bytes,
-            });
-        }
-        let source = fs::read_to_string(path).map_err(|source| ProjectLoadError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        let relative = path
-            .strip_prefix(root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        Ok(SourceFile {
-            language: SourceLanguage::from_filename(&relative),
-            path: relative,
-            source,
-        })
+        crate::corpus::SourceCorpus::new(self.options)?.load_source_file(root, path)
     }
 }
 
@@ -335,15 +308,7 @@ pub(crate) fn excluded_path(root: &Path, path: &Path, excluded: &BTreeSet<String
     })
 }
 
-pub(crate) fn supported_path(path: &Path, extensions: &[String]) -> bool {
-    let name = path.to_string_lossy().to_ascii_lowercase();
-    extensions
-        .iter()
-        .any(|extension| name.ends_with(&extension.to_ascii_lowercase()))
-        && ![".d.ts", ".d.cts", ".d.mts"]
-            .iter()
-            .any(|suffix| name.ends_with(suffix))
-}
+pub(crate) use crate::corpus::supported_path;
 
 fn tsconfig_pattern_matches(pattern: &str, relative: &str) -> bool {
     let pattern = pattern.replace('\\', "/");

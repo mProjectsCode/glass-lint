@@ -6,12 +6,14 @@
 //! API in [`loader`]. Core receives only owned sources and typed resolution
 //! results; no resolver or filesystem type crosses that boundary.
 
+mod corpus;
 mod discovery;
 mod error;
 mod loader;
 mod options;
 mod resolver;
 
+pub use corpus::{CorpusFile, SourceCorpus};
 pub use error::ProjectLoadError;
 pub use loader::{ProjectLoadMetrics, ProjectLoader};
 pub use options::{ProjectLoadOptions, ProjectSelection};

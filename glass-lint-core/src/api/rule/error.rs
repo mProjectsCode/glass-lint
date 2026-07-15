@@ -1,7 +1,7 @@
 use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ApiRuleBuildError {
+pub enum RuleBuildError {
     MissingId,
     InvalidId(String),
     MissingLabel,
@@ -14,11 +14,11 @@ pub enum ApiRuleBuildError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ApiCatalogError {
+pub enum CatalogError {
     DuplicateRule(String),
 }
 
-impl fmt::Display for ApiRuleBuildError {
+impl fmt::Display for RuleBuildError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MissingId => formatter.write_str("rule ID is required"),
@@ -34,9 +34,9 @@ impl fmt::Display for ApiRuleBuildError {
     }
 }
 
-impl Error for ApiRuleBuildError {}
+impl Error for RuleBuildError {}
 
-impl fmt::Display for ApiCatalogError {
+impl fmt::Display for CatalogError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DuplicateRule(id) => write!(formatter, "duplicate rule `{id}`"),
@@ -44,4 +44,4 @@ impl fmt::Display for ApiCatalogError {
     }
 }
 
-impl Error for ApiCatalogError {}
+impl Error for CatalogError {}

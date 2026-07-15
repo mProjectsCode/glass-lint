@@ -1,4 +1,4 @@
-//! Matcher overlays and project-level matcher evidence.
+//! ApiMatcher overlays and project-level matcher evidence.
 
 use std::collections::BTreeMap;
 

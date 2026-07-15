@@ -105,61 +105,18 @@ fn write_report_to<W: Write>(
     }
 }
 
-fn write_json<W: Write>(files: &[FileOutput], summary: Summary, out: &mut W) -> Result<()> {
+fn write_json<W: Write>(files: &[FileOutput], _summary: Summary, out: &mut W) -> Result<()> {
     let files = files
         .iter()
-        .map(|file| glass_lint_core::ProjectFileReport {
-            path: file.path.clone(),
-            findings: file
-                .report
-                .findings
-                .iter()
-                .cloned()
-                .map(|finding| glass_lint_core::ProjectFinding {
-                    rule_id: finding.rule_id,
-                    message_id: finding.message_id,
-                    message: finding.message,
-                    severity: finding.severity,
-                    location: glass_lint_core::SourceLocation {
-                        path: file.path.clone(),
-                        range: finding.range,
-                    },
-                    evidence: finding
-                        .evidence
-                        .into_iter()
-                        .map(|evidence| glass_lint_core::ProjectEvidence {
-                            message: evidence.message,
-                            location: evidence.range.map(|range| glass_lint_core::SourceLocation {
-                                path: file.path.clone(),
-                                range,
-                            }),
-                            source: evidence.source,
-                        })
-                        .collect(),
-                })
-                .collect(),
-            parse_diagnostics: file.report.parse_diagnostics.clone(),
+        .map(|file| {
+            glass_lint_core::ProjectFileReport::from_lint_report(
+                file.path.clone(),
+                file.report.clone(),
+            )
         })
         .collect::<Vec<_>>();
-    let report = glass_lint_core::ProjectReport {
-        schema_version: glass_lint_core::REPORT_VERSION,
-        tool_version: env!("CARGO_PKG_VERSION").into(),
-        operations: glass_lint_core::ProjectOperationCounts {
-            files: summary.files,
-            evidence: files
-                .iter()
-                .map(|file| {
-                    file.findings
-                        .iter()
-                        .map(|finding| finding.evidence.len())
-                        .sum::<usize>()
-                })
-                .sum(),
-            ..glass_lint_core::ProjectOperationCounts::default()
-        },
-        files,
-        diagnostics: Vec::new(),
-    };
+    let report =
+        glass_lint_core::ProjectReport::from_file_reports(env!("CARGO_PKG_VERSION"), files);
     serde_json::to_writer_pretty(&mut *out, &report)?;
     writeln!(out)?;
     Ok(())
@@ -208,15 +165,12 @@ fn write_project_report_to<W: Write>(
     report: &ProjectReport,
     out: &mut W,
 ) -> Result<()> {
+    let core_summary = report.summary();
     let summary = ProjectSummary {
-        files: report.files.len(),
-        findings: report.files.iter().map(|file| file.findings.len()).sum(),
-        parse_diagnostics: report
-            .files
-            .iter()
-            .map(|file| file.parse_diagnostics.len())
-            .sum(),
-        project_diagnostics: report.diagnostics.len(),
+        files: core_summary.files,
+        findings: core_summary.findings,
+        parse_diagnostics: core_summary.parse_diagnostics,
+        project_diagnostics: core_summary.project_diagnostics,
     };
     match config.cli.output {
         Output::Json => {

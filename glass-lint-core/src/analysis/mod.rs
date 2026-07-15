@@ -296,15 +296,15 @@ impl ProjectSemanticModel {
     pub(crate) fn classify(
         &self,
         catalog: &crate::api::compiler::CompiledCatalog,
-        rules: &[crate::api::rule::ApiRule],
-        selected: &std::collections::BTreeSet<usize>,
+        rules: &[crate::api::rule::Rule],
+        selected: &[usize],
     ) -> BTreeMap<ModuleId, crate::api::classification::ApiClassificationResult> {
         let matcher_catalog = self.project(catalog.to_matcher_catalog(selected));
         self.modules()
             .map(|module| {
                 let mut result = crate::api::classification::ApiClassificationResult::default();
                 for rule_index in 0..rules.len() {
-                    if !selected.contains(&rule_index) {
+                    if selected.binary_search(&rule_index).is_err() {
                         continue;
                     }
                     let Some(rule) = rules.get(rule_index) else {
@@ -372,8 +372,6 @@ fn is_internal_request(request: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use super::*;
     use crate::{
         Environment,
@@ -407,15 +405,23 @@ mod tests {
             ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
                 .normalized();
         let fetch_plan = CompiledMatcherPlan::compile(&fetch);
-        let selected = BTreeSet::from([0]);
-        let _ = project.project(CompiledMatcherCatalog::new(vec![&fetch_plan], &selected));
+        let selected = [0];
+        let fetch_rule = crate::api::compiler::CompiledRule {
+            matcher: fetch_plan,
+        };
+        let fetch_rules = [fetch_rule];
+        let _ = project.project(CompiledMatcherCatalog::new(&fetch_rules, &selected));
 
         let member = ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::member_call(
             crate::api::rule::MemberCallMatcher::syntactic_heuristic("document.createElement"),
         )])
         .normalized();
         let member_plan = CompiledMatcherPlan::compile(&member);
-        let _ = project.project(CompiledMatcherCatalog::new(vec![&member_plan], &selected));
+        let member_rule = crate::api::compiler::CompiledRule {
+            matcher: member_plan,
+        };
+        let member_rules = [member_rule];
+        let _ = project.project(CompiledMatcherCatalog::new(&member_rules, &selected));
 
         let after = format!(
             "{:?}",

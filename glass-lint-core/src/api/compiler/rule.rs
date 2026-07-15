@@ -1,8 +1,7 @@
-use std::collections::BTreeSet;
-
 use super::super::rule::{
-    ApiMatcher, ApiRule, ArgumentConstraint, FlowCompletion, FlowCondition, FlowSinkMatcher,
-    MemberCallProvenance, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+    ApiMatcher, ArgumentConstraint, FlowCompletion, FlowCondition, FlowSinkMatcher,
+    MemberCallProvenance, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
+    ValueMatcher,
 };
 
 /// Canonical matcher representation consumed by analysis.  Public matcher
@@ -16,8 +15,8 @@ pub(crate) struct CompiledMatcherPlan {
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledMatcherCatalog<'a> {
-    pub(crate) matchers: Vec<&'a CompiledMatcherPlan>,
-    pub(crate) selected: &'a BTreeSet<usize>,
+    pub(crate) rules: &'a [CompiledRule],
+    pub(crate) selected: &'a [usize],
 }
 
 #[derive(Debug, Clone)]
@@ -202,32 +201,26 @@ impl CompiledMatcherPlan {
 }
 
 impl<'a> CompiledMatcherCatalog<'a> {
-    pub(crate) fn new(
-        matchers: Vec<&'a CompiledMatcherPlan>,
-        selected: &'a BTreeSet<usize>,
-    ) -> Self {
-        Self { matchers, selected }
+    pub(crate) fn new(rules: &'a [CompiledRule], selected: &'a [usize]) -> Self {
+        Self { rules, selected }
     }
 
     pub(crate) fn selected_matchers(&self) -> impl Iterator<Item = (usize, &CompiledMatcherPlan)> {
-        self.matchers
+        self.selected
             .iter()
-            .enumerate()
-            .filter_map(move |(index, matcher)| {
-                self.selected.contains(&index).then_some((index, *matcher))
-            })
+            .filter_map(move |&index| self.rules.get(index).map(|rule| (index, &rule.matcher)))
     }
 
     pub(crate) fn is_selected(&self, index: usize) -> bool {
-        self.selected.contains(&index)
+        self.selected.binary_search(&index).is_ok()
     }
 
     pub(crate) fn get(&self, index: usize) -> Option<&'a CompiledMatcherPlan> {
-        self.matchers.get(index).copied()
+        self.rules.get(index).map(|rule| &rule.matcher)
     }
 
     pub(crate) fn len(&self) -> usize {
-        self.matchers.len()
+        self.rules.len()
     }
 }
 
@@ -237,9 +230,11 @@ pub(crate) struct CompiledRule {
 }
 
 impl CompiledRule {
-    pub(crate) fn new(rule: &ApiRule) -> Self {
+    pub(crate) fn new(rule: &Rule) -> Self {
         Self {
-            matcher: rule.matcher_for_compilation(),
+            matcher: CompiledMatcherPlan::compile(&ApiMatcher::from_matchers(
+                rule.matchers().to_vec(),
+            )),
         }
     }
 }

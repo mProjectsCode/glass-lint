@@ -1,6 +1,6 @@
 use swc_common::Span;
 
-use super::rule::{ApiCategory, ApiSeverity, Confidence};
+use super::rule::{Category, Confidence, Severity};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ApiCapability {
@@ -8,8 +8,8 @@ pub struct ApiCapability {
     pub(crate) rule_index: usize,
     pub id: String,
     pub label: String,
-    pub category: ApiCategory,
-    pub severity: ApiSeverity,
+    pub category: Category,
+    pub severity: Severity,
     pub confidence: Confidence,
     pub evidence: Vec<ApiEvidence>,
 }
@@ -80,7 +80,7 @@ impl ApiCapability {
         &self.label
     }
 
-    pub fn severity(&self) -> ApiSeverity {
+    pub fn severity(&self) -> Severity {
         self.severity
     }
 

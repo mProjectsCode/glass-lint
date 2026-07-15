@@ -1,4 +1,5 @@
 mod adapters;
+mod builtins;
 mod cases;
 mod profile;
 mod report;
@@ -15,7 +16,6 @@ pub use report::{comparison, failure_details, markdown, report_json, summary};
 pub use runner::{CaseTimings, run_suite};
 pub use types::{
     ADAPTER_PROTOCOL_VERSION, AdapterFile, AdapterProject, AdapterRequest, AdapterResolution,
-    AdapterResolutionResult, AdapterResponse, AdapterRun, Case, CaseResult, DiagnosticExpectation,
-    FindingLocation, ProjectCase, ProjectFile, ProjectResolution, ProjectResolutionResult,
-    SuiteReport, ToolExpectation, ToolResult,
+    AdapterResolutionKind, AdapterResolutionResult, AdapterResponse, AdapterRun, Case, CaseResult,
+    DiagnosticExpectation, FindingLocation, ProjectCase, SuiteReport, ToolExpectation, ToolResult,
 };

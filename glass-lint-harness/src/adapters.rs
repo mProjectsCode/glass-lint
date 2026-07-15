@@ -5,11 +5,14 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::{Finding, Linter, ResolutionRequestKind, ResolutionResult, SourceFile};
+use glass_lint_core::{Finding, Linter, SourceFile};
 
-use crate::types::{
-    ADAPTER_PROTOCOL_VERSION, AdapterProject, AdapterRequest, AdapterResponse, AdapterRun, Case,
-    FindingLocation, ProjectCase, ProjectResolutionResult, ToolExpectation,
+use crate::{
+    builtins::{self, BuiltInProfile},
+    types::{
+        ADAPTER_PROTOCOL_VERSION, AdapterProject, AdapterRequest, AdapterResolution,
+        AdapterResponse, AdapterRun, Case, FindingLocation, ProjectCase, ToolExpectation,
+    },
 };
 
 pub trait Adapter {
@@ -77,72 +80,34 @@ impl Adapter for GlassLintAdapter {
         if let Some(project) = &case.project {
             return Ok(run_project(project, expectation)?.findings);
         }
-        let mut findings = Vec::new();
-        let combined_environment = expectation
-            .config
-            .as_deref()
-            .map(|_| glass_lint_obsidian::default_environment());
-        let js_linter = combined_environment
-            .as_ref()
-            .map_or_else(glass_lint_js::heuristic_linter, |environment| {
-                glass_lint_js::heuristic_linter_with_environment(environment.clone())
-            });
-        for (prefix, configured) in [
-            ("js:", js_linter),
-            ("obsidian:", glass_lint_obsidian::heuristic_linter()),
-        ] {
-            if let Some(config) = expectation.config.as_deref() {
-                if config != "heuristic" {
-                    bail!("unknown built-in glass-lint config `{config}`");
-                }
-                let report = configured.lint(&case.source, &case.filename);
-                if !report.parse_diagnostics.is_empty() {
-                    bail!(
-                        "{}",
-                        report
-                            .parse_diagnostics
-                            .into_iter()
-                            .map(|d| d.message)
-                            .collect::<Vec<_>>()
-                            .join("; ")
-                    );
-                }
-                findings.extend(report.findings);
-                continue;
-            }
-            let enabled = expectation
-                .rules
-                .iter()
-                .filter(|id| id.starts_with(prefix))
-                .map(|id| glass_lint_core::RuleId::parse(id.clone()))
-                .collect::<Result<Vec<_>, _>>()?;
-            if enabled.is_empty() {
-                continue;
-            }
-            let linter =
-                glass_lint_core::Linter::with_rules(configured.catalog().clone(), enabled)?;
-            let report = linter.lint(&case.source, &case.filename);
-            if !report.parse_diagnostics.is_empty() {
-                bail!(
-                    "{}",
-                    report
-                        .parse_diagnostics
-                        .into_iter()
-                        .map(|d| d.message)
-                        .collect::<Vec<_>>()
-                        .join("; ")
-                );
-            }
-            findings.extend(report.findings);
+        let report = configured_linter(expectation)?.lint(&case.source, &case.filename);
+        if !report.parse_diagnostics.is_empty() {
+            bail!(
+                "{}",
+                report
+                    .parse_diagnostics
+                    .into_iter()
+                    .map(|d| d.message)
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            );
         }
-        Ok(findings)
+        Ok(report.findings)
     }
 }
 
 fn configured_linter(expectation: &ToolExpectation) -> Result<Linter> {
     let environment = glass_lint_obsidian::default_environment();
-    let js = glass_lint_js::heuristic_linter_with_environment(environment.clone());
-    let obsidian = glass_lint_obsidian::heuristic_linter();
+    let js = builtins::linter(
+        builtins::BuiltInProvider::Js,
+        BuiltInProfile::Heuristic,
+        environment.clone(),
+    );
+    let obsidian = builtins::linter(
+        builtins::BuiltInProvider::Obsidian,
+        BuiltInProfile::Heuristic,
+        environment.clone(),
+    );
     if let Some(config) = expectation.config.as_deref() {
         if config != "heuristic" {
             bail!("unknown built-in glass-lint config `{config}`");
@@ -206,12 +171,8 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
             );
         }
         for resolution in &project.resolutions {
-            let kind = match resolution.kind.as_str() {
-                "import" => ResolutionRequestKind::Import,
-                "dynamic_import" | "dynamic-import" => ResolutionRequestKind::DynamicImport,
-                "require" => ResolutionRequestKind::Require,
-                other => return Err(anyhow::anyhow!("unknown project request kind `{other}`")),
-            };
+            let (kind, result) = <&AdapterResolution as TryInto<(_, _)>>::try_into(resolution)
+                .map_err(|error: String| anyhow::anyhow!(error))?;
             let request = authored
                 .iter()
                 .find(|(candidate, importer)| {
@@ -228,24 +189,6 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
                         resolution.request
                     )
                 })?;
-            let result = match &resolution.result {
-                ProjectResolutionResult::Internal { path } => {
-                    ResolutionResult::Internal { path: path.clone() }
-                }
-                ProjectResolutionResult::External { package } => ResolutionResult::External {
-                    package: package.clone(),
-                },
-                ProjectResolutionResult::Builtin { name } => {
-                    ResolutionResult::Builtin { name: name.clone() }
-                }
-                ProjectResolutionResult::Missing => ResolutionResult::Missing,
-                ProjectResolutionResult::OutsideProject { path } => {
-                    ResolutionResult::OutsideProject { path: path.clone() }
-                }
-                ProjectResolutionResult::Unsupported { reason } => ResolutionResult::Unsupported {
-                    reason: reason.clone(),
-                },
-            };
             session.record_resolution(request, result)?;
         }
         session.finish()?
@@ -397,5 +340,5 @@ impl ExternalAdapter {
 }
 
 fn adapter_project(project: &ProjectCase) -> AdapterProject {
-    project.clone().into()
+    project.into()
 }

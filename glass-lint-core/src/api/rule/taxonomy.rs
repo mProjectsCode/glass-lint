@@ -1,8 +1,8 @@
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(transparent)]
-pub struct ApiCategory(String);
+pub struct Category(String);
 
-impl ApiCategory {
+impl Category {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into().trim().to_string())
     }
@@ -30,13 +30,13 @@ impl ApiCategory {
     }
 }
 
-impl From<&str> for ApiCategory {
+impl From<&str> for Category {
     fn from(value: &str) -> Self {
         Self::new(value)
     }
 }
 
-impl From<String> for ApiCategory {
+impl From<String> for Category {
     fn from(value: String) -> Self {
         Self::new(value)
     }
@@ -44,13 +44,13 @@ impl From<String> for ApiCategory {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ApiSeverity {
+pub enum Severity {
     Info,
     Warning,
     Error,
 }
 
-impl ApiSeverity {
+impl Severity {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
@@ -60,11 +60,11 @@ impl ApiSeverity {
         }
     }
 
-    pub(crate) fn as_diagnostic_severity(self) -> Severity {
+    pub(crate) fn as_diagnostic_severity(self) -> crate::diagnostic::Severity {
         match self {
-            Self::Info => Severity::Info,
-            Self::Warning => Severity::Warning,
-            Self::Error => Severity::Error,
+            Self::Info => crate::diagnostic::Severity::Info,
+            Self::Warning => crate::diagnostic::Severity::Warning,
+            Self::Error => crate::diagnostic::Severity::Error,
         }
     }
 }
@@ -87,4 +87,3 @@ impl Confidence {
         }
     }
 }
-use crate::Severity;

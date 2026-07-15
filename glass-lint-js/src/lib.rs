@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use glass_lint_core::{Environment, LintReport, Linter, RuleCatalog, RuleId, RuleMetadata};
+use glass_lint_core::{Environment, LintReport, Linter, RuleCatalog, RuleMetadata};
 
 mod disclosures;
 mod rules;
@@ -21,11 +21,7 @@ pub fn recommended_linter() -> Linter {
 #[must_use]
 pub fn recommended_linter_with_environment(environment: Environment) -> Linter {
     let catalog = catalog(environment);
-    let enabled = rules::all()
-        .into_iter()
-        .filter(|rule| rule.confidence() == glass_lint_core::rules::Confidence::High)
-        .map(|rule| RuleId::parse(format!("js:{}", rule.id())).unwrap());
-    Linter::with_rules(catalog, enabled).unwrap()
+    Linter::with_confidence(catalog, glass_lint_core::rules::Confidence::High)
 }
 
 #[must_use]

@@ -1,6 +1,6 @@
 //! SWC visitor that turns syntax into the canonical semantic fact stream.
 //!
-//! Each visit method records semantic roles in evaluation order. Matcher
+//! Each visit method records semantic roles in evaluation order. ApiMatcher
 //! selection never reaches this visitor; all values, provenance, and control
 //! regions are computed once for every file.
 

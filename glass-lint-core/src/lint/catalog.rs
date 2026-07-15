@@ -6,7 +6,7 @@ use std::{
 
 use crate::{
     Environment, RuleId, RuleMetadata,
-    api::{compiler::CompiledCatalog, rule::ApiRule},
+    api::{compiler::CompiledCatalog, rule::Rule},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -28,26 +28,28 @@ impl Error for RuleCatalogError {}
 
 #[derive(Clone, Debug)]
 pub struct RuleCatalog {
-    pub(crate) rules: Vec<ApiRule>,
+    pub(crate) rules: Vec<Rule>,
     rule_ids: Vec<RuleId>,
+    rule_indices: BTreeMap<RuleId, usize>,
     environment: Environment,
+    compiled: CompiledCatalog,
 }
 
 impl RuleCatalog {
-    pub fn new(provider: impl Into<String>, rules: Vec<ApiRule>) -> Result<Self, RuleCatalogError> {
+    pub fn new(provider: impl Into<String>, rules: Vec<Rule>) -> Result<Self, RuleCatalogError> {
         Self::with_environment(provider, rules, Environment::default())
     }
 
     pub fn with_environment(
         provider: impl Into<String>,
-        rules: Vec<ApiRule>,
+        rules: Vec<Rule>,
         environment: Environment,
     ) -> Result<Self, RuleCatalogError> {
         let provider = provider.into();
         RuleId::parse(format!("{provider}:placeholder"))?;
 
-        CompiledCatalog::try_from_rules(&rules).map_err(|error| match error {
-            crate::api::rule::ApiCatalogError::DuplicateRule(id) => {
+        let compiled = CompiledCatalog::try_from_rules(&rules).map_err(|error| match error {
+            crate::api::rule::CatalogError::DuplicateRule(id) => {
                 RuleCatalogError::InvalidRule(format!("{provider}:{id}"), "duplicate rule".into())
             }
         })?;
@@ -57,10 +59,18 @@ impl RuleCatalog {
             .map(|rule| RuleId::parse(format!("{provider}:{}", rule.id())))
             .collect::<Result<Vec<_>, _>>()?;
 
+        let rule_indices = rule_ids
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, id)| (id, index))
+            .collect();
         Ok(Self {
             rules,
             rule_ids,
+            rule_indices,
             environment,
+            compiled,
         })
     }
 
@@ -90,10 +100,19 @@ impl RuleCatalog {
             }
         }
 
+        let rule_indices = rule_ids
+            .iter()
+            .cloned()
+            .enumerate()
+            .map(|(index, id)| (id, index))
+            .collect();
+        let compiled = CompiledCatalog::from_rules(&rules);
         Ok(Self {
             rules,
             rule_ids,
+            rule_indices,
             environment,
+            compiled,
         })
     }
 
@@ -128,8 +147,12 @@ impl RuleCatalog {
         self.rule_ids.get(index)
     }
 
-    pub(crate) fn compiled(&self) -> CompiledCatalog {
-        CompiledCatalog::from_rules(&self.rules)
+    pub(crate) fn compiled(&self) -> &CompiledCatalog {
+        &self.compiled
+    }
+
+    pub(crate) fn rule_index(&self, id: &RuleId) -> Option<usize> {
+        self.rule_indices.get(id).copied()
     }
 }
 

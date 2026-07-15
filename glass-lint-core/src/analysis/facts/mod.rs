@@ -136,15 +136,10 @@ impl SemanticFacts {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
-
     use swc_common::BytePos;
 
     use super::*;
-    use crate::api::{
-        compiler::{CompiledMatcherCatalog, CompiledMatcherPlan},
-        rule::ApiMatcher,
-    };
+    use crate::api::{compiler::CompiledMatcherPlan, rule::ApiMatcher};
 
     fn test_fact(id: u32, kind: FactKind, span: Span) -> SemanticFact {
         SemanticFact::new(
@@ -273,8 +268,7 @@ mod tests {
         let build = |matchers: Vec<&crate::api::compiler::CompiledMatcherPlan>,
                      selected: &[usize]| {
             let resolver = Resolver::collect(&parsed.program);
-            let selected = selected.iter().copied().collect::<BTreeSet<_>>();
-            let _catalog = CompiledMatcherCatalog::new(matchers, &selected);
+            let _ = (matchers, selected);
             format!(
                 "{:?}",
                 SemanticFacts::build(&parsed.program, &resolver).index
