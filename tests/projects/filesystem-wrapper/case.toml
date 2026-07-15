@@ -1,9 +1,0 @@
-[case]
-id = "cross-module-wrapper/filesystem"
-description = "Loads a mixed JavaScript and TypeScript project from disk"
-tags = ["project", "filesystem", "typescript"]
-entries = ["src/main.js"]
-filesystem = true
-
-[tool.glass-lint]
-rules = ["obsidian:network.request"]

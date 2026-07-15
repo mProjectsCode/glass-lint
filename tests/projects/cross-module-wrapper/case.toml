@@ -1,7 +1,7 @@
 [case]
 id = "cross-module-wrapper/virtual"
-description = "Preserves an external API identity through a TypeScript helper"
-tags = ["project", "virtual", "typescript"]
+description = "Reports an Obsidian request re-exported through JavaScript and TypeScript modules. Uses manual package resolution."
+tags = ["project", "virtual", "reexport", "typescript"]
 entries = ["src/main.js"]
 
 [tool.glass-lint]
@@ -18,11 +18,21 @@ end_column = 38
 package = "obsidian"
 
 [[resolution]]
-importer = "src/main.js"
+importer = "src/barrel.js"
 kind = "import"
 request = "./helper"
+line = 1
+column = 22
+end_line = 1
+end_column = 32
+path = "src/helper.ts"
+
+[[resolution]]
+importer = "src/main.js"
+kind = "import"
+request = "./barrel"
 line = 2
 column = 22
 end_line = 2
 end_column = 32
-path = "src/helper.ts"
+path = "src/barrel.js"

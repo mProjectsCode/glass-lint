@@ -6,28 +6,25 @@ declarative matchers, and front ends select rules and serialize reports.
 
 ## Package boundaries
 
-```text
-                    +----------------------+
-                    |   glass-lint-cli     |
-                    |  glass-lint binary   |
-                    +----------+-----------+
-                               |
-             +-----------------+-----------------+
-             |                                   |
-             v                                   v
- +----------------------+             +----------------------+
- | glass-lint-harness   |             | provider crates      |
- | cases, adapters,     |------------>| glass-lint-js        |
- | reports, profiling   |             | glass-lint-obsidian  |
- +----------+-----------+             +----------+-----------+
-             |                                   |
-             +-----------------+-----------------+
-                               v
-                    +----------------------+
-                    | glass-lint-core      |
-                    | parser, semantics,   |
-                    | matchers, reports    |
-                    +----------------------+
+```mermaid
+flowchart TD
+    CLI["glass-lint-cli<br/>arguments, configuration, output"]
+    HarnessCLI["glass-lint-harness-cli<br/>harness executable"]
+    Project["glass-lint-project<br/>discovery, source loading, resolution"]
+    Harness["glass-lint-harness<br/>cases, adapters, verification, profiling"]
+    Providers["provider crates<br/>glass-lint-js<br/>glass-lint-obsidian"]
+    Core["glass-lint-core<br/>parsing, semantics, matchers, reports"]
+
+    CLI --> Project
+    CLI --> Providers
+    CLI --> Core
+    HarnessCLI --> Harness
+    HarnessCLI --> Core
+    Harness --> Project
+    Harness --> Providers
+    Project --> Core
+    Harness --> Core
+    Providers --> Core
 ```
 
 `glass-lint-project` is the filesystem adapter between the CLI and core. It
@@ -93,8 +90,9 @@ sorted file-qualified primary locations and bounded evidence; project
 diagnostics remain separate from rule severity and affect CLI status directly.
 
 `glass-lint-cli` is deliberately thin. It owns argument parsing, configuration,
-filesystem discovery, human/JSON output, process exit behavior, and the
-`glass-lint` executable. `glass-lint-harness-cli` owns the harness executable;
+project selection, human/JSON output, process exit behavior, and the
+`glass-lint` executable; it delegates project discovery and resolution to
+`glass-lint-project`. `glass-lint-harness-cli` owns the harness executable;
 reusable harness behavior stays in `glass-lint-harness`.
 
 ## Per-file analysis pipeline
@@ -116,20 +114,12 @@ The selected rule set must not change semantic fact construction or add AST
 traversals. Shared analysis is built once per file, then queried by every
 enabled rule.
 
-Project flow uses a matcher-independent `FunctionEffect` extracted from that
-same canonical fact tape. Effects retain parameter/path copies, observable
-property and call uses, returns, local value roots, and conservative
-invalidation. After module linking, qualified function calls compose those
-effects with a bounded monotone worklist. The compiled object-flow matcher
-then applies source, requirement, and sink predicates to the composed states;
-it does not participate in effect construction. Qualified-flow budgets fail
-closed and add `flow_link_budget_exhausted` to project diagnostics.
-
-TypeScript uses SWC's fixed default TypeScript transform after resolution. It
-strips type-only syntax and lowers runtime TypeScript constructs in memory,
-while retaining the original source map for findings. The initial input
-boundary excludes TSX, declaration files, `tsconfig.json`, and
-cross-file type or module resolution.
+During parsing, TypeScript runs SWC's lexical resolver and fixed default
+TypeScript transform. It strips type-only syntax and lowers runtime TypeScript
+constructs in memory while retaining the original source map for findings.
+The input boundary excludes TSX, declaration files, and `tsconfig.json` as
+source. Glass Lint does not type-check or follow type-only dependencies.
+Runtime module requests are resolved separately during project construction.
 
 The main core layers are:
 
@@ -143,6 +133,101 @@ The main core layers are:
 - `api/rule`: validated public rules and declarative matcher types
 - `api/compiler`: immutable matcher plans compiled at catalog construction
 - `lint`: catalog validation, rule selection, and report construction
+
+## Multi-file project analysis
+
+Multi-file analysis is a staged exchange between `glass-lint-project` and
+`glass-lint-core`. The project crate decides which files exist and what module
+requests mean; core decides what those linked modules prove semantically. This
+keeps filesystem and resolver policy out of the analysis engine and permits
+the same core API to analyze virtual projects with explicit resolution
+records.
+
+### 1. Select and expand the project
+
+The filesystem loader accepts one of three selections:
+
+- An **entry file** starts with that file and admits supported internal
+  dependencies as they are discovered.
+- A **directory** starts with every supported source below that directory,
+  subject to exclusions and limits.
+- A **`tsconfig.json`** starts with the runtime sources selected by `files`,
+  `include`, `exclude`, inherited configuration, and project references. Its
+  compiler configuration is also available to module resolution, including
+  path aliases.
+
+Before reading sources, the loader establishes a canonical project root. It
+rejects selections outside that boundary and excludes configured directories,
+declaration files, unsupported extensions, oversized sources, and—unless
+enabled explicitly—symlink traversal. File, request, byte, and resolver work
+are bounded.
+
+Each admitted source is parsed and locally analyzed exactly once through a
+`ProjectSession`. That pass produces both the ordinary semantic model and a
+matcher-independent module interface: authored `import`, dynamic `import()`,
+and `require()` requests; import bindings; exports and re-exports; exported
+functions; and supported exported constant identities. A resolution request
+is keyed by importer, request kind, and exact source range, so repeated
+specifier text at different locations remains distinct.
+
+The project crate resolves each request with Oxc and records a typed result:
+internal source, external package, runtime builtin, missing target,
+outside-project target, or unsupported target. A supported internal result is
+queued for admission if it was not already loaded. This queue continues until
+no new internal modules remain; request results are cached, and duplicate or
+cyclic imports do not cause a file to be analyzed twice.
+
+### 2. Link local semantic models
+
+After discovery and resolution finish, core validates all project-relative
+paths and ensures every resolution record corresponds to an authored request.
+It assigns stable module IDs from sorted paths and builds a directed graph from
+internal resolution results. Local scopes, values, facts, and source maps stay
+partitioned by module; linking adds a qualified overlay rather than merging
+lexical state across files.
+
+Core resolves supported exports and re-exports to a bounded fixed point,
+including cycles represented as strongly connected components. The resulting
+overlay can connect an imported binding or namespace member to:
+
+- an external package or builtin export;
+- a proven global or static string exported through an internal module; or
+- a qualified export or function in another project module.
+
+That is what lets a provider matcher recognize an external API through local
+aliases, re-export barrels, and supported wrapper shapes without treating a
+same-named local value as equivalent. Dynamic or conflicting CommonJS export
+shapes, ambiguous star exports, missing resolution information, and
+non-converging or over-budget linking remain unknown.
+
+### 3. Compose calls and object flow
+
+Local analysis also extracts a matcher-independent `FunctionEffect` from each
+file's canonical fact tape. An effect records parameter and property-path
+copies, observable property and call uses, returns, local value roots, and
+conservative invalidation. It contains no rule IDs or matcher decisions.
+
+Once qualified function targets are known, project flow composes these effects
+with a bounded monotone worklist. This allows supported source, requirement,
+and sink paths to cross calls between modules while preserving the file and
+fact identity of every event. Compiled object-flow matchers query the composed
+states only after linking; selecting a rule therefore does not change effect
+construction or add another AST traversal.
+
+### 4. Report conservatively
+
+Findings remain owned by the file containing their primary event. Related
+evidence may point into other project files and always carries a
+file-qualified source location. Files, findings, evidence, graph edges, and
+diagnostics are emitted in deterministic order.
+
+Parse failures are reported on their source file. Unresolved internal
+requests, outside or unsupported targets, ambiguous exports, and exhausted
+effect, graph, SCC, or qualified-flow budgets produce project diagnostics.
+They are kept separate from rule severity and cause the affected cross-file
+semantics to fail closed rather than being guessed. In particular,
+qualified-flow exhaustion adds `flow_link_budget_exhausted` instead of making
+an incomplete analysis look clean.
 
 ## Rules and profiles
 

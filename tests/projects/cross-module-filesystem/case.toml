@@ -1,0 +1,9 @@
+[case]
+id = "cross-module-filesystem"
+description = "Resolves an Obsidian request across a JavaScript barrel and TypeScript helper. Uses file system package resolution."
+tags = ["project", "filesystem", "reexport", "typescript"]
+entries = ["src/main.js"]
+filesystem = true
+
+[tool.glass-lint]
+rules = ["obsidian:network.request"]
