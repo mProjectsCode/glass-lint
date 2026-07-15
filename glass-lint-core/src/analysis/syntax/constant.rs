@@ -19,6 +19,13 @@ const MAX_STRING_BYTES: usize = 16 * 1024;
 const MAX_ARRAY_ITEMS: usize = 256;
 const MAX_OBJECT_KEYS: usize = 256;
 
+pub(in crate::analysis) fn non_negative_integer(value: f64) -> Option<usize> {
+    if !value.is_finite() || value < 0.0 || value.fract() != 0.0 {
+        return None;
+    }
+    value.to_string().parse().ok()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis) enum ConstValue {
     Unknown,
@@ -140,24 +147,13 @@ impl EvalState {
         value
     }
 
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
     fn evaluate_inner(&mut self, expr: &Expr, lookup: &impl Lookup) -> ConstValue {
         match expr {
             Expr::Lit(Lit::Str(value)) => {
                 ConstValue::bounded_string(value.value.to_string_lossy().to_string())
             }
-            Expr::Lit(Lit::Num(value))
-                if value.value.is_finite()
-                    && value.value >= 0.0
-                    && value.value.fract() == 0.0
-                    && value.value <= (usize::MAX as u64) as f64 =>
-            {
-                ConstValue::NonNegativeInteger(value.value as usize)
-            }
+            Expr::Lit(Lit::Num(value)) => non_negative_integer(value.value)
+                .map_or(ConstValue::Unknown, ConstValue::NonNegativeInteger),
             Expr::Ident(ident) => self.lookup_ident(lookup, ident),
             Expr::Member(member) => self.lookup_member(lookup, member),
             Expr::Paren(paren) => self.evaluate(&paren.expr, lookup),
@@ -331,26 +327,16 @@ impl EvalState {
     /// Resolve a property name using the same bounded evaluator state as its
     /// surrounding expression. Computed keys therefore consume depth, node,
     /// and lookup budget instead of silently starting a second evaluation.
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
     fn property_name(&mut self, prop: &PropName, lookup: &impl Lookup) -> Option<String> {
         match prop {
             PropName::Ident(ident) => Some(ident.sym.to_string()),
             PropName::Str(value) => {
                 ConstValue::bounded_string(value.value.to_string_lossy().to_string()).property_key()
             }
-            PropName::Num(value)
-                if value.value.is_finite()
-                    && value.value >= 0.0
-                    && value.value.fract() == 0.0
-                    && value.value <= usize::MAX as f64 =>
-            {
-                Some((value.value as usize).to_string())
+            PropName::Num(value) => {
+                non_negative_integer(value.value).map(|value| value.to_string())
             }
-            PropName::Num(_) | PropName::BigInt(_) => None,
+            PropName::BigInt(_) => None,
             PropName::Computed(computed) => self.evaluate(&computed.expr, lookup).property_key(),
         }
     }

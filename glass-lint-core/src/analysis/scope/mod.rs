@@ -12,7 +12,7 @@ use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
 use super::value::{BindingId, FunctionId};
-use collect::AliasCollector;
+use collect::{AliasCollector, PropertyAliasAssignment, RootedPropertyMutation};
 
 mod collect;
 mod query;
@@ -26,7 +26,6 @@ impl ScopeGraph {
         Self::collect_with_environment(program, &crate::Environment::default())
     }
 
-    #[allow(clippy::too_many_lines)]
     pub(super) fn collect_with_environment(
         program: &Program,
         environment: &crate::Environment,
@@ -122,14 +121,27 @@ impl ScopeGraph {
             dynamic_evals: Vec::new(),
             mutable_static_objects: collector.mutable_static_objects.clone(),
         };
-        for assignment in collected_property_assignments {
-            let Some(receiver_key) = graph
+        graph.finish_collected_properties(
+            collected_property_assignments,
+            collected_rooted_property_mutations,
+            collector.dynamic_evals,
+        );
+        graph
+    }
+
+    fn finish_collected_properties(
+        &mut self,
+        property_assignments: Vec<PropertyAliasAssignment>,
+        rooted_mutations: Vec<RootedPropertyMutation>,
+        dynamic_evals: Vec<(usize, swc_common::Span)>,
+    ) {
+        for assignment in property_assignments {
+            let Some(receiver_key) = self
                 .binding_key_for_name(assignment.receiver.sym.as_ref(), assignment.receiver.span)
             else {
                 continue;
             };
-            graph
-                .property_assignments
+            self.property_assignments
                 .entry((
                     receiver_key,
                     assignment
@@ -146,12 +158,11 @@ impl ScopeGraph {
                     target: assignment.target.map(std::convert::Into::into),
                 });
         }
-        for assignments in graph.property_assignments.values_mut() {
+        for assignments in self.property_assignments.values_mut() {
             assignments.sort_by_key(|assignment| assignment.span.lo);
         }
-        for mutation in collected_rooted_property_mutations {
-            graph
-                .rooted_property_mutations
+        for mutation in rooted_mutations {
+            self.rooted_property_mutations
                 .entry(mutation.receiver)
                 .or_default()
                 .push(RootedPropertyMutationFact {
@@ -160,15 +171,13 @@ impl ScopeGraph {
                     property: mutation.property,
                 });
         }
-        for mutations in graph.rooted_property_mutations.values_mut() {
+        for mutations in self.rooted_property_mutations.values_mut() {
             mutations.sort_by_key(|mutation| mutation.span.lo);
         }
-        graph.dynamic_evals = collector
-            .dynamic_evals
+        self.dynamic_evals = dynamic_evals
             .into_iter()
-            .filter(|(_, span)| graph.binding_at("eval", *span).is_none())
+            .filter(|(_, span)| self.binding_at("eval", *span).is_none())
             .collect();
-        graph
     }
 }
 

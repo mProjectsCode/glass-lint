@@ -20,7 +20,7 @@ fn directory_discovery_is_sorted_and_excludes_runtime_directories() {
     fs::write(root.join("node_modules/pkg/index.js"), "").unwrap();
     let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
     let report = loader
-        .load_and_lint(&linter(), ProjectSelection::directory(&root))
+        .load_and_lint(&linter(), &ProjectSelection::directory(&root))
         .unwrap();
     assert_eq!(
         report
@@ -56,7 +56,7 @@ fn extensionless_internal_import_is_followed() {
     fs::write(root.join("helper.ts"), "export const value = 1;").unwrap();
     let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
     let report = loader
-        .load_and_lint(&linter(), ProjectSelection::entry(root.join("main.js")))
+        .load_and_lint(&linter(), &ProjectSelection::entry(root.join("main.js")))
         .unwrap();
     assert_eq!(report.files.len(), 2);
     fs::remove_dir_all(root).unwrap();
@@ -72,7 +72,7 @@ fn reports_project_phase_metrics_and_operation_counts() {
     fs::write(root.join("helper.ts"), "export const value = 1;").unwrap();
     let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
     let (report, metrics) = loader
-        .load_and_lint_with_metrics(&linter(), ProjectSelection::entry(root.join("main.js")))
+        .load_and_lint_with_metrics(&linter(), &ProjectSelection::entry(root.join("main.js")))
         .unwrap();
     assert_eq!(report.files.len(), 2);
     assert_eq!(metrics.files, 2);
@@ -101,7 +101,7 @@ fn tsconfig_membership_accepts_jsonc_and_excludes_files() {
     let report = loader
         .load_and_lint(
             &linter(),
-            ProjectSelection::tsconfig(root.join("tsconfig.json")),
+            &ProjectSelection::tsconfig(root.join("tsconfig.json")),
         )
         .unwrap();
     assert_eq!(
@@ -156,7 +156,7 @@ fn tsconfig_membership_inherits_extends_and_collects_references() {
     let report = loader
         .load_and_lint(
             &linter(),
-            ProjectSelection::tsconfig(root.join("tsconfig.json")),
+            &ProjectSelection::tsconfig(root.join("tsconfig.json")),
         )
         .unwrap();
     assert_eq!(

@@ -103,52 +103,11 @@ fn mark_budget(exhausted: &mut bool) {
     *exhausted = true;
 }
 
-#[allow(clippy::too_many_lines)]
 pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
     let mut effects = FunctionEffects::default();
     let mut budget_exhausted = false;
     let mut value_provenance = BTreeMap::new();
-    for fact in stream.facts() {
-        if let FactPayload::Function {
-            id,
-            parameters,
-            boundary: crate::analysis::facts::FunctionBoundary::Enter,
-            ..
-        } = &fact.payload
-        {
-            if !effects.by_id.contains_key(id) && effects.by_id.len() >= MAX_FUNCTION_EFFECTS {
-                mark_budget(&mut budget_exhausted);
-                continue;
-            }
-            effects.by_id.entry(*id).or_insert_with(|| {
-                let mut value_roots = BTreeMap::new();
-                for parameter in parameters {
-                    value_roots.insert(parameter.value, parameter.value);
-                }
-                FunctionEffect {
-                    id: *id,
-                    parameters: parameters.clone(),
-                    calls: Vec::new(),
-                    uses: Vec::new(),
-                    returns: Vec::new(),
-                    invalid: false,
-                    value_roots,
-                }
-            });
-        }
-    }
-    effects
-        .by_id
-        .entry(FunctionId(0))
-        .or_insert_with(|| FunctionEffect {
-            id: FunctionId(0),
-            parameters: Vec::new(),
-            calls: Vec::new(),
-            uses: Vec::new(),
-            returns: Vec::new(),
-            invalid: false,
-            value_roots: BTreeMap::new(),
-        });
+    initialize_effects(stream, &mut effects, &mut budget_exhausted);
 
     for fact in stream.facts() {
         let Some(effect) = effects.by_id.get_mut(&fact.function) else {
@@ -159,26 +118,19 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                 value,
                 static_string,
                 provenance,
-            } => {
-                value_provenance.insert(*value, (provenance.clone(), static_string.clone()));
-                if *value != ValueId::UNKNOWN {
-                    effect.value_roots.entry(*value).or_insert(*value);
-                }
-            }
+            } => record_reference(
+                effect,
+                *value,
+                static_string.as_ref(),
+                provenance,
+                &mut value_provenance,
+            ),
             FactPayload::Declaration { target, source }
             | FactPayload::Assignment {
                 target,
                 source,
                 receiver: None,
-            } => {
-                copy_root(effect, *target, *source);
-                if let Some(parameter) = relation(effect, *source) {
-                    effect.value_roots.insert(*target, *source);
-                    // The parameter relation is recovered from the copied
-                    // value by `relation`; no matcher-specific state leaks in.
-                    let _ = parameter;
-                }
-            }
+            } => record_copy(effect, *target, *source),
             FactPayload::Assignment {
                 receiver: Some(_), ..
             } => effect.invalid = true,
@@ -187,35 +139,14 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                 property,
                 static_value,
                 ..
-            } => {
-                if let Some(parameter) = relation(effect, *receiver) {
-                    if effect.uses.len() < MAX_EFFECT_USES {
-                        effect.uses.push(EffectUse::PropertyWrite {
-                            event: fact.id,
-                            receiver: Some(parameter),
-                            value: *receiver,
-                            property: property.clone(),
-                            static_value: static_value.clone(),
-                        });
-                    } else {
-                        effect.invalid = true;
-                        mark_budget(&mut budget_exhausted);
-                    }
-                } else {
-                    if effect.uses.len() < MAX_EFFECT_USES {
-                        effect.uses.push(EffectUse::PropertyWrite {
-                            event: fact.id,
-                            receiver: None,
-                            value: *receiver,
-                            property: property.clone(),
-                            static_value: static_value.clone(),
-                        });
-                    } else {
-                        effect.invalid = true;
-                        mark_budget(&mut budget_exhausted);
-                    }
-                }
-            }
+            } => record_property_write(
+                effect,
+                fact.id,
+                *receiver,
+                property.as_ref(),
+                static_value.as_ref(),
+                &mut budget_exhausted,
+            ),
             FactPayload::Call {
                 syntactic_chain,
                 rooted_chain,
@@ -226,116 +157,24 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                 call_provenance,
                 receiver,
                 ..
-            } => {
-                let (chain, call_args) = unwrap.as_deref().map_or_else(
-                    || {
-                        (
-                            rooted_chain.clone().or_else(|| syntactic_chain.clone()),
-                            args,
-                        )
-                    },
-                    |unwrap| (Some(unwrap.chain.clone()), &unwrap.effective_args),
-                );
-                let arguments = call_args
-                    .iter()
-                    .enumerate()
-                    .map(|(index, argument)| EffectArgument {
-                        index,
-                        value: argument.base_value,
-                        path: argument.base_path,
-                        parameter: relation(effect, argument.base_value),
-                    })
-                    .collect::<Vec<_>>();
-                if effect.calls.len() < MAX_EFFECT_CALLS {
-                    effect.calls.push(EffectCall {
-                        event: fact.id,
-                        chain: chain.clone(),
-                        rooted: rooted_chain.is_some(),
-                        target: *target_function,
-                        result: *result,
-                        provenance: call_provenance.clone(),
-                        arguments: arguments.clone(),
-                        call_arguments: call_args.clone(),
-                    });
-                } else {
-                    effect.invalid = true;
-                    mark_budget(&mut budget_exhausted);
-                }
-                if let Some(receiver) = receiver.and_then(|value| relation(effect, value)) {
-                    if effect.uses.len() < MAX_EFFECT_USES {
-                        effect.uses.push(EffectUse::CallReceiver {
-                            event: fact.id,
-                            chain: chain.clone(),
-                            receiver,
-                            call_arguments: call_args.clone(),
-                        });
-                    } else {
-                        effect.invalid = true;
-                        mark_budget(&mut budget_exhausted);
-                    }
-                }
-                for argument in arguments {
-                    if effect.uses.len() >= MAX_EFFECT_USES {
-                        effect.invalid = true;
-                        mark_budget(&mut budget_exhausted);
-                        break;
-                    }
-                    effect.uses.push(EffectUse::CallArgument {
-                        event: fact.id,
-                        chain: chain.clone(),
-                        rooted: rooted_chain.is_some(),
-                        argument,
-                    });
-                }
-                effect.value_roots.entry(*result).or_insert(*result);
-            }
+            } => record_call(CallInput {
+                effect,
+                event: fact.id,
+                syntactic_chain: syntactic_chain.as_ref(),
+                rooted_chain: rooted_chain.as_ref(),
+                args,
+                target_function: *target_function,
+                result: *result,
+                unwrap: unwrap.as_deref(),
+                call_provenance,
+                receiver: *receiver,
+                budget_exhausted: &mut budget_exhausted,
+            }),
             FactPayload::Control {
                 kind: ControlKind::Return,
                 value,
                 ..
-            } => {
-                if let Some(parameter) = relation(effect, *value) {
-                    if effect.returns.len() < MAX_EFFECT_RETURNS {
-                        effect.returns.push(ReturnProjection {
-                            value: *value,
-                            parameter: Some(parameter),
-                            provenance: value_provenance
-                                .get(value)
-                                .map_or(SymbolCallProvenance::Local, |(provenance, _)| {
-                                    provenance.clone()
-                                }),
-                            static_string: value_provenance
-                                .get(value)
-                                .and_then(|(_, value)| value.clone()),
-                        });
-                    } else {
-                        effect.invalid = true;
-                        mark_budget(&mut budget_exhausted);
-                    }
-                } else if *value != ValueId::UNKNOWN {
-                    if effect.value_roots.contains_key(value) {
-                        if effect.returns.len() < MAX_EFFECT_RETURNS {
-                            effect.returns.push(ReturnProjection {
-                                value: *value,
-                                parameter: None,
-                                provenance: value_provenance
-                                    .get(value)
-                                    .map_or(SymbolCallProvenance::Local, |(provenance, _)| {
-                                        provenance.clone()
-                                    }),
-                                static_string: value_provenance
-                                    .get(value)
-                                    .and_then(|(_, value)| value.clone()),
-                            });
-                        } else {
-                            effect.invalid = true;
-                            mark_budget(&mut budget_exhausted);
-                        }
-                    } else {
-                        effect.invalid = true;
-                    }
-                }
-            }
+            } => record_return(effect, *value, &value_provenance, &mut budget_exhausted),
             FactPayload::Control { kind, .. }
                 if !matches!(
                     kind,
@@ -359,23 +198,242 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                 ) => {}
             _ => {}
         }
-        // Unsupported control is deliberately conservative for effects. The
-        // local projector still handles its precise single-file semantics.
-        if matches!(
-            &fact.payload,
-            FactPayload::Control {
-                kind: ControlKind::BranchStart
-                    | ControlKind::LoopStart { .. }
-                    | ControlKind::SwitchStart
-                    | ControlKind::TryStart,
-                ..
-            }
-        ) {
-            effect.invalid = true;
-        }
+        mark_unsupported_control(effect, &fact.payload);
     }
     effects.budget_exhausted = budget_exhausted;
     effects
+}
+
+fn record_property_write(
+    effect: &mut FunctionEffect,
+    event: super::super::facts::FactId,
+    receiver: ValueId,
+    property: Option<&String>,
+    static_value: Option<&String>,
+    budget_exhausted: &mut bool,
+) {
+    if effect.uses.len() >= MAX_EFFECT_USES {
+        effect.invalid = true;
+        mark_budget(budget_exhausted);
+        return;
+    }
+    effect.uses.push(EffectUse::PropertyWrite {
+        event,
+        receiver: relation(effect, receiver),
+        value: receiver,
+        property: property.cloned(),
+        static_value: static_value.cloned(),
+    });
+}
+
+fn mark_unsupported_control(effect: &mut FunctionEffect, payload: &FactPayload) {
+    // Unsupported control is deliberately conservative for effects. The
+    // local projector still handles its precise single-file semantics.
+    if matches!(
+        payload,
+        FactPayload::Control {
+            kind: ControlKind::BranchStart
+                | ControlKind::LoopStart { .. }
+                | ControlKind::SwitchStart
+                | ControlKind::TryStart,
+            ..
+        }
+    ) {
+        effect.invalid = true;
+    }
+}
+
+struct CallInput<'a> {
+    effect: &'a mut FunctionEffect,
+    event: super::super::facts::FactId,
+    syntactic_chain: Option<&'a String>,
+    rooted_chain: Option<&'a String>,
+    args: &'a [CallArgInfo],
+    target_function: Option<FunctionId>,
+    result: ValueId,
+    unwrap: Option<&'a super::super::facts::CallUnwrap>,
+    call_provenance: &'a SymbolCallProvenance,
+    receiver: Option<ValueId>,
+    budget_exhausted: &'a mut bool,
+}
+
+fn initialize_effects(
+    stream: &FactStream,
+    effects: &mut FunctionEffects,
+    budget_exhausted: &mut bool,
+) {
+    for fact in stream.facts() {
+        let FactPayload::Function {
+            id,
+            parameters,
+            boundary: crate::analysis::facts::FunctionBoundary::Enter,
+            ..
+        } = &fact.payload
+        else {
+            continue;
+        };
+        if !effects.by_id.contains_key(id) && effects.by_id.len() >= MAX_FUNCTION_EFFECTS {
+            mark_budget(budget_exhausted);
+            continue;
+        }
+        effects.by_id.entry(*id).or_insert_with(|| FunctionEffect {
+            id: *id,
+            parameters: parameters.clone(),
+            calls: Vec::new(),
+            uses: Vec::new(),
+            returns: Vec::new(),
+            invalid: false,
+            value_roots: parameters
+                .iter()
+                .map(|parameter| (parameter.value, parameter.value))
+                .collect(),
+        });
+    }
+    effects
+        .by_id
+        .entry(FunctionId(0))
+        .or_insert_with(|| FunctionEffect {
+            id: FunctionId(0),
+            parameters: Vec::new(),
+            calls: Vec::new(),
+            uses: Vec::new(),
+            returns: Vec::new(),
+            invalid: false,
+            value_roots: BTreeMap::new(),
+        });
+}
+
+fn record_reference(
+    effect: &mut FunctionEffect,
+    value: ValueId,
+    static_string: Option<&String>,
+    provenance: &SymbolCallProvenance,
+    value_provenance: &mut BTreeMap<ValueId, (SymbolCallProvenance, Option<String>)>,
+) {
+    value_provenance.insert(value, (provenance.clone(), static_string.cloned()));
+    if value != ValueId::UNKNOWN {
+        effect.value_roots.entry(value).or_insert(value);
+    }
+}
+
+fn record_copy(effect: &mut FunctionEffect, target: ValueId, source: ValueId) {
+    copy_root(effect, target, source);
+    if relation(effect, source).is_some() {
+        effect.value_roots.insert(target, source);
+    }
+}
+
+fn record_call(input: CallInput<'_>) {
+    let CallInput {
+        effect,
+        event,
+        syntactic_chain,
+        rooted_chain,
+        args,
+        target_function,
+        result,
+        unwrap,
+        call_provenance,
+        receiver,
+        budget_exhausted,
+    } = input;
+    let (chain, call_args) = unwrap.map_or_else(
+        || {
+            (
+                rooted_chain.cloned().or_else(|| syntactic_chain.cloned()),
+                args,
+            )
+        },
+        |unwrap| (Some(unwrap.chain.clone()), &unwrap.effective_args),
+    );
+    let arguments = call_args
+        .iter()
+        .enumerate()
+        .map(|(index, argument)| EffectArgument {
+            index,
+            value: argument.base_value,
+            path: argument.base_path,
+            parameter: relation(effect, argument.base_value),
+        })
+        .collect::<Vec<_>>();
+    if effect.calls.len() < MAX_EFFECT_CALLS {
+        effect.calls.push(EffectCall {
+            event,
+            chain: chain.clone(),
+            rooted: rooted_chain.is_some(),
+            target: target_function,
+            result,
+            provenance: call_provenance.clone(),
+            arguments: arguments.clone(),
+            call_arguments: call_args.to_vec(),
+        });
+    } else {
+        effect.invalid = true;
+        mark_budget(budget_exhausted);
+    }
+    if let Some(receiver) = receiver.and_then(|value| relation(effect, value)) {
+        if effect.uses.len() < MAX_EFFECT_USES {
+            effect.uses.push(EffectUse::CallReceiver {
+                event,
+                chain: chain.clone(),
+                receiver,
+                call_arguments: call_args.to_vec(),
+            });
+        } else {
+            effect.invalid = true;
+            mark_budget(budget_exhausted);
+        }
+    }
+    for argument in arguments {
+        if effect.uses.len() >= MAX_EFFECT_USES {
+            effect.invalid = true;
+            mark_budget(budget_exhausted);
+            break;
+        }
+        effect.uses.push(EffectUse::CallArgument {
+            event,
+            chain: chain.clone(),
+            rooted: rooted_chain.is_some(),
+            argument,
+        });
+    }
+    effect.value_roots.entry(result).or_insert(result);
+}
+
+fn record_return(
+    effect: &mut FunctionEffect,
+    value: ValueId,
+    value_provenance: &BTreeMap<ValueId, (SymbolCallProvenance, Option<String>)>,
+    budget_exhausted: &mut bool,
+) {
+    let parameter = relation(effect, value);
+    if parameter.is_none()
+        && (value == ValueId::UNKNOWN || !effect.value_roots.contains_key(&value))
+    {
+        if value != ValueId::UNKNOWN {
+            effect.invalid = true;
+        }
+        return;
+    }
+    if effect.returns.len() >= MAX_EFFECT_RETURNS {
+        effect.invalid = true;
+        mark_budget(budget_exhausted);
+        return;
+    }
+    let provenance = value_provenance
+        .get(&value)
+        .map_or(SymbolCallProvenance::Local, |(provenance, _)| {
+            provenance.clone()
+        });
+    let static_string = value_provenance
+        .get(&value)
+        .and_then(|(_, value)| value.clone());
+    effect.returns.push(ReturnProjection {
+        value,
+        parameter,
+        provenance,
+        static_string,
+    });
 }
 
 fn copy_root(effect: &mut FunctionEffect, target: ValueId, source: ValueId) {

@@ -49,12 +49,14 @@ impl MatcherFacts {
                     Self::collect_member_argument_evidence_from_args(
                         member_argument_matchers,
                         argument_evidence,
-                        fact.id,
-                        fact.span,
-                        syntactic_chain.as_deref(),
-                        rooted_chain.as_deref(),
-                        linked_member_provenance.as_ref(),
-                        &linked_args,
+                        &MemberArgumentEvidence {
+                            event: fact.id,
+                            span: fact.span,
+                            syntactic_chain: syntactic_chain.as_deref(),
+                            resolved_chain: rooted_chain.as_deref(),
+                            module_member: linked_member_provenance.as_ref(),
+                            args: &linked_args,
+                        },
                     );
                 }
 
@@ -89,7 +91,6 @@ impl MatcherFacts {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn collect_call_argument_evidence_from_args(
         matchers: &[(usize, &CallMatcher)],
         evidence: &mut [Vec<ApiEvidence>],
@@ -114,37 +115,45 @@ impl MatcherFacts {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn collect_member_argument_evidence_from_args(
         matchers: &[(usize, &MemberCallMatcher)],
         evidence: &mut [Vec<ApiEvidence>],
-        event: FactId,
-        span: Span,
-        syntactic_chain: Option<&str>,
-        resolved_chain: Option<&str>,
-        module_member: Option<&SymbolMemberProvenance>,
-        args: &[CallArgInfo],
+        input: &MemberArgumentEvidence<'_>,
     ) {
         for (rule_index, matcher) in matchers {
             let matcher = *matcher;
-            if matcher.matches_member(syntactic_chain, resolved_chain, module_member, args) {
+            if matcher.matches_member(
+                input.syntactic_chain,
+                input.resolved_chain,
+                input.module_member,
+                input.args,
+            ) {
                 let symbol = match matcher.provenance {
                     MemberCallProvenance::Any => matcher.evidence_symbol(),
                     MemberCallProvenance::Rooted | MemberCallProvenance::ModuleNamespace { .. } => {
-                        syntactic_chain.unwrap_or(&matcher.chain).to_string()
+                        input.syntactic_chain.unwrap_or(&matcher.chain).to_string()
                     }
                 };
                 evidence[*rule_index].push(ApiEvidence {
                     kind: ApiMatchKind::CallArgument,
                     symbol,
                     count: 1,
-                    spans: vec![span],
-                    event_ids: vec![event.0],
+                    spans: vec![input.span],
+                    event_ids: vec![input.event.0],
                     related: Vec::new(),
                 });
             }
         }
     }
+}
+
+struct MemberArgumentEvidence<'a> {
+    event: FactId,
+    span: Span,
+    syntactic_chain: Option<&'a str>,
+    resolved_chain: Option<&'a str>,
+    module_member: Option<&'a SymbolMemberProvenance>,
+    args: &'a [CallArgInfo],
 }
 
 fn argument_with_overlay(

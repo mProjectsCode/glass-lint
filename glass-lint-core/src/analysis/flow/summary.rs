@@ -93,11 +93,32 @@ impl FunctionSummary {
     }
 }
 
-#[allow(clippy::too_many_lines)]
 pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> FunctionSummaries {
     let mut summaries = FunctionSummaries::default();
-    let mut calls_by_function: BTreeMap<FunctionId, Vec<FactId>> = BTreeMap::new();
+    let calls_by_function = collect_summary_facts(stream, &mut summaries);
 
+    // First collect facts whose sink is directly visible in the function.
+    collect_direct_sinks(stream, flow_index, &calls_by_function, &mut summaries);
+
+    // Propagate sink projections through proven FunctionId call edges. Since
+    // every propagation only adds a deduplicated projection, this is a finite
+    // monotone fixed point even for recursive SCCs.
+    propagate_sinks(stream, &calls_by_function, &mut summaries);
+
+    for summary in summaries.by_id.iter_mut().filter_map(Option::as_mut) {
+        summary
+            .sinks
+            .sort_by_key(|sink| (sink.flow, sink.parameter_index, sink.path));
+        summary.sinks.dedup();
+    }
+    summaries
+}
+
+fn collect_summary_facts(
+    stream: &FactStream,
+    summaries: &mut FunctionSummaries,
+) -> BTreeMap<FunctionId, Vec<FactId>> {
+    let mut calls_by_function: BTreeMap<FunctionId, Vec<FactId>> = BTreeMap::new();
     for fact in stream.facts() {
         match &fact.payload {
             FactPayload::Function {
@@ -129,49 +150,34 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
             }
             FactPayload::Assignment {
                 target, receiver, ..
-            } => {
-                if let Some(summary) = summaries
-                    .by_id
-                    .get_mut(usize::try_from(fact.function.0).unwrap_or(usize::MAX))
-                    .and_then(Option::as_mut)
-                {
-                    summary.invalid.reassigned = true;
-                    summary.writes.push(PropertyWriteProjection {
-                        event: fact.id,
-                        target: *target,
-                        receiver: *receiver,
-                        property: None,
-                    });
-                }
-            }
+            } => record_write(
+                summaries,
+                fact.function,
+                fact.id,
+                *target,
+                *receiver,
+                None,
+                true,
+            ),
             FactPayload::PropertyWrite {
                 target,
                 receiver,
                 property,
                 ..
-            } => {
-                if let Some(summary) = summaries
-                    .by_id
-                    .get_mut(usize::try_from(fact.function.0).unwrap_or(usize::MAX))
-                    .and_then(Option::as_mut)
-                {
-                    summary.writes.push(PropertyWriteProjection {
-                        event: fact.id,
-                        target: *target,
-                        receiver: Some(*receiver),
-                        property: property.clone(),
-                    });
-                }
-            }
+            } => record_write(
+                summaries,
+                fact.function,
+                fact.id,
+                *target,
+                Some(*receiver),
+                property.clone(),
+                false,
+            ),
             FactPayload::Control {
                 kind: crate::analysis::facts::ControlKind::Return,
                 ..
             } => {
-                if let Some(summary) = summaries
-                    .by_id
-                    .get_mut(usize::try_from(fact.function.0).unwrap_or(usize::MAX))
-                    .and_then(Option::as_mut)
-                {
+                if let Some(summary) = summary_mut(summaries, fact.function) {
                     summary.returns.push(ReturnProjection { event: fact.id });
                 }
             }
@@ -182,8 +188,45 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
             _ => {}
         }
     }
+    calls_by_function
+}
 
-    // First collect facts whose sink is directly visible in the function.
+fn record_write(
+    summaries: &mut FunctionSummaries,
+    function: FunctionId,
+    event: FactId,
+    target: ValueId,
+    receiver: Option<ValueId>,
+    property: Option<String>,
+    reassigned: bool,
+) {
+    if let Some(summary) = summary_mut(summaries, function) {
+        summary.invalid.reassigned |= reassigned;
+        summary.writes.push(PropertyWriteProjection {
+            event,
+            target,
+            receiver,
+            property,
+        });
+    }
+}
+
+fn summary_mut(
+    summaries: &mut FunctionSummaries,
+    function: FunctionId,
+) -> Option<&mut FunctionSummary> {
+    summaries
+        .by_id
+        .get_mut(usize::try_from(function.0).unwrap_or(usize::MAX))
+        .and_then(Option::as_mut)
+}
+
+fn collect_direct_sinks(
+    stream: &FactStream,
+    flow_index: &FlowIndex<'_>,
+    calls_by_function: &BTreeMap<FunctionId, Vec<FactId>>,
+    summaries: &mut FunctionSummaries,
+) {
     for summary in summaries.by_id.iter_mut().filter_map(Option::as_mut) {
         let Some(call_ids) = calls_by_function.get(&summary.id) else {
             continue;
@@ -199,10 +242,10 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
             else {
                 continue;
             };
-            let chain = rooted_chain.as_deref().or(syntactic_chain.as_deref());
-            let Some(chain) = chain else { continue };
-            let flow_ids = flow_index.sinks.get(chain).into_iter().flatten();
-            for flow_id in flow_ids {
+            let Some(chain) = rooted_chain.as_deref().or(syntactic_chain.as_deref()) else {
+                continue;
+            };
+            for flow_id in flow_index.sinks.get(chain).into_iter().flatten() {
                 let Some(flow) = flow_index.get(*flow_id) else {
                     continue;
                 };
@@ -214,30 +257,33 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                         let Some(argument) = args.get(argument_index) else {
                             continue;
                         };
-                        if let Some(parameter) = summary.parameters.iter().find(|parameter| {
+                        let Some(parameter) = summary.parameters.iter().find(|parameter| {
                             parameter.value != ValueId::UNKNOWN
                                 && parameter.value == argument.base_value
-                        }) {
-                            let Some(path) =
-                                stream.concat_paths(parameter.path, argument.base_path)
-                            else {
-                                continue;
-                            };
-                            summary.add_sink(FunctionSinkSummary {
-                                flow: *flow_id,
-                                parameter_index: parameter.parameter_index,
-                                path,
-                            });
-                        }
+                        }) else {
+                            continue;
+                        };
+                        let Some(path) = stream.concat_paths(parameter.path, argument.base_path)
+                        else {
+                            continue;
+                        };
+                        summary.add_sink(FunctionSinkSummary {
+                            flow: *flow_id,
+                            parameter_index: parameter.parameter_index,
+                            path,
+                        });
                     }
                 }
             }
         }
     }
+}
 
-    // Propagate sink projections through proven FunctionId call edges. Since
-    // every propagation only adds a deduplicated projection, this is a finite
-    // monotone fixed point even for recursive SCCs.
+fn propagate_sinks(
+    stream: &FactStream,
+    calls_by_function: &BTreeMap<FunctionId, Vec<FactId>>,
+    summaries: &mut FunctionSummaries,
+) {
     for _ in 0..MAX_SUMMARY_ROUNDS {
         let mut changed = false;
         let function_ids = summaries
@@ -299,15 +345,8 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
                         parameter_index: caller_parameter.parameter_index,
                         path: caller_parameter.path,
                     };
-                    let Some(caller_summary) = summaries
-                        .by_id
-                        .get_mut(usize::try_from(caller.0).unwrap_or(usize::MAX))
-                        .and_then(Option::as_mut)
-                    else {
-                        continue;
-                    };
-                    if caller_summary.add_sink(projection) {
-                        changed = true;
+                    if let Some(caller_summary) = summary_mut(summaries, caller) {
+                        changed |= caller_summary.add_sink(projection);
                     }
                 }
             }
@@ -316,14 +355,6 @@ pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Functi
             break;
         }
     }
-
-    for summary in summaries.by_id.iter_mut().filter_map(Option::as_mut) {
-        summary
-            .sinks
-            .sort_by_key(|sink| (sink.flow, sink.parameter_index, sink.path));
-        summary.sinks.dedup();
-    }
-    summaries
 }
 
 /// Check whether a call provides enough proven values for a function summary.

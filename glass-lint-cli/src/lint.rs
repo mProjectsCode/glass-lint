@@ -46,7 +46,7 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
     };
     let loader = ProjectLoader::new(options).map_err(|error| anyhow::anyhow!(error))?;
     let report = loader
-        .load_and_lint(linter, selection)
+        .load_and_lint(linter, &selection)
         .with_context(|| format!("analyze project at {}", path.display()))?;
     let failed = !report.diagnostics.is_empty()
         || report.files.iter().any(|file| {

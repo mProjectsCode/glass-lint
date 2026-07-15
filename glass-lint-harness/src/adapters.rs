@@ -187,14 +187,13 @@ fn configured_linter(expectation: &ToolExpectation) -> Result<Linter> {
     Ok(Linter::combine_with_environment(linters, environment)?)
 }
 
-#[allow(clippy::too_many_lines)]
 fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<AdapterRun> {
     let linter = configured_linter(expectation)?;
     let report = if project.filesystem {
         glass_lint_project::ProjectLoader::new(glass_lint_project::ProjectLoadOptions::default())?
             .load_and_lint(
             &linter,
-            glass_lint_project::ProjectSelection::directory(project.root.clone()),
+            &glass_lint_project::ProjectSelection::directory(project.root.clone()),
         )?
     } else {
         let mut session = linter.begin_project(project.root.clone())?;
@@ -252,17 +251,21 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
         }
         session.finish()?
     };
-    let parse_diagnostics = report
+    project_report_to_run(report)
+}
+
+fn project_report_to_run(report: glass_lint_core::ProjectReport) -> Result<AdapterRun> {
+    let diagnostics = report
         .files
         .iter()
         .flat_map(|file| file.parse_diagnostics.iter())
-        .map(|diagnostic| diagnostic.message.clone());
-    let project_diagnostics = report
-        .diagnostics
-        .iter()
-        .map(|diagnostic| format!("[{}] {}", diagnostic.code, diagnostic.message));
-    let diagnostics = parse_diagnostics
-        .chain(project_diagnostics)
+        .map(|diagnostic| diagnostic.message.clone())
+        .chain(
+            report
+                .diagnostics
+                .iter()
+                .map(|diagnostic| format!("[{}] {}", diagnostic.code, diagnostic.message)),
+        )
         .collect::<Vec<_>>();
     if !diagnostics.is_empty() {
         bail!("{}", diagnostics.join("; "));

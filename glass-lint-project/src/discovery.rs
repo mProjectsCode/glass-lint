@@ -123,7 +123,7 @@ impl<'a> ProjectDiscovery<'a> {
             return Ok(());
         }
 
-        let parsed = self.read_tsconfig_with_extends(&config, fallback_directory, visited)?;
+        let parsed = read_tsconfig_with_extends(&config, fallback_directory, visited)?;
         let base = config.parent().unwrap_or(fallback_directory);
         let includes = patterns(&parsed, "include").unwrap_or_else(|| vec!["**/*"]);
         let mut excludes = patterns(&parsed, "exclude").unwrap_or_default();
@@ -214,42 +214,6 @@ impl<'a> ProjectDiscovery<'a> {
         Ok(())
     }
 
-    /// Materialize inherited options before selecting runtime sources.
-    #[allow(clippy::self_only_used_in_recursion)]
-    fn read_tsconfig_with_extends(
-        &self,
-        config: &Path,
-        fallback_directory: &Path,
-        visited: &mut BTreeSet<PathBuf>,
-    ) -> Result<Value, ProjectLoadError> {
-        let mut text = fs::read_to_string(config).map_err(|source| ProjectLoadError::Io {
-            path: config.to_path_buf(),
-            source,
-        })?;
-        json_strip_comments::strip(&mut text).map_err(|error| {
-            ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
-        })?;
-        let parsed: Value = serde_json::from_str(&text).map_err(|error| {
-            ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
-        })?;
-        let mut effective = Value::Object(serde_json::Map::new());
-        if let Some(extends) = parsed.get("extends").and_then(Value::as_str)
-            && let Some(parent) = resolve_tsconfig_extends(config, extends, fallback_directory)
-            && parent.exists()
-        {
-            let parent = realpath(&parent)?;
-            if visited.insert(parent.clone()) {
-                effective = self.read_tsconfig_with_extends(
-                    &parent,
-                    parent.parent().unwrap_or(fallback_directory),
-                    visited,
-                )?;
-            }
-        }
-        merge_tsconfig_json(&mut effective, parsed);
-        Ok(effective)
-    }
-
     fn include_dir(&self, entry: &DirEntry) -> bool {
         !entry.file_type().is_dir()
             || entry
@@ -299,6 +263,40 @@ fn patterns<'a>(config: &'a Value, key: &str) -> Option<Vec<&'a str>> {
         .get(key)
         .and_then(Value::as_array)
         .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+}
+
+/// Materialize inherited options before selecting runtime sources.
+fn read_tsconfig_with_extends(
+    config: &Path,
+    fallback_directory: &Path,
+    visited: &mut BTreeSet<PathBuf>,
+) -> Result<Value, ProjectLoadError> {
+    let mut text = fs::read_to_string(config).map_err(|source| ProjectLoadError::Io {
+        path: config.to_path_buf(),
+        source,
+    })?;
+    json_strip_comments::strip(&mut text).map_err(|error| {
+        ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
+    })?;
+    let parsed: Value = serde_json::from_str(&text).map_err(|error| {
+        ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
+    })?;
+    let mut effective = Value::Object(serde_json::Map::new());
+    if let Some(extends) = parsed.get("extends").and_then(Value::as_str)
+        && let Some(parent) = resolve_tsconfig_extends(config, extends, fallback_directory)
+        && parent.exists()
+    {
+        let parent = realpath(&parent)?;
+        if visited.insert(parent.clone()) {
+            effective = read_tsconfig_with_extends(
+                &parent,
+                parent.parent().unwrap_or(fallback_directory),
+                visited,
+            )?;
+        }
+    }
+    merge_tsconfig_json(&mut effective, parsed);
+    Ok(effective)
 }
 
 pub(crate) fn absolute_path(path: &Path) -> PathBuf {

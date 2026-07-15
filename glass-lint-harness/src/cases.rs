@@ -3,7 +3,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result, bail};
@@ -201,7 +201,6 @@ struct ProjectToolManifest {
     rules: Vec<String>,
 }
 
-#[allow(clippy::too_many_lines)]
 fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
     let manifest_path = directory.join("case.toml");
     let manifest: ProjectManifest = toml::from_str(
@@ -225,20 +224,7 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
         .map(walkdir::DirEntry::into_path)
         .collect();
     paths.sort();
-    let mut files = Vec::new();
-    for path in paths {
-        let relative = path
-            .strip_prefix(directory)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        files.push(ProjectFile {
-            language: language_for_path(&path).into(),
-            path: relative,
-            source: fs::read_to_string(&path)
-                .with_context(|| format!("read {}", path.display()))?,
-        });
-    }
+    let files = load_project_files(directory, paths)?;
     if files.is_empty() {
         bail!(
             "project case {} contains no runtime sources",
@@ -291,27 +277,75 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
         })
         .collect::<Result<Vec<_>>>()?;
 
+    let tools = load_project_tools(directory, &manifest.tool, &files)?;
+
+    let entry_source = entries
+        .first()
+        .and_then(|entry| files.iter().find(|file| &file.path == entry))
+        .unwrap_or(&files[0]);
+    Ok(Case {
+        id: metadata.id.unwrap_or(default_id),
+        description: metadata
+            .description
+            .unwrap_or_else(|| "multi-file project".into()),
+        tags: metadata.tags,
+        language: "project".into(),
+        filename: entry_source.path.clone(),
+        source: entry_source.source.clone(),
+        project: Some(ProjectCase {
+            root: directory.to_owned(),
+            entries,
+            files,
+            resolutions,
+            filesystem: metadata.filesystem,
+        }),
+        tools,
+    })
+}
+
+fn load_project_files(directory: &Path, paths: Vec<PathBuf>) -> Result<Vec<ProjectFile>> {
+    paths
+        .into_iter()
+        .map(|path| {
+            let relative = path
+                .strip_prefix(directory)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            Ok(ProjectFile {
+                language: language_for_path(&path).into(),
+                path: relative,
+                source: fs::read_to_string(&path)
+                    .with_context(|| format!("read {}", path.display()))?,
+            })
+        })
+        .collect()
+}
+
+fn load_project_tools(
+    directory: &Path,
+    manifests: &BTreeMap<String, ProjectToolManifest>,
+    files: &[ProjectFile],
+) -> Result<BTreeMap<String, ToolExpectation>> {
     let mut tools = BTreeMap::new();
-    for (name, tool) in manifest.tool {
+    for (name, tool) in manifests {
         if tool.config.is_none() && tool.rules.is_empty() {
             bail!("project tool `{name}` must specify rules or config");
         }
         tools.insert(
-            name,
+            name.clone(),
             ToolExpectation {
-                config: tool.config,
-                rules: tool.rules,
+                config: tool.config.clone(),
+                rules: tool.rules.clone(),
                 required: Vec::new(),
                 forbidden: Vec::new(),
             },
         );
     }
-    // Assertions may live next to the source they describe. Merge the
-    // familiar source directives without changing their line semantics.
-    for file in &files {
+    for file in files {
         let parsed = parse_case(directory, &directory.join(&file.path), file.source.clone())?;
         for (name, expectation) in parsed.tools {
-            let entry = tools.entry(name).or_insert(ToolExpectation {
+            let entry = tools.entry(name).or_insert_with(|| ToolExpectation {
                 config: None,
                 rules: Vec::new(),
                 required: Vec::new(),
@@ -341,29 +375,7 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
                 }));
         }
     }
-
-    let entry_source = entries
-        .first()
-        .and_then(|entry| files.iter().find(|file| &file.path == entry))
-        .unwrap_or(&files[0]);
-    Ok(Case {
-        id: metadata.id.unwrap_or(default_id),
-        description: metadata
-            .description
-            .unwrap_or_else(|| "multi-file project".into()),
-        tags: metadata.tags,
-        language: "project".into(),
-        filename: entry_source.path.clone(),
-        source: entry_source.source.clone(),
-        project: Some(ProjectCase {
-            root: directory.to_owned(),
-            entries,
-            files,
-            resolutions,
-            filesystem: metadata.filesystem,
-        }),
-        tools,
-    })
+    Ok(tools)
 }
 
 fn previous_code_line(lines: &[String], assertion_index: usize) -> Option<u32> {

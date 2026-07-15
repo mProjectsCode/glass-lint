@@ -7,13 +7,34 @@
 use super::{AbruptExit, ControlFrame, ControlKind, FlowEnvironment, ObjectFlowProjector};
 
 impl ObjectFlowProjector<'_, '_> {
-    #[allow(clippy::too_many_lines)]
     pub(super) fn transfer_control(
         &mut self,
         kind: ControlKind,
         region: u32,
         _span: swc_common::Span,
     ) {
+        match kind {
+            ControlKind::BranchStart
+            | ControlKind::BranchThen
+            | ControlKind::BranchElse
+            | ControlKind::BranchEnd => self.transfer_branch(kind, region),
+            ControlKind::LoopStart { .. } | ControlKind::LoopUpdate | ControlKind::LoopEnd => {
+                self.transfer_loop(kind, region);
+            }
+            ControlKind::SwitchStart | ControlKind::SwitchCase { .. } | ControlKind::SwitchEnd => {
+                self.transfer_switch(kind, region);
+            }
+            ControlKind::TryStart
+            | ControlKind::CatchStart
+            | ControlKind::FinallyStart
+            | ControlKind::TryEnd => self.transfer_try(kind, region),
+            ControlKind::Break | ControlKind::Continue | ControlKind::Return => {
+                self.transfer_abrupt(kind);
+            }
+        }
+    }
+
+    fn transfer_branch(&mut self, kind: ControlKind, region: u32) {
         match kind {
             ControlKind::BranchStart => self.control.push(ControlFrame::Branch {
                 region,
@@ -62,14 +83,18 @@ impl ObjectFlowProjector<'_, '_> {
                     return;
                 }
                 let current = self.environment();
-                // The current environment is the else path when one exists,
-                // and the then path otherwise (for an if without an else).
                 let joined = then_exit.as_ref().map_or_else(
                     || FlowEnvironment::join(&base, &current),
                     |then_exit| FlowEnvironment::join(then_exit, &current),
                 );
                 self.restore(joined);
             }
+            _ => unreachable!(),
+        }
+    }
+
+    fn transfer_loop(&mut self, kind: ControlKind, region: u32) {
+        match kind {
             ControlKind::LoopStart { guaranteed } => self.control.push(ControlFrame::Loop {
                 region,
                 baseline: self.environment(),
@@ -106,12 +131,16 @@ impl ObjectFlowProjector<'_, '_> {
                     paths.push(baseline);
                 }
                 paths.extend(breaks);
-                // A continue in a do/while still reaches its test and can
-                // therefore reach the loop exit.
                 paths.extend(continues);
                 paths.push(self.environment());
                 self.restore(FlowEnvironment::join_many(&paths));
             }
+            _ => unreachable!(),
+        }
+    }
+
+    fn transfer_switch(&mut self, kind: ControlKind, region: u32) {
+        match kind {
             ControlKind::SwitchStart => self.control.push(ControlFrame::Switch {
                 region,
                 baseline: self.environment(),
@@ -124,16 +153,13 @@ impl ObjectFlowProjector<'_, '_> {
                 if let Some(ControlFrame::Switch {
                     region: expected,
                     baseline,
-                    has_default: default,
+                    has_default,
                     ..
                 }) = self.control.last_mut()
                     && *expected == region
                 {
-                    // The current environment is the fall-through input
-                    // from the preceding case. Joining it with baseline
-                    // also admits direct entry at this case.
                     restore = Some(FlowEnvironment::join(&current, baseline));
-                    *default |= is_default;
+                    *has_default |= is_default;
                 }
                 if let Some(environment) = restore {
                     self.restore(environment);
@@ -160,6 +186,12 @@ impl ObjectFlowProjector<'_, '_> {
                 }
                 self.restore(FlowEnvironment::join_many(&exits));
             }
+            _ => unreachable!(),
+        }
+    }
+
+    fn transfer_try(&mut self, kind: ControlKind, region: u32) {
+        match kind {
             ControlKind::TryStart => self.control.push(ControlFrame::Try {
                 region,
                 baseline: self.environment(),
@@ -187,84 +219,91 @@ impl ObjectFlowProjector<'_, '_> {
                     self.restore(environment);
                 }
             }
-            ControlKind::FinallyStart => {
-                let current = self.environment();
-                let mut restore = None;
-                if let Some(ControlFrame::Try {
-                    region: expected,
-                    try_exit,
-                    catch_exit,
-                    normal_exit,
-                    abrupt_exits,
-                    has_finally,
-                    ..
-                }) = self.control.last_mut()
-                    && *expected == region
-                {
-                    *catch_exit = Some(current.clone());
-                    *has_finally = true;
-                    let mut normal = try_exit.clone();
-                    if current.reachable {
-                        normal = Some(normal.map_or(current.clone(), |normal| {
-                            FlowEnvironment::join(&normal, &current)
-                        }));
-                    }
-                    normal_exit.clone_from(&normal);
-                    let mut incoming = Vec::new();
-                    if let Some(normal) = normal {
-                        incoming.push(normal);
-                    }
-                    incoming.extend(
-                        abrupt_exits
-                            .iter()
-                            .map(|(_, environment)| environment.clone()),
-                    );
-                    restore = Some(FlowEnvironment::join_many(&incoming));
-                }
-                if let Some(environment) = restore {
-                    self.restore(environment);
-                }
+            ControlKind::FinallyStart => self.start_finally(region),
+            ControlKind::TryEnd => self.end_try(region),
+            _ => unreachable!(),
+        }
+    }
+
+    fn start_finally(&mut self, region: u32) {
+        let current = self.environment();
+        let mut restore = None;
+        if let Some(ControlFrame::Try {
+            region: expected,
+            try_exit,
+            catch_exit,
+            normal_exit,
+            abrupt_exits,
+            has_finally,
+            ..
+        }) = self.control.last_mut()
+            && *expected == region
+        {
+            *catch_exit = Some(current.clone());
+            *has_finally = true;
+            let mut normal = try_exit.clone();
+            if current.reachable {
+                normal = Some(normal.map_or(current.clone(), |normal| {
+                    FlowEnvironment::join(&normal, &current)
+                }));
             }
-            ControlKind::TryEnd => {
-                let Some(ControlFrame::Try {
-                    region: expected,
-                    try_exit,
-                    catch_exit,
-                    normal_exit,
-                    abrupt_exits,
-                    has_finally,
-                    ..
-                }) = self.control.pop()
-                else {
-                    return;
-                };
-                if expected != region {
-                    return;
-                }
-                if has_finally {
-                    let after_finally = self.environment();
-                    for (kind, before) in abrupt_exits {
-                        self.apply_finally_to_abrupt_exit(kind, &before, &after_finally);
-                    }
-                    if let Some(normal) = normal_exit {
-                        if normal.reachable {
-                            self.restore(after_finally);
-                        } else {
-                            self.restore(FlowEnvironment::unreachable());
-                        }
-                    } else {
-                        self.restore(FlowEnvironment::unreachable());
-                    }
-                    return;
-                }
-                if let Some(try_exit) = try_exit {
-                    let catch_exit = catch_exit.unwrap_or_else(|| self.environment());
-                    self.restore(FlowEnvironment::join(&try_exit, &catch_exit));
-                }
+            normal_exit.clone_from(&normal);
+            let mut incoming = normal.into_iter().collect::<Vec<_>>();
+            incoming.extend(
+                abrupt_exits
+                    .iter()
+                    .map(|(_, environment)| environment.clone()),
+            );
+            restore = Some(FlowEnvironment::join_many(&incoming));
+        }
+        if let Some(environment) = restore {
+            self.restore(environment);
+        }
+    }
+
+    fn end_try(&mut self, region: u32) {
+        let Some(ControlFrame::Try {
+            region: expected,
+            try_exit,
+            catch_exit,
+            normal_exit,
+            abrupt_exits,
+            has_finally,
+            ..
+        }) = self.control.pop()
+        else {
+            return;
+        };
+        if expected != region {
+            return;
+        }
+        if has_finally {
+            let after_finally = self.environment();
+            for (kind, before) in abrupt_exits {
+                self.apply_finally_to_abrupt_exit(kind, &before, &after_finally);
             }
+            self.restore(if normal_exit.is_some_and(|normal| normal.reachable) {
+                after_finally
+            } else {
+                FlowEnvironment::unreachable()
+            });
+        } else if let Some(try_exit) = try_exit {
+            let catch_exit = catch_exit.unwrap_or_else(|| self.environment());
+            self.restore(FlowEnvironment::join(&try_exit, &catch_exit));
+        }
+    }
+
+    fn transfer_abrupt(&mut self, kind: ControlKind) {
+        let current = self.environment();
+        let abrupt = match kind {
+            ControlKind::Break => AbruptExit::Break,
+            ControlKind::Continue => AbruptExit::Continue,
+            ControlKind::Return => AbruptExit::Return,
+            _ => unreachable!(),
+        };
+        self.record_abrupt_exit(abrupt, &current);
+        match kind {
             ControlKind::Break => {
-                let current = self.environment();
-                self.record_abrupt_exit(AbruptExit::Break, &current);
                 if let Some(frame) = self.control.iter_mut().rev().find(|frame| {
                     matches!(
                         frame,
@@ -281,8 +320,6 @@ impl ObjectFlowProjector<'_, '_> {
                 }
             }
             ControlKind::Continue => {
-                let current = self.environment();
-                self.record_abrupt_exit(AbruptExit::Continue, &current);
                 if let Some(ControlFrame::Loop { continues, .. }) = self
                     .control
                     .iter_mut()
@@ -293,11 +330,8 @@ impl ObjectFlowProjector<'_, '_> {
                     self.reachable = false;
                 }
             }
-            ControlKind::Return => {
-                let current = self.environment();
-                self.record_abrupt_exit(AbruptExit::Return, &current);
-                self.reachable = false;
-            }
+            ControlKind::Return => self.reachable = false,
+            _ => unreachable!(),
         }
     }
 

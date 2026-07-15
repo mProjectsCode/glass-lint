@@ -139,11 +139,6 @@ impl Resolver {
         resolved
     }
 
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss
-    )]
     pub(in crate::analysis) fn resolve_expr(&self, expr: &Expr) -> ResolvedValue {
         match expr {
             Expr::Ident(ident) => self.resolve_ident(ident),
@@ -162,14 +157,10 @@ impl Resolver {
             Expr::Lit(Lit::Str(value)) => self.static_value(Value::StaticString(
                 value.value.to_string_lossy().to_string(),
             )),
-            Expr::Lit(Lit::Num(value))
-                if value.value.is_finite()
-                    && value.value >= 0.0
-                    && value.value.fract() == 0.0
-                    && value.value <= (usize::MAX as u64) as f64 =>
-            {
-                self.static_value(Value::StaticNumber(value.value as usize))
-            }
+            Expr::Lit(Lit::Num(value)) => syntax_constant::non_negative_integer(value.value)
+                .map_or_else(Self::unknown, |value| {
+                    self.static_value(Value::StaticNumber(value))
+                }),
             Expr::Array(array) => {
                 let values = array
                     .elems

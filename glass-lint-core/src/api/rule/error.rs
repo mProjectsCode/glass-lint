@@ -1,7 +1,6 @@
 use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(clippy::enum_variant_names)]
 pub enum ApiRuleBuildError {
     MissingId,
     InvalidId(String),

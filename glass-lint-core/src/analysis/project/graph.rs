@@ -7,121 +7,8 @@ use super::super::{
 use crate::analysis::module::ModuleRequestRole;
 
 impl ProjectSemanticModel {
-    #[allow(clippy::too_many_lines)]
     pub(in crate::analysis) fn build_graph_and_exports(&mut self) {
-        for module in self.modules.values() {
-            self.adjacency.entry(module.id).or_default();
-            if module.local.effects.budget_exhausted {
-                self.diagnostics.push(crate::ProjectDiagnostic {
-                    code: "effect_size_budget_exhausted".into(),
-                    message: format!(
-                        "function-effect extraction exceeded a bounded budget in `{}`",
-                        module.path
-                    ),
-                    location: None,
-                });
-            }
-            if module.local.interface().unknown_exports {
-                self.diagnostics.push(crate::ProjectDiagnostic {
-                    code: "unsupported_commonjs_exports".into(),
-                    message: format!(
-                        "CommonJS export shape in `{}` is dynamic or ambiguous",
-                        module.path
-                    ),
-                    location: None,
-                });
-            }
-            for request in Self::authored_requests(module) {
-                let Some(resolution) = self.resolutions.get(&request.key) else {
-                    if is_internal_request(&request.request) {
-                        self.diagnostics.push(crate::ProjectDiagnostic {
-                            code: "unresolved_internal_request".into(),
-                            message: format!(
-                                "internal-looking module request `{}` has no resolution",
-                                request.request
-                            ),
-                            location: Some(crate::SourceLocation {
-                                path: module.path.clone(),
-                                range: request.key.range.clone(),
-                            }),
-                        });
-                    }
-                    continue;
-                };
-                if let ResolvedModule::Internal { id, .. } = resolution {
-                    let edges = self.adjacency.values().map(Vec::len).sum::<usize>();
-                    if edges >= MAX_GRAPH_EDGES {
-                        self.link_budget_exhausted = true;
-                    } else {
-                        self.adjacency.entry(module.id).or_default().push(*id);
-                        self.reverse_adjacency
-                            .entry(*id)
-                            .or_default()
-                            .push(module.id);
-                    }
-                } else if matches!(resolution, ResolvedModule::Missing)
-                    && is_internal_request(&request.request)
-                {
-                    self.diagnostics.push(crate::ProjectDiagnostic {
-                        code: "unresolved_internal_request".into(),
-                        message: format!(
-                            "internal module request `{}` is missing",
-                            request.request
-                        ),
-                        location: Some(crate::SourceLocation {
-                            path: module.path.clone(),
-                            range: request.key.range.clone(),
-                        }),
-                    });
-                } else if matches!(resolution, ResolvedModule::OutsideProject { .. }) {
-                    self.diagnostics.push(crate::ProjectDiagnostic {
-                        code: "outside_project_target".into(),
-                        message: format!(
-                            "module request `{}` resolves outside the project",
-                            request.request
-                        ),
-                        location: Some(crate::SourceLocation {
-                            path: module.path.clone(),
-                            range: request.key.range.clone(),
-                        }),
-                    });
-                } else if matches!(resolution, ResolvedModule::Unsupported { .. }) {
-                    self.diagnostics.push(crate::ProjectDiagnostic {
-                        code: "unsupported_project_target".into(),
-                        message: format!(
-                            "module request `{}` is not an analyzable project target",
-                            request.request
-                        ),
-                        location: Some(crate::SourceLocation {
-                            path: module.path.clone(),
-                            range: request.key.range.clone(),
-                        }),
-                    });
-                }
-            }
-        }
-        for targets in self.adjacency.values_mut() {
-            targets.sort_unstable();
-            targets.dedup();
-        }
-        for sources in self.reverse_adjacency.values_mut() {
-            sources.sort_unstable();
-            sources.dedup();
-        }
-        self.components =
-            strongly_connected_components(&self.adjacency, self.modules.keys().copied());
-        if self
-            .components
-            .iter()
-            .any(|component| component.len() > MAX_SCC_SIZE)
-        {
-            self.diagnostics.push(crate::ProjectDiagnostic {
-                code: "scc_size_budget_exhausted".into(),
-                message: format!("a module SCC exceeds the bounded size of {MAX_SCC_SIZE}"),
-                location: None,
-            });
-            self.link_budget_exhausted = true;
-        }
+        self.collect_graph_edges();
 
         // Resolve exports in a bounded, monotone pass.  The fixed point is
         // intentionally conservative: a cycle that does not stabilize stays
@@ -223,6 +110,135 @@ impl ProjectSemanticModel {
         });
         self.diagnostics.dedup();
     }
+
+    fn collect_graph_edges(&mut self) {
+        for module in self.modules.values() {
+            self.adjacency.entry(module.id).or_default();
+            self.diagnostics.extend(module_diagnostics(module));
+            for request in Self::authored_requests(module) {
+                let Some(resolution) = self.resolutions.get(&request.key) else {
+                    if is_internal_request(&request.request) {
+                        self.diagnostics.push(crate::ProjectDiagnostic {
+                            code: "unresolved_internal_request".into(),
+                            message: format!(
+                                "internal-looking module request `{}` has no resolution",
+                                request.request
+                            ),
+                            location: Some(crate::SourceLocation {
+                                path: module.path.clone(),
+                                range: request.key.range.clone(),
+                            }),
+                        });
+                    }
+                    continue;
+                };
+                if let ResolvedModule::Internal { id, .. } = resolution {
+                    let edges = self.adjacency.values().map(Vec::len).sum::<usize>();
+                    if edges >= MAX_GRAPH_EDGES {
+                        self.link_budget_exhausted = true;
+                    } else {
+                        self.adjacency.entry(module.id).or_default().push(*id);
+                        self.reverse_adjacency
+                            .entry(*id)
+                            .or_default()
+                            .push(module.id);
+                    }
+                } else if matches!(resolution, ResolvedModule::Missing)
+                    && is_internal_request(&request.request)
+                {
+                    self.diagnostics.push(Self::request_diagnostic(
+                        "unresolved_internal_request",
+                        format!("internal module request `{}` is missing", request.request),
+                        module,
+                        &request,
+                    ));
+                } else if matches!(resolution, ResolvedModule::OutsideProject { .. }) {
+                    self.diagnostics.push(Self::request_diagnostic(
+                        "outside_project_target",
+                        format!(
+                            "module request `{}` resolves outside the project",
+                            request.request
+                        ),
+                        module,
+                        &request,
+                    ));
+                } else if matches!(resolution, ResolvedModule::Unsupported { .. }) {
+                    self.diagnostics.push(Self::request_diagnostic(
+                        "unsupported_project_target",
+                        format!(
+                            "module request `{}` is not an analyzable project target",
+                            request.request
+                        ),
+                        module,
+                        &request,
+                    ));
+                }
+            }
+        }
+        for targets in self.adjacency.values_mut() {
+            targets.sort_unstable();
+            targets.dedup();
+        }
+        for sources in self.reverse_adjacency.values_mut() {
+            sources.sort_unstable();
+            sources.dedup();
+        }
+        self.components =
+            strongly_connected_components(&self.adjacency, self.modules.keys().copied());
+        if self
+            .components
+            .iter()
+            .any(|component| component.len() > MAX_SCC_SIZE)
+        {
+            self.diagnostics.push(crate::ProjectDiagnostic {
+                code: "scc_size_budget_exhausted".into(),
+                message: format!("a module SCC exceeds the bounded size of {MAX_SCC_SIZE}"),
+                location: None,
+            });
+            self.link_budget_exhausted = true;
+        }
+    }
+
+    fn request_diagnostic(
+        code: &str,
+        message: String,
+        module: &super::super::ProjectModule,
+        request: &crate::ResolutionRequest,
+    ) -> crate::ProjectDiagnostic {
+        crate::ProjectDiagnostic {
+            code: code.into(),
+            message,
+            location: Some(crate::SourceLocation {
+                path: module.path.clone(),
+                range: request.key.range.clone(),
+            }),
+        }
+    }
+}
+
+fn module_diagnostics(module: &super::super::ProjectModule) -> Vec<crate::ProjectDiagnostic> {
+    let mut diagnostics = Vec::new();
+    if module.local.effects.budget_exhausted {
+        diagnostics.push(crate::ProjectDiagnostic {
+            code: "effect_size_budget_exhausted".into(),
+            message: format!(
+                "function-effect extraction exceeded a bounded budget in `{}`",
+                module.path
+            ),
+            location: None,
+        });
+    }
+    if module.local.interface().unknown_exports {
+        diagnostics.push(crate::ProjectDiagnostic {
+            code: "unsupported_commonjs_exports".into(),
+            message: format!(
+                "CommonJS export shape in `{}` is dynamic or ambiguous",
+                module.path
+            ),
+            location: None,
+        });
+    }
+    diagnostics
 }
 
 fn strongly_connected_components(

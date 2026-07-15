@@ -7,6 +7,8 @@ use super::{
     member_prop_name, member_root_ident, module_export_name, prop_name,
 };
 
+use swc_ecma_ast::VarDeclarator;
+
 impl Visit for AliasCollector {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         let scope = self.current_scope();
@@ -48,7 +50,6 @@ impl Visit for AliasCollector {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     fn visit_var_decl(&mut self, var_decl: &VarDecl) {
         let scope = self.binding_scope(var_decl.kind);
         for declarator in &var_decl.decls {
@@ -63,14 +64,8 @@ impl Visit for AliasCollector {
                             | BindingProvenance::StaticObjectValues(_)
                     )
                 );
-            if mutable_object && let Pat::Ident(ident) = &declarator.name {
-                self.mutable_static_objects
-                    .insert((scope, ident.id.sym.to_string()));
-            }
-            if let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref())
-                && self.register_function_expression(ident.id.sym.to_string(), init)
-            {
-                self.insert_local(scope, ident.id.sym.to_string());
+            record_mutable_static_object(self, scope, mutable_object, declarator);
+            if register_declared_function(self, scope, declarator) {
                 continue;
             }
             if let (Pat::Ident(alias), Some(Expr::Ident(target))) =
@@ -153,9 +148,7 @@ impl Visit for AliasCollector {
             } else if !derived_function_pattern && let Some(target) = value_alias {
                 self.collect_value_aliases(&declarator.name, &target, scope);
             }
-            if let Some(init) = init {
-                init.visit_with(self);
-            }
+            visit_initializer(self, init);
         }
     }
 
@@ -360,5 +353,39 @@ impl Visit for AliasCollector {
         }
         catch.body.stmts.visit_with(self);
         self.pop_scope();
+    }
+}
+
+fn register_declared_function(
+    collector: &mut AliasCollector,
+    scope: usize,
+    declarator: &VarDeclarator,
+) -> bool {
+    let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref()) else {
+        return false;
+    };
+    if !collector.register_function_expression(ident.id.sym.to_string(), init) {
+        return false;
+    }
+    collector.insert_local(scope, ident.id.sym.to_string());
+    true
+}
+
+fn record_mutable_static_object(
+    collector: &mut AliasCollector,
+    scope: usize,
+    mutable_object: bool,
+    declarator: &VarDeclarator,
+) {
+    if mutable_object && let Pat::Ident(ident) = &declarator.name {
+        collector
+            .mutable_static_objects
+            .insert((scope, ident.id.sym.to_string()));
+    }
+}
+
+fn visit_initializer(collector: &mut AliasCollector, init: Option<&Expr>) {
+    if let Some(init) = init {
+        init.visit_with(collector);
     }
 }

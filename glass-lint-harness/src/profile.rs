@@ -225,7 +225,7 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         let mut project_error = None;
         for iteration in 0..config.warm_up + config.repeat {
             for ProfileLinter(linter) in &linters {
-                match loader.load_and_lint_with_metrics(linter, selection.clone()) {
+                match loader.load_and_lint_with_metrics(linter, &selection) {
                     Ok((report, metrics)) => {
                         if iteration >= config.warm_up {
                             project_findings += report

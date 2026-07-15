@@ -113,7 +113,6 @@ impl FactBuilder<'_> {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     pub(super) fn record_commonjs_export(&mut self, assignment: &swc_ecma_ast::AssignExpr) {
         if assignment.op != swc_ecma_ast::AssignOp::Assign {
             return;
@@ -123,95 +122,19 @@ impl FactBuilder<'_> {
         else {
             return;
         };
-        let is_unshadowed = |expr: &swc_ecma_ast::Expr, name: &str| matches!(expr, Expr::Ident(ident) if self.resolver.is_unshadowed_commonjs_name(ident, name));
         let property = crate::analysis::syntax::member_prop_name(&member.prop);
-        if is_unshadowed(&member.obj, "module") && property.as_deref() == Some("exports") {
-            if self.interface.has_exports() {
-                self.interface.mark_unknown_exports();
-                return;
-            }
-            if let swc_ecma_ast::Expr::Object(object) = &*assignment.right {
-                let Some(entries) = Self::commonjs_object_export_entries(object) else {
-                    self.interface.mark_unknown_exports();
-                    return;
-                };
-                self.interface
-                    .add_export("default", crate::analysis::module::ModuleExport::Value);
-                for prop in &object.props {
-                    let swc_ecma_ast::PropOrSpread::Prop(prop) = prop else {
-                        continue;
-                    };
-                    match &**prop {
-                        swc_ecma_ast::Prop::KeyValue(value) => {
-                            let Some(name) = crate::analysis::syntax::prop_name(&value.key) else {
-                                continue;
-                            };
-                            self.add_function_export_if_expr(&name, &value.value);
-                            if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = &*value.value {
-                                self.interface
-                                    .add_static_string(name, value.value.to_string_lossy());
-                            }
-                        }
-                        swc_ecma_ast::Prop::Method(method) => {
-                            if let Some(name) = crate::analysis::syntax::prop_name(&method.key) {
-                                self.add_function_export_if_span(&name, method.function.span());
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-                for (name, local) in entries {
-                    if let Some(local) = &local {
-                        self.add_function_export_if_name(&name, local, assignment.span());
-                    }
-                    self.interface.add_export(
-                        name,
-                        local.map_or(crate::analysis::module::ModuleExport::Value, |name| {
-                            crate::analysis::module::ModuleExport::Local { name }
-                        }),
-                    );
-                }
-            } else {
-                if let Some(id) = self.resolver.function_id_for_span(assignment.right.span()) {
-                    self.interface.add_function_export("default", id);
-                }
-                self.interface
-                    .add_export("default", crate::analysis::module::ModuleExport::Value);
-            }
+        if self.is_commonjs_name(&member.obj, "module") && property.as_deref() == Some("exports") {
+            self.record_module_exports_assignment(assignment);
             return;
         }
-        if is_unshadowed(&member.obj, "exports") {
-            if let Some(property) = property {
-                let export = match &*assignment.right {
-                    Expr::Ident(ident) => {
-                        self.add_function_export_if_name(
-                            &property,
-                            ident.sym.as_ref(),
-                            assignment.span(),
-                        );
-                        crate::analysis::module::ModuleExport::Local {
-                            name: ident.sym.to_string(),
-                        }
-                    }
-                    expr => {
-                        self.add_function_export_if_expr(&property, expr);
-                        if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = expr {
-                            self.interface
-                                .add_static_string(&property, value.value.to_string_lossy());
-                        }
-                        crate::analysis::module::ModuleExport::Value
-                    }
-                };
-                self.interface.add_export(property, export);
-            } else {
-                self.interface.mark_unknown_exports();
-            }
+        if self.is_commonjs_name(&member.obj, "exports") {
+            self.record_exports_assignment(assignment, property);
             return;
         }
         let Expr::Member(parent) = &*member.obj else {
             return;
         };
-        if !is_unshadowed(&parent.obj, "module")
+        if !self.is_commonjs_name(&parent.obj, "module")
             || crate::analysis::syntax::member_prop_name(&parent.prop).as_deref() != Some("exports")
         {
             return;
@@ -220,6 +143,101 @@ impl FactBuilder<'_> {
             self.interface.mark_unknown_exports();
             return;
         };
+        self.record_named_module_export(assignment, property);
+    }
+
+    fn is_commonjs_name(&self, expr: &swc_ecma_ast::Expr, name: &str) -> bool {
+        matches!(expr, Expr::Ident(ident) if self.resolver.is_unshadowed_commonjs_name(ident, name))
+    }
+
+    fn record_module_exports_assignment(&mut self, assignment: &swc_ecma_ast::AssignExpr) {
+        if self.interface.has_exports() {
+            self.interface.mark_unknown_exports();
+            return;
+        }
+        if let swc_ecma_ast::Expr::Object(object) = &*assignment.right {
+            let Some(entries) = Self::commonjs_object_export_entries(object) else {
+                self.interface.mark_unknown_exports();
+                return;
+            };
+            self.interface
+                .add_export("default", crate::analysis::module::ModuleExport::Value);
+            for prop in &object.props {
+                let swc_ecma_ast::PropOrSpread::Prop(prop) = prop else {
+                    continue;
+                };
+                match &**prop {
+                    swc_ecma_ast::Prop::KeyValue(value) => {
+                        let Some(name) = crate::analysis::syntax::prop_name(&value.key) else {
+                            continue;
+                        };
+                        self.add_function_export_if_expr(&name, &value.value);
+                        if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = &*value.value {
+                            self.interface
+                                .add_static_string(name, value.value.to_string_lossy());
+                        }
+                    }
+                    swc_ecma_ast::Prop::Method(method) => {
+                        if let Some(name) = crate::analysis::syntax::prop_name(&method.key) {
+                            self.add_function_export_if_span(&name, method.function.span());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for (name, local) in entries {
+                if let Some(local) = &local {
+                    self.add_function_export_if_name(&name, local, assignment.span());
+                }
+                self.interface.add_export(
+                    name,
+                    local.map_or(crate::analysis::module::ModuleExport::Value, |name| {
+                        crate::analysis::module::ModuleExport::Local { name }
+                    }),
+                );
+            }
+        } else {
+            if let Some(id) = self.resolver.function_id_for_span(assignment.right.span()) {
+                self.interface.add_function_export("default", id);
+            }
+            self.interface
+                .add_export("default", crate::analysis::module::ModuleExport::Value);
+        }
+    }
+
+    fn record_exports_assignment(
+        &mut self,
+        assignment: &swc_ecma_ast::AssignExpr,
+        property: Option<String>,
+    ) {
+        let Some(property) = property else {
+            self.interface.mark_unknown_exports();
+            return;
+        };
+        let export = match &*assignment.right {
+            Expr::Ident(ident) => {
+                self.add_function_export_if_name(&property, ident.sym.as_ref(), assignment.span());
+                crate::analysis::module::ModuleExport::Local {
+                    name: ident.sym.to_string(),
+                }
+            }
+            expr => {
+                self.add_function_export_if_expr(&property, expr);
+                if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = expr {
+                    self.interface
+                        .add_static_string(&property, value.value.to_string_lossy());
+                }
+                crate::analysis::module::ModuleExport::Value
+            }
+        };
+        self.interface.add_export(property, export);
+    }
+
+    fn record_named_module_export(
+        &mut self,
+        assignment: &swc_ecma_ast::AssignExpr,
+        property: String,
+    ) {
         let export = match &*assignment.right {
             Expr::Ident(ident) => {
                 self.add_function_export_if_name(&property, ident.sym.as_ref(), assignment.span());

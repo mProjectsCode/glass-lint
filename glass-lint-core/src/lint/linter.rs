@@ -196,7 +196,6 @@ impl Linter {
         self.lint_analyzed_project(input, analyzed, parse_diagnostics)
     }
 
-    #[allow(clippy::too_many_lines)]
     pub(crate) fn lint_analyzed_project(
         &self,
         input: crate::ProjectInput,
@@ -213,7 +212,6 @@ impl Linter {
             .map(|(report, _, _)| report)
     }
 
-    #[allow(clippy::too_many_lines)]
     pub(crate) fn lint_analyzed_project_timed(
         &self,
         input: crate::ProjectInput,
@@ -279,6 +277,46 @@ impl Linter {
             &self.selected_rule_indices(),
         );
         let matching_elapsed = matching_start.elapsed();
+        self.populate_project_files(&project, &classifications, &sources, &mut files);
+
+        let mut diagnostics = project.diagnostics().to_vec();
+        if project.flow_budget_exhausted() {
+            diagnostics.push(crate::ProjectDiagnostic {
+                code: "flow_link_budget_exhausted".into(),
+                message: "qualified function-effect projection exceeded its bounded budget".into(),
+                location: None,
+            });
+            diagnostics.sort_by(|left, right| left.code.cmp(&right.code));
+        }
+        let evidence = files
+            .values()
+            .map(|file| {
+                file.findings
+                    .iter()
+                    .map(|finding| finding.evidence.len())
+                    .sum::<usize>()
+            })
+            .sum();
+        let report = crate::ProjectReport {
+            schema_version: crate::REPORT_VERSION,
+            tool_version: env!("CARGO_PKG_VERSION").into(),
+            files: files.into_values().collect(),
+            diagnostics,
+            operations: project.operation_counts(evidence),
+        };
+        Ok((report, linking_elapsed, matching_elapsed))
+    }
+
+    fn populate_project_files(
+        &self,
+        project: &crate::analysis::ProjectSemanticModel,
+        classifications: &std::collections::BTreeMap<
+            crate::project::ModuleId,
+            crate::api::classification::ApiClassificationResult,
+        >,
+        sources: &std::collections::BTreeMap<String, String>,
+        files: &mut std::collections::BTreeMap<String, crate::ProjectFileReport>,
+    ) {
         for module in project.modules() {
             let Some(classification) = classifications.get(&module.id) else {
                 continue;
@@ -286,7 +324,7 @@ impl Linter {
             let Some(source) = sources.get(&module.path) else {
                 continue;
             };
-            let findings = self
+            let mut findings = self
                 .findings_for(classification, &module.source_map, source)
                 .into_iter()
                 .map(|finding| {
@@ -315,18 +353,12 @@ impl Linter {
                     project_finding
                 })
                 .collect::<Vec<_>>();
-            let mut findings = findings;
-            findings.sort_by(|left, right| {
+            findings.sort_by_key(|finding| {
                 (
-                    &left.location.range.start.line,
-                    &left.location.range.start.column,
-                    &left.rule_id,
+                    finding.location.range.start.line,
+                    finding.location.range.start.column,
+                    finding.rule_id.clone(),
                 )
-                    .cmp(&(
-                        &right.location.range.start.line,
-                        &right.location.range.start.column,
-                        &right.rule_id,
-                    ))
             });
             findings.dedup();
             files.insert(
@@ -338,33 +370,6 @@ impl Linter {
                 },
             );
         }
-
-        let mut diagnostics = project.diagnostics().to_vec();
-        if project.flow_budget_exhausted() {
-            diagnostics.push(crate::ProjectDiagnostic {
-                code: "flow_link_budget_exhausted".into(),
-                message: "qualified function-effect projection exceeded its bounded budget".into(),
-                location: None,
-            });
-            diagnostics.sort_by(|left, right| left.code.cmp(&right.code));
-        }
-        let evidence = files
-            .values()
-            .map(|file| {
-                file.findings
-                    .iter()
-                    .map(|finding| finding.evidence.len())
-                    .sum::<usize>()
-            })
-            .sum();
-        let report = crate::ProjectReport {
-            schema_version: crate::REPORT_VERSION,
-            tool_version: env!("CARGO_PKG_VERSION").into(),
-            files: files.into_values().collect(),
-            diagnostics,
-            operations: project.operation_counts(evidence),
-        };
-        Ok((report, linking_elapsed, matching_elapsed))
     }
 
     fn selected_rule_indices(&self) -> BTreeSet<usize> {

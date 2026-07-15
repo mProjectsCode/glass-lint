@@ -47,24 +47,22 @@ impl ProjectLoader {
     }
 
     /// Loads, resolves, and lints one bounded project.
-    #[allow(clippy::needless_pass_by_value)]
     pub fn load_and_lint(
         &self,
         linter: &Linter,
-        selection: ProjectSelection,
+        selection: &ProjectSelection,
     ) -> Result<ProjectReport, ProjectLoadError> {
         Ok(self.load_and_lint_with_metrics(linter, selection)?.0)
     }
 
-    #[allow(clippy::needless_pass_by_value)]
     pub fn load_and_lint_with_metrics(
         &self,
         linter: &Linter,
-        selection: ProjectSelection,
+        selection: &ProjectSelection,
     ) -> Result<(ProjectReport, ProjectLoadMetrics), ProjectLoadError> {
         let mut metrics = ProjectLoadMetrics::default();
         let total_start = Instant::now();
-        let report = self.load_project(linter, &selection, &mut metrics)?;
+        let report = self.load_project(linter, selection, &mut metrics)?;
         metrics.total = total_start.elapsed();
         Ok((report, metrics))
     }
