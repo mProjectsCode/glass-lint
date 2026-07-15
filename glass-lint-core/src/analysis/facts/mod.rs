@@ -3,12 +3,12 @@
 use self::build::FactBuilder;
 use super::flow::projector as object_flow;
 use super::matching::MatcherFacts;
+use super::module::ModuleInterface;
 use super::resolution::Resolver;
 #[cfg(test)]
 use super::syntax::SymbolCallProvenance;
 #[cfg(test)]
 use super::value::{FunctionId, ValueId};
-use crate::api::classification::ApiEvidence;
 use crate::api::compiler::CompiledMatcherCatalog;
 #[cfg(test)]
 use swc_common::Span;
@@ -25,16 +25,40 @@ pub(in crate::analysis) use stream::FactStream;
 
 #[derive(Debug)]
 pub(in crate::analysis) struct SemanticFacts {
+    pub(in crate::analysis) stream: FactStream,
     pub(in crate::analysis) index: MatcherFacts,
-    pub(in crate::analysis) argument_evidence: Vec<Vec<ApiEvidence>>,
+    pub(in crate::analysis) interface: ModuleInterface,
 }
 
 impl SemanticFacts {
-    pub(in crate::analysis) fn build(
-        program: &Program,
-        resolver: &Resolver,
+    pub(in crate::analysis) fn build(program: &Program, resolver: &Resolver) -> Self {
+        // Build the canonical fact stream from the authoritative FactBuilder.
+        let mut builder = FactBuilder::new(resolver);
+        swc_ecma_visit::VisitWith::visit_with(program, &mut builder);
+        let (stream, interface) = builder.into_parts();
+
+        // Project the fact stream into rule-independent occurrence indexes.
+        let mut index = MatcherFacts::default();
+        if stream.is_valid() {
+            index.build_from_stream(&stream);
+            index.normalize_occurrences();
+        }
+
+        Self {
+            stream,
+            index,
+            interface,
+        }
+    }
+
+    /// Projects matcher-specific argument and flow evidence after linking.
+    pub(in crate::analysis) fn project(
+        &self,
         matchers: &CompiledMatcherCatalog<'_>,
-    ) -> Self {
+        identities: Option<
+            &std::collections::BTreeMap<(String, String), super::matching::LinkedModuleIdentity>,
+        >,
+    ) -> Vec<Vec<crate::api::classification::ApiEvidence>> {
         let member_argument_matchers = matchers
             .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
@@ -68,43 +92,25 @@ impl SemanticFacts {
             })
             .collect::<Vec<_>>();
 
-        // Build the canonical fact stream from the authoritative FactBuilder.
-        let mut builder = FactBuilder::new(resolver);
-        swc_ecma_visit::VisitWith::visit_with(program, &mut builder);
-        let stream = builder.into_stream();
-
-        if !stream.is_valid() {
-            return Self {
-                index: MatcherFacts::default(),
-                argument_evidence: vec![Vec::new(); matchers.len()],
-            };
-        }
-
-        // Project the fact stream into rule-independent occurrence indexes.
-        let mut index = MatcherFacts::default();
-        index.build_from_stream(&stream);
-
-        // Compute argument evidence from pre-computed fact data.
         let mut argument_evidence = vec![Vec::new(); matchers.len()];
-        MatcherFacts::compute_argument_evidence_from_stream(
-            &stream,
+        if !self.stream.is_valid() {
+            return argument_evidence;
+        }
+        MatcherFacts::compute_argument_evidence_from_stream_with_overlay(
+            &self.stream,
             &member_argument_matchers,
             &call_argument_matchers,
             &mut argument_evidence,
+            identities,
         );
-
-        for (rule_index, evidence) in object_flow::collect(&stream, &flow_matchers, matchers.len())
-            .into_iter()
-            .enumerate()
+        for (rule_index, evidence) in
+            object_flow::collect(&self.stream, &flow_matchers, matchers.len())
+                .into_iter()
+                .enumerate()
         {
             argument_evidence[rule_index].extend(evidence);
         }
-        index.normalize_occurrences();
-
-        Self {
-            index,
-            argument_evidence,
-        }
+        argument_evidence
     }
 }
 
@@ -160,6 +166,7 @@ mod tests {
                 FactKind::Control => FactPayload::Control {
                     kind: ControlKind::BranchStart,
                     region: 0,
+                    value: ValueId::UNKNOWN,
                 },
                 _ => FactPayload::Declaration {
                     target: ValueId::UNKNOWN,
@@ -243,10 +250,10 @@ mod tests {
                      selected: &[usize]| {
             let resolver = Resolver::collect(&parsed.program);
             let selected = selected.iter().copied().collect::<BTreeSet<_>>();
-            let catalog = CompiledMatcherCatalog::new(matchers, &selected);
+            let _catalog = CompiledMatcherCatalog::new(matchers, &selected);
             format!(
                 "{:?}",
-                SemanticFacts::build(&parsed.program, &resolver, &catalog).index
+                SemanticFacts::build(&parsed.program, &resolver).index
             )
         };
 

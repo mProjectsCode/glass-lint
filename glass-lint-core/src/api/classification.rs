@@ -25,6 +25,15 @@ pub struct ApiEvidence {
     /// deliberately synthetic occurrence that has no source fact.
     #[serde(skip)]
     pub(crate) event_ids: Vec<u32>,
+    pub(crate) related: Vec<ApiRelatedEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct ApiRelatedEvidence {
+    pub(crate) module: u32,
+    pub(crate) event: u32,
+    pub(crate) kind: ApiMatchKind,
+    pub(crate) symbol: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]

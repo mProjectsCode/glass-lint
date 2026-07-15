@@ -20,6 +20,7 @@ pub(super) struct EvidenceOccurrence {
 pub(super) struct AnnotatedEvidence {
     occurrences: Vec<EvidenceOccurrence>,
     symbols: Vec<String>,
+    related: BTreeMap<usize, Vec<crate::api::classification::ApiRelatedEvidence>>,
 }
 
 impl AnnotatedEvidence {
@@ -29,12 +30,14 @@ impl AnnotatedEvidence {
         let mut symbols = Vec::with_capacity(evidence.len());
         let mut groups = BTreeMap::<(ApiMatchKind, String), usize>::new();
         let mut occurrences = Vec::new();
+        let mut related = BTreeMap::new();
         for evidence in evidence {
             let ApiEvidence {
                 kind,
                 symbol,
                 spans,
                 event_ids,
+                related: evidence_related,
                 ..
             } = evidence;
             let symbol_group = if let Some(group) = groups.get(&(kind, symbol.clone())) {
@@ -45,6 +48,10 @@ impl AnnotatedEvidence {
                 symbols.push(symbol);
                 group
             };
+            related
+                .entry(symbol_group)
+                .or_insert_with(Vec::new)
+                .extend(evidence_related);
             occurrences.extend(
                 spans
                     .into_iter()
@@ -63,6 +70,7 @@ impl AnnotatedEvidence {
         Self {
             occurrences,
             symbols,
+            related,
         }
     }
 
@@ -98,6 +106,7 @@ impl AnnotatedEvidence {
                     .iter()
                     .map(|(event, _)| event.map_or(u32::MAX, |event| event.0))
                     .collect(),
+                related: self.related.get(&symbol_group).cloned().unwrap_or_default(),
             })
             .collect::<Vec<_>>();
         normalized.sort_by_key(|item| {
@@ -126,6 +135,7 @@ mod tests {
                 .map(|position| Span::new(BytePos(*position), BytePos(*position + 1)))
                 .collect(),
             event_ids: spans.to_vec(),
+            related: Vec::new(),
         }
     }
 

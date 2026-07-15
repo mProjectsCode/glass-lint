@@ -21,7 +21,7 @@ mod arguments;
 mod build;
 mod query;
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct MatcherFacts {
     // Each map represents a different confidence/provenance level. Do not
     // collapse these into one index: a global spelling, rooted alias, and
@@ -49,6 +49,81 @@ pub struct MatcherFacts {
     pub(super) constructors: Occurrences,
     pub(super) global_constructors: Occurrences,
     pub(super) module_constructors: ModuleOccurrences,
+}
+
+/// The only identities a linked module overlay exposes to matcher indexes.
+/// Qualified local values and unknown values are intentionally not queryable
+/// by the external-module matcher vocabulary.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(in crate::analysis) enum LinkedModuleIdentity {
+    External { module: String, export: String },
+    Global { name: String },
+    Qualified,
+    Unknown,
+}
+
+impl MatcherFacts {
+    pub(in crate::analysis) fn apply_module_overlay(
+        &mut self,
+        identities: &std::collections::BTreeMap<(String, String), LinkedModuleIdentity>,
+    ) {
+        let remap = |key: &(String, String)| {
+            let identity = identities.get(key).cloned().or_else(|| {
+                identities
+                    .get(&(key.0.clone(), "*".into()))
+                    .map(|identity| match identity {
+                        LinkedModuleIdentity::External { module, .. } => {
+                            LinkedModuleIdentity::External {
+                                module: module.clone(),
+                                export: key.1.clone(),
+                            }
+                        }
+                        other => other.clone(),
+                    })
+            });
+            match identity {
+                Some(LinkedModuleIdentity::External { module, export }) => Some((module, export)),
+                Some(
+                    LinkedModuleIdentity::Global { .. }
+                    | LinkedModuleIdentity::Qualified
+                    | LinkedModuleIdentity::Unknown,
+                ) => None,
+                None => Some(key.clone()),
+            }
+        };
+
+        let global_occurrences = self
+            .module_calls
+            .iter()
+            .filter_map(|(key, occurrences)| {
+                identities.get(key).and_then(|identity| {
+                    if let LinkedModuleIdentity::Global { name } = identity {
+                        Some((name.clone(), occurrences.clone()))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
+
+        self.module_calls.remap_keys(remap);
+        self.module_member_calls.remap_keys(remap);
+        self.module_member_reads.remap_keys(remap);
+        self.module_classes.remap_keys(remap);
+        self.module_constructors.remap_keys(remap);
+
+        // A callable imported through an internal module can resolve to a
+        // global identity (for example `export const f = fetch`). It is safe
+        // to add that occurrence to the global index, but never to infer one
+        // from a qualified local or unknown export.
+        for (name, occurrences) in global_occurrences {
+            for occurrence in occurrences {
+                self.global_calls
+                    .push(name.clone(), occurrence.event, occurrence.span);
+            }
+        }
+        self.global_calls.normalize();
+    }
 }
 
 fn push_evidence(
@@ -86,6 +161,7 @@ fn push_owned_evidence(
         count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
         spans,
         event_ids,
+        related: Vec::new(),
     });
 }
 

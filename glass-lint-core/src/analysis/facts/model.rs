@@ -135,10 +135,7 @@ pub(in crate::analysis) enum FactPayload {
         returned_member: Option<(String, String)>,
     },
     /// Variable declaration.
-    Declaration {
-        target: ValueId,
-        source: ValueId,
-    },
+    Declaration { target: ValueId, source: ValueId },
     /// Assignment expression.
     Assignment {
         target: ValueId,
@@ -189,6 +186,7 @@ pub(in crate::analysis) enum FactPayload {
     Control {
         kind: ControlKind,
         region: u32,
+        value: ValueId,
     },
     /// `new Constructor()`.
     Construction {
@@ -204,9 +202,7 @@ pub(in crate::analysis) enum FactPayload {
         provenance: SymbolCallProvenance,
     },
     /// Import declaration.
-    Import {
-        module: String,
-    },
+    Import { module: String },
     /// Class declaration or expression, or `instanceof` operand.
     Class {
         name: String,

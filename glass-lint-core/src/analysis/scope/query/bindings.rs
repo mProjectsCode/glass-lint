@@ -243,4 +243,8 @@ impl ScopeGraph {
             && !self.has_dynamic_lookup_at(span)
             && self.binding_at(name, span).is_none()
     }
+
+    pub(in crate::analysis) fn unshadowed_unbound_at(&self, name: &str, span: Span) -> bool {
+        !self.has_dynamic_lookup_at(span) && self.binding_at(name, span).is_none()
+    }
 }

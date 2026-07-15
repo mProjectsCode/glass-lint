@@ -17,6 +17,7 @@ pub(crate) fn run(args: ProfileArgs) -> Result<bool> {
         provider: args.provider.into(),
         mode: args.profile.into(),
         rules: args.rules,
+        project: args.project,
     })?;
     print_report(&report, args.quiet);
     Ok(report.errors == 0)
@@ -49,6 +50,21 @@ fn print_report(report: &ProfileSummary, quiet: bool) {
         report.setup_elapsed,
         report.elapsed,
         report.total_elapsed
+    );
+    println!(
+        "Phases: discovery {:.1?}, reads {:.1?}, parse/local {:.1?}, resolution {:.1?}, linking/matching {:.1?}",
+        report.phase_timings.discovery,
+        report.phase_timings.reads,
+        report.phase_timings.parse_and_local_analysis,
+        report.phase_timings.resolution,
+        report.phase_timings.linking_and_matching,
+    );
+    println!(
+        "Operations: {} file(s), {} request(s), {} edge(s), {} evidence item(s)",
+        report.operation_counts.files,
+        report.operation_counts.requests,
+        report.operation_counts.edges,
+        report.operation_counts.evidence,
     );
 
     let mut slowest = report.file_results.iter().collect::<Vec<_>>();

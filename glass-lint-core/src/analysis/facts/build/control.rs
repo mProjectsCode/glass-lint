@@ -11,7 +11,11 @@ impl FactBuilder<'_> {
         self.emit(
             FactKind::Control,
             span,
-            FactPayload::Control { kind, region },
+            FactPayload::Control {
+                kind,
+                region,
+                value: super::ValueId::UNKNOWN,
+            },
         );
     }
 }

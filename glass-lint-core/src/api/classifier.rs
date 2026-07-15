@@ -1,49 +1,17 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::Environment;
-use crate::analysis::SemanticModel;
+use crate::analysis::ProjectSemanticModel;
 use crate::api::{
     classification::ApiClassificationResult, compiler::CompiledCatalog, rule::ApiRule,
 };
-use swc_ecma_ast::Program;
+use crate::project::ModuleId;
 
 pub(crate) fn classify_compiled_api_usage(
-    program: &Program,
+    project: &ProjectSemanticModel,
     catalog: &CompiledCatalog,
     rules: &[ApiRule],
     selected: &BTreeSet<usize>,
-    environment: &Environment,
-) -> ApiClassificationResult {
+) -> BTreeMap<ModuleId, ApiClassificationResult> {
     debug_assert_eq!(catalog.rules.len(), rules.len());
-
-    let semantic =
-        SemanticModel::analyze_compiled(program, catalog.to_matcher_catalog(selected), environment);
-
-    let mut result = ApiClassificationResult::default();
-    for rule_index in 0..rules.len() {
-        if !selected.contains(&rule_index) {
-            continue;
-        }
-        let Some(rule) = rules.get(rule_index) else {
-            continue;
-        };
-
-        let evidence = semantic.evidence_for(rule_index);
-        if evidence.is_empty() {
-            continue;
-        }
-
-        result
-            .capabilities
-            .push(crate::api::classification::ApiCapability {
-                rule_index,
-                id: rule.id().to_string(),
-                label: rule.label().to_string(),
-                category: rule.category().clone(),
-                severity: rule.severity(),
-                confidence: rule.confidence(),
-                evidence,
-            });
-    }
-    result
+    crate::analysis::classify_project(project, catalog, rules, selected)
 }

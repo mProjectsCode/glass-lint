@@ -10,7 +10,10 @@ use anyhow::{Context, Result, bail};
 use glass_lint_core::{Severity, SourceLanguage};
 use walkdir::WalkDir;
 
-use crate::types::{Case, DiagnosticExpectation, ToolExpectation};
+use crate::types::{
+    Case, DiagnosticExpectation, ProjectCase, ProjectFile, ProjectResolution,
+    ProjectResolutionResult, ToolExpectation,
+};
 
 fn language_for_path(path: &Path) -> &'static str {
     match SourceLanguage::from_filename(&path.to_string_lossy()) {
@@ -27,6 +30,13 @@ fn default_filename(path: &Path) -> String {
 }
 
 pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
+    let mut project_directories = BTreeSet::new();
+    for entry in WalkDir::new(root) {
+        let entry = entry?;
+        if entry.file_type().is_file() && entry.file_name() == "case.toml" {
+            project_directories.insert(entry.path().parent().unwrap_or(root).to_owned());
+        }
+    }
     let mut paths: Vec<_> = WalkDir::new(root)
         .into_iter()
         .collect::<Result<Vec<_>, _>>()?
@@ -34,13 +44,15 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
         .filter(|entry| {
             entry.file_type().is_file()
                 && SourceLanguage::is_supported_filename(&entry.path().to_string_lossy())
+                && !project_directories
+                    .iter()
+                    .any(|directory| entry.path().starts_with(directory))
         })
         .map(walkdir::DirEntry::into_path)
         .collect();
     paths.sort();
 
-    let mut ids = BTreeSet::new();
-    paths
+    let mut cases = paths
         .into_iter()
         .map(|path| {
             let source =
@@ -56,12 +68,20 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
                     expected_language
                 );
             }
-            if !ids.insert(case.id.clone()) {
-                bail!("duplicate case id `{}`", case.id);
-            }
             Ok(case)
         })
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+    for directory in project_directories {
+        cases.push(load_project_case(root, &directory)?);
+    }
+    cases.sort_by(|left, right| left.id.cmp(&right.id));
+    let mut ids = BTreeSet::new();
+    for case in &cases {
+        if !ids.insert(case.id.clone()) {
+            bail!("duplicate case id `{}`", case.id);
+        }
+    }
+    Ok(cases)
 }
 
 fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
@@ -81,6 +101,7 @@ fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
         language: language_for_path(path).into(),
         filename,
         source,
+        project: None,
         tools: BTreeMap::new(),
     };
 
@@ -132,6 +153,203 @@ fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
     }
 
     Ok(case)
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ProjectManifest {
+    case: Option<ProjectMetadata>,
+    project: Option<ProjectMetadata>,
+    #[serde(default)]
+    resolution: Vec<ProjectResolutionManifest>,
+    #[serde(default)]
+    tool: BTreeMap<String, ProjectToolManifest>,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct ProjectMetadata {
+    id: Option<String>,
+    description: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    entries: Vec<String>,
+    #[serde(default)]
+    filesystem: bool,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ProjectResolutionManifest {
+    importer: String,
+    kind: String,
+    request: String,
+    line: u32,
+    column: u32,
+    end_line: u32,
+    end_column: u32,
+    path: Option<String>,
+    package: Option<String>,
+    name: Option<String>,
+    reason: Option<String>,
+    #[serde(default)]
+    missing: bool,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct ProjectToolManifest {
+    config: Option<String>,
+    #[serde(default)]
+    rules: Vec<String>,
+}
+
+#[allow(clippy::too_many_lines)]
+fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
+    let manifest_path = directory.join("case.toml");
+    let manifest: ProjectManifest = toml::from_str(
+        &fs::read_to_string(&manifest_path)
+            .with_context(|| format!("read {}", manifest_path.display()))?,
+    )
+    .with_context(|| format!("parse {}", manifest_path.display()))?;
+    let metadata = manifest.case.or(manifest.project).unwrap_or_default();
+    let relative_directory = directory.strip_prefix(root).unwrap_or(directory);
+    let default_id = relative_directory.to_string_lossy().replace('\\', "/");
+
+    let mut paths: Vec<_> = WalkDir::new(directory)
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|entry| {
+            entry.file_type().is_file()
+                && entry.file_name() != "case.toml"
+                && SourceLanguage::is_supported_filename(&entry.path().to_string_lossy())
+        })
+        .map(walkdir::DirEntry::into_path)
+        .collect();
+    paths.sort();
+    let mut files = Vec::new();
+    for path in paths {
+        let relative = path
+            .strip_prefix(directory)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        files.push(ProjectFile {
+            language: language_for_path(&path).into(),
+            path: relative,
+            source: fs::read_to_string(&path)
+                .with_context(|| format!("read {}", path.display()))?,
+        });
+    }
+    if files.is_empty() {
+        bail!(
+            "project case {} contains no runtime sources",
+            directory.display()
+        );
+    }
+    let entries = if metadata.entries.is_empty() {
+        vec![files[0].path.clone()]
+    } else {
+        metadata.entries.clone()
+    };
+
+    let resolutions = manifest
+        .resolution
+        .into_iter()
+        .map(|resolution| {
+            let result = if resolution.missing {
+                ProjectResolutionResult::Missing
+            } else if let Some(path) = resolution.path {
+                ProjectResolutionResult::Internal { path }
+            } else if let Some(package) = resolution.package {
+                ProjectResolutionResult::External { package }
+            } else if let Some(name) = resolution.name {
+                ProjectResolutionResult::Builtin { name }
+            } else if let Some(reason) = resolution.reason {
+                ProjectResolutionResult::Unsupported { reason }
+            } else {
+                bail!(
+                    "resolution {} {} has no result",
+                    resolution.importer,
+                    resolution.request
+                )
+            };
+            Ok(ProjectResolution {
+                importer: resolution.importer,
+                kind: resolution.kind,
+                request: resolution.request,
+                range: glass_lint_core::SourceRange {
+                    start: glass_lint_core::Position {
+                        line: resolution.line,
+                        column: resolution.column,
+                    },
+                    end: glass_lint_core::Position {
+                        line: resolution.end_line,
+                        column: resolution.end_column,
+                    },
+                },
+                result,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    let mut tools = BTreeMap::new();
+    for (name, tool) in manifest.tool {
+        if tool.config.is_none() && tool.rules.is_empty() {
+            bail!("project tool `{name}` must specify rules or config");
+        }
+        tools.insert(
+            name,
+            ToolExpectation {
+                config: tool.config,
+                rules: tool.rules,
+                required: Vec::new(),
+                forbidden: Vec::new(),
+            },
+        );
+    }
+    // Assertions may live next to the source they describe. Merge the
+    // familiar source directives without changing their line semantics.
+    for file in &files {
+        let parsed = parse_case(directory, &directory.join(&file.path), file.source.clone())?;
+        for (name, expectation) in parsed.tools {
+            let entry = tools.entry(name).or_insert(ToolExpectation {
+                config: None,
+                rules: Vec::new(),
+                required: Vec::new(),
+                forbidden: Vec::new(),
+            });
+            if entry.config.is_none() {
+                entry.config = expectation.config;
+            }
+            if entry.rules.is_empty() {
+                entry.rules = expectation.rules;
+            }
+            entry.required.extend(expectation.required);
+            entry.forbidden.extend(expectation.forbidden);
+        }
+    }
+
+    let entry_source = entries
+        .first()
+        .and_then(|entry| files.iter().find(|file| &file.path == entry))
+        .unwrap_or(&files[0]);
+    Ok(Case {
+        id: metadata.id.unwrap_or(default_id),
+        description: metadata
+            .description
+            .unwrap_or_else(|| "multi-file project".into()),
+        tags: metadata.tags,
+        language: "project".into(),
+        filename: entry_source.path.clone(),
+        source: entry_source.source.clone(),
+        project: Some(ProjectCase {
+            root: directory.to_owned(),
+            entries,
+            files,
+            resolutions,
+            filesystem: metadata.filesystem,
+        }),
+        tools,
+    })
 }
 
 fn previous_code_line(lines: &[String], assertion_index: usize) -> Option<u32> {

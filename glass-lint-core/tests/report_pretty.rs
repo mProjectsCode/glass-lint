@@ -22,13 +22,13 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
         }],
     };
     let report_a = LintReport {
-        schema_version: 2,
+        schema_version: 3,
         tool_version: "test".into(),
         findings: vec![finding(2), finding(1)],
         parse_diagnostics: vec![],
     };
     let report_b = LintReport {
-        schema_version: 2,
+        schema_version: 3,
         tool_version: "test".into(),
         findings: vec![finding(1)],
         parse_diagnostics: vec![],
@@ -65,7 +65,7 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
 #[test]
 fn renders_empty_reports_without_extra_output() {
     let report = LintReport {
-        schema_version: 2,
+        schema_version: 3,
         tool_version: "test".into(),
         findings: vec![],
         parse_diagnostics: vec![],
@@ -88,7 +88,7 @@ fn renders_empty_reports_without_extra_output() {
 #[test]
 fn bounds_long_excerpt() {
     let report = LintReport {
-        schema_version: 2,
+        schema_version: 3,
         tool_version: "test".into(),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:long-line").unwrap(),
@@ -130,7 +130,7 @@ fn bounds_long_excerpt() {
 #[test]
 fn renders_tabs_and_wide_unicode_within_the_display_budget() {
     let report = LintReport {
-        schema_version: 2,
+        schema_version: 3,
         tool_version: "test".into(),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:unicode").unwrap(),
@@ -169,7 +169,7 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
 #[test]
 fn renders_missing_source_lines_without_panicking() {
     let report = LintReport {
-        schema_version: 2,
+        schema_version: 3,
         tool_version: "test".into(),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:missing").unwrap(),
@@ -198,7 +198,7 @@ fn renders_missing_source_lines_without_panicking() {
 #[test]
 fn renders_colored_findings_when_enabled() {
     let report = LintReport {
-        schema_version: 2,
+        schema_version: 3,
         tool_version: "test".into(),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:color").unwrap(),

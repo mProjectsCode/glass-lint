@@ -184,6 +184,7 @@ impl ObjectFlowProjector<'_, '_> {
                 count: 1,
                 spans: vec![self.fact_spans.get(&anchor).copied().unwrap_or_default()],
                 event_ids: vec![anchor.0],
+                related: Vec::new(),
             });
         }
     }

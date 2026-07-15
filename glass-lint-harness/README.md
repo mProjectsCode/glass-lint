@@ -1,9 +1,9 @@
 # glass-lint-harness
 
 `glass-lint-harness` is the reusable conformance runner and profiler for Glass
-Lint. It loads annotated JavaScript and TypeScript snippets, runs built-in or
-external tool adapters, verifies structured findings, renders reports, and
-profiles folders of supported JavaScript and TypeScript runtime files.
+Lint. It loads annotated JavaScript and TypeScript snippets or `case.toml`
+project fixtures, runs built-in or external tool adapters, verifies structured
+findings, renders reports, and profiles supported runtime sources.
 
 Most users invoke it through the `glass-lint-harness` binary in
 `glass-lint-cli`:
@@ -23,11 +23,11 @@ The crate exports:
 - deterministic file discovery and profiling summaries.
 
 External adapters receive one serialized `AdapterRequest` on standard input
-and must return one `AdapterResponse` on standard output using the current
-`ADAPTER_PROTOCOL_VERSION`. The executable starts a new adapter process for
-each case, which isolates tool-global state. Requests include the case language
-(`javascript` or `typescript`); an adapter that does not support TypeScript may
-reject those requests explicitly.
+and must return one `AdapterResponse` on standard output using protocol version
+3. Project requests contain a root, entries, language-tagged files, and
+optional explicit resolution records. Adapters that only support one source
+are skipped deterministically for project cases. The executable starts a new
+adapter process for each case, which isolates tool-global state.
 
 ## Commands
 
@@ -37,7 +37,15 @@ The CLI front end supports:
 - `report PATH --format markdown|json` — render suite results;
 - `compare PATH` — run registered adapters and write a comparison report; and
 - `profile --path PATH ...` — measure lint time across supported JavaScript and
-  TypeScript runtime files.
+  TypeScript runtime files;
+- `profile --project --path PATH ...` — measure one bounded filesystem project
+  per path and print discovery, read, parse/local, resolution, and
+  link/matching phases plus operation counts.
+
+Project fixtures use a `case.toml` beside their sources. Set
+`filesystem = true` to exercise `glass-lint-project`; otherwise list explicit
+`[[resolution]]` records to exercise the virtual core linker. Source comments
+continue to hold `@tool` and diagnostic assertions.
 
 Register external tools with a global `--adapter NAME=COMMAND` option:
 

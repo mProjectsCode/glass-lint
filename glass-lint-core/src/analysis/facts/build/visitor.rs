@@ -12,6 +12,9 @@ use super::{
     SymbolCallProvenance, SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr,
     ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr, member_prop_name,
 };
+use crate::analysis::module::{ImportedBinding, ModuleExport, ModuleRequestRole, ReExportBinding};
+use crate::project::ResolutionRequestKind;
+use swc_ecma_ast::{DefaultDecl, ExportDefaultExpr, ExportSpecifier};
 
 impl Visit for FactBuilder<'_> {
     fn visit_ident(&mut self, ident: &Ident) {
@@ -49,6 +52,7 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_var_declarator(&mut self, declarator: &VarDeclarator) {
+        self.record_pattern_locals(&declarator.name);
         let mut source = declarator
             .init
             .as_ref()
@@ -78,6 +82,20 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
+        if assignment.op == swc_ecma_ast::AssignOp::Assign
+            && let swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Ident(
+                ident,
+            )) = &assignment.left
+            && (self
+                .resolver
+                .is_unshadowed_commonjs_name(&ident.id, "exports")
+                || self
+                    .resolver
+                    .is_unshadowed_commonjs_name(&ident.id, "module"))
+        {
+            self.interface.mark_unknown_exports();
+        }
+        self.record_commonjs_export(assignment);
         let source = self.value_for_expr(&assignment.right);
         match &assignment.left {
             swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Ident(ident)) => {
@@ -200,6 +218,7 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
+        self.record_module_call_request(call);
         let Callee::Expr(callee_expr) = &call.callee else {
             let result = self.call_result(call.span());
             let args = self.args_info(&call.args);
@@ -369,6 +388,41 @@ impl Visit for FactBuilder<'_> {
 
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         let module = import.src.value.to_string_lossy().to_string();
+        if import.type_only {
+            return;
+        }
+        let bindings = import
+            .specifiers
+            .iter()
+            .filter(|specifier| !specifier.is_type_only())
+            .map(|specifier| match specifier {
+                swc_ecma_ast::ImportSpecifier::Named(named) => ImportedBinding {
+                    imported: Some(named.imported.as_ref().map_or_else(
+                        || named.local.sym.to_string(),
+                        crate::analysis::syntax::module_export_name,
+                    )),
+                    local: named.local.sym.to_string(),
+                    namespace: false,
+                },
+                swc_ecma_ast::ImportSpecifier::Default(default) => ImportedBinding {
+                    imported: Some("default".into()),
+                    local: default.local.sym.to_string(),
+                    namespace: false,
+                },
+                swc_ecma_ast::ImportSpecifier::Namespace(namespace) => ImportedBinding {
+                    imported: None,
+                    local: namespace.local.sym.to_string(),
+                    namespace: true,
+                },
+            })
+            .collect();
+        self.record_local_imports(import);
+        self.interface.add_request(
+            import.src.span,
+            ResolutionRequestKind::Import,
+            module.clone(),
+            ModuleRequestRole::Import { bindings },
+        );
         self.emit(
             FactKind::Declaration,
             import.src.span,
@@ -412,6 +466,7 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_class_decl(&mut self, class_decl: &ClassDecl) {
+        self.record_local(class_decl.ident.sym.to_string());
         let name = class_decl.ident.sym.to_string();
         let provenance = class_decl
             .class
@@ -468,6 +523,7 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_fn_decl(&mut self, function: &FnDecl) {
+        self.record_local(function.ident.sym.to_string());
         self.function_depth += 1;
         function.visit_children_with(self);
         self.function_depth -= 1;
@@ -690,10 +746,201 @@ impl Visit for FactBuilder<'_> {
 
     fn visit_return_stmt(&mut self, stmt: &swc_ecma_ast::ReturnStmt) {
         stmt.arg.visit_with(self);
-        self.emit_control(stmt.span(), ControlKind::Return, 0);
+        let value = stmt
+            .arg
+            .as_deref()
+            .map_or(crate::analysis::value::ValueId::UNKNOWN, |expr| {
+                self.resolver.resolve_expr(expr).id
+            });
+        self.emit(
+            FactKind::Control,
+            stmt.span(),
+            FactPayload::Control {
+                kind: ControlKind::Return,
+                region: 0,
+                value,
+            },
+        );
     }
 
     fn visit_export_decl(&mut self, export: &ExportDecl) {
+        self.record_export_decl(&export.decl);
+        export.decl.visit_with(self);
+    }
+
+    fn visit_named_export(&mut self, export: &swc_ecma_ast::NamedExport) {
+        if export.type_only {
+            return;
+        }
+        let Some(source) = export.src.as_ref() else {
+            for specifier in &export.specifiers {
+                if let ExportSpecifier::Named(named) = specifier
+                    && !named.is_type_only
+                {
+                    let original = crate::analysis::syntax::module_export_name(&named.orig);
+                    let exported = named.exported.as_ref().map_or_else(
+                        || original.clone(),
+                        crate::analysis::syntax::module_export_name,
+                    );
+                    if let swc_ecma_ast::ModuleExportName::Ident(ident) = &named.orig
+                        && let Some(id) = self
+                            .resolver
+                            .function_id_for_expr(&Expr::Ident(ident.clone()))
+                    {
+                        self.interface.add_function_export(exported.clone(), id);
+                    }
+                    self.interface
+                        .add_export(exported, ModuleExport::Local { name: original });
+                }
+            }
+            return;
+        };
+        let specifiers = export
+            .specifiers
+            .iter()
+            .filter(|specifier| {
+                !matches!(specifier, ExportSpecifier::Named(named) if named.is_type_only)
+            })
+            .collect::<Vec<_>>();
+        if specifiers.is_empty() {
+            return;
+        }
+        let request = self.interface.add_request(
+            source.span,
+            ResolutionRequestKind::Import,
+            source.value.to_string_lossy(),
+            ModuleRequestRole::ReExport {
+                bindings: export
+                    .specifiers
+                    .iter()
+                    .filter(|specifier| {
+                        !matches!(specifier, ExportSpecifier::Named(named) if named.is_type_only)
+                    })
+                    .map(|specifier| match specifier {
+                        ExportSpecifier::Named(named) => ReExportBinding {
+                            imported: crate::analysis::syntax::module_export_name(&named.orig),
+                            exported: named.exported.as_ref().map_or_else(
+                                || crate::analysis::syntax::module_export_name(&named.orig),
+                                crate::analysis::syntax::module_export_name,
+                            ),
+                            namespace: false,
+                        },
+                        ExportSpecifier::Namespace(namespace) => ReExportBinding {
+                            imported: "*".into(),
+                            exported: crate::analysis::syntax::module_export_name(&namespace.name),
+                            namespace: true,
+                        },
+                        ExportSpecifier::Default(default) => ReExportBinding {
+                            imported: "default".into(),
+                            exported: default.exported.sym.to_string(),
+                            namespace: false,
+                        },
+                    })
+                    .collect(),
+            },
+        );
+        for specifier in specifiers {
+            match specifier {
+                ExportSpecifier::Named(named) => {
+                    let original = crate::analysis::syntax::module_export_name(&named.orig);
+                    let exported = named.exported.as_ref().map_or_else(
+                        || original.clone(),
+                        crate::analysis::syntax::module_export_name,
+                    );
+                    self.interface.add_export(
+                        exported,
+                        ModuleExport::ReExport {
+                            request,
+                            imported: original,
+                        },
+                    );
+                }
+                ExportSpecifier::Namespace(namespace) => self.interface.add_export(
+                    crate::analysis::syntax::module_export_name(&namespace.name),
+                    ModuleExport::Namespace { request },
+                ),
+                ExportSpecifier::Default(default) => self.interface.add_export(
+                    default.exported.sym.to_string(),
+                    ModuleExport::ReExport {
+                        request,
+                        imported: "default".into(),
+                    },
+                ),
+            }
+        }
+    }
+
+    fn visit_export_all(&mut self, export: &swc_ecma_ast::ExportAll) {
+        if export.type_only {
+            return;
+        }
+        let request = self.interface.add_request(
+            export.src.span,
+            ResolutionRequestKind::Import,
+            export.src.value.to_string_lossy(),
+            ModuleRequestRole::StarExport,
+        );
+        self.interface.add_star_export(request);
+    }
+
+    fn visit_export_default_expr(&mut self, export: &ExportDefaultExpr) {
+        if let Expr::Ident(ident) = &*export.expr {
+            if let Some(id) = self
+                .resolver
+                .function_id_for_expr(&Expr::Ident(ident.clone()))
+            {
+                self.interface.add_function_export("default", id);
+            }
+            self.interface.add_export(
+                "default",
+                ModuleExport::Local {
+                    name: ident.sym.to_string(),
+                },
+            );
+        } else {
+            self.interface.add_export("default", ModuleExport::Value);
+        }
+        export.expr.visit_with(self);
+    }
+
+    fn visit_export_default_decl(&mut self, export: &swc_ecma_ast::ExportDefaultDecl) {
+        match &export.decl {
+            DefaultDecl::Fn(function) => {
+                if let Some(ident) = &function.ident {
+                    self.record_local(ident.sym.to_string());
+                    if let Some(id) = self
+                        .resolver
+                        .function_id_for_expr(&Expr::Ident(ident.clone()))
+                    {
+                        self.interface.add_function_export("default", id);
+                    }
+                    self.interface.add_export(
+                        "default",
+                        ModuleExport::Local {
+                            name: ident.sym.to_string(),
+                        },
+                    );
+                } else {
+                    self.interface.add_export("default", ModuleExport::Value);
+                }
+            }
+            DefaultDecl::Class(class) => {
+                if let Some(ident) = &class.ident {
+                    self.record_local(ident.sym.to_string());
+                    self.interface.add_export(
+                        "default",
+                        ModuleExport::Local {
+                            name: ident.sym.to_string(),
+                        },
+                    );
+                } else {
+                    self.interface.add_export("default", ModuleExport::Value);
+                }
+            }
+            DefaultDecl::TsInterfaceDecl(_) => {
+                self.interface.add_export("default", ModuleExport::Unknown);
+            }
+        }
         export.decl.visit_with(self);
     }
 }

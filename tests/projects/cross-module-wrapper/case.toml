@@ -1,0 +1,28 @@
+[case]
+id = "cross-module-wrapper/virtual"
+description = "Preserves an external API identity through a TypeScript helper"
+tags = ["project", "virtual", "typescript"]
+entries = ["src/main.js"]
+
+[tool.glass-lint]
+rules = ["obsidian:network.request"]
+
+[[resolution]]
+importer = "src/helper.ts"
+kind = "import"
+request = "obsidian"
+line = 1
+column = 1
+end_line = 1
+end_column = 2
+package = "obsidian"
+
+[[resolution]]
+importer = "src/main.js"
+kind = "import"
+request = "./helper"
+line = 1
+column = 1
+end_line = 1
+end_column = 2
+path = "src/helper.ts"

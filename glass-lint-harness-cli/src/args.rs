@@ -57,6 +57,8 @@ pub struct ProfileArgs {
     pub continue_on_error: bool,
     #[arg(long)]
     pub quiet: bool,
+    #[arg(long)]
+    pub project: bool,
 }
 
 #[derive(Clone, Copy, ValueEnum)]

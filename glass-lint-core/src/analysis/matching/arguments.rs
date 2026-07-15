@@ -7,11 +7,14 @@ use super::{
 };
 
 impl MatcherFacts {
-    pub(in crate::analysis) fn compute_argument_evidence_from_stream(
+    pub(in crate::analysis) fn compute_argument_evidence_from_stream_with_overlay(
         stream: &FactStream,
         member_argument_matchers: &[(usize, &MemberCallMatcher)],
         call_argument_matchers: &[(usize, &CallMatcher)],
         argument_evidence: &mut [Vec<ApiEvidence>],
+        identities: Option<
+            &std::collections::BTreeMap<(String, String), super::LinkedModuleIdentity>,
+        >,
     ) {
         for fact in stream.facts() {
             if let FactPayload::Call {
@@ -25,6 +28,10 @@ impl MatcherFacts {
                 ..
             } = &fact.payload
             {
+                let linked_call_provenance =
+                    call_provenance_with_overlay(call_provenance, identities);
+                let linked_member_provenance =
+                    module_member_with_overlay(module_member.as_ref(), identities);
                 // Member argument predicates use the original args.
                 if !member_argument_matchers.is_empty() {
                     Self::collect_member_argument_evidence_from_args(
@@ -34,7 +41,7 @@ impl MatcherFacts {
                         fact.span,
                         syntactic_chain.as_deref(),
                         rooted_chain.as_deref(),
-                        module_member.as_ref(),
+                        linked_member_provenance.as_ref(),
                         args,
                     );
                 }
@@ -44,9 +51,13 @@ impl MatcherFacts {
                 if !call_argument_matchers.is_empty() {
                     let (effective_args, effective_name, effective_provenance) =
                         if let Some(u) = unwrap {
-                            (&u.effective_args, Some(u.chain.as_str()), call_provenance)
+                            (
+                                &u.effective_args,
+                                Some(u.chain.as_str()),
+                                &linked_call_provenance,
+                            )
                         } else {
-                            (args, callee_name.as_deref(), call_provenance)
+                            (args, callee_name.as_deref(), &linked_call_provenance)
                         };
                     Self::collect_call_argument_evidence_from_args(
                         call_argument_matchers,
@@ -81,6 +92,7 @@ impl MatcherFacts {
                     count: 1,
                     spans: vec![span],
                     event_ids: vec![event.0],
+                    related: Vec::new(),
                 });
             }
         }
@@ -112,9 +124,69 @@ impl MatcherFacts {
                     count: 1,
                     spans: vec![span],
                     event_ids: vec![event.0],
+                    related: Vec::new(),
                 });
             }
         }
+    }
+}
+
+fn call_provenance_with_overlay(
+    provenance: &SymbolCallProvenance,
+    identities: Option<&std::collections::BTreeMap<(String, String), super::LinkedModuleIdentity>>,
+) -> SymbolCallProvenance {
+    let Some(identities) = identities else {
+        return provenance.clone();
+    };
+    let SymbolCallProvenance::ModuleExport { module, export } = provenance else {
+        return provenance.clone();
+    };
+    let exact_identity = identities.get(&(module.clone(), export.clone()));
+    let identity = exact_identity.or_else(|| identities.get(&(module.clone(), "*".into())));
+    match identity {
+        Some(super::LinkedModuleIdentity::External {
+            module: linked_module,
+            export: linked_export,
+        }) => SymbolCallProvenance::ModuleExport {
+            module: linked_module.clone(),
+            export: exact_identity.map_or_else(|| export.clone(), |_| linked_export.clone()),
+        },
+        Some(super::LinkedModuleIdentity::Global { name }) => {
+            SymbolCallProvenance::Global { name: name.clone() }
+        }
+        Some(super::LinkedModuleIdentity::Qualified | super::LinkedModuleIdentity::Unknown) => {
+            SymbolCallProvenance::Local
+        }
+        None => provenance.clone(),
+    }
+}
+
+fn module_member_with_overlay(
+    provenance: Option<&SymbolMemberProvenance>,
+    identities: Option<&std::collections::BTreeMap<(String, String), super::LinkedModuleIdentity>>,
+) -> Option<SymbolMemberProvenance> {
+    let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = provenance else {
+        return provenance.cloned();
+    };
+    let Some(identities) = identities else {
+        return provenance.cloned();
+    };
+    let identity = identities
+        .get(&(module.clone(), member.clone()))
+        .or_else(|| identities.get(&(module.clone(), "*".into())));
+    match identity {
+        Some(super::LinkedModuleIdentity::External { module, .. }) => {
+            Some(SymbolMemberProvenance::ModuleNamespace {
+                module: module.clone(),
+                member: member.clone(),
+            })
+        }
+        Some(
+            super::LinkedModuleIdentity::Global { .. }
+            | super::LinkedModuleIdentity::Qualified
+            | super::LinkedModuleIdentity::Unknown,
+        ) => None,
+        None => provenance.cloned(),
     }
 }
 

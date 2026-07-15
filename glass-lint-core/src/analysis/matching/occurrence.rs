@@ -16,7 +16,7 @@ pub(in crate::analysis) struct Occurrence {
     pub(super) span: Span,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(in crate::analysis) struct OccurrenceIndex<K: Ord>(BTreeMap<K, Vec<Occurrence>>);
 
 impl<K: Ord> OccurrenceIndex<K> {
@@ -33,6 +33,20 @@ impl<K: Ord> OccurrenceIndex<K> {
                 (occurrence.event, occurrence.span.lo, occurrence.span.hi)
             });
             occurrences.dedup();
+        }
+    }
+}
+
+impl<K: Ord + Clone> OccurrenceIndex<K> {
+    pub(super) fn remap_keys<F>(&mut self, mut remap: F)
+    where
+        F: FnMut(&K) -> Option<K>,
+    {
+        let previous = std::mem::take(&mut self.0);
+        for (key, occurrences) in previous {
+            if let Some(key) = remap(&key) {
+                self.0.entry(key).or_default().extend(occurrences);
+            }
         }
     }
 }

@@ -25,6 +25,7 @@ use super::{
     CallArgInfo, CallUnwrap, ControlKind, FactId, FactKind, FactPayload, FactStream,
     FunctionBoundary, ParameterBinding, SemanticFact, ValueProjection,
 };
+use crate::analysis::module::ModuleInterface;
 use crate::analysis::resolution::Resolver;
 use crate::analysis::scope::BoundArgument;
 use crate::analysis::syntax::{
@@ -52,6 +53,9 @@ pub(super) struct FactBuilder<'a> {
     static_method_depth: usize,
     /// Call results are retained for effective-call and value-flow projections.
     call_results: BTreeMap<(u32, u32), ValueId>,
+    /// Module requests and export slots collected during the same canonical
+    /// walk as the semantic facts.
+    interface: ModuleInterface,
 }
 impl<'a> FactBuilder<'a> {
     pub(super) fn new(resolver: &'a Resolver) -> Self {
@@ -64,6 +68,7 @@ impl<'a> FactBuilder<'a> {
             function_depth: 0,
             static_method_depth: 0,
             call_results: BTreeMap::new(),
+            interface: ModuleInterface::default(),
         }
     }
 
@@ -119,8 +124,229 @@ impl<'a> FactBuilder<'a> {
         self.stream.push(fact);
     }
 
+    #[cfg(test)]
     pub(super) fn into_stream(self) -> FactStream {
         self.stream
+    }
+
+    pub(super) fn into_parts(self) -> (FactStream, ModuleInterface) {
+        (self.stream, self.interface)
+    }
+
+    pub(super) fn record_local(&mut self, name: impl Into<String>) {
+        self.interface.add_local(name);
+    }
+
+    pub(super) fn record_pattern_locals(&mut self, pattern: &Pat) {
+        self.interface.add_pattern_locals(pattern);
+    }
+
+    fn record_local_imports(&mut self, import: &ImportDecl) {
+        for specifier in &import.specifiers {
+            if !specifier.is_type_only() {
+                self.record_local(specifier.local().sym.to_string());
+            }
+        }
+    }
+
+    fn record_export_decl(&mut self, declaration: &swc_ecma_ast::Decl) {
+        match declaration {
+            swc_ecma_ast::Decl::Class(class) => {
+                self.record_local(class.ident.sym.to_string());
+                self.interface.add_export(
+                    class.ident.sym.to_string(),
+                    crate::analysis::module::ModuleExport::Local {
+                        name: class.ident.sym.to_string(),
+                    },
+                );
+            }
+            swc_ecma_ast::Decl::Fn(function) => {
+                self.record_local(function.ident.sym.to_string());
+                if let Some(id) = self
+                    .resolver
+                    .function_id_for_expr(&Expr::Ident(function.ident.clone()))
+                {
+                    self.interface
+                        .add_function_export(function.ident.sym.to_string(), id);
+                }
+                self.interface.add_export(
+                    function.ident.sym.to_string(),
+                    crate::analysis::module::ModuleExport::Local {
+                        name: function.ident.sym.to_string(),
+                    },
+                );
+            }
+            swc_ecma_ast::Decl::Var(variable) => {
+                for declarator in &variable.decls {
+                    self.interface.add_pattern_locals(&declarator.name);
+                    let mut names = std::collections::BTreeSet::new();
+                    crate::analysis::syntax::collect_pat_bindings(&declarator.name, &mut names);
+                    for name in names {
+                        if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
+                            && let Some(id) = self
+                                .resolver
+                                .function_id_for_expr(&Expr::Ident(binding.id.clone()))
+                        {
+                            self.interface.add_function_export(name.clone(), id);
+                        }
+                        self.interface.add_export(
+                            name.clone(),
+                            crate::analysis::module::ModuleExport::Local { name },
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn record_module_call_request(&mut self, call: &CallExpr) {
+        match &call.callee {
+            Callee::Import(_) => {
+                let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
+                    call.args.first().map(|argument| &*argument.expr)
+                else {
+                    return;
+                };
+                self.interface.add_request(
+                    specifier.span,
+                    crate::project::ResolutionRequestKind::DynamicImport,
+                    specifier.value.to_string_lossy(),
+                    crate::analysis::module::ModuleRequestRole::DynamicImport,
+                );
+            }
+            Callee::Expr(callee) => {
+                let Expr::Ident(ident) = &**callee else {
+                    return;
+                };
+                if !self.resolver.is_unshadowed_commonjs_name(ident, "require") {
+                    return;
+                }
+                if call.args.len() != 1 {
+                    return;
+                }
+                let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
+                    call.args.first().map(|argument| &*argument.expr)
+                else {
+                    return;
+                };
+                self.interface.add_request(
+                    specifier.span,
+                    crate::project::ResolutionRequestKind::Require,
+                    specifier.value.to_string_lossy(),
+                    crate::analysis::module::ModuleRequestRole::Require,
+                );
+            }
+            Callee::Super(_) => {}
+        }
+    }
+
+    fn record_commonjs_export(&mut self, assignment: &swc_ecma_ast::AssignExpr) {
+        if assignment.op != swc_ecma_ast::AssignOp::Assign {
+            return;
+        }
+        let swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Member(member)) =
+            &assignment.left
+        else {
+            return;
+        };
+        let is_unshadowed = |expr: &swc_ecma_ast::Expr, name: &str| matches!(expr, Expr::Ident(ident) if self.resolver.is_unshadowed_commonjs_name(ident, name));
+        let property = crate::analysis::syntax::member_prop_name(&member.prop);
+        if is_unshadowed(&member.obj, "module") && property.as_deref() == Some("exports") {
+            if self.interface.has_exports() {
+                self.interface.mark_unknown_exports();
+                return;
+            }
+            if let swc_ecma_ast::Expr::Object(object) = &*assignment.right {
+                let Some(entries) = Self::commonjs_object_export_entries(object) else {
+                    self.interface.mark_unknown_exports();
+                    return;
+                };
+                self.interface
+                    .add_export("default", crate::analysis::module::ModuleExport::Value);
+                for (name, local) in entries {
+                    self.interface.add_export(
+                        name,
+                        local.map_or(crate::analysis::module::ModuleExport::Value, |name| {
+                            crate::analysis::module::ModuleExport::Local { name }
+                        }),
+                    );
+                }
+            } else {
+                self.interface
+                    .add_export("default", crate::analysis::module::ModuleExport::Value);
+            }
+            return;
+        }
+        if is_unshadowed(&member.obj, "exports") {
+            if let Some(property) = property {
+                let export = match &*assignment.right {
+                    Expr::Ident(ident) => crate::analysis::module::ModuleExport::Local {
+                        name: ident.sym.to_string(),
+                    },
+                    _ => crate::analysis::module::ModuleExport::Value,
+                };
+                self.interface.add_export(property, export);
+            } else {
+                self.interface.mark_unknown_exports();
+            }
+            return;
+        }
+        let Expr::Member(parent) = &*member.obj else {
+            return;
+        };
+        if !is_unshadowed(&parent.obj, "module")
+            || crate::analysis::syntax::member_prop_name(&parent.prop).as_deref() != Some("exports")
+        {
+            return;
+        }
+        let Some(property) = property else {
+            self.interface.mark_unknown_exports();
+            return;
+        };
+        let export = match &*assignment.right {
+            Expr::Ident(ident) => crate::analysis::module::ModuleExport::Local {
+                name: ident.sym.to_string(),
+            },
+            _ => crate::analysis::module::ModuleExport::Value,
+        };
+        self.interface.add_export(property, export);
+    }
+
+    fn commonjs_object_export_entries(
+        object: &swc_ecma_ast::ObjectLit,
+    ) -> Option<Vec<(String, Option<String>)>> {
+        object
+            .props
+            .iter()
+            .map(|prop| match prop {
+                swc_ecma_ast::PropOrSpread::Prop(prop) => match &**prop {
+                    swc_ecma_ast::Prop::KeyValue(value) => Some((
+                        crate::analysis::syntax::prop_name(&value.key)?,
+                        match &*value.value {
+                            Expr::Ident(ident) => Some(ident.sym.to_string()),
+                            _ => None,
+                        },
+                    )),
+                    swc_ecma_ast::Prop::Assign(assign) => {
+                        Some((assign.key.sym.to_string(), Some(assign.key.sym.to_string())))
+                    }
+                    swc_ecma_ast::Prop::Getter(getter) => {
+                        Some((crate::analysis::syntax::prop_name(&getter.key)?, None))
+                    }
+                    swc_ecma_ast::Prop::Setter(setter) => {
+                        Some((crate::analysis::syntax::prop_name(&setter.key)?, None))
+                    }
+                    swc_ecma_ast::Prop::Method(method) => {
+                        Some((crate::analysis::syntax::prop_name(&method.key)?, None))
+                    }
+                    swc_ecma_ast::Prop::Shorthand(ident) => {
+                        Some((ident.sym.to_string(), Some(ident.sym.to_string())))
+                    }
+                },
+                swc_ecma_ast::PropOrSpread::Spread(_) => None,
+            })
+            .collect()
     }
 }
 

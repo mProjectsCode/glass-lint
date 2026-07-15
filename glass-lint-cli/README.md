@@ -19,10 +19,12 @@ cargo run -p glass-lint-cli --bin glass-lint -- snippet path/to/snippet.js
 ```
 
 Use `--config PATH` or `--config-json JSON`; without either, configuration is
-discovered from the current directory. `check` recursively discovers supported
-JavaScript and TypeScript runtime files (`.js`, `.cjs`, `.mjs`, `.ts`, `.cts`,
-and `.mts`); declaration files are excluded. `snippet` requires a file. Policy
-lives in the versioned `[core]` and `[cli]` sections.
+discovered from the current directory. `check` accepts a source entry,
+directory, or explicit `tsconfig.json`; it constructs one bounded project,
+follows admitted internal imports with Oxc, and excludes dependencies,
+declarations, output directories, and outside-boundary targets. `snippet`
+remains a single-file operation. Policy lives in the versioned `[core]` and
+`[cli]` sections.
 
 The default Obsidian provider runs both generic `js:*` rules and
 Obsidian-specific `obsidian:*` rules in one analysis pass using the Obsidian

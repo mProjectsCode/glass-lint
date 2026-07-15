@@ -3,7 +3,7 @@
 import { ESLint, type Linter } from "eslint";
 import obsidianmdPlugin from "eslint-plugin-obsidianmd";
 
-const ADAPTER_PROTOCOL_VERSION = 2;
+const ADAPTER_PROTOCOL_VERSION = 3;
 const TOOL_NAME = "eslint-obsidianmd";
 const FALLBACK_PLUGIN_VERSION = "0.4.1";
 
@@ -16,6 +16,18 @@ interface AdapterRequest {
     source: string;
     rules: string[];
     config?: string;
+    project?: {
+        root: string;
+        entries: string[];
+        files: Array<{ path: string; language: string; source: string }>;
+        resolutions?: Array<{
+            importer: string;
+            kind: string;
+            request: string;
+            range: AdapterFinding["range"];
+            result: Record<string, unknown>;
+        }>;
+    };
     context?: {
         globals?: string[];
     };

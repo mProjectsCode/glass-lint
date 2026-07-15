@@ -7,30 +7,58 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{Linter, SourceLanguage};
+use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
 use std::{fs, path::PathBuf};
 use walkdir::WalkDir;
 
 pub fn run(config: &Config, command: Command) -> Result<bool> {
     let linter = config::selected_linter(config)?;
-    let (path, require_file) = match command {
-        Command::Check { path } => (path, false),
-        Command::Snippet { path } => (path, true),
+    match command {
+        Command::Check { path } => lint_project(config, &linter, &path),
+        Command::Snippet { path } => {
+            if !path.is_file() {
+                bail!("snippet path is not a file: {}", path.display())
+            }
+            let paths = discover_paths(&path)?;
+            if paths.is_empty() {
+                bail!(
+                    "no JavaScript or TypeScript files found at {}",
+                    path.display()
+                )
+            }
+            lint_files(config, &linter, paths)
+        }
         Command::Rules => unreachable!("rules are handled before lint execution"),
+    }
+}
+
+fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Result<bool> {
+    let selection = if path.is_dir() {
+        ProjectSelection::directory(path.to_path_buf())
+    } else if path.file_name().is_some_and(|name| name == "tsconfig.json") {
+        ProjectSelection::tsconfig(path.to_path_buf())
+    } else {
+        ProjectSelection::entry(path.to_path_buf())
     };
-
-    if require_file && !path.is_file() {
-        bail!("snippet path is not a file: {}", path.display())
-    }
-
-    let paths = discover_paths(&path)?;
-    if paths.is_empty() {
-        bail!(
-            "no JavaScript or TypeScript files found at {}",
-            path.display()
-        )
-    }
-
-    lint_files(config, &linter, paths)
+    let options = ProjectLoadOptions {
+        max_source_bytes: config.cli.max_bytes,
+        ..ProjectLoadOptions::default()
+    };
+    let loader = ProjectLoader::new(options).map_err(|error| anyhow::anyhow!(error))?;
+    let report = loader
+        .load_and_lint(linter, selection)
+        .with_context(|| format!("analyze project at {}", path.display()))?;
+    let failed = !report.diagnostics.is_empty()
+        || report.files.iter().any(|file| {
+            !file.parse_diagnostics.is_empty()
+                || file
+                    .findings
+                    .iter()
+                    .any(|finding| config.cli.fail_on.fails(finding.severity))
+        });
+    crate::output::write_project_report(config, &report)?;
+    tracing::info!(target: "glass_lint::cli", files = report.files.len(), "project command completed");
+    Ok(failed)
 }
 
 fn discover_paths(path: &PathBuf) -> Result<Vec<PathBuf>> {

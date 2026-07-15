@@ -24,8 +24,9 @@ make build
 ## Development workflow
 
 1. Identify the owning crate before editing. Generic analysis belongs in
-   `glass-lint-core`; JavaScript platform and Obsidian policy belong in their
-   provider crates.
+   `glass-lint-core`; filesystem discovery and Oxc resolution belong in
+   `glass-lint-project`; JavaScript platform and Obsidian policy belong in
+   their provider crates.
 2. Add or update focused tests with the implementation. Matching changes need
    positive cases and adversarial negatives.
 3. Run the narrowest relevant test while iterating.
@@ -53,6 +54,7 @@ end-to-end harness cases, and both providers' rule fixtures.
 | `make clippy` | Run Clippy for all targets with warnings denied |
 | `make test` | Run all Rust unit and integration tests |
 | `make test-e2e` | Verify `tests/e2e` through the harness |
+| `make test-projects` | Verify virtual and filesystem project fixtures |
 | `make test-rules` | Verify colocated JavaScript and Obsidian rule fixtures |
 | `make profile` | Build the profiling harness and record with Samply |
 | `make compare` | Compare Glass Lint with the external ESLint adapter |
@@ -131,6 +133,12 @@ make profile \
 Performance changes should compare the same build profile, sample, seed,
 worker count, and repeat policy. Prefer deterministic operation-count tests to
 wall-clock assertions in the normal suite.
+
+For project profiling, add `--project`. The summary reports discovery, reads,
+parse/local analysis, resolution, linking/matching, and total time, together
+with deterministic counts for files, requests, edges, and evidence. Use a
+representative mixed-language project and keep resolver/network work out of
+the timed corpus setup when comparing runs.
 
 ## External comparison adapter
 

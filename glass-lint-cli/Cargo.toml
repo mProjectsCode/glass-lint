@@ -9,6 +9,7 @@ anyhow.workspace = true
 clap.workspace = true
 console.workspace = true
 glass-lint-core = { path = "../glass-lint-core", features = ["telemetry"] }
+glass-lint-project = { path = "../glass-lint-project" }
 glass-lint-obsidian = { path = "../glass-lint-obsidian" }
 glass-lint-js = { path = "../glass-lint-js" }
 serde.workspace = true

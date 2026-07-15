@@ -40,6 +40,14 @@ impl Resolver {
         Some(module.value.to_string_lossy().to_string())
     }
 
+    pub(in crate::analysis) fn is_unshadowed_commonjs_name(
+        &self,
+        ident: &swc_ecma_ast::Ident,
+        name: &str,
+    ) -> bool {
+        ident.sym == name && self.scopes.unshadowed_unbound_at(name, ident.span)
+    }
+
     pub(in crate::analysis) fn resolve_call_expression(
         &self,
         call: &swc_ecma_ast::CallExpr,

@@ -24,9 +24,9 @@ opt-in `heuristic` profiles.
   chains, static arguments, and bounded value flow
 
 TypeScript is parsed and normalized with fixed SWC emit semantics; Glass Lint
-does not type-check, read `tsconfig.json`, resolve paths, or support TSX or
-declaration files in this increment. A source file is limited to 8 MiB by the
-core parser.
+does not type-check or support TSX or declaration files. Project `check`
+invocations can use an explicit `tsconfig.json` for membership and resolver
+path aliases. A source file is limited to 8 MiB by the core parser.
 
 ## A small example
 
@@ -77,8 +77,11 @@ cargo run -p glass-lint-cli --bin glass-lint -- rules
 cargo run -p glass-lint-cli --bin glass-lint -- check path/to/main.js
 ```
 
-`check` accepts either one source file or a directory, which is searched
-recursively for supported JavaScript and TypeScript runtime extensions. Results default to bounded human-readable output;
+`check` accepts one source file, a directory, or an explicit `tsconfig.json`.
+The filesystem project loader follows admitted internal imports with bounded
+discovery and Node-compatible Oxc resolution; it excludes dependencies,
+declarations, output directories, and sources outside the project boundary.
+Results default to bounded human-readable output;
 rules are grouped across the input and their evidence is sorted by file and
 source location while retaining copyable `path:line:column` values. JSON output
 is selected through the versioned configuration schema.
@@ -136,14 +139,16 @@ let report = linter.lint(source, "main.js");
 ```
 
 Reports contain deterministic findings, one-based source locations, bounded
-evidence, and structured parse diagnostics. Rule IDs use `provider:name`, for
-example `js:network.request` and `obsidian:network.request`.
+file-qualified evidence, project operation counts, and structured parse or
+semantic diagnostics. Rule IDs use `provider:name`, for example
+`js:network.request` and `obsidian:network.request`.
 
 ## Repository guide
 
 | Path | Purpose |
 |---|---|
 | [`glass-lint-core/`](glass-lint-core/) | Provider-neutral parser, semantic analysis, matcher API, and report model |
+| [`glass-lint-project/`](glass-lint-project/) | Bounded filesystem discovery and Oxc module resolution |
 | [`glass-lint-js/`](glass-lint-js/) | JavaScript, browser, Node.js, and Electron rules |
 | [`glass-lint-obsidian/`](glass-lint-obsidian/) | Obsidian rules, profiles, and disclosure mappings |
 | [`glass-lint-harness/`](glass-lint-harness/) | Reusable conformance-case runner and profiling library |

@@ -10,6 +10,7 @@ or tool boundaries.
 |---|---|---|
 | Unit tests | Rust modules under `src/` | Local invariants, validation, normalization, and small algorithms |
 | Core integration tests | `glass-lint-core/tests/` | Public matcher behavior, scope precision, semantic flow, and compact-source behavior |
+| Project adapter tests | `glass-lint-project/src/` | Bounded discovery, source admission, boundary checks, and resolver classification |
 | Rule fixtures | Beside provider rules | One rule's intended positives and adversarial negatives |
 | End-to-end cases | `tests/e2e/` | Realistic snippets that exercise several rules and providers together |
 | External comparisons | Harness adapters and `reports/` | Compare structured findings across tools |
@@ -20,10 +21,24 @@ command first:
 
 ```sh
 cargo test -p glass-lint-core --test scope_precision
+cargo test -p glass-lint-project
 cargo test -p glass-lint-obsidian
 cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   verify glass-lint-obsidian/src/rules/network/request
 ```
+
+### Project fixtures
+
+Multi-file cases live below `tests/projects/<name>/` and contain a
+`case.toml`. Their sources may mix `.js`, `.cjs`, `.mjs`, `.ts`, `.cts`, and
+`.mts`. A virtual case lists explicit `[[resolution]]` records; a filesystem
+case sets `filesystem = true` and exercises bounded discovery and Oxc
+resolution. Assertions remain in the source file they describe, while the
+project adapter runs all files through one `ProjectSession`.
+
+External single-file adapters are skipped, with a stable reason, when a
+project case is encountered. This keeps comparison reports deterministic while
+allowing adapters to adopt protocol version 3 independently.
 
 ## What matching tests must cover
 
@@ -44,6 +59,13 @@ for every relevant boundary:
 Tests should demonstrate the intended precision boundary, not merely increase
 line coverage. Unknown or unsupported semantics should fail closed. Avoid
 brittle wall-clock assertions and unordered snapshots.
+
+Project flow tests should exercise a virtual project with explicit resolution
+records. Cover a source passed through an exported helper, a helper chain,
+returned parameter/object identities, reassignment or unsupported control
+flow, and deterministic budget exhaustion. Assert the sink file and exact
+source location; do not accept a finding merely because another file reports
+the same rule.
 
 ## Writing a rule fixture
 

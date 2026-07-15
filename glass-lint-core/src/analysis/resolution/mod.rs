@@ -164,4 +164,15 @@ impl Resolver {
             resolving: RefCell::new(BTreeSet::new()),
         }
     }
+
+    /// Returns the callable/value provenance visible for an exported local
+    /// binding at the module boundary. The scope graph applies the same
+    /// lexical and reassignment rules used at ordinary uses.
+    pub(in crate::analysis) fn exported_provenance(
+        &self,
+        name: &str,
+        span: swc_common::Span,
+    ) -> SymbolCallProvenance {
+        self.scopes.call_provenance(name, span)
+    }
 }

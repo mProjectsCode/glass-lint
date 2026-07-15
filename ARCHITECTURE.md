@@ -30,6 +30,12 @@ declarative matchers, and front ends select rules and serialize reports.
                     +----------------------+
 ```
 
+`glass-lint-project` is the filesystem adapter between the CLI and core. It
+owns bounded discovery, source reads, project boundaries, tsconfig membership,
+and Oxc resolution. Core receives only owned sources and explicit typed
+resolution results, so it remains usable with virtual projects and has no
+filesystem or resolver dependency.
+
 ### `glass-lint-core`
 
 Core is provider-neutral. It owns:
@@ -81,6 +87,11 @@ external adapters, checks diagnostic expectations, produces reports, and
 profiles folders. It depends on providers to offer the built-in Glass Lint
 adapter but does not implement lint semantics.
 
+Project fixtures are either virtual inputs with explicit resolution records or
+filesystem cases delegated to `glass-lint-project`. Project reports retain
+sorted file-qualified primary locations and bounded evidence; project
+diagnostics remain separate from rule severity and affect CLI status directly.
+
 `glass-lint-cli` is deliberately thin. It owns argument parsing, configuration,
 filesystem discovery, human/JSON output, process exit behavior, and the
 `glass-lint` executable. `glass-lint-harness-cli` owns the harness executable;
@@ -104,6 +115,15 @@ source
 The selected rule set must not change semantic fact construction or add AST
 traversals. Shared analysis is built once per file, then queried by every
 enabled rule.
+
+Project flow uses a matcher-independent `FunctionEffect` extracted from that
+same canonical fact tape. Effects retain parameter/path copies, observable
+property and call uses, returns, local value roots, and conservative
+invalidation. After module linking, qualified function calls compose those
+effects with a bounded monotone worklist. The compiled object-flow matcher
+then applies source, requirement, and sink predicates to the composed states;
+it does not participate in effect construction. Qualified-flow budgets fail
+closed and add `flow_link_budget_exhausted` to project diagnostics.
 
 TypeScript uses SWC's fixed default TypeScript transform after resolution. It
 strips type-only syntax and lowers runtime TypeScript constructs in memory,

@@ -7,6 +7,7 @@ mod diagnostic;
 mod environment;
 mod lint;
 mod parse;
+pub mod project;
 pub mod report;
 mod rule_id;
 #[cfg(feature = "telemetry")]
@@ -20,10 +21,16 @@ pub use diagnostic::{
 pub use environment::{Environment, EnvironmentError};
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
 pub use parse::{ParseDiagnostic, SourceLanguage};
+pub use project::{
+    ModuleId, ProjectDiagnostic, ProjectEvidence, ProjectFileReport, ProjectFinding, ProjectInput,
+    ProjectInputError, ProjectOperationCounts, ProjectReport, ProjectSession, ResolutionRequest,
+    ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, ResolvedModule, SourceFile,
+    SourceLocation,
+};
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
 pub use rule_id::RuleId;
 
-pub const REPORT_VERSION: u32 = 2;
+pub const REPORT_VERSION: u32 = 3;
 pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 
 /// Declarative rule-building API for provider crates and custom catalogs.

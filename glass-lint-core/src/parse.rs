@@ -19,7 +19,9 @@ pub struct ParseDiagnostic {
 }
 
 /// Source languages accepted by the core parser.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 pub enum SourceLanguage {
     JavaScript,
     TypeScript,

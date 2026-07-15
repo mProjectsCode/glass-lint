@@ -14,6 +14,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{Linter, RuleId, SourceLanguage};
+use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
 use glob::{MatchOptions, Pattern};
 use walkdir::WalkDir;
 
@@ -44,6 +45,7 @@ pub struct ProfileConfig {
     pub provider: ProfileProvider,
     pub mode: ProfileMode,
     pub rules: Vec<String>,
+    pub project: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -70,6 +72,30 @@ pub struct ProfileSummary {
     pub elapsed: Duration,
     pub total_elapsed: Duration,
     pub file_results: Vec<ProfileFileSummary>,
+    pub phase_timings: ProfilePhaseTimings,
+    pub operation_counts: ProfileOperationCounts,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ProfilePhaseTimings {
+    pub discovery: Duration,
+    pub reads: Duration,
+    pub parse_and_local_analysis: Duration,
+    pub resolution: Duration,
+    pub linking_and_matching: Duration,
+    pub matching: Duration,
+    pub total: Duration,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ProfileOperationCounts {
+    pub files: usize,
+    pub requests: usize,
+    pub edges: usize,
+    pub exports: usize,
+    pub scc_rounds: usize,
+    pub effect_projections: usize,
+    pub evidence: usize,
 }
 
 struct ProfileLinter(Arc<Linter>);
@@ -82,6 +108,9 @@ struct PreparedFile {
 
 pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
     validate_config(config)?;
+    if config.project {
+        return profile_projects(config);
+    }
     let total_start = Instant::now();
     let mut paths = discover_profile_files(&config.paths, &config.include, &config.exclude)?;
     if let Some(sample) = config.sample {
@@ -154,6 +183,117 @@ pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
         elapsed: lint_elapsed,
         total_elapsed: total_start.elapsed(),
         file_results,
+        phase_timings: ProfilePhaseTimings {
+            discovery: setup_elapsed,
+            matching: lint_elapsed,
+            total: total_start.elapsed(),
+            ..ProfilePhaseTimings::default()
+        },
+        operation_counts: ProfileOperationCounts {
+            files: paths.len(),
+            evidence: findings,
+            ..ProfileOperationCounts::default()
+        },
+    })
+}
+
+fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
+    let total_start = Instant::now();
+    let linters = build_linters(config.provider, config.mode, &config.rules)?;
+    let loader = ProjectLoader::new(ProjectLoadOptions::default())?;
+    let mut file_results = Vec::new();
+    let mut phases = ProfilePhaseTimings::default();
+    let mut counts = ProfileOperationCounts::default();
+    let mut findings = 0;
+    let mut diagnostics = 0;
+    let mut errors = 0;
+    let mut bytes = 0;
+    let mut runs = 0;
+
+    for path in &config.paths {
+        let selection = if path.is_dir() {
+            ProjectSelection::directory(path.clone())
+        } else {
+            ProjectSelection::entry(path.clone())
+        };
+        let started = Instant::now();
+        let mut project_findings = 0;
+        let mut project_diagnostics = 0;
+        let mut project_files = 0;
+        let mut project_bytes = 0;
+        let mut project_error = None;
+        for iteration in 0..config.warm_up + config.repeat {
+            for ProfileLinter(linter) in &linters {
+                match loader.load_and_lint_with_metrics(linter, selection.clone()) {
+                    Ok((report, metrics)) => {
+                        if iteration >= config.warm_up {
+                            project_findings += report
+                                .files
+                                .iter()
+                                .map(|file| file.findings.len())
+                                .sum::<usize>();
+                            project_diagnostics += report.diagnostics.len()
+                                + report
+                                    .files
+                                    .iter()
+                                    .map(|file| file.parse_diagnostics.len())
+                                    .sum::<usize>();
+                            project_files = project_files.max(metrics.files);
+                            project_bytes = project_bytes.max(metrics.bytes);
+                            phases.discovery += metrics.discovery;
+                            phases.reads += metrics.reads;
+                            phases.parse_and_local_analysis += metrics.parse_and_local_analysis;
+                            phases.resolution += metrics.resolution;
+                            phases.linking_and_matching += metrics.linking_and_matching;
+                            phases.matching += metrics.linking_and_matching;
+                            counts.requests += metrics.requests;
+                            counts.edges += metrics.edges;
+                            counts.exports += report.operations.exports;
+                            counts.scc_rounds += report.operations.scc_rounds;
+                            counts.effect_projections += report.operations.effect_projections;
+                            counts.evidence += report.operations.evidence;
+                            runs += 1;
+                        }
+                    }
+                    Err(error) => {
+                        project_error = Some(format!("{error:#}"));
+                        if !config.continue_on_error {
+                            return Err(error.into());
+                        }
+                    }
+                }
+            }
+        }
+        if project_error.is_some() {
+            errors += 1;
+        }
+        findings += project_findings;
+        diagnostics += project_diagnostics;
+        bytes += project_bytes;
+        file_results.push(ProfileFileSummary {
+            path: path.clone(),
+            bytes,
+            findings: project_findings,
+            diagnostics: project_diagnostics,
+            elapsed: started.elapsed(),
+            error: project_error,
+        });
+        counts.files += project_files;
+    }
+    phases.total = total_start.elapsed();
+    Ok(ProfileSummary {
+        files: counts.files,
+        bytes,
+        findings,
+        diagnostics,
+        errors,
+        runs,
+        setup_elapsed: phases.discovery + phases.reads,
+        elapsed: phases.parse_and_local_analysis + phases.resolution + phases.linking_and_matching,
+        total_elapsed: phases.total,
+        file_results,
+        phase_timings: phases,
+        operation_counts: counts,
     })
 }
 
@@ -445,6 +585,7 @@ mod tests {
             provider: ProfileProvider::Js,
             mode: ProfileMode::Recommended,
             rules: vec![],
+            project: false,
         }
     }
 

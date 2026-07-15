@@ -254,7 +254,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     }
                 }
             },
-            FactPayload::Control { kind, region } => {
+            FactPayload::Control { kind, region, .. } => {
                 self.transfer_control(*kind, *region, fact.span);
             }
             FactPayload::Declaration { target, source } => {

@@ -1,4 +1,4 @@
-.PHONY: all build check clippy fmt fmt-check test test-e2e test-rules profile ci clean
+.PHONY: all build check clippy fmt fmt-check test test-e2e test-projects test-rules profile ci clean
 
 CARGO ?= cargo
 HARNESS ?= $(CARGO) run -p glass-lint-harness-cli --bin glass-lint-harness --
@@ -32,6 +32,9 @@ test:
 test-e2e:
 	$(HARNESS) verify $(HARNESS_SUITE)
 
+test-projects:
+	$(HARNESS) verify tests/projects
+
 test-rules:
 	$(HARNESS) verify glass-lint-js/src/rules
 	$(HARNESS) verify glass-lint-obsidian/src/rules
@@ -43,7 +46,7 @@ profile:
 compare:
 	$(HARNESS) --adapter eslint-obsidianmd=adapters/eslint-obsidianmd/adapter.ts compare $(HARNESS_SUITE)
 
-ci: fmt-check check clippy test test-e2e test-rules
+ci: fmt-check check clippy test test-e2e test-projects test-rules
 
 clean:
 	$(CARGO) clean

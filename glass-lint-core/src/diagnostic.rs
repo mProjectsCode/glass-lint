@@ -27,14 +27,14 @@ impl std::fmt::Display for Severity {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 /// One-based Unicode display position in a source file.
 pub struct Position {
     pub line: u32,
     pub column: u32,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 /// Inclusive-start, exclusive-end source range used by findings.
 pub struct SourceRange {
     pub start: Position,

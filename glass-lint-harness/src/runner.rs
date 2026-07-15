@@ -41,18 +41,37 @@ pub fn run_suite(
                         skip_reason: Some("tool not configured for this case".into()),
                         passed: true,
                         findings: vec![],
+                        finding_locations: vec![],
                         errors: vec![],
                     },
                 );
                 continue;
             };
-            let (findings, errors) = match adapter.run(case, expectation) {
-                Ok(findings) => {
-                    let errors = compare(&findings, expectation);
-                    (findings, errors)
-                }
-                Err(error) => (vec![], vec![error.to_string()]),
-            };
+            if case.project.is_some() && !adapter.supports_projects() {
+                let reason = "adapter does not support project-shaped requests".to_string();
+                timings.insert(adapter.name().into(), tool_start.elapsed());
+                tools.insert(
+                    adapter.name().into(),
+                    ToolResult {
+                        version,
+                        skipped: true,
+                        skip_reason: Some(reason),
+                        passed: true,
+                        findings: vec![],
+                        finding_locations: vec![],
+                        errors: vec![],
+                    },
+                );
+                continue;
+            }
+            let (findings, finding_locations, errors) =
+                match adapter.run_with_locations(case, expectation) {
+                    Ok(output) => {
+                        let errors = compare(&output.findings, expectation);
+                        (output.findings, output.finding_locations, errors)
+                    }
+                    Err(error) => (vec![], vec![], vec![error.to_string()]),
+                };
             timings.insert(adapter.name().into(), tool_start.elapsed());
             tools.insert(
                 adapter.name().into(),
@@ -62,6 +81,7 @@ pub fn run_suite(
                     skip_reason: None,
                     passed: errors.is_empty(),
                     findings,
+                    finding_locations,
                     errors,
                 },
             );
