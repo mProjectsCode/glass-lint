@@ -1,9 +1,10 @@
+use swc_common::Spanned;
+use swc_ecma_ast::ClassMethod;
+
 use super::{
     ArrowExpr, BinExpr, BinaryOp, ClassDecl, ClassExpr, FactBuilder, FactKind, FactPayload, FnDecl,
     Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
 };
-use swc_common::Spanned;
-use swc_ecma_ast::ClassMethod;
 
 impl FactBuilder<'_> {
     pub(super) fn current_class(&self) -> Option<(String, String)> {

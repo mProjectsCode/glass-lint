@@ -1,7 +1,8 @@
 //! Interned abstract values and the bounded per-file arena.
 
-use super::{BindingKey, ValueId};
 use std::collections::HashMap;
+
+use super::{BindingKey, ValueId};
 
 const MAX_VALUES: usize = 65_536;
 const MAX_OBJECTS: u32 = 65_536;
@@ -42,6 +43,7 @@ impl CallableValue {
             bound_arguments,
         }
     }
+
     pub(in crate::analysis) fn target(&self) -> ValueId {
         self.target
     }
@@ -96,6 +98,7 @@ impl ValueTable {
         let target = self.intern(value);
         binding.map_or(target, |key| self.intern(Value::Binding { key, target }))
     }
+
     pub(in crate::analysis) fn allocate_object_id(&mut self) -> Option<ObjectId> {
         if self.next_object >= MAX_OBJECTS {
             return None;
@@ -104,6 +107,7 @@ impl ValueTable {
         self.next_object += 1;
         Some(object)
     }
+
     pub(in crate::analysis) fn get(&self, id: ValueId) -> Option<&Value> {
         self.values.get(usize::try_from(id.0).ok()?)
     }

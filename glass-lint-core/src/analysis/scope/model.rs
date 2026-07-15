@@ -1,10 +1,13 @@
 //! Structural scope graph types and collected alias facts.
 
-use super::super::syntax::constant::ConstValue;
-use super::super::syntax::{SymbolCallProvenance, SymbolMemberProvenance};
-use super::super::value::{BindingId, BindingKey, BindingVersion, FunctionId, SymbolPath};
 use std::collections::BTreeMap;
+
 use swc_common::{BytePos, Span};
+
+use super::super::{
+    syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
+    value::{BindingId, BindingKey, BindingVersion, FunctionId, SymbolPath},
+};
 
 #[derive(Debug, Default, Clone)]
 pub(in crate::analysis) struct ScopeGraph {
@@ -78,9 +81,11 @@ impl ScopeGraph {
     pub(super) fn is_global(&self, name: &str) -> bool {
         self.environment.is_global(name)
     }
+
     pub(super) fn is_global_member(&self, root: &str, member: &str) -> bool {
         self.environment.is_global_member(root, member)
     }
+
     pub(super) fn assignment_at(
         &self,
         scope: usize,
@@ -97,9 +102,11 @@ impl ScopeGraph {
                     .and_then(|index| assignments.get(index))
             })
     }
+
     pub(super) fn binding_id_at(&self, scope: usize, name: &str) -> Option<BindingId> {
         self.binding_ids.get(&(scope, name.to_string())).copied()
     }
+
     pub(super) fn parameter_alias_for(
         &self,
         scope: usize,
@@ -109,15 +116,19 @@ impl ScopeGraph {
             .get(&scope)
             .and_then(|function| self.parameter_aliases.get(&(*function, name.to_string())))
     }
+
     pub(super) fn scope_parent(&self, scope: usize) -> Option<usize> {
         self.scopes.get(scope)?.parent
     }
+
     pub(super) fn scope_kind(&self, scope: usize) -> Option<ScopeKind> {
         self.scopes.get(scope).map(|scope| scope.kind)
     }
+
     pub(super) fn scope_span(&self, scope: usize) -> Option<Span> {
         self.scopes.get(scope).map(|scope| scope.span)
     }
+
     pub(super) fn scope_binding(&self, scope: usize, name: &str) -> Option<&BindingProvenance> {
         self.scopes.get(scope)?.bindings.get(name)
     }
@@ -143,21 +154,25 @@ impl ScopeGraph {
     pub(super) fn function_for_scope(&self, scope: usize) -> Option<FunctionId> {
         self.function_ids.get(&scope).copied()
     }
+
     pub(super) fn function_spans(&self) -> impl Iterator<Item = (FunctionId, Span)> + '_ {
         self.function_ids.iter().filter_map(|(scope, function)| {
             self.scopes.get(*scope).map(|scope| (*function, scope.span))
         })
     }
+
     pub(super) fn function_binding(&self, scope: usize, name: &str) -> Option<FunctionId> {
         self.function_bindings
             .get(&(scope, name.to_string()))
             .copied()
     }
+
     pub(super) fn function_alias(&self, scope: usize, name: &str) -> Option<FunctionId> {
         self.function_aliases
             .get(&(scope, name.to_string()))
             .copied()
     }
+
     pub(super) fn reassigned_between(
         &self,
         scope: usize,
@@ -174,6 +189,7 @@ impl ScopeGraph {
                     .any(|assignment| assignment.span.lo > start && assignment.span.lo <= end)
             })
     }
+
     pub(super) fn binding_version(&self, scope: usize, name: &str, span: Span) -> BindingVersion {
         self.assignments
             .get(&scope)
@@ -186,24 +202,29 @@ impl ScopeGraph {
             })
             .map_or(BindingVersion(0), |assignment| assignment.version)
     }
+
     pub(super) fn property_aliases(
         &self,
         key: &(BindingKey, Vec<String>),
     ) -> Option<&[PropertyAliasFact]> {
         self.property_assignments.get(key).map(Vec::as_slice)
     }
+
     pub(super) fn rooted_mutations(&self, root: &str) -> Option<&[RootedPropertyMutationFact]> {
         self.rooted_property_mutations.get(root).map(Vec::as_slice)
     }
+
     pub(super) fn is_mutable_static_object(&self, scope: usize, name: &str) -> bool {
         self.mutable_static_objects
             .contains(&(scope, name.to_string()))
     }
+
     pub(super) fn has_eval_after(&self, scope: usize, span: Span) -> bool {
         self.dynamic_evals.iter().any(|(eval_scope, eval_span)| {
             span.lo > eval_span.hi && self.scope_is_within(scope, *eval_scope)
         })
     }
+
     pub(super) fn scope_at(&self, span: Span) -> usize {
         let position = self
             .scopes_by_start

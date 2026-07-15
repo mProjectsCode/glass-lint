@@ -1,7 +1,11 @@
-use crate::{LintReport, SourceRange};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Display},
+};
+
 use console::{Style, measure_text_width};
-use std::collections::BTreeMap;
-use std::fmt::{self, Display};
+
+use crate::{LintReport, SourceRange};
 
 #[derive(Clone, Copy, Debug)]
 pub struct PrettyOptions {

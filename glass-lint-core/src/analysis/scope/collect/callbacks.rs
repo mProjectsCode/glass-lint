@@ -5,10 +5,13 @@ use std::collections::BTreeMap;
 use swc_common::Span;
 use swc_ecma_ast::{CallExpr, Callee, Expr, ObjectPatProp, Pat};
 
-use super::super::super::syntax::member_prop_name;
-use super::super::super::syntax::prop_name;
-use super::super::BindingProvenance;
-use super::AliasCollector;
+use super::{
+    super::{
+        super::syntax::{member_prop_name, prop_name},
+        BindingProvenance,
+    },
+    AliasCollector,
+};
 
 impl AliasCollector {
     /// Resolve the proven parameter aliases shared by all compatible calls to

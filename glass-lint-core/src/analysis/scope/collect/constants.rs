@@ -2,8 +2,7 @@
 
 use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
-use super::super::BindingProvenance;
-use super::AliasCollector;
+use super::{super::BindingProvenance, AliasCollector};
 use crate::analysis::syntax::constant::{self, ConstValue, EvalState, Lookup};
 
 impl Lookup for AliasCollector {

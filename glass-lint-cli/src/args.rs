@@ -1,7 +1,8 @@
 //! Clap-facing types for the small, stable command surface.
 
-use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
 
 /// Command-line inputs that identify the invocation.
 #[derive(Parser)]

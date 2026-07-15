@@ -1,8 +1,9 @@
 //! Clap-facing command and option definitions.
 
+use std::path::PathBuf;
+
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
 use glass_lint_harness::{ProfileMode, ProfileProvider};
-use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(version, about = "Run snippet conformance cases")]

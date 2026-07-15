@@ -1,6 +1,7 @@
+use std::{collections::BTreeMap, fs, path::Path, time::Duration};
+
 use anyhow::{Context, Result};
 use glass_lint_harness::{CaseTimings, SuiteReport, comparison};
-use std::{collections::BTreeMap, fs, path::Path, time::Duration};
 use tracing_subscriber::{
     Layer, layer::SubscriberExt, registry::LookupSpan, util::SubscriberInitExt,
 };

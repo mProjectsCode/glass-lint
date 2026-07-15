@@ -7,8 +7,7 @@
 use swc_common::Span;
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
-use super::super::super::syntax::prop_name;
-use super::{AliasCollector, BindingProvenance};
+use super::{super::super::syntax::prop_name, AliasCollector, BindingProvenance};
 
 impl AliasCollector {
     /// Record aliases introduced by a destructuring declaration.

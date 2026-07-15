@@ -1,8 +1,11 @@
 //! Rule-independent semantic fact identities and payloads.
 
-use super::super::syntax::{SymbolCallProvenance, SymbolMemberProvenance};
-use super::super::value::{FunctionId, PathId, ValueId};
 use swc_common::Span;
+
+use super::super::{
+    syntax::{SymbolCallProvenance, SymbolMemberProvenance},
+    value::{FunctionId, PathId, ValueId},
+};
 
 // ── Fact stream types ───────────────────────────────────────────────────
 
@@ -103,9 +106,11 @@ pub(in crate::analysis) struct ParameterBinding {
 /// Information about a `.call()`/`.apply()` unwrapping at a call site.
 #[derive(Debug, Clone)]
 pub(in crate::analysis) struct CallUnwrap {
-    /// The chain spelling of the target being called (e.g. `"fetch"` or `"mod.fn"`).
+    /// The chain spelling of the target being called (e.g. `"fetch"` or
+    /// `"mod.fn"`).
     pub(in crate::analysis) chain: String,
-    /// Effective arguments after removing the receiver and options/array wrapper.
+    /// Effective arguments after removing the receiver and options/array
+    /// wrapper.
     pub(in crate::analysis) effective_args: Vec<CallArgInfo>,
 }
 

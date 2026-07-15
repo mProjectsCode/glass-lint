@@ -1,9 +1,10 @@
 use std::collections::BTreeSet;
 
+use super::{
+    super::rule::{ApiCatalogError, ApiRule},
+    CompiledRule,
+};
 use crate::api::compiler::CompiledMatcherCatalog;
-
-use super::super::rule::{ApiCatalogError, ApiRule};
-use super::CompiledRule;
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompiledCatalog {

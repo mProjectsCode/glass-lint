@@ -9,8 +9,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use swc_common::Span;
 use swc_ecma_ast::Pat;
 
-use crate::analysis::value::FunctionId;
-use crate::project::{ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind};
+use crate::{
+    analysis::value::FunctionId,
+    project::{ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind},
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ModuleRequestRole {
@@ -51,9 +53,11 @@ impl ImportedBinding {
             namespace,
         }
     }
+
     pub(crate) fn imported(&self) -> Option<&str> {
         self.imported.as_deref()
     }
+
     pub(crate) fn is_namespace(&self) -> bool {
         self.namespace
     }
@@ -73,12 +77,15 @@ impl ModuleRequest {
     pub(crate) fn span(&self) -> Span {
         self.span
     }
+
     pub(crate) fn kind(&self) -> ResolutionRequestKind {
         self.kind
     }
+
     pub(crate) fn specifier(&self) -> &str {
         &self.specifier
     }
+
     pub(crate) fn role(&self) -> &ModuleRequestRole {
         &self.role
     }

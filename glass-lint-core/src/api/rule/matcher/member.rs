@@ -45,13 +45,16 @@ impl MemberCallMatcher {
     pub fn syntactic_heuristic(chain: impl Into<String>) -> Self {
         Self::heuristic(chain)
     }
+
     pub fn rooted_chain(chain: impl Into<String>) -> Self {
         Self::rooted(chain)
     }
+
     #[must_use]
     pub fn static_string_arg(self, index: usize) -> Self {
         self.arg(index, super::ValueMatcher::static_string())
     }
+
     #[must_use]
     pub fn arg_string<I, S>(self, index: usize, values: I) -> Self
     where
@@ -63,10 +66,12 @@ impl MemberCallMatcher {
             super::ValueMatcher::static_string().equals_any(values),
         )
     }
+
     #[must_use]
     pub fn arg_value(self, index: usize, value: impl Into<super::ValueMatcher>) -> Self {
         self.arg(index, value.into())
     }
+
     #[must_use]
     pub fn arg_object_keys<I, S>(self, index: usize, keys: I) -> Self
     where
@@ -75,6 +80,7 @@ impl MemberCallMatcher {
     {
         self.arg(index, super::ArgumentMatcher::object_keys(keys))
     }
+
     #[must_use]
     pub fn arg_rooted_exprs<I, S>(self, index: usize, chains: I) -> Self
     where

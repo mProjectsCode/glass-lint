@@ -5,10 +5,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::super::{
     ExportResolution, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel, ResolvedModule,
 };
-use crate::analysis::matching::LinkedModuleIdentity;
-use crate::analysis::module::ModuleRequestRole;
-use crate::analysis::module::{ImportedBinding, ModuleRequest};
-use crate::analysis::syntax::SymbolCallProvenance;
+use crate::analysis::{
+    matching::LinkedModuleIdentity,
+    module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
+    syntax::SymbolCallProvenance,
+};
 
 impl ProjectSemanticModel {
     pub(super) fn call_result_identities(

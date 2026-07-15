@@ -1,13 +1,15 @@
 //! Deterministic report aggregation for stdout.
 
-use crate::config::{Config, Output};
+use std::io::{self, Write};
+
 use anyhow::Result;
 use console::Style;
 use glass_lint_core::{
     LintReport, PrettyFile, PrettyOptions, PrettyReports, ProjectReport, RuleMetadata,
 };
 use serde::Serialize;
-use std::io::{self, Write};
+
+use crate::config::{Config, Output};
 
 /// A linted file keeps its source so pretty rendering never rereads the file.
 #[derive(Clone)]

@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
+
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]

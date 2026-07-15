@@ -4,15 +4,18 @@
 //! source is parsed and semantically visited once into a matcher-independent
 //! model; rules query a linked project model afterwards.
 
-use std::cell::Cell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    cell::Cell,
+    collections::{BTreeMap, BTreeSet},
+};
+
+use project::state::{ExportTable, ModuleGraph};
+use swc_common::{SourceMap, SourceMapper, sync::Lrc};
 
 use crate::project::{
     ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey, ResolutionResult,
     ResolvedModule,
 };
-use project::state::{ExportTable, ModuleGraph};
-use swc_common::{SourceMap, SourceMapper, sync::Lrc};
 
 mod evidence;
 mod facts;
@@ -27,7 +30,6 @@ mod syntax;
 mod value;
 
 pub(crate) use local::{LocalModuleModel, ProjectModule};
-
 use syntax::SymbolCallProvenance;
 
 const MAX_EXPORT_DEPTH: usize = 1024;
@@ -370,11 +372,16 @@ fn is_internal_request(request: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::Environment;
-    use crate::api::compiler::{CompiledMatcherCatalog, CompiledMatcherPlan};
-    use crate::api::rule::ApiMatcher;
     use std::collections::BTreeSet;
+
+    use super::*;
+    use crate::{
+        Environment,
+        api::{
+            compiler::{CompiledMatcherCatalog, CompiledMatcherPlan},
+            rule::ApiMatcher,
+        },
+    };
 
     #[test]
     fn local_model_is_unchanged_by_matcher_projection() {

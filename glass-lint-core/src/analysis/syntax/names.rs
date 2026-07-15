@@ -1,6 +1,7 @@
 //! AST naming, member-chain, and pattern helpers.
 
 use std::collections::BTreeSet;
+
 use swc_ecma_ast::{
     Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp, OptChainBase, Pat,
 };

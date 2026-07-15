@@ -1,7 +1,8 @@
 //! Generic JavaScript, browser, Node.js, and Electron rules.
 
-use glass_lint_core::{Environment, LintReport, Linter, RuleCatalog, RuleId, RuleMetadata};
 use std::collections::BTreeSet;
+
+use glass_lint_core::{Environment, LintReport, Linter, RuleCatalog, RuleId, RuleMetadata};
 
 mod disclosures;
 mod rules;
@@ -54,7 +55,8 @@ pub fn disclosures_for_report(report: &LintReport) -> BTreeSet<&'static str> {
         .collect()
 }
 
-/// Browser, Node.js, and Electron globals used by the combined JavaScript catalog.
+/// Browser, Node.js, and Electron globals used by the combined JavaScript
+/// catalog.
 #[must_use]
 pub fn default_environment() -> Environment {
     let mut environment = Environment::default();

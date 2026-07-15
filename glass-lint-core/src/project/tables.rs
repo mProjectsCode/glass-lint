@@ -1,7 +1,9 @@
 //! Internal project tables used while a project is being assembled.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::ops::{Deref, DerefMut};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::{Deref, DerefMut},
+};
 
 use super::{
     ProjectEvidence, ProjectInputError, ResolutionRequestKey, ResolutionResult, SourceFile,
@@ -48,6 +50,7 @@ impl FromIterator<ProjectEvidence> for EvidenceList {
 }
 impl Deref for EvidenceList {
     type Target = Vec<ProjectEvidence>;
+
     fn deref(&self) -> &Self::Target {
         &self.items
     }
@@ -58,15 +61,17 @@ impl DerefMut for EvidenceList {
     }
 }
 impl IntoIterator for EvidenceList {
-    type Item = ProjectEvidence;
     type IntoIter = std::vec::IntoIter<ProjectEvidence>;
+    type Item = ProjectEvidence;
+
     fn into_iter(self) -> Self::IntoIter {
         self.items.into_iter()
     }
 }
 impl<'a> IntoIterator for &'a EvidenceList {
-    type Item = &'a ProjectEvidence;
     type IntoIter = std::slice::Iter<'a, ProjectEvidence>;
+    type Item = &'a ProjectEvidence;
+
     fn into_iter(self) -> Self::IntoIter {
         self.items.iter()
     }
@@ -83,9 +88,11 @@ impl SourceTable {
         }
         Ok(())
     }
+
     pub(crate) fn get(&self, path: &str) -> Option<&SourceFile> {
         self.0.get(path)
     }
+
     pub(crate) fn into_values(self) -> impl Iterator<Item = SourceFile> {
         self.0.into_values()
     }
@@ -105,6 +112,7 @@ impl ResolutionTable {
         }
         Ok(())
     }
+
     pub(crate) fn into_values(
         self,
     ) -> impl Iterator<Item = (ResolutionRequestKey, ResolutionResult)> {

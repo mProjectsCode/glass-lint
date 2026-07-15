@@ -22,12 +22,15 @@ impl<K: Clone + PartialEq> RequirementSet<K> {
     pub(super) fn insert(&mut self, parameter: usize, value: K) {
         self.0.insert(parameter, value);
     }
+
     pub(super) fn remove(&mut self, parameter: usize) {
         self.0.remove(&parameter);
     }
+
     pub(super) fn contains_key(&self, parameter: usize) -> bool {
         self.0.contains_key(&parameter)
     }
+
     pub(super) fn retain(&mut self, keep: impl FnMut(&usize, &mut K) -> bool) {
         self.0.retain(keep);
     }
@@ -35,9 +38,11 @@ impl<K: Clone + PartialEq> RequirementSet<K> {
     pub(super) fn len(&self) -> usize {
         self.0.len()
     }
+
     pub(super) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
     pub(super) fn iter(&self) -> impl Iterator<Item = (&usize, &K)> {
         self.0.iter()
     }

@@ -1,10 +1,14 @@
 //! Oxc-backed module resolution and provider-neutral result classification.
 
-use crate::discovery::{absolute_path, excluded_path, inside_root, realpath, supported_path};
-use crate::options::{ProjectLoadOptions, ProjectSelection};
+use std::path::{Path, PathBuf};
+
 use glass_lint_core::{ResolutionRequest, ResolutionRequestKind, ResolutionResult};
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
-use std::path::{Path, PathBuf};
+
+use crate::{
+    discovery::{absolute_path, excluded_path, inside_root, realpath, supported_path},
+    options::{ProjectLoadOptions, ProjectSelection},
+};
 
 /// Keeps import and CommonJS resolution policy together for one project.
 pub(crate) struct ProjectResolver {
@@ -139,8 +143,9 @@ fn package_name(request: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use glass_lint_core::{Position, ResolutionRequestKey, SourceRange};
+
+    use super::*;
 
     fn request(specifier: &str) -> ResolutionRequest {
         ResolutionRequest {

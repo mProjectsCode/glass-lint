@@ -1,8 +1,9 @@
 //! Shared value predicates for fact-driven flow analysis.
 
-use crate::analysis::facts::CallArgInfo;
-use crate::api::rule::StaticStringPredicate;
-use crate::api::rule::{ArgumentMatcher, ValueMatcher, ValueMatcherKind};
+use crate::{
+    analysis::facts::CallArgInfo,
+    api::rule::{ArgumentMatcher, StaticStringPredicate, ValueMatcher, ValueMatcherKind},
+};
 
 impl ValueMatcher {
     /// Match a value against a known static string without widening unknowns.

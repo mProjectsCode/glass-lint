@@ -1,13 +1,12 @@
 //! Parse-once mutable project staging.
 
-use super::input::{
-    normalize_relative, normalize_resolution_key, normalize_result, normalize_root,
-};
+use std::collections::BTreeMap;
+
 use super::{
     ProjectInput, ProjectInputError, ProjectReport, ResolutionRequest, ResolutionRequestKey,
     ResolutionResult, ResolutionTable, SourceFile, SourceTable,
+    input::{normalize_relative, normalize_resolution_key, normalize_result, normalize_root},
 };
-use std::collections::BTreeMap;
 
 pub struct ProjectSession<'a> {
     pub(super) linter: &'a crate::Linter,
@@ -88,6 +87,7 @@ impl<'a> ProjectSession<'a> {
     pub fn finish(self) -> Result<ProjectReport, ProjectInputError> {
         self.finish_with_timings().map(|(report, _, _)| report)
     }
+
     pub fn finish_with_timings(
         self,
     ) -> Result<(ProjectReport, std::time::Duration, std::time::Duration), ProjectInputError> {

@@ -1,14 +1,17 @@
 //! Module-interface recording performed during the canonical fact walk.
 
-use super::FactBuilder;
-use crate::analysis::module::{ModuleExport, ModuleRequestRole, ReExportBinding};
-use crate::project::ResolutionRequestKind;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     CallExpr, Callee, DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr,
     ExportSpecifier, Expr, ImportDecl, NamedExport,
 };
 use swc_ecma_visit::VisitWith;
+
+use super::FactBuilder;
+use crate::{
+    analysis::module::{ModuleExport, ModuleRequestRole, ReExportBinding},
+    project::ResolutionRequestKind,
+};
 
 impl FactBuilder<'_> {
     pub(super) fn record_local_imports(&mut self, import: &ImportDecl) {

@@ -1,12 +1,14 @@
 //! Immutable semantic fact stream with deterministic insertion order.
 
+use std::cell::RefCell;
+
+#[cfg(test)]
+use swc_common::BytePos;
+
 #[cfg(test)]
 use super::FactKind;
 use super::{FactId, MAX_FACTS, SemanticFact};
 use crate::analysis::value::{PathId, PathInterner, PathSegment};
-use std::cell::RefCell;
-#[cfg(test)]
-use swc_common::BytePos;
 
 #[derive(Debug)]
 pub(in crate::analysis) struct FactStream {

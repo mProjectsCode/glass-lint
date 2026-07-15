@@ -72,6 +72,7 @@ impl<T> FunctionTable<T> {
     pub(in crate::analysis) fn len(&self) -> usize {
         self.values.iter().filter(|value| value.is_some()).count()
     }
+
     pub(in crate::analysis) fn contains(&self, id: FunctionId) -> bool {
         self.get(id).is_some()
     }

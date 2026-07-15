@@ -5,11 +5,14 @@
 //! calls (including recursive and mutually recursive helpers) without walking
 //! AST bodies again.
 
-use super::super::facts::FactId;
-use super::super::facts::{CallArgInfo, FactPayload, FactStream, ParameterBinding};
-use super::super::value::{FunctionId, PathId, ValueId};
-use super::index::{FlowId, FlowIndex};
-use super::table::FunctionTable;
+use super::{
+    super::{
+        facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
+        value::{FunctionId, PathId, ValueId},
+    },
+    index::{FlowId, FlowIndex},
+    table::FunctionTable,
+};
 
 const MAX_SUMMARY_ROUNDS: usize = 64;
 
@@ -45,9 +48,11 @@ impl SinkSet {
     fn contains(&self, sink: &FunctionSinkSummary) -> bool {
         self.0.iter().any(|existing| existing == sink)
     }
+
     fn push(&mut self, sink: FunctionSinkSummary) {
         self.0.push(sink);
     }
+
     fn sort_and_dedup(&mut self) {
         self.0
             .sort_by_key(|sink| (sink.flow(), sink.parameter_index(), sink.path()));
@@ -55,15 +60,17 @@ impl SinkSet {
     }
 }
 impl<'a> IntoIterator for &'a SinkSet {
-    type Item = &'a FunctionSinkSummary;
     type IntoIter = std::slice::Iter<'a, FunctionSinkSummary>;
+    type Item = &'a FunctionSinkSummary;
+
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
     }
 }
 impl IntoIterator for SinkSet {
-    type Item = FunctionSinkSummary;
     type IntoIter = std::vec::IntoIter<FunctionSinkSummary>;
+    type Item = FunctionSinkSummary;
+
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
@@ -92,9 +99,11 @@ impl FunctionSinkSummary {
     pub(super) fn flow(&self) -> FlowId {
         self.flow
     }
+
     pub(super) fn parameter_index(&self) -> usize {
         self.parameter_index
     }
+
     pub(super) fn path(&self) -> PathId {
         self.path
     }

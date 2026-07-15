@@ -5,7 +5,7 @@ mod taxonomy;
 mod validation;
 
 pub use error::{ApiCatalogError, ApiRuleBuildError};
-pub(crate) use matcher::ApiMatcher;
+pub(crate) use matcher::{ApiMatcher, StaticStringPredicate, ValueMatcherKind};
 pub use matcher::{
     ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
     ConstructorMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher,
@@ -13,8 +13,9 @@ pub use matcher::{
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher,
     ReturnedMemberReadMatcher, ValueMatcher, canonical_rooted_chain,
 };
-pub(crate) use matcher::{StaticStringPredicate, ValueMatcherKind};
 pub use taxonomy::{ApiCategory, ApiSeverity, Confidence};
+
+use crate::api::compiler::CompiledMatcherPlan;
 
 #[derive(Debug, Clone)]
 pub struct ApiRule {
@@ -24,7 +25,7 @@ pub struct ApiRule {
     severity: ApiSeverity,
     confidence: Confidence,
     matchers: Vec<Matcher>,
-    compiled_matcher: crate::api::compiler::CompiledMatcherPlan,
+    compiled_matcher: CompiledMatcherPlan,
 }
 
 impl ApiRule {
@@ -48,22 +49,27 @@ impl ApiRule {
     pub fn id(&self) -> &str {
         &self.id
     }
+
     #[must_use]
     pub fn label(&self) -> &str {
         &self.label
     }
+
     #[must_use]
     pub fn category(&self) -> &ApiCategory {
         &self.category
     }
+
     #[must_use]
     pub fn severity(&self) -> ApiSeverity {
         self.severity
     }
+
     #[must_use]
     pub fn confidence(&self) -> Confidence {
         self.confidence
     }
+
     #[must_use]
     pub fn matchers(&self) -> &[Matcher] {
         &self.matchers
@@ -72,7 +78,7 @@ impl ApiRule {
     /// Clone the normalized matcher compiled at the rule boundary.  Catalog
     /// construction may copy this immutable plan, but must never normalize
     /// the rule again for each file.
-    pub(crate) fn matcher_for_compilation(&self) -> crate::api::compiler::CompiledMatcherPlan {
+    pub(crate) fn matcher_for_compilation(&self) -> CompiledMatcherPlan {
         self.compiled_matcher.clone()
     }
 }
@@ -152,8 +158,9 @@ impl ApiRuleBuilder {
         if matcher.is_empty() {
             return Err(ApiRuleBuildError::MissingMatcher);
         }
-        let compiled_matcher = crate::api::compiler::CompiledMatcherPlan::compile(&matcher);
+        let compiled_matcher = CompiledMatcherPlan::compile(&matcher);
         let matchers = matcher.into_matchers();
+
         Ok(ApiRule {
             id,
             label,

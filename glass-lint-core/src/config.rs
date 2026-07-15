@@ -1,7 +1,9 @@
-use crate::{RuleCatalog, RuleId, lint::LintConfigError};
 use serde::{Deserialize, Serialize};
 
-/// Provider-neutral choices that affect analysis, independent of files or presentation.
+use crate::{RuleCatalog, RuleId, lint::LintConfigError};
+
+/// Provider-neutral choices that affect analysis, independent of files or
+/// presentation.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct CoreConfig {

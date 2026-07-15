@@ -7,12 +7,17 @@
 
 use swc_common::Span;
 
-use super::facts::{CallArgInfo, FactId, FactPayload, FactStream};
-use super::syntax::{SymbolCallProvenance, SymbolMemberProvenance};
-use crate::api::classification::{ApiEvidence, ApiMatchKind};
-use crate::api::rule::{
-    ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher, MemberCallMatcher,
-    MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, canonical_rooted_chain,
+use super::{
+    facts::{CallArgInfo, FactId, FactPayload, FactStream},
+    syntax::{SymbolCallProvenance, SymbolMemberProvenance},
+};
+use crate::api::{
+    classification::{ApiEvidence, ApiMatchKind},
+    rule::{
+        ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
+        MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+        canonical_rooted_chain,
+    },
 };
 
 mod occurrence;
@@ -235,8 +240,9 @@ fn push_owned_evidence(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use swc_common::BytePos;
+
+    use super::*;
 
     fn span(start: u32, end: u32) -> Span {
         Span::new(BytePos(start), BytePos(end))
@@ -285,8 +291,7 @@ mod tests {
 
     #[test]
     fn build_from_stream_populates_all_occurrence_indexes() {
-        use super::super::facts::build::build_test_stream;
-        use super::super::resolution::Resolver;
+        use super::super::{facts::build::build_test_stream, resolution::Resolver};
 
         let src = r#"
             import { foo } from 'mod';

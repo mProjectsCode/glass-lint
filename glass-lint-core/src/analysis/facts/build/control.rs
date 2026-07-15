@@ -1,9 +1,10 @@
-use super::{ControlKind, FactBuilder, FactKind, FactPayload, Span};
 use swc_common::Spanned;
 use swc_ecma_ast::{
     CondExpr, DoWhileStmt, ForInStmt, ForOfStmt, ForStmt, IfStmt, SwitchStmt, TryStmt, WhileStmt,
 };
 use swc_ecma_visit::VisitWith;
+
+use super::{ControlKind, FactBuilder, FactKind, FactPayload, Span};
 
 impl FactBuilder<'_> {
     pub(super) fn next_control_region(&mut self) -> u32 {

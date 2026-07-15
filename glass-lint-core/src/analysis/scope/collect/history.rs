@@ -1,7 +1,8 @@
 //! Source-order assignment state for scope collection.
 
-use super::super::BindingProvenance;
 use std::collections::BTreeMap;
+
+use super::super::BindingProvenance;
 
 #[derive(Debug, Default)]
 pub(super) struct AssignmentHistory(BTreeMap<usize, BTreeMap<String, BindingProvenance>>);

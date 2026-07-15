@@ -5,6 +5,10 @@ mod report;
 mod session;
 mod tables;
 mod types;
+/// A staged project collection session. Sources are parsed and locally
+/// analyzed when added; `finish` links the retained models after all resolver
+/// answers have been recorded.
+pub use session::ProjectSession;
 pub use tables::EvidenceList;
 pub(crate) use tables::{ResolutionTable, SourceTable};
 pub(crate) use types::{ModuleId, ResolvedModule};
@@ -14,20 +18,17 @@ pub use types::{
     ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile, SourceLocation,
 };
 
-/// A staged project collection session. Sources are parsed and locally
-/// analyzed when added; `finish` links the retained models after all resolver
-/// answers have been recorded.
-pub use session::ProjectSession;
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::rule::{
-        ApiRule, ApiSeverity, CallMatcher, Confidence, FlowCompletion, FlowCondition,
-        FlowSinkMatcher, Matcher, MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher,
-        ObjectSourceMatcher, ValueMatcher,
+    use crate::{
+        Position, SourceRange,
+        api::rule::{
+            ApiRule, ApiSeverity, CallMatcher, Confidence, FlowCompletion, FlowCondition,
+            FlowSinkMatcher, Matcher, MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher,
+            ObjectSourceMatcher, ValueMatcher,
+        },
     };
-    use crate::{Position, SourceRange};
 
     fn test_linter() -> crate::Linter {
         let rule = ApiRule::builder("network.fetch")

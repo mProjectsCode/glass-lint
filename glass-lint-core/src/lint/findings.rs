@@ -1,9 +1,14 @@
-use super::Linter;
-use super::ranges::{remove_contained_ranges, source_range, source_range_from_span};
-use crate::api::classification::{ApiCapability, ApiClassificationResult};
-use crate::api::rule::ApiSeverity;
-use crate::diagnostic::{Evidence, Finding, SourceRange};
 use swc_common::SourceMapper;
+
+use super::{
+    Linter,
+    ranges::{remove_contained_ranges, source_range, source_range_from_span},
+};
+use crate::{
+    Severity, api::{
+        classification::{ApiCapability, ApiClassificationResult, ApiEvidence}, rule::ApiSeverity,
+    }, diagnostic::{Evidence, Finding, SourceRange},
+};
 
 impl Linter {
     /// Turn classifier capabilities into report findings. Classification is
@@ -31,6 +36,8 @@ impl Linter {
         let Some(rule_id) = self.catalog().rule_id(capability.rule_index).cloned() else {
             return Vec::new();
         };
+
+        // TODO: maybe a new type around Vec<Evidence> to avoid this mess of mapping and filtering in this method
         let evidence: Vec<_> = capability
             .evidence()
             .iter()
@@ -43,11 +50,13 @@ impl Linter {
                     .map(|span| Self::report_evidence(evidence, span, source_map))
             })
             .collect();
+
         let mut ranges: Vec<_> = evidence
             .iter()
             .filter_map(|evidence| evidence.range.clone())
             .collect();
         remove_contained_ranges(&mut ranges);
+
         if ranges.is_empty() {
             ranges.push(source_range(source, 0, 0));
         }
@@ -65,14 +74,15 @@ impl Linter {
                     })
                     .cloned()
                     .collect();
+
                 Finding {
                     rule_id: rule_id.clone(),
                     message_id: "detected".into(),
                     message: capability.label().into(),
                     severity: match capability.severity() {
-                        ApiSeverity::Info => crate::Severity::Info,
-                        ApiSeverity::Warning => crate::Severity::Warning,
-                        ApiSeverity::Error => crate::Severity::Error,
+                        ApiSeverity::Info => Severity::Info,
+                        ApiSeverity::Warning => Severity::Warning,
+                        ApiSeverity::Error => Severity::Error,
                     },
                     range,
                     evidence: local_evidence,
@@ -82,10 +92,11 @@ impl Linter {
     }
 
     fn report_evidence(
-        evidence: &crate::api::classification::ApiEvidence,
+        evidence: &ApiEvidence,
         span: swc_common::Span,
         source_map: &swc_common::sync::Lrc<swc_common::SourceMap>,
     ) -> Evidence {
+
         Evidence {
             message: format!("{} of \"{}\"", evidence.kind().as_str(), evidence.symbol()),
             range: Some(source_range_from_span(source_map, span)),
@@ -94,10 +105,12 @@ impl Linter {
     }
 }
 
+// TODO: should be a method on SourceRange
 pub(crate) fn contains_range(outer: &SourceRange, inner: &SourceRange) -> bool {
     let outer_start = (outer.start.line, outer.start.column);
     let outer_end = (outer.end.line, outer.end.column);
     let inner_start = (inner.start.line, inner.start.column);
     let inner_end = (inner.end.line, inner.end.column);
+
     outer_start <= inner_start && inner_end <= outer_end
 }

@@ -1,13 +1,19 @@
 //! Filesystem membership and source loading.
 
-use crate::error::ProjectLoadError;
-use crate::options::{ProjectLoadOptions, ProjectSelection};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+};
+
 use glass_lint_core::{SourceFile, SourceLanguage};
 use serde_json::Value;
-use std::collections::BTreeSet;
-use std::fs;
-use std::path::{Path, PathBuf};
 use walkdir::{DirEntry, WalkDir};
+
+use crate::{
+    error::ProjectLoadError,
+    options::{ProjectLoadOptions, ProjectSelection},
+};
 
 /// Discovers the bounded set of source files that belongs to a selection.
 pub(crate) struct ProjectDiscovery<'a> {

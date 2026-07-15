@@ -7,12 +7,12 @@
 
 use std::collections::BTreeMap;
 
+use collect::AliasCollector;
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
 use super::value::{BindingId, FunctionId};
-use collect::AliasCollector;
 
 mod collect;
 mod query;
@@ -129,9 +129,10 @@ impl ScopeGraph {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use swc_ecma_ast::{Expr, Ident};
     use swc_ecma_visit::{Visit, VisitWith};
+
+    use super::*;
 
     #[derive(Default)]
     struct IdentCollector {

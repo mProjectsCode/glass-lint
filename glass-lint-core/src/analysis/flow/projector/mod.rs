@@ -10,20 +10,24 @@ mod evidence;
 mod state;
 mod transfer;
 
+use std::collections::BTreeMap;
+
 use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable};
 use transfer::SourceCall;
 
-use std::collections::BTreeMap;
-
-use super::super::facts::{
-    CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary,
+use super::{
+    super::{
+        facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary},
+        value::{ObjectId, ValueId},
+    },
+    index::{FlowId, FlowIndex, FlowLimits},
+    state::FlowState,
+    summary::FunctionSummaries,
 };
-use super::super::value::{ObjectId, ValueId};
-use super::index::{FlowId, FlowIndex, FlowLimits};
-use super::state::FlowState;
-use super::summary::FunctionSummaries;
-use crate::api::classification::{ApiEvidence, ApiMatchKind};
-use crate::api::compiler::{CompiledObjectFlow, CompiledObjectRequirement};
+use crate::api::{
+    classification::{ApiEvidence, ApiMatchKind},
+    compiler::{CompiledObjectFlow, CompiledObjectRequirement},
+};
 
 pub(in crate::analysis) fn collect(
     stream: &FactStream,
@@ -60,7 +64,8 @@ struct ObjectFlowProjector<'rules, 'stream> {
     calls_by_result: BTreeMap<ValueId, SourceCall>,
     /// Evidence uses the exact fact that established a match as its anchor.
     fact_spans: BTreeMap<FactId, swc_common::Span>,
-    /// Evidence is grouped and deduplicated by the flow-specific evidence owner.
+    /// Evidence is grouped and deduplicated by the flow-specific evidence
+    /// owner.
     flow_evidence: FlowEvidence,
     /// Each value identity and live object-flow state are owned together.
     flow_state: FlowStateTable,
@@ -291,10 +296,12 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::resolution::Resolver;
-    use crate::api::rule::{
-        FlowCompletion, FlowCondition, FlowSinkMatcher, MemberCallMatcher, ObjectEventMatcher,
-        ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+    use crate::{
+        analysis::resolution::Resolver,
+        api::rule::{
+            FlowCompletion, FlowCondition, FlowSinkMatcher, MemberCallMatcher, ObjectEventMatcher,
+            ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+        },
     };
 
     fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<ApiEvidence>> {

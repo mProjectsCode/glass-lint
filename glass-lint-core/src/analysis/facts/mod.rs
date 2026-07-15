@@ -1,18 +1,19 @@
 //! Semantic fact orchestration over one immutable stream.
 
+#[cfg(test)]
+use swc_common::Span;
+use swc_ecma_ast::Program;
+
 use self::build::FactBuilder;
-use super::flow::projector as object_flow;
-use super::matching::MatcherFacts;
-use super::module::ModuleInterface;
-use super::resolution::Resolver;
 #[cfg(test)]
 use super::syntax::SymbolCallProvenance;
 #[cfg(test)]
 use super::value::{FunctionId, ValueId};
+use super::{
+    flow::projector as object_flow, matching::MatcherFacts, module::ModuleInterface,
+    resolution::Resolver,
+};
 use crate::api::compiler::CompiledMatcherCatalog;
-#[cfg(test)]
-use swc_common::Span;
-use swc_ecma_ast::Program;
 
 pub(super) mod build;
 mod model;
@@ -135,12 +136,15 @@ impl SemanticFacts {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::collections::BTreeSet;
 
-    use crate::api::compiler::{CompiledMatcherCatalog, CompiledMatcherPlan};
-    use crate::api::rule::ApiMatcher;
     use swc_common::BytePos;
+
+    use super::*;
+    use crate::api::{
+        compiler::{CompiledMatcherCatalog, CompiledMatcherPlan},
+        rule::ApiMatcher,
+    };
 
     fn test_fact(id: u32, kind: FactKind, span: Span) -> SemanticFact {
         SemanticFact::new(

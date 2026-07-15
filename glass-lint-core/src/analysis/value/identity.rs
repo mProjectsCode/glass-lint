@@ -37,15 +37,18 @@ impl SymbolPath {
                 .collect(),
         )
     }
+
     pub(in crate::analysis) fn is_root(&self) -> bool {
         self.0.len() <= 1
     }
+
     pub(in crate::analysis) fn without_bind_suffix(&self) -> Option<Self> {
         self.0
             .last()
             .is_some_and(|segment| segment == "bind")
             .then(|| Self(self.0[..self.0.len().saturating_sub(1)].to_vec()))
     }
+
     pub(in crate::analysis) fn append_chain(&self, suffix: &str) -> Self {
         let mut path = self.0.clone();
         path.extend(

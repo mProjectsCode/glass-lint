@@ -2,9 +2,8 @@
 
 use super::super::{
     BTreeSet, ExportResolution, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
-    ResolutionRequestKey, ResolvedModule, is_internal_request,
+    ResolutionRequestKey, ResolvedModule, SymbolCallProvenance, is_internal_request, module,
 };
-use super::super::{SymbolCallProvenance, module};
 use crate::analysis::module::ModuleRequestRole;
 
 impl ProjectSemanticModel {

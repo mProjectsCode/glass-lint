@@ -1,7 +1,8 @@
 //! Public project input, resolution, and report contracts.
 
-use crate::{SourceLanguage, SourceRange};
 use std::path::PathBuf;
+
+use crate::{SourceLanguage, SourceRange};
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
 pub struct SourceFile {

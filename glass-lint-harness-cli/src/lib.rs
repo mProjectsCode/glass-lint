@@ -5,9 +5,10 @@ pub mod args;
 mod compare;
 mod profile;
 
+use std::path::PathBuf;
+
 use anyhow::{Result, bail};
 use glass_lint_harness::{Adapter, ExternalAdapter, GlassLintAdapter, run_suite};
-use std::path::PathBuf;
 
 /// Run a parsed harness command and return whether it passed.
 pub fn run(args: args::Args) -> Result<bool> {

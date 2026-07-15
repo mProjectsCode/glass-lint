@@ -1,6 +1,7 @@
+use std::process::ExitCode;
+
 use clap::Parser;
 use glass_lint_harness_cli::{args::Args, run};
-use std::process::ExitCode;
 
 fn main() -> ExitCode {
     match run(Args::parse()) {

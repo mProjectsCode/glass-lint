@@ -1,6 +1,9 @@
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::PathBuf,
+};
+
 use crate::ProjectLoadError;
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::PathBuf;
 
 const DEFAULT_MAX_FILES: usize = 10_000;
 const DEFAULT_MAX_REQUESTS: usize = 50_000;

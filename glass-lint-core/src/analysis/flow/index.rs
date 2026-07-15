@@ -23,9 +23,11 @@ impl FlowLimits {
     pub(super) fn object_limit(&self) -> u32 {
         self.objects
     }
+
     pub(super) fn state_limit(&self) -> usize {
         self.states
     }
+
     pub(super) fn emission_limit(&self) -> usize {
         self.emissions
     }
@@ -58,6 +60,7 @@ impl FlowId {
     pub(super) fn rule_index(self) -> usize {
         self.rule_index
     }
+
     pub(super) fn flow_index(self) -> usize {
         self.flow_index
     }

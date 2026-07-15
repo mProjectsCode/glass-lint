@@ -1,6 +1,7 @@
 //! Deterministic evidence annotation, bounding, grouping, and sorting.
 
 use std::collections::BTreeMap;
+
 use swc_common::Span;
 
 use super::facts;
@@ -122,8 +123,9 @@ impl AnnotatedEvidence {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use swc_common::BytePos;
+
+    use super::*;
 
     fn evidence(symbol: &str, spans: &[u32]) -> ApiEvidence {
         ApiEvidence {

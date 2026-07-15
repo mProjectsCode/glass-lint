@@ -1,15 +1,17 @@
 //! Filesystem discovery and per-file lint execution.
 
+use std::{fs, path::PathBuf};
+
+use anyhow::{Context, Result, bail};
+use glass_lint_core::{Linter, SourceLanguage};
+use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
+use walkdir::WalkDir;
+
 use crate::{
     args::Command,
     config::{self, Config},
     output::{FileOutput, Summary},
 };
-use anyhow::{Context, Result, bail};
-use glass_lint_core::{Linter, SourceLanguage};
-use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
-use std::{fs, path::PathBuf};
-use walkdir::WalkDir;
 
 pub fn run(config: &Config, command: Command) -> Result<bool> {
     let linter = config::selected_linter(config)?;
@@ -135,8 +137,9 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
 
 #[cfg(test)]
 mod tests {
-    use super::discover_paths;
     use std::fs;
+
+    use super::discover_paths;
 
     #[test]
     fn discovers_sorted_runtime_javascript_and_typescript_files() {

@@ -14,13 +14,16 @@ use std::{
     collections::{BTreeMap, BTreeSet},
 };
 
+use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
+
 use super::{
     scope::ScopeGraph,
-    syntax::constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
-    syntax::{SymbolCallProvenance, SymbolMemberProvenance},
+    syntax::{
+        SymbolCallProvenance, SymbolMemberProvenance,
+        constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
+    },
     value::{BindingKey, Value, ValueId, ValueTable},
 };
-use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
 
 #[derive(Debug, Clone)]
 pub(super) struct ResolvedValue {

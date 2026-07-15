@@ -1,9 +1,9 @@
 //! Lifecycle state for one object/flow pair.
 
-use super::super::facts::FactId;
-use super::super::flow::index::FlowId;
-use super::super::value::ObjectId;
-use super::requirements::RequirementSet;
+use super::{
+    super::{facts::FactId, flow::index::FlowId, value::ObjectId},
+    requirements::RequirementSet,
+};
 use crate::api::compiler::CompiledObjectFlow;
 
 #[derive(Debug, Clone, PartialEq, Eq)]

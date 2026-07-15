@@ -1,11 +1,13 @@
 //! Control-path state and environment algebra for object-flow projection.
 
-use super::super::super::value::{ObjectId, ValueId};
-use super::super::index::FlowId;
-use super::super::state::FlowState;
+use std::collections::{BTreeMap, BTreeSet};
+
+use super::super::{
+    super::value::{ObjectId, ValueId},
+    index::FlowId,
+    state::FlowState,
+};
 use crate::api::classification::ApiEvidence;
-use std::collections::BTreeMap;
-use std::collections::BTreeSet;
 
 type EvidenceKey = (usize, usize, ObjectId, super::super::super::facts::FactId);
 

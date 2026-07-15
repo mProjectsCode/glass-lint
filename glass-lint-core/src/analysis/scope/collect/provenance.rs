@@ -4,9 +4,13 @@ use std::collections::BTreeMap;
 
 use swc_ecma_ast::{CallExpr, Callee, Expr, Lit};
 
-use super::super::super::syntax::constant::{self, ConstValue};
-use super::super::super::syntax::{member_prop_name, prop_name};
-use super::{AliasCollector, BindingProvenance, BoundArgument};
+use super::{
+    super::super::syntax::{
+        constant::{self, ConstValue},
+        member_prop_name, prop_name,
+    },
+    AliasCollector, BindingProvenance, BoundArgument,
+};
 
 impl AliasCollector {
     pub(super) fn module_alias_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {

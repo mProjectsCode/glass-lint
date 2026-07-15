@@ -1,10 +1,15 @@
 //! Normalization and validation of the public project input contract.
 
-use super::{ModuleId, ProjectInput, ResolutionRequestKey};
-use super::{ProjectInputError, ResolutionResult};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+};
+
+use super::{ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey, ResolutionResult};
 
 impl ProjectInput {
-    /// Canonicalizes project identities and validates all cross-record references.
+    /// Canonicalizes project identities and validates all cross-record
+    /// references.
     pub fn validate(mut self) -> Result<Self, ProjectInputError> {
         if self.sources.len() > 100_000 {
             return Err(ProjectInputError::BudgetExceeded("source count".into()));
@@ -79,8 +84,6 @@ impl ProjectInput {
             .collect()
     }
 }
-use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
 
 pub(crate) fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> {
     if path.as_os_str().is_empty() {
@@ -89,6 +92,7 @@ pub(crate) fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> 
         Ok(path.to_path_buf())
     }
 }
+
 pub(crate) fn normalize_relative(path: &str) -> Result<String, ProjectInputError> {
     let original = path.to_string();
     let path = path.replace('\\', "/");
@@ -109,6 +113,7 @@ pub(crate) fn normalize_relative(path: &str) -> Result<String, ProjectInputError
         Ok(parts.join("/"))
     }
 }
+
 pub(crate) fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError> {
     let original = path.to_string();
     let path = path.replace('\\', "/");
@@ -143,6 +148,7 @@ pub(crate) fn normalize_outside_target(path: &str) -> Result<String, ProjectInpu
         parts.join("/")
     })
 }
+
 pub(crate) fn normalize_result(result: &mut ResolutionResult) -> Result<(), ProjectInputError> {
     match result {
         ResolutionResult::Internal { path } => *path = normalize_relative(path)?,

@@ -1,16 +1,12 @@
 use std::collections::BTreeMap;
 
+use facts::SemanticFacts;
 use swc_common::{SourceMap, Spanned, sync::Lrc};
 use swc_ecma_ast::Program;
-
-use crate::Environment;
-use crate::project::ModuleId;
-
-use super::{facts, flow, module, resolution, syntax};
-
-use super::module::ModuleInterface;
-use facts::SemanticFacts;
 use syntax::SymbolCallProvenance;
+
+use super::{facts, flow, module, module::ModuleInterface, resolution, syntax};
+use crate::{Environment, project::ModuleId};
 
 /// The immutable, matcher-independent result of analyzing one source.
 #[derive(Debug)]
@@ -87,15 +83,19 @@ impl ProjectModule {
             local,
         }
     }
+
     pub(crate) fn id(&self) -> ModuleId {
         self.id
     }
+
     pub(crate) fn path(&self) -> &str {
         &self.path
     }
+
     pub(crate) fn source_map(&self) -> &Lrc<SourceMap> {
         &self.source_map
     }
+
     pub(crate) fn local(&self) -> &LocalModuleModel {
         &self.local
     }

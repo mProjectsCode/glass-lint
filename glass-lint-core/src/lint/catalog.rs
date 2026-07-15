@@ -1,16 +1,23 @@
-use crate::api::{
-    compiler::{CompiledCatalog, validate_catalog},
-    rule::ApiRule,
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
 };
-use crate::{Environment, RuleId, RuleMetadata};
-use std::collections::{BTreeMap, BTreeSet};
-use std::{error::Error, fmt};
+
+use crate::{
+    Environment, RuleId, RuleMetadata,
+    api::{
+        compiler::{CompiledCatalog, validate_catalog},
+        rule::ApiRule,
+    },
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RuleCatalogError {
     InvalidRuleId(String),
     InvalidRule(String, String),
 }
+
 impl fmt::Display for RuleCatalogError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -19,6 +26,7 @@ impl fmt::Display for RuleCatalogError {
         }
     }
 }
+
 impl Error for RuleCatalogError {}
 
 #[derive(Clone, Debug)]
@@ -40,15 +48,19 @@ impl RuleCatalog {
     ) -> Result<Self, RuleCatalogError> {
         let provider = provider.into();
         RuleId::parse(format!("{provider}:placeholder"))?;
+
+        // TODO: inline this call and think if this really needs to compile and throw away the compiled catalog. We could probably just validate the rules in place.
         validate_catalog(&rules).map_err(|error| match error {
             crate::api::rule::ApiCatalogError::DuplicateRule(id) => {
                 RuleCatalogError::InvalidRule(format!("{provider}:{id}"), "duplicate rule".into())
             }
         })?;
+
         let rule_ids = rules
             .iter()
             .map(|rule| RuleId::parse(format!("{provider}:{}", rule.id())))
             .collect::<Result<Vec<_>, _>>()?;
+
         Ok(Self {
             rules,
             rule_ids,
@@ -105,17 +117,21 @@ impl RuleCatalog {
             })
             .collect()
     }
+
     #[must_use]
     pub fn rule_ids(&self) -> Vec<RuleId> {
         self.rule_ids.clone()
     }
+
     #[must_use]
     pub fn environment(&self) -> &Environment {
         &self.environment
     }
+
     pub(crate) fn rule_id(&self, index: usize) -> Option<&RuleId> {
         self.rule_ids.get(index)
     }
+
     pub(crate) fn compiled(&self) -> CompiledCatalog {
         CompiledCatalog::from_rules(&self.rules)
     }

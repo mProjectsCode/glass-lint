@@ -3,9 +3,10 @@
 use std::collections::BTreeMap;
 
 use super::super::{ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow};
-use crate::analysis::matching::MatcherFacts;
-use crate::api::classification::ApiEvidence;
-use crate::api::compiler::CompiledMatcherCatalog;
+use crate::{
+    analysis::matching::MatcherFacts,
+    api::{classification::ApiEvidence, compiler::CompiledMatcherCatalog},
+};
 
 #[derive(Debug)]
 pub(crate) struct ProjectMatcherModel<'matchers> {

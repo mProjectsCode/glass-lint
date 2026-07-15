@@ -1,11 +1,12 @@
 //! Evidence emission and flow requirement updates.
 
+use std::collections::BTreeSet;
+
 use super::{
     ApiEvidence, ApiMatchKind, CallArgInfo, CompiledObjectFlow, FactId, FlowId, FlowState,
     ObjectFlowProjector, ObjectId, ValueId,
 };
 use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArgs};
-use std::collections::BTreeSet;
 
 impl ObjectFlowProjector<'_, '_> {
     pub(super) fn record_configuration(

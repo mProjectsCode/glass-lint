@@ -27,13 +27,15 @@ use super::{
     CallArgInfo, CallUnwrap, ControlKind, FactId, FactKind, FactPayload, FactStream,
     FunctionBoundary, ParameterBinding, SemanticFact, ValueProjection,
 };
-use crate::analysis::module::ModuleInterface;
-use crate::analysis::resolution::Resolver;
-use crate::analysis::scope::BoundArgument;
-use crate::analysis::syntax::{
-    SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_prop_name,
+use crate::analysis::{
+    module::ModuleInterface,
+    resolution::Resolver,
+    scope::BoundArgument,
+    syntax::{
+        SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_prop_name,
+    },
+    value::{PathId, PathSegment, ValueId},
 };
-use crate::analysis::value::{PathId, PathSegment, ValueId};
 
 /// The single authoritative semantic fact builder.  After the lexical
 /// scope prepass, this visitor walks the AST exactly once and emits an

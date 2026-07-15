@@ -12,6 +12,7 @@ use super::matcher::{
     normalize_strings,
 };
 
+// TODO: this should be a member method on ApiMatcher
 pub(super) fn normalize(mut matcher: ApiMatcher) -> ApiMatcher {
     normalize_arguments(&mut matcher);
     for call in &mut matcher.calls {

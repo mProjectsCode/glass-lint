@@ -4,6 +4,8 @@
 //! selection never reaches this visitor; all values, provenance, and control
 //! regions are computed once for every file.
 
+use swc_ecma_ast::ExportDefaultExpr;
+
 use super::{
     ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, DoWhileStmt, ExportDecl, Expr,
     FactBuilder, FactKind, FactPayload, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, Ident,
@@ -11,9 +13,10 @@ use super::{
     SymbolCallProvenance, SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr,
     ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr, member_prop_name,
 };
-use crate::analysis::module::{ImportedBinding, ModuleRequestRole};
-use crate::project::ResolutionRequestKind;
-use swc_ecma_ast::ExportDefaultExpr;
+use crate::{
+    analysis::module::{ImportedBinding, ModuleRequestRole},
+    project::ResolutionRequestKind,
+};
 
 impl Visit for FactBuilder<'_> {
     fn visit_ident(&mut self, ident: &Ident) {

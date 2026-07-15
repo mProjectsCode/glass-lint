@@ -1,9 +1,9 @@
 //! Owned state for project linking.
 
-use super::super::ExportResolution;
-use super::super::ModuleId;
-use crate::project::ResolutionRequestKey;
 use std::collections::BTreeMap;
+
+use super::super::{ExportResolution, ModuleId};
+use crate::project::ResolutionRequestKey;
 
 #[derive(Debug, Default)]
 pub(in crate::analysis) struct ModuleGraph {
@@ -16,6 +16,7 @@ impl ModuleGraph {
     pub(in crate::analysis) fn ensure_node(&mut self, id: ModuleId) {
         self.forward.entry(id).or_default();
     }
+
     pub(in crate::analysis) fn insert_edge(
         &mut self,
         from: ModuleId,
@@ -32,6 +33,7 @@ impl ModuleGraph {
         self.reverse.entry(to).or_default().push(from);
         true
     }
+
     pub(in crate::analysis) fn normalize(&mut self) {
         for values in self.forward.values_mut().chain(self.reverse.values_mut()) {
             values.sort_unstable();
@@ -42,15 +44,19 @@ impl ModuleGraph {
             requests.dedup();
         }
     }
+
     pub(in crate::analysis) fn forward(&self) -> &BTreeMap<ModuleId, Vec<ModuleId>> {
         &self.forward
     }
+
     pub(in crate::analysis) fn components(&self) -> &[Vec<ModuleId>] {
         &self.components
     }
+
     pub(in crate::analysis) fn set_components(&mut self, components: Vec<Vec<ModuleId>>) {
         self.components = components;
     }
+
     pub(in crate::analysis) fn edge_count(&self) -> usize {
         self.forward.values().map(Vec::len).sum()
     }
@@ -66,6 +72,7 @@ impl ExportTable {
     ) -> Option<&ExportResolution> {
         self.0.get(&(module, export.to_owned()))
     }
+
     pub(in crate::analysis) fn set_monotone(
         &mut self,
         module: ModuleId,
@@ -78,11 +85,13 @@ impl ExportTable {
         self.0.insert((module, export), value);
         true
     }
+
     pub(in crate::analysis) fn mark_unknown(&mut self) {
         for value in self.0.values_mut() {
             *value = ExportResolution::Unknown;
         }
     }
+
     pub(in crate::analysis) fn len(&self) -> usize {
         self.0.len()
     }

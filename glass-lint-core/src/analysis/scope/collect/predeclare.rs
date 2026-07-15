@@ -10,9 +10,10 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use super::super::super::syntax::module_export_name;
-use super::super::{BindingProvenance, ScopeKind};
-use super::AliasCollector;
+use super::{
+    super::{super::syntax::module_export_name, BindingProvenance, ScopeKind},
+    AliasCollector,
+};
 
 pub(super) struct PredeclareVisitor<'a> {
     pub(super) collector: &'a mut AliasCollector,

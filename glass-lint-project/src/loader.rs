@@ -1,15 +1,21 @@
 //! Public project loading API and the bounded construction loop.
 
-use crate::discovery::{ProjectDiscovery, absolute_path, inside_root, realpath};
-use crate::error::ProjectLoadError;
-use crate::options::{ProjectLoadOptions, ProjectSelection};
-use crate::resolver::ProjectResolver;
+use std::{
+    collections::{BTreeMap, BTreeSet, VecDeque},
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
+
 use glass_lint_core::{
     Linter, ProjectReport, ResolutionRequest, ResolutionRequestKind, ResolutionResult,
 };
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+
+use crate::{
+    discovery::{ProjectDiscovery, absolute_path, inside_root, realpath},
+    error::ProjectLoadError,
+    options::{ProjectLoadOptions, ProjectSelection},
+    resolver::ProjectResolver,
+};
 
 /// Filesystem loader and Oxc resolver configuration.
 #[derive(Clone, Debug)]
@@ -122,9 +128,11 @@ impl PathWorkQueue {
     fn extend(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
         self.0.extend(paths);
     }
+
     fn pop_front(&mut self) -> Option<PathBuf> {
         self.0.pop_front()
     }
+
     fn push(&mut self, path: PathBuf) {
         self.0.push_back(path);
     }
@@ -136,6 +144,7 @@ impl AdmissionSet {
     fn admit(&mut self, path: PathBuf) -> bool {
         self.0.insert(path)
     }
+
     fn len(&self) -> usize {
         self.0.len()
     }
@@ -147,6 +156,7 @@ impl ResolutionCache {
     fn get(&self, key: &(String, ResolutionRequestKind, String)) -> Option<&ResolutionResult> {
         self.0.get(key)
     }
+
     fn insert(&mut self, key: (String, ResolutionRequestKind, String), result: ResolutionResult) {
         self.0.insert(key, result);
     }

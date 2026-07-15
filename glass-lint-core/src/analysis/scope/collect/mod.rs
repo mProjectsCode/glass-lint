@@ -6,6 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use history::AssignmentHistory;
 use swc_common::{BytePos, Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CatchClause, ClassDecl, Expr, FnDecl,
@@ -14,14 +15,17 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use super::super::syntax::{
-    collect_pat_bindings, function_prototype_builtin, is_function_constructor_member, member_chain,
-    member_prop_name, member_root_ident, module_export_name,
+use super::{
+    super::{
+        syntax::{
+            collect_pat_bindings, function_prototype_builtin, is_function_constructor_member,
+            member_chain, member_prop_name, member_root_ident, module_export_name,
+        },
+        value::BindingVersion,
+    },
+    AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeKind,
+    query::rooted::{RootedExprContext, rooted_expr_chain_with},
 };
-use super::super::value::BindingVersion;
-use super::query::rooted::{RootedExprContext, rooted_expr_chain_with};
-use super::{AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeKind};
-use history::AssignmentHistory;
 
 pub(super) mod aliases;
 mod callbacks;
@@ -381,8 +385,9 @@ impl RootedExprContext for AliasCollector {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use swc_ecma_visit::VisitWith;
+
+    use super::*;
 
     fn collect(source: &str) -> AliasCollector {
         let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");

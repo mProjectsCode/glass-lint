@@ -1,10 +1,11 @@
+use std::{io, process::ExitCode};
+
 use anyhow::Result;
 use clap::Parser;
 use glass_lint_cli::{
     args::{Args, Command},
     config, lint, output,
 };
-use std::{io, process::ExitCode};
 
 fn main() -> ExitCode {
     match run() {

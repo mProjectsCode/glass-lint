@@ -6,10 +6,14 @@
 
 use std::collections::BTreeMap;
 
-use super::super::facts::{CallArgInfo, ControlKind, FactPayload, FactStream, ParameterBinding};
-use super::super::syntax::SymbolCallProvenance;
-use super::super::value::{FunctionId, PathId, ValueId};
-use super::table::FunctionTable;
+use super::{
+    super::{
+        facts::{CallArgInfo, ControlKind, FactPayload, FactStream, ParameterBinding},
+        syntax::SymbolCallProvenance,
+        value::{FunctionId, PathId, ValueId},
+    },
+    table::FunctionTable,
+};
 use crate::budget::BudgetTracker;
 
 const MAX_FUNCTION_EFFECTS: usize = 65_536;
@@ -91,6 +95,7 @@ impl ParameterRef {
     pub(in crate::analysis) fn index(&self) -> usize {
         self.index
     }
+
     pub(in crate::analysis) fn is_root(&self) -> bool {
         self.path.is_empty()
     }
@@ -100,12 +105,15 @@ impl EffectArgument {
     pub(in crate::analysis) fn index(&self) -> usize {
         self.index
     }
+
     pub(in crate::analysis) fn value(&self) -> ValueId {
         self.value
     }
+
     pub(in crate::analysis) fn parameter(&self) -> Option<&ParameterRef> {
         self.parameter.as_ref()
     }
+
     pub(in crate::analysis) fn is_root(&self) -> bool {
         self.path.is_empty()
     }
@@ -115,24 +123,31 @@ impl EffectCall {
     pub(in crate::analysis) fn event(&self) -> super::super::facts::FactId {
         self.event
     }
+
     pub(in crate::analysis) fn chain(&self) -> Option<&str> {
         self.chain.as_deref()
     }
+
     pub(in crate::analysis) fn is_rooted(&self) -> bool {
         self.rooted
     }
+
     pub(in crate::analysis) fn target(&self) -> Option<FunctionId> {
         self.target
     }
+
     pub(in crate::analysis) fn result(&self) -> ValueId {
         self.result
     }
+
     pub(in crate::analysis) fn provenance(&self) -> &SymbolCallProvenance {
         &self.provenance
     }
+
     pub(in crate::analysis) fn arguments(&self) -> &[EffectArgument] {
         &self.arguments
     }
+
     pub(in crate::analysis) fn call_arguments(&self) -> &[CallArgInfo] {
         &self.call_arguments
     }
@@ -157,12 +172,15 @@ impl ReturnProjection {
     pub(in crate::analysis) fn value(&self) -> ValueId {
         self.value
     }
+
     pub(in crate::analysis) fn parameter(&self) -> Option<&ParameterRef> {
         self.parameter.as_ref()
     }
+
     pub(in crate::analysis) fn provenance(&self) -> &SymbolCallProvenance {
         &self.provenance
     }
+
     pub(in crate::analysis) fn static_string(&self) -> Option<&str> {
         self.static_string.as_deref()
     }
@@ -344,21 +362,27 @@ impl FunctionEffect {
     pub(in crate::analysis) fn id(&self) -> FunctionId {
         self.id
     }
+
     pub(in crate::analysis) fn calls(&self) -> &[EffectCall] {
         &self.calls
     }
+
     pub(in crate::analysis) fn uses(&self) -> &[EffectUse] {
         &self.uses
     }
+
     pub(in crate::analysis) fn parameters(&self) -> &[ParameterBinding] {
         &self.parameters
     }
+
     pub(in crate::analysis) fn returns(&self) -> &[ReturnProjection] {
         &self.returns
     }
+
     pub(in crate::analysis) fn is_invalid(&self) -> bool {
         self.invalid
     }
+
     pub(in crate::analysis) fn value_root(&self, value: ValueId) -> Option<ValueId> {
         self.value_roots.get(&value).copied()
     }

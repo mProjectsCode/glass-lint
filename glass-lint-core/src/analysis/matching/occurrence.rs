@@ -1,11 +1,13 @@
 //! Typed occurrence storage and deterministic normalization.
 
-use super::super::facts::FactId;
 use std::{
     collections::BTreeMap,
     ops::{Deref, DerefMut},
 };
+
 use swc_common::Span;
+
+use super::super::facts::FactId;
 
 /// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different
@@ -20,9 +22,11 @@ impl Occurrence {
     pub(super) fn new(event: FactId, span: Span) -> Self {
         Self { event, span }
     }
+
     pub(super) fn event(&self) -> FactId {
         self.event
     }
+
     pub(super) fn span(&self) -> Span {
         self.span
     }

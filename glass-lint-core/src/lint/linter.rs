@@ -1,15 +1,23 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::catalog::RuleCatalog;
-use crate::api::{classifier::classify_compiled_api_usage, compiler::CompiledCatalog};
-use crate::diagnostic::LintReport;
-use crate::project::ModuleId;
-use crate::{REPORT_VERSION, RuleId, SourceLanguage};
+use crate::{
+    CoreConfig, Environment, ProjectInput, ProjectInputError, ProjectReport, ProjectSession,
+    REPORT_VERSION, RuleCatalogError, RuleId, SourceLanguage,
+    analysis::{LocalModuleModel, ProjectSemanticModel},
+    api::{
+        classification::ApiClassificationResult, classifier::classify_compiled_api_usage,
+        compiler::CompiledCatalog,
+    },
+    diagnostic::LintReport,
+    project::ModuleId,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LintConfigError {
     UnknownRule(RuleId),
 }
+
 impl std::fmt::Display for LintConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -17,6 +25,7 @@ impl std::fmt::Display for LintConfigError {
         }
     }
 }
+
 impl std::error::Error for LintConfigError {}
 
 pub struct Linter {
@@ -30,16 +39,18 @@ impl Linter {
     pub fn begin_project(
         &self,
         root: impl Into<std::path::PathBuf>,
-    ) -> Result<crate::ProjectSession<'_>, crate::ProjectInputError> {
-        crate::ProjectSession::new(self, root)
+    ) -> Result<ProjectSession<'_>, ProjectInputError> {
+        ProjectSession::new(self, root)
     }
+
     /// Apply provider-neutral engine configuration to this linter.
-    pub fn configured(self, config: &crate::CoreConfig) -> Result<Self, LintConfigError> {
+    pub fn configured(self, config: &CoreConfig) -> Result<Self, LintConfigError> {
         match &config.rules {
             Some(rules) => Self::with_rules(self.catalog, rules.clone()),
             None => Ok(self),
         }
     }
+
     #[must_use]
     pub fn new(catalog: RuleCatalog) -> Self {
         let enabled = catalog.rule_ids().into_iter().collect();
@@ -72,8 +83,8 @@ impl Linter {
     /// environment while preserving each linter's enabled rule selection.
     pub fn combine_with_environment(
         linters: impl IntoIterator<Item = Self>,
-        environment: crate::Environment,
-    ) -> Result<Self, crate::RuleCatalogError> {
+        environment: Environment,
+    ) -> Result<Self, RuleCatalogError> {
         let mut catalogs = Vec::new();
         let mut enabled = BTreeSet::new();
         for linter in linters {
@@ -90,7 +101,7 @@ impl Linter {
         &self.catalog
     }
 
-    pub(crate) fn analysis_environment(&self) -> &crate::Environment {
+    pub(crate) fn analysis_environment(&self) -> &Environment {
         self.catalog.environment()
     }
 
@@ -104,11 +115,13 @@ impl Linter {
     pub fn lint(&self, source: &str, filename: &str) -> LintReport {
         let _span = tracing::info_span!(target: "glass_lint::lint", "lint", filename, source_bytes = source.len(), selected_rules = self.enabled.len()).entered();
         tracing::debug!(target: "glass_lint::parse", "parsing source");
+
         let language = SourceLanguage::from_filename(filename);
         let parsed = match crate::parse::parse_with_language(source, filename, language) {
             Ok(parsed) => parsed,
             Err(error) => {
                 tracing::debug!(target: "glass_lint::parse", diagnostics = 1, "parse failed");
+
                 return LintReport {
                     schema_version: REPORT_VERSION,
                     tool_version: env!("CARGO_PKG_VERSION").into(),
@@ -122,15 +135,11 @@ impl Linter {
 
         let classifications = {
             let _span = tracing::debug_span!(target: "glass_lint::semantic", "semantic").entered();
-            let local = crate::analysis::LocalModuleModel::analyze(
-                &parsed.program,
-                self.catalog.environment(),
-            );
-            let project = crate::analysis::ProjectSemanticModel::single(
-                filename,
-                parsed.source_map.clone(),
-                local,
-            );
+
+            let local = LocalModuleModel::analyze(&parsed.program, self.catalog.environment());
+
+            let project = ProjectSemanticModel::single(filename, parsed.source_map.clone(), local);
+
             classify_compiled_api_usage(&project, &self.compiled, &self.catalog.rules, &selected)
         };
 
@@ -142,6 +151,7 @@ impl Linter {
                     self.findings_for(classification, &parsed.source_map, source)
                 })
         };
+
         findings.sort_by(|left, right| {
             (
                 &left.range.start.line,
@@ -154,8 +164,10 @@ impl Linter {
                     &right.rule_id,
                 ))
         });
+
         tracing::debug!(target: "glass_lint::lint", findings = findings.len(), "report assembled");
         tracing::info!(target: "glass_lint::lint", findings = findings.len(), parse_diagnostics = 0, "lint complete");
+
         LintReport {
             schema_version: REPORT_VERSION,
             tool_version: env!("CARGO_PKG_VERSION").into(),
@@ -166,10 +178,7 @@ impl Linter {
 
     /// Lints an in-memory project using explicit, already-classified
     /// resolution results.  Filesystem loading belongs to the project crate.
-    pub fn lint_project(
-        &self,
-        input: crate::ProjectInput,
-    ) -> Result<crate::ProjectReport, crate::ProjectInputError> {
+    pub fn lint_project(&self, input: ProjectInput) -> Result<ProjectReport, ProjectInputError> {
         let input = input.validate()?;
         let mut session = self.begin_project(input.root)?;
         for source in input.sources {
@@ -183,23 +192,19 @@ impl Linter {
 
     pub(crate) fn lint_analyzed_project_timed(
         &self,
-        input: crate::ProjectInput,
-        analyzed: std::collections::BTreeMap<
+        input: ProjectInput,
+        analyzed: BTreeMap<
             String,
             (
                 swc_common::sync::Lrc<swc_common::SourceMap>,
-                crate::analysis::LocalModuleModel,
+                LocalModuleModel,
             ),
         >,
-        parse_diagnostics: std::collections::BTreeMap<String, crate::ParseDiagnostic>,
-    ) -> Result<
-        (
-            crate::ProjectReport,
-            std::time::Duration,
-            std::time::Duration,
-        ),
-        crate::ProjectInputError,
-    > {
+        parse_diagnostics: BTreeMap<String, crate::ParseDiagnostic>,
+    ) -> Result<(ProjectReport, std::time::Duration, std::time::Duration), ProjectInputError> {
+        // TODO: simplify this method, both in terms of the type complexity of the
+        // signature and in terms of the function body length.
+
         let input = input.validate()?;
         let mut authored = std::collections::BTreeSet::new();
         for (path, (source_map, local)) in &analyzed {
@@ -213,14 +218,14 @@ impl Linter {
         }
         for (key, _) in &input.resolutions {
             if !authored.contains(key) {
-                return Err(crate::ProjectInputError::UnknownRequest(key.clone()));
+                return Err(ProjectInputError::UnknownRequest(key.clone()));
             }
         }
         let sources = input
             .sources
             .iter()
             .map(|source| (source.path.clone(), source.source.clone()))
-            .collect::<std::collections::BTreeMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
         let mut files = parse_diagnostics
             .into_iter()
             .map(|(path, diagnostic)| {
@@ -233,10 +238,10 @@ impl Linter {
                     },
                 )
             })
-            .collect::<std::collections::BTreeMap<_, _>>();
+            .collect::<BTreeMap<_, _>>();
 
         let linking_start = std::time::Instant::now();
-        let project = crate::analysis::ProjectSemanticModel::link(input, analyzed)?;
+        let project = ProjectSemanticModel::link(input, analyzed)?;
         let linking_elapsed = linking_start.elapsed();
         let matching_start = std::time::Instant::now();
         let classifications = classify_compiled_api_usage(
@@ -257,6 +262,7 @@ impl Linter {
             });
             diagnostics.sort_by(|left, right| left.code.cmp(&right.code));
         }
+
         let evidence = files
             .values()
             .map(|file| {
@@ -266,25 +272,24 @@ impl Linter {
                     .sum::<usize>()
             })
             .sum();
-        let report = crate::ProjectReport {
-            schema_version: crate::REPORT_VERSION,
+
+        let report = ProjectReport {
+            schema_version: REPORT_VERSION,
             tool_version: env!("CARGO_PKG_VERSION").into(),
             files: files.into_values().collect(),
             diagnostics,
             operations: project.operation_counts(evidence),
         };
+
         Ok((report, linking_elapsed, matching_elapsed))
     }
 
     fn populate_project_files(
         &self,
-        project: &crate::analysis::ProjectSemanticModel,
-        classifications: &std::collections::BTreeMap<
-            crate::project::ModuleId,
-            crate::api::classification::ApiClassificationResult,
-        >,
-        sources: &std::collections::BTreeMap<String, String>,
-        files: &mut std::collections::BTreeMap<String, crate::ProjectFileReport>,
+        project: &ProjectSemanticModel,
+        classifications: &BTreeMap<ModuleId, ApiClassificationResult>,
+        sources: &BTreeMap<String, String>,
+        files: &mut BTreeMap<String, crate::ProjectFileReport>,
     ) {
         for module in project.modules() {
             let Some(classification) = classifications.get(&module.id()) else {
@@ -293,6 +298,8 @@ impl Linter {
             let Some(source) = sources.get(module.path()) else {
                 continue;
             };
+            // TODO: What is this mess of mapping and filtering. We should really introduce a newtype
+            // around Vec<Finding>
             let mut findings = self
                 .findings_for(classification, module.source_map(), source)
                 .into_iter()
@@ -359,10 +366,11 @@ impl Linter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::rule::{ApiRule, ApiSeverity, Confidence, Matcher};
-    use crate::lint::findings::contains_range;
-    use crate::lint::ranges::remove_contained_ranges;
-    use crate::{Position, SourceRange};
+    use crate::{
+        Position, SourceRange,
+        api::rule::{ApiRule, ApiSeverity, Confidence, Matcher},
+        lint::{findings::contains_range, ranges::remove_contained_ranges},
+    };
     fn catalog() -> RuleCatalog {
         let rule = ApiRule::builder("network.fetch")
             .label("Uses fetch")

@@ -6,15 +6,23 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use super::effect::{EffectUse, FunctionEffect};
-use super::index::FlowId;
-use super::requirements::RequirementSet;
-use crate::analysis::ProjectSemanticModel;
-use crate::analysis::facts::FactId;
-use crate::analysis::value::{FunctionId, ValueId};
-use crate::api::classification::{ApiEvidence, ApiMatchKind, ApiRelatedEvidence};
-use crate::api::compiler::{CompiledMatcherCatalog, CompiledObjectFlow, CompiledObjectRequirement};
-use crate::project::ModuleId;
+use super::{
+    effect::{EffectUse, FunctionEffect},
+    index::FlowId,
+    requirements::RequirementSet,
+};
+use crate::{
+    analysis::{
+        ProjectSemanticModel,
+        facts::FactId,
+        value::{FunctionId, ValueId},
+    },
+    api::{
+        classification::{ApiEvidence, ApiMatchKind, ApiRelatedEvidence},
+        compiler::{CompiledMatcherCatalog, CompiledObjectFlow, CompiledObjectRequirement},
+    },
+    project::ModuleId,
+};
 
 const MAX_CONTEXTS: usize = 65_536;
 const MAX_STEPS: usize = 262_144;

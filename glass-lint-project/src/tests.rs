@@ -1,6 +1,8 @@
-use crate::{ProjectLoadError, ProjectLoadOptions, ProjectLoader, ProjectSelection};
-use glass_lint_core::{Environment, Linter, RuleCatalog};
 use std::fs;
+
+use glass_lint_core::{Environment, Linter, RuleCatalog};
+
+use crate::{ProjectLoadError, ProjectLoadOptions, ProjectLoader, ProjectSelection};
 
 fn linter() -> Linter {
     Linter::new(RuleCatalog::with_environment("test", vec![], Environment::default()).unwrap())

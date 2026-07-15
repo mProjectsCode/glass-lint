@@ -43,85 +43,109 @@ impl Matcher {
     pub fn call(value: CallMatcher) -> Self {
         value.into()
     }
+
     pub fn global_call(name: impl Into<String>) -> Self {
         CallMatcher::global(name).into()
     }
+
     pub fn heuristic_call(name: impl Into<String>) -> Self {
         CallMatcher::heuristic(name).into()
     }
+
     pub fn module_call(module: impl Into<String>, export: impl Into<String>) -> Self {
         CallMatcher::module_export(module, export).into()
     }
+
     #[must_use]
     pub fn member_call(value: MemberCallMatcher) -> Self {
         value.into()
     }
+
     pub fn heuristic_member_call(chain: impl Into<String>) -> Self {
         MemberCallMatcher::heuristic(chain).into()
     }
+
     pub fn rooted_member_call(chain: impl Into<String>) -> Self {
         MemberCallMatcher::rooted(chain).into()
     }
+
     pub fn module_member_call(module: impl Into<String>, member: impl Into<String>) -> Self {
         MemberCallMatcher::module_member(module, member).into()
     }
+
     #[must_use]
     pub fn member_read(value: MemberReadMatcher) -> Self {
         value.into()
     }
+
     pub fn heuristic_member_read(chain: impl Into<String>) -> Self {
         MemberReadMatcher::heuristic(chain).into()
     }
+
     pub fn rooted_member_read(chain: impl Into<String>) -> Self {
         MemberReadMatcher::rooted(chain).into()
     }
+
     pub fn module_member_read(module: impl Into<String>, member: impl Into<String>) -> Self {
         MemberReadMatcher::module_member(module, member).into()
     }
+
     pub fn import(module: impl Into<String>) -> Self {
         Self::Import(module.into())
     }
+
     pub fn string_literal(value: impl Into<String>) -> Self {
         Self::StringLiteral(value.into())
     }
+
     #[must_use]
     pub fn class(value: ClassMatcher) -> Self {
         value.into()
     }
+
     pub fn heuristic_class(name: impl Into<String>) -> Self {
         ClassMatcher::heuristic(name).into()
     }
+
     pub fn module_class(module: impl Into<String>, export: impl Into<String>) -> Self {
         ClassMatcher::module_export(module, export).into()
     }
+
     #[must_use]
     pub fn constructor(value: ConstructorMatcher) -> Self {
         value.into()
     }
+
     pub fn heuristic_constructor(name: impl Into<String>) -> Self {
         ConstructorMatcher::heuristic(name).into()
     }
+
     pub fn global_constructor(name: impl Into<String>) -> Self {
         ConstructorMatcher::global(name).into()
     }
+
     pub fn module_constructor(module: impl Into<String>, export: impl Into<String>) -> Self {
         ConstructorMatcher::module_export(module, export).into()
     }
+
     pub fn flow(value: impl Into<Matcher>) -> Self {
         value.into()
     }
+
     pub fn returned_member_call(source: impl Into<String>, member: impl Into<String>) -> Self {
         Self::ReturnedMemberCall(ReturnedMemberCallMatcher {
             source: source.into(),
             member: member.into(),
         })
     }
+
     pub fn returned_member_read(source: impl Into<String>, member: impl Into<String>) -> Self {
         Self::ReturnedMemberRead(ReturnedMemberReadMatcher {
             source: source.into(),
             member: member.into(),
         })
     }
+
     pub fn instance_member_call(
         module: impl Into<String>,
         export: impl Into<String>,

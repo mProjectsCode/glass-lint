@@ -1,8 +1,9 @@
+use swc_ecma_ast::AssignOp;
+
 use super::{
     AssignExpr, FactBuilder, FactKind, FactPayload, MemberExpr, Pat, Spanned, ValueId, VisitWith,
     member_prop_name,
 };
-use swc_ecma_ast::AssignOp;
 
 impl FactBuilder<'_> {
     pub(super) fn record_assignment(&mut self, assignment: &AssignExpr) {

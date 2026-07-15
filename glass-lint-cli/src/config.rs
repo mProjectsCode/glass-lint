@@ -1,11 +1,13 @@
 //! Configuration schema, loading precedence, and provider/profile selection.
 
-use crate::args::Args;
+use std::{fs, path::Path};
+
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use glass_lint_core::{CoreConfig, Linter, MAX_SOURCE_BYTES, RuleCatalog, Severity};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::Path};
+
+use crate::args::Args;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]

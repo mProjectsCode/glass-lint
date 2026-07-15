@@ -7,6 +7,7 @@ pub(crate) use rule::{
     CompiledObjectSinkArgs, CompiledRule,
 };
 
+// TODO: why does this discard the compiled catalog? Also this is only used once and should be inlined into the caller
 pub fn validate_catalog(
     rules: &[super::rule::ApiRule],
 ) -> Result<(), super::rule::ApiCatalogError> {
