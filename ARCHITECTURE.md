@@ -34,7 +34,8 @@ declarative matchers, and front ends select rules and serialize reports.
 
 Core is provider-neutral. It owns:
 
-- JavaScript and JSX parsing
+- JavaScript/JSX and ordinary TypeScript parsing (`.js`, `.cjs`, `.mjs`,
+  `.ts`, `.cts`, and `.mts`)
 - lexical scopes, bindings, shadowing, and reassignment history
 - import, CommonJS, global, rooted-chain, alias, and value provenance
 - the shared semantic fact stream and bounded flow analysis
@@ -89,7 +90,8 @@ reusable harness behavior stays in `glass-lint-harness`.
 
 ```text
 source
-  -> parse JavaScript/JSX once
+  -> parse JavaScript/JSX or TypeScript once
+  -> normalize TypeScript in memory (TypeScript only)
   -> collect lexical scopes and declarations
   -> emit matcher-independent semantic facts
   -> resolve identities, constants, aliases, calls, and value flow
@@ -102,6 +104,12 @@ source
 The selected rule set must not change semantic fact construction or add AST
 traversals. Shared analysis is built once per file, then queried by every
 enabled rule.
+
+TypeScript uses SWC's fixed default TypeScript transform after resolution. It
+strips type-only syntax and lowers runtime TypeScript constructs in memory,
+while retaining the original source map for findings. The initial input
+boundary excludes TSX, declaration files, `tsconfig.json`, and
+cross-file type or module resolution.
 
 The main core layers are:
 

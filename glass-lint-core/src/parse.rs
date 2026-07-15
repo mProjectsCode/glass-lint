@@ -1,6 +1,8 @@
-use swc_common::{FileName, SourceMap, Spanned, sync::Lrc};
+use swc_common::{FileName, GLOBALS, Globals, Mark, SourceMap, Spanned, sync::Lrc};
 use swc_ecma_ast::{EsVersion, Program};
-use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax, lexer::Lexer};
+use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax, TsSyntax, lexer::Lexer};
+use swc_ecma_transforms_base::resolver;
+use swc_ecma_transforms_typescript::strip;
 
 use crate::{
     MAX_SOURCE_BYTES,
@@ -16,18 +18,77 @@ pub struct ParseDiagnostic {
     pub range: Option<SourceRange>,
 }
 
+/// Source languages accepted by the core parser.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceLanguage {
+    JavaScript,
+    TypeScript,
+}
+
+impl SourceLanguage {
+    /// Selects the parser language for a filename. Unknown names retain the
+    /// historical JavaScript fallback for virtual sources.
+    #[must_use]
+    pub fn from_filename(filename: &str) -> Self {
+        Self::from_extension(Self::extension(filename)).unwrap_or(Self::JavaScript)
+    }
+
+    /// Returns the language associated with a supported source extension.
+    #[must_use]
+    pub fn from_extension(extension: &str) -> Option<Self> {
+        match extension.to_ascii_lowercase().as_str() {
+            "js" | "cjs" | "mjs" => Some(Self::JavaScript),
+            "ts" | "cts" | "mts" => Some(Self::TypeScript),
+            _ => None,
+        }
+    }
+
+    /// Returns whether a filename is a discoverable runtime source file.
+    /// TypeScript declaration files are excluded because they contain no
+    /// runtime behavior for the semantic engine to analyze.
+    #[must_use]
+    pub fn is_supported_filename(filename: &str) -> bool {
+        !Self::is_declaration_filename(filename)
+            && Self::from_extension(Self::extension(filename)).is_some()
+    }
+
+    fn extension(filename: &str) -> &str {
+        filename
+            .rsplit(['/', '\\'])
+            .next()
+            .and_then(|basename| basename.rsplit_once('.'))
+            .map_or("", |(_, extension)| extension)
+    }
+
+    fn is_declaration_filename(filename: &str) -> bool {
+        filename.rsplit(['/', '\\']).next().is_some_and(|basename| {
+            let basename = basename.to_ascii_lowercase();
+            [".d.ts", ".d.cts", ".d.mts"]
+                .iter()
+                .any(|suffix| basename.ends_with(suffix))
+        })
+    }
+}
+
 pub(crate) struct ParsedSource {
     pub program: Program,
     pub source_map: Lrc<SourceMap>,
 }
 
+#[cfg(test)]
 pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
+    parse_with_language(source, filename, SourceLanguage::JavaScript)
+}
+
+pub(crate) fn parse_with_language(
+    source: &str,
+    filename: &str,
+    language: SourceLanguage,
+) -> Result<ParsedSource, ParseDiagnostic> {
     if source.len() > MAX_SOURCE_BYTES {
         return Err(ParseDiagnostic {
             code: "source_too_large".into(),
-            message: format!(
-                "JavaScript source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"
-            ),
+            message: format!("source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"),
             filename: filename.into(),
             range: None,
         });
@@ -35,8 +96,8 @@ pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseD
     let source_map = Lrc::new(SourceMap::default());
     let file =
         source_map.new_source_file(FileName::Custom(filename.into()).into(), source.to_owned());
-    let lexer = Lexer::new(
-        Syntax::Es(EsSyntax {
+    let syntax = match language {
+        SourceLanguage::JavaScript => Syntax::Es(EsSyntax {
             jsx: true,
             decorators: true,
             fn_bind: true,
@@ -48,15 +109,31 @@ pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseD
             explicit_resource_management: true,
             ..Default::default()
         }),
-        EsVersion::EsNext,
-        StringInput::from(&*file),
-        None,
-    );
+        SourceLanguage::TypeScript => Syntax::Typescript(TsSyntax {
+            tsx: false,
+            decorators: true,
+            ..Default::default()
+        }),
+    };
+    let lexer = Lexer::new(syntax, EsVersion::EsNext, StringInput::from(&*file), None);
     Parser::new_from(lexer)
         .parse_program()
-        .map(|program| ParsedSource {
-            program,
-            source_map: source_map.clone(),
+        .map(|program| {
+            let program = match language {
+                SourceLanguage::JavaScript => program,
+                SourceLanguage::TypeScript => GLOBALS.set(&Globals::default(), || {
+                    let unresolved_mark = Mark::new();
+                    let top_level_mark = Mark::new();
+                    let mut program = program;
+                    program = program.apply(resolver(unresolved_mark, top_level_mark, true));
+                    program = program.apply(strip(unresolved_mark, top_level_mark));
+                    program
+                }),
+            };
+            ParsedSource {
+                program,
+                source_map: source_map.clone(),
+            }
         })
         .map_err(|error| {
             let range = (!error.span().is_dummy()).then(|| {
@@ -83,7 +160,14 @@ pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseD
             });
             ParseDiagnostic {
                 code: "syntax_error".into(),
-                message: format!("JavaScript parse error: {}", error.kind().msg()),
+                message: format!(
+                    "{} parse error: {}",
+                    match language {
+                        SourceLanguage::JavaScript => "JavaScript",
+                        SourceLanguage::TypeScript => "TypeScript",
+                    },
+                    error.kind().msg()
+                ),
                 filename: filename.into(),
                 range,
             }

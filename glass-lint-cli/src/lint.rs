@@ -6,7 +6,7 @@ use crate::{
     output::{FileOutput, Summary},
 };
 use anyhow::{Context, Result, bail};
-use glass_lint_core::Linter;
+use glass_lint_core::{Linter, SourceLanguage};
 use std::{fs, path::PathBuf};
 use walkdir::WalkDir;
 
@@ -24,7 +24,10 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
 
     let paths = discover_paths(&path)?;
     if paths.is_empty() {
-        bail!("no JavaScript files found at {}", path.display())
+        bail!(
+            "no JavaScript or TypeScript files found at {}",
+            path.display()
+        )
     }
 
     lint_files(config, &linter, paths)
@@ -39,10 +42,7 @@ fn discover_paths(path: &PathBuf) -> Result<Vec<PathBuf>> {
             .into_iter()
             .filter(|entry| {
                 entry.file_type().is_file()
-                    && entry
-                        .path()
-                        .extension()
-                        .is_some_and(|extension| extension == "js")
+                    && SourceLanguage::is_supported_filename(&entry.path().to_string_lossy())
             })
             .map(walkdir::DirEntry::into_path)
             .collect()
@@ -103,4 +103,29 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
     crate::output::write_report(config, &files, summary)?;
     tracing::info!(target: "glass_lint::cli", files = files.len(), "command completed");
     Ok(failed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::discover_paths;
+    use std::fs;
+
+    #[test]
+    fn discovers_sorted_runtime_javascript_and_typescript_files() {
+        let root =
+            std::env::temp_dir().join(format!("glass-lint-cli-discovery-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        for filename in ["z.ts", "a.mjs", "c.d.ts", "b.cts", "ignored.txt"] {
+            fs::write(root.join(filename), "").unwrap();
+        }
+
+        let paths = discover_paths(&root).unwrap();
+        let names: Vec<_> = paths
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["a.mjs", "b.cts", "z.ts"]);
+
+        fs::remove_dir_all(root).unwrap();
+    }
 }

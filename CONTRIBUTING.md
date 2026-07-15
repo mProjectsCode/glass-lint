@@ -98,7 +98,7 @@ limitations in a Rust doc comment.
 
 ## Profiling
 
-Folder profiling reads selected files into memory before timing `Linter::lint`,
+Folder profiling reads selected JavaScript and TypeScript runtime files into memory before timing `Linter::lint`,
 so measured lint wall time excludes discovery, file reads, and decoding. File
 discovery is recursive and deterministic and does not follow symlinks.
 

@@ -116,6 +116,7 @@ impl Adapter for ExternalAdapter {
             protocol_version: ADAPTER_PROTOCOL_VERSION,
             case_id: case.id.clone(),
             filename: case.filename.clone(),
+            language: case.language.clone(),
             source: case.source.clone(),
             rules: expectation.rules.clone(),
             config: expectation.config.clone(),

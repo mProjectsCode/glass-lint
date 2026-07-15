@@ -9,7 +9,7 @@ use crate::api::{
     compiler::CompiledCatalog,
 };
 use crate::diagnostic::{Evidence, Finding, LintReport, SourceRange};
-use crate::{REPORT_VERSION, RuleId};
+use crate::{REPORT_VERSION, RuleId, SourceLanguage};
 use swc_common::SourceMapper;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,7 +89,7 @@ impl Linter {
         &self.catalog
     }
 
-    /// Lints one JavaScript/JSX source file.
+    /// Lints one JavaScript/JSX or TypeScript source file.
     ///
     /// Parsing stops after the first parser diagnostic.  Findings contain
     /// source ranges in one-based Unicode display columns. Evidence is bounded
@@ -99,7 +99,8 @@ impl Linter {
     pub fn lint(&self, source: &str, filename: &str) -> LintReport {
         let _span = tracing::info_span!(target: "glass_lint::lint", "lint", filename, source_bytes = source.len(), selected_rules = self.enabled.len()).entered();
         tracing::debug!(target: "glass_lint::parse", "parsing source");
-        let parsed = match crate::parse::parse(source, filename) {
+        let language = SourceLanguage::from_filename(filename);
+        let parsed = match crate::parse::parse_with_language(source, filename, language) {
             Ok(parsed) => parsed,
             Err(error) => {
                 tracing::debug!(target: "glass_lint::parse", diagnostics = 1, "parse failed");

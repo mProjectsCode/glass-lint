@@ -19,7 +19,7 @@ pub use diagnostic::{
 };
 pub use environment::{Environment, EnvironmentError};
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
-pub use parse::ParseDiagnostic;
+pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
 pub use rule_id::RuleId;
 

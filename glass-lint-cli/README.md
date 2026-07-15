@@ -2,7 +2,7 @@
 
 `glass-lint-cli` provides the workspace's `glass-lint` command:
 
-- `glass-lint` analyzes JavaScript files and directories and prints reports.
+- `glass-lint` analyzes JavaScript or TypeScript files and directories and prints reports.
 
 The harness executable is provided by the separate `glass-lint-harness-cli`
 package.
@@ -19,9 +19,10 @@ cargo run -p glass-lint-cli --bin glass-lint -- snippet path/to/snippet.js
 ```
 
 Use `--config PATH` or `--config-json JSON`; without either, configuration is
-discovered from the current directory. `check` recursively discovers `.js`
-files and `snippet` requires a file. Policy lives in the versioned `[core]` and
-`[cli]` sections.
+discovered from the current directory. `check` recursively discovers supported
+JavaScript and TypeScript runtime files (`.js`, `.cjs`, `.mjs`, `.ts`, `.cts`,
+and `.mts`); declaration files are excluded. `snippet` requires a file. Policy
+lives in the versioned `[core]` and `[cli]` sections.
 
 The default Obsidian provider runs both generic `js:*` rules and
 Obsidian-specific `obsidian:*` rules in one analysis pass using the Obsidian

@@ -1,8 +1,9 @@
 # glass-lint-core
 
-`glass-lint-core` is the provider-neutral JavaScript analysis engine behind
-Glass Lint. It parses JavaScript and JSX, builds shared lexical and semantic
-indexes, executes validated declarative matchers, and returns deterministic
+`glass-lint-core` is the provider-neutral JavaScript and TypeScript analysis
+engine behind Glass Lint. It parses JavaScript/JSX and ordinary TypeScript,
+builds shared lexical and semantic indexes, executes validated declarative
+matchers, and returns deterministic
 structured reports.
 
 This crate intentionally contains no Obsidian or JavaScript-platform rule
@@ -100,12 +101,16 @@ catalog is constructed.
 
 ## Reports and limits
 
-`Linter::lint` accepts one source string and filename. A `LintReport` contains
+`Linter::lint` accepts one source string and filename; `.ts`, `.cts`, and `.mts`
+select the TypeScript parser, while `.js`, `.cjs`, and `.mjs` select JavaScript.
+Unknown filenames retain the historical JavaScript fallback. TypeScript
+is normalized in memory with fixed SWC defaults and is not type-checked or
+configured from `tsconfig.json`. A `LintReport` contains
 schema and tool versions, sorted findings, bounded evidence, and parse
 diagnostics. Finding locations use one-based Unicode display columns, and each
 finding contains only the evidence occurrences at its location.
 
-JavaScript sources larger than `MAX_SOURCE_BYTES` (8 MiB) return a structured
+Sources larger than `MAX_SOURCE_BYTES` (8 MiB) return a structured
 parse diagnostic. Parsing stops after the first parser diagnostic. Each rule
 retains at most `Rule::EVIDENCE_LIMIT` (16) source occurrences so report size
 remains bounded.

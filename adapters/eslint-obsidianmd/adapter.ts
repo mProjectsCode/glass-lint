@@ -3,7 +3,7 @@
 import { ESLint, type Linter } from "eslint";
 import obsidianmdPlugin from "eslint-plugin-obsidianmd";
 
-const ADAPTER_PROTOCOL_VERSION = 1;
+const ADAPTER_PROTOCOL_VERSION = 2;
 const TOOL_NAME = "eslint-obsidianmd";
 const FALLBACK_PLUGIN_VERSION = "0.4.1";
 
@@ -12,6 +12,7 @@ type FindingSeverity = "error" | "warning" | "info";
 interface AdapterRequest {
     protocol_version: number;
     filename: string;
+    language: string;
     source: string;
     rules: string[];
     config?: string;
@@ -198,6 +199,9 @@ async function main(): Promise<void> {
     
     let before = performance.now();
     const request = await readRequest();
+    if (request.language !== "javascript") {
+        throw new Error("eslint-obsidianmd adapter does not support TypeScript");
+    }
     process.stderr.write(`[${TOOL_NAME}] read request in ${Math.round(performance.now() - before)}ms\n`);
 
     before = performance.now();

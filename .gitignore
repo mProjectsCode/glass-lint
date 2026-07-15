@@ -3,4 +3,5 @@ node_modules/
 tests/COMPARISON.md
 profile.json.gz
 plan.md
+/*-plan.md
 rules_checklist.md

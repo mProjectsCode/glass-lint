@@ -1,6 +1,6 @@
 # Glass Lint
 
-Glass Lint is a precision-first JavaScript analysis engine for identifying API
+Glass Lint is a precision-first JavaScript and TypeScript analysis engine for identifying API
 and platform capabilities in source files and bundled code. The repository
 includes rule providers for JavaScript runtimes and Obsidian plugins, a CLI,
 and a snippet-based conformance harness.
@@ -16,14 +16,17 @@ opt-in `heuristic` profiles.
 
 ## What it analyzes
 
-- JavaScript and JSX source, including minified bundles
+- JavaScript/JSX and ordinary TypeScript (`.js`, `.cjs`, `.mjs`, `.ts`, `.cts`,
+  and `.mts`) source, including minified bundles
 - Browser, Node.js, and Electron capabilities through the `js` provider
 - Obsidian API usage through the `obsidian` provider
 - Imports, CommonJS loads, aliases, shadowing, reassignment, rooted member
   chains, static arguments, and bounded value flow
 
-TypeScript syntax, automatic fixes, and suggestions are not currently
-supported. A source file is limited to 8 MiB by the core parser.
+TypeScript is parsed and normalized with fixed SWC emit semantics; Glass Lint
+does not type-check, read `tsconfig.json`, resolve paths, or support TSX or
+declaration files in this increment. A source file is limited to 8 MiB by the
+core parser.
 
 ## A small example
 
@@ -74,8 +77,8 @@ cargo run -p glass-lint-cli --bin glass-lint -- rules
 cargo run -p glass-lint-cli --bin glass-lint -- check path/to/main.js
 ```
 
-`check` accepts either one JavaScript file or a directory, which is searched
-recursively for `.js` files. Results default to bounded human-readable output;
+`check` accepts either one source file or a directory, which is searched
+recursively for supported JavaScript and TypeScript runtime extensions. Results default to bounded human-readable output;
 rules are grouped across the input and their evidence is sorted by file and
 source location while retaining copyable `path:line:column` values. JSON output
 is selected through the versioned configuration schema.

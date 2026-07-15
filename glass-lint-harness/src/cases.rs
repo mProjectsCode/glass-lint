@@ -7,17 +7,23 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::Severity;
+use glass_lint_core::{Severity, SourceLanguage};
 use walkdir::WalkDir;
 
 use crate::types::{Case, DiagnosticExpectation, ToolExpectation};
 
-fn default_language() -> String {
-    "javascript".into()
+fn language_for_path(path: &Path) -> &'static str {
+    match SourceLanguage::from_filename(&path.to_string_lossy()) {
+        SourceLanguage::TypeScript => "typescript",
+        SourceLanguage::JavaScript => "javascript",
+    }
 }
 
-fn default_filename() -> String {
-    "main.js".into()
+fn default_filename(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || "main.js".into(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
@@ -27,10 +33,7 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
         .into_iter()
         .filter(|entry| {
             entry.file_type().is_file()
-                && entry
-                    .path()
-                    .extension()
-                    .is_some_and(|extension| extension == "js")
+                && SourceLanguage::is_supported_filename(&entry.path().to_string_lossy())
         })
         .map(walkdir::DirEntry::into_path)
         .collect();
@@ -44,11 +47,13 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
                 fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
             let case = parse_case(root, &path, source)
                 .with_context(|| format!("parse {}", path.display()))?;
-            if case.language != "javascript" {
+            let expected_language = language_for_path(&path);
+            if case.language != expected_language {
                 bail!(
-                    "{}: unsupported language `{}`",
+                    "{}: language `{}` conflicts with its fixture extension (expected `{}`)",
                     path.display(),
-                    case.language
+                    case.language,
+                    expected_language
                 );
             }
             if !ids.insert(case.id.clone()) {
@@ -65,14 +70,15 @@ fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
         .with_extension("")
         .to_string_lossy()
         .replace(std::path::MAIN_SEPARATOR, "/");
-    let filename = path
-        .file_name()
-        .map_or_else(default_filename, |name| name.to_string_lossy().into_owned());
+    let filename = path.file_name().map_or_else(
+        || default_filename(path),
+        |name| name.to_string_lossy().into_owned(),
+    );
     let mut case = Case {
         id: id.clone(),
         description: id,
         tags: vec![],
-        language: default_language(),
+        language: language_for_path(path).into(),
         filename,
         source,
         tools: BTreeMap::new(),
@@ -314,5 +320,36 @@ function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=j
 
         assert_eq!(case.tools["glass-lint"].forbidden.len(), 1);
         assert_eq!(case.tools["glass-lint"].forbidden[0].line, Some(3));
+    }
+
+    #[test]
+    fn defaults_typescript_cases_from_the_fixture_extension() {
+        let case = parse_case(
+            Path::new("fixtures"),
+            Path::new("fixtures/network/runtime.mts"),
+            "// @tool glass-lint rules=js:network.request\nfetch('/remote');\n".into(),
+        )
+        .unwrap();
+
+        assert_eq!(case.language, "typescript");
+        assert_eq!(case.filename, "runtime.mts");
+    }
+
+    #[test]
+    fn rejects_a_language_that_conflicts_with_the_fixture_extension() {
+        let root = std::env::temp_dir().join(format!(
+            "glass-lint-harness-language-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("conflict.ts"),
+            "// @case language javascript\n// @tool glass-lint rules=js:network.request\nfetch('/remote');\n",
+        )
+        .unwrap();
+
+        let error = load_cases(&root).unwrap_err().to_string();
+        assert!(error.contains("conflicts with its fixture extension"));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

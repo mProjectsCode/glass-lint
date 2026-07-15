@@ -13,7 +13,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::{Linter, RuleId};
+use glass_lint_core::{Linter, RuleId, SourceLanguage};
 use glob::{MatchOptions, Pattern};
 use walkdir::WalkDir;
 
@@ -172,7 +172,7 @@ pub fn discover_profile_files(
             continue;
         }
         if metadata.is_file() {
-            if is_javascript(root)
+            if is_source_file(root)
                 && matches_filters(root, root.parent().unwrap_or(root), &includes, &excludes)
             {
                 paths.insert(root.clone(), ());
@@ -188,7 +188,7 @@ pub fn discover_profile_files(
         for entry in WalkDir::new(root).follow_links(false) {
             let entry = entry?;
             if entry.file_type().is_file()
-                && is_javascript(entry.path())
+                && is_source_file(entry.path())
                 && matches_filters(entry.path(), root, &includes, &excludes)
             {
                 paths.insert(entry.into_path(), ());
@@ -224,8 +224,8 @@ fn prepare_file(path: &Path) -> Result<PreparedFile> {
     })
 }
 
-fn is_javascript(path: &Path) -> bool {
-    path.extension().is_some_and(|extension| extension == "js")
+fn is_source_file(path: &Path) -> bool {
+    SourceLanguage::is_supported_filename(&path.to_string_lossy())
 }
 
 fn matches_filters(path: &Path, root: &Path, includes: &[Pattern], excludes: &[Pattern]) -> bool {
@@ -462,6 +462,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(paths, vec![root.join("nested/a.js")]);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn discovers_all_runtime_module_extensions_but_not_declarations() {
+        let root = temp_root();
+        for filename in ["a.js", "b.cjs", "c.mjs", "d.ts", "e.cts", "f.mts", "g.d.ts"] {
+            fs::write(root.join(filename), "").unwrap();
+        }
+        let paths = discover_profile_files(std::slice::from_ref(&root), &[], &[]).unwrap();
+        assert_eq!(paths.len(), 6);
+        assert!(!paths.iter().any(|path| path.ends_with("g.d.ts")));
         fs::remove_dir_all(root).unwrap();
     }
 

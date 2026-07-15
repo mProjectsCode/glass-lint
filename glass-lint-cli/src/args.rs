@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 /// Command-line inputs that identify the invocation.
 #[derive(Parser)]
-#[command(version, about = "Analyze JavaScript files and bundles")]
+#[command(version, about = "Analyze JavaScript or TypeScript files and bundles")]
 pub struct Args {
     #[arg(long, conflicts_with = "config_json", global = true)]
     pub config: Option<PathBuf>,

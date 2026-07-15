@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use glass_lint_core::{Finding, Severity};
 use serde::{Deserialize, Serialize};
 
-pub const ADAPTER_PROTOCOL_VERSION: u32 = 1;
+pub const ADAPTER_PROTOCOL_VERSION: u32 = 2;
 
 #[derive(Clone, Debug)]
 pub struct Case {
@@ -40,6 +40,7 @@ pub struct AdapterRequest {
     pub protocol_version: u32,
     pub case_id: String,
     pub filename: String,
+    pub language: String,
     pub source: String,
     pub rules: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

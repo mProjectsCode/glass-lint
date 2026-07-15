@@ -32,7 +32,9 @@ walkdir = "2.5"
 regex = "1.11.1"
 swc_common = "23.0.0"
 swc_ecma_ast = "25.0.0"
-swc_ecma_parser = "41.0.0"
+swc_ecma_parser = { version = "41.0.0", features = ["typescript"] }
+swc_ecma_transforms_base = "44.0.0"
+swc_ecma_transforms_typescript = "50.0.0"
 swc_ecma_visit = "25.0.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter", "registry"] }

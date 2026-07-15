@@ -78,7 +78,10 @@ metadata only when useful:
 // @case language javascript
 ```
 
-JavaScript is currently the only supported harness language.
+The harness supports `javascript` fixtures (`.js`, `.cjs`, `.mjs`) and
+`typescript` fixtures (`.ts`, `.cts`, `.mts`). TypeScript cases are parsed
+without type-checking and use the core's fixed SWC normalization semantics.
+TSX and declaration files are not supported.
 
 ### Tool configuration
 
