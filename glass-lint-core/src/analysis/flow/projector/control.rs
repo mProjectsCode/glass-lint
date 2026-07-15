@@ -212,7 +212,7 @@ impl ObjectFlowProjector<'_, '_> {
                 }) = self.control.last_mut()
                     && *expected == region
                 {
-                    *try_exit = current.reachable.then_some(current);
+                    *try_exit = current.is_reachable().then_some(current);
                     restore = Some(baseline.clone());
                 }
                 if let Some(environment) = restore {
@@ -242,7 +242,7 @@ impl ObjectFlowProjector<'_, '_> {
             *catch_exit = Some(current.clone());
             *has_finally = true;
             let mut normal = try_exit.clone();
-            if current.reachable {
+            if current.is_reachable() {
                 normal = Some(normal.map_or(current.clone(), |normal| {
                     FlowEnvironment::join(&normal, &current)
                 }));
@@ -282,7 +282,7 @@ impl ObjectFlowProjector<'_, '_> {
             for (kind, before) in abrupt_exits {
                 self.apply_finally_to_abrupt_exit(kind, &before, &after_finally);
             }
-            self.restore(if normal_exit.is_some_and(|normal| normal.reachable) {
+            self.restore(if normal_exit.is_some_and(|normal| normal.is_reachable()) {
                 after_finally
             } else {
                 FlowEnvironment::unreachable()

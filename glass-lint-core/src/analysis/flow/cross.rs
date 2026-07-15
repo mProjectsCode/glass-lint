@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use super::effect::{EffectCall, EffectUse, FunctionEffect};
 use super::index::FlowId;
+use super::requirements::RequirementSet;
 use crate::analysis::ProjectSemanticModel;
 use crate::analysis::facts::FactId;
 use crate::analysis::value::{FunctionId, ValueId};
@@ -17,6 +18,54 @@ use crate::project::ModuleId;
 
 const MAX_CONTEXTS: usize = 65_536;
 const MAX_STEPS: usize = 262_144;
+
+#[derive(Debug, Default)]
+struct CrossBudget {
+    steps: usize,
+    projections: usize,
+    exhausted: bool,
+}
+
+impl CrossBudget {
+    fn step(&mut self) -> bool {
+        self.steps = match self.steps.checked_add(1) {
+            Some(value) if value <= MAX_STEPS => value,
+            _ => {
+                self.exhausted = true;
+                return false;
+            }
+        };
+        true
+    }
+
+    fn projection(&mut self) {
+        self.projections = self.projections.saturating_add(1);
+    }
+}
+
+#[derive(Debug)]
+struct SourceBudget {
+    rounds: usize,
+    exhausted: bool,
+}
+
+impl SourceBudget {
+    fn new() -> Self {
+        Self {
+            rounds: 0,
+            exhausted: true,
+        }
+    }
+
+    fn next_round(&mut self) -> bool {
+        self.rounds = self.rounds.saturating_add(1);
+        self.rounds <= 64
+    }
+
+    fn stabilized(&mut self) {
+        self.exhausted = false;
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 struct QualifiedEvent {
@@ -28,7 +77,7 @@ struct QualifiedEvent {
 struct State {
     flow: FlowId,
     source: QualifiedEvent,
-    requirements: BTreeMap<usize, QualifiedEvent>,
+    requirements: RequirementSet<QualifiedEvent>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -87,18 +136,12 @@ pub(in crate::analysis) fn collect(
     let mut flows = BTreeMap::<FlowId, &CompiledObjectFlow>::new();
     for (rule_index, matcher) in matchers.selected_matchers() {
         for (flow_index, flow) in matcher.flows.iter().enumerate() {
-            flows.insert(
-                FlowId {
-                    rule_index,
-                    flow_index,
-                },
-                flow,
-            );
+            flows.insert(FlowId::new(rule_index, flow_index), flow);
         }
     }
     let mut evidence = project
         .modules()
-        .map(|module| (module.id, vec![Vec::new(); matchers.len()]))
+        .map(|module| (module.id(), vec![Vec::new(); matchers.len()]))
         .collect::<BTreeMap<_, _>>();
     if flows.is_empty() {
         return (evidence, false, 0);
@@ -107,22 +150,20 @@ pub(in crate::analysis) fn collect(
     let (sources, return_budget_exhausted) = collect_sources(project, &flows);
     let (mut queue, mut seen) = seed_contexts(project, &sources);
 
-    let mut steps = 0usize;
-    let mut projections = 0usize;
+    let mut budget = CrossBudget::default();
     while let Some(context) = queue.pop_front() {
-        projections = projections.saturating_add(1);
-        steps = steps.saturating_add(1);
-        if steps > MAX_STEPS {
+        budget.projection();
+        if !budget.step() {
             break;
         }
         let Some(effect) = project
             .modules()
-            .find(|module| module.id == context.module)
-            .and_then(|module| module.local.effects.get(context.function))
+            .find(|module| module.id() == context.module)
+            .and_then(|module| module.local().effects().get(context.function))
         else {
             continue;
         };
-        if effect.invalid {
+        if effect.is_invalid() {
             continue;
         }
         let Some(flow) = flows.get(&context.state.flow).copied() else {
@@ -156,7 +197,7 @@ pub(in crate::analysis) fn collect(
             break;
         }
     }
-    let exhausted = return_budget_exhausted || steps > MAX_STEPS || seen.len() >= MAX_CONTEXTS;
+    let exhausted = return_budget_exhausted || budget.exhausted || seen.len() >= MAX_CONTEXTS;
     if exhausted {
         for values in evidence.values_mut() {
             for rule in values {
@@ -164,7 +205,7 @@ pub(in crate::analysis) fn collect(
             }
         }
     }
-    (evidence, exhausted, projections)
+    (evidence, exhausted, budget.projections)
 }
 
 struct UsageProjection<'a> {
@@ -180,7 +221,7 @@ struct UsageProjection<'a> {
 }
 
 fn project_usages(input: &mut UsageProjection<'_>) {
-    for usage in &input.effect.uses {
+    for usage in input.effect.uses() {
         if !usage_matches_context(
             input.project,
             input.context.module,
@@ -219,7 +260,7 @@ fn project_usages(input: &mut UsageProjection<'_>) {
                 chain,
                 rooted,
                 argument,
-            } => apply_argument_usage(input, *event, chain.as_ref(), *rooted, argument.index),
+            } => apply_argument_usage(input, *event, chain.as_ref(), *rooted, argument.index()),
         }
     }
 }
@@ -330,11 +371,14 @@ fn collect_sources(
 ) -> (FlowSources, bool) {
     let mut sources = FlowSources::default();
     for module in project.modules() {
-        for effect in module.local.effects.by_id.values() {
-            for call in &effect.calls {
+        for effect in module.local().effects().iter_effects() {
+            for call in effect.calls() {
                 for (flow_id, flow) in flows {
-                    if is_source(flow, call) {
-                        sources.add((module.id, effect.id, call.result), (*flow_id, call.event));
+                    if call.matches_source(flow) {
+                        sources.add(
+                            (module.id(), effect.id(), call.result()),
+                            (*flow_id, call.event()),
+                        );
                     }
                 }
             }
@@ -343,62 +387,60 @@ fn collect_sources(
     // Returned parameter/object identities are composed before invocation
     // contexts are seeded. The bounded monotone loop also handles forwarding
     // helpers without revisiting an AST.
-    let mut budget_exhausted = true;
-    for _ in 0..64 {
+    let mut budget = SourceBudget::new();
+    while budget.next_round() {
         let mut changed = false;
         for module in project.modules() {
-            for effect in module.local.effects.by_id.values() {
-                for call in &effect.calls {
-                    let Some((target_module, target_function)) =
-                        project.qualified_function_target(module.id, call.target, &call.provenance)
-                    else {
+            for effect in module.local().effects().iter_effects() {
+                for call in effect.calls() {
+                    let Some((target_module, target_function)) = project.qualified_function_target(
+                        module.id(),
+                        call.target(),
+                        call.provenance(),
+                    ) else {
                         continue;
                     };
                     let Some(target) = project
                         .modules()
-                        .find(|candidate| candidate.id == target_module)
-                        .and_then(|candidate| candidate.local.effects.get(target_function))
+                        .find(|candidate| candidate.id() == target_module)
+                        .and_then(|candidate| candidate.local().effects().get(target_function))
                     else {
                         continue;
                     };
                     for returned in target
-                        .returns
+                        .returns()
                         .iter()
-                        .filter(|returned| returned.parameter.is_none())
+                        .filter(|returned| returned.parameter().is_none())
                     {
                         let returned_root = target
-                            .value_roots
-                            .get(&returned.value)
-                            .copied()
-                            .unwrap_or(returned.value);
+                            .value_root(returned.value())
+                            .unwrap_or(returned.value());
                         let candidates = sources
                             .get(&(target_module, target_function, returned_root))
                             .cloned();
                         changed |= extend_sources(
                             &mut sources,
-                            (module.id, effect.id, call.result),
+                            (module.id(), effect.id(), call.result()),
                             candidates,
                         );
                     }
-                    for argument in &call.arguments {
-                        if !argument.path.is_empty()
-                            || !target.returns.iter().any(|returned| {
-                                returned.parameter.as_ref().is_some_and(|parameter| {
-                                    parameter.index == argument.index && parameter.path.is_empty()
+                    for argument in call.arguments() {
+                        if !argument.is_root()
+                            || !target.returns().iter().any(|returned| {
+                                returned.parameter().is_some_and(|parameter| {
+                                    parameter.index() == argument.index() && parameter.is_root()
                                 })
                             })
                         {
                             continue;
                         }
                         let root = effect
-                            .value_roots
-                            .get(&argument.value)
-                            .copied()
-                            .unwrap_or(argument.value);
-                        let candidates = sources.get(&(module.id, effect.id, root)).cloned();
+                            .value_root(argument.value())
+                            .unwrap_or(argument.value());
+                        let candidates = sources.get(&(module.id(), effect.id(), root)).cloned();
                         changed |= extend_sources(
                             &mut sources,
-                            (module.id, effect.id, call.result),
+                            (module.id(), effect.id(), call.result()),
                             candidates,
                         );
                     }
@@ -406,12 +448,12 @@ fn collect_sources(
             }
         }
         if !changed {
-            budget_exhausted = false;
+            budget.stabilized();
             break;
         }
     }
     sources.normalize();
-    (sources, budget_exhausted)
+    (sources, budget.exhausted)
 }
 
 fn seed_contexts(
@@ -435,7 +477,7 @@ fn seed_contexts(
                         module: *module,
                         fact: *source_fact,
                     },
-                    requirements: BTreeMap::new(),
+                    requirements: RequirementSet::default(),
                 },
                 crossed: *value != source_fact_value(project, *module, *source_fact),
             };
@@ -445,41 +487,41 @@ fn seed_contexts(
         }
     }
     for module in project.modules() {
-        for effect in module.local.effects.by_id.values() {
-            for call in &effect.calls {
-                let Some((target_module, target_function)) =
-                    project.qualified_function_target(module.id, call.target, &call.provenance)
-                else {
+        for effect in module.local().effects().iter_effects() {
+            for call in effect.calls() {
+                let Some((target_module, target_function)) = project.qualified_function_target(
+                    module.id(),
+                    call.target(),
+                    call.provenance(),
+                ) else {
                     continue;
                 };
-                for argument in &call.arguments {
-                    if !argument.path.is_empty() {
+                for argument in call.arguments() {
+                    if !argument.is_root() {
                         continue;
                     }
                     let root = effect
-                        .value_roots
-                        .get(&argument.value)
-                        .copied()
-                        .unwrap_or(argument.value);
-                    let Some(candidates) = sources.get(&(module.id, effect.id, root)) else {
+                        .value_root(argument.value())
+                        .unwrap_or(argument.value());
+                    let Some(candidates) = sources.get(&(module.id(), effect.id(), root)) else {
                         continue;
                     };
                     for (flow, source_fact) in candidates {
                         let state = State {
                             flow: *flow,
                             source: QualifiedEvent {
-                                module: module.id,
+                                module: module.id(),
                                 fact: *source_fact,
                             },
-                            requirements: BTreeMap::new(),
+                            requirements: RequirementSet::default(),
                         };
                         enqueue_parameters(&mut ParameterEnqueue {
                             project,
                             module: target_module,
                             function: target_function,
-                            argument_index: argument.index,
+                            argument_index: argument.index(),
                             state: &state,
-                            crossed: target_module != module.id,
+                            crossed: target_module != module.id(),
                             queue: &mut queue,
                             seen: &mut seen,
                         });
@@ -511,44 +553,42 @@ fn effect_use_event(usage: &EffectUse) -> FactId {
 }
 
 fn propagate_calls_at(input: &mut Propagation<'_>) {
-    for call in &input.effect.calls {
-        if input.through.is_some_and(|event| call.event > event)
-            || !input.propagated.insert(call.event)
+    for call in input.effect.calls() {
+        if input.through.is_some_and(|event| call.event() > event)
+            || !input.propagated.insert(call.event())
         {
             continue;
         }
         let Some((target_module, target_function)) =
             input
                 .project
-                .qualified_function_target(input.module, call.target, &call.provenance)
+                .qualified_function_target(input.module, call.target(), call.provenance())
         else {
             continue;
         };
-        for argument in &call.arguments {
-            let connected = argument.parameter.as_ref().is_some_and(|parameter| {
+        for argument in call.arguments() {
+            let connected = argument.parameter().is_some_and(|parameter| {
                 input
                     .context
                     .parameter
-                    .is_some_and(|index| parameter.index == index)
-                    && parameter.path.is_empty()
-                    && argument.path.is_empty()
+                    .is_some_and(|index| parameter.index() == index)
+                    && parameter.is_root()
+                    && argument.is_root()
             }) || (input.context.parameter.is_none()
                 && input.context.source_root.is_some_and(|root| {
                     input
                         .effect
-                        .value_roots
-                        .get(&argument.value)
-                        .copied()
-                        .unwrap_or(argument.value)
+                        .value_root(argument.value())
+                        .unwrap_or(argument.value())
                         == root
                 })
-                && argument.path.is_empty());
+                && argument.is_root());
             if connected {
                 enqueue_parameters(&mut ParameterEnqueue {
                     project: input.project,
                     module: target_module,
                     function: target_function,
-                    argument_index: argument.index,
+                    argument_index: argument.index(),
                     state: input.state,
                     crossed: input.context.crossed || target_module != input.module,
                     queue: input.queue,
@@ -563,12 +603,12 @@ fn enqueue_parameters(input: &mut ParameterEnqueue<'_>) {
     let Some(effect) = input
         .project
         .modules()
-        .find(|candidate| candidate.id == input.module)
-        .and_then(|candidate| candidate.local.effects.get(input.function))
+        .find(|candidate| candidate.id() == input.module)
+        .and_then(|candidate| candidate.local().effects().get(input.function))
     else {
         return;
     };
-    for parameter in effect.parameters.iter().filter(|parameter| {
+    for parameter in effect.parameters().iter().filter(|parameter| {
         parameter.parameter_index == input.argument_index && parameter.path.is_empty()
     }) {
         let context = Context {
@@ -608,18 +648,6 @@ struct ParameterEnqueue<'a> {
     seen: &'a mut BTreeSet<Context>,
 }
 
-fn is_source(flow: &CompiledObjectFlow, call: &EffectCall) -> bool {
-    flow.sources.iter().any(|source| {
-        call.chain.as_deref() == Some(source.member_call.as_str())
-            && source.provenance.matches_rooted(call.rooted)
-            && source.arguments.iter().all(|matcher| {
-                call.call_arguments
-                    .get(matcher.index)
-                    .is_some_and(|arg| matcher.matcher.matches(arg))
-            })
-    })
-}
-
 fn usage_matches_context(
     _project: &ProjectSemanticModel,
     _module: ModuleId,
@@ -634,27 +662,25 @@ fn usage_matches_context(
             receiver.as_ref().is_some_and(|parameter| {
                 context
                     .parameter
-                    .is_some_and(|index| parameter.index == index && parameter.path.is_empty())
+                    .is_some_and(|index| parameter.index() == index && parameter.is_root())
             }) || (context.parameter.is_none()
-                && context.source_root.is_some_and(|root| {
-                    effect.value_roots.get(value).copied().unwrap_or(*value) == root
-                }))
+                && context
+                    .source_root
+                    .is_some_and(|root| effect.value_root(*value).unwrap_or(*value) == root))
         }
         EffectUse::CallReceiver { receiver, .. } => context
             .parameter
-            .is_some_and(|index| receiver.index == index && receiver.path.is_empty()),
+            .is_some_and(|index| receiver.index() == index && receiver.is_root()),
         EffectUse::CallArgument { argument, .. } => {
-            argument.parameter.as_ref().is_some_and(|parameter| {
+            argument.parameter().is_some_and(|parameter| {
                 context
                     .parameter
-                    .is_some_and(|index| parameter.index == index && parameter.path.is_empty())
+                    .is_some_and(|index| parameter.index() == index && parameter.is_root())
             }) || (context.parameter.is_none()
                 && context.source_root.is_some_and(|root| {
                     effect
-                        .value_roots
-                        .get(&argument.value)
-                        .copied()
-                        .unwrap_or(argument.value)
+                        .value_root(argument.value())
+                        .unwrap_or(argument.value())
                         == root
                 }))
         }
@@ -664,17 +690,16 @@ fn usage_matches_context(
 fn source_fact_value(project: &ProjectSemanticModel, module: ModuleId, fact: FactId) -> ValueId {
     project
         .modules()
-        .find(|candidate| candidate.id == module)
+        .find(|candidate| candidate.id() == module)
         .and_then(|candidate| {
             candidate
-                .local
-                .effects
-                .by_id
-                .values()
-                .flat_map(|effect| effect.calls.iter())
-                .find(|call| call.event == fact)
+                .local()
+                .effects()
+                .iter_effects()
+                .flat_map(|effect| effect.calls().iter())
+                .find(|call| call.event() == fact)
         })
-        .map_or(ValueId::UNKNOWN, |call| call.result)
+        .map_or(ValueId::UNKNOWN, EffectCall::result)
 }
 
 fn chain_matches(chain: Option<&str>, member: &str) -> bool {
@@ -722,7 +747,7 @@ fn emit(
     let Some(values) = evidence.get_mut(&module) else {
         return;
     };
-    let seen = values[flow_id.rule_index].iter().any(|existing| {
+    let seen = values[flow_id.rule_index()].iter().any(|existing| {
         existing.event_ids == vec![event.0]
             && existing.symbol == flow.symbol
             && existing.kind == ApiMatchKind::CallArgument
@@ -732,13 +757,13 @@ fn emit(
     }
     let span = project
         .modules()
-        .find(|candidate| candidate.id == module)
-        .and_then(|candidate| candidate.local.facts.stream.fact(event))
+        .find(|candidate| candidate.id() == module)
+        .and_then(|candidate| candidate.local().facts().stream().fact(event))
         .map_or_else(
             || swc_common::Span::new(swc_common::BytePos(0), swc_common::BytePos(0)),
             |fact| fact.span,
         );
-    values[flow_id.rule_index].push(ApiEvidence {
+    values[flow_id.rule_index()].push(ApiEvidence {
         kind: ApiMatchKind::CallArgument,
         symbol: flow.evidence_symbol(),
         count: 1,

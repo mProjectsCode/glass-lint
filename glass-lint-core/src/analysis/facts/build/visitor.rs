@@ -401,24 +401,22 @@ impl Visit for FactBuilder<'_> {
             .iter()
             .filter(|specifier| !specifier.is_type_only())
             .map(|specifier| match specifier {
-                swc_ecma_ast::ImportSpecifier::Named(named) => ImportedBinding {
-                    imported: Some(named.imported.as_ref().map_or_else(
+                swc_ecma_ast::ImportSpecifier::Named(named) => ImportedBinding::new(
+                    Some(named.imported.as_ref().map_or_else(
                         || named.local.sym.to_string(),
                         crate::analysis::syntax::module_export_name,
                     )),
-                    local: named.local.sym.to_string(),
-                    namespace: false,
-                },
-                swc_ecma_ast::ImportSpecifier::Default(default) => ImportedBinding {
-                    imported: Some("default".into()),
-                    local: default.local.sym.to_string(),
-                    namespace: false,
-                },
-                swc_ecma_ast::ImportSpecifier::Namespace(namespace) => ImportedBinding {
-                    imported: None,
-                    local: namespace.local.sym.to_string(),
-                    namespace: true,
-                },
+                    named.local.sym.to_string(),
+                    false,
+                ),
+                swc_ecma_ast::ImportSpecifier::Default(default) => ImportedBinding::new(
+                    Some("default".into()),
+                    default.local.sym.to_string(),
+                    false,
+                ),
+                swc_ecma_ast::ImportSpecifier::Namespace(namespace) => {
+                    ImportedBinding::new(None, namespace.local.sym.to_string(), true)
+                }
             })
             .collect();
         self.record_local_imports(import);
@@ -488,9 +486,9 @@ impl Visit for FactBuilder<'_> {
                 provenance: provenance.clone(),
             },
         );
-        self.class_stack.push(provenance);
+        self.traversal.enter_class(provenance);
         class_decl.visit_children_with(self);
-        self.class_stack.pop();
+        self.traversal.leave_class();
     }
 
     fn visit_class_expr(&mut self, class_expr: &ClassExpr) {
@@ -509,9 +507,9 @@ impl Visit for FactBuilder<'_> {
                 },
             );
         }
-        self.class_stack.push(provenance);
+        self.traversal.enter_class(provenance);
         class_expr.visit_children_with(self);
-        self.class_stack.pop();
+        self.traversal.leave_class();
     }
 
     fn visit_bin_expr(&mut self, binary: &BinExpr) {
@@ -531,9 +529,9 @@ impl Visit for FactBuilder<'_> {
 
     fn visit_fn_decl(&mut self, function: &FnDecl) {
         self.record_local(function.ident.sym.to_string());
-        self.function_depth += 1;
+        self.traversal.enter_function();
         function.visit_children_with(self);
-        self.function_depth -= 1;
+        self.traversal.leave_function();
     }
 
     fn visit_function(&mut self, function: &Function) {
@@ -548,9 +546,9 @@ impl Visit for FactBuilder<'_> {
                 .map(|(index, p)| (index, p.pat.clone())),
             FunctionBoundary::Enter,
         );
-        self.function_depth += 1;
+        self.traversal.enter_function();
         function.visit_children_with(self);
-        self.function_depth -= 1;
+        self.traversal.leave_function();
         self.emit_function_fact(
             function.span(),
             function
@@ -588,7 +586,7 @@ impl Visit for FactBuilder<'_> {
             FunctionBoundary::Enter,
         );
         if method.is_static {
-            self.static_method_depth += 1;
+            self.traversal.enter_static_method();
         }
         // Visit only the method body so the method gets one function boundary
         // pair, rather than a nested duplicate Function walk.
@@ -606,7 +604,7 @@ impl Visit for FactBuilder<'_> {
             FunctionBoundary::Exit,
         );
         if method.is_static {
-            self.static_method_depth -= 1;
+            self.traversal.leave_static_method();
         }
     }
 
@@ -824,24 +822,17 @@ impl Visit for FactBuilder<'_> {
                         !matches!(specifier, ExportSpecifier::Named(named) if named.is_type_only)
                     })
                     .map(|specifier| match specifier {
-                        ExportSpecifier::Named(named) => ReExportBinding {
-                            imported: crate::analysis::syntax::module_export_name(&named.orig),
-                            exported: named.exported.as_ref().map_or_else(
+                        ExportSpecifier::Named(named) => ReExportBinding::new(
+                            crate::analysis::syntax::module_export_name(&named.orig),
+                            named.exported.as_ref().map_or_else(
                                 || crate::analysis::syntax::module_export_name(&named.orig),
                                 crate::analysis::syntax::module_export_name,
-                            ),
-                            namespace: false,
-                        },
-                        ExportSpecifier::Namespace(namespace) => ReExportBinding {
-                            imported: "*".into(),
-                            exported: crate::analysis::syntax::module_export_name(&namespace.name),
-                            namespace: true,
-                        },
-                        ExportSpecifier::Default(default) => ReExportBinding {
-                            imported: "default".into(),
-                            exported: default.exported.sym.to_string(),
-                            namespace: false,
-                        },
+                            ), false),
+                        ExportSpecifier::Namespace(namespace) => ReExportBinding::new(
+                            "*".into(),
+                            crate::analysis::syntax::module_export_name(&namespace.name), true),
+                        ExportSpecifier::Default(default) => ReExportBinding::new(
+                            "default".into(), default.exported.sym.to_string(), false),
                     })
                     .collect(),
             },

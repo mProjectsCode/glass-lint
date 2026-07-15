@@ -23,24 +23,65 @@ pub(crate) enum ModuleRequestRole {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ImportedBinding {
-    pub(crate) imported: Option<String>,
-    pub(crate) local: String,
-    pub(crate) namespace: bool,
+    imported: Option<String>,
+    local: String,
+    namespace: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ReExportBinding {
-    pub(crate) imported: String,
-    pub(crate) exported: String,
-    pub(crate) namespace: bool,
+    imported: String,
+    exported: String,
+    namespace: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ModuleRequest {
-    pub(crate) span: Span,
-    pub(crate) kind: ResolutionRequestKind,
-    pub(crate) specifier: String,
-    pub(crate) role: ModuleRequestRole,
+    span: Span,
+    kind: ResolutionRequestKind,
+    specifier: String,
+    role: ModuleRequestRole,
+}
+
+impl ImportedBinding {
+    pub(crate) fn new(imported: Option<String>, local: String, namespace: bool) -> Self {
+        Self {
+            imported,
+            local,
+            namespace,
+        }
+    }
+    pub(crate) fn imported(&self) -> Option<&str> {
+        self.imported.as_deref()
+    }
+    pub(crate) fn is_namespace(&self) -> bool {
+        self.namespace
+    }
+}
+
+impl ReExportBinding {
+    pub(crate) fn new(imported: String, exported: String, namespace: bool) -> Self {
+        Self {
+            imported,
+            exported,
+            namespace,
+        }
+    }
+}
+
+impl ModuleRequest {
+    pub(crate) fn span(&self) -> Span {
+        self.span
+    }
+    pub(crate) fn kind(&self) -> ResolutionRequestKind {
+        self.kind
+    }
+    pub(crate) fn specifier(&self) -> &str {
+        &self.specifier
+    }
+    pub(crate) fn role(&self) -> &ModuleRequestRole {
+        &self.role
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -54,13 +95,13 @@ pub(crate) enum ModuleExport {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct ModuleInterface {
-    pub(crate) requests: Vec<ModuleRequest>,
-    pub(crate) exports: BTreeMap<String, ModuleExport>,
-    pub(crate) star_exports: Vec<usize>,
-    pub(crate) locals: BTreeSet<String>,
-    pub(crate) unknown_exports: bool,
-    pub(in crate::analysis) function_exports: BTreeMap<String, FunctionId>,
-    pub(crate) static_strings: BTreeMap<String, String>,
+    requests: Vec<ModuleRequest>,
+    exports: BTreeMap<String, ModuleExport>,
+    star_exports: Vec<usize>,
+    locals: BTreeSet<String>,
+    unknown_exports: bool,
+    function_exports: BTreeMap<String, FunctionId>,
+    static_strings: BTreeMap<String, String>,
 }
 
 impl ModuleInterface {
@@ -144,6 +185,38 @@ impl ModuleInterface {
         !self.exports.is_empty() || !self.star_exports.is_empty()
     }
 
+    pub(crate) fn requests(&self) -> impl Iterator<Item = &ModuleRequest> {
+        self.requests.iter()
+    }
+
+    pub(crate) fn request(&self, index: usize) -> Option<&ModuleRequest> {
+        self.requests.get(index)
+    }
+
+    pub(crate) fn star_exports(&self) -> impl Iterator<Item = &usize> {
+        self.star_exports.iter()
+    }
+
+    pub(crate) fn exports(&self) -> impl Iterator<Item = (&String, &ModuleExport)> {
+        self.exports.iter()
+    }
+
+    pub(crate) fn is_local(&self, name: &str) -> bool {
+        self.locals.contains(name)
+    }
+
+    pub(crate) fn is_unknown(&self) -> bool {
+        self.unknown_exports
+    }
+
+    pub(crate) fn static_string(&self, name: &str) -> Option<&String> {
+        self.static_strings.get(name)
+    }
+
+    pub(in crate::analysis) fn function_exports(&self) -> &BTreeMap<String, FunctionId> {
+        &self.function_exports
+    }
+
     pub(crate) fn authored_requests(
         &self,
         importer: &str,
@@ -154,10 +227,10 @@ impl ModuleInterface {
             .map(|request| ResolutionRequest {
                 key: ResolutionRequestKey {
                     importer: importer.to_string(),
-                    kind: request.kind,
-                    range: crate::lint::source_range_from_span(source_map, request.span),
+                    kind: request.kind(),
+                    range: crate::lint::source_range_from_span(source_map, request.span()),
                 },
-                request: request.specifier.clone(),
+                request: request.specifier().to_owned(),
             })
             .collect()
     }

@@ -116,6 +116,65 @@ impl ProjectPaths {
     }
 }
 
+#[derive(Debug, Default)]
+struct PathWorkQueue(VecDeque<PathBuf>);
+impl PathWorkQueue {
+    fn extend(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
+        self.0.extend(paths);
+    }
+    fn pop_front(&mut self) -> Option<PathBuf> {
+        self.0.pop_front()
+    }
+    fn push(&mut self, path: PathBuf) {
+        self.0.push_back(path);
+    }
+}
+
+#[derive(Debug, Default)]
+struct AdmissionSet(BTreeSet<PathBuf>);
+impl AdmissionSet {
+    fn admit(&mut self, path: PathBuf) -> bool {
+        self.0.insert(path)
+    }
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+#[derive(Debug, Default)]
+struct ResolutionCache(BTreeMap<(String, ResolutionRequestKind, String), ResolutionResult>);
+impl ResolutionCache {
+    fn get(&self, key: &(String, ResolutionRequestKind, String)) -> Option<&ResolutionResult> {
+        self.0.get(key)
+    }
+    fn insert(&mut self, key: (String, ResolutionRequestKind, String), result: ResolutionResult) {
+        self.0.insert(key, result);
+    }
+}
+
+#[derive(Debug, Default)]
+struct LoadCounters {
+    requests: usize,
+    edges: usize,
+}
+
+impl LoadCounters {
+    fn add_requests(&mut self, count: usize, limit: usize) -> Result<(), ProjectLoadError> {
+        self.requests = self
+            .requests
+            .checked_add(count)
+            .ok_or(ProjectLoadError::TooManyRequests(limit))?;
+        if self.requests > limit {
+            return Err(ProjectLoadError::TooManyRequests(limit));
+        }
+        Ok(())
+    }
+
+    fn record_edge(&mut self) {
+        self.edges = self.edges.saturating_add(1);
+    }
+}
+
 /// Mutable state for one project construction. Keeping the queue, cache, and
 /// counters together makes the main loading phases explicit and auditable.
 struct ProjectBuild<'a> {
@@ -123,10 +182,10 @@ struct ProjectBuild<'a> {
     discovery: ProjectDiscovery<'a>,
     resolver: ProjectResolver,
     root: PathBuf,
-    queue: VecDeque<PathBuf>,
-    admitted: BTreeSet<PathBuf>,
-    resolved: BTreeMap<(String, ResolutionRequestKind, String), ResolutionResult>,
-    request_count: usize,
+    queue: PathWorkQueue,
+    admitted: AdmissionSet,
+    resolved: ResolutionCache,
+    counters: LoadCounters,
 }
 
 impl<'a> ProjectBuild<'a> {
@@ -141,15 +200,15 @@ impl<'a> ProjectBuild<'a> {
             discovery: ProjectDiscovery::new(options),
             resolver: ProjectResolver::new(&root, selection, options),
             root,
-            queue: VecDeque::new(),
-            admitted: BTreeSet::new(),
-            resolved: BTreeMap::new(),
-            request_count: 0,
+            queue: PathWorkQueue::default(),
+            admitted: AdmissionSet::default(),
+            resolved: ResolutionCache::default(),
+            counters: LoadCounters::default(),
         })
     }
 
     fn add_initial_paths(&mut self, paths: VecDeque<PathBuf>) {
-        self.queue = paths;
+        self.queue.extend(paths);
     }
 
     fn load_all(&mut self, metrics: &mut ProjectLoadMetrics) -> Result<(), ProjectLoadError> {
@@ -165,7 +224,7 @@ impl<'a> ProjectBuild<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         let path = realpath(path)?;
-        if !inside_root(&self.root, &path) || !self.admitted.insert(path.clone()) {
+        if !inside_root(&self.root, &path) || !self.admitted.admit(path.clone()) {
             return Ok(());
         }
         if self.admitted.len() > self.discovery.options().max_files {
@@ -185,13 +244,9 @@ impl<'a> ProjectBuild<'a> {
         metrics.bytes = metrics.bytes.saturating_add(source_bytes);
         metrics.files = self.admitted.len();
 
-        self.request_count = self.request_count.saturating_add(requests.len());
-        metrics.requests = self.request_count;
-        if self.request_count > self.discovery.options().max_requests {
-            return Err(ProjectLoadError::TooManyRequests(
-                self.discovery.options().max_requests,
-            ));
-        }
+        self.counters
+            .add_requests(requests.len(), self.discovery.options().max_requests)?;
+        metrics.requests = self.counters.requests;
         self.record_requests(requests, metrics)
     }
 
@@ -227,7 +282,8 @@ impl<'a> ProjectBuild<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) {
         if let ResolutionResult::Internal { path } = result {
-            metrics.edges = metrics.edges.saturating_add(1);
+            self.counters.record_edge();
+            metrics.edges = self.counters.edges;
             let target = self.root.join(path);
             if target.exists()
                 && !crate::discovery::excluded_path(
@@ -237,7 +293,7 @@ impl<'a> ProjectBuild<'a> {
                 )
                 && crate::discovery::supported_path(&target, &self.discovery.options().extensions)
             {
-                self.queue.push_back(target);
+                self.queue.push(target);
             }
         }
     }

@@ -12,19 +12,33 @@ use swc_common::Span;
 /// span ordering or duplicate policies for each provenance view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::analysis) struct Occurrence {
-    pub(super) event: FactId,
-    pub(super) span: Span,
+    event: FactId,
+    span: Span,
+}
+
+impl Occurrence {
+    pub(super) fn new(event: FactId, span: Span) -> Self {
+        Self { event, span }
+    }
+    pub(super) fn event(&self) -> FactId {
+        self.event
+    }
+    pub(super) fn span(&self) -> Span {
+        self.span
+    }
 }
 
 #[derive(Clone, Debug, Default)]
 pub(in crate::analysis) struct OccurrenceIndex<K: Ord>(BTreeMap<K, Vec<Occurrence>>);
 
+#[allow(dead_code)]
 impl<K: Ord> OccurrenceIndex<K> {
+    pub(super) fn push_occurrence(&mut self, key: K, occurrence: Occurrence) {
+        self.0.entry(key).or_default().push(occurrence);
+    }
+
     pub(super) fn push(&mut self, key: K, event: FactId, span: Span) {
-        self.0
-            .entry(key)
-            .or_default()
-            .push(Occurrence { event, span });
+        self.push_occurrence(key, Occurrence::new(event, span));
     }
 
     pub(super) fn normalize(&mut self) {
@@ -34,6 +48,17 @@ impl<K: Ord> OccurrenceIndex<K> {
             });
             occurrences.dedup();
         }
+    }
+
+    pub(super) fn merge(&mut self, other: Self) {
+        for (key, occurrences) in other.0 {
+            self.0.entry(key).or_default().extend(occurrences);
+        }
+        self.normalize();
+    }
+
+    pub(super) fn occurrences(&self, key: &K) -> &[Occurrence] {
+        self.0.get(key).map_or(&[], Vec::as_slice)
     }
 }
 

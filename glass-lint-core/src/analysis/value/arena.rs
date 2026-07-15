@@ -25,22 +25,39 @@ pub(in crate::analysis) enum Value {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(in crate::analysis) struct CallableValue {
-    pub(in crate::analysis) target: ValueId,
-    pub(in crate::analysis) receiver: Option<ValueId>,
-    pub(in crate::analysis) bound_arguments: Vec<ValueId>,
+    target: ValueId,
+    receiver: Option<ValueId>,
+    bound_arguments: Vec<ValueId>,
+}
+
+impl CallableValue {
+    pub(in crate::analysis) fn new(
+        target: ValueId,
+        receiver: Option<ValueId>,
+        bound_arguments: Vec<ValueId>,
+    ) -> Self {
+        Self {
+            target,
+            receiver,
+            bound_arguments,
+        }
+    }
+    pub(in crate::analysis) fn target(&self) -> ValueId {
+        self.target
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(in crate::analysis) struct ObjectId(pub(in crate::analysis) u32);
 
 #[derive(Debug)]
-pub(in crate::analysis) struct ValueArena {
+pub(in crate::analysis) struct ValueTable {
     values: Vec<Value>,
     ids: HashMap<Value, ValueId>,
     next_object: u32,
 }
 
-impl Default for ValueArena {
+impl Default for ValueTable {
     fn default() -> Self {
         let mut ids = HashMap::new();
         ids.insert(Value::Unknown, ValueId::UNKNOWN);
@@ -52,7 +69,7 @@ impl Default for ValueArena {
     }
 }
 
-impl ValueArena {
+impl ValueTable {
     pub(in crate::analysis) fn intern(&mut self, value: Value) -> ValueId {
         if let Some(id) = self.ids.get(&value) {
             return *id;

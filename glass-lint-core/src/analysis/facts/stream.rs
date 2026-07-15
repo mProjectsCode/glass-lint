@@ -33,7 +33,7 @@ impl FactStream {
             self.valid = false;
             return;
         }
-        if fact.id != FactId::from_index(self.facts.len()).unwrap_or(FactId(u32::MAX)) {
+        if fact.id() != FactId::from_index(self.facts.len()).unwrap_or(FactId(u32::MAX)) {
             self.valid = false;
             return;
         }
@@ -44,9 +44,11 @@ impl FactStream {
     pub(super) fn len(&self) -> usize {
         self.facts.len()
     }
+
     pub(super) fn is_valid(&self) -> bool {
         self.valid
     }
+
     pub(in crate::analysis) fn fact(&self, id: FactId) -> Option<&SemanticFact> {
         self.facts.get(id.index()?)
     }
@@ -77,12 +79,14 @@ impl FactStream {
     pub(super) fn facts_at(&self, lo: BytePos, hi: BytePos, kind: FactKind) -> Vec<&SemanticFact> {
         self.facts
             .iter()
-            .filter(|fact| fact.span.lo() == lo && fact.span.hi() == hi && fact.kind == kind)
+            .filter(|fact| fact.span.lo() == lo && fact.span.hi() == hi && fact.kind() == kind)
             .collect()
     }
+
     pub(in crate::analysis) fn facts(&self) -> &[SemanticFact] {
         &self.facts
     }
+
     #[cfg(test)]
     pub(super) fn fingerprint(&self) -> String {
         format!("{:?}", self.facts)

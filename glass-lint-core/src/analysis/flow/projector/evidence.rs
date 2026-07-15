@@ -1,10 +1,11 @@
 //! Evidence emission and flow requirement updates.
 
 use super::{
-    ApiEvidence, ApiMatchKind, BTreeSet, CallArgInfo, CompiledObjectFlow, FactId, FlowId,
-    FlowState, ObjectFlowProjector, ObjectId, ValueId,
+    ApiEvidence, ApiMatchKind, CallArgInfo, CompiledObjectFlow, FactId, FlowId, FlowState,
+    ObjectFlowProjector, ObjectId, ValueId,
 };
 use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArgs};
+use std::collections::BTreeSet;
 
 impl ObjectFlowProjector<'_, '_> {
     pub(super) fn record_configuration(
@@ -20,25 +21,23 @@ impl ObjectFlowProjector<'_, '_> {
         // calls stay scoped to their proven alias.
         let objects = match receiver {
             Some(value) => self
-                .aliases
-                .get(&value)
-                .copied()
+                .flow_state
+                .object_for(value)
                 .into_iter()
                 .collect::<BTreeSet<_>>(),
-            None => self.aliases.values().copied().collect::<BTreeSet<_>>(),
+            None => self.flow_state.objects().collect::<BTreeSet<_>>(),
         };
         for object in objects {
             let keys = self
-                .states
-                .keys()
-                .filter(|(id, _)| *id == object)
-                .copied()
+                .flow_state
+                .states_for(object)
+                .map(|(key, _)| key)
                 .collect::<Vec<_>>();
             for key in keys {
                 let Some(flow) = self.flow_index.get(key.1) else {
                     continue;
                 };
-                let Some(state) = self.states.get_mut(&key) else {
+                let Some(state) = self.flow_state.state_mut(key.0, key.1) else {
                     continue;
                 };
                 for (index, requirement) in flow.requirements.iter().enumerate() {
@@ -52,7 +51,7 @@ impl ObjectFlowProjector<'_, '_> {
                                 .is_some_and(|arg| matcher.matcher.matches(arg))
                         })
                     {
-                        state.requirements.insert(index, event);
+                        state.record_requirement(index, event);
                     }
                 }
                 self.emit_if_ready(key.1, key.0, event);
@@ -67,21 +66,21 @@ impl ObjectFlowProjector<'_, '_> {
         sink_fact: FactId,
         rooted: bool,
     ) {
-        let Some(flow_ids) = self.flow_index.sinks.get(chain).cloned() else {
+        let Some(flow_ids) = self.flow_index.sink_ids(chain).map(<[FlowId]>::to_vec) else {
             return;
         };
         for (argument_index, argument) in args.iter().enumerate() {
-            let Some(object) = self.aliases.get(&argument.value).copied() else {
+            let Some(object) = self.flow_state.object_for(argument.value) else {
                 continue;
             };
             let states = self
-                .states
-                .iter()
-                .filter(|((id, flow), _)| *id == object && flow_ids.contains(flow))
+                .flow_state
+                .states_for(object)
+                .filter(|((_, flow), _)| flow_ids.contains(flow))
                 .map(|(_, state)| state.clone())
                 .collect::<Vec<_>>();
             for state in states {
-                let Some(flow) = self.flow_index.get(state.flow).cloned() else {
+                let Some(flow) = self.flow_index.get(state.flow_id()).cloned() else {
                     continue;
                 };
                 let matches = flow.sinks.iter().any(|sink| {
@@ -113,27 +112,27 @@ impl ObjectFlowProjector<'_, '_> {
         if !summary.is_invocation_compatible(self.stream, args) {
             return;
         }
-        for sink in summary.sinks {
-            let Some(parameter) = summary.parameters.iter().find(|parameter| {
-                parameter.parameter_index == sink.parameter_index
-                    && (parameter.path == sink.path
+        for sink in summary.sinks() {
+            let Some(parameter) = summary.parameters().iter().find(|parameter| {
+                parameter.parameter_index == sink.parameter_index()
+                    && (parameter.path == sink.path()
                         || (parameter.rest
-                            && self.stream.paths().starts_with(sink.path, parameter.path)))
+                            && self.stream.paths().starts_with(sink.path(), parameter.path)))
             }) else {
                 continue;
             };
             let mut parameter = parameter.clone();
-            parameter.path = sink.path;
+            parameter.path = sink.path();
             let Some(value) = parameter.project_argument(self.stream, args) else {
                 continue;
             };
-            let Some(object) = self.aliases.get(&value).copied() else {
+            let Some(object) = self.flow_state.object_for(value) else {
                 continue;
             };
-            let Some(state) = self.states.get(&(object, sink.flow)).cloned() else {
+            let Some(state) = self.flow_state.state(object, sink.flow()).cloned() else {
                 continue;
             };
-            let Some(flow) = self.flow_index.get(sink.flow).cloned() else {
+            let Some(flow) = self.flow_index.get(sink.flow()).cloned() else {
                 continue;
             };
             if state.is_ready(&flow) {
@@ -143,7 +142,7 @@ impl ObjectFlowProjector<'_, '_> {
     }
 
     pub(super) fn emit_if_ready(&mut self, flow: FlowId, object: ObjectId, event: FactId) {
-        let Some(state) = self.states.get(&(object, flow)).cloned() else {
+        let Some(state) = self.flow_state.state(object, flow).cloned() else {
             return;
         };
         let Some(matcher) = self.flow_index.get(flow).cloned() else {
@@ -163,29 +162,32 @@ impl ObjectFlowProjector<'_, '_> {
         if !state.is_ready(flow) {
             return;
         }
-        debug_assert!(state.source_event <= match_fact);
+        debug_assert!(state.source_event() <= match_fact);
         let key = (
-            state.flow.rule_index,
-            state.flow.flow_index,
-            state.object_id,
+            state.flow_id().rule_index(),
+            state.flow_id().flow_index(),
+            state.object_id(),
             match_fact,
         );
-        if !self.emitted.contains(&key) && self.emitted.len() >= self.limits.emissions {
-            return;
-        }
-        if self.emitted.insert(key) {
+        if self
+            .flow_evidence
+            .try_insert(key, self.limits.emission_limit())
+        {
             // Requirement-only flows are anchored at the event that made the
             // final requirement true; sink flows use the sink event passed by
             // the caller. Keep the span and event identity parallel.
             let anchor = match_fact;
-            self.evidence[state.flow.rule_index].push(ApiEvidence {
-                kind: ApiMatchKind::CallArgument,
-                symbol: flow.evidence_symbol(),
-                count: 1,
-                spans: vec![self.fact_spans.get(&anchor).copied().unwrap_or_default()],
-                event_ids: vec![anchor.0],
-                related: Vec::new(),
-            });
+            self.flow_evidence.record(
+                state.flow_id().rule_index(),
+                ApiEvidence {
+                    kind: ApiMatchKind::CallArgument,
+                    symbol: flow.evidence_symbol(),
+                    count: 1,
+                    spans: vec![self.fact_spans.get(&anchor).copied().unwrap_or_default()],
+                    event_ids: vec![anchor.0],
+                    related: Vec::new(),
+                },
+            );
         }
     }
 }

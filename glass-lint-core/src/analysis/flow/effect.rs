@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 use super::super::facts::{CallArgInfo, ControlKind, FactPayload, FactStream, ParameterBinding};
 use super::super::syntax::SymbolCallProvenance;
 use super::super::value::{FunctionId, PathId, ValueId};
+use super::table::FunctionTable;
+use crate::budget::BudgetTracker;
 
 const MAX_FUNCTION_EFFECTS: usize = 65_536;
 const MAX_EFFECT_CALLS: usize = 65_536;
@@ -17,28 +19,28 @@ const MAX_EFFECT_RETURNS: usize = 65_536;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::analysis) struct ParameterRef {
-    pub(super) index: usize,
-    pub(super) path: PathId,
+    index: usize,
+    path: PathId,
 }
 
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct EffectArgument {
-    pub(super) index: usize,
-    pub(super) value: ValueId,
-    pub(super) path: PathId,
-    pub(super) parameter: Option<ParameterRef>,
+    index: usize,
+    value: ValueId,
+    path: PathId,
+    parameter: Option<ParameterRef>,
 }
 
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct EffectCall {
-    pub(in crate::analysis) event: super::super::facts::FactId,
-    pub(in crate::analysis) chain: Option<String>,
-    pub(in crate::analysis) rooted: bool,
-    pub(in crate::analysis) target: Option<FunctionId>,
-    pub(in crate::analysis) result: ValueId,
-    pub(in crate::analysis) provenance: SymbolCallProvenance,
-    pub(in crate::analysis) arguments: Vec<EffectArgument>,
-    pub(in crate::analysis) call_arguments: Vec<CallArgInfo>,
+    event: super::super::facts::FactId,
+    chain: Option<String>,
+    rooted: bool,
+    target: Option<FunctionId>,
+    result: ValueId,
+    provenance: SymbolCallProvenance,
+    arguments: Vec<EffectArgument>,
+    call_arguments: Vec<CallArgInfo>,
 }
 
 #[derive(Clone, Debug)]
@@ -66,51 +68,140 @@ pub(in crate::analysis) enum EffectUse {
 
 #[derive(Clone, Debug)]
 pub(crate) struct FunctionEffect {
-    pub(in crate::analysis) id: FunctionId,
-    pub(in crate::analysis) parameters: Vec<ParameterBinding>,
-    pub(in crate::analysis) calls: Vec<EffectCall>,
-    pub(in crate::analysis) uses: Vec<EffectUse>,
-    pub(in crate::analysis) returns: Vec<ReturnProjection>,
-    pub(in crate::analysis) invalid: bool,
+    id: FunctionId,
+    parameters: Vec<ParameterBinding>,
+    calls: Vec<EffectCall>,
+    uses: Vec<EffectUse>,
+    returns: Vec<ReturnProjection>,
+    invalid: bool,
     /// Source-order value copies. Project flow uses this to connect a source
     /// call result through local declarations before a qualified call.
-    pub(in crate::analysis) value_roots: BTreeMap<ValueId, ValueId>,
+    value_roots: BTreeMap<ValueId, ValueId>,
 }
 
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct ReturnProjection {
-    pub(in crate::analysis) value: ValueId,
-    pub(in crate::analysis) parameter: Option<ParameterRef>,
-    pub(in crate::analysis) provenance: SymbolCallProvenance,
-    pub(in crate::analysis) static_string: Option<String>,
+    value: ValueId,
+    parameter: Option<ParameterRef>,
+    provenance: SymbolCallProvenance,
+    static_string: Option<String>,
+}
+
+impl ParameterRef {
+    pub(in crate::analysis) fn index(&self) -> usize {
+        self.index
+    }
+    pub(in crate::analysis) fn is_root(&self) -> bool {
+        self.path.is_empty()
+    }
+}
+
+impl EffectArgument {
+    pub(in crate::analysis) fn index(&self) -> usize {
+        self.index
+    }
+    pub(in crate::analysis) fn value(&self) -> ValueId {
+        self.value
+    }
+    pub(in crate::analysis) fn parameter(&self) -> Option<&ParameterRef> {
+        self.parameter.as_ref()
+    }
+    pub(in crate::analysis) fn is_root(&self) -> bool {
+        self.path.is_empty()
+    }
+}
+
+impl EffectCall {
+    pub(in crate::analysis) fn event(&self) -> super::super::facts::FactId {
+        self.event
+    }
+    pub(in crate::analysis) fn chain(&self) -> Option<&str> {
+        self.chain.as_deref()
+    }
+    pub(in crate::analysis) fn is_rooted(&self) -> bool {
+        self.rooted
+    }
+    pub(in crate::analysis) fn target(&self) -> Option<FunctionId> {
+        self.target
+    }
+    pub(in crate::analysis) fn result(&self) -> ValueId {
+        self.result
+    }
+    pub(in crate::analysis) fn provenance(&self) -> &SymbolCallProvenance {
+        &self.provenance
+    }
+    pub(in crate::analysis) fn arguments(&self) -> &[EffectArgument] {
+        &self.arguments
+    }
+    pub(in crate::analysis) fn call_arguments(&self) -> &[CallArgInfo] {
+        &self.call_arguments
+    }
+
+    pub(in crate::analysis) fn matches_source(
+        &self,
+        flow: &crate::api::compiler::CompiledObjectFlow,
+    ) -> bool {
+        flow.sources.iter().any(|source| {
+            self.chain() == Some(source.member_call.as_str())
+                && source.provenance.matches_rooted(self.is_rooted())
+                && source.arguments.iter().all(|matcher| {
+                    self.call_arguments()
+                        .get(matcher.index)
+                        .is_some_and(|argument| matcher.matcher.matches(argument))
+                })
+        })
+    }
+}
+
+impl ReturnProjection {
+    pub(in crate::analysis) fn value(&self) -> ValueId {
+        self.value
+    }
+    pub(in crate::analysis) fn parameter(&self) -> Option<&ParameterRef> {
+        self.parameter.as_ref()
+    }
+    pub(in crate::analysis) fn provenance(&self) -> &SymbolCallProvenance {
+        &self.provenance
+    }
+    pub(in crate::analysis) fn static_string(&self) -> Option<&str> {
+        self.static_string.as_deref()
+    }
 }
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct FunctionEffects {
-    pub(in crate::analysis) by_id: BTreeMap<FunctionId, FunctionEffect>,
+    by_id: FunctionTable<FunctionEffect>,
     /// Local effect limits fail closed and are surfaced as a project
     /// diagnostic instead of looking like a clean analysis.
-    pub(crate) budget_exhausted: bool,
+    budget_exhausted: bool,
 }
 
 impl FunctionEffects {
     pub(in crate::analysis) fn get(&self, id: FunctionId) -> Option<&FunctionEffect> {
-        self.by_id.get(&id)
+        self.by_id.get(id)
+    }
+
+    pub(in crate::analysis) fn iter_effects(&self) -> impl Iterator<Item = &FunctionEffect> {
+        self.by_id.values()
+    }
+
+    pub(in crate::analysis) fn budget_exhausted(&self) -> bool {
+        self.budget_exhausted
     }
 }
 
-fn mark_budget(exhausted: &mut bool) {
-    *exhausted = true;
+fn mark_budget(budget: &BudgetTracker) {
+    budget.mark_exhausted();
 }
 
 pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
     let mut effects = FunctionEffects::default();
-    let mut budget_exhausted = false;
+    let budget = BudgetTracker::default();
     let mut value_provenance = BTreeMap::new();
-    initialize_effects(stream, &mut effects, &mut budget_exhausted);
+    initialize_effects(stream, &mut effects, &budget);
 
     for fact in stream.facts() {
-        let Some(effect) = effects.by_id.get_mut(&fact.function) else {
+        let Some(effect) = effects.by_id.get_mut(fact.function) else {
             continue;
         };
         match &fact.payload {
@@ -145,7 +236,7 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                 *receiver,
                 property.as_ref(),
                 static_value.as_ref(),
-                &mut budget_exhausted,
+                &budget,
             ),
             FactPayload::Call {
                 syntactic_chain,
@@ -168,13 +259,13 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                 unwrap: unwrap.as_deref(),
                 call_provenance,
                 receiver: *receiver,
-                budget_exhausted: &mut budget_exhausted,
+                budget: &budget,
             }),
             FactPayload::Control {
                 kind: ControlKind::Return,
                 value,
                 ..
-            } => record_return(effect, *value, &value_provenance, &mut budget_exhausted),
+            } => record_return(effect, *value, &value_provenance, &budget),
             FactPayload::Control { kind, .. }
                 if !matches!(
                     kind,
@@ -198,9 +289,9 @@ pub(in crate::analysis) fn collect(stream: &FactStream) -> FunctionEffects {
                 ) => {}
             _ => {}
         }
-        mark_unsupported_control(effect, &fact.payload);
+        effect.mark_unsupported_control(&fact.payload);
     }
-    effects.budget_exhausted = budget_exhausted;
+    effects.budget_exhausted = budget.is_exhausted();
     effects
 }
 
@@ -210,36 +301,90 @@ fn record_property_write(
     receiver: ValueId,
     property: Option<&String>,
     static_value: Option<&String>,
-    budget_exhausted: &mut bool,
+    budget: &BudgetTracker,
 ) {
     if effect.uses.len() >= MAX_EFFECT_USES {
         effect.invalid = true;
-        mark_budget(budget_exhausted);
+        mark_budget(budget);
         return;
     }
     effect.uses.push(EffectUse::PropertyWrite {
         event,
-        receiver: relation(effect, receiver),
+        receiver: effect.parameter_for(receiver),
         value: receiver,
         property: property.cloned(),
         static_value: static_value.cloned(),
     });
 }
 
-fn mark_unsupported_control(effect: &mut FunctionEffect, payload: &FactPayload) {
-    // Unsupported control is deliberately conservative for effects. The
-    // local projector still handles its precise single-file semantics.
-    if matches!(
-        payload,
-        FactPayload::Control {
-            kind: ControlKind::BranchStart
-                | ControlKind::LoopStart { .. }
-                | ControlKind::SwitchStart
-                | ControlKind::TryStart,
-            ..
+impl FunctionEffect {
+    pub(in crate::analysis) fn id(&self) -> FunctionId {
+        self.id
+    }
+    pub(in crate::analysis) fn calls(&self) -> &[EffectCall] {
+        &self.calls
+    }
+    pub(in crate::analysis) fn uses(&self) -> &[EffectUse] {
+        &self.uses
+    }
+    pub(in crate::analysis) fn parameters(&self) -> &[ParameterBinding] {
+        &self.parameters
+    }
+    pub(in crate::analysis) fn returns(&self) -> &[ReturnProjection] {
+        &self.returns
+    }
+    pub(in crate::analysis) fn is_invalid(&self) -> bool {
+        self.invalid
+    }
+    pub(in crate::analysis) fn value_root(&self, value: ValueId) -> Option<ValueId> {
+        self.value_roots.get(&value).copied()
+    }
+
+    fn mark_unsupported_control(&mut self, payload: &FactPayload) {
+        // Unsupported control is deliberately conservative for effects. The
+        // local projector still handles its precise single-file semantics.
+        if matches!(
+            payload,
+            FactPayload::Control {
+                kind: ControlKind::BranchStart
+                    | ControlKind::LoopStart { .. }
+                    | ControlKind::SwitchStart
+                    | ControlKind::TryStart,
+                ..
+            }
+        ) {
+            self.invalid = true;
         }
-    ) {
-        effect.invalid = true;
+    }
+
+    fn record_copy(&mut self, target: ValueId, source: ValueId) {
+        self.copy_root(target, source);
+        if self.parameter_for(source).is_some() {
+            self.value_roots.insert(target, source);
+        }
+    }
+
+    fn copy_root(&mut self, target: ValueId, source: ValueId) {
+        if target == ValueId::UNKNOWN {
+            return;
+        }
+        if source == ValueId::UNKNOWN {
+            self.value_roots.remove(&target);
+        } else {
+            let root = self.value_roots.get(&source).copied().unwrap_or(source);
+            self.value_roots.insert(target, root);
+        }
+    }
+
+    fn parameter_for(&self, value: ValueId) -> Option<ParameterRef> {
+        let root = self.value_roots.get(&value).copied().unwrap_or(value);
+        self.parameters
+            .iter()
+            .find(|parameter| parameter.value == root && root != ValueId::UNKNOWN)
+            .map(|parameter| ParameterRef {
+                index: parameter.parameter_index,
+                path: parameter.path,
+            })
     }
 }
 
@@ -254,14 +399,10 @@ struct CallInput<'a> {
     unwrap: Option<&'a super::super::facts::CallUnwrap>,
     call_provenance: &'a SymbolCallProvenance,
     receiver: Option<ValueId>,
-    budget_exhausted: &'a mut bool,
+    budget: &'a BudgetTracker,
 }
 
-fn initialize_effects(
-    stream: &FactStream,
-    effects: &mut FunctionEffects,
-    budget_exhausted: &mut bool,
-) {
+fn initialize_effects(stream: &FactStream, effects: &mut FunctionEffects, budget: &BudgetTracker) {
     for fact in stream.facts() {
         let FactPayload::Function {
             id,
@@ -272,27 +413,29 @@ fn initialize_effects(
         else {
             continue;
         };
-        if !effects.by_id.contains_key(id) && effects.by_id.len() >= MAX_FUNCTION_EFFECTS {
-            mark_budget(budget_exhausted);
+        if !effects.by_id.contains(*id) && effects.by_id.len() >= MAX_FUNCTION_EFFECTS {
+            mark_budget(budget);
             continue;
         }
-        effects.by_id.entry(*id).or_insert_with(|| FunctionEffect {
-            id: *id,
-            parameters: parameters.clone(),
-            calls: Vec::new(),
-            uses: Vec::new(),
-            returns: Vec::new(),
-            invalid: false,
-            value_roots: parameters
-                .iter()
-                .map(|parameter| (parameter.value, parameter.value))
-                .collect(),
-        });
+        effects.by_id.insert(
+            *id,
+            FunctionEffect {
+                id: *id,
+                parameters: parameters.clone(),
+                calls: Vec::new(),
+                uses: Vec::new(),
+                returns: Vec::new(),
+                invalid: false,
+                value_roots: parameters
+                    .iter()
+                    .map(|parameter| (parameter.value, parameter.value))
+                    .collect(),
+            },
+        );
     }
-    effects
-        .by_id
-        .entry(FunctionId(0))
-        .or_insert_with(|| FunctionEffect {
+    effects.by_id.insert(
+        FunctionId(0),
+        FunctionEffect {
             id: FunctionId(0),
             parameters: Vec::new(),
             calls: Vec::new(),
@@ -300,7 +443,8 @@ fn initialize_effects(
             returns: Vec::new(),
             invalid: false,
             value_roots: BTreeMap::new(),
-        });
+        },
+    );
 }
 
 fn record_reference(
@@ -317,10 +461,7 @@ fn record_reference(
 }
 
 fn record_copy(effect: &mut FunctionEffect, target: ValueId, source: ValueId) {
-    copy_root(effect, target, source);
-    if relation(effect, source).is_some() {
-        effect.value_roots.insert(target, source);
-    }
+    effect.record_copy(target, source);
 }
 
 fn record_call(input: CallInput<'_>) {
@@ -335,7 +476,7 @@ fn record_call(input: CallInput<'_>) {
         unwrap,
         call_provenance,
         receiver,
-        budget_exhausted,
+        budget,
     } = input;
     let (chain, call_args) = unwrap.map_or_else(
         || {
@@ -353,7 +494,7 @@ fn record_call(input: CallInput<'_>) {
             index,
             value: argument.base_value,
             path: argument.base_path,
-            parameter: relation(effect, argument.base_value),
+            parameter: effect.parameter_for(argument.base_value),
         })
         .collect::<Vec<_>>();
     if effect.calls.len() < MAX_EFFECT_CALLS {
@@ -369,9 +510,9 @@ fn record_call(input: CallInput<'_>) {
         });
     } else {
         effect.invalid = true;
-        mark_budget(budget_exhausted);
+        mark_budget(budget);
     }
-    if let Some(receiver) = receiver.and_then(|value| relation(effect, value)) {
+    if let Some(receiver) = receiver.and_then(|value| effect.parameter_for(value)) {
         if effect.uses.len() < MAX_EFFECT_USES {
             effect.uses.push(EffectUse::CallReceiver {
                 event,
@@ -381,13 +522,13 @@ fn record_call(input: CallInput<'_>) {
             });
         } else {
             effect.invalid = true;
-            mark_budget(budget_exhausted);
+            mark_budget(budget);
         }
     }
     for argument in arguments {
         if effect.uses.len() >= MAX_EFFECT_USES {
             effect.invalid = true;
-            mark_budget(budget_exhausted);
+            mark_budget(budget);
             break;
         }
         effect.uses.push(EffectUse::CallArgument {
@@ -404,9 +545,9 @@ fn record_return(
     effect: &mut FunctionEffect,
     value: ValueId,
     value_provenance: &BTreeMap<ValueId, (SymbolCallProvenance, Option<String>)>,
-    budget_exhausted: &mut bool,
+    budget: &BudgetTracker,
 ) {
-    let parameter = relation(effect, value);
+    let parameter = effect.parameter_for(value);
     if parameter.is_none()
         && (value == ValueId::UNKNOWN || !effect.value_roots.contains_key(&value))
     {
@@ -417,7 +558,7 @@ fn record_return(
     }
     if effect.returns.len() >= MAX_EFFECT_RETURNS {
         effect.invalid = true;
-        mark_budget(budget_exhausted);
+        mark_budget(budget);
         return;
     }
     let provenance = value_provenance
@@ -434,28 +575,4 @@ fn record_return(
         provenance,
         static_string,
     });
-}
-
-fn copy_root(effect: &mut FunctionEffect, target: ValueId, source: ValueId) {
-    if target == ValueId::UNKNOWN {
-        return;
-    }
-    if source == ValueId::UNKNOWN {
-        effect.value_roots.remove(&target);
-    } else {
-        let root = effect.value_roots.get(&source).copied().unwrap_or(source);
-        effect.value_roots.insert(target, root);
-    }
-}
-
-fn relation(effect: &FunctionEffect, value: ValueId) -> Option<ParameterRef> {
-    let root = effect.value_roots.get(&value).copied().unwrap_or(value);
-    effect
-        .parameters
-        .iter()
-        .find(|parameter| parameter.value == root && root != ValueId::UNKNOWN)
-        .map(|parameter| ParameterRef {
-            index: parameter.parameter_index,
-            path: parameter.path,
-        })
 }

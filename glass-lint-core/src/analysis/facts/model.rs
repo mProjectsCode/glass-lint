@@ -223,4 +223,34 @@ pub(in crate::analysis) struct SemanticFact {
     pub(in crate::analysis) payload: FactPayload,
 }
 
+impl SemanticFact {
+    pub(in crate::analysis) fn new(
+        id: FactId,
+        span: Span,
+        function: FunctionId,
+        kind: FactKind,
+        payload: FactPayload,
+    ) -> Self {
+        #[cfg(not(test))]
+        let _ = kind;
+        Self {
+            id,
+            span,
+            function,
+            #[cfg(test)]
+            kind,
+            payload,
+        }
+    }
+
+    pub(in crate::analysis) fn id(&self) -> FactId {
+        self.id
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn kind(&self) -> FactKind {
+        self.kind
+    }
+}
+
 pub(in crate::analysis) const MAX_FACTS: usize = 1 << 20;

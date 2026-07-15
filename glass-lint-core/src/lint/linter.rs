@@ -171,45 +171,14 @@ impl Linter {
         input: crate::ProjectInput,
     ) -> Result<crate::ProjectReport, crate::ProjectInputError> {
         let input = input.validate()?;
-        let mut analyzed = std::collections::BTreeMap::new();
-        let mut parse_diagnostics = std::collections::BTreeMap::new();
-
-        for source in &input.sources {
-            let parsed = match crate::parse::parse_with_language(
-                &source.source,
-                &source.path,
-                source.language,
-            ) {
-                Ok(parsed) => parsed,
-                Err(error) => {
-                    parse_diagnostics.insert(source.path.clone(), error);
-                    continue;
-                }
-            };
-            let local = crate::analysis::LocalModuleModel::analyze(
-                &parsed.program,
-                self.catalog.environment(),
-            );
-            analyzed.insert(source.path.clone(), (parsed.source_map, local));
+        let mut session = self.begin_project(input.root)?;
+        for source in input.sources {
+            session.add_source(source)?;
         }
-
-        self.lint_analyzed_project(input, analyzed, parse_diagnostics)
-    }
-
-    pub(crate) fn lint_analyzed_project(
-        &self,
-        input: crate::ProjectInput,
-        analyzed: std::collections::BTreeMap<
-            String,
-            (
-                swc_common::sync::Lrc<swc_common::SourceMap>,
-                crate::analysis::LocalModuleModel,
-            ),
-        >,
-        parse_diagnostics: std::collections::BTreeMap<String, crate::ParseDiagnostic>,
-    ) -> Result<crate::ProjectReport, crate::ProjectInputError> {
-        self.lint_analyzed_project_timed(input, analyzed, parse_diagnostics)
-            .map(|(report, _, _)| report)
+        for (key, result) in input.resolutions {
+            session.record_resolution(key, result)?;
+        }
+        session.finish()
     }
 
     pub(crate) fn lint_analyzed_project_timed(
@@ -318,18 +287,18 @@ impl Linter {
         files: &mut std::collections::BTreeMap<String, crate::ProjectFileReport>,
     ) {
         for module in project.modules() {
-            let Some(classification) = classifications.get(&module.id) else {
+            let Some(classification) = classifications.get(&module.id()) else {
                 continue;
             };
-            let Some(source) = sources.get(&module.path) else {
+            let Some(source) = sources.get(module.path()) else {
                 continue;
             };
             let mut findings = self
-                .findings_for(classification, &module.source_map, source)
+                .findings_for(classification, module.source_map(), source)
                 .into_iter()
                 .map(|finding| {
                     let mut project_finding =
-                        crate::ProjectFinding::from_finding(finding, &module.path);
+                        crate::ProjectFinding::from_finding(finding, module.path());
                     let finding_rule_id = project_finding.rule_id.clone();
                     let related = classification
                         .capabilities()
@@ -362,9 +331,9 @@ impl Linter {
             });
             findings.dedup();
             files.insert(
-                module.path.clone(),
+                module.path().to_owned(),
                 crate::ProjectFileReport {
-                    path: module.path.clone(),
+                    path: module.path().to_owned(),
                     findings,
                     parse_diagnostics: Vec::new(),
                 },

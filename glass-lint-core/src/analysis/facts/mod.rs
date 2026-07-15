@@ -25,9 +25,9 @@ pub(in crate::analysis) use stream::FactStream;
 
 #[derive(Debug)]
 pub(in crate::analysis) struct SemanticFacts {
-    pub(in crate::analysis) stream: FactStream,
-    pub(in crate::analysis) index: MatcherFacts,
-    pub(in crate::analysis) interface: ModuleInterface,
+    stream: FactStream,
+    index: MatcherFacts,
+    interface: ModuleInterface,
 }
 
 impl SemanticFacts {
@@ -49,6 +49,18 @@ impl SemanticFacts {
             index,
             interface,
         }
+    }
+
+    pub(in crate::analysis) fn stream(&self) -> &FactStream {
+        &self.stream
+    }
+
+    pub(in crate::analysis) fn cloned_matcher_facts(&self) -> MatcherFacts {
+        self.index.clone()
+    }
+
+    pub(in crate::analysis) fn interface(&self) -> &ModuleInterface {
+        &self.interface
     }
 
     /// Projects matcher-specific argument and flow evidence after linking.
@@ -131,12 +143,12 @@ mod tests {
     use swc_common::BytePos;
 
     fn test_fact(id: u32, kind: FactKind, span: Span) -> SemanticFact {
-        SemanticFact {
-            id: FactId(id),
+        SemanticFact::new(
+            FactId(id),
             span,
-            function: FunctionId(0),
+            FunctionId(0),
             kind,
-            payload: match kind {
+            match kind {
                 FactKind::Call => FactPayload::Call {
                     callee: ValueId::UNKNOWN,
                     receiver: None,
@@ -181,7 +193,7 @@ mod tests {
                     source: ValueId::UNKNOWN,
                 },
             },
-        }
+        )
     }
 
     #[test]
@@ -196,16 +208,16 @@ mod tests {
             stream
                 .facts_at(span.lo(), span.hi(), FactKind::Call)
                 .iter()
-                .map(|fact| fact.id)
+                .map(|fact| fact.id())
                 .collect::<Vec<_>>(),
             vec![FactId(0), FactId(2)]
         );
         assert_eq!(
-            stream.fact(FactId(0)).map(|fact| fact.kind),
+            stream.fact(FactId(0)).map(SemanticFact::kind),
             Some(FactKind::Call)
         );
         assert_eq!(
-            stream.fact(FactId(2)).map(|fact| fact.kind),
+            stream.fact(FactId(2)).map(SemanticFact::kind),
             Some(FactKind::Call)
         );
         assert!(stream.fact(FactId(3)).is_none());
@@ -220,10 +232,10 @@ mod tests {
         }
         let calls = stream.facts_at(span.lo(), span.hi(), FactKind::Call);
         assert_eq!(calls.len(), 10_001);
-        assert_eq!(calls.first().map(|fact| fact.id), Some(FactId(0)));
-        assert_eq!(calls.last().map(|fact| fact.id), Some(FactId(10_000)));
+        assert_eq!(calls.first().map(|fact| fact.id()), Some(FactId(0)));
+        assert_eq!(calls.last().map(|fact| fact.id()), Some(FactId(10_000)));
         assert_eq!(
-            stream.fact(FactId(10_000)).map(|fact| fact.id),
+            stream.fact(FactId(10_000)).map(SemanticFact::id),
             Some(FactId(10_000))
         );
     }
@@ -300,41 +312,30 @@ mod tests {
         index.build_from_stream(&stream);
         index.normalize_occurrences();
 
+        assert!(index.has_import("mod"), "should have 'mod' import");
         assert!(
-            index.imports.get("mod").is_some(),
-            "should have 'mod' import"
-        );
-        assert!(
-            index.imports.get("other-mod").is_some(),
+            index.has_import("other-mod"),
             "should have 'other-mod' import"
         );
         assert!(
-            index.imports.get("path").is_some(),
+            index.has_import("path"),
             "should have 'path' require import"
         );
-        assert!(index.calls.get("greet").is_some(), "should have greet call");
+        assert!(index.has_call("greet"), "should have greet call");
         assert!(
-            index.string_literals.get("world").is_some(),
+            index.has_string("world"),
             "should have 'world' string literal"
         );
-        assert!(!index.classes.is_empty(), "should have class entries");
+        assert!(index.has_any_class(), "should have class entries");
         assert!(
-            index
-                .module_classes
-                .get(&("other-mod".to_string(), "Bar".to_string()))
-                .is_some(),
+            index.has_module_class("other-mod", "Bar"),
             "should have module class for Bar from other-mod"
         );
         assert!(
-            !index.constructors.is_empty(),
+            index.has_constructor("Bar") || index.has_constructor("MyClass"),
             "should have constructor entries"
         );
-        assert!(
-            index.member_calls.get("x.hello").is_some()
-                || index.rooted_member_calls.iter().next().is_some()
-                || index.member_calls.iter().next().is_some(),
-            "should have member calls"
-        );
+        assert!(index.has_any_member_call(), "should have member calls");
     }
 
     /// Verify that .call()/.apply() unwrapping produces the expected
@@ -358,7 +359,7 @@ mod tests {
 
         // The unwrap should record 'fetch' as a member call.
         assert!(
-            index.member_calls.get("fetch").is_some(),
+            index.has_member_call("fetch"),
             "should have 'fetch' as member call from unwrapping"
         );
     }

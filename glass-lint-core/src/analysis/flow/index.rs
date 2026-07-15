@@ -14,9 +14,21 @@ const MAX_FLOW_EMISSIONS: usize = 65_536;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FlowLimits {
-    pub(super) objects: u32,
-    pub(super) states: usize,
-    pub(super) emissions: usize,
+    objects: u32,
+    states: usize,
+    emissions: usize,
+}
+
+impl FlowLimits {
+    pub(super) fn object_limit(&self) -> u32 {
+        self.objects
+    }
+    pub(super) fn state_limit(&self) -> usize {
+        self.states
+    }
+    pub(super) fn emission_limit(&self) -> usize {
+        self.emissions
+    }
 }
 
 impl Default for FlowLimits {
@@ -31,15 +43,31 @@ impl Default for FlowLimits {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(super) struct FlowId {
-    pub(super) rule_index: usize,
-    pub(super) flow_index: usize,
+    rule_index: usize,
+    flow_index: usize,
+}
+
+impl FlowId {
+    pub(super) fn new(rule_index: usize, flow_index: usize) -> Self {
+        Self {
+            rule_index,
+            flow_index,
+        }
+    }
+
+    pub(super) fn rule_index(self) -> usize {
+        self.rule_index
+    }
+    pub(super) fn flow_index(self) -> usize {
+        self.flow_index
+    }
 }
 
 #[derive(Debug, Default, Clone)]
 pub(super) struct FlowIndex<'rules> {
-    pub(super) flows: BTreeMap<FlowId, &'rules CompiledObjectFlow>,
-    pub(super) sources: BTreeMap<String, Vec<FlowId>>,
-    pub(super) sinks: BTreeMap<String, Vec<FlowId>>,
+    flows: BTreeMap<FlowId, &'rules CompiledObjectFlow>,
+    sources: BTreeMap<String, Vec<FlowId>>,
+    sinks: BTreeMap<String, Vec<FlowId>>,
 }
 
 impl<'rules> FlowIndex<'rules> {
@@ -66,6 +94,14 @@ impl<'rules> FlowIndex<'rules> {
 
     pub(super) fn get(&self, id: FlowId) -> Option<&CompiledObjectFlow> {
         self.flows.get(&id).copied()
+    }
+
+    pub(super) fn source_ids(&self, member_call: &str) -> Option<&[FlowId]> {
+        self.sources.get(member_call).map(Vec::as_slice)
+    }
+
+    pub(super) fn sink_ids(&self, member_call: &str) -> Option<&[FlowId]> {
+        self.sinks.get(member_call).map(Vec::as_slice)
     }
 
     fn add_source(&mut self, member_call: &str, id: FlowId) {

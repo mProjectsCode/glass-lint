@@ -7,8 +7,8 @@ use super::super::{
     linked_identity,
 };
 use crate::analysis::matching::LinkedModuleIdentity;
-use crate::analysis::module::ModuleRequest;
 use crate::analysis::module::ModuleRequestRole;
+use crate::analysis::module::{ImportedBinding, ModuleRequest};
 use crate::analysis::syntax::SymbolCallProvenance;
 
 impl ProjectSemanticModel {
@@ -20,43 +20,45 @@ impl ProjectSemanticModel {
         let Some(module) = self.modules.get(&importer) else {
             return identities;
         };
-        for effect in module.local.effects.by_id.values() {
-            for call in &effect.calls {
+        for effect in module.local().effects().iter_effects() {
+            for call in effect.calls() {
                 let Some((target_module, target_function)) =
-                    self.qualified_function_target(importer, call.target, &call.provenance)
+                    self.qualified_function_target(importer, call.target(), call.provenance())
                 else {
                     continue;
                 };
                 let Some(target) = self
                     .modules
                     .get(&target_module)
-                    .and_then(|module| module.local.effects.get(target_function))
+                    .and_then(|module| module.local().effects().get(target_function))
                 else {
                     continue;
                 };
                 let Some(returned) = target
-                    .returns
+                    .returns()
                     .iter()
-                    .find(|returned| returned.parameter.is_none())
+                    .find(|returned| returned.parameter().is_none())
                 else {
                     continue;
                 };
-                let resolution =
-                    match &returned.provenance {
-                        SymbolCallProvenance::ModuleExport { module, export } => {
-                            self.resolve_imported_identity(target_module, module, export)
-                        }
-                        SymbolCallProvenance::Global { name } => {
-                            ExportResolution::Global { name: name.clone() }
-                        }
-                        SymbolCallProvenance::Local => returned.static_string.as_ref().map_or(
-                            ExportResolution::Unknown,
-                            |value| ExportResolution::StaticString {
-                                value: value.clone(),
-                            },
-                        ),
-                    };
-                identities.insert(call.result, linked_identity(resolution));
+                let resolution = match returned.provenance() {
+                    SymbolCallProvenance::ModuleExport { module, export } => {
+                        self.resolve_imported_identity(target_module, module, export)
+                    }
+                    SymbolCallProvenance::Global { name } => {
+                        ExportResolution::Global { name: name.clone() }
+                    }
+                    SymbolCallProvenance::Local => {
+                        returned
+                            .static_string()
+                            .map_or(ExportResolution::Unknown, |value| {
+                                ExportResolution::StaticString {
+                                    value: value.to_owned(),
+                                }
+                            })
+                    }
+                };
+                identities.insert(call.result(), linked_identity(resolution));
             }
         }
         identities
@@ -70,28 +72,28 @@ impl ProjectSemanticModel {
         let Some(project_module) = self.modules.get(&module) else {
             return identities;
         };
-        for request in &project_module.local.interface().requests {
-            let ModuleRequestRole::Import { bindings } = &request.role else {
+        for request in project_module.local().interface().requests() {
+            let ModuleRequestRole::Import { bindings } = request.role() else {
                 continue;
             };
             for binding in bindings {
-                if binding.namespace {
+                if binding.is_namespace() {
                     continue;
                 }
-                let Some(export) = &binding.imported else {
+                let Some(export) = binding.imported() else {
                     continue;
                 };
-                let identity = self.resolve_imported_identity(module, &request.specifier, export);
+                let identity = self.resolve_imported_identity(module, request.specifier(), export);
                 identities.insert(
-                    (request.specifier.clone(), export.clone()),
+                    (request.specifier().to_owned(), export.to_owned()),
                     linked_identity(identity),
                 );
             }
         }
-        for request in &project_module.local.interface().requests {
-            let is_namespace_import = match &request.role {
+        for request in project_module.local().interface().requests() {
+            let is_namespace_import = match request.role() {
                 ModuleRequestRole::Import { bindings } => {
-                    bindings.iter().any(|binding| binding.namespace)
+                    bindings.iter().any(ImportedBinding::is_namespace)
                 }
                 ModuleRequestRole::Require | ModuleRequestRole::DynamicImport => true,
                 ModuleRequestRole::ReExport { .. } | ModuleRequestRole::StarExport => false,
@@ -99,7 +101,7 @@ impl ProjectSemanticModel {
             if !is_namespace_import {
                 continue;
             }
-            let prefix = request.specifier.clone();
+            let prefix = request.specifier().to_owned();
             match self.resolve_namespace(module, request) {
                 ExportResolution::Qualified { module: target, .. } => {
                     for export in self.exported_names(target, &mut BTreeSet::new()) {
@@ -129,10 +131,13 @@ impl ProjectSemanticModel {
         let Some(project_module) = self.modules.get(&module) else {
             return BTreeSet::new();
         };
-        let interface = project_module.local.interface();
-        let mut names = interface.exports.keys().cloned().collect::<BTreeSet<_>>();
-        for request_index in &interface.star_exports {
-            let Some(request) = interface.requests.get(*request_index) else {
+        let interface = project_module.local().interface();
+        let mut names = interface
+            .exports()
+            .map(|(name, _)| name.clone())
+            .collect::<BTreeSet<_>>();
+        for request_index in interface.star_exports() {
+            let Some(request) = interface.request(*request_index) else {
                 continue;
             };
             let key = self.request_key(module, request);
@@ -147,7 +152,7 @@ impl ProjectSemanticModel {
     fn resolve_namespace(&self, module: ModuleId, request: &ModuleRequest) -> ExportResolution {
         match self.resolutions.get(&self.request_key(module, request)) {
             None => ExportResolution::External {
-                module: request.specifier.clone(),
+                module: request.specifier().to_owned(),
                 export: "*".into(),
             },
             Some(ResolvedModule::External { package }) => ExportResolution::External {

@@ -2,6 +2,7 @@
 
 mod analysis;
 mod api;
+mod budget;
 mod config;
 mod diagnostic;
 mod environment;
@@ -22,9 +23,10 @@ pub use environment::{Environment, EnvironmentError};
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{
-    ProjectDiagnostic, ProjectEvidence, ProjectFileReport, ProjectFinding, ProjectInput,
-    ProjectInputError, ProjectOperationCounts, ProjectReport, ProjectSession, ResolutionRequest,
-    ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile, SourceLocation,
+    EvidenceList, ProjectDiagnostic, ProjectEvidence, ProjectFileReport, ProjectFinding,
+    ProjectInput, ProjectInputError, ProjectOperationCounts, ProjectReport, ProjectSession,
+    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile,
+    SourceLocation,
 };
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
 pub use rule_id::RuleId;

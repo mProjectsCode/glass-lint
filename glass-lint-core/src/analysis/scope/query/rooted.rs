@@ -15,7 +15,7 @@ impl RootedExprContext for ScopeGraph {
             return None;
         }
         match self.binding_at(ident.sym.as_ref(), ident.span) {
-            None if self.environment.is_global(ident.sym.as_ref()) => Some(ident.sym.to_string()),
+            None if self.is_global(ident.sym.as_ref()) => Some(ident.sym.to_string()),
             Some(
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. },

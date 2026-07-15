@@ -88,6 +88,19 @@ pub(in crate::analysis) enum BindingRoot {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(in crate::analysis) struct BindingKey {
-    pub(in crate::analysis) root: BindingRoot,
-    pub(in crate::analysis) path: Vec<String>,
+    root: BindingRoot,
+    path: Vec<String>,
+}
+
+impl BindingKey {
+    pub(in crate::analysis) fn new(root: BindingRoot) -> Self {
+        Self {
+            root,
+            path: Vec::new(),
+        }
+    }
+
+    pub(in crate::analysis) fn append_segment(&mut self, segment: String) {
+        self.path.push(segment);
+    }
 }

@@ -18,7 +18,7 @@ use super::{
     scope::ScopeGraph,
     syntax::constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
-    value::{BindingKey, Value, ValueArena, ValueId},
+    value::{BindingKey, Value, ValueId, ValueTable},
 };
 use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
 
@@ -70,7 +70,7 @@ enum ResolutionKey {
 #[derive(Debug)]
 pub(super) struct Resolver {
     scopes: ScopeGraph,
-    values: RefCell<ValueArena>,
+    values: RefCell<ValueTable>,
     fresh_values: RefCell<BTreeMap<(u32, u32), ValueId>>,
     resolved_values: RefCell<BTreeMap<ResolutionKey, ResolvedValue>>,
     resolving: RefCell<BTreeSet<ResolutionKey>>,
@@ -80,7 +80,7 @@ impl Default for Resolver {
     fn default() -> Self {
         Self {
             scopes: ScopeGraph::default(),
-            values: RefCell::new(ValueArena::default()),
+            values: RefCell::new(ValueTable::default()),
             fresh_values: RefCell::new(BTreeMap::new()),
             resolved_values: RefCell::new(BTreeMap::new()),
             resolving: RefCell::new(BTreeSet::new()),
@@ -158,7 +158,7 @@ impl Resolver {
         let scopes = ScopeGraph::collect_with_environment(program, environment);
         Self {
             scopes,
-            values: RefCell::new(ValueArena::default()),
+            values: RefCell::new(ValueTable::default()),
             fresh_values: RefCell::new(BTreeMap::new()),
             resolved_values: RefCell::new(BTreeMap::new()),
             resolving: RefCell::new(BTreeSet::new()),

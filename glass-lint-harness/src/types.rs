@@ -55,6 +55,95 @@ pub enum ProjectResolutionResult {
     Unsupported { reason: String },
 }
 
+impl From<ProjectFile> for AdapterFile {
+    fn from(file: ProjectFile) -> Self {
+        Self {
+            path: file.path,
+            language: file.language,
+            source: file.source,
+        }
+    }
+}
+impl From<AdapterFile> for ProjectFile {
+    fn from(file: AdapterFile) -> Self {
+        Self {
+            path: file.path,
+            language: file.language,
+            source: file.source,
+        }
+    }
+}
+
+impl From<ProjectResolutionResult> for AdapterResolutionResult {
+    fn from(result: ProjectResolutionResult) -> Self {
+        match result {
+            ProjectResolutionResult::Internal { path } => Self::Internal { path },
+            ProjectResolutionResult::External { package } => Self::External { package },
+            ProjectResolutionResult::Builtin { name } => Self::Builtin { name },
+            ProjectResolutionResult::Missing => Self::Missing,
+            ProjectResolutionResult::OutsideProject { path } => Self::OutsideProject { path },
+            ProjectResolutionResult::Unsupported { reason } => Self::Unsupported { reason },
+        }
+    }
+}
+impl From<AdapterResolutionResult> for ProjectResolutionResult {
+    fn from(result: AdapterResolutionResult) -> Self {
+        match result {
+            AdapterResolutionResult::Internal { path } => Self::Internal { path },
+            AdapterResolutionResult::External { package } => Self::External { package },
+            AdapterResolutionResult::Builtin { name } => Self::Builtin { name },
+            AdapterResolutionResult::Missing => Self::Missing,
+            AdapterResolutionResult::OutsideProject { path } => Self::OutsideProject { path },
+            AdapterResolutionResult::Unsupported { reason } => Self::Unsupported { reason },
+        }
+    }
+}
+
+impl From<ProjectResolution> for AdapterResolution {
+    fn from(resolution: ProjectResolution) -> Self {
+        Self {
+            importer: resolution.importer,
+            kind: resolution.kind,
+            request: resolution.request,
+            range: resolution.range,
+            result: resolution.result.into(),
+        }
+    }
+}
+impl From<AdapterResolution> for ProjectResolution {
+    fn from(resolution: AdapterResolution) -> Self {
+        Self {
+            importer: resolution.importer,
+            kind: resolution.kind,
+            request: resolution.request,
+            range: resolution.range,
+            result: resolution.result.into(),
+        }
+    }
+}
+
+impl From<ProjectCase> for AdapterProject {
+    fn from(project: ProjectCase) -> Self {
+        Self {
+            root: project.root.to_string_lossy().into_owned(),
+            entries: project.entries,
+            files: project.files.into_iter().map(Into::into).collect(),
+            resolutions: project.resolutions.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+impl From<AdapterProject> for ProjectCase {
+    fn from(project: AdapterProject) -> Self {
+        Self {
+            root: project.root.into(),
+            entries: project.entries,
+            files: project.files.into_iter().map(Into::into).collect(),
+            resolutions: project.resolutions.into_iter().map(Into::into).collect(),
+            filesystem: false,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct ToolExpectation {
     pub config: Option<String>,

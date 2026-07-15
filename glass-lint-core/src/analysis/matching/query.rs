@@ -33,7 +33,8 @@ impl MatcherFacts {
     ) {
         for matcher in matchers {
             let spans = self
-                .returned_member_calls
+                .members
+                .returned_calls
                 .iter()
                 .filter(|((source, member), _)| {
                     (source == &matcher.source
@@ -58,7 +59,8 @@ impl MatcherFacts {
     ) {
         for matcher in matchers {
             let spans = self
-                .returned_member_reads
+                .members
+                .returned_reads
                 .iter()
                 .filter(|((source, member), _)| {
                     (source == &matcher.source
@@ -91,7 +93,7 @@ impl MatcherFacts {
                 evidence,
                 ApiMatchKind::MemberCall,
                 format!("{}:{}.{}", matcher.module, matcher.export, matcher.member),
-                self.instance_member_calls.get(&key).cloned(),
+                self.members.instance_calls.get(&key).cloned(),
             );
         }
     }
@@ -102,11 +104,12 @@ impl MatcherFacts {
                 continue;
             }
             let spans = match &call.provenance {
-                CallProvenance::Any => self.calls.get(&call.name),
-                CallProvenance::Global => self.global_calls.get(&call.name),
-                CallProvenance::ModuleExport { module } => {
-                    self.module_calls.get(&(module.clone(), call.name.clone()))
-                }
+                CallProvenance::Any => self.call_indexes.calls.get(&call.name),
+                CallProvenance::Global => self.call_indexes.global_calls.get(&call.name),
+                CallProvenance::ModuleExport { module } => self
+                    .call_indexes
+                    .module_calls
+                    .get(&(module.clone(), call.name.clone())),
             };
             push_evidence(evidence, ApiMatchKind::Call, call.evidence_symbol(), spans);
         }
@@ -121,11 +124,12 @@ impl MatcherFacts {
             let spans = match &read.provenance {
                 MemberReadProvenance::Any => {
                     if read.chain.contains('.') {
-                        self.member_reads.get(&read.chain).cloned()
+                        self.members.reads.get(&read.chain).cloned()
                     } else {
                         let suffix = format!(".{}", read.chain);
                         let spans = self
-                            .member_reads
+                            .members
+                            .reads
                             .iter()
                             .filter(|(member_read, _)| {
                                 *member_read == &read.chain || member_read.ends_with(&suffix)
@@ -135,9 +139,10 @@ impl MatcherFacts {
                         (!spans.is_empty()).then_some(spans)
                     }
                 }
-                MemberReadProvenance::Rooted => self.rooted_member_reads.get(&read.chain).cloned(),
+                MemberReadProvenance::Rooted => self.members.rooted_reads.get(&read.chain).cloned(),
                 MemberReadProvenance::ModuleNamespace { module } => self
-                    .module_member_reads
+                    .members
+                    .module_reads
                     .get(&(module.clone(), read.chain.clone()))
                     .cloned(),
             };
@@ -160,10 +165,11 @@ impl MatcherFacts {
                 continue;
             }
             let spans = match &call.provenance {
-                MemberCallProvenance::Any => self.member_calls.get(&call.chain),
-                MemberCallProvenance::Rooted => self.rooted_member_calls.get(&call.chain),
+                MemberCallProvenance::Any => self.members.calls.get(&call.chain),
+                MemberCallProvenance::Rooted => self.members.rooted_calls.get(&call.chain),
                 MemberCallProvenance::ModuleNamespace { module } => self
-                    .module_member_calls
+                    .members
+                    .module_calls
                     .get(&(module.clone(), call.chain.clone())),
             };
             push_evidence(
@@ -178,8 +184,11 @@ impl MatcherFacts {
     fn collect_class_evidence(&self, classes: &[ClassMatcher], evidence: &mut Vec<ApiEvidence>) {
         for class in classes {
             let spans = match &class.provenance {
-                CallProvenance::Any | CallProvenance::Global => self.classes.get(&class.name),
+                CallProvenance::Any | CallProvenance::Global => {
+                    self.constructions.classes.get(&class.name)
+                }
                 CallProvenance::ModuleExport { module } => self
+                    .constructions
                     .module_classes
                     .get(&(module.clone(), class.name.clone())),
             };
@@ -199,10 +208,12 @@ impl MatcherFacts {
     ) {
         for constructor in constructors {
             let spans = match &constructor.provenance {
-                CallProvenance::Any | CallProvenance::Global => {
-                    self.global_constructors.get(&constructor.name)
-                }
+                CallProvenance::Any | CallProvenance::Global => self
+                    .constructions
+                    .global_constructors
+                    .get(&constructor.name),
                 CallProvenance::ModuleExport { module } => self
+                    .constructions
                     .module_constructors
                     .get(&(module.clone(), constructor.name.clone())),
             };
@@ -223,7 +234,7 @@ impl MatcherFacts {
     ) {
         for symbol in symbols {
             let spans = match kind {
-                ApiMatchKind::Import => self.imports.get(symbol),
+                ApiMatchKind::Import => self.literals.imports.get(symbol),
                 _ => None,
             };
             push_evidence(evidence, kind, symbol.clone(), spans);
@@ -233,7 +244,8 @@ impl MatcherFacts {
     fn collect_string_literal_evidence(&self, markers: &[String], evidence: &mut Vec<ApiEvidence>) {
         for marker in markers {
             let spans = self
-                .string_literals
+                .literals
+                .strings
                 .iter()
                 .filter(|(literal, _)| literal.contains(marker))
                 .flat_map(|(_, occurrences)| occurrences.iter().copied())
@@ -254,25 +266,29 @@ impl MatcherFacts {
         let symbol = symbol.into();
         match kind {
             ApiMatchKind::Call => {
-                self.calls.push(symbol, FactId(u32::MAX), span);
+                self.call_indexes.calls.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::MemberCall => {
-                self.member_calls.push(symbol, FactId(u32::MAX), span);
+                self.members.calls.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::MemberRead => {
-                self.member_reads.push(symbol, FactId(u32::MAX), span);
+                self.members.reads.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::Import => {
-                self.imports.push(symbol, FactId(u32::MAX), span);
+                self.literals.imports.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::StringLiteral => {
-                self.string_literals.push(symbol, FactId(u32::MAX), span);
+                self.literals.strings.push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::Class => {
-                self.classes.push(symbol, FactId(u32::MAX), span);
+                self.constructions
+                    .classes
+                    .push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::Constructor => {
-                self.constructors.push(symbol, FactId(u32::MAX), span);
+                self.constructions
+                    .constructors
+                    .push(symbol, FactId(u32::MAX), span);
             }
             ApiMatchKind::CallArgument => {}
         }

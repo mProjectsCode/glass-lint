@@ -8,9 +8,8 @@ use anyhow::{Context, Result, bail};
 use glass_lint_core::{Finding, Linter, ResolutionRequestKind, ResolutionResult, SourceFile};
 
 use crate::types::{
-    ADAPTER_PROTOCOL_VERSION, AdapterFile, AdapterProject, AdapterRequest, AdapterResolution,
-    AdapterResolutionResult, AdapterResponse, AdapterRun, Case, FindingLocation, ProjectCase,
-    ProjectResolutionResult, ToolExpectation,
+    ADAPTER_PROTOCOL_VERSION, AdapterProject, AdapterRequest, AdapterResponse, AdapterRun, Case,
+    FindingLocation, ProjectCase, ProjectResolutionResult, ToolExpectation,
 };
 
 pub trait Adapter {
@@ -398,49 +397,5 @@ impl ExternalAdapter {
 }
 
 fn adapter_project(project: &ProjectCase) -> AdapterProject {
-    AdapterProject {
-        root: project.root.to_string_lossy().into_owned(),
-        entries: project.entries.clone(),
-        files: project
-            .files
-            .iter()
-            .map(|file| AdapterFile {
-                path: file.path.clone(),
-                language: file.language.clone(),
-                source: file.source.clone(),
-            })
-            .collect(),
-        resolutions: project
-            .resolutions
-            .iter()
-            .map(|resolution| AdapterResolution {
-                importer: resolution.importer.clone(),
-                kind: resolution.kind.clone(),
-                request: resolution.request.clone(),
-                range: resolution.range.clone(),
-                result: match &resolution.result {
-                    ProjectResolutionResult::Internal { path } => {
-                        AdapterResolutionResult::Internal { path: path.clone() }
-                    }
-                    ProjectResolutionResult::External { package } => {
-                        AdapterResolutionResult::External {
-                            package: package.clone(),
-                        }
-                    }
-                    ProjectResolutionResult::Builtin { name } => {
-                        AdapterResolutionResult::Builtin { name: name.clone() }
-                    }
-                    ProjectResolutionResult::Missing => AdapterResolutionResult::Missing,
-                    ProjectResolutionResult::OutsideProject { path } => {
-                        AdapterResolutionResult::OutsideProject { path: path.clone() }
-                    }
-                    ProjectResolutionResult::Unsupported { reason } => {
-                        AdapterResolutionResult::Unsupported {
-                            reason: reason.clone(),
-                        }
-                    }
-                },
-            })
-            .collect(),
-    }
+    project.clone().into()
 }

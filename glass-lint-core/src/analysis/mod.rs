@@ -11,6 +11,7 @@ use crate::project::{
     ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey, ResolutionResult,
     ResolvedModule,
 };
+use project::state::{ExportTable, ModuleGraph};
 use swc_common::{SourceMap, SourceMapper, sync::Lrc};
 
 mod evidence;
@@ -41,14 +42,12 @@ const MAX_PROJECT_REQUESTS: usize = 500_000;
 pub(crate) struct ProjectSemanticModel {
     modules: BTreeMap<ModuleId, ProjectModule>,
     resolutions: BTreeMap<ResolutionRequestKey, ResolvedModule>,
-    exports: BTreeMap<(ModuleId, String), ExportResolution>,
-    adjacency: BTreeMap<ModuleId, Vec<ModuleId>>,
-    reverse_adjacency: BTreeMap<ModuleId, Vec<ModuleId>>,
-    components: Vec<Vec<ModuleId>>,
+    exports: ExportTable,
+    graph: ModuleGraph,
     link_rounds: usize,
     diagnostics: Vec<crate::ProjectDiagnostic>,
-    flow_budget_exhausted: Cell<bool>,
-    link_budget_exhausted: bool,
+    flow_budget: crate::budget::BudgetTracker,
+    link_budget: crate::budget::BudgetTracker,
     effect_projections: Cell<usize>,
 }
 
@@ -71,24 +70,22 @@ impl ProjectSemanticModel {
         Self {
             modules: [(
                 ModuleId(0),
-                ProjectModule {
-                    id: ModuleId(0),
-                    path: path.into(),
-                    source_map,
-                    local,
-                },
+                ProjectModule::new(ModuleId(0), path.into(), source_map, local),
             )]
             .into_iter()
             .collect(),
             resolutions: BTreeMap::new(),
-            exports: BTreeMap::new(),
-            adjacency: BTreeMap::new(),
-            reverse_adjacency: BTreeMap::new(),
-            components: vec![vec![ModuleId(0)]],
+            exports: ExportTable::default(),
+            graph: {
+                let mut graph = ModuleGraph::default();
+                graph.ensure_node(ModuleId(0));
+                graph.set_components(vec![vec![ModuleId(0)]]);
+                graph
+            },
             link_rounds: 0,
             diagnostics: Vec::new(),
-            flow_budget_exhausted: Cell::new(false),
-            link_budget_exhausted: false,
+            flow_budget: crate::budget::BudgetTracker::default(),
+            link_budget: crate::budget::BudgetTracker::default(),
             effect_projections: Cell::new(0),
         }
     }
@@ -111,12 +108,7 @@ impl ProjectSemanticModel {
             };
             modules.insert(
                 id,
-                ProjectModule {
-                    id,
-                    path: source.path.clone(),
-                    source_map,
-                    local,
-                },
+                ProjectModule::new(id, source.path.clone(), source_map, local),
             );
         }
 
@@ -136,7 +128,7 @@ impl ProjectSemanticModel {
         }
         let request_count = modules
             .values()
-            .map(|module| module.local.interface().requests.len())
+            .map(|module| module.local().interface().requests().count())
             .sum::<usize>();
         if request_count > MAX_PROJECT_REQUESTS {
             return Err(ProjectInputError::BudgetExceeded(
@@ -145,7 +137,7 @@ impl ProjectSemanticModel {
         }
         let export_count = modules
             .values()
-            .map(|module| module.local.interface().exports.len())
+            .map(|module| module.local().interface().exports().count())
             .sum::<usize>();
         if export_count > MAX_EXPORT_ENTRIES {
             return Err(ProjectInputError::BudgetExceeded(
@@ -181,14 +173,12 @@ impl ProjectSemanticModel {
         let mut project = Self {
             modules,
             resolutions,
-            exports: BTreeMap::new(),
-            adjacency: BTreeMap::new(),
-            reverse_adjacency: BTreeMap::new(),
-            components: Vec::new(),
+            exports: ExportTable::default(),
+            graph: ModuleGraph::default(),
             link_rounds: 0,
             diagnostics: Vec::new(),
-            flow_budget_exhausted: Cell::new(false),
-            link_budget_exhausted: false,
+            flow_budget: crate::budget::BudgetTracker::default(),
+            link_budget: crate::budget::BudgetTracker::default(),
             effect_projections: Cell::new(0),
         };
         project.build_graph_and_exports();
@@ -206,17 +196,17 @@ impl ProjectSemanticModel {
     ) -> Option<crate::ProjectEvidence> {
         let module = self.modules.get(&module)?;
         let fact = module
-            .local
-            .facts
-            .stream
+            .local()
+            .facts()
+            .stream()
             .fact(crate::analysis::facts::FactId(fact))?;
         Some(crate::ProjectEvidence {
             message: "related semantic path event".into(),
             location: Some(crate::SourceLocation {
-                path: module.path.clone(),
-                range: crate::lint::source_range_from_span(&module.source_map, fact.span),
+                path: module.path().to_owned(),
+                range: crate::lint::source_range_from_span(module.source_map(), fact.span),
             }),
-            source: module.source_map.span_to_snippet(fact.span).ok(),
+            source: module.source_map().span_to_snippet(fact.span).ok(),
         })
     }
 
@@ -244,9 +234,9 @@ impl ProjectSemanticModel {
             .get(&target)
             .and_then(|module| {
                 module
-                    .local
+                    .local()
                     .interface()
-                    .function_exports
+                    .function_exports()
                     .get(&target_export)
             })
             .copied();
@@ -259,7 +249,7 @@ impl ProjectSemanticModel {
     }
 
     pub(crate) fn flow_budget_exhausted(&self) -> bool {
-        self.flow_budget_exhausted.get()
+        self.flow_budget.is_exhausted()
     }
 
     pub(crate) fn operation_counts(&self, evidence: usize) -> crate::ProjectOperationCounts {
@@ -268,9 +258,9 @@ impl ProjectSemanticModel {
             requests: self
                 .modules
                 .values()
-                .map(|module| module.local.interface().requests.len())
+                .map(|module| module.local().interface().requests().count())
                 .sum(),
-            edges: self.adjacency.values().map(Vec::len).sum(),
+            edges: self.graph.edge_count(),
             exports: self.exports.len(),
             scc_rounds: self.link_rounds,
             effect_projections: self.effect_projections.get(),
@@ -280,9 +270,9 @@ impl ProjectSemanticModel {
 
     pub(crate) fn authored_requests(module: &ProjectModule) -> Vec<crate::ResolutionRequest> {
         module
-            .local
+            .local()
             .interface()
-            .authored_requests(&module.path, &module.source_map)
+            .authored_requests(module.path(), module.source_map())
     }
 }
 
@@ -315,7 +305,7 @@ fn project_module_static_string(
     project
         .modules
         .get(&module)
-        .and_then(|module| module.local.interface().static_strings.get(export))
+        .and_then(|module| module.local().interface().static_string(export))
         .cloned()
 }
 
@@ -357,7 +347,7 @@ pub(crate) fn classify_project(
                         evidence,
                     });
             }
-            (module.id, result)
+            (module.id(), result)
         })
         .collect()
 }
@@ -382,7 +372,12 @@ mod tests {
             ProjectSemanticModel::single("projection-invariant.js", parsed.source_map, local);
         let before = format!(
             "{:?}",
-            project.modules().next().expect("one module").local.facts
+            project
+                .modules()
+                .next()
+                .expect("one module")
+                .local()
+                .facts()
         );
 
         let fetch =
@@ -401,7 +396,12 @@ mod tests {
 
         let after = format!(
             "{:?}",
-            project.modules().next().expect("one module").local.facts
+            project
+                .modules()
+                .next()
+                .expect("one module")
+                .local()
+                .facts()
         );
         assert_eq!(before, after);
     }

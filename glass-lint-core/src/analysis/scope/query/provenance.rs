@@ -24,7 +24,7 @@ impl ScopeGraph {
     ) -> Option<String> {
         let (root, member) = chain.split_once('.')?;
         if member.contains('.')
-            || !self.environment.is_global_member(root, member)
+            || !self.is_global_member(root, member)
             || !self.unshadowed_global_at(root, span)
         {
             return None;
@@ -73,17 +73,15 @@ impl ScopeGraph {
             else {
                 continue;
             };
-            let Some(assignments) = self.property_assignments.get(&(receiver_key.clone(), path))
-            else {
+            let Some(assignments) = self.property_aliases(&(receiver_key.clone(), path)) else {
                 continue;
             };
             let prior_count =
                 assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
-            if let Some(assignment) = assignments[..prior_count]
-                .iter()
-                .rev()
-                .find(|assignment| contains(self.scopes[assignment.scope].span, member.span))
-            {
+            if let Some(assignment) = assignments[..prior_count].iter().rev().find(|assignment| {
+                self.scope_span(assignment.scope)
+                    .is_some_and(|scope| contains(scope, member.span))
+            }) {
                 let target = assignment.target.as_ref()?;
                 return Some(
                     target
@@ -125,9 +123,7 @@ impl ScopeGraph {
                 | BindingProvenance::StaticObjectKeys(_)
                 | BindingProvenance::StaticObjectValues(_),
             ) => None,
-            None if self.environment.is_global(root.sym.as_ref()) => {
-                Some(syntactic_chain.to_string())
-            }
+            None if self.is_global(root.sym.as_ref()) => Some(syntactic_chain.to_string()),
             None => None,
         }
     }
@@ -135,16 +131,17 @@ impl ScopeGraph {
     fn rooted_path_available(&self, path: &SymbolPath) -> bool {
         let value = path.to_string();
         let root = value.split('.').next().unwrap_or_default();
-        root == "this" || self.environment.is_global(root)
+        root == "this" || self.is_global(root)
     }
 
     fn property_was_written_at(&self, receiver: &BindingKey, path: &[String], span: Span) -> bool {
-        self.property_assignments
-            .get(&(receiver.clone(), path.to_vec()))
+        self.property_aliases(&(receiver.clone(), path.to_vec()))
             .is_some_and(|assignments| {
                 assignments.iter().any(|assignment| {
                     assignment.span.lo <= span.lo
-                        && contains(self.scopes[assignment.scope].span, span)
+                        && self
+                            .scope_span(assignment.scope)
+                            .is_some_and(|scope| contains(scope, span))
                 })
             })
     }
@@ -155,17 +152,18 @@ impl ScopeGraph {
         property: Option<&str>,
         span: Span,
     ) -> bool {
-        self.rooted_property_mutations
-            .get(root)
-            .is_some_and(|mutations| {
-                mutations.iter().any(|mutation| {
-                    mutation.span.lo <= span.lo
-                        && mutation.property.as_deref().is_none_or(|written| {
-                            property.is_none_or(|expected| written == expected)
-                        })
-                        && contains(self.scopes[mutation.scope].span, span)
-                })
+        self.rooted_mutations(root).is_some_and(|mutations| {
+            mutations.iter().any(|mutation| {
+                mutation.span.lo <= span.lo
+                    && mutation
+                        .property
+                        .as_deref()
+                        .is_none_or(|written| property.is_none_or(|expected| written == expected))
+                    && self
+                        .scope_span(mutation.scope)
+                        .is_some_and(|scope| contains(scope, span))
             })
+        })
     }
 }
 
@@ -186,7 +184,7 @@ impl ScopeGraph {
                 }
             }
             Some(BindingProvenance::ValueAlias { target })
-                if target.is_root() && self.environment.is_global(&target.to_string()) =>
+                if target.is_root() && self.is_global(&target.to_string()) =>
             {
                 SymbolCallProvenance::Global {
                     name: target.to_string(),
@@ -194,7 +192,7 @@ impl ScopeGraph {
             }
             Some(BindingProvenance::ValueAlias { target })
                 if target.without_bind_suffix().as_ref().is_some_and(|target| {
-                    target.is_root() && self.environment.is_global(&target.to_string())
+                    target.is_root() && self.is_global(&target.to_string())
                 }) =>
             {
                 SymbolCallProvenance::Global {
@@ -207,7 +205,7 @@ impl ScopeGraph {
                 .module_export_for_chain(&target.to_string(), span)
                 .unwrap_or(SymbolCallProvenance::Local),
             Some(BindingProvenance::BoundCallable { target, .. })
-                if target.is_root() && self.environment.is_global(&target.to_string()) =>
+                if target.is_root() && self.is_global(&target.to_string()) =>
             {
                 SymbolCallProvenance::Global {
                     name: target.to_string(),
@@ -232,7 +230,7 @@ impl ScopeGraph {
                 | BindingProvenance::StaticObjectKeys(_)
                 | BindingProvenance::StaticObjectValues(_),
             ) => SymbolCallProvenance::Local,
-            None if self.environment.is_global(name) => SymbolCallProvenance::Global {
+            None if self.is_global(name) => SymbolCallProvenance::Global {
                 name: name.to_string(),
             },
             None => SymbolCallProvenance::Local,

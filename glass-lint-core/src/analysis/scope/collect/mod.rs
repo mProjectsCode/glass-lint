@@ -22,10 +22,12 @@ use super::super::syntax::{
 use super::super::value::BindingVersion;
 use super::query::rooted::{RootedExprContext, rooted_expr_chain_with};
 use super::{AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeKind};
+use history::AssignmentHistory;
 
 pub(super) mod aliases;
 mod callbacks;
 mod constants;
+mod history;
 mod predeclare;
 mod visitor;
 
@@ -35,7 +37,7 @@ pub(super) struct AliasCollector {
     stack: Vec<usize>,
     /// Assignment events retain source order for use-position provenance.
     pub(super) assignments: Vec<AliasAssignment>,
-    latest_assignments: BTreeMap<usize, BTreeMap<String, BindingProvenance>>,
+    latest_assignments: AssignmentHistory,
     pub(super) property_assignments: Vec<PropertyAliasAssignment>,
     pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
     pub(super) dynamic_evals: Vec<(usize, Span)>,
@@ -81,7 +83,7 @@ impl AliasCollector {
             }],
             stack: vec![0],
             assignments: Vec::new(),
-            latest_assignments: BTreeMap::new(),
+            latest_assignments: AssignmentHistory::default(),
             property_assignments: Vec::new(),
             rooted_property_mutations: Vec::new(),
             dynamic_evals: Vec::new(),
@@ -178,9 +180,7 @@ impl AliasCollector {
             .unwrap_or(u32::MAX),
         );
         self.latest_assignments
-            .entry(scope)
-            .or_default()
-            .insert(name.clone(), provenance.clone());
+            .record(scope, name.clone(), provenance.clone());
         self.assignments.push(AliasAssignment {
             span,
             scope,
@@ -252,11 +252,7 @@ impl AliasCollector {
         // collecting source order, `latest_assignments` is exactly the state
         // visible at the current AST position.
         for scope in self.stack.iter().rev().copied() {
-            if let Some(assignment) = self
-                .latest_assignments
-                .get(&scope)
-                .and_then(|assignments| assignments.get(name))
-            {
+            if let Some(assignment) = self.latest_assignments.get(scope, name) {
                 return Some(assignment);
             }
             if let Some(binding) = self.scopes[scope].bindings.get(name) {
@@ -268,9 +264,7 @@ impl AliasCollector {
 
     fn visible_binding_scope(&self, name: &str) -> Option<usize> {
         self.stack.iter().rev().copied().find(|scope| {
-            self.latest_assignments
-                .get(scope)
-                .is_some_and(|assignments| assignments.contains_key(name))
+            self.latest_assignments.contains(*scope, name)
                 || self.scopes[*scope].bindings.contains_key(name)
         })
     }

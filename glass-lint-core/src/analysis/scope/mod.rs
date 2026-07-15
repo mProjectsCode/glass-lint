@@ -12,7 +12,7 @@ use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
 use super::value::{BindingId, FunctionId};
-use collect::{AliasCollector, PropertyAliasAssignment, RootedPropertyMutation};
+use collect::AliasCollector;
 
 mod collect;
 mod query;
@@ -106,7 +106,7 @@ impl ScopeGraph {
             .collect();
         let collected_property_assignments = collector.property_assignments;
         let collected_rooted_property_mutations = collector.rooted_property_mutations;
-        let mut graph = Self {
+        let mut graph = Self::from_parts(ScopeGraphParts {
             environment: environment.clone(),
             scopes: collector.scopes,
             scopes_by_start,
@@ -115,69 +115,15 @@ impl ScopeGraph {
             function_ids,
             function_bindings,
             function_aliases,
-            property_assignments: BTreeMap::new(),
-            rooted_property_mutations: BTreeMap::new(),
             parameter_aliases,
-            dynamic_evals: Vec::new(),
             mutable_static_objects: collector.mutable_static_objects.clone(),
-        };
+        });
         graph.finish_collected_properties(
             collected_property_assignments,
             collected_rooted_property_mutations,
             collector.dynamic_evals,
         );
         graph
-    }
-
-    fn finish_collected_properties(
-        &mut self,
-        property_assignments: Vec<PropertyAliasAssignment>,
-        rooted_mutations: Vec<RootedPropertyMutation>,
-        dynamic_evals: Vec<(usize, swc_common::Span)>,
-    ) {
-        for assignment in property_assignments {
-            let Some(receiver_key) = self
-                .binding_key_for_name(assignment.receiver.sym.as_ref(), assignment.receiver.span)
-            else {
-                continue;
-            };
-            self.property_assignments
-                .entry((
-                    receiver_key,
-                    assignment
-                        .property
-                        .strip_prefix(assignment.receiver.sym.as_ref())
-                        .and_then(|path| path.strip_prefix('.'))
-                        .map(|path| path.split('.').map(str::to_string).collect::<Vec<_>>())
-                        .unwrap_or_default(),
-                ))
-                .or_default()
-                .push(PropertyAliasFact {
-                    span: assignment.span,
-                    scope: assignment.scope,
-                    target: assignment.target.map(std::convert::Into::into),
-                });
-        }
-        for assignments in self.property_assignments.values_mut() {
-            assignments.sort_by_key(|assignment| assignment.span.lo);
-        }
-        for mutation in rooted_mutations {
-            self.rooted_property_mutations
-                .entry(mutation.receiver)
-                .or_default()
-                .push(RootedPropertyMutationFact {
-                    span: mutation.span,
-                    scope: mutation.scope,
-                    property: mutation.property,
-                });
-        }
-        for mutations in self.rooted_property_mutations.values_mut() {
-            mutations.sort_by_key(|mutation| mutation.span.lo);
-        }
-        self.dynamic_evals = dynamic_evals
-            .into_iter()
-            .filter(|(_, span)| self.binding_at("eval", *span).is_none())
-            .collect();
     }
 }
 

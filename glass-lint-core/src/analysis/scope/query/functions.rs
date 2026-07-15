@@ -4,10 +4,10 @@ impl ScopeGraph {
     pub(in crate::analysis) fn function_scope_at(&self, scope: usize) -> FunctionId {
         let mut current = Some(scope);
         while let Some(index) = current {
-            if let Some(function) = self.function_ids.get(&index) {
-                return *function;
+            if let Some(function) = self.function_for_scope(index) {
+                return function;
             }
-            current = self.scopes[index].parent;
+            current = self.scope_parent(index);
         }
         FunctionId(0)
     }
@@ -22,14 +22,8 @@ impl ScopeGraph {
         };
         let (scope, provenance) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
         let function = self
-            .function_bindings
-            .get(&(scope, ident.sym.to_string()))
-            .copied()
-            .or_else(|| {
-                self.function_aliases
-                    .get(&(scope, ident.sym.to_string()))
-                    .copied()
-            })
+            .function_binding(scope, ident.sym.as_ref())
+            .or_else(|| self.function_alias(scope, ident.sym.as_ref()))
             .or_else(|| {
                 let target = match provenance {
                     BindingProvenance::ValueAlias { target }
@@ -43,18 +37,13 @@ impl ScopeGraph {
                     .then(|| self.function_binding_at(target.to_string().as_str(), ident.span))
                     .flatten()
             })?;
-        let function_end = self.function_ids.iter().find_map(|(scope, candidate)| {
-            (*candidate == function).then_some(self.scopes[*scope].span.hi)
-        })?;
-        let reassigned = self
-            .assignments
-            .get(&scope)
-            .and_then(|assignments| assignments.get(ident.sym.as_ref()))
-            .is_some_and(|assignments| {
-                assignments.iter().any(|assignment| {
-                    assignment.span.lo > function_end && assignment.span.lo <= ident.span.lo
-                })
-            });
+        let function_end = self
+            .function_spans()
+            .find(|(candidate, _)| *candidate == function)
+            .map(|(_, span)| span.hi);
+        let reassigned = function_end.is_some_and(|end| {
+            self.reassigned_between(scope, ident.sym.as_ref(), end, ident.span.lo)
+        });
         (!reassigned).then_some(function)
     }
 
@@ -65,20 +54,18 @@ impl ScopeGraph {
     ) -> Option<FunctionId> {
         let mut scope = self.scope_at(span);
         loop {
-            if let Some(function) = self.function_bindings.get(&(scope, name.to_string())) {
-                return Some(*function);
+            if let Some(function) = self.function_binding(scope, name) {
+                return Some(function);
             }
-            scope = self.scopes.get(scope)?.parent?;
+            scope = self.scope_parent(scope)?;
         }
     }
 
     pub(in crate::analysis) fn function_id_for_span(&self, span: Span) -> Option<FunctionId> {
-        self.function_ids
-            .iter()
-            .filter_map(|(scope, function)| {
-                let candidate = self.scopes.get(*scope)?;
-                (candidate.span.lo <= span.lo && candidate.span.hi >= span.hi)
-                    .then_some((candidate.span.hi.0 - candidate.span.lo.0, *function))
+        self.function_spans()
+            .filter_map(|(function, candidate)| {
+                (candidate.lo <= span.lo && candidate.hi >= span.hi)
+                    .then_some((candidate.hi.0 - candidate.lo.0, function))
             })
             .min_by_key(|(size, _)| *size)
             .map(|(_, function)| function)

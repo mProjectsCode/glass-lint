@@ -30,25 +30,45 @@ pub struct MatcherFacts {
     // The fields are deliberately grouped by semantic family rather than by
     // the order in which facts are emitted. That makes it easier to audit a
     // matcher query against the indexes it is allowed to consume.
-    pub(super) calls: Occurrences,
-    pub(super) global_calls: Occurrences,
-    pub(super) module_calls: ModuleOccurrences,
-    pub(super) member_calls: Occurrences,
-    pub(super) rooted_member_calls: Occurrences,
-    pub(super) module_member_calls: ModuleOccurrences,
-    pub(super) member_reads: Occurrences,
-    pub(super) rooted_member_reads: Occurrences,
-    pub(super) module_member_reads: ModuleOccurrences,
-    pub(super) returned_member_calls: OccurrenceIndex<(String, String)>,
-    pub(super) returned_member_reads: OccurrenceIndex<(String, String)>,
-    pub(super) instance_member_calls: OccurrenceIndex<(String, String, String)>,
-    pub(super) imports: Occurrences,
-    pub(super) string_literals: Occurrences,
-    pub(super) classes: Occurrences,
-    pub(super) module_classes: ModuleOccurrences,
-    pub(super) constructors: Occurrences,
-    pub(super) global_constructors: Occurrences,
-    pub(super) module_constructors: ModuleOccurrences,
+    call_indexes: CallIndexes,
+    members: MemberIndexes,
+    constructions: ConstructionIndexes,
+    literals: LiteralIndexes,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct CallIndexes {
+    calls: Occurrences,
+    global_calls: Occurrences,
+    module_calls: ModuleOccurrences,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct MemberIndexes {
+    calls: Occurrences,
+    rooted_calls: Occurrences,
+    module_calls: ModuleOccurrences,
+    reads: Occurrences,
+    rooted_reads: Occurrences,
+    module_reads: ModuleOccurrences,
+    returned_calls: OccurrenceIndex<(String, String)>,
+    returned_reads: OccurrenceIndex<(String, String)>,
+    instance_calls: OccurrenceIndex<(String, String, String)>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct ConstructionIndexes {
+    classes: Occurrences,
+    module_classes: ModuleOccurrences,
+    constructors: Occurrences,
+    global_constructors: Occurrences,
+    module_constructors: ModuleOccurrences,
+}
+
+#[derive(Clone, Debug, Default)]
+pub(super) struct LiteralIndexes {
+    imports: Occurrences,
+    strings: Occurrences,
 }
 
 /// The only identities a linked module overlay exposes to matcher indexes.
@@ -64,6 +84,51 @@ pub(in crate::analysis) enum LinkedModuleIdentity {
 }
 
 impl MatcherFacts {
+    #[cfg(test)]
+    pub(in crate::analysis) fn has_call(&self, name: &str) -> bool {
+        self.call_indexes.calls.get(name).is_some()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn has_import(&self, module: &str) -> bool {
+        self.literals.imports.get(module).is_some()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn has_string(&self, value: &str) -> bool {
+        self.literals.strings.get(value).is_some()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn has_any_class(&self) -> bool {
+        !self.constructions.classes.is_empty()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn has_module_class(&self, module: &str, name: &str) -> bool {
+        self.constructions
+            .module_classes
+            .get(&(module.to_string(), name.to_string()))
+            .is_some()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn has_constructor(&self, name: &str) -> bool {
+        self.constructions.constructors.get(name).is_some()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn has_member_call(&self, chain: &str) -> bool {
+        self.members.calls.get(chain).is_some()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn has_any_member_call(&self) -> bool {
+        !self.members.calls.is_empty()
+            || !self.members.rooted_calls.is_empty()
+            || !self.members.module_calls.is_empty()
+    }
+
     pub(in crate::analysis) fn apply_module_overlay(
         &mut self,
         identities: &std::collections::BTreeMap<(String, String), LinkedModuleIdentity>,
@@ -95,6 +160,7 @@ impl MatcherFacts {
         };
 
         let global_occurrences = self
+            .call_indexes
             .module_calls
             .iter()
             .filter_map(|(key, occurrences)| {
@@ -108,11 +174,11 @@ impl MatcherFacts {
             })
             .collect::<Vec<_>>();
 
-        self.module_calls.remap_keys(remap);
-        self.module_member_calls.remap_keys(remap);
-        self.module_member_reads.remap_keys(remap);
-        self.module_classes.remap_keys(remap);
-        self.module_constructors.remap_keys(remap);
+        self.call_indexes.module_calls.remap_keys(remap);
+        self.members.module_calls.remap_keys(remap);
+        self.members.module_reads.remap_keys(remap);
+        self.constructions.module_classes.remap_keys(remap);
+        self.constructions.module_constructors.remap_keys(remap);
 
         // A callable imported through an internal module can resolve to a
         // global identity (for example `export const f = fetch`). It is safe
@@ -120,11 +186,14 @@ impl MatcherFacts {
         // from a qualified local or unknown export.
         for (name, occurrences) in global_occurrences {
             for occurrence in occurrences {
-                self.global_calls
-                    .push(name.clone(), occurrence.event, occurrence.span);
+                self.call_indexes.global_calls.push(
+                    name.clone(),
+                    occurrence.event(),
+                    occurrence.span(),
+                );
             }
         }
-        self.global_calls.normalize();
+        self.call_indexes.global_calls.normalize();
     }
 }
 
@@ -149,13 +218,10 @@ fn push_owned_evidence(
     if occurrences.is_empty() {
         return;
     }
-    let spans = occurrences
-        .iter()
-        .map(|occurrence| occurrence.span)
-        .collect();
+    let spans = occurrences.iter().map(Occurrence::span).collect();
     let event_ids = occurrences
         .iter()
-        .map(|occurrence| occurrence.event.0)
+        .map(|occurrence| occurrence.event().0)
         .collect();
     evidence.push(ApiEvidence {
         kind,
@@ -188,7 +254,7 @@ mod tests {
                 .get("fetch")
                 .unwrap()
                 .iter()
-                .map(|occurrence| occurrence.span)
+                .map(Occurrence::span)
                 .collect::<Vec<_>>(),
             vec![span(5, 11), span(20, 26)]
         );
@@ -207,10 +273,11 @@ mod tests {
         )]);
         let evidence = facts.evidence_for(&matcher);
         let reference = facts
-            .member_calls
+            .members
+            .calls
             .iter()
             .filter(|(symbol, _)| *symbol == "client.request")
-            .flat_map(|(_, occurrences)| occurrences.iter().map(|occurrence| occurrence.span))
+            .flat_map(|(_, occurrences)| occurrences.iter().map(Occurrence::span))
             .collect::<Vec<_>>();
         assert_eq!(evidence.len(), 1);
         assert_eq!(evidence[0].spans, reference);
@@ -243,40 +310,44 @@ mod tests {
         // Imports should have both 'mod' and 'other-mod' from import declarations,
         // and 'fs' from require() call.
         assert!(
-            index.imports.get("mod").is_some(),
+            index.literals.imports.get("mod").is_some(),
             "should have 'mod' import"
         );
         assert!(
-            index.imports.get("other-mod").is_some(),
+            index.literals.imports.get("other-mod").is_some(),
             "should have 'other-mod' import"
         );
         assert!(
-            index.imports.get("fs").is_some(),
+            index.literals.imports.get("fs").is_some(),
             "should have 'fs' require import"
         );
 
         // String literal should be indexed.
         assert!(
-            index.string_literals.get("hello world").is_some(),
+            index.literals.strings.get("hello world").is_some(),
             "should have 'hello world' string literal"
         );
 
         // Class declaration should be indexed.
         assert!(
-            index.classes.get("MyClass").is_some(),
+            index.constructions.classes.get("MyClass").is_some(),
             "should have MyClass class"
         );
 
         // Constructor call should be indexed.
         assert!(
-            index.constructors.get("MyClass").is_some(),
+            index.constructions.constructors.get("MyClass").is_some(),
             "should have MyClass constructor"
         );
 
         // foo() is an identifier call with module provenance.
-        assert!(index.calls.get("foo").is_some(), "should have foo call");
+        assert!(
+            index.call_indexes.calls.get("foo").is_some(),
+            "should have foo call"
+        );
         assert!(
             index
+                .call_indexes
                 .module_calls
                 .get(&("mod".to_string(), "foo".to_string()))
                 .is_some(),

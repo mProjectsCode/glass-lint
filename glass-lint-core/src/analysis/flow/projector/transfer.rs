@@ -5,13 +5,13 @@ use super::{CallArgInfo, FactId, FactPayload, FlowState, ObjectFlowProjector, Ob
 #[derive(Debug, Clone)]
 pub(super) struct SourceCall {
     /// Rooted or syntactic chain selected as the matcher lookup key.
-    pub(super) chain: String,
+    chain: String,
     /// Effective arguments after any call/apply wrapper has been removed.
-    pub(super) args: Vec<CallArgInfo>,
+    args: Vec<CallArgInfo>,
     /// Original fact used for deterministic evidence anchoring.
-    pub(super) fact_id: FactId,
+    fact_id: FactId,
     /// Whether the original call had rooted provenance.
-    pub(super) rooted: bool,
+    rooted: bool,
 }
 
 impl SourceCall {
@@ -69,6 +69,22 @@ impl SourceCall {
             rooted: rooted_chain.is_some(),
         })
     }
+
+    pub(super) fn chain(&self) -> &str {
+        &self.chain
+    }
+
+    pub(super) fn arguments(&self) -> &[CallArgInfo] {
+        &self.args
+    }
+
+    pub(super) fn event(&self) -> FactId {
+        self.fact_id
+    }
+
+    pub(super) fn has_rooted_provenance(&self) -> bool {
+        self.rooted
+    }
 }
 
 impl ObjectFlowProjector<'_, '_> {
@@ -77,20 +93,26 @@ impl ObjectFlowProjector<'_, '_> {
             return;
         }
         if let Some(call) = self.calls_by_result.get(&source).cloned()
-            && let Some((object, states)) =
-                self.match_source(&call.chain, &call.args, call.fact_id, call.rooted)
+            && let Some((object, states)) = self.match_source(
+                call.chain(),
+                call.arguments(),
+                call.event(),
+                call.has_rooted_provenance(),
+            )
         {
-            if self.states.len().saturating_add(states.len()) > self.limits.states {
+            if self.flow_state.state_count().saturating_add(states.len())
+                > self.limits.state_limit()
+            {
                 return;
             }
-            self.aliases.insert(target, object);
+            self.flow_state.bind(target, object);
             for state in states {
-                self.states.insert((object, state.flow), state);
+                self.flow_state.insert_state(state);
             }
             return;
         }
-        if let Some(object) = self.aliases.get(&source).copied() {
-            self.aliases.insert(target, object);
+        if let Some(object) = self.flow_state.object_for(source) {
+            self.flow_state.bind(target, object);
         } else {
             self.unbind_value(target);
         }
@@ -108,7 +130,7 @@ impl ObjectFlowProjector<'_, '_> {
         source_fact: FactId,
         rooted: bool,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
-        let ids = self.flow_index.sources.get(chain)?;
+        let ids = self.flow_index.source_ids(chain)?;
         let matching = ids
             .iter()
             .copied()

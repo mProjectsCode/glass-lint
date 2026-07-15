@@ -28,15 +28,15 @@ impl ProjectSemanticModel {
             .modules
             .values()
             .map(|module| {
-                let mut facts = module.local.facts.index.clone();
-                let identities = self.module_identities(module.id);
-                let result_identities = self.call_result_identities(module.id);
+                let mut facts = module.local().facts().cloned_matcher_facts();
+                let identities = self.module_identities(module.id());
+                let result_identities = self.call_result_identities(module.id());
                 facts.apply_module_overlay(&identities);
                 (
-                    module.id,
+                    module.id(),
                     ProjectModuleProjection {
                         index: facts,
-                        arguments: module.local.facts.project(
+                        arguments: module.local().facts().project(
                             &matchers,
                             Some(&identities),
                             Some(&result_identities),
@@ -46,7 +46,9 @@ impl ProjectSemanticModel {
             })
             .collect();
         let (cross, exhausted, projection_count) = flow::cross::collect(self, &matchers);
-        self.flow_budget_exhausted.set(exhausted);
+        if exhausted {
+            self.flow_budget.mark_exhausted();
+        }
         self.effect_projections.set(projection_count);
         let mut projections = projections;
         for (module, evidence) in cross {
@@ -77,13 +79,13 @@ impl ProjectMatcherModel<'_> {
         };
         let mut evidence = self
             .projections
-            .get(&module.id)
+            .get(&module.id())
             .map_or_else(Vec::new, |projection| {
                 projection.index.evidence_for(&matcher.matcher)
             });
         if let Some(projected) = self
             .projections
-            .get(&module.id)
+            .get(&module.id())
             .and_then(|projection| projection.arguments.get(rule_index))
         {
             evidence.extend_from_slice(projected);

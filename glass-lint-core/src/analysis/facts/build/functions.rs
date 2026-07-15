@@ -2,7 +2,7 @@ use super::{FactBuilder, FactKind, FactPayload, FunctionBoundary, Pat, PathId, S
 
 impl FactBuilder<'_> {
     pub(super) fn current_class(&self) -> Option<(String, String)> {
-        self.class_stack.last().and_then(Clone::clone)
+        self.traversal.current_class()
     }
 
     pub(super) fn emit_function_fact(

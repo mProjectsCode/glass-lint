@@ -19,12 +19,12 @@ impl ProjectSemanticModel {
                 let Some(project_module) = self.modules.get(&module) else {
                     return ExportResolution::Unknown;
                 };
-                if !project_module.local.interface().locals.contains(name)
-                    && !project_module.local.export_origins.contains_key(name)
+                if !project_module.local().interface().is_local(name)
+                    && project_module.local().export_origin(name).is_none()
                 {
                     return ExportResolution::Unknown;
                 }
-                match project_module.local.export_origins.get(name) {
+                match project_module.local().export_origin(name) {
                     Some(SymbolCallProvenance::ModuleExport {
                         module: authored_module,
                         export: authored_export,
@@ -33,8 +33,7 @@ impl ProjectSemanticModel {
                         ExportResolution::Global { name: name.clone() }
                     }
                     Some(SymbolCallProvenance::Local) | None => {
-                        if let Some(value) =
-                            project_module.local.interface().static_strings.get(name)
+                        if let Some(value) = project_module.local().interface().static_string(name)
                         {
                             ExportResolution::StaticString {
                                 value: value.clone(),
@@ -64,16 +63,16 @@ impl ProjectSemanticModel {
                 let Some(request) = self
                     .modules
                     .get(&module)
-                    .and_then(|m| m.local.interface().requests.get(*request))
+                    .and_then(|m| m.local().interface().request(*request))
                 else {
                     return ExportResolution::Unknown;
                 };
                 let key = ResolutionRequestKey {
-                    importer: self.modules[&module].path.clone(),
-                    kind: request.kind,
+                    importer: self.modules[&module].path().to_owned(),
+                    kind: request.kind(),
                     range: crate::lint::source_range_from_span(
-                        &self.modules[&module].source_map,
-                        request.span,
+                        self.modules[&module].source_map(),
+                        request.span(),
                     ),
                 };
                 match self.resolutions.get(&key) {
@@ -105,11 +104,11 @@ impl ProjectSemanticModel {
             .modules
             .get(&importer)
             .into_iter()
-            .flat_map(|module| module.local.interface().requests.iter())
+            .flat_map(|module| module.local().interface().requests())
             .filter(|request| {
-                request.specifier == authored_module
+                request.specifier() == authored_module
                     && matches!(
-                        request.role,
+                        request.role(),
                         ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
                     )
             })
@@ -171,11 +170,11 @@ impl ProjectSemanticModel {
         request: &module::ModuleRequest,
     ) -> ResolutionRequestKey {
         ResolutionRequestKey {
-            importer: self.modules[&module].path.clone(),
-            kind: request.kind,
+            importer: self.modules[&module].path().to_owned(),
+            kind: request.kind(),
             range: crate::lint::source_range_from_span(
-                &self.modules[&module].source_map,
-                request.span,
+                self.modules[&module].source_map(),
+                request.span(),
             ),
         }
     }
@@ -190,7 +189,7 @@ impl ProjectSemanticModel {
         if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(visit_key.clone()) {
             return None;
         }
-        if let Some(resolved) = self.exports.get(&(module, name.to_string())) {
+        if let Some(resolved) = self.exports.resolve(module, name) {
             let resolved = resolved.clone();
             visiting.remove(&visit_key);
             return Some(resolved);
@@ -200,23 +199,23 @@ impl ProjectSemanticModel {
             visiting.remove(&visit_key);
             return None;
         }
-        let interface = self.modules.get(&module).map(|m| m.local.interface())?;
-        if interface.unknown_exports {
+        let interface = self.modules.get(&module).map(|m| m.local().interface())?;
+        if interface.is_unknown() {
             return Some(ExportResolution::Unknown);
         }
         let mut candidate = None;
         let mut saw_unknown = false;
-        for request_index in &interface.star_exports {
-            let Some(request) = interface.requests.get(*request_index) else {
+        for request_index in interface.star_exports() {
+            let Some(request) = interface.request(*request_index) else {
                 saw_unknown = true;
                 continue;
             };
             let key = ResolutionRequestKey {
-                importer: self.modules[&module].path.clone(),
-                kind: request.kind,
+                importer: self.modules[&module].path().to_owned(),
+                kind: request.kind(),
                 range: crate::lint::source_range_from_span(
-                    &self.modules[&module].source_map,
-                    request.span,
+                    self.modules[&module].source_map(),
+                    request.span(),
                 ),
             };
             let resolution = self.resolutions.get(&key);
@@ -261,16 +260,16 @@ impl ProjectSemanticModel {
         let Some(request) = self
             .modules
             .get(&module)
-            .and_then(|m| m.local.interface().requests.get(request_index))
+            .and_then(|m| m.local().interface().request(request_index))
         else {
             return ExportResolution::Unknown;
         };
         let key = ResolutionRequestKey {
-            importer: self.modules[&module].path.clone(),
-            kind: request.kind,
+            importer: self.modules[&module].path().to_owned(),
+            kind: request.kind(),
             range: crate::lint::source_range_from_span(
-                &self.modules[&module].source_map,
-                request.span,
+                self.modules[&module].source_map(),
+                request.span(),
             ),
         };
         match self.resolutions.get(&key) {

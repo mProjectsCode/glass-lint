@@ -40,25 +40,25 @@ impl MatcherFacts {
     /// search; keeping it as one operation prevents a newly added index from
     /// being accidentally left in insertion order.
     pub(in crate::analysis) fn normalize_occurrences(&mut self) {
-        self.calls.normalize();
-        self.global_calls.normalize();
-        self.module_calls.normalize();
-        self.member_calls.normalize();
-        self.rooted_member_calls.normalize();
-        self.module_member_calls.normalize();
-        self.member_reads.normalize();
-        self.rooted_member_reads.normalize();
-        self.module_member_reads.normalize();
-        self.returned_member_calls.normalize();
-        self.returned_member_reads.normalize();
-        self.instance_member_calls.normalize();
-        self.imports.normalize();
-        self.string_literals.normalize();
-        self.classes.normalize();
-        self.module_classes.normalize();
-        self.constructors.normalize();
-        self.global_constructors.normalize();
-        self.module_constructors.normalize();
+        self.call_indexes.calls.normalize();
+        self.call_indexes.global_calls.normalize();
+        self.call_indexes.module_calls.normalize();
+        self.members.calls.normalize();
+        self.members.rooted_calls.normalize();
+        self.members.module_calls.normalize();
+        self.members.reads.normalize();
+        self.members.rooted_reads.normalize();
+        self.members.module_reads.normalize();
+        self.members.returned_calls.normalize();
+        self.members.returned_reads.normalize();
+        self.members.instance_calls.normalize();
+        self.literals.imports.normalize();
+        self.literals.strings.normalize();
+        self.constructions.classes.normalize();
+        self.constructions.module_classes.normalize();
+        self.constructions.constructors.normalize();
+        self.constructions.global_constructors.normalize();
+        self.constructions.module_constructors.normalize();
     }
 
     pub(in crate::analysis) fn build_from_stream(&mut self, stream: &FactStream) {
@@ -124,23 +124,32 @@ impl MatcherFacts {
             }),
 
             FactPayload::Import { module } => {
-                self.imports.push(module.clone(), fact.id, fact.span);
+                self.literals
+                    .imports
+                    .push(module.clone(), fact.id, fact.span);
             }
 
             FactPayload::Reference {
                 static_string: Some(value),
                 ..
             } => {
-                self.string_literals.push(value.clone(), fact.id, fact.span);
+                self.literals
+                    .strings
+                    .push(value.clone(), fact.id, fact.span);
             }
 
             FactPayload::Class { name, provenance } => {
                 if !name.is_empty() {
-                    self.classes.push(name.clone(), fact.id, fact.span);
+                    self.constructions
+                        .classes
+                        .push(name.clone(), fact.id, fact.span);
                 }
                 if let Some((module, export)) = provenance {
-                    self.module_classes
-                        .push((module.clone(), export.clone()), fact.id, fact.span);
+                    self.constructions.module_classes.push(
+                        (module.clone(), export.clone()),
+                        fact.id,
+                        fact.span,
+                    );
                 }
             }
 
@@ -160,17 +169,23 @@ impl MatcherFacts {
 
     fn record_call_fact(&mut self, input: &CallFact<'_>) {
         if let Some(name) = input.callee_name {
-            self.calls.push(name.clone(), input.event, input.span);
+            self.call_indexes
+                .calls
+                .push(name.clone(), input.event, input.span);
         }
         match input.call_provenance {
             SymbolCallProvenance::Global { name } => {
-                self.global_calls
+                self.call_indexes
+                    .global_calls
                     .push(name.clone(), input.event, input.span);
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
-                self.module_calls
-                    .push((module.clone(), export.clone()), input.event, input.span);
-                self.module_member_calls.push(
+                self.call_indexes.module_calls.push(
+                    (module.clone(), export.clone()),
+                    input.event,
+                    input.span,
+                );
+                self.members.module_calls.push(
                     (module.clone(), export.clone()),
                     input.event,
                     input.span,
@@ -179,11 +194,12 @@ impl MatcherFacts {
             SymbolCallProvenance::Local => {}
         }
         if let Some(chain) = input.syntactic_chain {
-            self.member_calls
+            self.members
+                .calls
                 .push(chain.clone(), input.event, input.span);
         }
         if let Some(chain) = input.rooted_chain {
-            self.rooted_member_calls.push(
+            self.members.rooted_calls.push(
                 canonical_rooted_chain(chain).to_string(),
                 input.event,
                 input.span,
@@ -192,16 +208,19 @@ impl MatcherFacts {
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
             input.module_member
         {
-            self.module_calls
-                .push((module.clone(), member.clone()), input.event, input.span);
-            self.module_member_calls.push(
+            self.call_indexes.module_calls.push(
+                (module.clone(), member.clone()),
+                input.event,
+                input.span,
+            );
+            self.members.module_calls.push(
                 (module.clone(), member.clone()),
                 input.event,
                 input.span,
             );
         }
         if let Some((source, member)) = input.returned_member {
-            self.returned_member_calls.push(
+            self.members.returned_calls.push(
                 (source.clone(), member.clone()),
                 input.event,
                 input.span,
@@ -213,24 +232,27 @@ impl MatcherFacts {
                 .as_ref()
                 .and_then(|chain| chain.rsplit('.').next())
         {
-            self.instance_member_calls.push(
+            self.members.instance_calls.push(
                 (module.clone(), export.clone(), member_name.to_string()),
                 input.event,
                 input.span,
             );
         }
         if input.rooted_chain.is_some_and(|chain| chain == "Function") {
-            self.global_calls
+            self.call_indexes
+                .global_calls
                 .push("Function".to_string(), input.event, input.span);
-            self.calls
+            self.call_indexes
+                .calls
                 .push("Function".to_string(), input.event, input.span);
         }
         if let Some(unwrap) = input.unwrap
             && !unwrap.chain.is_empty()
         {
-            self.member_calls
+            self.members
+                .calls
                 .push(unwrap.chain.clone(), input.event, input.span);
-            self.rooted_member_calls.push(
+            self.members.rooted_calls.push(
                 canonical_rooted_chain(&unwrap.chain).to_string(),
                 input.event,
                 input.span,
@@ -240,11 +262,12 @@ impl MatcherFacts {
 
     fn record_member_read_fact(&mut self, input: &MemberReadFact<'_>) {
         if let Some(chain) = input.syntactic_chain {
-            self.member_reads
+            self.members
+                .reads
                 .push(chain.clone(), input.event, input.span);
         }
         if let Some(chain) = input.rooted_chain {
-            self.rooted_member_reads.push(
+            self.members.rooted_reads.push(
                 canonical_rooted_chain(chain).to_string(),
                 input.event,
                 input.span,
@@ -253,15 +276,17 @@ impl MatcherFacts {
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) =
             input.module_member
         {
-            self.module_member_reads.push(
+            self.members.module_reads.push(
                 (module.clone(), member.clone()),
                 input.event,
                 input.span,
             );
-            self.classes.push(member.clone(), input.event, input.span);
+            self.constructions
+                .classes
+                .push(member.clone(), input.event, input.span);
         }
         if let Some((source, member)) = input.returned_member {
-            self.returned_member_reads.push(
+            self.members.returned_reads.push(
                 (source.clone(), member.clone()),
                 input.event,
                 input.span,
@@ -271,16 +296,18 @@ impl MatcherFacts {
 
     fn record_construction_fact(&mut self, input: &ConstructionFact<'_>) {
         if let Some(name) = input.callee_name {
-            self.constructors
+            self.constructions
+                .constructors
                 .push(name.clone(), input.event, input.span);
         }
         match input.provenance {
             SymbolCallProvenance::Global { name } => {
-                self.global_constructors
+                self.constructions
+                    .global_constructors
                     .push(name.clone(), input.event, input.span);
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
-                self.module_constructors.push(
+                self.constructions.module_constructors.push(
                     (module.clone(), export.clone()),
                     input.event,
                     input.span,

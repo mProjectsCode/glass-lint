@@ -5,13 +5,13 @@
 //! each semantic role.  It does not receive matchers or populate evidence.
 
 mod arguments;
+mod call_results;
 mod calls;
 mod control;
 mod functions;
 mod interface;
+mod state;
 mod visitor;
-
-use std::collections::BTreeMap;
 
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
@@ -44,16 +44,10 @@ pub(super) struct FactBuilder<'a> {
     stream: FactStream,
     /// Monotonic semantic fact identity, bounded by `MAX_FACTS`.
     next_id: u32,
-    /// Control regions let the flow projector pair balanced boundaries.
-    next_control_region: u32,
-    /// The active class stack supplies `this`/instance provenance to calls.
-    class_stack: Vec<Option<(String, String)>>,
-    /// Function depth distinguishes top-level calls from nested helper bodies.
-    function_depth: usize,
-    /// Static methods do not inherit instance receiver provenance.
-    static_method_depth: usize,
+    /// Traversal-only state is kept separate from fact allocation and indexing.
+    traversal: state::TraversalState,
     /// Call results are retained for effective-call and value-flow projections.
-    call_results: BTreeMap<(u32, u32), ValueId>,
+    call_results: call_results::CallResultTable,
     /// Module requests and export slots collected during the same canonical
     /// walk as the semantic facts.
     interface: ModuleInterface,
@@ -64,11 +58,8 @@ impl<'a> FactBuilder<'a> {
             resolver,
             stream: FactStream::new(),
             next_id: 0,
-            next_control_region: 0,
-            class_stack: Vec::new(),
-            function_depth: 0,
-            static_method_depth: 0,
-            call_results: BTreeMap::new(),
+            traversal: state::TraversalState::default(),
+            call_results: call_results::CallResultTable::default(),
             interface: ModuleInterface::default(),
         }
     }
@@ -103,25 +94,23 @@ impl<'a> FactBuilder<'a> {
             // Keep the stream structurally usable after the budget is spent.
             // The synthetic ID cannot participate in normal indexed lookups,
             // but callers can still observe a deterministic fail-closed tail.
-            self.stream.push(SemanticFact {
-                id: FactId(self.next_id),
+            self.stream.push(SemanticFact::new(
+                FactId(self.next_id),
                 span,
-                function: crate::analysis::value::FunctionId(0),
-                #[cfg(test)]
+                crate::analysis::value::FunctionId(0),
                 kind,
                 payload,
-            });
+            ));
             return;
         };
         let scope = self.scope_at(span);
-        let fact = SemanticFact {
+        let fact = SemanticFact::new(
             id,
             span,
-            function: self.resolver.function_id_for_scope(scope),
-            #[cfg(test)]
+            self.resolver.function_id_for_scope(scope),
             kind,
             payload,
-        };
+        );
         self.stream.push(fact);
     }
 

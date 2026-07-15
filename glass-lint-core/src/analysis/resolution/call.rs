@@ -96,11 +96,11 @@ impl Resolver {
             .skip(1)
             .map(|argument| self.resolve_expr(&argument.expr).id)
             .collect();
-        self.static_value(Value::Callable(crate::analysis::value::CallableValue {
+        self.static_value(Value::Callable(crate::analysis::value::CallableValue::new(
             target,
             receiver,
             bound_arguments,
-        }))
+        )))
     }
 
     pub(in crate::analysis) fn intern_call_value(
@@ -140,7 +140,7 @@ impl Resolver {
             Value::ModuleExport { module, export } => {
                 SymbolCallProvenance::ModuleExport { module, export }
             }
-            Value::Callable(callable) => self.call_provenance_for_value(callable.target),
+            Value::Callable(callable) => self.call_provenance_for_value(callable.target()),
             Value::RootedMember { root, path }
                 if path.is_empty() && self.scopes.is_configured_global(&root) =>
             {

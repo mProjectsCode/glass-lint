@@ -7,11 +7,13 @@
 
 mod control;
 mod evidence;
+mod state;
 mod transfer;
 
+use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable};
 use transfer::SourceCall;
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::super::facts::{
     CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary,
@@ -43,7 +45,7 @@ pub(super) fn collect_with_limits(
     for fact in stream.facts() {
         projector.transfer(fact);
     }
-    projector.evidence
+    projector.flow_evidence.into_items()
 }
 
 #[derive(Debug)]
@@ -58,14 +60,10 @@ struct ObjectFlowProjector<'rules, 'stream> {
     calls_by_result: BTreeMap<ValueId, SourceCall>,
     /// Evidence uses the exact fact that established a match as its anchor.
     fact_spans: BTreeMap<FactId, swc_common::Span>,
-    /// Evidence is grouped by rule index to preserve catalog ordering.
-    evidence: Vec<Vec<ApiEvidence>>,
-    /// Each value identity points to at most one object-flow identity.
-    aliases: BTreeMap<ValueId, ObjectId>,
-    /// Live flow state is keyed by object and compiled flow, not by syntax.
-    states: BTreeMap<(ObjectId, FlowId), FlowState>,
-    /// Prevent duplicate evidence for the same object/flow/event combination.
-    emitted: BTreeSet<(usize, usize, ObjectId, FactId)>,
+    /// Evidence is grouped and deduplicated by the flow-specific evidence owner.
+    flow_evidence: FlowEvidence,
+    /// Each value identity and live object-flow state are owned together.
+    flow_state: FlowStateTable,
     /// Object IDs are local to one projection and bounded by `limits`.
     next_object_id: u32,
     limits: FlowLimits,
@@ -73,130 +71,6 @@ struct ObjectFlowProjector<'rules, 'stream> {
     /// Facts after an unreachable branch are ignored until a join restores a
     /// reachable environment.
     reachable: bool,
-}
-
-/// The portion of projector state that can cross a control-flow boundary.
-///
-/// Keeping this separate from `ObjectFlowProjector` makes branch joins
-/// explicit: a join combines only facts that are true on every reachable
-/// incoming path.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FlowEnvironment {
-    aliases: BTreeMap<ValueId, ObjectId>,
-    states: BTreeMap<(ObjectId, FlowId), FlowState>,
-    reachable: bool,
-}
-
-#[derive(Debug, Clone)]
-enum ControlFrame {
-    Branch {
-        region: u32,
-        base: FlowEnvironment,
-        then_exit: Option<FlowEnvironment>,
-    },
-    Loop {
-        region: u32,
-        baseline: FlowEnvironment,
-        guaranteed: bool,
-        breaks: Vec<FlowEnvironment>,
-        continues: Vec<FlowEnvironment>,
-    },
-    Switch {
-        region: u32,
-        baseline: FlowEnvironment,
-        breaks: Vec<FlowEnvironment>,
-        has_default: bool,
-    },
-    Try {
-        region: u32,
-        baseline: FlowEnvironment,
-        try_exit: Option<FlowEnvironment>,
-        catch_exit: Option<FlowEnvironment>,
-        normal_exit: Option<FlowEnvironment>,
-        abrupt_exits: Vec<(AbruptExit, FlowEnvironment)>,
-        has_finally: bool,
-    },
-    Function {
-        caller: FlowEnvironment,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum AbruptExit {
-    Break,
-    Continue,
-    Return,
-}
-
-impl FlowEnvironment {
-    fn unreachable() -> Self {
-        Self {
-            aliases: BTreeMap::new(),
-            states: BTreeMap::new(),
-            reachable: false,
-        }
-    }
-
-    /// Intersect two path states. An alias or requirement is retained only
-    /// when both paths agree, which prevents one-arm configuration from
-    /// leaking through a join.
-    fn join(left: &Self, right: &Self) -> Self {
-        if !left.reachable {
-            return right.clone();
-        }
-        if !right.reachable {
-            return left.clone();
-        }
-        let aliases = left
-            .aliases
-            .iter()
-            .filter_map(|(binding, object)| {
-                (right.aliases.get(binding) == Some(object)).then_some((*binding, *object))
-            })
-            .collect();
-        let states = left
-            .states
-            .iter()
-            .filter_map(|(key, left_state)| {
-                let right_state = right.states.get(key)?;
-                let mut state = left_state.clone();
-                state
-                    .requirements
-                    .retain(|requirement, _| right_state.requirements.contains_key(requirement));
-                Some((*key, state))
-            })
-            .collect();
-        Self {
-            aliases,
-            states,
-            reachable: true,
-        }
-    }
-
-    /// Join all candidate exits, ignoring paths that are already unreachable.
-    fn join_many(environments: &[Self]) -> Self {
-        let Some(first) = environments
-            .iter()
-            .find(|environment| environment.reachable)
-        else {
-            return Self::unreachable();
-        };
-        environments
-            .iter()
-            .filter(|environment| environment.reachable)
-            .skip(1)
-            .fold(first.clone(), |joined, environment| {
-                Self::join(&joined, environment)
-            })
-    }
-
-    fn capture(projector: &ObjectFlowProjector<'_, '_>) -> Self {
-        Self {
-            aliases: projector.aliases.clone(),
-            states: projector.states.clone(),
-            reachable: projector.reachable,
-        }
-    }
 }
 
 impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
@@ -227,10 +101,8 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             helpers,
             calls_by_result,
             fact_spans,
-            evidence: vec![Vec::new(); rule_count],
-            aliases: BTreeMap::new(),
-            states: BTreeMap::new(),
-            emitted: BTreeSet::new(),
+            flow_evidence: FlowEvidence::new(rule_count),
+            flow_state: FlowStateTable::default(),
             next_object_id: 0,
             limits,
             control: Vec::new(),
@@ -244,8 +116,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 FunctionBoundary::Enter => {
                     let caller = self.environment();
                     self.control.push(ControlFrame::Function { caller });
-                    self.aliases.clear();
-                    self.states.clear();
+                    self.flow_state.clear();
                     self.reachable = true;
                 }
                 FunctionBoundary::Exit => {
@@ -316,11 +187,16 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 ) {
                     self.record_configuration(
                         *receiver,
-                        &source.chain,
-                        &source.args,
-                        source.fact_id,
+                        source.chain(),
+                        source.arguments(),
+                        source.event(),
                     );
-                    self.record_sinks(&source.chain, &source.args, source.fact_id, source.rooted);
+                    self.record_sinks(
+                        source.chain(),
+                        source.arguments(),
+                        source.event(),
+                        source.has_rooted_provenance(),
+                    );
                 }
                 if let Some(function) = target_function {
                     self.record_helper_sink(*function, args, fact.id);
@@ -331,13 +207,11 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     }
 
     fn environment(&self) -> FlowEnvironment {
-        FlowEnvironment::capture(self)
+        self.flow_state.capture(self.reachable)
     }
 
     fn restore(&mut self, environment: FlowEnvironment) {
-        self.aliases = environment.aliases;
-        self.states = environment.states;
-        self.reachable = environment.reachable;
+        self.reachable = self.flow_state.restore(environment);
     }
 
     fn record_property_write(
@@ -347,20 +221,19 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         value: Option<&str>,
         event: FactId,
     ) {
-        let Some(object) = self.aliases.get(&receiver).copied() else {
+        let Some(object) = self.flow_state.object_for(receiver) else {
             return;
         };
         let keys = self
-            .states
-            .keys()
-            .filter(|(id, _)| *id == object)
-            .copied()
+            .flow_state
+            .states_for(object)
+            .map(|(key, _)| key)
             .collect::<Vec<_>>();
         for key in keys {
             let Some(flow) = self.flow_index.get(key.1) else {
                 continue;
             };
-            let Some(state) = self.states.get_mut(&key) else {
+            let Some(state) = self.flow_state.state_mut(key.0, key.1) else {
                 continue;
             };
             for (index, requirement) in flow.requirements.iter().enumerate() {
@@ -370,9 +243,9 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 } = requirement
                     && (property.is_none() || property == Some(expected.as_str()))
                 {
-                    state.requirements.remove(&index);
+                    state.clear_requirement(index);
                     if property == Some(expected.as_str()) && matcher.matches_flow_value(value) {
-                        state.requirements.insert(index, event);
+                        state.record_requirement(index, event);
                     }
                 }
             }
@@ -381,23 +254,23 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     }
 
     fn unbind_value(&mut self, value: ValueId) {
-        let Some(object) = self.aliases.remove(&value) else {
+        let Some(object) = self.flow_state.unbind(value) else {
             return;
         };
-        if !self.aliases.values().any(|alias| *alias == object) {
-            self.states.retain(|(id, _), _| *id != object);
+        if !self.flow_state.has_alias_for(object) {
+            self.flow_state.remove_states_for(object);
         }
     }
 
     fn invalidate_object(&mut self, value: ValueId) {
-        let Some(object) = self.aliases.get(&value).copied() else {
+        let Some(object) = self.flow_state.object_for(value) else {
             return;
         };
-        self.states.retain(|(id, _), _| *id != object);
+        self.flow_state.remove_states_for(object);
     }
 
     fn allocate_object_id(&mut self) -> Option<ObjectId> {
-        if self.next_object_id >= self.limits.objects {
+        if self.next_object_id >= self.limits.object_limit() {
             return None;
         }
         let object = ObjectId(self.next_object_id);

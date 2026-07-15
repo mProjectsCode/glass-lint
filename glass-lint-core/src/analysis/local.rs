@@ -15,9 +15,9 @@ use syntax::SymbolCallProvenance;
 /// The immutable, matcher-independent result of analyzing one source.
 #[derive(Debug)]
 pub(crate) struct LocalModuleModel {
-    pub(in crate::analysis) facts: SemanticFacts,
-    pub(in crate::analysis) export_origins: BTreeMap<String, SymbolCallProvenance>,
-    pub(crate) effects: flow::effect::FunctionEffects,
+    facts: SemanticFacts,
+    export_origins: BTreeMap<String, SymbolCallProvenance>,
+    effects: flow::effect::FunctionEffects,
 }
 
 impl LocalModuleModel {
@@ -25,9 +25,9 @@ impl LocalModuleModel {
         let resolver = resolution::Resolver::collect_with_environment(program, environment);
         let facts = SemanticFacts::build(program, &resolver);
         let export_origins = facts
-            .interface
-            .exports
-            .values()
+            .interface()
+            .exports()
+            .map(|(_, export)| export)
             .filter_map(|declaration| match declaration {
                 module::ModuleExport::Local { name } => Some((
                     name.clone(),
@@ -39,7 +39,7 @@ impl LocalModuleModel {
                 | module::ModuleExport::Unknown => None,
             })
             .collect();
-        let effects = flow::effect::collect(&facts.stream);
+        let effects = flow::effect::collect(facts.stream());
         Self {
             facts,
             export_origins,
@@ -48,15 +48,55 @@ impl LocalModuleModel {
     }
 
     pub(crate) fn interface(&self) -> &ModuleInterface {
-        &self.facts.interface
+        self.facts.interface()
+    }
+
+    pub(in crate::analysis) fn facts(&self) -> &SemanticFacts {
+        &self.facts
+    }
+
+    pub(in crate::analysis) fn effects(&self) -> &flow::effect::FunctionEffects {
+        &self.effects
+    }
+
+    pub(in crate::analysis) fn export_origin(&self, name: &str) -> Option<&SymbolCallProvenance> {
+        self.export_origins.get(name)
     }
 }
 
 /// A successfully analyzed source together with the data needed to report
 /// findings in its original file.
 pub(crate) struct ProjectModule {
-    pub(crate) id: ModuleId,
-    pub(crate) path: String,
-    pub(crate) source_map: Lrc<SourceMap>,
-    pub(crate) local: LocalModuleModel,
+    id: ModuleId,
+    path: String,
+    source_map: Lrc<SourceMap>,
+    local: LocalModuleModel,
+}
+
+impl ProjectModule {
+    pub(crate) fn new(
+        id: ModuleId,
+        path: String,
+        source_map: Lrc<SourceMap>,
+        local: LocalModuleModel,
+    ) -> Self {
+        Self {
+            id,
+            path,
+            source_map,
+            local,
+        }
+    }
+    pub(crate) fn id(&self) -> ModuleId {
+        self.id
+    }
+    pub(crate) fn path(&self) -> &str {
+        &self.path
+    }
+    pub(crate) fn source_map(&self) -> &Lrc<SourceMap> {
+        &self.source_map
+    }
+    pub(crate) fn local(&self) -> &LocalModuleModel {
+        &self.local
+    }
 }

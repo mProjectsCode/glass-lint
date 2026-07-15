@@ -66,11 +66,11 @@ impl FactBuilder<'_> {
     }
 
     pub(super) fn call_result(&mut self, span: Span) -> ValueId {
-        if let Some(value) = self.call_results.get(&(span.lo.0, span.hi.0)) {
-            return *value;
+        if let Some(value) = self.call_results.get(span) {
+            return value;
         }
         let value = self.resolver.fresh_object_value_at(span).id;
-        self.call_results.insert((span.lo.0, span.hi.0), value);
+        self.call_results.insert(span, value);
         value
     }
 
@@ -476,7 +476,7 @@ impl FactBuilder<'_> {
     }
 
     pub(super) fn instance_class_for_receiver(&self, receiver: &Expr) -> Option<(String, String)> {
-        if self.static_method_depth > 0 || self.function_depth > 0 {
+        if self.traversal.in_static_method() || self.traversal.in_function() {
             return None;
         }
         let is_this = matches!(receiver, Expr::This(_))

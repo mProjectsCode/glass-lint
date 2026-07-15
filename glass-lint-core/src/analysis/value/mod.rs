@@ -4,7 +4,7 @@ mod arena;
 mod identity;
 mod path;
 
-pub(in crate::analysis) use arena::{CallableValue, ObjectId, Value, ValueArena};
+pub(in crate::analysis) use arena::{CallableValue, ObjectId, Value, ValueTable};
 pub(in crate::analysis) use identity::{
     BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, SymbolPath, ValueId,
 };
@@ -16,29 +16,25 @@ mod tests {
 
     #[test]
     fn invalid_value_ids_fail_closed() {
-        let arena = ValueArena::default();
+        let arena = ValueTable::default();
         assert!(arena.get(ValueId(u32::MAX)).is_none());
         assert!(arena.get(ValueId::UNKNOWN).is_some());
     }
 
     #[test]
     fn binding_versions_are_part_of_identity() {
-        let first = BindingKey {
-            root: BindingRoot::Binding {
-                function: FunctionId(1),
-                binding: BindingId(2),
-                version: BindingVersion(0),
-            },
-            path: vec!["value".into()],
-        };
-        let second = BindingKey {
-            root: BindingRoot::Binding {
-                function: FunctionId(1),
-                binding: BindingId(2),
-                version: BindingVersion(1),
-            },
-            path: vec!["value".into()],
-        };
+        let mut first = BindingKey::new(BindingRoot::Binding {
+            function: FunctionId(1),
+            binding: BindingId(2),
+            version: BindingVersion(0),
+        });
+        first.append_segment("value".into());
+        let mut second = BindingKey::new(BindingRoot::Binding {
+            function: FunctionId(1),
+            binding: BindingId(2),
+            version: BindingVersion(1),
+        });
+        second.append_segment("value".into());
         assert_ne!(first, second);
     }
 

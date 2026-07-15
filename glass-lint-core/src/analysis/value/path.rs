@@ -115,6 +115,19 @@ impl PathInterner {
         self.nodes.get(path.index()?)?.segment.as_ref()
     }
 
+    pub(in crate::analysis) fn parent(&self, path: PathId) -> Option<PathId> {
+        self.nodes.get(path.index()?).map(|node| node.parent)
+    }
+
+    pub(in crate::analysis) fn iter_segments(
+        &self,
+        path: PathId,
+    ) -> impl DoubleEndedIterator<Item = &PathSegment> {
+        self.nodes_for(path)
+            .into_iter()
+            .filter_map(|node| node.segment.as_ref())
+    }
+
     pub(in crate::analysis) fn first_index(&self, path: PathId) -> Option<u32> {
         match self.segments(path)?.first()? {
             PathSegment::Index(index) => Some(*index),
@@ -144,15 +157,30 @@ impl PathInterner {
 
     /// Return a path's segments from root to leaf.
     fn segments(&self, path: PathId) -> Option<Vec<PathSegment>> {
-        let mut segments = Vec::new();
+        let nodes = self.nodes_for(path);
+        if !path.is_empty() && nodes.is_empty() {
+            return None;
+        }
+        Some(
+            nodes
+                .into_iter()
+                .filter_map(|node| node.segment.clone())
+                .collect(),
+        )
+    }
+
+    fn nodes_for(&self, path: PathId) -> Vec<&PathNode> {
+        let mut nodes = Vec::new();
         let mut current = path;
         while !current.is_empty() {
-            let node = self.nodes.get(current.index()?)?;
-            segments.push(node.segment.as_ref()?.clone());
+            let Some(node) = self.nodes.get(current.index().unwrap_or(MAX_PATH_NODES)) else {
+                return Vec::new();
+            };
+            nodes.push(node);
             current = node.parent;
         }
-        segments.reverse();
-        Some(segments)
+        nodes.reverse();
+        nodes
     }
 
     #[cfg(test)]

@@ -1,11 +1,11 @@
 use super::{
     BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr, Ident,
-    ScopeGraph, ScopeKind, Span, contains,
+    ScopeGraph, ScopeKind, Span,
 };
 
 impl ScopeGraph {
     pub(in crate::analysis) fn is_configured_global(&self, name: &str) -> bool {
-        self.environment.is_global(name)
+        self.is_global(name)
     }
 
     pub(in crate::analysis) fn binding_at(
@@ -17,20 +17,9 @@ impl ScopeGraph {
         // A declaration is the fallback. The last assignment at or before the
         // read wins, which is why assignments are sorted once during collection
         // and selected with `partition_point` here.
-        self.assignments
-            .get(&scope)
-            .and_then(|assignments| assignments.get(name))
-            .and_then(|assignments| {
-                assignments
-                    .partition_point(|assignment| assignment.span.lo <= span.lo)
-                    .checked_sub(1)
-                    .map(|index| &assignments[index].provenance)
-            })
-            .or_else(|| {
-                self.function_ids
-                    .get(&scope)
-                    .and_then(|function| self.parameter_aliases.get(&(*function, name.to_string())))
-            })
+        self.assignment_at(scope, name, span)
+            .map(|assignment| &assignment.provenance)
+            .or_else(|| self.parameter_alias_for(scope, name))
             .or(Some(declaration))
     }
 
@@ -41,27 +30,21 @@ impl ScopeGraph {
         match expr {
             Expr::Ident(ident) => {
                 let (scope, _) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
-                let binding = *self.binding_ids.get(&(scope, ident.sym.to_string()))?;
-                Some(BindingKey {
-                    root: BindingRoot::Binding {
-                        function: self.function_scope_at(scope),
-                        binding,
-                        version: self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
-                    },
-                    path: Vec::new(),
-                })
+                let binding = self.binding_id_at(scope, ident.sym.as_ref())?;
+                Some(BindingKey::new(BindingRoot::Binding {
+                    function: self.function_scope_at(scope),
+                    binding,
+                    version: self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
+                }))
             }
             Expr::Member(member) => {
                 let mut key = self
                     .binding_key_for_expr(&member.obj)
                     .or_else(|| self.global_key_for_expr(&member.obj))?;
-                key.path.push(self.member_prop_name(member)?);
+                key.append_segment(self.member_prop_name(member)?);
                 Some(key)
             }
-            Expr::This(_) => Some(BindingKey {
-                root: BindingRoot::Global("this".into()),
-                path: Vec::new(),
-            }),
+            Expr::This(_) => Some(BindingKey::new(BindingRoot::Global("this".into()))),
             Expr::Paren(paren) => self.binding_key_for_expr(&paren.expr),
             Expr::Seq(sequence) => sequence
                 .exprs
@@ -76,19 +59,13 @@ impl ScopeGraph {
             Expr::Ident(ident) => self
                 .binding_at(ident.sym.as_ref(), ident.span)
                 .is_none()
-                .then(|| BindingKey {
-                    root: BindingRoot::Global(ident.sym.to_string()),
-                    path: Vec::new(),
-                }),
+                .then(|| BindingKey::new(BindingRoot::Global(ident.sym.to_string()))),
             Expr::Member(member) => {
                 let mut key = self.global_key_for_expr(&member.obj)?;
-                key.path.push(self.member_prop_name(member)?);
+                key.append_segment(self.member_prop_name(member)?);
                 Some(key)
             }
-            Expr::This(_) => Some(BindingKey {
-                root: BindingRoot::Global("this".into()),
-                path: Vec::new(),
-            }),
+            Expr::This(_) => Some(BindingKey::new(BindingRoot::Global("this".into()))),
             Expr::Paren(paren) => self.global_key_for_expr(&paren.expr),
             Expr::Seq(sequence) => sequence
                 .exprs
@@ -104,16 +81,7 @@ impl ScopeGraph {
         name: &str,
         span: Span,
     ) -> BindingVersion {
-        self.assignments
-            .get(&scope)
-            .and_then(|assignments| assignments.get(name))
-            .map_or(BindingVersion(0), |assignments| {
-                assignments
-                    .partition_point(|assignment| assignment.span.lo <= span.lo)
-                    .checked_sub(1)
-                    .and_then(|index| assignments.get(index))
-                    .map_or(BindingVersion(0), |assignment| assignment.version)
-            })
+        self.binding_version(scope, name, span)
     }
 
     pub(in crate::analysis) fn binding_key_for_name(
@@ -122,19 +90,13 @@ impl ScopeGraph {
         span: Span,
     ) -> Option<BindingKey> {
         if let Some((scope, _)) = self.binding_with_scope_at(name, span) {
-            return Some(BindingKey {
-                root: BindingRoot::Binding {
-                    function: self.function_scope_at(scope),
-                    binding: *self.binding_ids.get(&(scope, name.to_string()))?,
-                    version: self.binding_version_at(scope, name, span),
-                },
-                path: Vec::new(),
-            });
+            return Some(BindingKey::new(BindingRoot::Binding {
+                function: self.function_scope_at(scope),
+                binding: self.binding_id_at(scope, name)?,
+                version: self.binding_version_at(scope, name, span),
+            }));
         }
-        Some(BindingKey {
-            root: BindingRoot::Global(name.to_string()),
-            path: Vec::new(),
-        })
+        Some(BindingKey::new(BindingRoot::Global(name.to_string())))
     }
 
     pub(in crate::analysis) fn binding_with_scope_at(
@@ -144,19 +106,17 @@ impl ScopeGraph {
     ) -> Option<(usize, &BindingProvenance)> {
         let mut scope = self.scope_at(span);
         loop {
-            if let Some(binding) = self.scopes[scope].bindings.get(name) {
+            if let Some(binding) = self.scope_binding(scope, name) {
                 return Some((scope, binding));
             }
-            scope = self.scopes[scope].parent?;
+            scope = self.scope_parent(scope)?;
         }
     }
 
     pub(in crate::analysis) fn has_dynamic_lookup_at(&self, span: Span) -> bool {
         let scope = self.scope_at(span);
         self.scope_or_ancestor_has_kind(scope, ScopeKind::Dynamic)
-            || self.dynamic_evals.iter().any(|(eval_scope, eval_span)| {
-                span.lo > eval_span.hi && self.scope_is_within(scope, *eval_scope)
-            })
+            || self.has_eval_after(scope, span)
     }
 
     pub(in crate::analysis) fn scope_or_ancestor_has_kind(
@@ -165,10 +125,10 @@ impl ScopeGraph {
         kind: ScopeKind,
     ) -> bool {
         loop {
-            if self.scopes[scope].kind == kind {
+            if self.scope_kind(scope) == Some(kind) {
                 return true;
             }
-            let Some(parent) = self.scopes[scope].parent else {
+            let Some(parent) = self.scope_parent(scope) else {
                 return false;
             };
             scope = parent;
@@ -180,34 +140,11 @@ impl ScopeGraph {
             if scope == ancestor {
                 return true;
             }
-            let Some(parent) = self.scopes[scope].parent else {
+            let Some(parent) = self.scope_parent(scope) else {
                 return false;
             };
             scope = parent;
         }
-    }
-
-    pub(in crate::analysis) fn scope_at(&self, span: Span) -> usize {
-        let position = self
-            .scopes_by_start
-            .partition_point(|index| self.scopes[*index].span.lo <= span.lo);
-        let Some(mut scope) = position
-            .checked_sub(1)
-            .map(|index| self.scopes_by_start[index])
-        else {
-            return 0;
-        };
-
-        // Source ranges can overlap in non-nesting ways for synthetic nodes;
-        // walking parents makes containment, rather than start position alone,
-        // the final authority.
-        while !contains(self.scopes[scope].span, span) {
-            let Some(parent) = self.scopes[scope].parent else {
-                return 0;
-            };
-            scope = parent;
-        }
-        scope
     }
 
     pub(in crate::analysis) fn bound_arguments(
@@ -230,7 +167,7 @@ impl ScopeGraph {
         let mut scope = self.scope_at(span);
         loop {
             scopes.push(scope);
-            let Some(parent) = self.scopes[scope].parent else {
+            let Some(parent) = self.scope_parent(scope) else {
                 break;
             };
             scope = parent;
@@ -239,7 +176,7 @@ impl ScopeGraph {
     }
 
     pub(in crate::analysis) fn unshadowed_global_at(&self, name: &str, span: Span) -> bool {
-        self.environment.is_global(name)
+        self.is_global(name)
             && !self.has_dynamic_lookup_at(span)
             && self.binding_at(name, span).is_none()
     }

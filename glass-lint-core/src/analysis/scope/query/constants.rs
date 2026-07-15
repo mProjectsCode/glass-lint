@@ -9,10 +9,7 @@ impl ScopeGraph {
             return false;
         };
         self.binding_with_scope_at(ident.sym.as_ref(), ident.span)
-            .is_some_and(|(scope, _)| {
-                self.mutable_static_objects
-                    .contains(&(scope, ident.sym.to_string()))
-            })
+            .is_some_and(|(scope, _)| self.is_mutable_static_object(scope, ident.sym.as_ref()))
     }
 
     /// Evaluate constants while the lexical collector is still the source of

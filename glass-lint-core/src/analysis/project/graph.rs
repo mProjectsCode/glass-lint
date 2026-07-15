@@ -19,16 +19,17 @@ impl ProjectSemanticModel {
             changed = false;
             rounds += 1;
             for module in self.modules.values() {
-                for (name, export) in &module.local.interface().exports {
-                    let resolved = self.resolve_export(module.id, name, export);
-                    let key = (module.id, name.clone());
-                    if !self.exports.contains_key(&key) && self.exports.len() >= MAX_EXPORT_ENTRIES
+                for (name, export) in module.local().interface().exports() {
+                    let resolved = self.resolve_export(module.id(), name, export);
+                    if self.exports.resolve(module.id(), name).is_none()
+                        && self.exports.len() >= MAX_EXPORT_ENTRIES
                     {
-                        self.link_budget_exhausted = true;
+                        self.link_budget.mark_exhausted();
                         continue;
                     }
-                    if self.exports.get(&key) != Some(&resolved) {
-                        self.exports.insert(key, resolved);
+                    if self.exports.resolve(module.id(), name) != Some(&resolved) {
+                        self.exports
+                            .set_monotone(module.id(), name.clone(), resolved);
                         changed = true;
                     }
                 }
@@ -41,12 +42,10 @@ impl ProjectSemanticModel {
                 message: "module export linking did not reach a stable fixed point".into(),
                 location: None,
             });
-            for value in self.exports.values_mut() {
-                *value = ExportResolution::Unknown;
-            }
-            self.link_budget_exhausted = true;
+            self.exports.mark_unknown();
+            self.link_budget.mark_exhausted();
         }
-        if self.link_budget_exhausted {
+        if self.link_budget.is_exhausted() {
             self.diagnostics.push(crate::ProjectDiagnostic {
                 code: "graph_link_budget_exhausted".into(),
                 message: "project graph linking exceeded a bounded linker budget".into(),
@@ -55,20 +54,20 @@ impl ProjectSemanticModel {
         }
 
         for module in self.modules.values() {
-            for request in &module.local.interface().requests {
+            for request in module.local().interface().requests() {
                 let key = crate::project::ResolutionRequestKey {
-                    importer: module.path.clone(),
-                    kind: request.kind,
-                    range: crate::lint::source_range_from_span(&module.source_map, request.span),
+                    importer: module.path().to_owned(),
+                    kind: request.kind(),
+                    range: crate::lint::source_range_from_span(module.source_map(), request.span()),
                 };
                 let Some(ResolvedModule::Internal { id, .. }) = self.resolutions.get(&key) else {
                     continue;
                 };
-                let ModuleRequestRole::Import { bindings } = &request.role else {
+                let ModuleRequestRole::Import { bindings } = request.role() else {
                     continue;
                 };
-                for binding in bindings.iter().filter(|binding| !binding.namespace) {
-                    let Some(imported) = binding.imported.as_deref() else {
+                for binding in bindings.iter().filter(|binding| !binding.is_namespace()) {
+                    let Some(imported) = binding.imported() else {
                         continue;
                     };
                     match self.lookup_export(*id, imported, &mut std::collections::BTreeSet::new())
@@ -78,7 +77,7 @@ impl ProjectSemanticModel {
                                 code: "ambiguous_star_export".into(),
                                 message: format!("module export `{imported}` is ambiguous"),
                                 location: Some(crate::SourceLocation {
-                                    path: module.path.clone(),
+                                    path: module.path().to_owned(),
                                     range: key.range.clone(),
                                 }),
                             });
@@ -87,7 +86,7 @@ impl ProjectSemanticModel {
                             code: "missing_imported_export".into(),
                             message: format!("module does not export `{imported}`"),
                             location: Some(crate::SourceLocation {
-                                path: module.path.clone(),
+                                path: module.path().to_owned(),
                                 range: key.range.clone(),
                             }),
                         }),
@@ -112,8 +111,9 @@ impl ProjectSemanticModel {
     }
 
     fn collect_graph_edges(&mut self) {
+        let mut edge_budget = crate::budget::Budget::new(MAX_GRAPH_EDGES);
         for module in self.modules.values() {
-            self.adjacency.entry(module.id).or_default();
+            self.graph.ensure_node(module.id());
             self.diagnostics.extend(module_diagnostics(module));
             for request in Self::authored_requests(module) {
                 let Some(resolution) = self.resolutions.get(&request.key) else {
@@ -125,7 +125,7 @@ impl ProjectSemanticModel {
                                 request.request
                             ),
                             location: Some(crate::SourceLocation {
-                                path: module.path.clone(),
+                                path: module.path().to_owned(),
                                 range: request.key.range.clone(),
                             }),
                         });
@@ -133,15 +133,11 @@ impl ProjectSemanticModel {
                     continue;
                 };
                 if let ResolvedModule::Internal { id, .. } = resolution {
-                    let edges = self.adjacency.values().map(Vec::len).sum::<usize>();
-                    if edges >= MAX_GRAPH_EDGES {
-                        self.link_budget_exhausted = true;
+                    if edge_budget.try_push() {
+                        self.graph
+                            .insert_edge(module.id(), *id, request.key.clone());
                     } else {
-                        self.adjacency.entry(module.id).or_default().push(*id);
-                        self.reverse_adjacency
-                            .entry(*id)
-                            .or_default()
-                            .push(module.id);
+                        self.link_budget.mark_exhausted();
                     }
                 } else if matches!(resolution, ResolvedModule::Missing)
                     && is_internal_request(&request.request)
@@ -175,18 +171,16 @@ impl ProjectSemanticModel {
                 }
             }
         }
-        for targets in self.adjacency.values_mut() {
-            targets.sort_unstable();
-            targets.dedup();
+        if edge_budget.exhausted() {
+            self.link_budget.mark_exhausted();
         }
-        for sources in self.reverse_adjacency.values_mut() {
-            sources.sort_unstable();
-            sources.dedup();
-        }
-        self.components =
-            strongly_connected_components(&self.adjacency, self.modules.keys().copied());
+        self.graph.normalize();
+        let components =
+            strongly_connected_components(self.graph.forward(), self.modules.keys().copied());
+        self.graph.set_components(components);
         if self
-            .components
+            .graph
+            .components()
             .iter()
             .any(|component| component.len() > MAX_SCC_SIZE)
         {
@@ -195,7 +189,7 @@ impl ProjectSemanticModel {
                 message: format!("a module SCC exceeds the bounded size of {MAX_SCC_SIZE}"),
                 location: None,
             });
-            self.link_budget_exhausted = true;
+            self.link_budget.mark_exhausted();
         }
     }
 
@@ -209,7 +203,7 @@ impl ProjectSemanticModel {
             code: code.into(),
             message,
             location: Some(crate::SourceLocation {
-                path: module.path.clone(),
+                path: module.path().to_owned(),
                 range: request.key.range.clone(),
             }),
         }
@@ -218,22 +212,22 @@ impl ProjectSemanticModel {
 
 fn module_diagnostics(module: &super::super::ProjectModule) -> Vec<crate::ProjectDiagnostic> {
     let mut diagnostics = Vec::new();
-    if module.local.effects.budget_exhausted {
+    if module.local().effects().budget_exhausted() {
         diagnostics.push(crate::ProjectDiagnostic {
             code: "effect_size_budget_exhausted".into(),
             message: format!(
                 "function-effect extraction exceeded a bounded budget in `{}`",
-                module.path
+                module.path()
             ),
             location: None,
         });
     }
-    if module.local.interface().unknown_exports {
+    if module.local().interface().is_unknown() {
         diagnostics.push(crate::ProjectDiagnostic {
             code: "unsupported_commonjs_exports".into(),
             message: format!(
                 "CommonJS export shape in `{}` is dynamic or ambiguous",
-                module.path
+                module.path()
             ),
             location: None,
         });
