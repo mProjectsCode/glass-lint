@@ -1,3 +1,5 @@
+//! Browser Bluetooth permission rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects calls to unshadowed `navigator.bluetooth.requestDevice`, including

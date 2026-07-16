@@ -1,20 +1,34 @@
+//! Errors returned while building rules and validating matcher declarations.
+
 use std::{error::Error, fmt};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Construction-time rule metadata or matcher validation failure.
 pub enum RuleBuildError {
+    /// Rule ID was not supplied.
     MissingId,
+    /// Rule ID failed the canonical naming policy.
     InvalidId(String),
+    /// Human-readable label was not supplied.
     MissingLabel,
+    /// Category was not supplied.
     MissingCategory,
+    /// Severity was not supplied.
     MissingSeverity,
+    /// Confidence was not supplied.
     MissingConfidence,
+    /// No valid matcher survived normalization.
     MissingMatcher,
+    /// Category failed taxonomy validation.
     InvalidCategory(String),
+    /// A matcher failed shape/provenance validation.
     InvalidMatcher(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Catalog-level rule identity failure.
 pub enum CatalogError {
+    /// Two rules declared the same stable ID.
     DuplicateRule(String),
 }
 

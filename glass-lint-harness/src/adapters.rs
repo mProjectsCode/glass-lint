@@ -1,3 +1,8 @@
+//! Built-in and external adapter boundaries for conformance execution.
+//!
+//! Adapters normalize tool-specific execution into findings plus optional
+//! file-qualified locations; the runner can then compare every tool uniformly.
+
 use std::{
     io::Write,
     path::PathBuf,
@@ -16,10 +21,14 @@ use crate::{
 };
 
 pub trait Adapter {
+    /// Stable name used to select expectations and label report columns.
     fn name(&self) -> &str;
+    /// Return the adapter version without running a case.
     fn version(&self) -> Result<String>;
+    /// Execute one case and return its normalized findings.
     fn run(&self, case: &Case, expectation: &ToolExpectation) -> Result<Vec<Finding>>;
 
+    /// Execute one case while retaining project/file ownership for comparisons.
     fn run_with_locations(&self, case: &Case, expectation: &ToolExpectation) -> Result<AdapterRun> {
         let findings = self.run(case, expectation)?;
         let finding_locations = findings
@@ -35,6 +44,7 @@ pub trait Adapter {
         })
     }
 
+    /// Whether the adapter accepts multi-file project requests.
     fn supports_projects(&self) -> bool {
         false
     }
@@ -97,6 +107,8 @@ impl Adapter for GlassLintAdapter {
 }
 
 fn configured_linter(expectation: &ToolExpectation) -> Result<Linter> {
+    // Build provider linters from one shared environment so selected-rule and
+    // whole-profile paths have identical host-global semantics.
     let environment = glass_lint_obsidian::default_environment();
     let js = builtins::linter(
         builtins::BuiltInProvider::Js,
@@ -152,6 +164,8 @@ fn configured_linter(expectation: &ToolExpectation) -> Result<Linter> {
 }
 
 fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<AdapterRun> {
+    // Filesystem projects use the project loader; virtual projects use the
+    // session API, but both paths converge on the same report conversion.
     let linter = configured_linter(expectation)?;
     let report = if project.filesystem {
         glass_lint_project::ProjectLoader::new(glass_lint_project::ProjectLoadOptions::default())?
@@ -197,6 +211,8 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
 }
 
 fn project_report_to_run(report: glass_lint_core::ProjectReport) -> Result<AdapterRun> {
+    // Keep diagnostics fatal for harness execution: a partial project report
+    // cannot be compared reliably against finding expectations.
     let diagnostics = report
         .files
         .iter()
@@ -254,7 +270,9 @@ fn project_report_to_run(report: glass_lint_core::ProjectReport) -> Result<Adapt
 }
 
 pub struct ExternalAdapter {
+    /// Name used by case tool blocks and report columns.
     pub name: String,
+    /// Executable or script command implementing the adapter protocol.
     pub command: PathBuf,
 }
 
@@ -285,6 +303,8 @@ impl Adapter for ExternalAdapter {
 }
 
 impl ExternalAdapter {
+    /// Send one complete JSON request and validate the complete response
+    /// envelope.
     fn run_protocol(
         &self,
         case: &Case,

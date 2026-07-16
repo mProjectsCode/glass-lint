@@ -13,6 +13,8 @@ use glass_lint_core::{
     },
 };
 
+/// Build a high-confidence test rule so each case exercises the public catalog
+/// path.
 fn rule(id: &str) -> Builder {
     Rule::builder(id)
         .label(id)
@@ -21,6 +23,7 @@ fn rule(id: &str) -> Builder {
         .confidence(Confidence::High)
 }
 
+/// Run one compact source through a fresh catalog and assert exact findings.
 fn assert_count(source: &str, rule: Rule, expected: usize) {
     let catalog = RuleCatalog::with_environment("test", vec![rule], test_environment()).unwrap();
     let count = Linter::new(catalog)
@@ -30,6 +33,7 @@ fn assert_count(source: &str, rule: Rule, expected: usize) {
     assert_eq!(count, expected, "{source}");
 }
 
+/// Seed only the globals whose provenance the compact cases are meant to test.
 fn test_environment() -> Environment {
     let mut environment = Environment::default();
     environment

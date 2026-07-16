@@ -5,25 +5,32 @@ use glass_lint_core::ProjectInputError;
 /// Operational and semantic errors from project construction.
 #[derive(Debug)]
 pub enum ProjectLoadError {
+    /// Loader options violate a configured invariant.
     InvalidOptions(String),
+    /// The selected path does not exist.
     SelectionNotFound(PathBuf),
+    /// An entry or config selection is not a file.
     SelectionNotFile(PathBuf),
-    SelectionOutsideRoot {
-        selection: PathBuf,
-        root: PathBuf,
-    },
+    /// The selection escapes the configured project root.
+    SelectionOutsideRoot { selection: PathBuf, root: PathBuf },
+    /// A file extension is not enabled for loading.
     UnsupportedSource(PathBuf),
+    /// Filesystem traversal or reading failed.
     Io {
         path: PathBuf,
         source: std::io::Error,
     },
+    /// The file-count budget was exceeded.
     TooManyFiles(usize),
+    /// The resolver-request budget was exceeded.
     TooManyRequests(usize),
+    /// A source exceeded the configured byte budget.
     SourceTooLarge {
         path: PathBuf,
         bytes: u64,
         limit: u64,
     },
+    /// Core rejected normalized project input.
     Core(ProjectInputError),
 }
 

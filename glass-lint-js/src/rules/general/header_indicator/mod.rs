@@ -1,3 +1,5 @@
+//! Header-marker indicator rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects string literals containing the configured `Authorization` and

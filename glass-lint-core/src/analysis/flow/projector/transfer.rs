@@ -1,4 +1,8 @@
 //! Value transfer and source matching for object-flow states.
+//!
+//! Assignment preserves an object identity only when the source is a known
+//! flow result or live alias. Unknown and invalidated values are unbound so
+//! later sinks cannot inherit stale state.
 
 use super::{CallArgInfo, FactId, FactPayload, FlowState, ObjectFlowProjector, ObjectId, ValueId};
 
@@ -42,6 +46,7 @@ impl SourceCall {
         )
     }
 
+    /// Build a source-call view from explicit canonical call components.
     pub(super) fn from_parts(
         fact_id: FactId,
         rooted_chain: Option<&str>,
@@ -88,6 +93,7 @@ impl SourceCall {
 }
 
 impl ObjectFlowProjector<'_, '_> {
+    /// Transfer a source/result alias into object-flow state.
     pub(super) fn assign(&mut self, target: ValueId, source: ValueId) {
         if target == ValueId::UNKNOWN {
             return;

@@ -1,3 +1,5 @@
+//! Obsidian metadata collection-extraction rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects rooted reads of the configured `getFileCache` metadata collections:

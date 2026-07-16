@@ -3,7 +3,12 @@
 use super::super::value::FunctionId;
 
 #[derive(Debug, Clone)]
+/// Sparse dense-indexed storage for function identities.
+///
+/// Missing slots are valid and represent functions that were not emitted or
+/// exceeded the enclosing analysis budget; callers must handle `None`.
 pub(in crate::analysis) struct FunctionTable<T> {
+    /// Values positioned by the numeric function identity.
     values: Vec<Option<T>>,
 }
 
@@ -14,14 +19,17 @@ impl<T> Default for FunctionTable<T> {
 }
 
 impl<T> FunctionTable<T> {
+    /// Borrow a value for a function identity, if present.
     pub(in crate::analysis) fn get(&self, id: FunctionId) -> Option<&T> {
         self.values.get(usize::try_from(id.0).ok()?)?.as_ref()
     }
 
+    /// Mutably borrow a value for a function identity, if present.
     pub(in crate::analysis) fn get_mut(&mut self, id: FunctionId) -> Option<&mut T> {
         self.values.get_mut(usize::try_from(id.0).ok()?)?.as_mut()
     }
 
+    /// Insert a value and report whether its slot was previously vacant.
     pub(in crate::analysis) fn insert(&mut self, id: FunctionId, value: T) -> bool {
         let Some(index) = usize::try_from(id.0).ok() else {
             return false;
@@ -34,6 +42,7 @@ impl<T> FunctionTable<T> {
         vacant
     }
 
+    /// Borrow an existing value or create it once in the requested slot.
     pub(in crate::analysis) fn get_mut_or_insert_with(
         &mut self,
         id: FunctionId,
@@ -46,6 +55,7 @@ impl<T> FunctionTable<T> {
         Some(self.values[index].get_or_insert_with(create))
     }
 
+    /// Iterate present entries in ascending function-ID order.
     pub(in crate::analysis) fn iter(&self) -> impl Iterator<Item = (FunctionId, &T)> {
         self.values.iter().enumerate().filter_map(|(index, value)| {
             value
@@ -54,10 +64,12 @@ impl<T> FunctionTable<T> {
         })
     }
 
+    /// Iterate present values without exposing sparse slots.
     pub(in crate::analysis) fn values(&self) -> impl Iterator<Item = &T> {
         self.values.iter().filter_map(Option::as_ref)
     }
 
+    /// Iterate present entries mutably in ascending function-ID order.
     pub(in crate::analysis) fn iter_mut(&mut self) -> impl Iterator<Item = (FunctionId, &mut T)> {
         self.values
             .iter_mut()
@@ -69,10 +81,12 @@ impl<T> FunctionTable<T> {
             })
     }
 
+    /// Count present entries, excluding vacant sparse slots.
     pub(in crate::analysis) fn len(&self) -> usize {
         self.values.iter().filter(|value| value.is_some()).count()
     }
 
+    /// Check whether an identity has a present value.
     pub(in crate::analysis) fn contains(&self, id: FunctionId) -> bool {
         self.get(id).is_some()
     }

@@ -3,16 +3,23 @@
 //! The fact builder emits balanced control markers. This module translates
 //! those markers into snapshots and joins; it does not attempt to rediscover
 //! JavaScript control flow from individual call facts.
+//!
+//! Joins retain only aliases and requirements proven on every reachable path.
+//! Abrupt exits are held by their nearest relevant frame so `finally` and loop
+//! semantics cannot accidentally make one path definite on another.
 
 use super::{AbruptExit, ControlFrame, ControlKind, FlowEnvironment, ObjectFlowProjector};
 
 impl ObjectFlowProjector<'_, '_> {
+    /// Apply one balanced control marker to the current environment.
     pub(super) fn transfer_control(
         &mut self,
         kind: ControlKind,
         region: u32,
         _span: swc_common::Span,
     ) {
+        // Control markers are consumed in the same order they were emitted;
+        // reconstructing branches from nearby calls would lose empty paths.
         match kind {
             ControlKind::BranchStart
             | ControlKind::BranchThen

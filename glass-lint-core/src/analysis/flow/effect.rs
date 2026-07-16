@@ -3,6 +3,10 @@
 //! Effects intentionally describe values and observable uses, never rules or
 //! flow IDs.  The project linker supplies qualified call targets later; this
 //! module only records the local relations needed by that linker.
+//!
+//! An effect becomes invalid when unsupported control flow or an effect budget
+//! prevents a complete summary. Invalid summaries are not used for qualified
+//! propagation, preserving fail-closed behavior across module boundaries.
 
 use std::collections::BTreeMap;
 
@@ -22,61 +26,100 @@ const MAX_EFFECT_USES: usize = 131_072;
 const MAX_EFFECT_RETURNS: usize = 65_536;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// A parameter identity plus the destructured path that selects it.
 pub(in crate::analysis) struct ParameterRef {
+    /// Zero-based top-level parameter index.
     index: usize,
+    /// Path within that parameter's argument value.
     path: PathId,
 }
 
 #[derive(Clone, Debug)]
+/// One call argument as represented inside a function effect.
 pub(in crate::analysis) struct EffectArgument {
+    /// Zero-based argument position at the call site.
     index: usize,
+    /// Value identity observed at that position.
     value: ValueId,
+    /// Static path from the argument root.
     path: PathId,
+    /// Parameter identity when this argument aliases the current function.
     parameter: Option<ParameterRef>,
 }
 
 #[derive(Clone, Debug)]
+/// Resolver-backed call relation retained for later project composition.
 pub(in crate::analysis) struct EffectCall {
+    /// Fact identity of the call event.
     event: super::super::facts::FactId,
+    /// Callable chain used for source matching.
     chain: Option<String>,
+    /// Whether the chain was rooted by strict provenance.
     rooted: bool,
+    /// Qualified function target when one is proven.
     target: Option<FunctionId>,
+    /// Value identity allocated for the call result.
     result: ValueId,
+    /// Resolver-backed call provenance.
     provenance: SymbolCallProvenance,
+    /// Arguments projected to parameter paths.
     arguments: Vec<EffectArgument>,
+    /// Original pre-computed argument predicates for matching.
     call_arguments: Vec<CallArgInfo>,
 }
 
 #[derive(Clone, Debug)]
+/// Observable uses of a parameter or source-root value.
 pub(in crate::analysis) enum EffectUse {
     PropertyWrite {
+        /// Fact identity of the write.
         event: super::super::facts::FactId,
+        /// Written receiver when it aliases a parameter.
         receiver: Option<ParameterRef>,
+        /// Receiver/value identity observed at the write.
         value: ValueId,
+        /// Static property name, if proven.
         property: Option<String>,
+        /// Static string assigned to the property, if proven.
         static_value: Option<String>,
     },
     CallArgument {
+        /// Fact identity of the call.
         event: super::super::facts::FactId,
+        /// Callable chain used for sink matching.
         chain: Option<String>,
+        /// Whether the callable chain has strict rooted provenance.
         rooted: bool,
+        /// Argument identity passed to the call.
         argument: EffectArgument,
     },
     CallReceiver {
+        /// Fact identity of the member call.
         event: super::super::facts::FactId,
+        /// Member chain used for sink matching.
         chain: Option<String>,
+        /// Receiver parameter consumed by the member call.
         receiver: ParameterRef,
+        /// Pre-computed arguments at the member call.
         call_arguments: Vec<CallArgInfo>,
     },
 }
 
 #[derive(Clone, Debug)]
 pub struct FunctionEffect {
+    /// This summary is rule-independent; matcher policy is applied only when
+    /// it is projected into local or qualified flow states.
+    /// Lexical function identity owning this summary.
     id: FunctionId,
+    /// Parameter bindings at function entry.
     parameters: Vec<ParameterBinding>,
+    /// Calls made by this function in source order.
     calls: Vec<EffectCall>,
+    /// Observable parameter/source uses in source order.
     uses: Vec<EffectUse>,
+    /// Values returned by this function.
     returns: Vec<ReturnProjection>,
+    /// True when this summary cannot safely describe the full function.
     invalid: bool,
     /// Source-order value copies. Project flow uses this to connect a source
     /// call result through local declarations before a qualified call.
@@ -84,10 +127,15 @@ pub struct FunctionEffect {
 }
 
 #[derive(Clone, Debug)]
+/// One return value and its optional parameter provenance.
 pub(in crate::analysis) struct ReturnProjection {
+    /// Returned value identity.
     value: ValueId,
+    /// Parameter path if the return forwards an input value.
     parameter: Option<ParameterRef>,
+    /// Provenance retained for source matching.
     provenance: SymbolCallProvenance,
+    /// Static string carried by the returned value, if any.
     static_string: Option<String>,
 }
 
@@ -187,7 +235,9 @@ impl ReturnProjection {
 }
 
 #[derive(Clone, Debug, Default)]
+/// All local function effects for one module, indexed by function identity.
 pub struct FunctionEffects {
+    /// Dense sparse table of summaries keyed by function ID.
     by_id: FunctionTable<FunctionEffect>,
     /// Local effect limits fail closed and are surfaced as a project
     /// diagnostic instead of looking like a clean analysis.
@@ -195,18 +245,22 @@ pub struct FunctionEffects {
 }
 
 impl FunctionEffects {
+    /// Look up one function summary without treating a missing ID as valid.
     pub(in crate::analysis) fn get(&self, id: FunctionId) -> Option<&FunctionEffect> {
         self.by_id.get(id)
     }
 
+    /// Iterate summaries in deterministic function-ID order.
     pub(in crate::analysis) fn iter_effects(&self) -> impl Iterator<Item = &FunctionEffect> {
         self.by_id.values()
     }
 
+    /// Report whether effect limits prevented a complete local summary.
     pub(in crate::analysis) fn budget_exhausted(&self) -> bool {
         self.budget_exhausted
     }
 
+    /// Extract matcher-independent effects from the canonical fact stream.
     pub(in crate::analysis) fn collect(stream: &FactStream) -> Self {
         let mut effects = Self::default();
         let budget = BudgetTracker::default();
@@ -359,30 +413,37 @@ impl FunctionEffect {
 }
 
 impl FunctionEffect {
+    /// Function identity owning this summary.
     pub(in crate::analysis) fn id(&self) -> FunctionId {
         self.id
     }
 
+    /// Calls in canonical fact order.
     pub(in crate::analysis) fn calls(&self) -> &[EffectCall] {
         &self.calls
     }
 
+    /// Observable uses in canonical fact order.
     pub(in crate::analysis) fn uses(&self) -> &[EffectUse] {
         &self.uses
     }
 
+    /// Parameter bindings captured at function entry.
     pub(in crate::analysis) fn parameters(&self) -> &[ParameterBinding] {
         &self.parameters
     }
 
+    /// Return projections captured by the summary.
     pub(in crate::analysis) fn returns(&self) -> &[ReturnProjection] {
         &self.returns
     }
 
+    /// Whether the summary must be rejected by project flow.
     pub(in crate::analysis) fn is_invalid(&self) -> bool {
         self.invalid
     }
 
+    /// Resolve a value to its known parameter/source root.
     pub(in crate::analysis) fn value_root(&self, value: ValueId) -> Option<ValueId> {
         self.value_roots.get(&value).copied()
     }

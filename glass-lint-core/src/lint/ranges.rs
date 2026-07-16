@@ -1,7 +1,10 @@
+//! Source-range conversion and deterministic containment reduction.
+
 use swc_common::{SourceMap, Span, sync::Lrc};
 
 use crate::diagnostic::SourceRange;
 
+/// Remove ranges enclosed by an earlier, widest range in source order.
 pub fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
     ranges.sort_by(|left, right| {
         (left.start.line, left.start.column)
@@ -20,6 +23,7 @@ pub fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
     });
 }
 
+/// Convert an SWC span into one-based Unicode display positions.
 pub fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) -> SourceRange {
     let start = source_map.lookup_char_pos(span.lo());
     let end = source_map.lookup_char_pos(span.hi());
@@ -44,6 +48,7 @@ pub fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) -> Source
     }
 }
 
+/// Convert a byte offset/length into a clamped source range.
 pub fn source_range(source: &str, start: usize, length: usize) -> SourceRange {
     SourceRange::from_source(source, start, length)
 }

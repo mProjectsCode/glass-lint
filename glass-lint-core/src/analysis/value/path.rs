@@ -3,6 +3,9 @@
 //! A path is stored leaf-first as parent links, but public operations expose
 //! segments in source order. The interner is the single place that translates
 //! between those representations.
+//!
+//! Shared prefixes are canonicalized by `(parent, segment)`, which bounds
+//! duplicate storage and makes path IDs suitable for equality and flow maps.
 
 #![allow(dead_code)]
 
@@ -11,11 +14,14 @@ use std::collections::HashMap;
 const MAX_PATH_NODES: usize = 1 << 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Canonical ID of a path node; zero is the empty path.
 pub(in crate::analysis) struct PathId(u32);
 
 impl PathId {
+    /// Sentinel representing no path segments.
     pub(in crate::analysis) const EMPTY: Self = Self(0);
 
+    /// Whether this ID denotes the empty path.
     pub(in crate::analysis) fn is_empty(self) -> bool {
         self == Self::EMPTY
     }
@@ -28,25 +34,36 @@ impl PathId {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// One static property or numeric index path segment.
 pub(in crate::analysis) enum PathSegment {
+    /// Named property access.
     Property(String),
+    /// Array/index access kept distinct from a property named by digits.
     Index(u32),
 }
 
 #[derive(Debug, Clone)]
+/// Parent-linked node in the canonical path trie.
 struct PathNode {
+    /// Parent path ID.
     parent: PathId,
+    /// Segment appended at this node, absent only for the root.
     segment: Option<PathSegment>,
+    /// Number of segments from the root.
     depth: u32,
 }
 
 #[derive(Debug, Default)]
+/// Bounded canonical interner for static member/index paths.
 pub(in crate::analysis) struct PathInterner {
+    /// Parent-linked path nodes, with node zero as the empty path.
     nodes: Vec<PathNode>,
+    /// Canonical edge lookup for shared prefixes.
     by_edge: HashMap<(PathId, PathSegment), PathId>,
 }
 
 impl PathInterner {
+    /// Create an interner containing only the empty root node.
     pub(in crate::analysis) fn new() -> Self {
         Self {
             nodes: vec![PathNode {
@@ -58,6 +75,7 @@ impl PathInterner {
         }
     }
 
+    /// Append one segment, reusing a shared edge or failing at the node bound.
     pub(in crate::analysis) fn append(
         &mut self,
         parent: PathId,
@@ -84,10 +102,12 @@ impl PathInterner {
         Some(id)
     }
 
+    /// Return the segment depth of a valid path.
     pub(in crate::analysis) fn depth(&self, path: PathId) -> Option<u32> {
         self.nodes.get(path.index()?).map(|node| node.depth)
     }
 
+    /// Whether `path` has `prefix` as its canonical root prefix.
     pub(in crate::analysis) fn starts_with(&self, path: PathId, prefix: PathId) -> bool {
         let Some(path_depth) = self.depth(path) else {
             return false;
@@ -111,14 +131,17 @@ impl PathInterner {
         current == prefix
     }
 
+    /// Borrow the final segment of a valid non-empty path.
     pub(in crate::analysis) fn last(&self, path: PathId) -> Option<&PathSegment> {
         self.nodes.get(path.index()?)?.segment.as_ref()
     }
 
+    /// Return the parent path ID of a valid path.
     pub(in crate::analysis) fn parent(&self, path: PathId) -> Option<PathId> {
         self.nodes.get(path.index()?).map(|node| node.parent)
     }
 
+    /// Iterate segments in source/root-to-leaf order.
     pub(in crate::analysis) fn iter_segments(
         &self,
         path: PathId,
@@ -128,6 +151,7 @@ impl PathInterner {
             .filter_map(|node| node.segment.as_ref())
     }
 
+    /// Return the first segment when it is an array/index segment.
     pub(in crate::analysis) fn first_index(&self, path: PathId) -> Option<u32> {
         match self.segments(path)?.first()? {
             PathSegment::Index(index) => Some(*index),
@@ -135,6 +159,7 @@ impl PathInterner {
         }
     }
 
+    /// Remove the first segment and recover the canonical remaining path.
     pub(in crate::analysis) fn without_first(&self, path: PathId) -> Option<PathId> {
         let mut segments = self.segments(path)?;
         segments.first()?;
@@ -146,6 +171,7 @@ impl PathInterner {
         Some(result)
     }
 
+    /// Append every segment of `suffix` to `prefix` through the interner.
     pub(in crate::analysis) fn concat(&mut self, prefix: PathId, suffix: PathId) -> Option<PathId> {
         let segments = self.segments(suffix)?;
         let mut result = prefix;

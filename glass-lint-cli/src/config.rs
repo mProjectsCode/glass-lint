@@ -12,6 +12,7 @@ use crate::args::Args;
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
+    /// Obsidian rules together with the generic JavaScript catalog.
     #[default]
     Obsidian,
     Js,
@@ -20,6 +21,7 @@ pub enum Provider {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Profile {
+    /// Only high-confidence rules selected for normal use.
     Recommended,
     #[default]
     Heuristic,
@@ -28,6 +30,7 @@ pub enum Profile {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum FailOn {
+    /// Exit unsuccessfully for any finding, including informational findings.
     Info,
     Warning,
     #[default]
@@ -38,6 +41,7 @@ pub enum FailOn {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Output {
+    /// Human-readable diagnostics and a deterministic summary.
     #[default]
     Pretty,
     Json,
@@ -46,6 +50,7 @@ pub enum Output {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
 pub enum Verbosity {
+    /// Emit no telemetry beyond errors written by the command.
     #[default]
     Quiet,
     Normal,
@@ -57,30 +62,41 @@ pub enum Verbosity {
 #[serde(deny_unknown_fields)]
 pub struct CliConfig {
     #[serde(default)]
+    /// Rule provider whose catalog and host environment are enabled.
     pub provider: Provider,
     #[serde(default)]
+    /// Rule confidence profile used to select the catalog.
     pub profile: Profile,
     #[serde(default = "default_max_bytes")]
+    /// Maximum source size accepted by project discovery, in bytes.
     pub max_bytes: u64,
     #[serde(default)]
+    /// Minimum finding severity that makes the command fail.
     pub fail_on: FailOn,
     #[serde(default)]
+    /// Serialization format for findings and summaries.
     pub output: Output,
     #[serde(default)]
+    /// Amount of telemetry emitted while the command runs.
     pub verbosity: Verbosity,
     #[serde(default = "default_color")]
+    /// Whether supported human-readable output may use terminal colors.
     pub color: bool,
     #[serde(default = "default_width")]
+    /// Maximum line width used by pretty output before it wraps evidence.
     pub pretty_max_width: usize,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Versioned top-level configuration consumed by the CLI.
     pub version: u32,
     #[serde(default)]
+    /// Provider-neutral analysis limits and matcher configuration.
     pub core: CoreConfig,
     #[serde(default)]
+    /// CLI provider, profile, output, and exit-policy settings.
     pub cli: CliConfig,
 }
 
@@ -132,6 +148,11 @@ fn default_color() -> bool {
 }
 
 /// Resolve configuration from inline JSON, an explicit file, or the cwd.
+///
+/// Inline JSON has highest precedence, followed by the explicitly named file,
+/// then a single `glass-lint.toml` or `glass-lint.json` in the current
+/// directory. A discovered configuration is validated against the selected
+/// provider catalog before it is returned.
 pub fn load(args: &Args) -> Result<Config> {
     let (text, format) = if let Some(json) = &args.config_json {
         (json.clone(), "json")
@@ -202,10 +223,16 @@ fn validate(config: Config) -> Result<Config> {
     Ok(config)
 }
 
+/// Build the immutable rule metadata selected by the CLI settings.
 pub fn catalog(provider: Provider, profile: Profile) -> RuleCatalog {
     base_linter(provider, profile).catalog().clone()
 }
 
+/// Construct the unconfigured catalog for a provider and confidence profile.
+///
+/// The combined Obsidian catalog shares Obsidian's host environment with its
+/// generic JavaScript rules; the standalone JavaScript catalog uses its own
+/// provider defaults.
 pub fn base_linter(provider: Provider, profile: Profile) -> Linter {
     match (provider, profile) {
         (Provider::Obsidian, profile) => {
@@ -234,6 +261,10 @@ pub fn base_linter(provider: Provider, profile: Profile) -> Linter {
     }
 }
 
+/// Construct and validate the linter requested by a complete CLI config.
+///
+/// Validation happens after catalog construction so rule selections and core
+/// limits are checked against the exact provider environment that will run.
 pub fn selected_linter(config: &Config) -> Result<Linter> {
     let linter = base_linter(config.cli.provider, config.cli.profile);
     tracing::debug!(
@@ -247,6 +278,8 @@ pub fn selected_linter(config: &Config) -> Result<Linter> {
 }
 
 impl FailOn {
+    /// Return whether a finding at `severity` should determine the process
+    /// exit.
     pub fn fails(self, severity: Severity) -> bool {
         match self {
             Self::Info => true,
@@ -258,6 +291,8 @@ impl FailOn {
 }
 
 impl Verbosity {
+    /// Map the CLI level to the core telemetry level without exposing core
+    /// telemetry types in the serialized configuration schema.
     pub fn telemetry(self) -> glass_lint_core::telemetry::TelemetryLevel {
         match self {
             Self::Quiet => glass_lint_core::telemetry::TelemetryLevel::Quiet,

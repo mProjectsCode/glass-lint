@@ -1,3 +1,5 @@
+//! CodeMirror extension module rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects static ESM imports and unshadowed CommonJS loads of the exact

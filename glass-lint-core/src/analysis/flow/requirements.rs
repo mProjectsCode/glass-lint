@@ -5,6 +5,10 @@ use std::collections::BTreeMap;
 use super::super::facts::FactId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
+/// Parameter-indexed requirements proven along the current flow path.
+///
+/// The map is intentionally typed by `K` so local fact IDs and qualified
+/// module events cannot be confused during joins.
 pub(super) struct RequirementSet<K = FactId>(BTreeMap<usize, K>);
 
 impl<K> Default for RequirementSet<K> {
@@ -15,38 +19,47 @@ impl<K> Default for RequirementSet<K> {
 
 #[allow(dead_code)]
 impl<K: Clone + PartialEq> RequirementSet<K> {
+    /// Record a requirement without replacing an earlier proof for the key.
     pub(super) fn record(&mut self, parameter: usize, value: K) {
         self.0.entry(parameter).or_insert(value);
     }
 
+    /// Replace the proof for a requirement key.
     pub(super) fn insert(&mut self, parameter: usize, value: K) {
         self.0.insert(parameter, value);
     }
 
+    /// Remove one parameter requirement after invalidation.
     pub(super) fn remove(&mut self, parameter: usize) {
         self.0.remove(&parameter);
     }
 
+    /// Check whether a requirement key is present.
     pub(super) fn contains_key(&self, parameter: usize) -> bool {
         self.0.contains_key(&parameter)
     }
 
+    /// Retain only requirements satisfying the supplied path predicate.
     pub(super) fn retain(&mut self, keep: impl FnMut(&usize, &mut K) -> bool) {
         self.0.retain(keep);
     }
 
+    /// Number of currently proven requirements.
     pub(super) fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Whether no requirements are currently proven.
     pub(super) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Iterate parameter keys and their typed proofs in key order.
     pub(super) fn iter(&self) -> impl Iterator<Item = (&usize, &K)> {
         self.0.iter()
     }
 
+    /// Iterate only the typed proofs in parameter-key order.
     pub(super) fn values(&self) -> impl Iterator<Item = &K> {
         self.0.values()
     }

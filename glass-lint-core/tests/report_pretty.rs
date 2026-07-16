@@ -1,3 +1,8 @@
+//! Rendering contracts for human-readable single-file and grouped reports.
+//!
+//! These assertions lock down deterministic ordering, source excerpts, display
+//! width bounds, missing-source resilience, and optional terminal coloring.
+
 use glass_lint_core::{
     Evidence, Finding, LintReport, Position, PrettyFile, PrettyOptions, PrettyReport,
     PrettyReports, RuleId, Severity, SourceRange,

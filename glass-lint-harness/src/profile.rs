@@ -1,3 +1,8 @@
+//! Deterministic corpus discovery and bounded provider profiling.
+//!
+//! Setup, measured linting, and phase metrics are kept separate so profiling
+//! compares analysis work without accidentally timing corpus preparation.
+
 #![allow(clippy::cast_possible_truncation, clippy::zero_sized_map_values)]
 
 use std::{
@@ -19,6 +24,7 @@ use glob::{MatchOptions, Pattern};
 use crate::builtins::{self, BuiltInProfile};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Provider set included in a profile.
 pub enum ProfileProvider {
     Js,
     Obsidian,
@@ -26,14 +32,18 @@ pub enum ProfileProvider {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Rule precision profile used during measurement.
 pub enum ProfileMode {
     Recommended,
     Heuristic,
 }
 
 #[derive(Clone, Debug)]
+/// Validated-by-`profile_folder` controls for one profile run.
 pub struct ProfileConfig {
+    /// Files or directories to discover.
     pub paths: Vec<PathBuf>,
+    /// Inclusive glob filters.
     pub include: Vec<String>,
     pub exclude: Vec<String>,
     pub sample: Option<usize>,
@@ -50,9 +60,13 @@ pub struct ProfileConfig {
 
 #[derive(Clone, Debug)]
 pub struct ProfileFileSummary {
+    /// Discovered file path.
     pub path: PathBuf,
+    /// UTF-8 source byte count.
     pub bytes: u64,
+    /// Findings across measured repetitions.
     pub findings: usize,
+    /// Parse/analysis diagnostics across measured repetitions.
     pub diagnostics: usize,
     /// Time spent in lint calls, excluding corpus discovery and file reads.
     pub elapsed: Duration,
@@ -61,11 +75,17 @@ pub struct ProfileFileSummary {
 
 #[derive(Clone, Debug)]
 pub struct ProfileSummary {
+    /// Number of discovered files.
     pub files: usize,
+    /// Total bytes in prepared files.
     pub bytes: u64,
+    /// Total measured findings.
     pub findings: usize,
+    /// Total measured diagnostics.
     pub diagnostics: usize,
+    /// Files that failed preparation or linting.
     pub errors: usize,
+    /// Number of successful measured file runs.
     pub runs: usize,
     pub setup_elapsed: Duration,
     /// Wall time for the measured linting phase.
@@ -107,7 +127,9 @@ impl std::ops::AddAssign for ProfilePhaseTimings {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ProfileOperationCounts {
+    /// Files included in the profile.
     pub files: usize,
+    /// Resolver requests observed.
     pub requests: usize,
     pub edges: usize,
     pub exports: usize,
@@ -183,6 +205,8 @@ struct PreparedFile {
 }
 
 pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
+    // Validate before discovery so invalid runs cannot partially consume a
+    // corpus or report misleading timing totals.
     validate_config(config)?;
     if config.project {
         return profile_projects(config);
@@ -370,6 +394,8 @@ pub fn discover_profile_files(
     includes: &[String],
     excludes: &[String],
 ) -> Result<Vec<PathBuf>> {
+    // BTreeMap deduplicates overlapping roots while retaining deterministic path
+    // order.
     let includes = compile_globs(includes)?;
     let excludes = compile_globs(excludes)?;
     let corpus_options = ProjectLoadOptions::default();
@@ -431,6 +457,8 @@ fn compile_globs(patterns: &[String]) -> Result<Vec<Pattern>> {
 }
 
 fn sample_paths(paths: &mut Vec<PathBuf>, sample: usize, seed: u64) {
+    // Use a small deterministic PRNG and sort the retained sample for stable
+    // output even though selection itself is randomized by the seed.
     if sample >= paths.len() {
         return;
     }

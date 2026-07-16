@@ -1,3 +1,5 @@
+//! URL-constructor rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects construction through the unshadowed global `URL` and

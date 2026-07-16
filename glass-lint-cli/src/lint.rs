@@ -12,7 +12,14 @@ use crate::{
     output::{FileOutput, Summary},
 };
 
+/// Execute a linting command and return whether its findings should fail CI.
+///
+/// Operational failures are returned as `Err`; a successful lint with findings
+/// is represented by `Ok(true)` so the binary can distinguish exit status 1
+/// from an invocation or I/O error.
 pub fn run(config: &Config, command: Command) -> Result<bool> {
+    // Project checks use the resolver-aware path; snippets intentionally lint
+    // discovered files independently and therefore do not link modules.
     let linter = config::selected_linter(config)?;
     match command {
         Command::Check { path } => lint_project(config, &linter, &path),

@@ -33,6 +33,9 @@ interface AdapterRequest {
     };
 }
 
+// The harness sends one complete request per process, so reading to EOF keeps
+// protocol framing independent of stdin chunk boundaries.
+
 interface AdapterFinding {
     rule_id: string;
     message_id: string;
@@ -207,6 +210,9 @@ function createFinding(message: Linter.LintMessage): AdapterFinding {
 }
 
 async function main(): Promise<void> {
+    // Keep timing on stderr: stdout is reserved for the single JSON response.
+    // The harness treats the response as one JSON document, so diagnostics must
+    // never contaminate that stream.
     let start = performance.now();
     
     let before = performance.now();

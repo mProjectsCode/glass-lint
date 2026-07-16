@@ -1,8 +1,15 @@
+//! TypeScript parsing, runtime filtering, extension selection, and location
+//! tests.
+//!
+//! The fixtures distinguish runtime syntax from type-only declarations and keep
+//! source coordinates authoritative after TypeScript syntax is stripped.
+
 use glass_lint_core::{
     Environment, Linter, RuleCatalog, SourceLanguage,
     rules::{Confidence, Matcher, Rule, Severity},
 };
 
+/// Build the minimal TypeScript-capable linter used by every fixture.
 fn linter() -> Linter {
     let rule = Rule::builder("network.fetch")
         .label("Uses fetch")

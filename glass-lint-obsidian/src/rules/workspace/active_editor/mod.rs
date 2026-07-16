@@ -1,3 +1,5 @@
+//! Obsidian active-editor workspace rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects rooted reads of `app.workspace.activeEditor`. Provenance follows

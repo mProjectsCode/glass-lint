@@ -1,4 +1,8 @@
 //! Evidence emission and flow requirement updates.
+//!
+//! Configuration events update only the object states reachable through proven
+//! aliases. Emissions are anchored at the event that completed the flow and
+//! deduplicated by flow/object/event before the bounded result is returned.
 
 use std::collections::BTreeSet;
 
@@ -9,6 +13,7 @@ use super::{
 use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArgs};
 
 impl ObjectFlowProjector<'_, '_> {
+    /// Apply member-call requirements to live object states.
     pub(super) fn record_configuration(
         &mut self,
         receiver: Option<ValueId>,
@@ -60,6 +65,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
+    /// Check sink arguments against live states and emit completed flows.
     pub(super) fn record_sinks(
         &mut self,
         chain: &str,
@@ -101,6 +107,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
+    /// Project a summarized helper sink through a concrete invocation.
     pub(super) fn record_helper_sink(
         &mut self,
         function: crate::analysis::value::FunctionId,
@@ -142,6 +149,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
+    /// Emit a requirement-only match when its state is complete.
     pub(super) fn emit_if_ready(&mut self, flow: FlowId, object: ObjectId, event: FactId) {
         let Some(state) = self.flow_state.state(object, flow).cloned() else {
             return;
@@ -154,6 +162,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
+    /// Emit one bounded, source-anchored evidence item for a ready state.
     pub(super) fn emit_state(
         &mut self,
         state: &FlowState,

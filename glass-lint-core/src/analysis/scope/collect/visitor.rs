@@ -1,3 +1,9 @@
+//! Source-order AST visitor for declarations, assignments, calls, and scopes.
+//!
+//! The visitor consumes the predeclared scope tree and records only
+//! use-position facts that survive lexical shadowing, reassignment, and
+//! unsupported dynamic forms.
+
 use swc_ecma_ast::{CallExpr, Callee, VarDeclarator};
 
 use super::{

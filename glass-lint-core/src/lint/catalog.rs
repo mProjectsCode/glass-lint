@@ -1,3 +1,5 @@
+//! Validated rule catalogs and stable rule-index selection.
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
@@ -10,8 +12,11 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Catalog construction failure.
 pub enum RuleCatalogError {
+    /// Provider prefix or full rule ID is invalid.
     InvalidRuleId(String),
+    /// A rule failed catalog validation, including duplicate identity.
     InvalidRule(String, String),
 }
 
@@ -27,7 +32,9 @@ impl fmt::Display for RuleCatalogError {
 impl Error for RuleCatalogError {}
 
 #[derive(Clone, Debug)]
+/// Provider rules, namespaced IDs, environment, and compiled plans.
 pub struct RuleCatalog {
+    /// Rules in stable declaration order.
     pub rules: Vec<Rule>,
     rule_ids: Vec<RuleId>,
     rule_indices: BTreeMap<RuleId, usize>,
@@ -36,10 +43,12 @@ pub struct RuleCatalog {
 }
 
 impl RuleCatalog {
+    /// Build a catalog under the default ECMAScript environment.
     pub fn new(provider: impl Into<String>, rules: Vec<Rule>) -> Result<Self, RuleCatalogError> {
         Self::with_environment(provider, rules, Environment::default())
     }
 
+    /// Build a catalog under an explicit host environment.
     pub fn with_environment(
         provider: impl Into<String>,
         rules: Vec<Rule>,
@@ -79,6 +88,7 @@ impl RuleCatalog {
     /// Full namespaced rule IDs must remain unique. Local rule names may
     /// overlap between providers because catalog identity is retained by rule
     /// position rather than inferred from the local name.
+    /// Combine catalogs while rejecting duplicate fully-qualified IDs.
     pub fn combine_with_environment(
         catalogs: impl IntoIterator<Item = Self>,
         environment: Environment,
@@ -117,6 +127,7 @@ impl RuleCatalog {
     }
 
     #[must_use]
+    /// Return report metadata in catalog order.
     pub fn metadata(&self) -> Vec<RuleMetadata> {
         self.rules
             .iter()
@@ -134,23 +145,28 @@ impl RuleCatalog {
     }
 
     #[must_use]
+    /// Clone fully-qualified rule IDs in catalog order.
     pub fn rule_ids(&self) -> Vec<RuleId> {
         self.rule_ids.clone()
     }
 
     #[must_use]
+    /// Borrow the analysis host environment.
     pub fn environment(&self) -> &Environment {
         &self.environment
     }
 
+    /// Borrow the ID at a stable catalog index.
     pub fn rule_id(&self, index: usize) -> Option<&RuleId> {
         self.rule_ids.get(index)
     }
 
+    /// Borrow compiled matcher plans.
     pub fn compiled(&self) -> &CompiledCatalog {
         &self.compiled
     }
 
+    /// Resolve a fully-qualified ID to its catalog index.
     pub fn rule_index(&self, id: &RuleId) -> Option<usize> {
         self.rule_indices.get(id).copied()
     }

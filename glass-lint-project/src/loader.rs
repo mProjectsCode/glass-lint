@@ -29,17 +29,29 @@ pub struct ProjectLoader {
 /// in `linking_and_matching` because core owns the completed project pass.
 #[derive(Clone, Debug, Default)]
 pub struct ProjectLoadMetrics {
+    /// Time spent selecting and discovering files.
     pub discovery: Duration,
+    /// Time spent reading source bytes.
     pub reads: Duration,
+    /// Time spent parsing and locally analyzing sources.
     pub parse_and_local_analysis: Duration,
+    /// Time spent resolving module requests.
     pub resolution: Duration,
+    /// End-to-end linking and matching time at the core boundary.
     pub linking_and_matching: Duration,
+    /// Link-only phase reported by core.
     pub linking: Duration,
+    /// Matcher-only phase reported by core.
     pub matching: Duration,
+    /// Total elapsed load time.
     pub total: Duration,
+    /// Number of admitted source files.
     pub files: usize,
+    /// Number of resolver requests observed.
     pub requests: usize,
+    /// Number of internal edges observed.
     pub edges: usize,
+    /// Total source bytes read.
     pub bytes: u64,
 }
 
@@ -65,11 +77,13 @@ impl std::ops::AddAssign for ProjectLoadMetrics {
 }
 
 impl ProjectLoader {
+    /// Validate options and construct a reusable filesystem loader.
     pub fn new(options: ProjectLoadOptions) -> Result<Self, ProjectLoadError> {
         options.validate()?;
         Ok(Self { options })
     }
 
+    /// Borrow the validated policy used by this loader.
     pub fn options(&self) -> &ProjectLoadOptions {
         &self.options
     }

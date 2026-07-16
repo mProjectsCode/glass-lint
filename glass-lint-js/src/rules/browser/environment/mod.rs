@@ -1,3 +1,5 @@
+//! Browser environment-property rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects direct reads of a small set of browser environment properties.

@@ -1,3 +1,5 @@
+//! Browser clipboard-read rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects calls to the unshadowed browser clipboard read APIs, including

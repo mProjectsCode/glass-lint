@@ -1,3 +1,5 @@
+//! Private-network address indicator rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects string literals containing the configured localhost, loopback,

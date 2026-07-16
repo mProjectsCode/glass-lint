@@ -1,3 +1,9 @@
+//! Public rule declarations and builder boundary.
+//!
+//! A [`Rule`] is fully validated and normalized before it is exposed to the
+//! compiler. This keeps malformed IDs, taxonomy, matcher shapes, and
+//! unbounded declarations out of analysis and report construction.
+
 mod error;
 pub mod matcher;
 mod normalization;
@@ -16,12 +22,19 @@ pub use matcher::{
 pub use taxonomy::{Category, Confidence, Severity};
 
 #[derive(Debug, Clone)]
+/// Validated provider rule with canonical matcher declarations.
 pub struct Rule {
+    /// Namespaced stable rule ID.
     id: String,
+    /// Human-readable rule label.
     label: String,
+    /// Provider-defined category.
     category: Category,
+    /// Report severity.
     severity: Severity,
+    /// Evidence confidence.
     confidence: Confidence,
+    /// Validated, normalized matcher declarations.
     matchers: Vec<Matcher>,
 }
 
@@ -31,6 +44,7 @@ impl Rule {
     /// construction. The limit remains finite to keep reports bounded.
     pub const EVIDENCE_LIMIT: usize = 16;
 
+    /// Start a builder for one stable rule ID.
     pub fn builder(id: impl Into<String>) -> RuleBuilder {
         RuleBuilder {
             id: id.into(),
@@ -43,37 +57,44 @@ impl Rule {
     }
 
     #[must_use]
+    /// Borrow the stable rule ID.
     pub fn id(&self) -> &str {
         &self.id
     }
 
     #[must_use]
+    /// Borrow the human-readable label.
     pub fn label(&self) -> &str {
         &self.label
     }
 
     #[must_use]
+    /// Borrow the provider category.
     pub fn category(&self) -> &Category {
         &self.category
     }
 
     #[must_use]
+    /// Return report severity.
     pub fn severity(&self) -> Severity {
         self.severity
     }
 
     #[must_use]
+    /// Return evidence confidence.
     pub fn confidence(&self) -> Confidence {
         self.confidence
     }
 
     #[must_use]
+    /// Borrow normalized matcher declarations.
     pub fn matchers(&self) -> &[Matcher] {
         &self.matchers
     }
 }
 
 #[derive(Debug, Clone)]
+/// Fluent rule builder whose `build` method validates all invariants.
 pub struct RuleBuilder {
     id: String,
     label: Option<String>,
@@ -85,35 +106,41 @@ pub struct RuleBuilder {
 
 impl RuleBuilder {
     #[must_use]
+    /// Add one matcher declaration.
     pub fn matcher(mut self, matcher: impl Into<Matcher>) -> Self {
         self.matchers.push(matcher.into());
         self
     }
 
     #[must_use]
+    /// Set the human-readable label.
     pub fn label(mut self, label: impl Into<String>) -> Self {
         self.label = Some(label.into());
         self
     }
 
     #[must_use]
+    /// Set the provider category.
     pub fn category(mut self, category: impl Into<Category>) -> Self {
         self.category = Some(category.into());
         self
     }
 
     #[must_use]
+    /// Set report severity.
     pub fn severity(mut self, severity: Severity) -> Self {
         self.severity = Some(severity);
         self
     }
 
     #[must_use]
+    /// Set evidence confidence.
     pub fn confidence(mut self, confidence: Confidence) -> Self {
         self.confidence = Some(confidence);
         self
     }
 
+    /// Validate metadata/matchers, normalize them, and construct the rule.
     pub fn build(self) -> Result<Rule, RuleBuildError> {
         let label = required_string(self.label, RuleBuildError::MissingLabel)?;
         let category = self.category.ok_or(RuleBuildError::MissingCategory)?;

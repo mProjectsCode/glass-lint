@@ -1,4 +1,8 @@
 //! Structural scope graph types and collected alias facts.
+//!
+//! IDs are assigned after collection and are stable within one analyzed
+//! module. Assignment versions and source spans remain part of the query
+//! contract so aliases cannot cross a reassignment or lexical boundary.
 
 use std::collections::BTreeMap;
 
@@ -10,23 +14,38 @@ use super::super::{
 };
 
 #[derive(Debug, Default, Clone)]
+/// Immutable lexical scope/index model consumed by resolution queries.
 pub(in crate::analysis) struct ScopeGraph {
+    /// Host globals and member capabilities used for unshadowed checks.
     environment: crate::Environment,
+    /// Lexical scopes in predeclaration order.
     scopes: Vec<AliasScope>,
+    /// Scope indexes sorted by opening position for position lookup.
     scopes_by_start: Vec<usize>,
+    /// Source-ordered assignments grouped by scope and name.
     assignments: BTreeMap<usize, BTreeMap<String, Vec<AliasAssignment>>>,
+    /// Stable binding IDs keyed by lexical scope and name.
     binding_ids: BTreeMap<(usize, String), BindingId>,
+    /// Stable function IDs keyed by function scope.
     function_ids: BTreeMap<usize, FunctionId>,
+    /// Direct function declarations visible from a scope.
     function_bindings: BTreeMap<(usize, String), FunctionId>,
+    /// Aliases to locally declared functions.
     function_aliases: BTreeMap<(usize, String), FunctionId>,
+    /// Property writes indexed by versioned receiver and path.
     property_assignments: BTreeMap<(BindingKey, Vec<String>), Vec<PropertyAliasFact>>,
+    /// Rooted writes that invalidate member identities.
     rooted_property_mutations: BTreeMap<String, Vec<RootedPropertyMutationFact>>,
+    /// Proven parameter identities shared by compatible call sites.
     parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
+    /// Dynamic-evaluation sites that invalidate later lexical assumptions.
     dynamic_evals: Vec<(usize, Span)>,
+    /// Static objects whose `var` binding may be mutated.
     mutable_static_objects: std::collections::BTreeSet<(usize, String)>,
 }
 
 impl ScopeGraph {
+    /// Convert collector-side property events into sorted query indexes.
     pub(super) fn finish_collected_properties(
         &mut self,
         property_assignments: Vec<super::collect::PropertyAliasAssignment>,
@@ -86,6 +105,7 @@ impl ScopeGraph {
         self.environment.is_global_member(root, member)
     }
 
+    /// Find the latest assignment at or before a source position.
     pub(super) fn assignment_at(
         &self,
         scope: usize,
@@ -133,6 +153,7 @@ impl ScopeGraph {
         self.scopes.get(scope)?.bindings.get(name)
     }
 
+    /// Assemble the immutable graph before property indexes are attached.
     pub(super) fn from_parts(parts: ScopeGraphParts) -> Self {
         Self {
             environment: parts.environment,
@@ -225,6 +246,7 @@ impl ScopeGraph {
         })
     }
 
+    /// Find the innermost lexical scope containing a source span.
     pub(super) fn scope_at(&self, span: Span) -> usize {
         let position = self
             .scopes_by_start
@@ -245,6 +267,7 @@ impl ScopeGraph {
     }
 }
 
+/// Owned inputs used to assemble a collected [`ScopeGraph`].
 pub(super) struct ScopeGraphParts {
     pub(super) environment: crate::Environment,
     pub(super) scopes: Vec<AliasScope>,
@@ -263,6 +286,7 @@ fn span_contains(outer: Span, inner: Span) -> bool {
 }
 
 #[derive(Debug, Clone)]
+/// A rooted property write that may invalidate a global/member identity.
 pub(in crate::analysis::scope) struct RootedPropertyMutationFact {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) scope: usize,
@@ -270,6 +294,7 @@ pub(in crate::analysis::scope) struct RootedPropertyMutationFact {
 }
 
 #[derive(Debug, Clone)]
+/// Lexical scope interval, kind, parent, and declaration bindings.
 pub(in crate::analysis) struct AliasScope {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) depth: usize,
@@ -279,6 +304,7 @@ pub(in crate::analysis) struct AliasScope {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Scope category relevant to JavaScript visibility and dynamic lookup.
 pub(in crate::analysis) enum ScopeKind {
     Program,
     Function,
@@ -287,6 +313,7 @@ pub(in crate::analysis) enum ScopeKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Conservative provenance attached to a lexical binding.
 pub(in crate::analysis) enum BindingProvenance {
     Local,
     ValueAlias {
@@ -319,6 +346,7 @@ pub(in crate::analysis) enum BindingProvenance {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Static argument identity preserved by a modeled callable bind.
 pub(in crate::analysis) enum BoundArgument {
     StaticString(String),
     RootedExpression(SymbolPath),
@@ -332,23 +360,35 @@ pub(in crate::analysis) enum BoundArgument {
 /// the authoritative value arena.
 #[derive(Debug, Clone)]
 pub(in crate::analysis) struct IdentValueSeed {
+    /// Call provenance for the identifier at its use position.
     pub(in crate::analysis) call: SymbolCallProvenance,
+    /// Rooted member path, when callable identity is proven.
     pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
+    /// Versioned lexical binding identity.
     pub(in crate::analysis) binding: Option<BindingKey>,
+    /// Bounded constant value, or unknown.
     pub(in crate::analysis) constant: ConstValue,
+    /// Static arguments captured by a supported `.bind()` call.
     pub(in crate::analysis) bound_arguments: Option<Vec<Option<BoundArgument>>>,
 }
 
 #[derive(Debug, Clone)]
+/// Resolver inputs derived from one member expression.
 pub(in crate::analysis) struct MemberValueSeed {
+    /// Syntax-only member spelling retained for diagnostics/indexing.
     pub(in crate::analysis) syntactic_chain: Option<SymbolPath>,
+    /// Proven rooted path after alias and mutation checks.
     pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
+    /// Versioned receiver/property binding identity.
     pub(in crate::analysis) binding: Option<BindingKey>,
+    /// Imported namespace/member provenance, when known.
     pub(in crate::analysis) module_member: Option<SymbolMemberProvenance>,
+    /// Returned-object source and member name, when tracked.
     pub(in crate::analysis) returned_member: Option<(SymbolPath, String)>,
 }
 
 #[derive(Debug, Clone)]
+/// One source-ordered reassignment of a lexical binding.
 pub(in crate::analysis) struct AliasAssignment {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) scope: usize,
@@ -358,6 +398,7 @@ pub(in crate::analysis) struct AliasAssignment {
 }
 
 #[derive(Debug, Clone)]
+/// One rooted property assignment indexed by receiver and path.
 pub(in crate::analysis) struct PropertyAliasFact {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) scope: usize,

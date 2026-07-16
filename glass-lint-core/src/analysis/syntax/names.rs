@@ -1,4 +1,8 @@
 //! AST naming, member-chain, and pattern helpers.
+//!
+//! Returned names are structural spellings, not proof of runtime identity.
+//! Callers must combine them with scope/provenance queries before using a
+//! chain for strict matching.
 
 use std::collections::BTreeSet;
 
@@ -6,6 +10,7 @@ use swc_ecma_ast::{
     Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp, OptChainBase, Pat,
 };
 
+/// Find the lexical root identifier of a member/optional-chain expression.
 pub fn member_root_ident(member: &MemberExpr) -> Option<&Ident> {
     expr_root_ident(&member.obj)
 }
@@ -23,6 +28,7 @@ fn expr_root_ident(expr: &Expr) -> Option<&Ident> {
     }
 }
 
+/// Strip transparent parentheses/sequences around a callee expression.
 pub fn effective_callee_expr(expr: &Expr) -> &Expr {
     match expr {
         Expr::Paren(paren) => effective_callee_expr(&paren.expr),
@@ -34,6 +40,7 @@ pub fn effective_callee_expr(expr: &Expr) -> &Expr {
     }
 }
 
+/// Collect all names introduced by a binding pattern deterministically.
 pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<String>) {
     match pat {
         Pat::Ident(ident) => {
@@ -63,6 +70,7 @@ pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<String>) {
     }
 }
 
+/// Normalize an identifier or string export name to its authored spelling.
 pub fn module_export_name(name: &ModuleExportName) -> String {
     match name {
         ModuleExportName::Ident(ident) => ident.sym.to_string(),
@@ -70,6 +78,7 @@ pub fn module_export_name(name: &ModuleExportName) -> String {
     }
 }
 
+/// Return a statically known object-literal property name.
 pub fn prop_name(name: &swc_ecma_ast::PropName) -> Option<String> {
     match name {
         swc_ecma_ast::PropName::Ident(ident) => Some(ident.sym.to_string()),
@@ -86,6 +95,7 @@ pub fn prop_name(name: &swc_ecma_ast::PropName) -> Option<String> {
     }
 }
 
+/// Render supported rooted expression shapes as a dotted syntax chain.
 pub fn expr_name(expr: &Expr) -> Option<String> {
     match expr {
         Expr::Ident(ident) => Some(ident.sym.to_string()),
@@ -110,6 +120,7 @@ pub fn expr_name(expr: &Expr) -> Option<String> {
     }
 }
 
+/// Render a member expression as `object.property` when both parts are static.
 pub fn member_chain(member: &MemberExpr) -> Option<String> {
     Some(format!(
         "{}.{}",
@@ -118,6 +129,7 @@ pub fn member_chain(member: &MemberExpr) -> Option<String> {
     ))
 }
 
+/// Return a statically known member property name, including private names.
 pub fn member_prop_name(prop: &MemberProp) -> Option<String> {
     match prop {
         MemberProp::Ident(ident) => Some(ident.sym.to_string()),
@@ -126,11 +138,13 @@ pub fn member_prop_name(prop: &MemberProp) -> Option<String> {
     }
 }
 
+/// Recognize a supported `Function`-like `.constructor` member shape.
 pub fn is_function_constructor_member(member: &MemberExpr) -> bool {
     member_prop_name(&member.prop).as_deref() == Some("constructor")
         && is_function_like_expr(&member.obj)
 }
 
+/// Recognize one-argument `getPrototypeOf` calls on unqualified builtins.
 pub fn function_prototype_builtin(expr: &Expr) -> Option<&'static str> {
     let Expr::Call(call) = expr else {
         return None;

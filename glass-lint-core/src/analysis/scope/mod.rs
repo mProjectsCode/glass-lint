@@ -4,6 +4,10 @@
 //! that can be followed without speculation: imports, unshadowed globals,
 //! direct aliases, selected static shapes, and prior assignments. Unknown or
 //! mutable cases intentionally resolve to local/absent provenance.
+//!
+//! Collection is split into declaration prepass, source-order provenance, and
+//! immutable query indexes. Binding IDs and assignment versions make later
+//! queries position-sensitive without rebuilding the AST.
 
 use std::collections::BTreeMap;
 
@@ -26,6 +30,7 @@ impl ScopeGraph {
         Self::collect_with_environment(program, &crate::Environment::default())
     }
 
+    /// Build one matcher-independent scope graph using the configured globals.
     pub(super) fn collect_with_environment(
         program: &Program,
         environment: &crate::Environment,

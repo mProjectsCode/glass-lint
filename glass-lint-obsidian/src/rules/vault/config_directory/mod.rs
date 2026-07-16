@@ -1,3 +1,5 @@
+//! Obsidian configuration-directory indicator rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects string and static-template fragments containing the exact

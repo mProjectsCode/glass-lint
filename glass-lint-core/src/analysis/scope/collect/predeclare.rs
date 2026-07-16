@@ -16,10 +16,12 @@ use super::{
 };
 
 pub(super) struct PredeclareVisitor<'a> {
+    /// Collector whose scope tree and hoisted bindings this pass populates.
     pub(super) collector: &'a mut AliasCollector,
 }
 
 impl PredeclareVisitor<'_> {
+    /// Insert import bindings before ordinary source-order traversal.
     fn insert_import(&mut self, import: &ImportDecl) {
         let scope = self.collector.current_scope();
         let module = import.src.value.to_string_lossy().to_string();
@@ -58,6 +60,7 @@ impl PredeclareVisitor<'_> {
         }
     }
 
+    /// Enter a function scope and predeclare all parameter bindings.
     fn push_function(&mut self, span: Span, parameters: &[Param]) {
         self.collector.push_scope(span, ScopeKind::Function);
         let scope = self.collector.current_scope();
@@ -66,6 +69,7 @@ impl PredeclareVisitor<'_> {
         }
     }
 
+    /// Leave a function/block scope created by this visitor.
     fn pop_scope(&mut self) {
         debug_assert!(self.collector.stack.len() > 1);
         self.collector.pop_scope();

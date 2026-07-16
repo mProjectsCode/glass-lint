@@ -1,3 +1,5 @@
+//! Markdown renderer rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects syntactic calls to `MarkdownRenderer.render` and

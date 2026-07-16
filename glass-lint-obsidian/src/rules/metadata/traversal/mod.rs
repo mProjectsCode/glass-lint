@@ -1,3 +1,5 @@
+//! Obsidian metadata-map traversal rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Severity};
 
 /// Detects `Object.entries`, `Object.keys`, and `Object.values` when their

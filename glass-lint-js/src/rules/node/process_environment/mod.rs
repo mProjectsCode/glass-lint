@@ -1,3 +1,5 @@
+//! Node process-environment rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects rooted reads of Node's `process.env` and `process.platform`,

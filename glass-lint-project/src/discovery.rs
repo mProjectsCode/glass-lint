@@ -21,14 +21,17 @@ pub struct ProjectDiscovery<'a> {
 }
 
 impl<'a> ProjectDiscovery<'a> {
+    /// Create a discovery view over validated loader options.
     pub fn new(options: &'a ProjectLoadOptions) -> Self {
         Self { options }
     }
 
+    /// Borrow the discovery policy.
     pub fn options(&self) -> &ProjectLoadOptions {
         self.options
     }
 
+    /// Resolve a selection into sorted, root-contained initial source paths.
     pub fn initial_paths(
         &self,
         selection: &ProjectSelection,
@@ -274,6 +277,7 @@ fn read_tsconfig_with_extends(
     Ok(effective)
 }
 
+/// Make a selection path absolute without requiring it to exist yet.
 pub fn absolute_path(path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
@@ -282,6 +286,7 @@ pub fn absolute_path(path: &Path) -> PathBuf {
     }
 }
 
+/// Canonicalize a path and preserve loader-specific I/O context on failure.
 pub fn realpath(path: &Path) -> Result<PathBuf, ProjectLoadError> {
     fs::canonicalize(path).map_err(|source| ProjectLoadError::Io {
         path: path.to_path_buf(),
@@ -289,10 +294,12 @@ pub fn realpath(path: &Path) -> Result<PathBuf, ProjectLoadError> {
     })
 }
 
+/// Test lexical containment in the canonical project-root namespace.
 pub fn inside_root(root: &Path, path: &Path) -> bool {
     path.strip_prefix(root).is_ok()
 }
 
+/// Test whether any project-relative component is in the exclusion set.
 pub fn excluded_path(root: &Path, path: &Path, excluded: &BTreeSet<String>) -> bool {
     path.strip_prefix(root).is_ok_and(|relative| {
         relative.components().any(|component| {

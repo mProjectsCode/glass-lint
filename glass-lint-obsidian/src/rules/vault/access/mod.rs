@@ -1,3 +1,5 @@
+//! Obsidian vault-root access rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects reads of the rooted `app.vault` object, including `this.app` and

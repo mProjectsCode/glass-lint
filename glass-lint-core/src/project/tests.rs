@@ -1,3 +1,6 @@
+//! Project-session integration tests for normalization, linking, flow, and
+//! report ownership across multiple authored source files.
+
 use super::*;
 use crate::{
     Position, SourceRange,

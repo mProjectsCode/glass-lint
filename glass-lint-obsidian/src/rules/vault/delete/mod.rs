@@ -1,3 +1,5 @@
+//! Obsidian vault deletion rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects rooted calls to the vault `delete`/`trash` APIs and the file

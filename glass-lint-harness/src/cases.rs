@@ -1,3 +1,8 @@
+//! Fixture discovery and directive/manifest parsing.
+//!
+//! Case IDs and file order are normalized before execution so reports and
+//! adapter requests remain stable across filesystem traversal implementations.
+
 #![allow(clippy::cast_possible_truncation)]
 
 use std::{
@@ -30,6 +35,8 @@ fn default_filename(path: &Path) -> String {
 }
 
 pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
+    // Project manifests claim their whole directory; ordinary source files
+    // beneath those directories must not be loaded as duplicate cases.
     let mut project_directories = BTreeSet::new();
     for entry in WalkDir::new(root) {
         let entry = entry?;
@@ -85,6 +92,8 @@ pub fn load_cases(root: &Path) -> Result<Vec<Case>> {
 }
 
 fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
+    // Directives are read only from leading comments, while expectation lines
+    // may be attached to code and therefore use their preceding line rules.
     let relative = path.strip_prefix(root).unwrap_or(path);
     let id = relative
         .with_extension("")

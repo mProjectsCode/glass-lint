@@ -1,12 +1,19 @@
+//! Optional tracing subscriber construction for core/front-end diagnostics.
+
 use tracing_subscriber::{
     EnvFilter, Layer, Registry, layer::SubscriberExt, registry::LookupSpan, util::SubscriberInitExt,
 };
 
 #[derive(Clone, Copy, Debug)]
+/// Coarse tracing filter level exposed to front ends.
 pub enum TelemetryLevel {
+    /// Warnings and errors only.
     Quiet,
+    /// Informational events.
     Normal,
+    /// Debug events.
     Verbose,
+    /// Full trace events.
     Trace,
 }
 impl TelemetryLevel {
@@ -20,6 +27,7 @@ impl TelemetryLevel {
     }
 }
 
+/// Build a tracing layer that writes formatted events to stderr.
 pub fn stderr_layer<S>(level: TelemetryLevel) -> impl Layer<S> + Send + Sync
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
@@ -27,6 +35,7 @@ where
     stderr_layer_with_color(level, false)
 }
 
+/// Build a stderr layer with explicit ANSI color behavior.
 pub fn stderr_layer_with_color<S>(level: TelemetryLevel, color: bool) -> impl Layer<S> + Send + Sync
 where
     S: tracing::Subscriber + for<'a> LookupSpan<'a>,
@@ -57,6 +66,7 @@ where
     layer_with_writer_and_color(level, false, writer)
 }
 
+/// Build a formatter over an explicit writer and color setting.
 pub fn layer_with_writer_and_color<S, W>(
     level: TelemetryLevel,
     color: bool,
@@ -80,10 +90,12 @@ where
         )
 }
 
+/// Install normal telemetry output on stderr.
 pub fn try_init(level: TelemetryLevel) -> Result<(), tracing_subscriber::util::TryInitError> {
     try_init_with_color(level, false)
 }
 
+/// Install telemetry on stderr with explicit ANSI color behavior.
 pub fn try_init_with_color(
     level: TelemetryLevel,
     color: bool,
@@ -102,6 +114,7 @@ where
     try_init_with_writer_and_color(level, false, writer)
 }
 
+/// Install telemetry with an explicit writer and color behavior.
 pub fn try_init_with_writer_and_color<W>(
     level: TelemetryLevel,
     color: bool,

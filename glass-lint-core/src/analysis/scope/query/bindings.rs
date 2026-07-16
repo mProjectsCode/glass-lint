@@ -1,13 +1,17 @@
+//! Lexical binding, scope, assignment-version, and shadowing queries.
+
 use super::{
     BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr, Ident,
     ScopeGraph, ScopeKind, Span,
 };
 
 impl ScopeGraph {
+    /// Whether a name is configured as a host global.
     pub(in crate::analysis) fn is_configured_global(&self, name: &str) -> bool {
         self.is_global(name)
     }
 
+    /// Resolve the binding provenance visible at a use position.
     pub(in crate::analysis) fn binding_at(
         &self,
         name: &str,
@@ -54,6 +58,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Derive a global-rooted key only when no lexical binding shadows it.
     pub(in crate::analysis) fn global_key_for_expr(&self, expr: &Expr) -> Option<BindingKey> {
         match expr {
             Expr::Ident(ident) => self
@@ -75,6 +80,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Return the assignment version visible at a source position.
     pub(in crate::analysis) fn binding_version_at(
         &self,
         scope: usize,
@@ -84,6 +90,7 @@ impl ScopeGraph {
         self.binding_version(scope, name, span)
     }
 
+    /// Build a stable key for a name, using a global root when unbound.
     pub(in crate::analysis) fn binding_key_for_name(
         &self,
         name: &str,
@@ -99,6 +106,7 @@ impl ScopeGraph {
         Some(BindingKey::new(BindingRoot::Global(name.to_string())))
     }
 
+    /// Find the nearest lexical declaration and its owning scope.
     pub(in crate::analysis) fn binding_with_scope_at(
         &self,
         name: &str,
@@ -113,12 +121,14 @@ impl ScopeGraph {
         }
     }
 
+    /// Whether `with` or prior unshadowed `eval` invalidates lookup here.
     pub(in crate::analysis) fn has_dynamic_lookup_at(&self, span: Span) -> bool {
         let scope = self.scope_at(span);
         self.scope_or_ancestor_has_kind(scope, ScopeKind::Dynamic)
             || self.has_eval_after(scope, span)
     }
 
+    /// Test a scope and all parents for a specific scope kind.
     pub(in crate::analysis) fn scope_or_ancestor_has_kind(
         &self,
         mut scope: usize,
@@ -135,6 +145,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Whether one lexical scope is nested within another.
     pub(in crate::analysis) fn scope_is_within(&self, mut scope: usize, ancestor: usize) -> bool {
         loop {
             if scope == ancestor {
@@ -147,6 +158,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Return static arguments captured by a supported bound callable.
     pub(in crate::analysis) fn bound_arguments(
         &self,
         ident: &Ident,
@@ -162,6 +174,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Return the innermost-to-outermost scope chain at a position.
     pub(in crate::analysis) fn scope_chain_at(&self, span: Span) -> Vec<usize> {
         let mut scopes = Vec::new();
         let mut scope = self.scope_at(span);
@@ -175,12 +188,14 @@ impl ScopeGraph {
         scopes
     }
 
+    /// Require a configured global to be unshadowed and dynamically resolvable.
     pub(in crate::analysis) fn unshadowed_global_at(&self, name: &str, span: Span) -> bool {
         self.is_global(name)
             && !self.has_dynamic_lookup_at(span)
             && self.binding_at(name, span).is_none()
     }
 
+    /// Require an identifier to have no lexical or dynamic binding.
     pub(in crate::analysis) fn unshadowed_unbound_at(&self, name: &str, span: Span) -> bool {
         !self.has_dynamic_lookup_at(span) && self.binding_at(name, span).is_none()
     }

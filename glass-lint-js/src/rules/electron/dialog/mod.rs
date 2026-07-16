@@ -1,3 +1,5 @@
+//! Electron native-dialog rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects calls to Electron's `dialog.showOpenDialog` and

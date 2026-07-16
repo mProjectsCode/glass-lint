@@ -64,6 +64,7 @@ impl ProjectInput {
         Ok(self)
     }
 
+    /// Assign stable IDs from the normalized path order used by the linker.
     #[must_use]
     pub fn module_ids(&self) -> BTreeMap<String, ModuleId> {
         let mut paths = self
@@ -85,6 +86,7 @@ impl ProjectInput {
     }
 }
 
+/// Validate the root path that anchors project-relative normalization.
 pub fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> {
     if path.as_os_str().is_empty() {
         Err(ProjectInputError::InvalidPath(String::new()))
@@ -93,6 +95,7 @@ pub fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> {
     }
 }
 
+/// Normalize a project-relative path and reject escapes/absolute paths.
 pub fn normalize_relative(path: &str) -> Result<String, ProjectInputError> {
     let original = path.to_string();
     let path = path.replace('\\', "/");
@@ -114,6 +117,7 @@ pub fn normalize_relative(path: &str) -> Result<String, ProjectInputError> {
     }
 }
 
+/// Normalize an explicitly outside-project target without losing absoluteness.
 pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError> {
     let original = path.to_string();
     let path = path.replace('\\', "/");
@@ -149,6 +153,7 @@ pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError>
     })
 }
 
+/// Normalize and validate one typed resolver result.
 pub fn normalize_result(result: &mut ResolutionResult) -> Result<(), ProjectInputError> {
     match result {
         ResolutionResult::Internal { path } => *path = normalize_relative(path)?,
@@ -167,6 +172,7 @@ pub fn normalize_result(result: &mut ResolutionResult) -> Result<(), ProjectInpu
     Ok(())
 }
 
+/// Normalize an importer/range key and enforce one-based ordered positions.
 pub fn normalize_resolution_key(key: &mut ResolutionRequestKey) -> Result<(), ProjectInputError> {
     key.importer = normalize_relative(&key.importer)?;
     if key.range.start.line == 0

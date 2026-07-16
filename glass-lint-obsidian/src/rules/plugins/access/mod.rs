@@ -1,3 +1,5 @@
+//! Obsidian plugin-manager access rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects reads from Obsidian's plugin manager: instances, manifests, and

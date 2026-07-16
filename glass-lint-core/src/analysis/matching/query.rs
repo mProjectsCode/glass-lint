@@ -1,4 +1,8 @@
 //! ApiMatcher-specific occurrence queries and evidence construction.
+//!
+//! Queries select only the provenance index allowed by each matcher. They
+//! return source-ordered evidence assembled from normalized occurrence slices;
+//! argument-bearing matchers are delegated to the fact projections instead.
 
 #[cfg(test)]
 use swc_common::Span;
@@ -10,6 +14,10 @@ use super::{
 };
 
 impl MatcherFacts {
+    /// Collect evidence for all matchers in one rule-independent index.
+    ///
+    /// The returned order follows matcher order and each occurrence bucket's
+    /// deterministic fact/span order.
     pub fn evidence_for(&self, matcher: &ApiMatcher) -> Vec<ApiEvidence> {
         let mut evidence = Vec::new();
         self.collect_call_evidence(&matcher.calls, &mut evidence);

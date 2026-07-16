@@ -1,6 +1,9 @@
+//! Constant value conversion for resolver-owned value identities.
+
 use super::{BindingKey, ConstValue, Resolver, Value, ValueId};
 
 impl Resolver {
+    /// Read a bounded constant value from the abstract value arena.
     pub(in crate::analysis) fn const_value(&self, id: ValueId) -> ConstValue {
         let Some(value) = self.values.borrow().get(id).cloned() else {
             return ConstValue::Unknown;
@@ -22,6 +25,7 @@ impl Resolver {
         }
     }
 
+    /// Intern a constant tree while preserving the optional binding identity.
     pub(in crate::analysis) fn intern_const_value(
         &self,
         value: ConstValue,

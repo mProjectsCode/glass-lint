@@ -8,6 +8,7 @@ use glass_lint_core::{
     rules::{Builder, Confidence, Matcher, Rule, Severity},
 };
 
+/// Build a strict rule so scope tests observe only proven global provenance.
 fn rule(id: &str) -> Builder {
     Rule::builder(id)
         .label(id)
@@ -16,6 +17,8 @@ fn rule(id: &str) -> Builder {
         .confidence(Confidence::High)
 }
 
+/// Assert exact findings and reject parser diagnostics before checking
+/// semantics.
 fn assert_count(source: &str, rule: Rule, expected: usize) {
     let mut environment = Environment::default();
     environment
@@ -27,6 +30,7 @@ fn assert_count(source: &str, rule: Rule, expected: usize) {
     assert_eq!(report.findings.len(), expected, "{source}");
 }
 
+/// Create the rooted alias rule shared by lexical-scope cases.
 fn rooted_read_rule() -> Rule {
     rule("rooted-read")
         .matcher(Matcher::rooted_member_call("host.files.read"))

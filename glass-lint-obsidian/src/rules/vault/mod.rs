@@ -1,3 +1,8 @@
+//! Obsidian vault access and mutation rule catalog.
+//!
+//! Vault rules share rooted `app.vault` provenance while keeping read, write,
+//! enumeration, movement, adapter, and literal-indicator policies separate.
+
 mod access;
 mod adapter;
 mod config_directory;
@@ -10,6 +15,8 @@ mod resource_url;
 mod write;
 use glass_lint_core::rules::Rule;
 pub fn rules() -> Vec<Rule> {
+    // Put direct access and file mutation before adapter/path/event indicators
+    // in a fixed order for deterministic provider catalogs.
     vec![
         access::rule(),
         read::rule(),

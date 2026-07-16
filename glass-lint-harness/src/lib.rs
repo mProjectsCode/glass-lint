@@ -1,3 +1,8 @@
+//! Reusable conformance harness for cases, adapters, reports, and profiling.
+//!
+//! This crate keeps execution policy independent from the CLI so tests and
+//! alternate front ends observe the same normalization and comparison rules.
+
 mod adapters;
 mod builtins;
 mod cases;

@@ -1,8 +1,15 @@
+//! Call-site provenance and callable-value resolution.
+//!
+//! Ordinary calls produce opaque fresh values. Only literal dynamic imports
+//! and modeled `.bind()` calls preserve callable identity, and CommonJS
+//! recognition requires an unshadowed global `require` binding.
+
 use super::{
     CallExpr, Callee, Expr, Lit, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
 };
 
 impl Resolver {
+    /// Recover global callable provenance for a resolved value at a position.
     pub(super) fn call_provenance_at(
         &self,
         id: ValueId,
@@ -20,6 +27,7 @@ impl Resolver {
             })
     }
 
+    /// Return a literal module name for an unshadowed global `require` call.
     pub(in crate::analysis) fn require_module_name(&self, call: &CallExpr) -> Option<String> {
         let Callee::Expr(callee) = &call.callee else {
             return None;
@@ -40,6 +48,7 @@ impl Resolver {
         Some(module.value.to_string_lossy().to_string())
     }
 
+    /// Check that an identifier is the unshadowed CommonJS/global loader name.
     pub(in crate::analysis) fn is_unshadowed_commonjs_name(
         &self,
         ident: &swc_ecma_ast::Ident,
@@ -48,6 +57,7 @@ impl Resolver {
         ident.sym == name && self.scopes.unshadowed_unbound_at(name, ident.span)
     }
 
+    /// Resolve a call result, preserving only supported callable wrappers.
     pub(in crate::analysis) fn resolve_call_expression(
         &self,
         call: &swc_ecma_ast::CallExpr,
@@ -103,6 +113,8 @@ impl Resolver {
         )))
     }
 
+    /// Intern callable/module/global value identity with optional binding
+    /// scope.
     pub(in crate::analysis) fn intern_call_value(
         &self,
         call: &SymbolCallProvenance,

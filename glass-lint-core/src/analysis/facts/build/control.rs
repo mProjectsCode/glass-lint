@@ -1,3 +1,9 @@
+//! Control-region markers consumed by bounded flow analysis.
+//!
+//! A region brackets each branch, loop, switch, or exception path. The
+//! projector uses those markers to invalidate or merge state at control-flow
+//! joins without unrolling unbounded execution.
+
 use swc_common::Spanned;
 use swc_ecma_ast::{
     CondExpr, DoWhileStmt, ForInStmt, ForOfStmt, ForStmt, IfStmt, SwitchStmt, TryStmt, WhileStmt,
@@ -7,10 +13,12 @@ use swc_ecma_visit::VisitWith;
 use super::{ControlKind, FactBuilder, FactKind, FactPayload, Span};
 
 impl FactBuilder<'_> {
+    /// Allocate the region identity shared by all markers for one construct.
     pub(super) fn next_control_region(&mut self) -> u32 {
         self.traversal.next_control_region()
     }
 
+    /// Emit a control marker without attaching a speculative value to it.
     pub(super) fn emit_control(&mut self, span: Span, kind: ControlKind, region: u32) {
         self.emit(
             FactKind::Control,
@@ -88,6 +96,9 @@ impl FactBuilder<'_> {
     }
 
     fn record_loop(&mut self, span: Span, guaranteed: bool, visit_body: impl FnOnce(&mut Self)) {
+        // Each loop receives one region so flow can invalidate state at the
+        // back edge without pretending that an arbitrary number of iterations
+        // was unrolled.
         let region = self.next_control_region();
         self.emit_control(span, ControlKind::LoopStart { guaranteed }, region);
         visit_body(self);

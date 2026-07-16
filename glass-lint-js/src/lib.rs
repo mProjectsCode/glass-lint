@@ -1,4 +1,8 @@
 //! Generic JavaScript, browser, Node.js, and Electron rules.
+//!
+//! This crate owns the provider namespace, its default host environment, and
+//! the recommended/heuristic catalog profiles while delegating matching to
+//! core.
 
 use std::collections::BTreeSet;
 
@@ -8,34 +12,41 @@ mod disclosures;
 mod rules;
 
 #[must_use]
+/// Return metadata for every rule in the `js:` provider catalog.
 pub fn rule_catalog() -> Vec<RuleMetadata> {
     catalog(default_environment()).metadata()
 }
 
 #[must_use]
+/// Build the recommended high-confidence JavaScript linter.
 pub fn recommended_linter() -> Linter {
     recommended_linter_with_environment(default_environment())
 }
 
 /// Build the recommended linter with an exact caller-supplied environment.
 #[must_use]
+/// Build the recommended linter with the provider's default environment.
 pub fn recommended_linter_with_environment(environment: Environment) -> Linter {
     let catalog = catalog(environment);
     Linter::with_confidence(catalog, glass_lint_core::rules::Confidence::High)
 }
 
 #[must_use]
+/// Build the complete JavaScript linter, including heuristic rules.
 pub fn heuristic_linter() -> Linter {
     heuristic_linter_with_environment(default_environment())
 }
 
 /// Build the complete linter with an exact caller-supplied environment.
 #[must_use]
+/// Build the complete linter with an exact caller-supplied environment.
 pub fn heuristic_linter_with_environment(environment: Environment) -> Linter {
     Linter::new(catalog(environment))
 }
 
 #[must_use]
+/// Collect stable disclosure categories for findings in the JavaScript
+/// namespace.
 pub fn disclosures_for_report(report: &LintReport) -> BTreeSet<&'static str> {
     report
         .findings
@@ -94,6 +105,8 @@ pub fn default_environment() -> Environment {
 }
 
 fn catalog(environment: Environment) -> RuleCatalog {
+    // Construct one namespaced catalog so every public profile shares the same
+    // rule metadata and environment, differing only in confidence filtering.
     RuleCatalog::with_environment("js", rules::all(), environment).unwrap()
 }
 

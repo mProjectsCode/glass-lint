@@ -1,3 +1,9 @@
+//! Declarative matcher vocabulary for calls, members, values, and object flow.
+//!
+//! Matchers distinguish heuristic spelling from rooted/global/module
+//! provenance. Builder APIs are ergonomic, while [`ApiMatcher::validate`] and
+//! normalization enforce the precision and boundedness contract.
+
 mod call;
 mod derived;
 pub mod flow;
@@ -9,32 +15,56 @@ pub use flow::*;
 pub use member::*;
 
 #[derive(Debug, Clone, Default)]
+/// Collection of matcher families before validation and normalization.
 pub struct ApiMatcher {
+    /// Direct callable matchers.
     pub calls: Vec<CallMatcher>,
+    /// Member-call matchers.
     pub member_calls: Vec<MemberCallMatcher>,
+    /// Member-read matchers.
     pub member_reads: Vec<MemberReadMatcher>,
+    /// Imported module specifier matchers.
     pub imports: Vec<String>,
+    /// Static literal matchers.
     pub string_literals: Vec<String>,
+    /// Class matchers.
     pub classes: Vec<ClassMatcher>,
+    /// Constructor matchers.
     pub constructors: Vec<ConstructorMatcher>,
+    /// Object lifecycle flow matchers.
     pub flows: Vec<ObjectFlowMatcher>,
+    /// Returned-object member-call matchers.
     pub returned_member_calls: Vec<ReturnedMemberCallMatcher>,
+    /// Returned-object member-read matchers.
     pub returned_member_reads: Vec<ReturnedMemberReadMatcher>,
+    /// Module-export instance member-call matchers.
     pub instance_member_calls: Vec<InstanceMemberCallMatcher>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// One typed matcher declaration in a rule.
 pub enum Matcher {
+    /// Direct callable matcher.
     Call(CallMatcher),
+    /// Member-call matcher.
     MemberCall(MemberCallMatcher),
+    /// Member-read matcher.
     MemberRead(MemberReadMatcher),
+    /// Module import matcher.
     Import(String),
+    /// Static string matcher.
     StringLiteral(String),
+    /// Class matcher.
     Class(ClassMatcher),
+    /// Constructor matcher.
     Constructor(ConstructorMatcher),
+    /// Object-flow matcher.
     ObjectFlow(ObjectFlowMatcher),
+    /// Returned-object member-call matcher.
     ReturnedMemberCall(ReturnedMemberCallMatcher),
+    /// Returned-object member-read matcher.
     ReturnedMemberRead(ReturnedMemberReadMatcher),
+    /// Exported-instance member-call matcher.
     InstanceMemberCall(InstanceMemberCallMatcher),
 }
 
@@ -206,6 +236,7 @@ impl From<InstanceMemberCallMatcher> for Matcher {
 }
 
 impl ApiMatcher {
+    /// Assemble a matcher collection from typed declarations.
     pub fn from_matchers(matchers: Vec<Matcher>) -> Self {
         let mut api_matcher = Self::default();
         for matcher in matchers {
@@ -214,6 +245,7 @@ impl ApiMatcher {
         api_matcher
     }
 
+    /// Flatten matcher families in their canonical family order.
     pub fn into_matchers(self) -> Vec<Matcher> {
         self.calls
             .into_iter()
@@ -243,6 +275,7 @@ impl ApiMatcher {
             .collect()
     }
 
+    /// Append one typed matcher to its corresponding family.
     pub fn push(&mut self, matcher: Matcher) {
         match matcher {
             Matcher::Call(value) => self.calls.push(value),
@@ -259,10 +292,12 @@ impl ApiMatcher {
         }
     }
 
+    /// Validate all declarations without normalizing or mutating them.
     pub fn validate(&self) -> Result<(), String> {
         super::validation::validate(self)
     }
 
+    /// Whether no matcher family contains a declaration.
     pub fn is_empty(&self) -> bool {
         self.calls.is_empty()
             && self.member_calls.is_empty()

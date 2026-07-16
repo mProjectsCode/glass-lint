@@ -14,23 +14,30 @@ pub struct BudgetTracker {
 }
 
 impl BudgetTracker {
+    /// Permanently record exhaustion for a nested pass.
     pub fn mark_exhausted(&self) {
         self.exhausted.set(true);
     }
 
+    /// Whether any nested operation has exhausted this tracker.
     pub fn is_exhausted(&self) -> bool {
         self.exhausted.get()
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Monotonic operation counter with a hard upper bound.
 pub struct Budget {
+    /// Maximum permitted operation count.
     limit: usize,
+    /// Operations successfully charged so far.
     used: usize,
+    /// Whether an attempted charge exceeded the bound.
     exhausted: bool,
 }
 
 impl Budget {
+    /// Create an unused budget with the supplied limit.
     pub const fn new(limit: usize) -> Self {
         Self {
             limit,
@@ -39,10 +46,12 @@ impl Budget {
         }
     }
 
+    /// Charge one operation if capacity remains.
     pub fn try_push(&mut self) -> bool {
         self.try_add(1)
     }
 
+    /// Charge several operations atomically, failing closed on overflow.
     pub fn try_add(&mut self, amount: usize) -> bool {
         let Some(next) = self.used.checked_add(amount) else {
             self.exhausted = true;
@@ -56,6 +65,7 @@ impl Budget {
         true
     }
 
+    /// Whether a charge has failed.
     pub fn exhausted(&self) -> bool {
         self.exhausted
     }

@@ -1,4 +1,8 @@
 //! Typed occurrence storage and deterministic normalization.
+//!
+//! Occurrences are sorted by semantic fact identity and source span, then
+//! deduplicated within each key. Queries can therefore borrow stable slices
+//! and emit evidence without repeating normalization policy.
 
 use std::{
     collections::BTreeMap,
@@ -14,37 +18,46 @@ use super::super::facts::FactId;
 /// span ordering or duplicate policies for each provenance view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::analysis) struct Occurrence {
+    /// Canonical semantic event identity.
     event: FactId,
+    /// Source span used for evidence rendering and tie-breaking.
     span: Span,
 }
 
 impl Occurrence {
+    /// Construct one typed event/span occurrence.
     pub(super) fn new(event: FactId, span: Span) -> Self {
         Self { event, span }
     }
 
+    /// Return the canonical event identity.
     pub(super) fn event(&self) -> FactId {
         self.event
     }
 
+    /// Return the source span associated with the event.
     pub(super) fn span(&self) -> Span {
         self.span
     }
 }
 
 #[derive(Clone, Debug, Default)]
+/// Ordered occurrence buckets keyed by a typed semantic identity.
 pub(in crate::analysis) struct OccurrenceIndex<K: Ord>(BTreeMap<K, Vec<Occurrence>>);
 
 #[allow(dead_code)]
 impl<K: Ord> OccurrenceIndex<K> {
+    /// Append an already constructed occurrence before normalization.
     pub(super) fn push_occurrence(&mut self, key: K, occurrence: Occurrence) {
         self.0.entry(key).or_default().push(occurrence);
     }
 
+    /// Append one event/span pair before normalization.
     pub(super) fn push(&mut self, key: K, event: FactId, span: Span) {
         self.push_occurrence(key, Occurrence::new(event, span));
     }
 
+    /// Sort and deduplicate every key bucket deterministically.
     pub(super) fn normalize(&mut self) {
         for occurrences in self.0.values_mut() {
             occurrences.sort_by_key(|occurrence| {
@@ -54,6 +67,7 @@ impl<K: Ord> OccurrenceIndex<K> {
         }
     }
 
+    /// Merge another index and normalize the combined buckets.
     pub(super) fn merge(&mut self, other: Self) {
         for (key, occurrences) in other.0 {
             self.0.entry(key).or_default().extend(occurrences);
@@ -61,6 +75,7 @@ impl<K: Ord> OccurrenceIndex<K> {
         self.normalize();
     }
 
+    /// Borrow one normalized occurrence bucket, or an empty slice if absent.
     pub(super) fn occurrences(&self, key: &K) -> &[Occurrence] {
         self.0.get(key).map_or(&[], Vec::as_slice)
     }

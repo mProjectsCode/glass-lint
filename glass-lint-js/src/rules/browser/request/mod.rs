@@ -1,3 +1,5 @@
+//! Browser network-request rule definition.
+
 use glass_lint_core::rules::{
     CallMatcher, Confidence, ConstructorMatcher, MemberCallMatcher, Rule, Severity,
 };

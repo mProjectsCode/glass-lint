@@ -4,6 +4,10 @@
 //! already assigned value identities, effective call arguments, member chains,
 //! and function targets.  The transfer state below only follows those typed
 //! identities and emits evidence at canonical call sites.
+//!
+//! Control frames snapshot environments at joins, while transfer modules
+//! update aliases and lifecycle requirements. Any unsupported or over-budget
+//! path is discarded rather than converted into a speculative finding.
 
 mod control;
 mod evidence;
@@ -43,6 +47,8 @@ pub(super) fn collect_with_limits(
     rule_count: usize,
     limits: FlowLimits,
 ) -> Vec<Vec<ApiEvidence>> {
+    // Helpers are summarized before projection so a selected flow rule never
+    // changes the canonical fact walk or requires another AST traversal.
     let flow_index = FlowIndex::new(rules);
     let helpers = FunctionSummaries::collect(stream, &flow_index);
     let mut projector = ObjectFlowProjector::new(stream, flow_index, helpers, rule_count, limits);
@@ -71,7 +77,9 @@ struct ObjectFlowProjector<'rules, 'stream> {
     flow_state: FlowStateTable,
     /// Object IDs are local to one projection and bounded by `limits`.
     next_object_id: u32,
+    /// Per-run hard limits for objects, states, and evidence emissions.
     limits: FlowLimits,
+    /// Nested branch/function frames used to restore environments at joins.
     control: Vec<ControlFrame>,
     /// Facts after an unreachable branch are ignored until a join restores a
     /// reachable environment.

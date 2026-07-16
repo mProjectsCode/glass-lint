@@ -1,3 +1,5 @@
+//! Browser media-capture permission rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects unshadowed `navigator.mediaDevices.getUserMedia` calls and aliases

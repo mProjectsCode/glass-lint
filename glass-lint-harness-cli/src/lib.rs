@@ -1,4 +1,8 @@
 //! Command-line orchestration for the harness.
+//!
+//! The CLI owns presentation and exit-status policy; case discovery, adapters,
+//! and analysis remain in `glass-lint-harness` so other front ends can reuse
+//! them.
 
 pub mod args;
 
@@ -54,6 +58,8 @@ pub fn run(args: args::Args) -> Result<bool> {
 }
 
 fn adapters(configured: Vec<(String, PathBuf)>) -> Vec<Box<dyn Adapter>> {
+    // Always include the in-process engine; external adapters extend the same
+    // run rather than replacing the canonical implementation.
     let mut adapters: Vec<Box<dyn Adapter>> = vec![Box::new(GlassLintAdapter)];
     adapters.extend(
         configured
@@ -64,6 +70,7 @@ fn adapters(configured: Vec<(String, PathBuf)>) -> Vec<Box<dyn Adapter>> {
 }
 
 fn init_telemetry() {
+    // CLI diagnostics belong on stderr and must not alter report stdout.
     let _ = glass_lint_core::telemetry::try_init_with_writer_and_color(
         glass_lint_core::telemetry::TelemetryLevel::Quiet,
         console::colors_enabled_stderr(),

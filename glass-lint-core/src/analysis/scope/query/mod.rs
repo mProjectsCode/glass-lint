@@ -1,3 +1,9 @@
+//! Position-sensitive queries over the immutable scope graph.
+//!
+//! Query modules expose small adapters for binding identity, constants,
+//! function targets, module provenance, and rooted chains. They fail closed
+//! when dynamic lookup, shadowing, or mutation makes a fact ambiguous.
+
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{Expr, Ident, MemberExpr};
 

@@ -1,3 +1,5 @@
+//! Obsidian network-request rule definition.
+
 use glass_lint_core::rules::{CallMatcher, Confidence, Matcher, Rule, Severity};
 
 /// Detects calls to the exact `request` and `requestUrl` exports of the

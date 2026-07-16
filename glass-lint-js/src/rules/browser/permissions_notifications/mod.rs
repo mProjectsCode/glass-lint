@@ -1,3 +1,5 @@
+//! Browser notification-permission rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects unshadowed `Notification.requestPermission` calls and aliases of

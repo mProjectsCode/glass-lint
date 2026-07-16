@@ -1,3 +1,5 @@
+//! Node and Web Crypto operation rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects imports of the `crypto`, `node:crypto`, and `crypto-js` modules,

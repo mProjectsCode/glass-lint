@@ -1,4 +1,8 @@
 //! Validated, filesystem-free contracts for project-level analysis.
+//!
+//! The project API accepts owned sources and explicit resolver answers. It
+//! normalizes paths and ranges, analyzes each source once, and preserves
+//! module/file ownership when linking and reporting findings.
 
 pub mod input;
 mod report;

@@ -1,11 +1,17 @@
 //! Rooted expression traversal shared by lexical and alias collectors.
+//!
+//! A rooted chain is returned only for a global, proven alias, or returned
+//! object. Calls are transparent only through the supported expression
+//! shapes; arbitrary computed or dynamic access returns no chain.
 
 use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase};
 
 use super::super::{BindingProvenance, ScopeGraph};
 
 pub(in crate::analysis) trait RootedExprContext {
+    /// Resolve an identifier to a rooted chain at its use position.
     fn rooted_ident_chain(&self, ident: &Ident) -> Option<String>;
+    /// Resolve a statically named member to a rooted chain.
     fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String>;
 }
 
@@ -65,6 +71,7 @@ pub(in crate::analysis) fn rooted_expr_chain_with(
 }
 
 impl ScopeGraph {
+    /// Resolve a supported expression shape to a rooted symbol path.
     pub(in crate::analysis) fn rooted_expr_chain(&self, expr: &Expr) -> Option<String> {
         rooted_expr_chain_with(self, expr)
     }

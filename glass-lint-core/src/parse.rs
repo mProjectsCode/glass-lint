@@ -1,3 +1,5 @@
+//! Bounded JavaScript/TypeScript parsing and source-position conversion.
+
 use swc_common::{FileName, GLOBALS, Globals, Mark, SourceMap, Spanned, sync::Lrc};
 use swc_ecma_ast::{EsVersion, Program};
 use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax, TsSyntax, lexer::Lexer};
@@ -10,9 +12,13 @@ use crate::{
 };
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+/// Structured parser failure with an optional source range.
 pub struct ParseDiagnostic {
+    /// Stable diagnostic code.
     pub code: String,
+    /// Human-readable parser message.
     pub message: String,
+    /// Authored filename.
     pub filename: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<SourceRange>,
@@ -23,7 +29,9 @@ pub struct ParseDiagnostic {
     Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
 )]
 pub enum SourceLanguage {
+    /// JavaScript/JSX syntax family.
     JavaScript,
+    /// Runtime TypeScript syntax after in-memory stripping.
     TypeScript,
 }
 
@@ -72,16 +80,21 @@ impl SourceLanguage {
     }
 }
 
+/// Parsed program and its source map for location conversion.
 pub struct ParsedSource {
+    /// SWC AST consumed by semantic analysis.
     pub program: Program,
+    /// Source map retaining authored locations.
     pub source_map: Lrc<SourceMap>,
 }
 
 #[cfg(test)]
+/// Parse JavaScript using the default JavaScript language mode.
 pub fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
     parse_with_language(source, filename, SourceLanguage::JavaScript)
 }
 
+/// Parse a supported language while preserving authored source locations.
 pub fn parse_with_language(
     source: &str,
     filename: &str,

@@ -37,9 +37,10 @@ use crate::analysis::{
     value::{PathId, PathSegment, ValueId},
 };
 
-/// The single authoritative semantic fact builder.  After the lexical
-/// scope prepass, this visitor walks the AST exactly once and emits an
-/// immutable `FactStream` containing all semantic facts.
+/// The single authoritative semantic fact builder. After the lexical scope
+/// prepass, this visitor walks the AST exactly once and emits an immutable
+/// `FactStream` containing all semantic facts and a matcher-independent module
+/// interface.
 pub(super) struct FactBuilder<'a> {
     /// Scope and provenance answers are prepared before this AST walk.
     resolver: &'a Resolver,
@@ -136,6 +137,7 @@ impl<'a> FactBuilder<'a> {
 }
 
 #[cfg(test)]
+/// Build the canonical fact stream used by fact-construction tests.
 pub fn build_test_stream(program: &swc_ecma_ast::Program, resolver: &Resolver) -> FactStream {
     let mut builder = FactBuilder::new(resolver);
     program.visit_with(&mut builder);

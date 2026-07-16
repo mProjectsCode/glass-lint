@@ -1,3 +1,5 @@
+//! String-based timer dynamic-code rule definition.
+
 use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
 
 /// Detects calls proven to target the global `setTimeout` or `setInterval`

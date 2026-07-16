@@ -1,4 +1,9 @@
 //! Control-path state and environment algebra for object-flow projection.
+//!
+//! Environments are immutable snapshots at branch boundaries. Joining two
+//! reachable environments keeps only equal aliases and common requirement
+//! keys, which is the precision boundary that prevents path-local facts from
+//! leaking after a control-flow merge.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -12,15 +17,22 @@ use crate::api::classification::ApiEvidence;
 type EvidenceKey = (usize, usize, ObjectId, super::super::super::facts::FactId);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Snapshot of aliases, flow states, and reachability at a control boundary.
 pub(super) struct FlowEnvironment {
+    /// Value-to-object aliases proven on the snapshot path.
     aliases: BTreeMap<ValueId, ObjectId>,
+    /// Object/flow lifecycle states proven on the snapshot path.
     states: BTreeMap<(ObjectId, FlowId), FlowState>,
+    /// Whether execution can reach the snapshot.
     reachable: bool,
 }
 
 #[derive(Debug, Default)]
+/// Mutable live alias and object-state tables for one projector pass.
 pub(super) struct FlowStateTable {
+    /// Current value aliases, keyed by semantic value identity.
     aliases: BTreeMap<ValueId, ObjectId>,
+    /// Current lifecycle state for each object and flow matcher.
     states: BTreeMap<(ObjectId, FlowId), FlowState>,
 }
 impl FlowStateTable {
@@ -34,6 +46,8 @@ impl FlowStateTable {
     }
 
     pub(super) fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
+        // BTreeMap iteration gives callers stable object order for evidence and
+        // keeps duplicate aliases from multiplying the same state transition.
         self.aliases.values().copied()
     }
 
@@ -95,8 +109,11 @@ impl FlowStateTable {
 }
 
 #[derive(Debug)]
+/// Per-rule evidence with a bounded deduplication key set.
 pub(super) struct FlowEvidence {
+    /// Evidence grouped by selected rule index.
     items: Vec<Vec<ApiEvidence>>,
+    /// `(rule, flow, object, event)` identities already emitted.
     emitted: BTreeSet<EvidenceKey>,
 }
 
@@ -125,6 +142,7 @@ impl FlowEvidence {
 }
 
 #[derive(Debug, Clone)]
+/// Saved control construct state used to restore and join environments.
 pub(super) enum ControlFrame {
     Branch {
         region: u32,
@@ -159,13 +177,18 @@ pub(super) enum ControlFrame {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Abrupt completion that must be routed through enclosing control frames.
 pub(super) enum AbruptExit {
+    /// Exit the nearest loop or switch.
     Break,
+    /// Continue the nearest loop.
     Continue,
+    /// Exit the current function.
     Return,
 }
 
 impl FlowEnvironment {
+    /// Construct an unreachable environment with no usable state.
     pub(super) fn unreachable() -> Self {
         Self {
             aliases: BTreeMap::new(),
@@ -174,6 +197,7 @@ impl FlowEnvironment {
         }
     }
 
+    /// Join two paths, retaining only aliases and requirements proven on both.
     pub(super) fn join(left: &Self, right: &Self) -> Self {
         if !left.is_reachable() {
             return right.clone();
@@ -205,6 +229,7 @@ impl FlowEnvironment {
         }
     }
 
+    /// Join all reachable paths, or return unreachable when none survive.
     pub(super) fn join_many(environments: &[Self]) -> Self {
         let Some(first) = environments
             .iter()
@@ -221,6 +246,7 @@ impl FlowEnvironment {
             })
     }
 
+    /// Whether this snapshot represents a reachable execution path.
     pub(super) fn is_reachable(&self) -> bool {
         self.reachable
     }

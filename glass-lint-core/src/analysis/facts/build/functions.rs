@@ -1,3 +1,9 @@
+//! Function boundaries and parameter-path facts for local and project flow.
+//!
+//! Enter/exit facts identify the lexical owner and parameter paths of each
+//! callable body. This lets local and project flow transfer values through
+//! supported wrappers without treating nested functions as one scope.
+
 use swc_common::Spanned;
 use swc_ecma_ast::ClassMethod;
 
@@ -7,16 +13,20 @@ use super::{
 };
 
 impl FactBuilder<'_> {
+    /// Return the proven class provenance for the current non-static method.
     pub(super) fn current_class(&self) -> Option<(String, String)> {
         self.traversal.current_class()
     }
 
+    /// Emit a function boundary with parameter bindings owned by its body.
     pub(super) fn emit_function_fact(
         &mut self,
         span: Span,
         parameters: impl IntoIterator<Item = (usize, Pat)>,
         boundary: FunctionBoundary,
     ) {
+        // The owner is the enclosing function, not the function being entered;
+        // this distinction keeps nested effects attached to the right scope.
         let scope = self.scope_at(span);
         let id = self.resolver.function_id_for_scope(scope);
         let owner = self

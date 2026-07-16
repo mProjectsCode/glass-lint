@@ -1,3 +1,5 @@
+//! Electron IPC rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects Electron `ipcRenderer.send` and `ipcRenderer.invoke` calls through

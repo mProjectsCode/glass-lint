@@ -13,8 +13,11 @@ use crate::{error::ProjectLoadError, options::ProjectLoadOptions};
 
 #[derive(Clone, Debug)]
 pub struct CorpusFile {
+    /// Filesystem path retained for diagnostics and profiling.
     pub path: PathBuf,
+    /// Byte length measured before decoding.
     pub bytes: u64,
+    /// UTF-8 source text loaded under the configured byte limit.
     pub source: String,
 }
 
@@ -23,15 +26,18 @@ pub struct SourceCorpus<'a> {
 }
 
 impl<'a> SourceCorpus<'a> {
+    /// Validate options and create a corpus view without performing I/O.
     pub fn new(options: &'a ProjectLoadOptions) -> Result<Self, ProjectLoadError> {
         options.validate()?;
         Ok(Self { options })
     }
 
+    /// Discover supported files in deterministic path order.
     pub fn discover(&self, roots: &[PathBuf]) -> Result<Vec<PathBuf>, ProjectLoadError> {
         self.discover_filtered(roots, |_| true)
     }
 
+    /// Discover files while applying a caller-owned membership predicate.
     pub fn discover_filtered(
         &self,
         roots: &[PathBuf],
@@ -101,6 +107,7 @@ impl<'a> SourceCorpus<'a> {
         Ok(paths.into_iter().collect())
     }
 
+    /// Read one supported source file after enforcing the byte budget.
     pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
         if !supported_path(path, &self.options.extensions) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
@@ -127,6 +134,7 @@ impl<'a> SourceCorpus<'a> {
         })
     }
 
+    /// Convert a loaded filesystem path into a normalized core source record.
     pub fn load_source_file(
         &self,
         root: &Path,

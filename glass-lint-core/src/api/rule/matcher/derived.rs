@@ -1,8 +1,13 @@
+//! Constructor, class, and returned/instance member matcher declarations.
+
 use super::CallProvenance;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Matcher for a constructor invocation.
 pub struct ConstructorMatcher {
+    /// Constructor name/export.
     pub name: String,
+    /// Required provenance mode.
     pub provenance: CallProvenance,
 }
 
@@ -48,8 +53,11 @@ impl ConstructorMatcher {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Matcher for a class declaration or class identity.
 pub struct ClassMatcher {
+    /// Class name/export.
     pub name: String,
+    /// Required provenance mode.
     pub provenance: CallProvenance,
 }
 
@@ -88,20 +96,30 @@ impl ClassMatcher {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Member call on an object returned from a rooted source.
 pub struct ReturnedMemberCallMatcher {
+    /// Rooted source chain.
     pub source: String,
+    /// Member method name.
     pub member: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Member read on an object returned from a rooted source.
 pub struct ReturnedMemberReadMatcher {
+    /// Rooted source chain.
     pub source: String,
+    /// Member name.
     pub member: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Member call on a proven module-exported instance.
 pub struct InstanceMemberCallMatcher {
+    /// Exporting module specifier.
     pub module: String,
+    /// Exported constructor/factory name.
     pub export: String,
+    /// Instance member name.
     pub(crate) member: String,
 }

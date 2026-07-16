@@ -1,4 +1,9 @@
 //! Interned abstract values and the bounded per-file arena.
+//!
+//! Equal abstract values share one `ValueId`, while `Binding` wrappers retain
+//! the lexical version that made an observation valid at a source position.
+//! The table never evicts entries, so IDs remain stable for the lifetime of a
+//! file analysis.
 
 use std::collections::HashMap;
 
@@ -8,30 +13,49 @@ const MAX_VALUES: usize = 65_536;
 const MAX_OBJECTS: u32 = 65_536;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Abstract value shape used by resolution and flow analysis.
 pub(in crate::analysis) enum Value {
+    /// No supported identity was proven.
     Unknown,
+    /// A configured global root.
     Global(String),
+    /// A local or ambiguous value.
     Local,
+    /// A statically rooted member path.
     RootedMember { root: String, path: Vec<String> },
+    /// A module namespace identity.
     ModuleNamespace(String),
+    /// A named export identity.
     ModuleExport { module: String, export: String },
+    /// A bounded static string value.
     StaticString(String),
+    /// A bounded non-negative static number.
     StaticNumber(usize),
+    /// An interned array of value identities.
     StaticArray(Vec<ValueId>),
+    /// An interned object shape of named value identities.
     StaticObject(Vec<(String, ValueId)>),
+    /// A callable target with receiver and bound arguments.
     Callable(CallableValue),
+    /// An allocated object identity.
     Object(ObjectId),
+    /// A value qualified by a lexical binding/version key.
     Binding { key: BindingKey, target: ValueId },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Callable identity and its modeled receiver/bound argument values.
 pub(in crate::analysis) struct CallableValue {
+    /// Underlying callable value.
     target: ValueId,
+    /// Receiver captured by a supported bind operation.
     receiver: Option<ValueId>,
+    /// Static values captured after the receiver argument.
     bound_arguments: Vec<ValueId>,
 }
 
 impl CallableValue {
+    /// Construct a canonical callable descriptor.
     pub(in crate::analysis) fn new(
         target: ValueId,
         receiver: Option<ValueId>,
@@ -44,18 +68,24 @@ impl CallableValue {
         }
     }
 
+    /// Return the underlying callable target.
     pub(in crate::analysis) fn target(&self) -> ValueId {
         self.target
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Bounded identity for an allocated object value.
 pub(in crate::analysis) struct ObjectId(pub(in crate::analysis) u32);
 
 #[derive(Debug)]
+/// Per-file canonical value arena with explicit capacity limits.
 pub(in crate::analysis) struct ValueTable {
+    /// Canonical value storage indexed by `ValueId`.
     values: Vec<Value>,
+    /// Reverse map used to reuse equal values.
     ids: HashMap<Value, ValueId>,
+    /// Next bounded object identity.
     next_object: u32,
 }
 
@@ -72,6 +102,7 @@ impl Default for ValueTable {
 }
 
 impl ValueTable {
+    /// Intern a value, returning unknown when the arena is exhausted.
     pub(in crate::analysis) fn intern(&mut self, value: Value) -> ValueId {
         if let Some(id) = self.ids.get(&value) {
             return *id;
@@ -99,6 +130,7 @@ impl ValueTable {
         binding.map_or(target, |key| self.intern(Value::Binding { key, target }))
     }
 
+    /// Allocate a distinct object identity within the object budget.
     pub(in crate::analysis) fn allocate_object_id(&mut self) -> Option<ObjectId> {
         if self.next_object >= MAX_OBJECTS {
             return None;
@@ -108,6 +140,7 @@ impl ValueTable {
         Some(object)
     }
 
+    /// Borrow an interned value, rejecting malformed/out-of-range IDs.
     pub(in crate::analysis) fn get(&self, id: ValueId) -> Option<&Value> {
         self.values.get(usize::try_from(id.0).ok()?)
     }

@@ -1,9 +1,13 @@
+//! Profiling command adapter and stable human-readable summary output.
+
 use anyhow::Result;
 use glass_lint_harness::{ProfileConfig, ProfileSummary, profile_folder};
 
 use crate::args::ProfileArgs;
 
 pub fn run(args: ProfileArgs) -> Result<bool> {
+    // Translate CLI options once; the harness owns discovery, sampling, and
+    // bounded parallel execution semantics.
     let report = profile_folder(&ProfileConfig {
         paths: args.paths,
         include: args.include,
@@ -24,6 +28,8 @@ pub fn run(args: ProfileArgs) -> Result<bool> {
 }
 
 fn print_report(report: &ProfileSummary, quiet: bool) {
+    // Keep per-file detail optional while always printing the aggregate summary
+    // needed by scripts and interactive users.
     if !quiet {
         for file in &report.file_results {
             match &file.error {

@@ -1,3 +1,5 @@
+//! Browser persistent-storage rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects the listed unshadowed browser storage calls and aliases derived

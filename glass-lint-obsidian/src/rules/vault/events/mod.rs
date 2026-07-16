@@ -1,3 +1,5 @@
+//! Obsidian vault-event registration rule definition.
+
 use glass_lint_core::rules::{Confidence, MemberCallMatcher, Rule, Severity, ValueMatcher};
 
 /// Detects rooted registration through `app.vault.on`, including `this.app`,

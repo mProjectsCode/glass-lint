@@ -1,4 +1,8 @@
 //! Projection from the immutable fact stream into occurrence indexes.
+//!
+//! This is the only fact-to-index projection. It records every reusable
+//! occurrence without consulting selected rules; query selection happens only
+//! after normalization so catalog order cannot affect the shared model.
 
 use super::{
     FactPayload, FactStream, MatcherFacts, SymbolCallProvenance, SymbolMemberProvenance,

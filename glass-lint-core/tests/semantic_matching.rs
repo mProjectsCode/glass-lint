@@ -12,6 +12,7 @@ use glass_lint_core::{
     },
 };
 
+/// Execute one matcher through a fresh strict catalog and return its count.
 fn findings(source: &str, matcher: Matcher) -> usize {
     let rule = Rule::builder("semantic.match")
         .label("semantic matcher")
@@ -28,6 +29,7 @@ fn findings(source: &str, matcher: Matcher) -> usize {
         .len()
 }
 
+/// Supply only the provider roots needed by the semantic fixtures.
 fn test_environment() -> Environment {
     let mut environment = Environment::default();
     environment
@@ -38,6 +40,7 @@ fn test_environment() -> Environment {
     environment
 }
 
+/// Assert the exact match count for a provenance or value-flow scenario.
 fn assert_matches(source: &str, matcher: Matcher, expected: usize) {
     assert_eq!(findings(source, matcher), expected, "{source}");
 }
@@ -302,6 +305,7 @@ fn tracks_object_argument_keys_through_member_function_aliases() {
     );
 }
 
+/// Build the source/configuration/sink flow used by flow-provenance tests.
 fn script_insertion_matcher() -> Matcher {
     Matcher::flow(
         ObjectFlowMatcher::builder("script insertion")

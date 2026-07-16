@@ -1,3 +1,5 @@
+//! Obsidian metadata-cache event rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Severity};
 
 /// Detects rooted `app.metadataCache.on` registrations only when the first

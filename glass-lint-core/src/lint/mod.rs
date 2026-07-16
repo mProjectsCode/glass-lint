@@ -1,3 +1,9 @@
+//! Rule catalog selection, semantic execution, and finding assembly.
+//!
+//! Linting parses/analyzes once, projects selected matcher plans, then converts
+//! located evidence into deterministic findings. Range policy and catalog
+//! policy stay separate from semantic fact construction.
+
 mod catalog;
 pub mod findings;
 mod linter;

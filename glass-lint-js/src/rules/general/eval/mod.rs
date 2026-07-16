@@ -1,3 +1,5 @@
+//! Dynamic-code evaluation rule definition.
+
 use glass_lint_core::rules::{CallMatcher, Confidence, ConstructorMatcher, Rule, Severity};
 
 /// Detects calls whose target is proven to be the global `eval` or `Function`

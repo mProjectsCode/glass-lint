@@ -1,3 +1,5 @@
+//! Provider-neutral rule selection configuration.
+
 use serde::{Deserialize, Serialize};
 
 use crate::{RuleCatalog, RuleId, lint::LintConfigError};
@@ -13,6 +15,7 @@ pub struct CoreConfig {
 }
 
 impl CoreConfig {
+    /// Validate selected rule IDs against a concrete catalog.
     pub fn validate(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
         if let Some(rules) = &self.rules {
             let known = catalog.rule_ids();

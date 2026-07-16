@@ -1,9 +1,16 @@
+//! Argument projections used by call facts and interprocedural flow.
+//!
+//! Projections preserve both the whole argument and statically addressable
+//! descendants; dynamic keys are intentionally represented as unknown.
+
 use super::{
     BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegment, ValueId,
     ValueProjection, member_prop_name,
 };
 
 impl FactBuilder<'_> {
+    /// Resolve one argument into the scalar, rooted, and statically addressable
+    /// views consumed by call matchers and parameter-path flow.
     pub(super) fn arg_info(&mut self, expr: &Expr) -> CallArgInfo {
         let value = self.resolver.resolve_expr(expr).id;
         let provenance = self.resolver.resolve_expr(expr).call;
@@ -29,6 +36,9 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Return the value identity and static property path represented by an
+    /// expression. A computed or otherwise unprovable key invalidates the
+    /// projection instead of guessing which property was read.
     pub(super) fn expression_projection(&mut self, expr: &Expr) -> (ValueId, PathId) {
         match expr {
             Expr::Member(member) => {
@@ -55,6 +65,8 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Flatten literal object and array descendants into bounded path/value
+    /// projections while retaining the root projection at every level.
     pub(super) fn collect_value_projections(
         &mut self,
         expr: &Expr,
@@ -101,6 +113,8 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Convert an argument already bound by a callable wrapper into the same
+    /// representation as a source-level argument.
     pub(super) fn bound_arg_info(argument: &BoundArgument) -> CallArgInfo {
         match argument {
             BoundArgument::StaticString(value) => CallArgInfo {
@@ -134,7 +148,11 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Resolve positional arguments, clearing their shape when a spread makes
+    /// the number and ownership of downstream arguments unknowable.
     pub(super) fn args_info(&mut self, args: &[ExprOrSpread]) -> Vec<CallArgInfo> {
+        // A spread has no bounded positional shape, so retaining projections
+        // would falsely connect an individual property to a later parameter.
         args.iter()
             .map(|arg| {
                 let mut info = self.arg_info(&arg.expr);
@@ -147,6 +165,8 @@ impl FactBuilder<'_> {
             .collect()
     }
 
+    /// Resolve the rooted identity of a call target without treating a raw
+    /// local name as stronger provenance than the resolver can prove.
     pub(super) fn resolve_target_chain(&self, target: &Expr) -> Option<String> {
         use crate::analysis::syntax::effective_callee_expr;
         let effective = effective_callee_expr(target);

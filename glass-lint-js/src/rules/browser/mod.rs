@@ -1,3 +1,8 @@
+//! Browser-facing rule catalog.
+//!
+//! Each child module owns one policy rule; this catalog fixes the provider
+//! ordering used for metadata and deterministic finding output.
+
 mod clipboard_read;
 mod clipboard_write;
 mod environment;
@@ -15,6 +20,8 @@ mod script_injection;
 use glass_lint_core::rules::Rule;
 
 pub fn rules() -> Vec<Rule> {
+    // Keep related access rules before permissions and network rules so catalog
+    // order is explicit and stable across builds.
     vec![
         clipboard_read::rule(),
         clipboard_write::rule(),

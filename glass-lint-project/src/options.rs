@@ -19,18 +19,22 @@ pub enum ProjectSelection {
 }
 
 impl ProjectSelection {
+    /// Select one source entry and its reachable internal imports.
     pub fn entry(path: impl Into<PathBuf>) -> Self {
         Self::Entry(path.into())
     }
 
+    /// Select all supported sources under a directory.
     pub fn directory(path: impl Into<PathBuf>) -> Self {
         Self::Directory(path.into())
     }
 
+    /// Select sources through a TypeScript config and its references.
     pub fn tsconfig(path: impl Into<PathBuf>) -> Self {
         Self::TsConfig(path.into())
     }
 
+    /// Return the path supplied by this selection variant.
     pub fn path(&self) -> &std::path::Path {
         match self {
             Self::Entry(path) | Self::Directory(path) | Self::TsConfig(path) => path,
@@ -43,12 +47,19 @@ impl ProjectSelection {
 pub struct ProjectLoadOptions {
     /// Project boundary. If omitted, the selection's directory is used.
     pub root: Option<PathBuf>,
+    /// Maximum number of admitted source files.
     pub max_files: usize,
+    /// Maximum number of resolver requests.
     pub max_requests: usize,
+    /// Maximum bytes accepted for one source.
     pub max_source_bytes: u64,
+    /// Case-insensitive source suffixes accepted by discovery.
     pub extensions: Vec<String>,
+    /// Directory names excluded during discovery and resolution.
     pub excluded_directories: BTreeSet<String>,
+    /// Whether directory traversal and resolution may follow symlinks.
     pub follow_symlinks: bool,
+    /// Resolver extension aliases applied to module requests.
     pub extension_aliases: BTreeMap<String, Vec<String>>,
 }
 
@@ -71,6 +82,7 @@ impl Default for ProjectLoadOptions {
 }
 
 impl ProjectLoadOptions {
+    /// Validate budgets, suffixes, and alias mappings before any I/O begins.
     pub fn validate(&self) -> Result<(), ProjectLoadError> {
         if self.max_files == 0 {
             return Err(ProjectLoadError::InvalidOptions(

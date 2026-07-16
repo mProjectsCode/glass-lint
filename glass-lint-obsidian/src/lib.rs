@@ -1,4 +1,7 @@
 //! Obsidian rule definitions and ready-to-use core linters.
+//!
+//! The provider owns Obsidian globals, rule profiles, and disclosure mapping;
+//! matching and report primitives remain in the provider-neutral core crate.
 
 use std::collections::BTreeSet;
 
@@ -8,34 +11,40 @@ mod catalog;
 mod rules;
 
 #[must_use]
+/// Return metadata for every rule in the `obsidian:` provider catalog.
 pub fn rule_catalog() -> Vec<RuleMetadata> {
     catalog(default_environment()).metadata()
 }
 
 #[must_use]
+/// Build the recommended high-confidence Obsidian linter.
 pub fn recommended_linter() -> Linter {
     recommended_linter_with_environment(default_environment())
 }
 
 /// Build the recommended linter with an exact caller-supplied environment.
 #[must_use]
+/// Build the recommended linter with a caller-supplied environment.
 pub fn recommended_linter_with_environment(environment: Environment) -> Linter {
     let catalog = catalog(environment);
     Linter::with_confidence(catalog, glass_lint_core::rules::Confidence::High)
 }
 
 #[must_use]
+/// Build the complete Obsidian linter, including heuristic rules.
 pub fn heuristic_linter() -> Linter {
     heuristic_linter_with_environment(default_environment())
 }
 
 /// Build the complete linter with an exact caller-supplied environment.
 #[must_use]
+/// Build the complete linter with a caller-supplied environment.
 pub fn heuristic_linter_with_environment(environment: Environment) -> Linter {
     Linter::new(catalog(environment))
 }
 
 #[must_use]
+/// Collect disclosure categories for findings in the `obsidian:` namespace.
 pub fn disclosures_for_report(report: &LintReport) -> BTreeSet<&'static str> {
     report
         .findings
@@ -106,6 +115,8 @@ pub fn default_environment() -> Environment {
 }
 
 fn catalog(environment: Environment) -> RuleCatalog {
+    // Apply the environment only at catalog construction so all profiles use
+    // the same provider rule set and differ only by confidence filtering.
     RuleCatalog::with_environment(
         "obsidian",
         catalog::obsidian_api_rules().to_vec(),

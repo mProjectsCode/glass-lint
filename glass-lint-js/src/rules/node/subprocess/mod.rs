@@ -1,3 +1,5 @@
+//! Node subprocess-module rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects static ESM or unshadowed CommonJS loads of Node's exact

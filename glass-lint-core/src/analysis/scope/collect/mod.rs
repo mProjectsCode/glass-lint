@@ -35,21 +35,35 @@ mod predeclare;
 mod provenance;
 mod visitor;
 
+/// Mutable state shared by declaration prepass and source-order collection.
+///
+/// The prepass establishes lexical binding identity; the normal visitor then
+/// reuses that scope tree while recording assignments and supported
+/// provenance at each use position.
 pub(super) struct AliasCollector {
     /// Lexical scopes in predeclaration/traversal order.
     pub(super) scopes: Vec<AliasScope>,
+    /// Current lexical path during AST traversal.
     stack: Vec<usize>,
     /// Assignment events retain source order for use-position provenance.
     pub(super) assignments: Vec<AliasAssignment>,
+    /// Latest use-position assignment state per lexical scope.
     latest_assignments: AssignmentHistory,
+    /// Property writes retained for flow-aware rooted-member queries.
     pub(super) property_assignments: Vec<PropertyAliasAssignment>,
+    /// Writes that invalidate a rooted receiver/property identity.
     pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
+    /// Dynamic `eval` sites that make local provenance conservative.
     pub(super) dynamic_evals: Vec<(usize, Span)>,
+    /// Function scopes and their parameter patterns by visible name.
     pub(super) function_scopes: BTreeMap<(usize, String), (usize, Vec<Pat>)>,
+    /// Aliases that point to a locally declared helper function.
     pub(super) function_aliases: BTreeMap<(usize, String), usize>,
     /// Calls retained for the later, scope-aware helper parameter pass.
     calls: Vec<(usize, String, Vec<Option<BindingProvenance>>)>,
+    /// Proven callback arguments installed when an inline function is entered.
     inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
+    /// `var`-bound objects whose mutation prevents constant projection.
     pub(super) mutable_static_objects: BTreeSet<(usize, String)>,
     reuse_scopes: bool,
     predeclared_scope_order: Vec<usize>,
@@ -59,6 +73,7 @@ pub(super) struct AliasCollector {
 }
 
 #[derive(Debug, Clone)]
+/// Assignment of a rooted member/property alias at a source position.
 pub(super) struct PropertyAliasAssignment {
     pub(super) span: Span,
     pub(super) scope: usize,
@@ -68,6 +83,7 @@ pub(super) struct PropertyAliasAssignment {
 }
 
 #[derive(Debug, Clone)]
+/// Mutation that can invalidate a rooted property provenance.
 pub(super) struct RootedPropertyMutation {
     pub(super) span: Span,
     pub(super) scope: usize,
@@ -76,6 +92,7 @@ pub(super) struct RootedPropertyMutation {
 }
 
 impl AliasCollector {
+    /// Initialize an empty collector with a program-level lexical scope.
     pub fn new(program_span: Span) -> Self {
         Self {
             scopes: vec![AliasScope {
@@ -121,6 +138,7 @@ impl AliasCollector {
         }
     }
 
+    /// Return the innermost scope currently being traversed.
     fn current_scope(&self) -> usize {
         self.stack.last().copied().unwrap_or(0)
     }
@@ -139,6 +157,7 @@ impl AliasCollector {
         )
     }
 
+    /// Map a declaration kind to its lexical or function binding scope.
     fn binding_scope(&self, kind: VarDeclKind) -> usize {
         if kind != VarDeclKind::Var {
             return self.current_scope();
@@ -158,6 +177,7 @@ impl AliasCollector {
             .unwrap_or(0)
     }
 
+    /// Insert a declaration's initial provenance into a lexical scope.
     pub fn insert(&mut self, scope: usize, name: impl Into<String>, provenance: BindingProvenance) {
         self.scopes[scope].bindings.insert(name.into(), provenance);
     }
@@ -166,6 +186,7 @@ impl AliasCollector {
         self.insert(scope, name, BindingProvenance::Local);
     }
 
+    /// Append a source-ordered assignment version and update latest state.
     pub fn record_assignment(
         &mut self,
         span: Span,
@@ -194,6 +215,7 @@ impl AliasCollector {
         });
     }
 
+    /// Enter a predeclared scope, asserting traversal order matches the pass.
     fn push_scope(&mut self, span: Span, kind: ScopeKind) {
         if self.reuse_scopes {
             let parent = self.current_scope();
@@ -235,6 +257,7 @@ impl AliasCollector {
         self.stack.push(index);
     }
 
+    /// Leave the current nested scope without popping the program scope.
     fn pop_scope(&mut self) {
         if self.stack.len() <= 1 {
             debug_assert!(false, "attempted to pop the program scope");
@@ -243,6 +266,7 @@ impl AliasCollector {
         let _ = self.stack.pop();
     }
 
+    /// Register every binding introduced by a declaration pattern as local.
     fn insert_pat_locals(&mut self, scope: usize, pat: &Pat) {
         let mut bindings = BTreeSet::new();
         collect_pat_bindings(pat, &mut bindings);

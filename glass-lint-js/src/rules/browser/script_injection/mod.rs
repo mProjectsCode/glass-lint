@@ -1,3 +1,5 @@
+//! Browser executable-script-injection rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Severity};
 
 /// Detects `document.createElement` calls whose tag argument resolves to

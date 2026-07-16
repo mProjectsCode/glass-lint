@@ -1,3 +1,5 @@
+//! Obsidian vault resource-URL rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects rooted calls to vault and adapter `getResourcePath`, plus literal

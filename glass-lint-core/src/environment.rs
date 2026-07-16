@@ -20,6 +20,7 @@ enum GlobalObjectMembers {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Error returned for a malformed host binding identifier.
 pub struct EnvironmentError {
     name: String,
 }
@@ -158,18 +159,22 @@ impl Environment {
         }
     }
 
+    /// Iterate configured global binding names in deterministic order.
     pub fn global_bindings(&self) -> impl Iterator<Item = &str> {
         self.global_bindings.iter().map(String::as_str)
     }
 
+    /// Iterate configured global-object aliases in deterministic order.
     pub fn global_objects(&self) -> impl Iterator<Item = &str> {
         self.global_objects.keys().map(String::as_str)
     }
 
+    /// Whether a name is configured as a global binding.
     pub fn is_global(&self, name: &str) -> bool {
         self.global_bindings.contains(name)
     }
 
+    /// Whether a global object promotes a member to a callable identity.
     pub fn is_global_member(&self, object: &str, member: &str) -> bool {
         match self.global_objects.get(object) {
             Some(GlobalObjectMembers::ConfiguredGlobals) => self.is_global(member),

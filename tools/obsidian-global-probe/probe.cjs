@@ -1,5 +1,8 @@
 "use strict";
 
+// This dependency-free payload mirrors the plugin collector for CLI/eval use.
+// Its output is metadata-only so probe results cannot expose vault contents.
+
 const SCHEMA_VERSION = 1;
 const WELL_KNOWN_GLOBAL_OBJECT_NAMES = [
     "activeWindow",
@@ -10,6 +13,8 @@ const WELL_KNOWN_GLOBAL_OBJECT_NAMES = [
 ];
 
 function collectObsidianGlobals({ app, globalObject = globalThis } = {}) {
+    // Realm identity is deduplicated before inventory so aliases and pop-out
+    // windows produce one stable record with sorted source labels.
     const errors = [];
     const realmCandidates = [];
 
@@ -94,6 +99,8 @@ function addRealmCandidate(candidates, source, value) {
 }
 
 function inspectRealm(candidate, index, pluginGlobal, errors) {
+    // Descriptors expose shape and mutability without reading getter-backed
+    // values; safe helpers below convert hostile runtime objects to errors.
     const descriptors = safelyGetDescriptors(
         candidate.value,
         errors,

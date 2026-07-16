@@ -1,3 +1,9 @@
+//! Command-line orchestration for configuration, linting, and report output.
+//!
+//! The CLI deliberately delegates parsing and semantic analysis to the core
+//! and project crates. It owns only user-facing command selection, exit
+//! policy, and serialization of those results.
+
 pub mod args;
 
 mod config;
@@ -11,6 +17,8 @@ use clap::Parser;
 
 /// Execute the command-line application from parsed arguments.
 pub fn run(args: args::Args) -> Result<bool> {
+    // The boolean is deliberately separate from `Result`: operational errors
+    // are exit code 2, while a valid report that crosses `fail_on` is exit 1.
     let config = config::load(&args)?;
     let _ = glass_lint_core::telemetry::try_init_with_writer_and_color(
         config.cli.verbosity.telemetry(),

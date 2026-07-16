@@ -1,3 +1,8 @@
+//! Complete Obsidian provider rule catalog.
+//!
+//! Category modules own their policies; this assembly point fixes category
+//! order so metadata, profiles, and findings remain deterministic.
+
 mod codemirror;
 mod editor;
 mod file_manager;
@@ -16,6 +21,8 @@ mod workspace;
 use glass_lint_core::rules::Rule;
 
 pub fn all() -> Vec<Rule> {
+    // Keep broad access categories first and lifecycle/platform/plugin rules
+    // last; do not rely on module discovery order for catalog stability.
     [
         network::rules(),
         vault::rules(),

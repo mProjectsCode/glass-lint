@@ -1,14 +1,25 @@
 //! Role-specific mutable state for the canonical fact traversal.
+//!
+//! This state is deliberately not part of the fact stream. It tracks only
+//! visitor nesting and monotonic control-region allocation, and is restored by
+//! balanced enter/leave calls as the AST walk returns from a construct.
 
 #[derive(Debug, Default)]
+/// Ephemeral nesting state that affects how the current syntax is interpreted.
 pub(super) struct TraversalState {
+    /// Monotonic identity source for branch and loop regions.
     next_control_region: u32,
+    /// Class-superclass provenance for the current nesting stack.
     class_stack: Vec<Option<(String, String)>>,
+    /// Number of function bodies currently being visited.
     function_depth: usize,
+    /// Number of static class methods currently being visited.
     static_method_depth: usize,
 }
 
 impl TraversalState {
+    /// Allocate a monotonic region ID; saturation keeps malformedly large
+    /// inputs deterministic instead of wrapping into an earlier region.
     pub(super) fn next_control_region(&mut self) -> u32 {
         let region = self.next_control_region;
         self.next_control_region = self.next_control_region.saturating_add(1);

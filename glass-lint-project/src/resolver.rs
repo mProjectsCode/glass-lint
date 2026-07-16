@@ -19,6 +19,7 @@ pub struct ProjectResolver {
 }
 
 impl ProjectResolver {
+    /// Build import and CommonJS resolvers under one project root.
     pub fn new(root: &Path, selection: &ProjectSelection, options: &ProjectLoadOptions) -> Self {
         let import = Resolver::new(resolver_options(root, selection, options, false));
         let require = import.clone_with_options(resolver_options(root, selection, options, true));
@@ -30,6 +31,7 @@ impl ProjectResolver {
         }
     }
 
+    /// Resolve one request into a provider-neutral, root-classified outcome.
     pub fn resolve(&self, request: &ResolutionRequest) -> ResolutionResult {
         let importer = self.root.join(&request.key.importer);
         let directory = importer.parent().unwrap_or(&self.root);

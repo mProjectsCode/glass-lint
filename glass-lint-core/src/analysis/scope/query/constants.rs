@@ -1,9 +1,12 @@
+//! Bounded constant queries backed by lexical provenance.
+
 use super::{
     BindingProvenance, ConstValue, EvalState, Expr, Ident, Lookup, MemberExpr, ScopeGraph, Span,
     Spanned, constant,
 };
 
 impl ScopeGraph {
+    /// Whether an identifier refers to a mutable static object binding.
     pub(in crate::analysis) fn mutable_static_object_at(&self, expr: &Expr) -> bool {
         let Expr::Ident(ident) = expr else {
             return false;
@@ -24,6 +27,7 @@ impl ScopeGraph {
 }
 
 impl Lookup for ScopeGraph {
+    /// Convert only known static binding provenances into constant values.
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
         if self.has_dynamic_lookup_at(ident.span) {
             return ConstValue::Unknown;
@@ -52,6 +56,7 @@ impl Lookup for ScopeGraph {
         }
     }
 
+    /// Reject spreads whose source object may have been mutated.
     fn spread(&self, expr: &Expr, state: &mut EvalState) -> ConstValue {
         if self.mutable_static_object_at(expr) {
             return ConstValue::Unknown;
@@ -59,6 +64,7 @@ impl Lookup for ScopeGraph {
         state.evaluate(expr, self)
     }
 
+    /// Evaluate only static array indexes and object property names.
     fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue {
         let Some(property) = constant::property_name_with_state(&member.prop, self, state) else {
             return ConstValue::Unknown;
@@ -77,6 +83,7 @@ impl Lookup for ScopeGraph {
         }
     }
 
+    /// Delegate global checks to the position-sensitive scope query.
     fn unshadowed_global(&self, name: &str, span: Span) -> bool {
         self.unshadowed_global_at(name, span)
     }

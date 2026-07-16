@@ -1,4 +1,8 @@
 //! Argument predicate evaluation over precomputed fact projections.
+//!
+//! Argument-bearing matchers consume cloned, AST-independent projections. A
+//! project overlay may strengthen a proven module identity or static string,
+//! but unknown and qualified-local identities remain non-matches.
 
 use super::{
     ApiEvidence, ApiMatchKind, CallArgInfo, CallMatcher, CallProvenance, FactId, FactPayload,
@@ -7,6 +11,8 @@ use super::{
 };
 
 impl MatcherFacts {
+    /// Evaluate all argument-bearing call/member matchers over canonical facts,
+    /// applying only the supplied linked identity overlays.
     pub(in crate::analysis) fn compute_argument_evidence_from_stream_with_overlay(
         stream: &FactStream,
         member_argument_matchers: &[(usize, &MemberCallMatcher)],

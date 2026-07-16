@@ -1,3 +1,8 @@
+//! Stable text and JSON renderers for harness suite results.
+//!
+//! Renderers consume the already-normalized report and do not reorder or
+//! reinterpret findings, preserving comparisons across front ends.
+
 #![allow(clippy::format_push_string)]
 
 use anyhow::Result;

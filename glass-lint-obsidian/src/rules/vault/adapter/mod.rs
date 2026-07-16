@@ -1,3 +1,5 @@
+//! Obsidian vault-adapter access rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects reads of rooted `app.vault.adapter`, including `this.app`, direct

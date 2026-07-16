@@ -1,3 +1,5 @@
+//! Browser file-input flow rule definition.
+
 use glass_lint_core::rules::{
     Confidence, FlowCompletion, FlowCondition, MemberCallMatcher, ObjectEventMatcher,
     ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,

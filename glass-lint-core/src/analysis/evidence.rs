@@ -11,16 +11,26 @@ use crate::api::{
 };
 
 #[derive(Debug, PartialEq, Eq)]
+/// One rule match retained until evidence is bounded and regrouped.
 pub(super) struct EvidenceOccurrence {
+    /// Fact identity used as the primary deterministic ordering key.
     event: Option<facts::FactId>,
+    /// Source location, including synthetic locations when no fact exists.
     span: Span,
+    /// Semantic match category shown in the public evidence.
     kind: ApiMatchKind,
+    /// Interned `(kind, symbol)` group used to merge equivalent entries.
     symbol_group: usize,
 }
 
+/// Intermediate evidence representation that separates sorting/bounding from
+/// the public grouped shape and preserves related evidence by symbol group.
 pub(super) struct AnnotatedEvidence {
+    /// Occurrences before final sorting, deduplication, and bounding.
     occurrences: Vec<EvidenceOccurrence>,
+    /// Symbols indexed by the compact group IDs in `occurrences`.
     symbols: Vec<String>,
+    /// Related evidence retained for each symbol group.
     related: BTreeMap<usize, Vec<crate::api::classification::ApiRelatedEvidence>>,
 }
 
@@ -78,6 +88,8 @@ impl AnnotatedEvidence {
 
     /// Sort, bound, deduplicate, and regroup occurrences into public evidence.
     pub(super) fn into_evidence(mut self) -> Vec<ApiEvidence> {
+        // Fact IDs are the primary order key because source spans alone cannot
+        // distinguish related events with identical or synthetic locations.
         self.occurrences.sort_by_key(|item| {
             (
                 item.event.map_or(u32::MAX, |event| event.0),

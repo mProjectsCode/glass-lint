@@ -4,6 +4,10 @@
 //! walked once, then each rule selects from deterministic occurrence maps.
 //! Argument and flow evidence remain per-rule because their matchers carry
 //! rule-specific predicates that cannot be represented as a shared key.
+//!
+//! Provenance levels stay in separate indexes so heuristic names cannot be
+//! mistaken for rooted or module-identified identities. All shared indexes
+//! are normalized before queries run.
 
 use swc_common::Span;
 
@@ -27,6 +31,11 @@ mod build;
 mod query;
 
 #[derive(Clone, Debug, Default)]
+/// Matcher-independent occurrence indexes projected from one fact stream.
+///
+/// The indexes are reusable across rule catalogs; argument-bearing calls and
+/// flow matchers are evaluated from facts because their predicates are not
+/// safe to collapse into a simple lookup key.
 pub struct MatcherFacts {
     // Each map represents a different confidence/provenance level. Do not
     // collapse these into one index: a global spelling, rooted alias, and
@@ -42,6 +51,7 @@ pub struct MatcherFacts {
 }
 
 #[derive(Clone, Debug, Default)]
+/// Call occurrences partitioned by confidence/provenance level.
 pub(super) struct CallIndexes {
     calls: Occurrences,
     global_calls: Occurrences,
@@ -49,6 +59,7 @@ pub(super) struct CallIndexes {
 }
 
 #[derive(Clone, Debug, Default)]
+/// Member call/read occurrences partitioned by rooted and module identity.
 pub(super) struct MemberIndexes {
     calls: Occurrences,
     rooted_calls: Occurrences,
@@ -62,6 +73,7 @@ pub(super) struct MemberIndexes {
 }
 
 #[derive(Clone, Debug, Default)]
+/// Class and constructor occurrences partitioned by provenance.
 pub(super) struct ConstructionIndexes {
     classes: Occurrences,
     module_classes: ModuleOccurrences,
@@ -71,6 +83,7 @@ pub(super) struct ConstructionIndexes {
 }
 
 #[derive(Clone, Debug, Default)]
+/// Import and static-string occurrence indexes.
 pub(super) struct LiteralIndexes {
     imports: Occurrences,
     strings: Occurrences,
@@ -81,10 +94,15 @@ pub(super) struct LiteralIndexes {
 /// by the external-module matcher vocabulary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::analysis) enum LinkedModuleIdentity {
+    /// Identity resolved to an external module export.
     External { module: String, export: String },
+    /// Identity resolved to a configured global callable.
     Global { name: String },
+    /// Qualified internal identity not exposed to external matcher queries.
     Qualified { module: u32, export: String },
+    /// Static string value available to argument predicates.
     StaticString { value: String },
+    /// Resolution was ambiguous or unsupported.
     Unknown,
 }
 

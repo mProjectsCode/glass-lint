@@ -1,9 +1,12 @@
+//! Validated namespaced rule IDs.
+
 use std::{error::Error, fmt};
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
 #[serde(transparent)]
+/// Canonical `provider:name` rule identifier.
 pub struct RuleId(String);
 
 impl RuleId {
@@ -15,6 +18,7 @@ impl RuleId {
         Self::valid_part(value, true)
     }
 
+    /// Parse and validate a namespaced rule ID.
     pub fn parse(value: impl Into<String>) -> Result<Self, crate::RuleCatalogError> {
         let value = value.into();
         let Some((provider, name)) = value.split_once(':') else {
@@ -41,6 +45,7 @@ impl RuleId {
     }
 
     #[must_use]
+    /// Borrow the canonical ID string.
     pub fn as_str(&self) -> &str {
         &self.0
     }

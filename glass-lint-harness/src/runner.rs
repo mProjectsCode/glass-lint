@@ -1,3 +1,8 @@
+//! Case execution and expectation comparison.
+//!
+//! The runner records one result per case/tool, treating skipped tools as
+//! explicit successful non-runs and preserving adapter timing by name.
+
 use std::{
     collections::BTreeMap,
     path::Path,
@@ -16,6 +21,7 @@ use crate::{
 
 pub type CaseTimings = BTreeMap<String, Duration>;
 
+/// Execute every configured adapter against every discovered case.
 pub fn run_suite(
     root: &Path,
     adapters: &[Box<dyn Adapter>],

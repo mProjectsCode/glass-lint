@@ -1,5 +1,8 @@
 "use strict";
 
+// Keep this smoke test focused on privacy, realm merging, identifier filtering,
+// and the standalone-plugin boundary rather than on a particular runtime.
+
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");

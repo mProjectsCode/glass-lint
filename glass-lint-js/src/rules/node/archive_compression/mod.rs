@@ -1,3 +1,5 @@
+//! Node archive and compression rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects direct ESM or unshadowed CommonJS imports of the listed archive and

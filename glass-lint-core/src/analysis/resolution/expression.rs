@@ -1,3 +1,5 @@
+//! Position-sensitive identifier, member, and expression resolution.
+
 use super::{
     Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
     SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,

@@ -1,3 +1,10 @@
+//! Disclosure categories derived from provider rule identities.
+//!
+//! The mapping stays outside the core engine: disclosures are a JavaScript
+//! provider/reporting concern and unknown rules intentionally disclose nothing.
+
+/// Return the disclosure categories associated with an unprefixed JavaScript
+/// rule ID.
 pub fn for_rule(id: &str) -> &'static [&'static str] {
     match id {
         "network.request" | "node.network" | "dom.remote-resource" => {

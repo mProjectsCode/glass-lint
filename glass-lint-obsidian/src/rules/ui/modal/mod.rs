@@ -1,3 +1,5 @@
+//! Obsidian modal rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects `Modal` constructors and subclass expressions proven to originate

@@ -14,26 +14,38 @@ use crate::config::{Config, Output};
 /// A linted file keeps its source so pretty rendering never rereads the file.
 #[derive(Clone)]
 pub struct FileOutput {
+    /// Source is retained because pretty output must match the analyzed bytes.
     pub path: String,
+    /// Findings and parse diagnostics produced for this source.
     pub report: LintReport,
+    /// Original source text used for rendering snippets and locations.
     pub source: String,
 }
 
 #[derive(Clone, Copy, Serialize)]
 pub struct Summary {
+    /// Number of independently linted source files.
     pub files: usize,
+    /// Number of rule findings across those files.
     pub findings: usize,
+    /// Number of parse diagnostics across those files.
     pub parse_diagnostics: usize,
 }
 
+/// Counts for a linked project report, including diagnostics from resolution.
 #[derive(Clone, Copy, Serialize)]
 pub struct ProjectSummary {
+    /// Number of files represented in the report.
     pub(crate) files: usize,
+    /// Number of rule findings across those files.
     pub(crate) findings: usize,
+    /// Number of parse diagnostics across those files.
     pub(crate) parse_diagnostics: usize,
+    /// Number of project-level diagnostics such as unresolved links.
     pub project_diagnostics: usize,
 }
 
+/// Write the selected rule metadata and never request a failing exit status.
 pub fn write_rules(config: &Config) -> Result<bool> {
     let metadata = crate::config::catalog(config.cli.provider, config.cli.profile).metadata();
     let mut stdout = io::BufWriter::new(io::stdout().lock());
@@ -42,12 +54,14 @@ pub fn write_rules(config: &Config) -> Result<bool> {
     Ok(false)
 }
 
+/// Write reports for independently linted snippet files.
 pub fn write_report(config: &Config, files: &[FileOutput], summary: Summary) -> Result<()> {
     let mut stdout = io::BufWriter::new(io::stdout().lock());
     write_report_to(config, files, summary, &mut stdout)?;
     stdout.flush().map_err(Into::into)
 }
 
+/// Write a report produced by resolver-aware project analysis.
 pub fn write_project_report(config: &Config, report: &ProjectReport) -> Result<()> {
     let mut stdout = io::BufWriter::new(io::stdout().lock());
     write_project_report_to(config, report, &mut stdout)?;
@@ -106,6 +120,8 @@ fn write_report_to<W: Write>(
 }
 
 fn write_json<W: Write>(files: &[FileOutput], _summary: Summary, out: &mut W) -> Result<()> {
+    // Reuse the public project report shape so snippet and project JSON remain
+    // consumable by the same downstream tooling.
     let files = files
         .iter()
         .map(|file| {
@@ -188,6 +204,8 @@ fn write_project_pretty<W: Write>(
     summary: ProjectSummary,
     out: &mut W,
 ) -> Result<()> {
+    // Iterate in report order: core has already established deterministic file,
+    // finding, evidence, and diagnostic ordering.
     let color = color_enabled(config);
     for file in &report.files {
         for finding in &file.findings {

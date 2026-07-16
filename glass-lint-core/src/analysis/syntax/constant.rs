@@ -19,6 +19,7 @@ const MAX_STRING_BYTES: usize = 16 * 1024;
 const MAX_ARRAY_ITEMS: usize = 256;
 const MAX_OBJECT_KEYS: usize = 256;
 
+/// Convert a finite, integral, non-negative number into a bounded index type.
 pub(in crate::analysis) fn non_negative_integer(value: f64) -> Option<usize> {
     if !value.is_finite() || value < 0.0 || value.fract() != 0.0 {
         return None;
@@ -27,11 +28,17 @@ pub(in crate::analysis) fn non_negative_integer(value: f64) -> Option<usize> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Finite constant shapes accepted by semantic matching.
 pub(in crate::analysis) enum ConstValue {
+    /// Evaluation was unsupported, dynamic, or over budget.
     Unknown,
+    /// A bounded string literal or concatenation.
     String(String),
+    /// A finite non-negative integer usable as a property/index key.
     NonNegativeInteger(usize),
+    /// A bounded array whose elements may themselves be unknown.
     Array(Vec<Self>),
+    /// A bounded static object shape keyed in deterministic order.
     Object(BTreeMap<String, Self>),
 }
 
@@ -47,6 +54,7 @@ impl ConstValue {
         }
     }
 
+    /// Borrow the value when this is a string constant.
     pub(in crate::analysis) fn string(&self) -> Option<&str> {
         match self {
             Self::String(value) => Some(value),
@@ -54,6 +62,7 @@ impl ConstValue {
         }
     }
 
+    /// Convert string/integer constants into static property keys.
     pub(in crate::analysis) fn property_key(&self) -> Option<String> {
         match self {
             Self::String(value) => Some(value.clone()),
@@ -62,6 +71,7 @@ impl ConstValue {
         }
     }
 
+    /// Return deterministic keys when this is a static object.
     pub(in crate::analysis) fn object_keys(&self) -> Option<Vec<String>> {
         match self {
             Self::Object(values) => Some(values.keys().cloned().collect()),
@@ -71,8 +81,11 @@ impl ConstValue {
 }
 
 pub(in crate::analysis) trait Lookup {
+    /// Resolve an identifier through the caller's lexical model.
     fn ident(&self, ident: &Ident, state: &mut EvalState) -> ConstValue;
+    /// Resolve a member through the caller's lexical model.
     fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue;
+    /// Check whether a global name is unshadowed at a source span.
     fn unshadowed_global(&self, name: &str, span: swc_common::Span) -> bool;
 
     /// Spreading a mutable object is intentionally weaker than passing that
@@ -87,6 +100,7 @@ pub(in crate::analysis) trait Lookup {
 }
 
 #[derive(Debug, Default, Clone, Copy)]
+/// Lookup implementation that intentionally resolves no identifiers.
 pub(super) struct NoLookup;
 
 impl Lookup for NoLookup {
@@ -103,11 +117,13 @@ impl Lookup for NoLookup {
     }
 }
 
+/// Evaluate one expression under the evaluator's fresh bounded state.
 pub(in crate::analysis) fn evaluate(expr: &Expr, lookup: &impl Lookup) -> ConstValue {
     let mut state = EvalState::default();
     state.evaluate(expr, lookup)
 }
 
+/// Evaluate a member property with a fresh bounded state.
 pub(in crate::analysis) fn property_name(
     prop: &MemberProp,
     lookup: &impl Lookup,
@@ -116,6 +132,7 @@ pub(in crate::analysis) fn property_name(
     property_name_with_state(prop, lookup, &mut state)
 }
 
+/// Evaluate a member property while sharing an existing evaluation budget.
 pub(in crate::analysis) fn property_name_with_state(
     prop: &MemberProp,
     lookup: &impl Lookup,
@@ -125,13 +142,18 @@ pub(in crate::analysis) fn property_name_with_state(
 }
 
 #[derive(Default)]
+/// Mutable recursion/node/lookup budget for one constant evaluation.
 pub(in crate::analysis) struct EvalState {
+    /// Current recursive expression depth.
     depth: usize,
+    /// Number of visited expression/container nodes.
     nodes: usize,
+    /// Number of identifier/member lookups performed.
     lookups: usize,
 }
 
 impl EvalState {
+    /// Evaluate one expression, failing closed when any bound is exhausted.
     pub(in crate::analysis) fn evaluate(
         &mut self,
         expr: &Expr,

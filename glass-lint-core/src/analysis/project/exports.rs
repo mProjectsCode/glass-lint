@@ -1,4 +1,9 @@
 //! Export fixed-point resolution and qualified export lookup.
+//!
+//! Lookups are keyed by the authored request and exact source range. This is
+//! important when one module imports the same specifier more than once with
+//! different resolver answers; conflicting candidates become unknown rather
+//! than inheriting whichever request happens to be visited first.
 
 use super::super::{
     BTreeSet, ExportResolution, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
@@ -7,6 +12,8 @@ use super::super::{
 use crate::analysis::module::ModuleRequestRole;
 
 impl ProjectSemanticModel {
+    /// Resolve one local export into external, qualified, or conservative
+    /// unknown identity without merging the exporting module's local scope.
     pub(in crate::analysis) fn resolve_export(
         &self,
         module: ModuleId,
@@ -94,6 +101,8 @@ impl ProjectSemanticModel {
         }
     }
 
+    /// Resolve an authored module/export pair across all matching requests.
+    /// Conflicting request answers are rejected as ambiguous.
     pub(in crate::analysis) fn resolve_imported_identity(
         &self,
         importer: ModuleId,
@@ -164,6 +173,7 @@ impl ProjectSemanticModel {
         resolved.unwrap_or(ExportResolution::Unknown)
     }
 
+    /// Build the stable public resolution key for one local request.
     pub(in crate::analysis) fn request_key(
         &self,
         module: ModuleId,
@@ -179,6 +189,7 @@ impl ProjectSemanticModel {
         }
     }
 
+    /// Resolve an export through direct and star re-exports with cycle bounds.
     pub(in crate::analysis) fn lookup_export(
         &self,
         module: ModuleId,
@@ -251,6 +262,7 @@ impl ProjectSemanticModel {
         if saw_unknown { None } else { candidate }
     }
 
+    /// Resolve a named re-export through its authored request.
     fn resolve_request_export(
         &self,
         module: ModuleId,

@@ -1,3 +1,11 @@
+//! Call facts and the value identities assigned to call results.
+//!
+//! Wrapper calls are normalized here so direct calls, `.call`, and `.apply`
+//! expose one downstream representation.
+//!
+//! A call result is interned by source span so all roles for the same call
+//! —the call fact, an assignment, and a later flow query—share one identity.
+
 use super::{
     BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
     FactKind, FactPayload, MemberExpr, OptChainBase, ParameterBinding, Pat, PathId, PathSegment,
@@ -6,6 +14,8 @@ use super::{
 };
 
 impl FactBuilder<'_> {
+    /// Record a direct, imported, optional, or callable-wrapper invocation in
+    /// the canonical call shape used by all matchers.
     pub(super) fn record_call_expr(&mut self, call: &CallExpr) {
         self.record_module_call_request(call);
         let Callee::Expr(callee_expr) = &call.callee else {
@@ -61,6 +71,7 @@ impl FactBuilder<'_> {
         self.emit_require_import(call);
     }
 
+    /// Emit one call fact after combining wrapper-bound and source arguments.
     pub(super) fn emit_call(
         &mut self,
         span: Span,
@@ -121,7 +132,10 @@ impl FactBuilder<'_> {
         );
     }
 
+    /// Return the stable value identity representing a call's result.
     pub(super) fn call_result(&mut self, span: Span) -> ValueId {
+        // Reusing the identity for a span is required: assignments and the call
+        // fact must observe the same returned object.
         if let Some(value) = self.call_results.get(span) {
             return value;
         }
@@ -130,6 +144,8 @@ impl FactBuilder<'_> {
         value
     }
 
+    /// Resolve the value produced by an expression, preserving call-result
+    /// identity where a later declaration or assignment consumes it.
     pub(super) fn value_for_expr(&mut self, expr: &Expr) -> ValueId {
         if let Expr::Call(call) = expr {
             if matches!(call.callee, swc_ecma_ast::Callee::Import(_)) {
@@ -140,6 +156,8 @@ impl FactBuilder<'_> {
         self.resolver.resolve_expr(expr).id
     }
 
+    /// Collect value identities bound by a destructuring pattern in source
+    /// order; unsupported targets are deliberately omitted or unknown.
     pub(super) fn pattern_values(&self, pattern: &Pat, values: &mut Vec<ValueId>) {
         match pattern {
             Pat::Ident(ident) => values.push(self.resolver.resolve_ident(&ident.id).id),
@@ -169,6 +187,7 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Collect conservative invalidation targets for a destructuring write.
     pub(super) fn pattern_write_targets(
         &mut self,
         pattern: &Pat,
@@ -212,6 +231,8 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Flatten a parameter pattern into path-aware bindings for interprocedural
+    /// flow, retaining defaults and rest markers for downstream transfer.
     pub(super) fn parameter_bindings(
         &mut self,
         pattern: &Pat,
@@ -581,6 +602,11 @@ impl FactBuilder<'_> {
     }
 }
 
+/// All resolver-backed facts needed to emit one normalized call payload.
+///
+/// Unknown fields remain unknown rather than being inferred from a spelling;
+/// this preserves the precision boundary when a target, member, or bound
+/// argument cannot be proven at the call site.
 pub(super) struct ResolvedCallee {
     value: ValueId,
     receiver: Option<ValueId>,

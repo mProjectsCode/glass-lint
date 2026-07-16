@@ -29,6 +29,8 @@ impl ValueMatcher {
 
     /// Match a flow value whose static string may be unavailable.
     pub(in crate::analysis) fn matches_flow_value(&self, static_value: Option<&str>) -> bool {
+        // A value predicate cannot prove a dynamic string, so absence of a
+        // static value is a non-match even when the predicate is selective.
         match &self.kind {
             ValueMatcherKind::Any => true,
             ValueMatcherKind::StaticString(_) => {

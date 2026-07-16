@@ -3,6 +3,10 @@
 //! These records deliberately contain syntax-level names and source spans,
 //! not matcher state or filesystem decisions.  The project linker turns the
 //! request spans into public resolver keys after a source map is available.
+//!
+//! Dynamic or conflicting export shapes are retained as explicit unknown
+//! state. The project linker can therefore distinguish “not exported” from
+//! “exported but not safely resolvable.”
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -15,37 +19,57 @@ use crate::{
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Why a module request exists and which runtime bindings it introduces.
 pub enum ModuleRequestRole {
+    /// Static ESM import and its local bindings.
     Import { bindings: Vec<ImportedBinding> },
+    /// Re-export bindings sourced from another module.
     ReExport { bindings: Vec<ReExportBinding> },
+    /// `export * from` request.
     StarExport,
+    /// Literal dynamic `import()` request.
     DynamicImport,
+    /// Literal CommonJS `require()` request.
     Require,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// One import binding with optional imported name and namespace semantics.
 pub struct ImportedBinding {
+    /// Exported name, or `None` for namespace imports.
     imported: Option<String>,
+    /// Local binding introduced in the importer.
     local: String,
+    /// Whether the binding represents the complete namespace.
     namespace: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// One named/default/namespace binding exposed through a re-export.
 pub struct ReExportBinding {
+    /// Name read from the source module.
     imported: String,
+    /// Name exposed by the current module.
     exported: String,
+    /// Whether the exported binding is a namespace.
     namespace: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Authored module request before filesystem resolution.
 pub struct ModuleRequest {
+    /// Source span of the literal specifier.
     span: Span,
+    /// Resolver classification requested by the syntax.
     kind: ResolutionRequestKind,
+    /// Literal module specifier as authored.
     specifier: String,
+    /// Import/export role associated with the request.
     role: ModuleRequestRole,
 }
 
 impl ImportedBinding {
+    /// Construct an imported binding with optional namespace semantics.
     pub fn new(imported: Option<String>, local: String, namespace: bool) -> Self {
         Self {
             imported,
@@ -54,16 +78,19 @@ impl ImportedBinding {
         }
     }
 
+    /// Return the source export name, if one was specified.
     pub fn imported(&self) -> Option<&str> {
         self.imported.as_deref()
     }
 
+    /// Whether this binding refers to the whole module namespace.
     pub fn is_namespace(&self) -> bool {
         self.namespace
     }
 }
 
 impl ReExportBinding {
+    /// Construct a re-export binding.
     pub fn new(imported: String, exported: String, namespace: bool) -> Self {
         Self {
             imported,
@@ -74,33 +101,44 @@ impl ReExportBinding {
 }
 
 impl ModuleRequest {
+    /// Return the literal specifier span.
     pub fn span(&self) -> Span {
         self.span
     }
 
+    /// Return the syntax-derived request kind.
     pub fn kind(&self) -> ResolutionRequestKind {
         self.kind
     }
 
+    /// Return the authored module specifier.
     pub fn specifier(&self) -> &str {
         &self.specifier
     }
 
+    /// Return the import/export role metadata.
     pub fn role(&self) -> &ModuleRequestRole {
         &self.role
     }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Export shape recorded by the local module pass.
 pub enum ModuleExport {
+    /// Export aliases a local binding.
     Local { name: String },
+    /// Export exists but is represented by a non-callable value identity.
     Value,
+    /// Export is forwarded through a specific request.
     ReExport { request: usize, imported: String },
+    /// Export exposes a namespace from a request.
     Namespace { request: usize },
+    /// Export shape is ambiguous or unsupported.
     Unknown,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
+/// Matcher-independent imports, exports, locals, and static exported values.
 pub struct ModuleInterface {
     requests: Vec<ModuleRequest>,
     exports: BTreeMap<String, ModuleExport>,
@@ -112,16 +150,19 @@ pub struct ModuleInterface {
 }
 
 impl ModuleInterface {
+    /// Record a local binding name for module-boundary checks.
     pub fn add_local(&mut self, name: impl Into<String>) {
         self.locals.insert(name.into());
     }
 
+    /// Record every binding introduced by a pattern.
     pub fn add_pattern_locals(&mut self, pattern: &Pat) {
         let mut names = BTreeSet::new();
         crate::analysis::syntax::collect_pat_bindings(pattern, &mut names);
         self.locals.extend(names);
     }
 
+    /// Append one authored module request and return its stable local index.
     pub fn add_request(
         &mut self,
         span: Span,
@@ -139,6 +180,7 @@ impl ModuleInterface {
         index
     }
 
+    /// Add an export, marking conflicting declarations as unknown.
     pub fn add_export(&mut self, name: impl Into<String>, export: ModuleExport) {
         if self.unknown_exports {
             return;
@@ -172,50 +214,61 @@ impl ModuleInterface {
         }
     }
 
+    /// Record a statically exported string value.
     pub fn add_static_string(&mut self, name: impl Into<String>, value: impl Into<String>) {
         self.static_strings.insert(name.into(), value.into());
     }
 
+    /// Append a star-export request while the interface remains known.
     pub fn add_star_export(&mut self, request: usize) {
         if !self.unknown_exports {
             self.star_exports.push(request);
         }
     }
 
+    /// Invalidate all export claims after a dynamic or ambiguous shape.
     pub fn mark_unknown_exports(&mut self) {
         self.exports.clear();
         self.star_exports.clear();
         self.unknown_exports = true;
     }
 
+    /// Whether at least one known or deferred export exists.
     pub fn has_exports(&self) -> bool {
         !self.exports.is_empty() || !self.star_exports.is_empty()
     }
 
+    /// Iterate authored requests in source/insertion order.
     pub fn requests(&self) -> impl Iterator<Item = &ModuleRequest> {
         self.requests.iter()
     }
 
+    /// Borrow one request by its stable local index.
     pub fn request(&self, index: usize) -> Option<&ModuleRequest> {
         self.requests.get(index)
     }
 
+    /// Iterate deferred star-export request indices.
     pub fn star_exports(&self) -> impl Iterator<Item = &usize> {
         self.star_exports.iter()
     }
 
+    /// Iterate named exports in deterministic key order.
     pub fn exports(&self) -> impl Iterator<Item = (&String, &ModuleExport)> {
         self.exports.iter()
     }
 
+    /// Whether a local binding of this name was recorded.
     pub fn is_local(&self, name: &str) -> bool {
         self.locals.contains(name)
     }
 
+    /// Whether the interface contains an unsupported export shape.
     pub fn is_unknown(&self) -> bool {
         self.unknown_exports
     }
 
+    /// Return a statically exported string, if present.
     pub fn static_string(&self, name: &str) -> Option<&String> {
         self.static_strings.get(name)
     }
@@ -224,6 +277,8 @@ impl ModuleInterface {
         &self.function_exports
     }
 
+    /// Convert authored requests into public resolver keys using the source
+    /// map.
     pub fn authored_requests(
         &self,
         importer: &str,

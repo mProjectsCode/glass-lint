@@ -1,3 +1,5 @@
+//! Electron module-boundary rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects imports and unshadowed static CommonJS/interop loads of the exact

@@ -1,3 +1,5 @@
+//! Obsidian vault enumeration rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects rooted calls to the six configured vault enumeration methods:

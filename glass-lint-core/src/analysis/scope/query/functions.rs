@@ -1,6 +1,9 @@
+//! Function identity queries across lexical scopes and aliases.
+
 use super::{BindingProvenance, Expr, FunctionId, ScopeGraph, Span};
 
 impl ScopeGraph {
+    /// Find the nearest enclosing function identity for a lexical scope.
     pub(in crate::analysis) fn function_scope_at(&self, scope: usize) -> FunctionId {
         let mut current = Some(scope);
         while let Some(index) = current {
@@ -12,10 +15,12 @@ impl ScopeGraph {
         FunctionId(0)
     }
 
+    /// Return the canonical function identity for a scope.
     pub(in crate::analysis) fn function_id_for_scope(&self, scope: usize) -> FunctionId {
         self.function_scope_at(scope)
     }
 
+    /// Resolve a function identifier/alias if it was not reassigned before use.
     pub(in crate::analysis) fn function_id_for_expr(&self, expr: &Expr) -> Option<FunctionId> {
         let Expr::Ident(ident) = expr else {
             return None;
@@ -47,6 +52,7 @@ impl ScopeGraph {
         (!reassigned).then_some(function)
     }
 
+    /// Find a named function binding visible at a source position.
     pub(in crate::analysis) fn function_binding_at(
         &self,
         name: &str,
@@ -61,6 +67,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Find the smallest function span containing a source position.
     pub(in crate::analysis) fn function_id_for_span(&self, span: Span) -> Option<FunctionId> {
         self.function_spans()
             .filter_map(|(function, candidate)| {

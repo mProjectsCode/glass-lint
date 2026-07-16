@@ -1,5 +1,8 @@
+//! Obsidian plugin load/unload rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
+/// Detects plugin-manager and returned-plugin load/unload operations.
 pub fn rule() -> Rule {
     Rule::builder("plugins.load-unload")
         .label("Loads or unloads plugins at runtime")

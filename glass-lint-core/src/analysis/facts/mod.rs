@@ -1,4 +1,9 @@
 //! Semantic fact orchestration over one immutable stream.
+//!
+//! This module owns the matcher-independent boundary: the AST is traversed
+//! once to produce facts, occurrence indexes, and a module interface. Matcher
+//! selection is applied only by [`SemanticFacts::project`] after that shared
+//! state has been built.
 
 #[cfg(test)]
 use swc_common::Span;
@@ -25,6 +30,10 @@ pub(in crate::analysis) use stream::FactStream;
 // ── SemanticFacts ───────────────────────────────────────────────────────
 
 #[derive(Debug)]
+/// Immutable per-file semantic state shared by all selected matchers.
+///
+/// A malformed or budget-exhausted stream remains available for diagnostics,
+/// but indexing and projection fail closed rather than consuming partial facts.
 pub(in crate::analysis) struct SemanticFacts {
     stream: FactStream,
     index: MatcherFacts,
@@ -32,6 +41,8 @@ pub(in crate::analysis) struct SemanticFacts {
 }
 
 impl SemanticFacts {
+    /// Build facts, indexes, and the module interface from one resolver-backed
+    /// AST walk, independently of the enabled matcher catalog.
     pub(in crate::analysis) fn build(program: &Program, resolver: &Resolver) -> Self {
         // Build the canonical fact stream from the authoritative FactBuilder.
         let mut builder = FactBuilder::new(resolver);
@@ -52,14 +63,17 @@ impl SemanticFacts {
         }
     }
 
+    /// Borrow the canonical facts in deterministic source traversal order.
     pub(in crate::analysis) fn stream(&self) -> &FactStream {
         &self.stream
     }
 
+    /// Clone the rule-independent occurrence indexes for local or project use.
     pub(in crate::analysis) fn cloned_matcher_facts(&self) -> MatcherFacts {
         self.index.clone()
     }
 
+    /// Borrow the module requests and export facts collected during the walk.
     pub(in crate::analysis) fn interface(&self) -> &ModuleInterface {
         &self.interface
     }

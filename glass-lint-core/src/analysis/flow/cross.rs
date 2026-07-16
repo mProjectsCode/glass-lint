@@ -28,14 +28,23 @@ const MAX_CONTEXTS: usize = 65_536;
 const MAX_STEPS: usize = 262_144;
 
 #[derive(Debug, Default)]
+/// Global work budget for qualified flow propagation.
+///
+/// Exhaustion invalidates the collected evidence because a partial cross-file
+/// result cannot distinguish “not reached” from “not analyzed.”
 struct CrossBudget {
+    /// Number of propagation steps consumed.
     steps: usize,
+    /// Number of contexts projected into evidence.
     projections: usize,
+    /// Whether the hard step limit was reached.
     exhausted: bool,
 }
 
 impl CrossBudget {
     fn step(&mut self) -> bool {
+        // Cross-module propagation is monotone but can fan out through helper
+        // chains; stop before that fan-out can make analysis unbounded.
         self.steps = match self.steps.checked_add(1) {
             Some(value) if value <= MAX_STEPS => value,
             _ => {
@@ -52,8 +61,11 @@ impl CrossBudget {
 }
 
 #[derive(Debug)]
+/// Fixed-point budget for propagating source identities through helper calls.
 struct SourceBudget {
+    /// Number of refinement rounds performed.
     rounds: usize,
+    /// Whether stabilization was not reached before the limit.
     exhausted: bool,
 }
 
@@ -66,6 +78,8 @@ impl SourceBudget {
     }
 
     fn next_round(&mut self) -> bool {
+        // Source identities are refined to a fixed point, with a hard round
+        // limit that reports exhaustion rather than guessing a partial state.
         self.rounds = self.rounds.saturating_add(1);
         self.rounds <= 64
     }
@@ -76,12 +90,14 @@ impl SourceBudget {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+/// A fact location qualified by its owning project module.
 struct QualifiedEvent {
     module: ModuleId,
     fact: FactId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+/// Monotone flow state carried through one qualified call context.
 struct State {
     flow: FlowId,
     source: QualifiedEvent,
@@ -89,6 +105,7 @@ struct State {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+/// Worklist context identifying the function/value path currently projected.
 struct Context {
     module: ModuleId,
     function: FunctionId,
@@ -99,6 +116,7 @@ struct Context {
 }
 
 #[derive(Default)]
+/// Deduplicating FIFO worklist for bounded interprocedural contexts.
 struct ContextWorklist {
     pending: VecDeque<Context>,
     seen: BTreeSet<Context>,
@@ -219,7 +237,9 @@ impl ContextWorklist {
     }
 }
 
+/// Local effect/value key used while composing source identities.
 type SourceKey = (ModuleId, FunctionId, ValueId);
+/// Flow matcher and source-event pair associated with a source identity.
 type SourceCandidate = (FlowId, FactId);
 
 /// Proven source identities indexed by the local effect that produced them.

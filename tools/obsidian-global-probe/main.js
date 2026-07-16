@@ -1,5 +1,8 @@
 "use strict";
 
+// The plugin entry is intentionally self-contained: Obsidian copies one
+// main.js bundle, so this file must not depend on the standalone probe.
+
 const obsidianApi = require("obsidian");
 const { Modal, Notice, Plugin } = obsidianApi;
 
@@ -18,6 +21,8 @@ function collectObsidianGlobals({
     globalObject = globalThis,
     moduleExports = {},
 } = {}) {
+    // Inventory names and descriptors only; never serialize values or invoke
+    // arbitrary getters while probing a live renderer realm.
     const errors = [];
     const candidates = [];
     addRealm(candidates, "plugin-global", globalObject);

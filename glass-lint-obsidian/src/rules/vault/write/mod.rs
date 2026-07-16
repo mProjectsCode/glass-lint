@@ -1,3 +1,5 @@
+//! Obsidian vault write rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects rooted calls to the eight configured vault write APIs: `create`,

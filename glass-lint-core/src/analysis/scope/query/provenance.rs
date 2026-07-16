@@ -41,6 +41,7 @@ impl ScopeGraph {
         Some(member.to_string())
     }
 
+    /// Resolve a member expression after applying alias and mutation checks.
     pub(in crate::analysis) fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String> {
         let syntactic_chain = self.member_chain(member).or_else(|| {
             let object = crate::analysis::syntax::expr_name(&member.obj)?;
@@ -50,6 +51,7 @@ impl ScopeGraph {
         self.resolve_member_chain(member, &syntactic_chain)
     }
 
+    /// Resolve a syntactic member chain to a proven rooted identity.
     pub fn resolve_member_chain(
         &self,
         member: &MemberExpr,
@@ -128,12 +130,14 @@ impl ScopeGraph {
         }
     }
 
+    /// Whether a path starts at an allowed stable root.
     fn rooted_path_available(&self, path: &SymbolPath) -> bool {
         let value = path.to_string();
         let root = value.split('.').next().unwrap_or_default();
         root == "this" || self.is_global(root)
     }
 
+    /// Whether a receiver path was assigned before this use in its scope.
     fn property_was_written_at(&self, receiver: &BindingKey, path: &[String], span: Span) -> bool {
         self.property_aliases(&(receiver.clone(), path.to_vec()))
             .is_some_and(|assignments| {
@@ -146,6 +150,7 @@ impl ScopeGraph {
             })
     }
 
+    /// Whether a rooted global/member property was invalidated before use.
     fn rooted_property_was_mutated_at(
         &self,
         root: &str,
@@ -168,6 +173,7 @@ impl ScopeGraph {
 }
 
 impl ScopeGraph {
+    /// Resolve callable provenance while rejecting dynamic or shadowed uses.
     pub(in crate::analysis) fn call_provenance(
         &self,
         name: &str,
@@ -237,6 +243,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Produce the immutable resolver seed for an identifier occurrence.
     pub(in crate::analysis) fn ident_value_seed(&self, ident: &Ident) -> IdentValueSeed {
         let expr = Expr::Ident(ident.clone());
         IdentValueSeed {
@@ -248,15 +255,18 @@ impl ScopeGraph {
         }
     }
 
+    /// Extract a statically evaluable member property name.
     pub(in crate::analysis) fn member_prop_name(&self, member: &MemberExpr) -> Option<String> {
         constant::property_name(&member.prop, self)
     }
 
+    /// Return the syntax-level dotted chain for a member expression.
     pub(in crate::analysis) fn member_chain(&self, member: &MemberExpr) -> Option<String> {
         let object = super::syntax::expr_name(&member.obj)?;
         Some(format!("{object}.{}", self.member_prop_name(member)?))
     }
 
+    /// Return a callable rooted chain for a proven identifier binding.
     pub(in crate::analysis) fn callable_member_chain(&self, ident: &Ident) -> Option<String> {
         if self.has_dynamic_lookup_at(ident.span) {
             return None;
@@ -280,6 +290,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Convert a namespace-rooted chain into module export provenance.
     pub(in crate::analysis) fn module_export_for_chain(
         &self,
         chain: &str,
@@ -297,6 +308,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Resolve the module namespace provenance of a member call chain.
     pub(in crate::analysis) fn member_call_provenance_for_chain(
         &self,
         member: &MemberExpr,
@@ -329,6 +341,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Produce the immutable resolver seed for a member occurrence.
     pub(in crate::analysis) fn member_value_seed(&self, member: &MemberExpr) -> MemberValueSeed {
         let syntactic_chain = self.member_chain(member).map(SymbolPath::from);
         let rooted_chain = syntactic_chain
@@ -351,6 +364,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Resolve supported import/require expressions to module/member paths.
     pub(in crate::analysis) fn module_member_for_expr(
         &self,
         expr: &Expr,
@@ -438,6 +452,7 @@ impl ScopeGraph {
         }
     }
 
+    /// Return the source and property for a proven returned object member.
     pub(in crate::analysis) fn returned_member(
         &self,
         member: &MemberExpr,

@@ -1,3 +1,5 @@
+//! Conversion of semantic evidence into located lint findings.
+
 use swc_common::SourceMapper;
 
 use super::{
@@ -106,6 +108,7 @@ impl Linter {
     }
 }
 
+/// Test finding/evidence containment using source-range ordering.
 pub fn contains_range(outer: &SourceRange, inner: &SourceRange) -> bool {
     outer.contains(inner)
 }

@@ -1,4 +1,8 @@
 //! ApiMatcher overlays and project-level matcher evidence.
+//!
+//! Projection is deliberately after local fact construction and project
+//! linking. It applies qualified identities once, composes bounded flow, and
+//! leaves rule selection to the compiled matcher catalog.
 
 use std::collections::BTreeMap;
 
@@ -9,18 +13,26 @@ use crate::{
 };
 
 #[derive(Debug)]
+/// Matcher-independent facts and cross-file evidence for one linked project.
 pub struct ProjectMatcherModel<'matchers> {
+    /// The immutable catalog used to select and query rules.
     matchers: CompiledMatcherCatalog<'matchers>,
+    /// Per-module local indexes plus projected argument evidence.
     projections: BTreeMap<ModuleId, ProjectModuleProjection>,
 }
 
 #[derive(Debug)]
+/// Materialized matcher inputs for one project module.
 struct ProjectModuleProjection {
+    /// Local occurrences after applying imported/namespace identities.
     index: MatcherFacts,
+    /// Direct and cross-module argument evidence grouped by rule index.
     arguments: Vec<Vec<ApiEvidence>>,
 }
 
 impl ProjectSemanticModel {
+    /// Project a linked semantic model into matcher queries without rewalking
+    /// any source AST.
     pub fn project<'matchers>(
         &self,
         matchers: CompiledMatcherCatalog<'matchers>,
@@ -67,6 +79,7 @@ impl ProjectSemanticModel {
 }
 
 impl ProjectMatcherModel<'_> {
+    /// Return deterministic, deduplicated evidence for a selected rule.
     pub fn evidence_for(&self, module: &ProjectModule, rule_index: usize) -> Vec<ApiEvidence> {
         if !self.matchers.is_selected(rule_index) {
             return Vec::new();

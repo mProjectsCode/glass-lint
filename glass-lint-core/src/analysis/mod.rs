@@ -3,6 +3,10 @@
 //! Local construction and matcher projection are deliberately separate. A
 //! source is parsed and semantically visited once into a matcher-independent
 //! model; rules query a linked project model afterwards.
+//!
+//! Local scopes and value arenas remain partitioned by module. Linking adds
+//! qualified identities and bounded flow overlays, never lexical facts from
+//! one module into another.
 
 use std::{
     cell::Cell,
@@ -42,28 +46,44 @@ const MAX_PROJECT_REQUESTS: usize = 500_000;
 /// identities remain owned by their module; the overlay stores qualified
 /// resolution results rather than merging lexical arenas.
 pub struct ProjectSemanticModel {
+    /// Locally analyzed modules keyed by stable module ID.
     modules: BTreeMap<ModuleId, ProjectModule>,
+    /// Authored request resolutions keyed by importer/span/kind.
     resolutions: BTreeMap<ResolutionRequestKey, ResolvedModule>,
+    /// Fixed-point export identities for linked modules.
     exports: ExportTable,
+    /// Internal module graph and strongly connected components.
     graph: ModuleGraph,
+    /// Number of export-linking refinement rounds.
     link_rounds: usize,
+    /// Project diagnostics accumulated during linking and budgets.
     diagnostics: Vec<crate::ProjectDiagnostic>,
+    /// Budget used by cross-module flow projection.
     flow_budget: crate::budget::BudgetTracker,
+    /// Budget used by export identity linking.
     link_budget: crate::budget::BudgetTracker,
+    /// Count of effect projections performed for operation telemetry.
     effect_projections: Cell<usize>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ExportResolution {
+    /// Identity resolved to an external module export.
     External { module: String, export: String },
+    /// Identity resolved to a configured global.
     Global { name: String },
+    /// Identity resolved to a static string.
     StaticString { value: String },
+    /// Identity qualified to another project module.
     Qualified { module: ModuleId, export: String },
+    /// Identity could not be established.
     Unknown,
+    /// Multiple linked paths proved incompatible identities.
     Ambiguous,
 }
 
 impl ProjectSemanticModel {
+    /// Create a project model for one already analyzed source without linking.
     pub fn single(
         path: impl Into<String>,
         source_map: Lrc<SourceMap>,
@@ -190,6 +210,7 @@ impl ProjectSemanticModel {
         self.modules.values()
     }
 
+    /// Return the result value produced by a source call fact, if known.
     pub(in crate::analysis) fn source_call_result(
         &self,
         module: ModuleId,
@@ -206,6 +227,7 @@ impl ProjectSemanticModel {
             })
     }
 
+    /// Convert a module/fact identity into reportable related evidence.
     pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<crate::ProjectEvidence> {
         let module = self.modules.get(&module)?;
         let fact = module
@@ -223,6 +245,7 @@ impl ProjectSemanticModel {
         })
     }
 
+    /// Resolve a callable target across local or qualified module identities.
     pub(in crate::analysis) fn qualified_function_target(
         &self,
         importer: ModuleId,
@@ -257,14 +280,17 @@ impl ProjectSemanticModel {
         Some((target, function))
     }
 
+    /// Borrow diagnostics produced during project linking and analysis.
     pub fn diagnostics(&self) -> &[crate::ProjectDiagnostic] {
         &self.diagnostics
     }
 
+    /// Whether bounded cross-module flow exhausted its budget.
     pub fn flow_budget_exhausted(&self) -> bool {
         self.flow_budget.is_exhausted()
     }
 
+    /// Return deterministic phase and evidence operation counts.
     pub fn operation_counts(&self, evidence: usize) -> crate::ProjectOperationCounts {
         crate::ProjectOperationCounts {
             files: self.modules.len(),
@@ -281,6 +307,7 @@ impl ProjectSemanticModel {
         }
     }
 
+    /// Return all authored module requests with source-qualified keys.
     pub fn authored_requests(module: &ProjectModule) -> Vec<crate::ResolutionRequest> {
         module
             .local()
@@ -288,6 +315,7 @@ impl ProjectSemanticModel {
             .authored_requests(module.path(), module.source_map())
     }
 
+    /// Classify selected rules against the linked project overlay.
     pub fn classify(
         &self,
         catalog: &crate::api::compiler::CompiledCatalog,

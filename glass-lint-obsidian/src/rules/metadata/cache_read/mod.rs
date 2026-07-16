@@ -1,3 +1,5 @@
+//! Obsidian metadata-cache access rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects rooted reads of `app.metadataCache`, `resolvedLinks`, and

@@ -1,8 +1,10 @@
+//! Obsidian settings-tab rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects syntactic `this.addSettingTab()` registration calls and
-/// `PluginSettingTab` constructors/subclasses. The registration form is a
-/// heuristic that does not prove an Obsidian receiver or follow aliases and
+/// `PluginSettingTab` constructors/subclasses. The registration form requires
+/// a proven Obsidian `Plugin` receiver and does not follow aliases or
 /// reassignment; constructor forms follow ESM, namespace, and CommonJS
 /// `obsidian` provenance, while arguments and class bodies are ignored.
 pub fn rule() -> Rule {

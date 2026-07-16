@@ -1,9 +1,13 @@
+//! Project-loader integration tests for discovery, budgets, resolution, and
+//! deterministic phase metrics.
+
 use std::fs;
 
 use glass_lint_core::{Environment, Linter, RuleCatalog};
 
 use crate::{ProjectLoadError, ProjectLoadOptions, ProjectLoader, ProjectSelection};
 
+/// Use an empty catalog to isolate loader behavior from rule matching.
 fn linter() -> Linter {
     Linter::new(RuleCatalog::with_environment("test", vec![], Environment::default()).unwrap())
 }

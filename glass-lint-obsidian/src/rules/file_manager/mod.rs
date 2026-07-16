@@ -1,3 +1,5 @@
+//! Obsidian file-manager rule catalog.
+
 mod frontmatter_write;
 
 use glass_lint_core::rules::Rule;

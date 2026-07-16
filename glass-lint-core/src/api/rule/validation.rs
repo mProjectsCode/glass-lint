@@ -1,4 +1,9 @@
 //! Validation of matcher invariants at the rule construction boundary.
+//!
+//! Validation rejects empty, malformed, dynamic, or over-sized declarations
+//! before normalization and compilation. Error paths identify the matcher
+//! field that failed so provider authors can correct the rule
+//! deterministically.
 
 use super::matcher::{
     ApiMatcher, ArgumentConstraint, ArgumentMatcher, CallProvenance, FlowCompletion, FlowCondition,
@@ -10,6 +15,7 @@ use super::matcher::{
 const MAX_ARGUMENT_INDEX: usize = 1 << 20;
 const MAX_EXPRESSION_NODES: usize = 4096;
 
+/// Validate all matcher families in one assembled API matcher.
 pub(super) fn validate(matcher: &ApiMatcher) -> Result<(), String> {
     for call in &matcher.calls {
         validate_name_at(&call.name, "call name")?;
@@ -55,6 +61,7 @@ pub(super) fn validate(matcher: &ApiMatcher) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate one matcher while preserving its catalog position in errors.
 pub fn validate_matcher_at(matcher: &Matcher, index: usize) -> Result<(), String> {
     if let Matcher::ObjectFlow(flow) = matcher {
         let path = format!("matcher[{index}].flow");
@@ -75,6 +82,7 @@ pub fn validate_matcher_at(matcher: &Matcher, index: usize) -> Result<(), String
     Ok(())
 }
 
+/// Validate a complete object-flow lifecycle declaration.
 pub fn validate_object_flow(flow: &ObjectFlowMatcher, path: &str) -> Result<(), String> {
     validate_name_at(&flow.symbol, &format!("{path}.symbol"))?;
     if flow.sources.is_empty() {

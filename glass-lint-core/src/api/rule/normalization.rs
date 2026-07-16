@@ -3,6 +3,10 @@
 //! Argument fields have their own nested sets and ordering rules. Keeping
 //! this pass separate from top-level matcher normalization prevents a matcher
 //! from being sorted before its semantic argument shape is canonicalized.
+//!
+//! Normalization trims strings, canonicalizes rooted chains, sorts nested
+//! alternatives, and removes duplicates. It preserves matcher meaning while
+//! making compiled catalogs deterministic.
 
 use super::matcher::{
     ApiMatcher, ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
@@ -13,6 +17,7 @@ use super::matcher::{
 };
 
 impl ApiMatcher {
+    /// Consume a matcher and return its canonical deterministic representation.
     pub(super) fn normalize(mut self) -> Self {
         normalize_arguments(&mut self);
         for call in &mut self.calls {

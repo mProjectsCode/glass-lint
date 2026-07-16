@@ -1,3 +1,9 @@
+//! Assignment facts, including conservative invalidation for writes.
+//!
+//! Every write is represented even when its source is unknown. Flow analysis
+//! can then kill stale identities at the write position instead of allowing a
+//! value proven before reassignment to leak into later uses.
+
 use swc_ecma_ast::AssignOp;
 
 use super::{
@@ -6,7 +12,12 @@ use super::{
 };
 
 impl FactBuilder<'_> {
+    /// Emit the write semantics for identifier, member, and destructuring
+    /// assignments, including the module-interface consequences of CommonJS
+    /// export writes.
     pub(super) fn record_assignment(&mut self, assignment: &AssignExpr) {
+        // Any direct write through the CommonJS export objects makes the
+        // module interface ambiguous; later project linking must fail closed.
         if assignment.op == AssignOp::Assign
             && let swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Ident(
                 ident,

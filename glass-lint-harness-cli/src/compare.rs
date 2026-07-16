@@ -1,3 +1,8 @@
+//! Comparison-mode progress and report output.
+//!
+//! Timing aggregation is kept separate from case execution so reports remain
+//! deterministic while progress and wall-clock diagnostics stay on stderr.
+
 use std::{collections::BTreeMap, fs, path::Path, time::Duration};
 
 use anyhow::{Context, Result};

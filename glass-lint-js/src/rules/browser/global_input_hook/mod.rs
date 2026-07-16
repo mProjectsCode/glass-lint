@@ -1,3 +1,5 @@
+//! Browser global-input listener rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Severity};
 
 /// Detects `document` or `window` event-listener registrations for the listed

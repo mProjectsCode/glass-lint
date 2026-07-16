@@ -1,3 +1,5 @@
+//! Obsidian menu rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects the syntactic `menu.addMenuItem()` call. This medium-confidence

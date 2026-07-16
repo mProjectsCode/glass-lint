@@ -1,3 +1,5 @@
+//! Obsidian notice rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects the exact global `Notice` constructor plus constructors and

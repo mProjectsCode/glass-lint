@@ -25,6 +25,7 @@ pub struct ProjectSession<'a> {
 }
 
 impl<'a> ProjectSession<'a> {
+    /// Start an empty parse-once project session under a canonical root.
     pub fn new(
         linter: &'a crate::Linter,
         root: impl Into<std::path::PathBuf>,
@@ -40,6 +41,7 @@ impl<'a> ProjectSession<'a> {
         })
     }
 
+    /// Normalize, store, parse, and locally analyze one source file.
     pub fn add_source(
         &mut self,
         mut source: SourceFile,
@@ -71,6 +73,7 @@ impl<'a> ProjectSession<'a> {
         }
     }
 
+    /// Record a resolver answer only for an authored module request.
     pub fn record_resolution(
         &mut self,
         mut key: ResolutionRequestKey,
@@ -84,10 +87,12 @@ impl<'a> ProjectSession<'a> {
         self.resolutions.insert(key, result)
     }
 
+    /// Link the staged project and return its report.
     pub fn finish(self) -> Result<ProjectReport, ProjectInputError> {
         self.finish_with_timings().map(|(report, _, _)| report)
     }
 
+    /// Link the staged project and return report plus phase timings.
     pub fn finish_with_timings(
         self,
     ) -> Result<(ProjectReport, std::time::Duration, std::time::Duration), ProjectInputError> {

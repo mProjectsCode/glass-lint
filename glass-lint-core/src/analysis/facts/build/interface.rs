@@ -1,4 +1,9 @@
 //! Module-interface recording performed during the canonical fact walk.
+//!
+//! The interface is matcher-independent: it records authored requests and
+//! exports for later project linking. Only static, structurally supported
+//! shapes are linked; dynamic or conflicting shapes are marked unknown so
+//! cross-file analysis fails closed.
 
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
@@ -14,6 +19,7 @@ use crate::{
 };
 
 impl FactBuilder<'_> {
+    /// Record runtime import bindings as local names for interface linking.
     pub(super) fn record_local_imports(&mut self, import: &ImportDecl) {
         for specifier in &import.specifiers {
             if !specifier.is_type_only() {
@@ -22,6 +28,7 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Record the export identities exposed by a declaration.
     pub(super) fn record_export_decl(&mut self, declaration: &swc_ecma_ast::Decl) {
         match declaration {
             swc_ecma_ast::Decl::Class(class) => {
@@ -81,7 +88,11 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Add a resolution request for a literal dynamic import or CommonJS
+    /// `require` call; dynamic specifiers remain intentionally unlinked.
     pub(super) fn record_module_call_request(&mut self, call: &CallExpr) {
+        // Only literal specifiers become resolution requests. Dynamic module
+        // names cannot be linked safely and therefore remain local unknowns.
         match &call.callee {
             Callee::Import(_) => {
                 let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
@@ -122,6 +133,7 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Record local exports and re-exports while ignoring type-only exports.
     pub(super) fn record_named_export(&mut self, export: &NamedExport) {
         if export.type_only {
             return;
@@ -232,6 +244,7 @@ impl FactBuilder<'_> {
         }
     }
 
+    /// Record a star export as a deferred request for the project linker.
     pub(super) fn record_export_all(&mut self, export: &ExportAll) {
         if export.type_only {
             return;
@@ -245,6 +258,7 @@ impl FactBuilder<'_> {
         self.interface.add_star_export(request);
     }
 
+    /// Record the default export's supported function, local, or value shape.
     pub(super) fn record_default_expr(&mut self, export: &ExportDefaultExpr) {
         if let Expr::Ident(ident) = &*export.expr {
             if let Some(id) = self
@@ -268,6 +282,8 @@ impl FactBuilder<'_> {
         export.expr.visit_with(self);
     }
 
+    /// Record a default declaration without claiming an anonymous value is a
+    /// named local when no stable identity exists.
     pub(super) fn record_default_decl(&mut self, export: &ExportDefaultDecl) {
         match &export.decl {
             DefaultDecl::Fn(function) => {
@@ -312,6 +328,7 @@ impl FactBuilder<'_> {
         export.decl.visit_with(self);
     }
 
+    /// Translate supported CommonJS assignment shapes into interface entries.
     pub(super) fn record_commonjs_export(&mut self, assignment: &swc_ecma_ast::AssignExpr) {
         if assignment.op != swc_ecma_ast::AssignOp::Assign {
             return;

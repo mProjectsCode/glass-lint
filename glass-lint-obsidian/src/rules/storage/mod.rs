@@ -1,3 +1,5 @@
+//! Obsidian plugin-data storage rule catalog.
+
 mod plugin_data_read;
 mod plugin_data_write;
 use glass_lint_core::rules::Rule;

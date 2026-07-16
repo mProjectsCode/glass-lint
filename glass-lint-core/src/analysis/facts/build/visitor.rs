@@ -3,6 +3,10 @@
 //! Each visit method records semantic roles in evaluation order. ApiMatcher
 //! selection never reaches this visitor; all values, provenance, and control
 //! regions are computed once for every file.
+//!
+//! Child traversal is suppressed where the parent already owns a semantic
+//! role, such as an import source or a call callee; otherwise the same syntax
+//! would produce duplicate facts and distort deterministic evidence order.
 
 use swc_ecma_ast::ExportDefaultExpr;
 

@@ -1,3 +1,9 @@
+//! Matcher-independent analysis of one source module.
+//!
+//! Local analysis resolves scopes, values, facts, module interfaces, and
+//! function effects exactly once. Project linking and rule selection consume
+//! this model later without revisiting the AST.
+
 use std::collections::BTreeMap;
 
 use facts::SemanticFacts;
@@ -11,12 +17,16 @@ use crate::{Environment, project::ModuleId};
 /// The immutable, matcher-independent result of analyzing one source.
 #[derive(Debug)]
 pub struct LocalModuleModel {
+    /// Canonical facts, occurrence indexes, and module interface.
     facts: SemanticFacts,
+    /// Proven origins for locally named exports.
     export_origins: BTreeMap<String, SymbolCallProvenance>,
+    /// Matcher-independent function effects for project flow.
     effects: flow::effect::FunctionEffects,
 }
 
 impl LocalModuleModel {
+    /// Analyze one parsed program against the configured host environment.
     pub fn analyze(program: &Program, environment: &Environment) -> Self {
         let resolver = resolution::Resolver::collect_with_environment(program, environment);
         let facts = SemanticFacts::build(program, &resolver);
@@ -43,6 +53,7 @@ impl LocalModuleModel {
         }
     }
 
+    /// Borrow the matcher-independent module interface.
     pub fn interface(&self) -> &ModuleInterface {
         self.facts.interface()
     }
@@ -63,13 +74,18 @@ impl LocalModuleModel {
 /// A successfully analyzed source together with the data needed to report
 /// findings in its original file.
 pub struct ProjectModule {
+    /// Stable project-local module identity.
     id: ModuleId,
+    /// Canonical path used in report locations and resolution keys.
     path: String,
+    /// Source map for translating fact spans into user locations.
     source_map: Lrc<SourceMap>,
+    /// Immutable local semantic model.
     local: LocalModuleModel,
 }
 
 impl ProjectModule {
+    /// Assemble a linked-project module from a stable identity and local model.
     pub fn new(
         id: ModuleId,
         path: String,
@@ -84,18 +100,22 @@ impl ProjectModule {
         }
     }
 
+    /// Return the stable module identity.
     pub fn id(&self) -> ModuleId {
         self.id
     }
 
+    /// Return the canonical report/resolution path.
     pub fn path(&self) -> &str {
         &self.path
     }
 
+    /// Borrow the source map used for location conversion.
     pub fn source_map(&self) -> &Lrc<SourceMap> {
         &self.source_map
     }
 
+    /// Borrow this module's local semantic model.
     pub fn local(&self) -> &LocalModuleModel {
         &self.local
     }

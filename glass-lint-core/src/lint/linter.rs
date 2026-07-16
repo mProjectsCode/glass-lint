@@ -19,7 +19,9 @@ type AnalyzedModules = BTreeMap<
 >;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Configuration failure when selecting rules for a linter.
 pub enum LintConfigError {
+    /// A requested fully-qualified rule ID is absent from the catalog.
     UnknownRule(RuleId),
 }
 
@@ -33,8 +35,11 @@ impl std::fmt::Display for LintConfigError {
 
 impl std::error::Error for LintConfigError {}
 
+/// Immutable catalog plus sorted enabled-rule indexes for lint execution.
 pub struct Linter {
+    /// Validated rule catalog and compiled matcher plans.
     catalog: RuleCatalog,
+    /// Enabled rule indexes in deterministic order.
     enabled: Vec<usize>,
 }
 
@@ -56,12 +61,14 @@ impl Linter {
     }
 
     #[must_use]
+    /// Construct a linter with every catalog rule enabled.
     pub fn new(catalog: RuleCatalog) -> Self {
         let enabled = (0..catalog.rules.len()).collect();
         Self { catalog, enabled }
     }
 
     /// Select all rules at or above the requested confidence level.
+    /// Construct a linter with rules at or above a confidence threshold.
     pub fn with_confidence(catalog: RuleCatalog, confidence: crate::api::rule::Confidence) -> Self {
         let enabled = catalog
             .rules
@@ -74,6 +81,7 @@ impl Linter {
         Self { catalog, enabled }
     }
 
+    /// Construct a linter with a validated explicit rule selection.
     pub fn with_rules(
         catalog: RuleCatalog,
         enabled: impl IntoIterator<Item = RuleId>,
@@ -112,6 +120,7 @@ impl Linter {
     }
 
     #[must_use]
+    /// Borrow the validated catalog.
     pub fn catalog(&self) -> &RuleCatalog {
         &self.catalog
     }
@@ -125,6 +134,7 @@ impl Linter {
             .collect()
     }
 
+    /// Borrow the environment used by semantic analysis.
     pub fn analysis_environment(&self) -> &Environment {
         self.catalog.environment()
     }
@@ -212,6 +222,7 @@ impl Linter {
         session.finish()
     }
 
+    /// Link an already analyzed project and return phase timings.
     pub fn lint_analyzed_project_timed(
         &self,
         input: ProjectInput,

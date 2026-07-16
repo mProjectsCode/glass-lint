@@ -1,13 +1,17 @@
+//! Provider/profile selection shared by adapters and profiling.
+
 use anyhow::{Result, bail};
 use glass_lint_core::{Environment, Linter};
 
 #[derive(Clone, Copy)]
+/// Built-in rule provider available to the harness.
 pub enum BuiltInProvider {
     Js,
     Obsidian,
 }
 
 #[derive(Clone, Copy)]
+/// Precision profile used to construct a provider linter.
 pub enum BuiltInProfile {
     Recommended,
     Heuristic,

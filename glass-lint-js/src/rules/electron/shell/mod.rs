@@ -1,3 +1,5 @@
+//! Electron shell rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects Electron `shell.openExternal` and `shell.openPath` calls through a

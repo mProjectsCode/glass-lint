@@ -49,6 +49,7 @@ impl ProjectReport {
 }
 
 impl ProjectFinding {
+    /// Convert a single-file finding into a path-qualified project finding.
     pub fn from_finding(finding: crate::Finding, path: &str) -> Self {
         Self {
             rule_id: finding.rule_id,
@@ -74,6 +75,7 @@ impl ProjectFinding {
         }
     }
 
+    /// Append related evidence and retain deterministic de-duplicated order.
     pub fn append_related(&mut self, evidence: impl IntoIterator<Item = ProjectEvidence>) {
         self.evidence.extend(evidence);
         let evidence = std::mem::take(&mut self.evidence);

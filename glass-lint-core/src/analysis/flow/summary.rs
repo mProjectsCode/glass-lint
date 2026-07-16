@@ -4,6 +4,11 @@
 //! projections keep destructuring precise, while the fixed point joins helper
 //! calls (including recursive and mutually recursive helpers) without walking
 //! AST bodies again.
+//!
+//! Summaries are monotone and conservative: unsupported reassignment,
+//! dynamic arguments, missing paths, or incompatible invocations do not create
+//! a projected sink. Recursive propagation stops at a fixed point or its
+//! explicit round bound.
 
 use super::{
     super::{
@@ -17,32 +22,46 @@ use super::{
 const MAX_SUMMARY_ROUNDS: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Sink reachable through a function parameter path.
 pub(super) struct FunctionSinkSummary {
+    /// Flow matcher that owns the sink.
     flow: FlowId,
+    /// Top-level parameter receiving the propagated object.
     parameter_index: usize,
+    /// Nested path at which the sink consumes the object.
     path: PathId,
 }
 
 #[derive(Debug, Clone)]
+/// Rule-independent helper summary used to project calls without AST access.
 pub(super) struct FunctionSummary {
+    /// Function identity owning the summary.
     id: FunctionId,
     // Retained to make lexical nesting available to future closure-aware
     // summary propagation; current helper summaries only follow call edges.
     #[allow(dead_code)]
     owner: FunctionId,
+    /// Parameter bindings and destructuring paths.
     parameters: Vec<ParameterBinding>,
+    /// Number of top-level parameters in the callable shape.
     parameter_count: usize,
+    /// Whether an additional rest argument is accepted.
     has_rest: bool,
     /// Canonical fact identities avoid retaining cloned call payloads in the
     /// summary. Resolve these through the immutable stream when projecting.
     calls: Vec<FactId>,
+    /// Sinks directly or transitively reachable through this helper.
     sinks: SinkSet,
+    /// Writes that may invalidate a propagated object.
     writes: Vec<PropertyWriteProjection>,
+    /// Return events retained for future summary composition.
     returns: Vec<ReturnProjection>,
+    /// Reasons this summary must not be used for precise propagation.
     invalid: SummaryInvalidation,
 }
 
 #[derive(Debug, Clone, Default)]
+/// Deduplicated sink projections for one function summary.
 pub(super) struct SinkSet(Vec<FunctionSinkSummary>);
 impl SinkSet {
     fn contains(&self, sink: &FunctionSinkSummary) -> bool {
@@ -77,6 +96,7 @@ impl IntoIterator for SinkSet {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Property write retained as a summary invalidation/provenance event.
 pub(super) struct PropertyWriteProjection {
     event: FactId,
     target: ValueId,
@@ -85,13 +105,17 @@ pub(super) struct PropertyWriteProjection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// Return event retained in a helper summary.
 pub(super) struct ReturnProjection {
     event: FactId,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Summary invalidation flags that force conservative invocation behavior.
 pub(super) struct SummaryInvalidation {
+    /// A parameter/object identity was reassigned.
     reassigned: bool,
+    /// A dynamic or unsupported shape was encountered.
     dynamic: bool,
 }
 
@@ -116,6 +140,7 @@ impl SummaryInvalidation {
 }
 
 #[derive(Debug, Default, Clone)]
+/// Function summaries indexed by stable function identity.
 pub(super) struct FunctionSummaries {
     by_id: FunctionTable<FunctionSummary>,
 }

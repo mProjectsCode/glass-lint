@@ -1,4 +1,7 @@
 //! Internal project tables used while a project is being assembled.
+//!
+//! The wrappers centralize duplicate detection and preserve insertion order for
+//! evidence while using ordered maps for deterministic project traversal.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -18,12 +21,14 @@ struct EvidenceKey {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct EvidenceList {
+    /// Evidence in the order in which it was first observed.
     items: Vec<ProjectEvidence>,
     #[serde(skip)]
     seen: BTreeSet<EvidenceKey>,
 }
 
 impl EvidenceList {
+    /// Add evidence unless an identical typed record is already present.
     pub fn push_unique(&mut self, item: ProjectEvidence) {
         let key = EvidenceKey {
             message: item.message.clone(),
@@ -81,6 +86,8 @@ impl<'a> IntoIterator for &'a EvidenceList {
 pub struct SourceTable(BTreeMap<String, SourceFile>);
 
 impl SourceTable {
+    /// Insert one normalized source path, rejecting replacement of an existing
+    /// source.
     pub fn insert(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
         let path = source.path.clone();
         if self.0.insert(path.clone(), source).is_some() {
@@ -93,6 +100,7 @@ impl SourceTable {
         self.0.get(path)
     }
 
+    /// Consume the table in normalized path order.
     pub fn into_values(self) -> impl Iterator<Item = SourceFile> {
         self.0.into_values()
     }
@@ -102,6 +110,8 @@ impl SourceTable {
 pub struct ResolutionTable(BTreeMap<ResolutionRequestKey, ResolutionResult>);
 
 impl ResolutionTable {
+    /// Insert one resolver answer, rejecting a second answer for the same
+    /// request.
     pub fn insert(
         &mut self,
         key: ResolutionRequestKey,
@@ -113,6 +123,7 @@ impl ResolutionTable {
         Ok(())
     }
 
+    /// Consume the table in request-key order.
     pub fn into_values(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolutionResult)> {
         self.0.into_iter()
     }

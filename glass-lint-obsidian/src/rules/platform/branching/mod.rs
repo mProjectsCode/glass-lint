@@ -1,3 +1,5 @@
+//! Obsidian platform-branching rule definition.
+
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
 /// Detects reads of the seven exact `obsidian.Platform` flags configured by

@@ -1,3 +1,5 @@
+//! Browser remote-DOM-resource flow rule definition.
+
 use glass_lint_core::rules::{
     Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MemberCallMatcher,
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
@@ -26,6 +28,9 @@ pub fn rule() -> Rule {
 }
 
 fn remote_element_flow(symbol: &str, tag: &str, property: &str) -> ObjectFlowMatcher {
+    // Both property assignment and setAttribute configure the same bounded
+    // element flow; the static URL prefix keeps the heuristic intentionally
+    // narrow and avoids treating local or dynamic sources as remote.
     let remote_url = ValueMatcher::static_string().starts_with_any(["http://", "https://", "//"]);
     ObjectFlowMatcher::builder(symbol)
         .source(ObjectSourceMatcher::returned_by(

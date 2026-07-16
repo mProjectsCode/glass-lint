@@ -1,4 +1,8 @@
 //! Value identities and bounded interning.
+//!
+//! The value layer gives semantic analysis canonical, hashable identities for
+//! bindings, callables, objects, and paths. Every arena/interner is bounded;
+//! exhaustion maps to an explicit unknown result rather than an invented ID.
 
 mod arena;
 mod identity;

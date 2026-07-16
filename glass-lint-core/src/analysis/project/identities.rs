@@ -1,4 +1,8 @@
 //! Imported, namespace, and call-result identity overlays.
+//!
+//! These maps are a qualified overlay consumed during matcher projection.
+//! They preserve local value arenas while connecting only identities proven
+//! by the export table or by a bounded function-return summary.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -12,6 +16,8 @@ use crate::analysis::{
 };
 
 impl ProjectSemanticModel {
+    /// Connect known function-call results to identities returned by the
+    /// qualified target's effect summary.
     pub(super) fn call_result_identities(
         &self,
         importer: ModuleId,
@@ -64,6 +70,7 @@ impl ProjectSemanticModel {
         identities
     }
 
+    /// Build imported and namespace-member identities for one module.
     pub(super) fn module_identities(
         &self,
         module: ModuleId,
@@ -120,6 +127,7 @@ impl ProjectSemanticModel {
         identities
     }
 
+    /// Collect statically named exports reachable through star re-exports.
     fn exported_names(
         &self,
         module: ModuleId,
@@ -149,6 +157,7 @@ impl ProjectSemanticModel {
         names
     }
 
+    /// Resolve a namespace request without guessing at unsupported targets.
     fn resolve_namespace(&self, module: ModuleId, request: &ModuleRequest) -> ExportResolution {
         match self.resolutions.get(&self.request_key(module, request)) {
             None => ExportResolution::External {

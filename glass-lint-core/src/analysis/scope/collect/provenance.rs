@@ -1,4 +1,8 @@
 //! Provenance inference for bindings and call-site expressions.
+//!
+//! Each helper returns `None` when syntax, lexical identity, or value flow is
+//! not provable. The visitor can then record a local/unknown binding instead
+//! of widening a strict match from a name-only resemblance.
 
 use std::collections::BTreeMap;
 
@@ -13,6 +17,8 @@ use super::{
 };
 
 impl AliasCollector {
+    /// Resolve a module export, namespace member, dynamic import, or require
+    /// expression while preserving lexical shadowing checks.
     pub(super) fn module_alias_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
         match expr {
             Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
@@ -66,6 +72,7 @@ impl AliasCollector {
         }
     }
 
+    /// Resolve literal CommonJS/interop-loader module names only.
     fn require_module_name(&self, call: &CallExpr) -> Option<String> {
         self.direct_require_module_name(call).or_else(|| {
             let Callee::Expr(callee) = &call.callee else {
@@ -82,6 +89,7 @@ impl AliasCollector {
         })
     }
 
+    /// Find a literal module name through supported wrapper expression shapes.
     pub(super) fn require_module_expr_name(&self, expr: &Expr) -> Option<String> {
         match expr {
             Expr::Call(call) => self.require_module_name(call),
@@ -95,6 +103,7 @@ impl AliasCollector {
         }
     }
 
+    /// Recognize an unshadowed direct `require("literal")` call.
     fn direct_require_module_name(&self, call: &CallExpr) -> Option<String> {
         let Callee::Expr(callee) = &call.callee else {
             return None;
@@ -111,6 +120,7 @@ impl AliasCollector {
         })
     }
 
+    /// Convert a bounded constant result into collector provenance.
     pub(super) fn const_provenance(&self, init: &Expr) -> Option<BindingProvenance> {
         match constant::evaluate(init, self) {
             ConstValue::String(value) => Some(BindingProvenance::StaticString(value)),
@@ -128,6 +138,7 @@ impl AliasCollector {
         }
     }
 
+    /// Resolve the strict provenance forms accepted for a call argument.
     pub(super) fn argument_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
         self.module_alias_provenance(expr)
             .or_else(|| self.returned_object_provenance(expr))
@@ -150,6 +161,7 @@ impl AliasCollector {
             })
     }
 
+    /// Preserve a callable identity and supported static `.bind` arguments.
     pub(super) fn bound_callable_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
         let Expr::Call(call) = expr else {
             return None;
@@ -197,6 +209,7 @@ impl AliasCollector {
         }
     }
 
+    /// Track an object returned from a rooted callable for later member use.
     pub(super) fn returned_object_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
         match expr {
             Expr::Call(call) => {
@@ -246,6 +259,7 @@ impl AliasCollector {
         }
     }
 
+    /// Build a static object-value map only when every property is rooted.
     pub(super) fn static_object_values(&self, expr: &Expr) -> Option<BindingProvenance> {
         let Expr::Object(object) = expr else {
             return None;

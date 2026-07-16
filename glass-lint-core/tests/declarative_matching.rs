@@ -1,4 +1,7 @@
 //! Declarative matcher behavior exercised through the public provider API.
+//!
+//! The helpers intentionally build a new catalog per case so rule selection,
+//! environment configuration, and finding counts remain independently visible.
 
 use std::collections::BTreeSet;
 
@@ -22,6 +25,7 @@ impl Classification {
     }
 }
 
+/// Build a consistent high-confidence rule for one declarative capability.
 fn rule(id: &str) -> glass_lint_core::rules::Builder {
     Rule::builder(id)
         .label(id)
@@ -30,6 +34,7 @@ fn rule(id: &str) -> glass_lint_core::rules::Builder {
         .confidence(Confidence::High)
 }
 
+/// Construct the multi-step flow used by source/configuration/sink tests.
 fn script_insertion_flow() -> Matcher {
     Matcher::flow(
         ObjectFlowMatcher::builder("script insertion")
@@ -50,6 +55,7 @@ fn script_insertion_flow() -> Matcher {
     )
 }
 
+/// Lint one source with exactly the supplied rules and record matched IDs.
 fn classify(source: &str, rules: &[Rule]) -> Classification {
     let catalog =
         RuleCatalog::with_environment("test", rules.to_vec(), test_environment()).unwrap();
@@ -64,6 +70,7 @@ fn classify(source: &str, rules: &[Rule]) -> Classification {
     }
 }
 
+/// Configure only globals that the declarative cases are allowed to trust.
 fn test_environment() -> Environment {
     let mut environment = Environment::default();
     environment
@@ -77,6 +84,7 @@ fn test_environment() -> Environment {
     environment
 }
 
+/// Require both the named capability and the exact total finding count.
 fn assert_capability_count(result: &Classification, id: &str, expected: usize) {
     assert!(result.has_capability(id));
     assert_eq!(result.finding_count, expected);

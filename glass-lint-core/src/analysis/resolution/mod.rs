@@ -4,6 +4,10 @@
 //! `Resolver` is the single adapter from those low-level facts to the versioned
 //! values consumed by matchers, so callers never make matching decisions from
 //! raw identifier spelling.
+//!
+//! Resolution is position-sensitive and cached by source range. Recursive
+//! lookups are guarded; cycles, unknown values, and exhausted arena entries
+//! become local/unknown provenance instead of leaking a guessed identity.
 
 mod call;
 mod constant;
@@ -66,16 +70,23 @@ impl ResolvedValue {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum ResolutionKey {
+    /// Identifier lookup keyed by span and spelling.
     Ident { lo: u32, hi: u32, symbol: String },
+    /// Member lookup keyed by its source span.
     Member { lo: u32, hi: u32 },
 }
 
 #[derive(Debug)]
 pub(super) struct Resolver {
+    /// Scope/provenance seeds from the lexical collection pass.
     scopes: ScopeGraph,
+    /// Interned abstract values and binding identities.
     values: RefCell<ValueTable>,
+    /// Fresh object values reused by source span.
     fresh_values: RefCell<BTreeMap<(u32, u32), ValueId>>,
+    /// Cached expression resolutions keyed by source position.
     resolved_values: RefCell<BTreeMap<ResolutionKey, ResolvedValue>>,
+    /// Active lookups used to break recursive resolution cycles.
     resolving: RefCell<BTreeSet<ResolutionKey>>,
 }
 

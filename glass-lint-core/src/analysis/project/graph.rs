@@ -1,4 +1,8 @@
 //! Project graph construction and bounded SCC analysis.
+//!
+//! Graph construction is the boundary between typed resolver answers and
+//! core's linker. Only internal targets become edges; all other outcomes are
+//! retained as diagnostics or unknown provenance.
 
 use super::super::{
     BTreeMap, ExportResolution, MAX_EXPORT_ENTRIES, MAX_GRAPH_EDGES, MAX_SCC_SIZE, ModuleId,
@@ -7,6 +11,8 @@ use super::super::{
 use crate::analysis::module::ModuleRequestRole;
 
 impl ProjectSemanticModel {
+    /// Build edges, resolve exports, validate imports, and canonicalize
+    /// diagnostics in the fixed project-linking order.
     pub(in crate::analysis) fn build_graph_and_exports(&mut self) {
         self.collect_graph_edges();
         self.resolve_export_table();
@@ -26,6 +32,7 @@ impl ProjectSemanticModel {
         self.diagnostics.dedup();
     }
 
+    /// Compute the bounded monotone export table and record budget failures.
     fn resolve_export_table(&mut self) {
         // Resolve exports in a bounded, monotone pass.  The fixed point is
         // intentionally conservative: a cycle that does not stabilize stays
@@ -71,6 +78,8 @@ impl ProjectSemanticModel {
         }
     }
 
+    /// Diagnose imports whose statically requested named export is absent or
+    /// ambiguous after linking.
     fn validate_imported_exports(&mut self) {
         for module in self.modules.values() {
             for request in module.local().interface().requests() {
@@ -116,6 +125,7 @@ impl ProjectSemanticModel {
         }
     }
 
+    /// Convert internal resolution records into bounded graph edges and SCCs.
     fn collect_graph_edges(&mut self) {
         let mut edge_budget = crate::budget::Budget::new(MAX_GRAPH_EDGES);
         for module in self.modules.values() {
@@ -199,6 +209,7 @@ impl ProjectSemanticModel {
         }
     }
 
+    /// Create a source-qualified diagnostic for one rejected request target.
     fn request_diagnostic(
         code: &str,
         message: String,
@@ -221,7 +232,7 @@ fn strongly_connected_components(
     nodes: impl IntoIterator<Item = ModuleId>,
 ) -> Vec<Vec<ModuleId>> {
     // A deterministic iterative Kosaraju pass avoids stack growth from a
-    // large explicit project graph.
+    // large explicit project graph while preserving stable module ordering.
     let nodes = nodes.into_iter().collect::<Vec<_>>();
     let mut seen = BTreeMap::new();
     let mut order = Vec::new();

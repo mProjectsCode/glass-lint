@@ -13,9 +13,13 @@ const MAX_FLOW_STATES: usize = 262_144;
 const MAX_FLOW_EMISSIONS: usize = 65_536;
 
 #[derive(Debug, Clone, Copy)]
+/// Hard limits for object-flow identities, states, and emissions.
 pub(super) struct FlowLimits {
+    /// Maximum object identities.
     objects: u32,
+    /// Maximum projected states.
     states: usize,
+    /// Maximum evidence emissions.
     emissions: usize,
 }
 
@@ -44,6 +48,7 @@ impl Default for FlowLimits {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Stable identifier for one selected rule flow matcher.
 pub(super) struct FlowId {
     rule_index: usize,
     flow_index: usize,
@@ -67,6 +72,7 @@ impl FlowId {
 }
 
 #[derive(Debug, Default, Clone)]
+/// Rule-facing source/sink lookup buckets for selected flow matchers.
 pub(super) struct FlowIndex<'rules> {
     flows: BTreeMap<FlowId, &'rules CompiledObjectFlow>,
     sources: BTreeMap<String, Vec<FlowId>>,
@@ -75,6 +81,8 @@ pub(super) struct FlowIndex<'rules> {
 
 impl<'rules> FlowIndex<'rules> {
     pub(super) fn new(rules: &[(usize, usize, &'rules CompiledObjectFlow)]) -> Self {
+        // BTreeMap-backed keys make matcher lookup and emission deterministic
+        // regardless of catalog construction order.
         let mut index = Self::default();
         for (rule_index, flow_index, flow) in rules {
             let id = FlowId {

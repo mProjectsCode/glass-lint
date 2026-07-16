@@ -1,3 +1,9 @@
+//! Deterministic human-readable rendering of lint reports.
+//!
+//! Rendering is presentation-only: it groups already-owned findings by rule,
+//! sorts evidence by file/location, and clips source excerpts to the display
+//! width without changing the serialized report.
+
 use std::{
     collections::BTreeMap,
     fmt::{self, Display},
@@ -8,8 +14,11 @@ use console::{Style, measure_text_width};
 use crate::{LintReport, SourceRange};
 
 #[derive(Clone, Copy, Debug)]
+/// Display controls for pretty report rendering.
 pub struct PrettyOptions {
+    /// Maximum display width including the excerpt gutter.
     pub max_width: usize,
+    /// Whether ANSI colors are enabled.
     pub color: bool,
 }
 impl Default for PrettyOptions {
@@ -21,6 +30,7 @@ impl Default for PrettyOptions {
     }
 }
 
+/// One report/source pair rendered as a file section.
 pub struct PrettyReport<'a> {
     report: &'a LintReport,
     filename: &'a str,
@@ -29,6 +39,7 @@ pub struct PrettyReport<'a> {
 }
 
 #[derive(Clone, Copy)]
+/// Borrowed report/source input used by grouped rendering.
 pub struct PrettyFile<'a> {
     report: &'a LintReport,
     filename: &'a str,
@@ -36,6 +47,7 @@ pub struct PrettyFile<'a> {
 }
 
 impl<'a> PrettyFile<'a> {
+    /// Pair a report with its authored filename and source text.
     pub fn new(report: &'a LintReport, filename: &'a str, source: &'a str) -> Self {
         Self {
             report,
@@ -45,18 +57,21 @@ impl<'a> PrettyFile<'a> {
     }
 }
 
+/// Multiple file reports rendered in deterministic order.
 pub struct PrettyReports<'a> {
     files: &'a [PrettyFile<'a>],
     options: PrettyOptions,
 }
 
 impl<'a> PrettyReports<'a> {
+    /// Construct a grouped renderer with display options.
     pub fn new(files: &'a [PrettyFile<'a>], options: PrettyOptions) -> Self {
         Self { files, options }
     }
 }
 
 impl<'a> PrettyReport<'a> {
+    /// Construct a renderer for one report and source file.
     pub fn new(
         report: &'a LintReport,
         filename: &'a str,
