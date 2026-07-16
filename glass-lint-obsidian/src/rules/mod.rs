@@ -15,7 +15,7 @@ mod workspace;
 
 use glass_lint_core::rules::Rule;
 
-pub(crate) fn all() -> Vec<Rule> {
+pub fn all() -> Vec<Rule> {
     [
         network::rules(),
         vault::rules(),

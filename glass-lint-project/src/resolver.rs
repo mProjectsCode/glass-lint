@@ -11,7 +11,7 @@ use crate::{
 };
 
 /// Keeps import and CommonJS resolution policy together for one project.
-pub(crate) struct ProjectResolver {
+pub struct ProjectResolver {
     root: PathBuf,
     options: ProjectLoadOptions,
     import: Resolver,
@@ -19,11 +19,7 @@ pub(crate) struct ProjectResolver {
 }
 
 impl ProjectResolver {
-    pub(crate) fn new(
-        root: &Path,
-        selection: &ProjectSelection,
-        options: &ProjectLoadOptions,
-    ) -> Self {
+    pub fn new(root: &Path, selection: &ProjectSelection, options: &ProjectLoadOptions) -> Self {
         let import = Resolver::new(resolver_options(root, selection, options, false));
         let require = import.clone_with_options(resolver_options(root, selection, options, true));
         Self {
@@ -34,7 +30,7 @@ impl ProjectResolver {
         }
     }
 
-    pub(crate) fn resolve(&self, request: &ResolutionRequest) -> ResolutionResult {
+    pub fn resolve(&self, request: &ResolutionRequest) -> ResolutionResult {
         let importer = self.root.join(&request.key.importer);
         let directory = importer.parent().unwrap_or(&self.root);
         let resolver = if request.key.kind == ResolutionRequestKind::Require {

@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// including direct member access and aliases that retain the rooted
 /// provenance. Local or reassigned `process` aliases, unlisted properties,
 /// and dynamic property names are excluded; the values read are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("node.process-environment")
         .label("Reads Node process environment or platform metadata")
         .category("node/process")

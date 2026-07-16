@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// matches use exact module provenance; literal matches are medium-confidence
 /// substring heuristics over literals and template quasis, so they do not
 /// prove network use or reconstruct arbitrary concatenated or dynamic values.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("network.service-indicator")
         .label("References service or SDK endpoints")
         .category("browser/network")

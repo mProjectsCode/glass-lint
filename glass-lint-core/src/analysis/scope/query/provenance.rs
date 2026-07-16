@@ -50,7 +50,7 @@ impl ScopeGraph {
         self.resolve_member_chain(member, &syntactic_chain)
     }
 
-    pub(crate) fn resolve_member_chain(
+    pub fn resolve_member_chain(
         &self,
         member: &MemberExpr,
         syntactic_chain: &str,

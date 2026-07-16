@@ -2,7 +2,7 @@ use swc_common::{SourceMap, Span, sync::Lrc};
 
 use crate::diagnostic::SourceRange;
 
-pub(crate) fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
+pub fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
     ranges.sort_by(|left, right| {
         (left.start.line, left.start.column)
             .cmp(&(right.start.line, right.start.column))
@@ -20,7 +20,7 @@ pub(crate) fn remove_contained_ranges(ranges: &mut Vec<SourceRange>) {
     });
 }
 
-pub(crate) fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) -> SourceRange {
+pub fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) -> SourceRange {
     let start = source_map.lookup_char_pos(span.lo());
     let end = source_map.lookup_char_pos(span.hi());
 
@@ -44,6 +44,6 @@ pub(crate) fn source_range_from_span(source_map: &Lrc<SourceMap>, span: Span) ->
     }
 }
 
-pub(crate) fn source_range(source: &str, start: usize, length: usize) -> SourceRange {
+pub fn source_range(source: &str, start: usize, length: usize) -> SourceRange {
     SourceRange::from_source(source, start, length)
 }

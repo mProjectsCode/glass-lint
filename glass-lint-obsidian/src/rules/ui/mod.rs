@@ -7,7 +7,7 @@ mod settings_tab;
 mod status_bar;
 mod suggest;
 use glass_lint_core::rules::Rule;
-pub(crate) fn rules() -> Vec<Rule> {
+pub fn rules() -> Vec<Rule> {
     vec![
         command::rule(),
         ribbon::rule(),

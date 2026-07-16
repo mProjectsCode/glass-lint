@@ -188,7 +188,7 @@ impl ContextWorklist {
                         }
                         let root = effect
                             .value_root(argument.value())
-                            .unwrap_or(argument.value());
+                            .unwrap_or_else(|| argument.value());
                         let Some(candidates) = sources.get(&(module.id(), effect.id(), root))
                         else {
                             continue;
@@ -501,7 +501,7 @@ impl FlowSources {
         project: &ProjectSemanticModel,
         flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
     ) -> (Self, bool) {
-        let mut sources = FlowSources::default();
+        let mut sources = Self::default();
         for module in project.modules() {
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
@@ -548,7 +548,7 @@ impl FlowSources {
                         {
                             let returned_root = target
                                 .value_root(returned.value())
-                                .unwrap_or(returned.value());
+                                .unwrap_or_else(|| returned.value());
                             let candidates = sources
                                 .get(&(target_module, target_function, returned_root))
                                 .cloned();
@@ -569,7 +569,7 @@ impl FlowSources {
                             }
                             let root = effect
                                 .value_root(argument.value())
-                                .unwrap_or(argument.value());
+                                .unwrap_or_else(|| argument.value());
                             let candidates =
                                 sources.get(&(module.id(), effect.id(), root)).cloned();
                             changed |= sources.extend_optional(
@@ -635,7 +635,7 @@ impl Propagation<'_> {
                     && self.context.source_root.is_some_and(|root| {
                         self.effect
                             .value_root(argument.value())
-                            .unwrap_or(argument.value())
+                            .unwrap_or_else(|| argument.value())
                             == root
                     })
                     && argument.is_root());
@@ -680,7 +680,7 @@ fn usage_matches_context(effect: &FunctionEffect, usage: &EffectUse, context: &C
                 && context.source_root.is_some_and(|root| {
                     effect
                         .value_root(argument.value())
-                        .unwrap_or(argument.value())
+                        .unwrap_or_else(|| argument.value())
                         == root
                 }))
         }

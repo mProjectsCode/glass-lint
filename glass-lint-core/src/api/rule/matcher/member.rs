@@ -2,9 +2,9 @@ use super::{ArgumentConstraint, ArgumentMatcher};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberCallMatcher {
-    pub(crate) chain: String,
-    pub(crate) provenance: MemberCallProvenance,
-    pub(crate) arguments: Vec<ArgumentConstraint>,
+    pub chain: String,
+    pub provenance: MemberCallProvenance,
+    pub arguments: Vec<ArgumentConstraint>,
 }
 
 impl MemberCallMatcher {
@@ -90,14 +90,14 @@ impl MemberCallMatcher {
         self.arg(index, super::ArgumentMatcher::rooted_expressions(chains))
     }
 
-    pub(crate) fn evidence_symbol(&self) -> String {
+    pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             MemberCallProvenance::Any | MemberCallProvenance::Rooted => self.chain.clone(),
             MemberCallProvenance::ModuleNamespace { module } => format!("{module}.{}", self.chain),
         }
     }
 
-    pub(crate) fn sort_key(&self) -> (&str, &str) {
+    pub fn sort_key(&self) -> (&str, &str) {
         match &self.provenance {
             MemberCallProvenance::Any => ("any", &self.chain),
             MemberCallProvenance::Rooted => ("rooted", &self.chain),
@@ -105,11 +105,11 @@ impl MemberCallMatcher {
         }
     }
 
-    pub(crate) fn chain(&self) -> &str {
+    pub fn chain(&self) -> &str {
         &self.chain
     }
 
-    pub(crate) fn arguments(&self) -> &[ArgumentConstraint] {
+    pub fn arguments(&self) -> &[ArgumentConstraint] {
         &self.arguments
     }
 }
@@ -122,7 +122,7 @@ pub enum MemberCallProvenance {
 }
 
 impl MemberCallProvenance {
-    pub(crate) fn matches_rooted(&self, rooted: bool) -> bool {
+    pub fn matches_rooted(&self, rooted: bool) -> bool {
         match self {
             Self::Any => true,
             Self::Rooted => rooted,
@@ -133,8 +133,8 @@ impl MemberCallProvenance {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberReadMatcher {
-    pub(crate) chain: String,
-    pub(crate) provenance: MemberReadProvenance,
+    pub chain: String,
+    pub provenance: MemberReadProvenance,
 }
 
 impl MemberReadMatcher {
@@ -161,14 +161,14 @@ impl MemberReadMatcher {
         }
     }
 
-    pub(crate) fn evidence_symbol(&self) -> String {
+    pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             MemberReadProvenance::Any | MemberReadProvenance::Rooted => self.chain.clone(),
             MemberReadProvenance::ModuleNamespace { module } => format!("{module}.{}", self.chain),
         }
     }
 
-    pub(crate) fn sort_key(&self) -> (&str, &str) {
+    pub fn sort_key(&self) -> (&str, &str) {
         match &self.provenance {
             MemberReadProvenance::Any => ("any", &self.chain),
             MemberReadProvenance::Rooted => ("rooted", &self.chain),

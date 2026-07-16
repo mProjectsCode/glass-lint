@@ -3,7 +3,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// Detects reads from Obsidian's plugin manager: instances, manifests, and
 /// enabled-plugin state. The rooted collection read intentionally also covers
 /// static and dynamic plugin keys without guessing the key's value.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("plugins.access")
         .label("Accesses other plugins")
         .category("plugins")

@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// aliases, shadowing, or reassignment; static computed names resolve, while
 /// other receivers, dynamic properties, and near-name methods do not. Menu
 /// item arguments are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("ui.menu")
         .label("Uses Obsidian menus")
         .category("ui")

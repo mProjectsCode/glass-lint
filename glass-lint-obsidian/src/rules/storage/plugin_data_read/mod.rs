@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// does not prove an Obsidian plugin receiver and does not follow aliases,
 /// shadowing, or reassignment; exact other receivers, dynamic properties, and
 /// near-name methods are excluded, and arguments are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("storage.plugin-data-read")
         .label("Reads plugin data")
         .category("storage")

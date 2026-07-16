@@ -4,7 +4,7 @@ use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
 /// callable with a static string first argument. Global-object access and
 /// callable aliases retain identity; local, shadowed, reassigned, function,
 /// and dynamic-value lookalikes are excluded.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("dynamic-code.string-timer")
         .label("Runs code from a string timer")
         .category("language/dynamic-code")

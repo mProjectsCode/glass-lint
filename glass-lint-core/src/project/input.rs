@@ -65,7 +65,7 @@ impl ProjectInput {
     }
 
     #[must_use]
-    pub(crate) fn module_ids(&self) -> BTreeMap<String, ModuleId> {
+    pub fn module_ids(&self) -> BTreeMap<String, ModuleId> {
         let mut paths = self
             .sources
             .iter()
@@ -85,7 +85,7 @@ impl ProjectInput {
     }
 }
 
-pub(crate) fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> {
+pub fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> {
     if path.as_os_str().is_empty() {
         Err(ProjectInputError::InvalidPath(String::new()))
     } else {
@@ -93,7 +93,7 @@ pub(crate) fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> 
     }
 }
 
-pub(crate) fn normalize_relative(path: &str) -> Result<String, ProjectInputError> {
+pub fn normalize_relative(path: &str) -> Result<String, ProjectInputError> {
     let original = path.to_string();
     let path = path.replace('\\', "/");
     if path.is_empty()
@@ -114,7 +114,7 @@ pub(crate) fn normalize_relative(path: &str) -> Result<String, ProjectInputError
     }
 }
 
-pub(crate) fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError> {
+pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError> {
     let original = path.to_string();
     let path = path.replace('\\', "/");
     if path.is_empty() || path.contains('\0') {
@@ -149,7 +149,7 @@ pub(crate) fn normalize_outside_target(path: &str) -> Result<String, ProjectInpu
     })
 }
 
-pub(crate) fn normalize_result(result: &mut ResolutionResult) -> Result<(), ProjectInputError> {
+pub fn normalize_result(result: &mut ResolutionResult) -> Result<(), ProjectInputError> {
     match result {
         ResolutionResult::Internal { path } => *path = normalize_relative(path)?,
         ResolutionResult::OutsideProject { path } => *path = normalize_outside_target(path)?,
@@ -167,9 +167,7 @@ pub(crate) fn normalize_result(result: &mut ResolutionResult) -> Result<(), Proj
     Ok(())
 }
 
-pub(crate) fn normalize_resolution_key(
-    key: &mut ResolutionRequestKey,
-) -> Result<(), ProjectInputError> {
+pub fn normalize_resolution_key(key: &mut ResolutionRequestKey) -> Result<(), ProjectInputError> {
     key.importer = normalize_relative(&key.importer)?;
     if key.range.start.line == 0
         || key.range.start.column == 0

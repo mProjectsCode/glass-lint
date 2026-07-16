@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// `this.app`, workspace aliases, static computed properties, source-ordered
 /// alias reassignment, and lexical shadowing. Dynamic or unlisted members,
 /// local lookalikes, and the read value itself are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("workspace.active-editor")
         .label("Accesses the active editor")
         .category("workspace")

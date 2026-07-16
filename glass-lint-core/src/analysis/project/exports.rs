@@ -31,19 +31,19 @@ impl ProjectSemanticModel {
                     Some(SymbolCallProvenance::Global { name }) => {
                         ExportResolution::Global { name: name.clone() }
                     }
-                    Some(SymbolCallProvenance::Local) | None => {
-                        if let Some(value) = project_module.local().interface().static_string(name)
-                        {
-                            ExportResolution::StaticString {
-                                value: value.clone(),
-                            }
-                        } else {
-                            ExportResolution::Qualified {
+                    Some(SymbolCallProvenance::Local) | None => project_module
+                        .local()
+                        .interface()
+                        .static_string(name)
+                        .map_or_else(
+                            || ExportResolution::Qualified {
                                 module,
                                 export: name.clone(),
-                            }
-                        }
-                    }
+                            },
+                            |value| ExportResolution::StaticString {
+                                value: value.clone(),
+                            },
+                        ),
                 }
             }
             module::ModuleExport::Value => {

@@ -23,7 +23,7 @@ impl AliasCollector {
             Expr::Member(member) => match self.module_alias_provenance(&member.obj)? {
                 BindingProvenance::ModuleNamespace { module } => {
                     Some(BindingProvenance::ModuleExport {
-                        module: module.clone(),
+                        module,
                         export: member_prop_name(&member.prop)?,
                     })
                 }

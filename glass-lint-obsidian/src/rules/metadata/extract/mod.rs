@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// reassigned aliases, dynamic properties, and unlisted collections are
 /// excluded. The rule reads member chains; it does not infer collections from
 /// arbitrary `getFileCache(...)` return values.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("metadata.extract")
         .label("Extracts tags, links, embeds, blocks, or headings")
         .category("metadata")

@@ -146,7 +146,7 @@ impl<'a> SourceCorpus<'a> {
     }
 }
 
-pub(crate) fn supported_path(path: &Path, extensions: &[String]) -> bool {
+pub fn supported_path(path: &Path, extensions: &[String]) -> bool {
     let name = path.to_string_lossy().to_ascii_lowercase();
     extensions
         .iter()

@@ -3,7 +3,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// Detects calls to unshadowed `navigator.bluetooth.requestDevice`, including
 /// calls through aliases of `navigator.bluetooth`. Local lookalikes and
 /// reassigned aliases are excluded by rooted provenance tracking.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("browser.permissions-bluetooth")
         .label("Uses browser Bluetooth")
         .category("browser/permissions")

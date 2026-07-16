@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// matcher tracks source-ordered root reassignment and lexical shadowing, but
 /// does not follow a bare alias after reading the value; vault methods and
 /// argument/value semantics are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("vault.access")
         .label("Accesses Obsidian vault APIs")
         .category("vault")

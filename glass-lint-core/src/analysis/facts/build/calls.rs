@@ -464,7 +464,7 @@ impl FactBuilder<'_> {
                     rooted_chain: resolved.rooted_chain.clone(),
                     module_member: resolved.module_member.clone(),
                     returned_member: resolved.returned_member.clone(),
-                    bound_arguments: resolved.bound_arguments.clone(),
+                    bound_arguments: resolved.bound_arguments,
                     instance_class: None,
                     target_function: self.resolver.function_id_for_expr(effective),
                 }
@@ -485,7 +485,7 @@ impl FactBuilder<'_> {
                         rooted_chain: resolved.rooted_chain.clone(),
                         module_member: resolved.module_member.clone(),
                         returned_member: resolved.returned_member.clone(),
-                        bound_arguments: resolved.bound_arguments.clone(),
+                        bound_arguments: resolved.bound_arguments,
                         instance_class: None,
                         target_function: self.resolver.function_id_for_expr(effective),
                     }
@@ -503,7 +503,7 @@ impl FactBuilder<'_> {
                     rooted_chain: resolved.rooted_chain.clone(),
                     module_member: resolved.module_member.clone(),
                     returned_member: resolved.returned_member.clone(),
-                    bound_arguments: resolved.bound_arguments.clone(),
+                    bound_arguments: resolved.bound_arguments,
                     instance_class: None,
                     target_function: self.resolver.function_id_for_expr(effective),
                 }
@@ -525,7 +525,7 @@ impl FactBuilder<'_> {
             rooted_chain: resolved.rooted_chain.clone(),
             module_member: resolved.module_member.clone(),
             returned_member: resolved.returned_member.clone(),
-            bound_arguments: resolved.bound_arguments.clone(),
+            bound_arguments: resolved.bound_arguments,
             instance_class,
             target_function: self.resolver.function_id_for_expr(&member.obj),
         }

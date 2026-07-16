@@ -14,16 +14,16 @@ use crate::config::{Config, Output};
 /// A linted file keeps its source so pretty rendering never rereads the file.
 #[derive(Clone)]
 pub struct FileOutput {
-    pub(crate) path: String,
-    pub(crate) report: LintReport,
-    pub(crate) source: String,
+    pub path: String,
+    pub report: LintReport,
+    pub source: String,
 }
 
 #[derive(Clone, Copy, Serialize)]
 pub struct Summary {
-    pub(crate) files: usize,
-    pub(crate) findings: usize,
-    pub(crate) parse_diagnostics: usize,
+    pub files: usize,
+    pub findings: usize,
+    pub parse_diagnostics: usize,
 }
 
 #[derive(Clone, Copy, Serialize)]
@@ -31,7 +31,7 @@ pub struct ProjectSummary {
     pub(crate) files: usize,
     pub(crate) findings: usize,
     pub(crate) parse_diagnostics: usize,
-    pub(crate) project_diagnostics: usize,
+    pub project_diagnostics: usize,
 }
 
 pub fn write_rules(config: &Config) -> Result<bool> {
@@ -42,13 +42,13 @@ pub fn write_rules(config: &Config) -> Result<bool> {
     Ok(false)
 }
 
-pub(crate) fn write_report(config: &Config, files: &[FileOutput], summary: Summary) -> Result<()> {
+pub fn write_report(config: &Config, files: &[FileOutput], summary: Summary) -> Result<()> {
     let mut stdout = io::BufWriter::new(io::stdout().lock());
     write_report_to(config, files, summary, &mut stdout)?;
     stdout.flush().map_err(Into::into)
 }
 
-pub(crate) fn write_project_report(config: &Config, report: &ProjectReport) -> Result<()> {
+pub fn write_project_report(config: &Config, report: &ProjectReport) -> Result<()> {
     let mut stdout = io::BufWriter::new(io::stdout().lock());
     write_project_report_to(config, report, &mut stdout)?;
     stdout.flush().map_err(Into::into)

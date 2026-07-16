@@ -1,4 +1,4 @@
-pub(crate) fn for_rule(id: &str) -> &'static [&'static str] {
+pub fn for_rule(id: &str) -> &'static [&'static str] {
     match id {
         "network.request" | "node.network" | "dom.remote-resource" => {
             &["disclosure.network_access"]

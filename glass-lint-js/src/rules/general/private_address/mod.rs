@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// medium-confidence literal heuristic rather than URL or IP parsing: it does
 /// not prove network use, expand private ranges, or match partial,
 /// concatenated, or dynamic values.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("network.private-address")
         .label("References private-network addresses")
         .category("browser/network")

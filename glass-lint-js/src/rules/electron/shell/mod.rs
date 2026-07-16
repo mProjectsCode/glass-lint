@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// shadowed `require`, and reassigned aliases do not. Inline
 /// `require("electron").shell` chains, unlisted shell methods, and non-call
 /// reads are intentionally outside the rule.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("electron.shell")
         .label("Uses Electron shell APIs")
         .category("electron/shell")

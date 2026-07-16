@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// local lookalikes, shadowed `require`, and reassigned aliases are excluded.
 /// Inline `require("electron").ipcRenderer` chains and other IPC methods or
 /// reads are outside this call-only rule.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("electron.ipc")
         .label("Uses Electron IPC APIs")
         .category("electron/ipc")

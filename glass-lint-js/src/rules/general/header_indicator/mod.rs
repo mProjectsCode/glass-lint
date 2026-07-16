@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// does not prove that a literal is used as a request header, does not parse
 /// computed or concatenated values, and intentionally excludes other casing
 /// and unrelated lookalike prose.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("network.header-indicator")
         .label("References authorization or user-agent headers")
         .category("browser/network")

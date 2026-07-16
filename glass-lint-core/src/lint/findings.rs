@@ -106,6 +106,6 @@ impl Linter {
     }
 }
 
-pub(crate) fn contains_range(outer: &SourceRange, inner: &SourceRange) -> bool {
+pub fn contains_range(outer: &SourceRange, inner: &SourceRange) -> bool {
     outer.contains(inner)
 }

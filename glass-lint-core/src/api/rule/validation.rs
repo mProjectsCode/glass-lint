@@ -55,7 +55,7 @@ pub(super) fn validate(matcher: &ApiMatcher) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn validate_matcher_at(matcher: &Matcher, index: usize) -> Result<(), String> {
+pub fn validate_matcher_at(matcher: &Matcher, index: usize) -> Result<(), String> {
     if let Matcher::ObjectFlow(flow) = matcher {
         let path = format!("matcher[{index}].flow");
         validate_name_at(&flow.symbol, &format!("{path}.symbol"))?;
@@ -75,7 +75,7 @@ pub(crate) fn validate_matcher_at(matcher: &Matcher, index: usize) -> Result<(),
     Ok(())
 }
 
-pub(crate) fn validate_object_flow(flow: &ObjectFlowMatcher, path: &str) -> Result<(), String> {
+pub fn validate_object_flow(flow: &ObjectFlowMatcher, path: &str) -> Result<(), String> {
     validate_name_at(&flow.symbol, &format!("{path}.symbol"))?;
     if flow.sources.is_empty() {
         return Err(format!("{path}.source: at least one source is required"));

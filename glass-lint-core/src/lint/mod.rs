@@ -1,8 +1,8 @@
 mod catalog;
-mod findings;
+pub mod findings;
 mod linter;
-mod ranges;
+pub mod ranges;
 
 pub use catalog::{RuleCatalog, RuleCatalogError};
 pub use linter::{LintConfigError, Linter};
-pub(crate) use ranges::source_range_from_span;
+pub use ranges::source_range_from_span;

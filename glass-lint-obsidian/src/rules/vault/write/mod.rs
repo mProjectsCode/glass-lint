@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// aliases, static computed properties, source-ordered alias reassignment,
 /// and lexical shadowing. Local lookalikes, dynamic or unlisted members, and
 /// call arguments are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("vault.write")
         .label("Writes vault files")
         .category("vault")

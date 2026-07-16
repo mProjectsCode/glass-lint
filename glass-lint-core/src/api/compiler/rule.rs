@@ -8,33 +8,33 @@ use super::super::rule::{
 /// declarations are compiled once while a catalog is built and never enter
 /// the per-file analysis path.
 #[derive(Debug, Clone)]
-pub(crate) struct CompiledMatcherPlan {
-    pub(crate) matcher: ApiMatcher,
-    pub(crate) flows: Vec<CompiledObjectFlow>,
+pub struct CompiledMatcherPlan {
+    pub matcher: ApiMatcher,
+    pub flows: Vec<CompiledObjectFlow>,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CompiledMatcherCatalog<'a> {
-    pub(crate) rules: &'a [CompiledRule],
-    pub(crate) selected: &'a [usize],
+pub struct CompiledMatcherCatalog<'a> {
+    pub rules: &'a [CompiledRule],
+    pub selected: &'a [usize],
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CompiledObjectFlow {
-    pub(crate) symbol: String,
-    pub(crate) sources: Vec<CompiledObjectSource>,
-    pub(crate) requirements: Vec<CompiledObjectRequirement>,
-    pub(crate) sinks: Vec<CompiledObjectSink>,
-    pub(crate) all_requirements_required: bool,
-    pub(crate) emit_on_requirements: bool,
+pub struct CompiledObjectFlow {
+    pub symbol: String,
+    pub sources: Vec<CompiledObjectSource>,
+    pub requirements: Vec<CompiledObjectRequirement>,
+    pub sinks: Vec<CompiledObjectSink>,
+    pub all_requirements_required: bool,
+    pub emit_on_requirements: bool,
 }
 
 impl CompiledObjectFlow {
-    pub(crate) fn evidence_symbol(&self) -> String {
+    pub fn evidence_symbol(&self) -> String {
         self.symbol.clone()
     }
 
-    pub(crate) fn sink_matches(&self, chain: Option<&str>, rooted: bool, argument: usize) -> bool {
+    pub fn sink_matches(&self, chain: Option<&str>, rooted: bool, argument: usize) -> bool {
         self.sinks.iter().any(|sink| {
             sink.member_calls
                 .iter()
@@ -47,7 +47,7 @@ impl CompiledObjectFlow {
         })
     }
 
-    pub(crate) fn requirements_ready(&self, completed: usize) -> bool {
+    pub fn requirements_ready(&self, completed: usize) -> bool {
         if self.all_requirements_required {
             completed == self.requirements.len()
         } else {
@@ -55,7 +55,7 @@ impl CompiledObjectFlow {
         }
     }
 
-    pub(crate) fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
+    pub fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
         let (requirements, all_requirements_required) = match flow.condition.as_ref() {
             Some(FlowCondition::AnyOf(events)) => (
                 events
@@ -97,10 +97,10 @@ impl CompiledObjectFlow {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CompiledObjectSource {
-    pub(crate) member_call: String,
-    pub(crate) arguments: Vec<ArgumentConstraint>,
-    pub(crate) provenance: MemberCallProvenance,
+pub struct CompiledObjectSource {
+    pub member_call: String,
+    pub arguments: Vec<ArgumentConstraint>,
+    pub provenance: MemberCallProvenance,
 }
 
 impl CompiledObjectSource {
@@ -114,7 +114,7 @@ impl CompiledObjectSource {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum CompiledObjectRequirement {
+pub enum CompiledObjectRequirement {
     PropertyWrite {
         property: String,
         value: ValueMatcher,
@@ -141,7 +141,7 @@ impl CompiledObjectRequirement {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum CompiledObjectSinkArgs {
+pub enum CompiledObjectSinkArgs {
     Any,
     Indices(Vec<usize>),
 }
@@ -151,7 +151,7 @@ impl CompiledObjectSinkArgs {
     ///
     /// Keeping the bounds check here makes callers unable to accidentally
     /// treat a rule's configured index as proof that the argument was passed.
-    pub(crate) fn present_indices(&self, argument_count: usize) -> Vec<usize> {
+    pub fn present_indices(&self, argument_count: usize) -> Vec<usize> {
         match self {
             Self::Any => (0..argument_count).collect(),
             Self::Indices(indices) => indices
@@ -164,10 +164,10 @@ impl CompiledObjectSinkArgs {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CompiledObjectSink {
-    pub(crate) member_calls: Vec<String>,
-    pub(crate) args: CompiledObjectSinkArgs,
-    pub(crate) provenance: MemberCallProvenance,
+pub struct CompiledObjectSink {
+    pub member_calls: Vec<String>,
+    pub args: CompiledObjectSinkArgs,
+    pub provenance: MemberCallProvenance,
 }
 
 impl CompiledObjectSink {
@@ -188,7 +188,7 @@ impl CompiledObjectSink {
 }
 
 impl CompiledMatcherPlan {
-    pub(crate) fn compile(matcher: &ApiMatcher) -> Self {
+    pub fn compile(matcher: &ApiMatcher) -> Self {
         Self {
             matcher: matcher.clone(),
             flows: matcher
@@ -201,36 +201,41 @@ impl CompiledMatcherPlan {
 }
 
 impl<'a> CompiledMatcherCatalog<'a> {
-    pub(crate) fn new(rules: &'a [CompiledRule], selected: &'a [usize]) -> Self {
+    pub fn new(rules: &'a [CompiledRule], selected: &'a [usize]) -> Self {
         Self { rules, selected }
     }
 
-    pub(crate) fn selected_matchers(&self) -> impl Iterator<Item = (usize, &CompiledMatcherPlan)> {
+    pub fn selected_matchers(&self) -> impl Iterator<Item = (usize, &CompiledMatcherPlan)> {
         self.selected
             .iter()
             .filter_map(move |&index| self.rules.get(index).map(|rule| (index, &rule.matcher)))
     }
 
-    pub(crate) fn is_selected(&self, index: usize) -> bool {
+    pub fn is_selected(&self, index: usize) -> bool {
         self.selected.binary_search(&index).is_ok()
     }
 
-    pub(crate) fn get(&self, index: usize) -> Option<&'a CompiledMatcherPlan> {
+    pub fn get(&self, index: usize) -> Option<&'a CompiledMatcherPlan> {
         self.rules.get(index).map(|rule| &rule.matcher)
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.rules.len()
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.rules.is_empty()
     }
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CompiledRule {
-    pub(crate) matcher: CompiledMatcherPlan,
+pub struct CompiledRule {
+    pub matcher: CompiledMatcherPlan,
 }
 
 impl CompiledRule {
-    pub(crate) fn new(rule: &Rule) -> Self {
+    pub fn new(rule: &Rule) -> Self {
         Self {
             matcher: CompiledMatcherPlan::compile(&ApiMatcher::from_matchers(
                 rule.matchers().to_vec(),

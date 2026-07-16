@@ -24,7 +24,7 @@ pub struct EvidenceList {
 }
 
 impl EvidenceList {
-    pub(crate) fn push_unique(&mut self, item: ProjectEvidence) {
+    pub fn push_unique(&mut self, item: ProjectEvidence) {
         let key = EvidenceKey {
             message: item.message.clone(),
             location: item
@@ -78,10 +78,10 @@ impl<'a> IntoIterator for &'a EvidenceList {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct SourceTable(BTreeMap<String, SourceFile>);
+pub struct SourceTable(BTreeMap<String, SourceFile>);
 
 impl SourceTable {
-    pub(crate) fn insert(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
+    pub fn insert(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
         let path = source.path.clone();
         if self.0.insert(path.clone(), source).is_some() {
             return Err(ProjectInputError::DuplicateSource(path));
@@ -89,20 +89,20 @@ impl SourceTable {
         Ok(())
     }
 
-    pub(crate) fn get(&self, path: &str) -> Option<&SourceFile> {
+    pub fn get(&self, path: &str) -> Option<&SourceFile> {
         self.0.get(path)
     }
 
-    pub(crate) fn into_values(self) -> impl Iterator<Item = SourceFile> {
+    pub fn into_values(self) -> impl Iterator<Item = SourceFile> {
         self.0.into_values()
     }
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct ResolutionTable(BTreeMap<ResolutionRequestKey, ResolutionResult>);
+pub struct ResolutionTable(BTreeMap<ResolutionRequestKey, ResolutionResult>);
 
 impl ResolutionTable {
-    pub(crate) fn insert(
+    pub fn insert(
         &mut self,
         key: ResolutionRequestKey,
         result: ResolutionResult,
@@ -113,9 +113,7 @@ impl ResolutionTable {
         Ok(())
     }
 
-    pub(crate) fn into_values(
-        self,
-    ) -> impl Iterator<Item = (ResolutionRequestKey, ResolutionResult)> {
+    pub fn into_values(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolutionResult)> {
         self.0.into_iter()
     }
 }

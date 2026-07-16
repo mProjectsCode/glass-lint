@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// `https`, `node:http`, and `node:https` modules. It reports the module load
 /// itself, not later API use, and relies on module provenance so similar names
 /// and shadowed `require` bindings are excluded.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("node.network")
         .label("Uses Node HTTP modules")
         .category("node/network")

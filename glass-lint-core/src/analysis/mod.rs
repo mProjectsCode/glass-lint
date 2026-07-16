@@ -19,17 +19,17 @@ use crate::project::{
 
 mod evidence;
 mod facts;
-mod flow;
-mod local;
+pub mod flow;
+pub mod local;
 mod matching;
-mod module;
-mod project;
+pub mod module;
+pub mod project;
 mod resolution;
 mod scope;
 mod syntax;
 mod value;
 
-pub(crate) use local::{LocalModuleModel, ProjectModule};
+pub use local::{LocalModuleModel, ProjectModule};
 use syntax::SymbolCallProvenance;
 
 const MAX_EXPORT_DEPTH: usize = 1024;
@@ -41,7 +41,7 @@ const MAX_PROJECT_REQUESTS: usize = 500_000;
 /// The linked, partitioned semantic model for a project. Local value and fact
 /// identities remain owned by their module; the overlay stores qualified
 /// resolution results rather than merging lexical arenas.
-pub(crate) struct ProjectSemanticModel {
+pub struct ProjectSemanticModel {
     modules: BTreeMap<ModuleId, ProjectModule>,
     resolutions: BTreeMap<ResolutionRequestKey, ResolvedModule>,
     exports: ExportTable,
@@ -64,17 +64,16 @@ enum ExportResolution {
 }
 
 impl ProjectSemanticModel {
-    pub(crate) fn single(
+    pub fn single(
         path: impl Into<String>,
         source_map: Lrc<SourceMap>,
         local: LocalModuleModel,
     ) -> Self {
         Self {
-            modules: [(
+            modules: std::iter::once((
                 ModuleId(0),
                 ProjectModule::new(ModuleId(0), path.into(), source_map, local),
-            )]
-            .into_iter()
+            ))
             .collect(),
             resolutions: BTreeMap::new(),
             exports: ExportTable::default(),
@@ -94,7 +93,7 @@ impl ProjectSemanticModel {
 
     /// Link already-built local modules to normalized resolution records.
     /// No AST or matcher work is performed here.
-    pub(crate) fn link(
+    pub fn link(
         input: ProjectInput,
         mut analyzed: BTreeMap<String, (Lrc<SourceMap>, LocalModuleModel)>,
     ) -> Result<Self, ProjectInputError> {
@@ -187,7 +186,7 @@ impl ProjectSemanticModel {
         Ok(project)
     }
 
-    pub(crate) fn modules(&self) -> impl Iterator<Item = &ProjectModule> {
+    pub fn modules(&self) -> impl Iterator<Item = &ProjectModule> {
         self.modules.values()
     }
 
@@ -207,11 +206,7 @@ impl ProjectSemanticModel {
             })
     }
 
-    pub(crate) fn fact_location(
-        &self,
-        module: ModuleId,
-        fact: u32,
-    ) -> Option<crate::ProjectEvidence> {
+    pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<crate::ProjectEvidence> {
         let module = self.modules.get(&module)?;
         let fact = module
             .local()
@@ -262,15 +257,15 @@ impl ProjectSemanticModel {
         Some((target, function))
     }
 
-    pub(crate) fn diagnostics(&self) -> &[crate::ProjectDiagnostic] {
+    pub fn diagnostics(&self) -> &[crate::ProjectDiagnostic] {
         &self.diagnostics
     }
 
-    pub(crate) fn flow_budget_exhausted(&self) -> bool {
+    pub fn flow_budget_exhausted(&self) -> bool {
         self.flow_budget.is_exhausted()
     }
 
-    pub(crate) fn operation_counts(&self, evidence: usize) -> crate::ProjectOperationCounts {
+    pub fn operation_counts(&self, evidence: usize) -> crate::ProjectOperationCounts {
         crate::ProjectOperationCounts {
             files: self.modules.len(),
             requests: self
@@ -286,14 +281,14 @@ impl ProjectSemanticModel {
         }
     }
 
-    pub(crate) fn authored_requests(module: &ProjectModule) -> Vec<crate::ResolutionRequest> {
+    pub fn authored_requests(module: &ProjectModule) -> Vec<crate::ResolutionRequest> {
         module
             .local()
             .interface()
             .authored_requests(module.path(), module.source_map())
     }
 
-    pub(crate) fn classify(
+    pub fn classify(
         &self,
         catalog: &crate::api::compiler::CompiledCatalog,
         rules: &[crate::api::rule::Rule],
@@ -346,22 +341,14 @@ impl ProjectSemanticModel {
 impl From<ExportResolution> for matching::LinkedModuleIdentity {
     fn from(resolution: ExportResolution) -> Self {
         match resolution {
-            ExportResolution::External { module, export } => {
-                matching::LinkedModuleIdentity::External { module, export }
-            }
-            ExportResolution::Global { name } => matching::LinkedModuleIdentity::Global { name },
-            ExportResolution::StaticString { value } => {
-                matching::LinkedModuleIdentity::StaticString { value }
-            }
-            ExportResolution::Qualified { module, export } => {
-                matching::LinkedModuleIdentity::Qualified {
-                    module: module.0,
-                    export,
-                }
-            }
-            ExportResolution::Unknown | ExportResolution::Ambiguous => {
-                matching::LinkedModuleIdentity::Unknown
-            }
+            ExportResolution::External { module, export } => Self::External { module, export },
+            ExportResolution::Global { name } => Self::Global { name },
+            ExportResolution::StaticString { value } => Self::StaticString { value },
+            ExportResolution::Qualified { module, export } => Self::Qualified {
+                module: module.0,
+                export,
+            },
+            ExportResolution::Unknown | ExportResolution::Ambiguous => Self::Unknown,
         }
     }
 }

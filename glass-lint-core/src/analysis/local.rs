@@ -10,14 +10,14 @@ use crate::{Environment, project::ModuleId};
 
 /// The immutable, matcher-independent result of analyzing one source.
 #[derive(Debug)]
-pub(crate) struct LocalModuleModel {
+pub struct LocalModuleModel {
     facts: SemanticFacts,
     export_origins: BTreeMap<String, SymbolCallProvenance>,
     effects: flow::effect::FunctionEffects,
 }
 
 impl LocalModuleModel {
-    pub(crate) fn analyze(program: &Program, environment: &Environment) -> Self {
+    pub fn analyze(program: &Program, environment: &Environment) -> Self {
         let resolver = resolution::Resolver::collect_with_environment(program, environment);
         let facts = SemanticFacts::build(program, &resolver);
         let export_origins = facts
@@ -43,7 +43,7 @@ impl LocalModuleModel {
         }
     }
 
-    pub(crate) fn interface(&self) -> &ModuleInterface {
+    pub fn interface(&self) -> &ModuleInterface {
         self.facts.interface()
     }
 
@@ -62,7 +62,7 @@ impl LocalModuleModel {
 
 /// A successfully analyzed source together with the data needed to report
 /// findings in its original file.
-pub(crate) struct ProjectModule {
+pub struct ProjectModule {
     id: ModuleId,
     path: String,
     source_map: Lrc<SourceMap>,
@@ -70,7 +70,7 @@ pub(crate) struct ProjectModule {
 }
 
 impl ProjectModule {
-    pub(crate) fn new(
+    pub fn new(
         id: ModuleId,
         path: String,
         source_map: Lrc<SourceMap>,
@@ -84,19 +84,19 @@ impl ProjectModule {
         }
     }
 
-    pub(crate) fn id(&self) -> ModuleId {
+    pub fn id(&self) -> ModuleId {
         self.id
     }
 
-    pub(crate) fn path(&self) -> &str {
+    pub fn path(&self) -> &str {
         &self.path
     }
 
-    pub(crate) fn source_map(&self) -> &Lrc<SourceMap> {
+    pub fn source_map(&self) -> &Lrc<SourceMap> {
         &self.source_map
     }
 
-    pub(crate) fn local(&self) -> &LocalModuleModel {
+    pub fn local(&self) -> &LocalModuleModel {
         &self.local
     }
 

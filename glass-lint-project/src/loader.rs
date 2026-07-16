@@ -24,6 +24,7 @@ pub struct ProjectLoader {
 }
 
 /// Bounded construction counters and phase timings for profiling. The
+///
 /// timings intentionally stop at the core boundary; matcher work is included
 /// in `linking_and_matching` because core owns the completed project pass.
 #[derive(Clone, Debug, Default)]

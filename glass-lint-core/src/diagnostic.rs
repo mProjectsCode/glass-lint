@@ -35,7 +35,7 @@ pub struct Position {
 }
 
 impl Position {
-    pub(crate) fn from_source(source: &str, offset: usize) -> Self {
+    pub fn from_source(source: &str, offset: usize) -> Self {
         let mut end = offset.min(source.len());
         while end > 0 && !source.is_char_boundary(end) {
             end -= 1;
@@ -52,7 +52,7 @@ impl Position {
                 .saturating_add(1),
             column: prefix
                 .rsplit_once('\n')
-                .map_or(prefix.chars().count(), |(_, tail)| tail.chars().count())
+                .map_or_else(|| prefix.chars().count(), |(_, tail)| tail.chars().count())
                 .try_into()
                 .unwrap_or(u32::MAX)
                 .saturating_add(1),
@@ -68,14 +68,14 @@ pub struct SourceRange {
 }
 
 impl SourceRange {
-    pub(crate) fn from_source(source: &str, start: usize, length: usize) -> Self {
+    pub fn from_source(source: &str, start: usize, length: usize) -> Self {
         Self {
             start: Position::from_source(source, start),
             end: Position::from_source(source, start.saturating_add(length)),
         }
     }
 
-    pub(crate) fn contains(&self, inner: &Self) -> bool {
+    pub fn contains(&self, inner: &Self) -> bool {
         self.start <= inner.start && inner.end <= self.end
     }
 }
@@ -102,7 +102,7 @@ pub struct Finding {
     pub evidence: Vec<Evidence>,
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 /// Complete serialized result for one lint invocation.
 pub struct LintReport {
     pub schema_version: u32,

@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// that `this` is an Obsidian plugin instance and does not follow aliases or
 /// reassignment; other receivers, dynamic properties, and near-name methods
 /// are excluded.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("view.register")
         .label("Registers Obsidian views")
         .category("view")

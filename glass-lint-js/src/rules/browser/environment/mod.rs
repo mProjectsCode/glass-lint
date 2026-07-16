@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// These are intentionally syntactic heuristic matchers: a shadowed local
 /// `navigator` or `screen` with the same property is reported, while unlisted
 /// properties and dynamic property names are not.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("browser.environment")
         .label("Reads browser environment data")
         .category("browser/environment")

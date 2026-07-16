@@ -15,7 +15,7 @@ use super::{
 };
 use crate::api::compiler::CompiledMatcherCatalog;
 
-pub(super) mod build;
+pub mod build;
 mod model;
 mod stream;
 

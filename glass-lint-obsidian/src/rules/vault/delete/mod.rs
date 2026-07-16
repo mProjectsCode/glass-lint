@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// receiver aliases, static computed properties, source-ordered reassignment,
 /// and lexical shadowing. Arguments, returned objects, and unlisted methods
 /// are intentionally not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("vault.delete")
         .label("Deletes or trashes vault files")
         .category("vault")

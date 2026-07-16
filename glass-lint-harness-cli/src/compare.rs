@@ -6,7 +6,7 @@ use tracing_subscriber::{
     Layer, layer::SubscriberExt, registry::LookupSpan, util::SubscriberInitExt,
 };
 
-pub(crate) fn begin(path: &Path, adapter_count: usize) {
+pub fn begin(path: &Path, adapter_count: usize) {
     eprintln!(
         "Running {} adapter(s) on cases in {}...",
         adapter_count,
@@ -18,7 +18,7 @@ pub(crate) fn begin(path: &Path, adapter_count: usize) {
         .ok();
 }
 
-pub(crate) fn write_report(
+pub fn write_report(
     report: &SuiteReport,
     case_timings: &[CaseTimings],
     suite_elapsed: Duration,

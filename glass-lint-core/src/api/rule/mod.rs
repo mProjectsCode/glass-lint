@@ -1,17 +1,17 @@
 mod error;
-mod matcher;
+pub mod matcher;
 mod normalization;
 mod taxonomy;
-mod validation;
+pub mod validation;
 
 pub use error::{CatalogError, RuleBuildError};
-pub(crate) use matcher::{ApiMatcher, StaticStringPredicate, ValueMatcherKind};
 pub use matcher::{
-    ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
+    ApiMatcher, ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
     ConstructorMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher,
     Matcher, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher,
-    ReturnedMemberReadMatcher, ValueMatcher, canonical_rooted_chain,
+    ReturnedMemberReadMatcher, StaticStringPredicate, ValueMatcher, ValueMatcherKind,
+    canonical_rooted_chain,
 };
 pub use taxonomy::{Category, Confidence, Severity};
 

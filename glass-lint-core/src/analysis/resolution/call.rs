@@ -77,7 +77,7 @@ impl Resolver {
         // Calls normally produce fresh, opaque values. `.bind` is the modeled
         // exception because it preserves a callable's target and arguments.
         let Callee::Expr(callee) = &call.callee else {
-            return Resolver::unknown();
+            return Self::unknown();
         };
         let Expr::Member(member) = &**callee else {
             return self.fresh_object_value_at(call.span);
@@ -115,7 +115,7 @@ impl Resolver {
                 module: module.clone(),
                 export: export.clone(),
             },
-            SymbolCallProvenance::Local => rooted.map_or(Value::Local, Resolver::rooted_value),
+            SymbolCallProvenance::Local => rooted.map_or(Value::Local, Self::rooted_value),
         };
         let id = self.values.borrow_mut().intern_with_binding(value, binding);
         debug_assert!(self.values.borrow().get(id).is_some());

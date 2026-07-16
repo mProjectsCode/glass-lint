@@ -8,7 +8,7 @@ use glass_lint_core::rules::{
 /// a supported DOM insertion sink. Direct aliases participate in the bounded
 /// object flow; local paths, dynamic values, other tags, and unsupported sinks
 /// do not match.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("dom.remote-resource")
         .label("Loads remote DOM resources")
         .category("browser/dom")

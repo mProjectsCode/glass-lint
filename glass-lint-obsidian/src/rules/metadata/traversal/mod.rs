@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Sever
 /// `unresolvedLinks`. The Object call itself is syntactic; local lookalikes,
 /// dynamic arguments, unlisted metadata maps, and reassigned aliases are
 /// excluded.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("metadata.traversal")
         .label("Traverses metadata cache maps")
         .category("metadata")

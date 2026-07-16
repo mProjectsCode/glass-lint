@@ -1,6 +1,6 @@
 mod call;
 mod derived;
-mod flow;
+pub mod flow;
 mod member;
 
 pub use call::*;
@@ -9,18 +9,18 @@ pub use flow::*;
 pub use member::*;
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ApiMatcher {
-    pub(crate) calls: Vec<CallMatcher>,
-    pub(crate) member_calls: Vec<MemberCallMatcher>,
-    pub(crate) member_reads: Vec<MemberReadMatcher>,
-    pub(crate) imports: Vec<String>,
-    pub(crate) string_literals: Vec<String>,
-    pub(crate) classes: Vec<ClassMatcher>,
-    pub(crate) constructors: Vec<ConstructorMatcher>,
-    pub(crate) flows: Vec<ObjectFlowMatcher>,
-    pub(crate) returned_member_calls: Vec<ReturnedMemberCallMatcher>,
-    pub(crate) returned_member_reads: Vec<ReturnedMemberReadMatcher>,
-    pub(crate) instance_member_calls: Vec<InstanceMemberCallMatcher>,
+pub struct ApiMatcher {
+    pub calls: Vec<CallMatcher>,
+    pub member_calls: Vec<MemberCallMatcher>,
+    pub member_reads: Vec<MemberReadMatcher>,
+    pub imports: Vec<String>,
+    pub string_literals: Vec<String>,
+    pub classes: Vec<ClassMatcher>,
+    pub constructors: Vec<ConstructorMatcher>,
+    pub flows: Vec<ObjectFlowMatcher>,
+    pub returned_member_calls: Vec<ReturnedMemberCallMatcher>,
+    pub returned_member_reads: Vec<ReturnedMemberReadMatcher>,
+    pub instance_member_calls: Vec<InstanceMemberCallMatcher>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,7 +128,7 @@ impl Matcher {
         ConstructorMatcher::module_export(module, export).into()
     }
 
-    pub fn flow(value: impl Into<Matcher>) -> Self {
+    pub fn flow(value: impl Into<Self>) -> Self {
         value.into()
     }
 
@@ -206,7 +206,7 @@ impl From<InstanceMemberCallMatcher> for Matcher {
 }
 
 impl ApiMatcher {
-    pub(crate) fn from_matchers(matchers: Vec<Matcher>) -> Self {
+    pub fn from_matchers(matchers: Vec<Matcher>) -> Self {
         let mut api_matcher = Self::default();
         for matcher in matchers {
             api_matcher.push(matcher);
@@ -214,7 +214,7 @@ impl ApiMatcher {
         api_matcher
     }
 
-    pub(crate) fn into_matchers(self) -> Vec<Matcher> {
+    pub fn into_matchers(self) -> Vec<Matcher> {
         self.calls
             .into_iter()
             .map(Matcher::Call)
@@ -243,7 +243,7 @@ impl ApiMatcher {
             .collect()
     }
 
-    pub(crate) fn push(&mut self, matcher: Matcher) {
+    pub fn push(&mut self, matcher: Matcher) {
         match matcher {
             Matcher::Call(value) => self.calls.push(value),
             Matcher::MemberCall(value) => self.member_calls.push(value),
@@ -259,11 +259,11 @@ impl ApiMatcher {
         }
     }
 
-    pub(crate) fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), String> {
         super::validation::validate(self)
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.calls.is_empty()
             && self.member_calls.is_empty()
             && self.member_reads.is_empty()
@@ -277,12 +277,13 @@ impl ApiMatcher {
             && self.instance_member_calls.is_empty()
     }
 
-    pub(crate) fn normalized(self) -> Self {
+    #[must_use]
+    pub fn normalized(self) -> Self {
         self.normalize()
     }
 }
 
-pub(crate) fn normalize_flows(values: &mut Vec<ObjectFlowMatcher>) {
+pub fn normalize_flows(values: &mut Vec<ObjectFlowMatcher>) {
     for flow in values.iter_mut() {
         flow.symbol = flow.symbol.trim().to_string();
         for source in &mut flow.sources {
@@ -338,7 +339,7 @@ impl FlowCompletion {
     }
 }
 
-pub(crate) fn normalize_strings(values: &mut Vec<String>) {
+pub fn normalize_strings(values: &mut Vec<String>) {
     values.retain(|value| !value.trim().is_empty());
     for value in values.iter_mut() {
         *value = value.trim().to_string();
@@ -347,7 +348,7 @@ pub(crate) fn normalize_strings(values: &mut Vec<String>) {
     values.dedup();
 }
 
-pub(crate) fn normalize_member_chain(value: &str) -> String {
+pub fn normalize_member_chain(value: &str) -> String {
     value
         .split('.')
         .map(str::trim)

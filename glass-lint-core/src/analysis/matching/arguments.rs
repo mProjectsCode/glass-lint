@@ -57,19 +57,20 @@ impl MatcherFacts {
                 // effective args after unwrapping.
                 if !call_argument_matchers.is_empty() {
                     let (effective_args, effective_name, effective_provenance) =
-                        if let Some(u) = unwrap {
-                            (
-                                &u.effective_args,
-                                Some(u.chain.as_str()),
-                                &linked_call_provenance,
-                            )
-                        } else {
+                        unwrap.as_ref().map_or(
                             (
                                 &linked_args,
                                 callee_name.as_deref(),
                                 &linked_call_provenance,
-                            )
-                        };
+                            ),
+                            |u| {
+                                (
+                                    &u.effective_args,
+                                    Some(u.chain.as_str()),
+                                    &linked_call_provenance,
+                                )
+                            },
+                        );
                     Self::collect_call_argument_evidence_from_args(
                         call_argument_matchers,
                         argument_evidence,

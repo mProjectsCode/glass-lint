@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// and lexical shadowing. Dynamic or unlisted members, local lookalikes, and
 /// call arguments are not analyzed. Returned leaves are followed through
 /// simple aliases while reassignment and shadowing remain fail-closed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("workspace.open")
         .label("Opens files through the workspace")
         .category("workspace")

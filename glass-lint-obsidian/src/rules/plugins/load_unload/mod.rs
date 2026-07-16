@@ -1,6 +1,6 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("plugins.load-unload")
         .label("Loads or unloads plugins at runtime")
         .category("plugins")

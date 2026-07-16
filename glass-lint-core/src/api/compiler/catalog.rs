@@ -5,12 +5,12 @@ use super::{
 use crate::api::compiler::CompiledMatcherCatalog;
 
 #[derive(Debug, Clone)]
-pub(crate) struct CompiledCatalog {
-    pub(crate) rules: Vec<CompiledRule>,
+pub struct CompiledCatalog {
+    pub rules: Vec<CompiledRule>,
 }
 
 impl CompiledCatalog {
-    pub(crate) fn try_from_rules(rules: &[Rule]) -> Result<Self, CatalogError> {
+    pub fn try_from_rules(rules: &[Rule]) -> Result<Self, CatalogError> {
         let mut ids = std::collections::BTreeSet::new();
         for rule in rules {
             if !ids.insert(rule.id().to_string()) {
@@ -22,16 +22,13 @@ impl CompiledCatalog {
         })
     }
 
-    pub(crate) fn from_rules(rules: &[Rule]) -> Self {
+    pub fn from_rules(rules: &[Rule]) -> Self {
         Self {
             rules: rules.iter().map(CompiledRule::new).collect(),
         }
     }
 
-    pub(crate) fn to_matcher_catalog<'a>(
-        &'a self,
-        selected: &'a [usize],
-    ) -> CompiledMatcherCatalog<'a> {
+    pub fn to_matcher_catalog<'a>(&'a self, selected: &'a [usize]) -> CompiledMatcherCatalog<'a> {
         CompiledMatcherCatalog::new(&self.rules, selected)
     }
 }

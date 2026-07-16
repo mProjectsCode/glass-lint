@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// Provenance follows `this.app`, direct receiver aliases, static computed
 /// properties, bounded rooted argument flow, source-ordered reassignment, and
 /// lexical shadowing. Arguments and other read-like methods are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("vault.read")
         .label("Reads vault files")
         .category("vault")

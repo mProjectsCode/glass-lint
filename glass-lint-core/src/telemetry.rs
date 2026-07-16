@@ -46,6 +46,7 @@ where
 }
 
 /// Build the shared formatter with an explicitly supplied output writer.
+///
 /// Front ends use this to keep telemetry off their result stream, while tests
 /// and embedders can capture it without changing global process state.
 pub fn layer_with_writer<S, W>(level: TelemetryLevel, writer: W) -> impl Layer<S> + Send + Sync

@@ -3,17 +3,17 @@ use super::MemberCallMatcher;
 /// A context-independent predicate over an argument value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValueMatcher {
-    pub(crate) kind: ValueMatcherKind,
+    pub kind: ValueMatcherKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ValueMatcherKind {
+pub enum ValueMatcherKind {
     Any,
     StaticString(StaticStringPredicate),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum StaticStringPredicate {
+pub enum StaticStringPredicate {
     Any,
     Exact(Vec<String>),
     Prefix(Vec<String>),
@@ -127,14 +127,14 @@ impl From<ValueMatcher> for ArgumentMatcher {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArgumentConstraint {
-    pub(crate) index: usize,
-    pub(crate) matcher: ArgumentMatcher,
+    pub index: usize,
+    pub matcher: ArgumentMatcher,
 }
 
 /// A call that returns the object tracked by an [`ObjectFlowMatcher`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectSourceMatcher {
-    pub(crate) call: MemberCallMatcher,
+    pub call: MemberCallMatcher,
 }
 
 impl ObjectSourceMatcher {
@@ -181,6 +181,7 @@ pub struct ObjectEventBuilder {
 }
 
 impl ObjectEventBuilder {
+    #[must_use]
     pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
         if let ObjectEventMatcher::MemberCall { arguments, .. } = &mut self.event {
             arguments.push(ArgumentConstraint {
@@ -279,10 +280,10 @@ impl FlowSinkMatcher {
 /// Declarative object lifecycle matching: source, configuration, completion.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectFlowMatcher {
-    pub(crate) symbol: String,
-    pub(crate) sources: Vec<ObjectSourceMatcher>,
-    pub(crate) condition: Option<FlowCondition>,
-    pub(crate) completion: Option<FlowCompletion>,
+    pub symbol: String,
+    pub sources: Vec<ObjectSourceMatcher>,
+    pub condition: Option<FlowCondition>,
+    pub completion: Option<FlowCompletion>,
 }
 
 impl ObjectFlowMatcher {
@@ -307,11 +308,13 @@ pub struct ObjectFlowMatcherBuilder {
 }
 
 impl ObjectFlowMatcherBuilder {
+    #[must_use]
     pub fn source(mut self, source: ObjectSourceMatcher) -> Self {
         self.sources.push(source);
         self
     }
 
+    #[must_use]
     pub fn configured_by(mut self, condition: FlowCondition) -> Self {
         // Keep the first invalid operation so the builder reports a stable,
         // actionable error instead of silently choosing one configuration.
@@ -323,6 +326,7 @@ impl ObjectFlowMatcherBuilder {
         self
     }
 
+    #[must_use]
     pub fn complete_at(mut self, completion: FlowCompletion) -> Self {
         if self.completion.is_some() {
             self.invalid_operation = Some("complete_at may only be specified once");

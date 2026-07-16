@@ -33,7 +33,9 @@ impl AliasCollector {
                 }
                 for name in Self::parameter_binding_names(parameter) {
                     let target = projected.get(&name).cloned();
-                    let entry = aliases.entry((*scope, name)).or_insert(target.clone());
+                    let entry = aliases
+                        .entry((*scope, name))
+                        .or_insert_with(|| target.clone());
                     if *entry != target {
                         *entry = None;
                     }

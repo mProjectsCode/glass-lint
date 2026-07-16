@@ -60,7 +60,7 @@ impl FactStream {
     }
 
     pub(in crate::analysis) fn intern_path(
-        &mut self,
+        &self,
         parent: PathId,
         segment: PathSegment,
     ) -> Option<PathId> {

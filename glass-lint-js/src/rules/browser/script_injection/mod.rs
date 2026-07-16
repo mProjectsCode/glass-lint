@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Sever
 /// `createElement`. It reports creation itself, without requiring insertion or
 /// executable content, and does not prove that `document` is the browser
 /// global; dynamic values and other static tags are excluded.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("dynamic-code.script-injection")
         .label("Injects executable script elements")
         .category("browser/dom")

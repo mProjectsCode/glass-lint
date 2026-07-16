@@ -71,7 +71,7 @@ pub(in crate::analysis) enum EffectUse {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct FunctionEffect {
+pub struct FunctionEffect {
     id: FunctionId,
     parameters: Vec<ParameterBinding>,
     calls: Vec<EffectCall>,
@@ -187,7 +187,7 @@ impl ReturnProjection {
 }
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct FunctionEffects {
+pub struct FunctionEffects {
     by_id: FunctionTable<FunctionEffect>,
     /// Local effect limits fail closed and are surfaced as a project
     /// diagnostic instead of looking like a clean analysis.

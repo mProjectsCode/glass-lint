@@ -4,7 +4,7 @@ mod extract;
 mod frontmatter_read;
 mod traversal;
 use glass_lint_core::rules::Rule;
-pub(crate) fn rules() -> Vec<Rule> {
+pub fn rules() -> Vec<Rule> {
     vec![
         cache_read::rule(),
         frontmatter_read::rule(),

@@ -1,10 +1,10 @@
-mod catalog;
-mod rule;
+pub mod catalog;
+pub mod rule;
 
-pub(crate) use catalog::CompiledCatalog;
+pub use catalog::CompiledCatalog;
 #[cfg(test)]
-pub(crate) use rule::CompiledMatcherPlan;
-pub(crate) use rule::{
+pub use rule::CompiledMatcherPlan;
+pub use rule::{
     CompiledMatcherCatalog, CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArgs,
     CompiledRule,
 };

@@ -11,7 +11,7 @@ impl RuleId {
     ///
     /// The namespaced form adds a provider prefix and `:`, but both forms
     /// share the same canonical character and separator rules for the name.
-    pub(crate) fn valid_name(value: &str) -> bool {
+    pub fn valid_name(value: &str) -> bool {
         Self::valid_part(value, true)
     }
 

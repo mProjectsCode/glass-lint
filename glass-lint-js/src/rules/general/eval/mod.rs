@@ -5,7 +5,7 @@ use glass_lint_core::rules::{CallMatcher, Confidence, ConstructorMatcher, Rule, 
 /// access, aliases, bind, call, and statically unpackable apply forms retain
 /// callable identity; local, shadowed, reassigned, or mutated lookalikes do
 /// not.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("dynamic-code.eval")
         .label("Evaluates dynamic code")
         .category("language/dynamic-code")

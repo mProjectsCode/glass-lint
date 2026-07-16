@@ -125,7 +125,7 @@ impl Linter {
             .collect()
     }
 
-    pub(crate) fn analysis_environment(&self) -> &Environment {
+    pub fn analysis_environment(&self) -> &Environment {
         self.catalog.environment()
     }
 
@@ -212,7 +212,7 @@ impl Linter {
         session.finish()
     }
 
-    pub(crate) fn lint_analyzed_project_timed(
+    pub fn lint_analyzed_project_timed(
         &self,
         input: ProjectInput,
         analyzed: AnalyzedModules,
@@ -593,7 +593,7 @@ mod tests {
         .unwrap()
         .lint(source, "order.js");
         let report_desc = Linter::with_rules(
-            catalog.clone(),
+            catalog,
             [
                 RuleId::parse("test:beta.second").unwrap(),
                 RuleId::parse("test:alpha.first").unwrap(),

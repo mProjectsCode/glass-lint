@@ -1,6 +1,6 @@
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("plugins.enable-disable")
         .label("Enables or disables other plugins")
         .category("plugins")

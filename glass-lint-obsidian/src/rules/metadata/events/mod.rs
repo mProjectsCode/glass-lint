@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Sever
 /// argument is a literal event name: `changed`, `deleted`, or `resolved`.
 /// Rooted aliases are followed; shadowing, reassignment, dynamic event values,
 /// computed member chains, and other event names are excluded.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("metadata.events")
         .label("Registers metadata cache events")
         .category("metadata")

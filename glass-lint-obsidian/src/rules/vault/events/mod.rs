@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, MemberCallMatcher, Rule, Severity, Valu
 /// direct receiver aliases, and static computed properties. Source-ordered
 /// reassignment and lexical shadowing are respected; event names, handlers,
 /// arguments, and other event methods are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("vault.events")
         .label("Registers vault events")
         .category("vault")

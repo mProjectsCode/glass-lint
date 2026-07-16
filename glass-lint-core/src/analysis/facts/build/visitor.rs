@@ -48,7 +48,7 @@ impl Visit for FactBuilder<'_> {
                 syntactic_chain,
                 rooted_chain: resolved.rooted_chain.clone(),
                 module_member: resolved.module_member.clone(),
-                returned_member: resolved.returned_member.clone(),
+                returned_member: resolved.returned_member,
             },
         );
         member.visit_children_with(self);
@@ -169,7 +169,7 @@ impl Visit for FactBuilder<'_> {
                         syntactic_chain,
                         rooted_chain: resolved.rooted_chain.clone(),
                         module_member: resolved.module_member.clone(),
-                        returned_member: resolved.returned_member.clone(),
+                        returned_member: resolved.returned_member,
                     },
                 );
                 member.visit_children_with(self);
@@ -207,7 +207,7 @@ impl Visit for FactBuilder<'_> {
                                 SymbolCallProvenance::Global { ref name } if name == "globalThis"
                             )
                         })
-                        .or((chain == "Function").then_some(chain))
+                        .or_else(|| (chain == "Function").then_some(chain))
                 });
                 if let Some(name) = global_name {
                     let name = name.to_string();

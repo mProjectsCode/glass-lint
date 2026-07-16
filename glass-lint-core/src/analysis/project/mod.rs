@@ -3,5 +3,5 @@
 mod exports;
 mod graph;
 pub(super) mod identities;
-pub(super) mod projection;
+pub mod projection;
 pub(super) mod state;

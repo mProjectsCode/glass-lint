@@ -3,7 +3,7 @@ use glass_lint_harness::{ProfileConfig, ProfileSummary, profile_folder};
 
 use crate::args::ProfileArgs;
 
-pub(crate) fn run(args: ProfileArgs) -> Result<bool> {
+pub fn run(args: ProfileArgs) -> Result<bool> {
     let report = profile_folder(&ProfileConfig {
         paths: args.paths,
         include: args.include,

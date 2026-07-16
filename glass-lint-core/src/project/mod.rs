@@ -1,22 +1,20 @@
 //! Validated, filesystem-free contracts for project-level analysis.
 
-mod input;
+pub mod input;
 mod report;
 mod session;
-mod tables;
-mod types;
+pub mod tables;
+pub mod types;
 /// A staged project collection session. Sources are parsed and locally
 /// analyzed when added; `finish` links the retained models after all resolver
 /// answers have been recorded.
 pub use session::ProjectSession;
-pub use tables::EvidenceList;
-pub(crate) use tables::{ResolutionTable, SourceTable};
-pub(crate) use types::{ModuleId, ResolvedModule};
+pub use tables::{EvidenceList, ResolutionTable, SourceTable};
 pub use types::{
-    ProjectDiagnostic, ProjectEvidence, ProjectFileReport, ProjectFinding, ProjectInput,
+    ModuleId, ProjectDiagnostic, ProjectEvidence, ProjectFileReport, ProjectFinding, ProjectInput,
     ProjectInputError, ProjectOperationCounts, ProjectReport, ProjectReportSummary,
-    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile,
-    SourceLocation,
+    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolutionResult,
+    ResolvedModule, SourceFile, SourceLocation,
 };
 
 #[cfg(test)]

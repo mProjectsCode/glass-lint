@@ -46,10 +46,10 @@ pub enum ResolutionResult {
 #[derive(
     Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
 )]
-pub(crate) struct ModuleId(pub u32);
+pub struct ModuleId(pub u32);
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub(crate) enum ResolvedModule {
+pub enum ResolvedModule {
     Internal { id: ModuleId, path: String },
     External { package: String },
     Builtin { name: String },

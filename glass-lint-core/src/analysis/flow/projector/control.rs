@@ -55,8 +55,7 @@ impl ObjectFlowProjector<'_, '_> {
             }
             ControlKind::BranchElse => {
                 let current = self.environment();
-                let mut restore = None;
-                if let Some(ControlFrame::Branch {
+                let restore = if let Some(ControlFrame::Branch {
                     region: expected,
                     base,
                     then_exit,
@@ -64,8 +63,10 @@ impl ObjectFlowProjector<'_, '_> {
                     && *expected == region
                 {
                     *then_exit = Some(current);
-                    restore = Some(base.clone());
-                }
+                    Some(base.clone())
+                } else {
+                    None
+                };
                 if let Some(environment) = restore {
                     self.restore(environment);
                 }
@@ -203,8 +204,7 @@ impl ObjectFlowProjector<'_, '_> {
             }),
             ControlKind::CatchStart => {
                 let current = self.environment();
-                let mut restore = None;
-                if let Some(ControlFrame::Try {
+                let restore = if let Some(ControlFrame::Try {
                     region: expected,
                     baseline,
                     try_exit,
@@ -213,8 +213,10 @@ impl ObjectFlowProjector<'_, '_> {
                     && *expected == region
                 {
                     *try_exit = current.is_reachable().then_some(current);
-                    restore = Some(baseline.clone());
-                }
+                    Some(baseline.clone())
+                } else {
+                    None
+                };
                 if let Some(environment) = restore {
                     self.restore(environment);
                 }
@@ -227,8 +229,7 @@ impl ObjectFlowProjector<'_, '_> {
 
     fn start_finally(&mut self, region: u32) {
         let current = self.environment();
-        let mut restore = None;
-        if let Some(ControlFrame::Try {
+        let restore = if let Some(ControlFrame::Try {
             region: expected,
             try_exit,
             catch_exit,
@@ -243,9 +244,10 @@ impl ObjectFlowProjector<'_, '_> {
             *has_finally = true;
             let mut normal = try_exit.clone();
             if current.is_reachable() {
-                normal = Some(normal.map_or(current.clone(), |normal| {
-                    FlowEnvironment::join(&normal, &current)
-                }));
+                normal = Some(normal.map_or_else(
+                    || current.clone(),
+                    |normal| FlowEnvironment::join(&normal, &current),
+                ));
             }
             normal_exit.clone_from(&normal);
             let mut incoming = normal.into_iter().collect::<Vec<_>>();
@@ -254,8 +256,10 @@ impl ObjectFlowProjector<'_, '_> {
                     .iter()
                     .map(|(_, environment)| environment.clone()),
             );
-            restore = Some(FlowEnvironment::join_many(&incoming));
-        }
+            Some(FlowEnvironment::join_many(&incoming))
+        } else {
+            None
+        };
         if let Some(environment) = restore {
             self.restore(environment);
         }

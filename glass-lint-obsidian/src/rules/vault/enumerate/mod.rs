@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// `getFolderByPath`, and `getRoot`. The matcher follows `this.app`, direct
 /// receiver aliases, static computed properties, source-ordered reassignment,
 /// and lexical shadowing, but does not analyze arguments or other vault APIs.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("vault.enumerate")
         .label("Enumerates vault files")
         .category("vault")

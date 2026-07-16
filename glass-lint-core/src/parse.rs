@@ -72,17 +72,17 @@ impl SourceLanguage {
     }
 }
 
-pub(crate) struct ParsedSource {
+pub struct ParsedSource {
     pub program: Program,
     pub source_map: Lrc<SourceMap>,
 }
 
 #[cfg(test)]
-pub(crate) fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
+pub fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
     parse_with_language(source, filename, SourceLanguage::JavaScript)
 }
 
-pub(crate) fn parse_with_language(
+pub fn parse_with_language(
     source: &str,
     filename: &str,
     language: SourceLanguage,

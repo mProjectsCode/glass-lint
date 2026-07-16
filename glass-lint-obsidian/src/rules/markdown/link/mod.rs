@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// `getLinkpath` exports of the `obsidian` module. ESM/CommonJS aliases retain
 /// module provenance, while similar modules, shadowed loaders, and reassigned
 /// aliases are excluded; arguments and later helper behavior are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("markdown.link")
         .label("Uses markdown link helpers")
         .category("markdown")

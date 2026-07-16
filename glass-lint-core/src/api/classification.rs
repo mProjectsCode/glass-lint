@@ -5,7 +5,7 @@ use super::rule::{Category, Confidence, Severity};
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ApiCapability {
     #[serde(skip)]
-    pub(crate) rule_index: usize,
+    pub rule_index: usize,
     pub id: String,
     pub label: String,
     pub category: Category,
@@ -24,16 +24,16 @@ pub struct ApiEvidence {
     /// Canonical fact IDs parallel to `spans`. `u32::MAX` is reserved for a
     /// deliberately synthetic occurrence that has no source fact.
     #[serde(skip)]
-    pub(crate) event_ids: Vec<u32>,
-    pub(crate) related: Vec<ApiRelatedEvidence>,
+    pub event_ids: Vec<u32>,
+    pub related: Vec<ApiRelatedEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub(crate) struct ApiRelatedEvidence {
-    pub(crate) module: u32,
-    pub(crate) event: u32,
-    pub(crate) kind: ApiMatchKind,
-    pub(crate) symbol: String,
+pub struct ApiRelatedEvidence {
+    pub module: u32,
+    pub event: u32,
+    pub kind: ApiMatchKind,
+    pub symbol: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]

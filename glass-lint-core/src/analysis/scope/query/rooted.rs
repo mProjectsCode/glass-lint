@@ -37,7 +37,7 @@ impl RootedExprContext for ScopeGraph {
     }
 
     fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String> {
-        ScopeGraph::rooted_member_chain(self, member)
+        Self::rooted_member_chain(self, member)
     }
 }
 

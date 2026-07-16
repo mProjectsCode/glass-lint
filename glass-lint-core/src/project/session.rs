@@ -25,7 +25,7 @@ pub struct ProjectSession<'a> {
 }
 
 impl<'a> ProjectSession<'a> {
-    pub(crate) fn new(
+    pub fn new(
         linter: &'a crate::Linter,
         root: impl Into<std::path::PathBuf>,
     ) -> Result<Self, ProjectInputError> {

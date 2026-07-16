@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// an Obsidian plugin instance and does not follow aliases or reassignment.
 /// Static computed names resolving to the configured method are accepted;
 /// other receivers, dynamic properties, and near-name methods are excluded.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("editor.extension")
         .label("Registers editor extensions")
         .category("editor")

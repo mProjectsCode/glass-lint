@@ -1,13 +1,13 @@
 //! Generic, provenance-aware JavaScript linting.
 
-mod analysis;
-mod api;
-mod budget;
+pub mod analysis;
+pub mod api;
+pub mod budget;
 mod config;
 mod diagnostic;
 mod environment;
-mod lint;
-mod parse;
+pub mod lint;
+pub mod parse;
 pub mod project;
 pub mod report;
 mod rule_id;
@@ -45,4 +45,4 @@ pub mod rules {
     };
 }
 #[cfg(test)]
-pub(crate) use parse::parse;
+pub use parse::parse;

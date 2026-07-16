@@ -8,7 +8,7 @@ use glass_lint_core::rules::{
 /// follows direct aliases and respects reassignment. Static computed property
 /// names are normalized; `setAttribute` and non-static type values are not
 /// recognized as configuration evidence.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("browser.file-dialog")
         .label("Uses browser file input dialogs")
         .category("browser/file-dialog")

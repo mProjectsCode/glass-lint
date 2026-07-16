@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// plus syntactic `crypto.subtle` digest/encrypt/decrypt calls. Import reports
 /// are intentionally emitted at the import rather than later API use; the
 /// heuristic Web Crypto chains can match same-shaped local bindings.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("crypto.operation")
         .label("Uses cryptographic operations")
         .category("language/crypto")

@@ -5,7 +5,7 @@ use glass_lint_core::rules::{CallMatcher, Confidence, Matcher, Rule, Severity};
 /// current realm. ESM/CommonJS and callable aliases retain provenance, while
 /// similar modules, shadowing, reassignment, and foreign-realm lookalikes are
 /// excluded; request arguments are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("network.request")
         .label("Uses Obsidian request APIs")
         .category("network")

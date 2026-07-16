@@ -12,7 +12,7 @@ impl Category {
         &self.0
     }
 
-    pub(crate) fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         !self.0.is_empty()
             && self.0.chars().enumerate().all(|(index, character)| {
                 (index == 0 && character.is_ascii_lowercase())
@@ -60,7 +60,7 @@ impl Severity {
         }
     }
 
-    pub(crate) fn as_diagnostic_severity(self) -> crate::diagnostic::Severity {
+    pub fn as_diagnostic_severity(self) -> crate::diagnostic::Severity {
         match self {
             Self::Info => crate::diagnostic::Severity::Info,
             Self::Warning => crate::diagnostic::Severity::Warning,

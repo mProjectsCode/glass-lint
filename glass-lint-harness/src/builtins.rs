@@ -2,13 +2,13 @@ use anyhow::{Result, bail};
 use glass_lint_core::{Environment, Linter};
 
 #[derive(Clone, Copy)]
-pub(crate) enum BuiltInProvider {
+pub enum BuiltInProvider {
     Js,
     Obsidian,
 }
 
 #[derive(Clone, Copy)]
-pub(crate) enum BuiltInProfile {
+pub enum BuiltInProfile {
     Recommended,
     Heuristic,
 }
@@ -16,7 +16,7 @@ pub(crate) enum BuiltInProfile {
 /// Construct one built-in provider linter with the caller's host environment.
 /// All harness entry points use this boundary so profile and adapter behavior
 /// cannot drift when provider defaults change.
-pub(crate) fn linter(
+pub fn linter(
     provider: BuiltInProvider,
     profile: BuiltInProfile,
     environment: Environment,
@@ -37,7 +37,7 @@ pub(crate) fn linter(
     }
 }
 
-pub(crate) fn provider(name: &str) -> Result<BuiltInProvider> {
+pub fn provider(name: &str) -> Result<BuiltInProvider> {
     match name {
         "js" => Ok(BuiltInProvider::Js),
         "obsidian" => Ok(BuiltInProvider::Obsidian),

@@ -9,7 +9,7 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub(crate) struct ProjectMatcherModel<'matchers> {
+pub struct ProjectMatcherModel<'matchers> {
     matchers: CompiledMatcherCatalog<'matchers>,
     projections: BTreeMap<ModuleId, ProjectModuleProjection>,
 }
@@ -21,7 +21,7 @@ struct ProjectModuleProjection {
 }
 
 impl ProjectSemanticModel {
-    pub(crate) fn project<'matchers>(
+    pub fn project<'matchers>(
         &self,
         matchers: CompiledMatcherCatalog<'matchers>,
     ) -> ProjectMatcherModel<'matchers> {
@@ -67,11 +67,7 @@ impl ProjectSemanticModel {
 }
 
 impl ProjectMatcherModel<'_> {
-    pub(crate) fn evidence_for(
-        &self,
-        module: &ProjectModule,
-        rule_index: usize,
-    ) -> Vec<ApiEvidence> {
+    pub fn evidence_for(&self, module: &ProjectModule, rule_index: usize) -> Vec<ApiEvidence> {
         if !self.matchers.is_selected(rule_index) {
             return Vec::new();
         }

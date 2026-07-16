@@ -31,8 +31,8 @@ pub(in crate::analysis) enum ConstValue {
     Unknown,
     String(String),
     NonNegativeInteger(usize),
-    Array(Vec<ConstValue>),
-    Object(BTreeMap<String, ConstValue>),
+    Array(Vec<Self>),
+    Object(BTreeMap<String, Self>),
 }
 
 impl ConstValue {

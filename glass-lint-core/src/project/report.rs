@@ -49,7 +49,7 @@ impl ProjectReport {
 }
 
 impl ProjectFinding {
-    pub(crate) fn from_finding(finding: crate::Finding, path: &str) -> Self {
+    pub fn from_finding(finding: crate::Finding, path: &str) -> Self {
         Self {
             rule_id: finding.rule_id,
             message_id: finding.message_id,
@@ -74,7 +74,7 @@ impl ProjectFinding {
         }
     }
 
-    pub(crate) fn append_related(&mut self, evidence: impl IntoIterator<Item = ProjectEvidence>) {
+    pub fn append_related(&mut self, evidence: impl IntoIterator<Item = ProjectEvidence>) {
         self.evidence.extend(evidence);
         let evidence = std::mem::take(&mut self.evidence);
         self.evidence = evidence.into_iter().collect();

@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// including aliases and static computed properties. It does not infer
 /// frontmatter from arbitrary objects, does not follow shadowed or reassigned
 /// aliases, and does not analyze the cached value itself.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("metadata.frontmatter-read")
         .label("Reads cached frontmatter")
         .category("metadata")

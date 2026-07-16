@@ -16,20 +16,20 @@ use crate::{
 };
 
 /// Discovers the bounded set of source files that belongs to a selection.
-pub(crate) struct ProjectDiscovery<'a> {
+pub struct ProjectDiscovery<'a> {
     options: &'a ProjectLoadOptions,
 }
 
 impl<'a> ProjectDiscovery<'a> {
-    pub(crate) fn new(options: &'a ProjectLoadOptions) -> Self {
+    pub fn new(options: &'a ProjectLoadOptions) -> Self {
         Self { options }
     }
 
-    pub(crate) fn options(&self) -> &ProjectLoadOptions {
+    pub fn options(&self) -> &ProjectLoadOptions {
         self.options
     }
 
-    pub(crate) fn initial_paths(
+    pub fn initial_paths(
         &self,
         selection: &ProjectSelection,
         selection_path: &Path,
@@ -228,11 +228,7 @@ impl<'a> ProjectDiscovery<'a> {
                 .is_none_or(|name| !self.options.excluded_directories.contains(name))
     }
 
-    pub(crate) fn read_source(
-        &self,
-        root: &Path,
-        path: &Path,
-    ) -> Result<SourceFile, ProjectLoadError> {
+    pub fn read_source(&self, root: &Path, path: &Path) -> Result<SourceFile, ProjectLoadError> {
         crate::corpus::SourceCorpus::new(self.options)?.load_source_file(root, path)
     }
 }
@@ -278,7 +274,7 @@ fn read_tsconfig_with_extends(
     Ok(effective)
 }
 
-pub(crate) fn absolute_path(path: &Path) -> PathBuf {
+pub fn absolute_path(path: &Path) -> PathBuf {
     if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -286,18 +282,18 @@ pub(crate) fn absolute_path(path: &Path) -> PathBuf {
     }
 }
 
-pub(crate) fn realpath(path: &Path) -> Result<PathBuf, ProjectLoadError> {
+pub fn realpath(path: &Path) -> Result<PathBuf, ProjectLoadError> {
     fs::canonicalize(path).map_err(|source| ProjectLoadError::Io {
         path: path.to_path_buf(),
         source,
     })
 }
 
-pub(crate) fn inside_root(root: &Path, path: &Path) -> bool {
+pub fn inside_root(root: &Path, path: &Path) -> bool {
     path.strip_prefix(root).is_ok()
 }
 
-pub(crate) fn excluded_path(root: &Path, path: &Path, excluded: &BTreeSet<String>) -> bool {
+pub fn excluded_path(root: &Path, path: &Path, excluded: &BTreeSet<String>) -> bool {
     path.strip_prefix(root).is_ok_and(|relative| {
         relative.components().any(|component| {
             component
@@ -308,7 +304,7 @@ pub(crate) fn excluded_path(root: &Path, path: &Path, excluded: &BTreeSet<String
     })
 }
 
-pub(crate) use crate::corpus::supported_path;
+pub use crate::corpus::supported_path;
 
 fn tsconfig_pattern_matches(pattern: &str, relative: &str) -> bool {
     let pattern = pattern.replace('\\', "/");

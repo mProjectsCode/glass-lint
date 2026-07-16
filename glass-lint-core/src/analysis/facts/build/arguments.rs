@@ -47,8 +47,8 @@ impl FactBuilder<'_> {
                 (base, path)
             }
             Expr::Paren(paren) => self.expression_projection(&paren.expr),
-            Expr::Seq(sequence) => sequence.exprs.last().map_or(
-                (self.resolver.resolve_expr(expr).id, PathId::EMPTY),
+            Expr::Seq(sequence) => sequence.exprs.last().map_or_else(
+                || (self.resolver.resolve_expr(expr).id, PathId::EMPTY),
                 |last| self.expression_projection(last),
             ),
             _ => (self.resolver.resolve_expr(expr).id, PathId::EMPTY),
@@ -155,9 +155,8 @@ impl FactBuilder<'_> {
                 .resolver
                 .resolve_ident(ident)
                 .rooted_chain
-                .clone()
                 .or_else(|| Some(ident.sym.to_string())),
-            Expr::Member(member) => self.resolver.resolve_member(member).rooted_chain.clone(),
+            Expr::Member(member) => self.resolver.resolve_member(member).rooted_chain,
             _ => self.resolver.rooted_expr_chain(effective),
         }
     }

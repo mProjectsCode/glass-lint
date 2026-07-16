@@ -166,11 +166,11 @@ impl Environment {
         self.global_objects.keys().map(String::as_str)
     }
 
-    pub(crate) fn is_global(&self, name: &str) -> bool {
+    pub fn is_global(&self, name: &str) -> bool {
         self.global_bindings.contains(name)
     }
 
-    pub(crate) fn is_global_member(&self, object: &str, member: &str) -> bool {
+    pub fn is_global_member(&self, object: &str, member: &str) -> bool {
         match self.global_objects.get(object) {
             Some(GlobalObjectMembers::ConfiguredGlobals) => self.is_global(member),
             Some(GlobalObjectMembers::Restricted(members)) => members.contains(member),

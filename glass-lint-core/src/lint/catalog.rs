@@ -28,7 +28,7 @@ impl Error for RuleCatalogError {}
 
 #[derive(Clone, Debug)]
 pub struct RuleCatalog {
-    pub(crate) rules: Vec<Rule>,
+    pub rules: Vec<Rule>,
     rule_ids: Vec<RuleId>,
     rule_indices: BTreeMap<RuleId, usize>,
     environment: Environment,
@@ -143,15 +143,15 @@ impl RuleCatalog {
         &self.environment
     }
 
-    pub(crate) fn rule_id(&self, index: usize) -> Option<&RuleId> {
+    pub fn rule_id(&self, index: usize) -> Option<&RuleId> {
         self.rule_ids.get(index)
     }
 
-    pub(crate) fn compiled(&self) -> &CompiledCatalog {
+    pub fn compiled(&self) -> &CompiledCatalog {
         &self.compiled
     }
 
-    pub(crate) fn rule_index(&self, id: &RuleId) -> Option<usize> {
+    pub fn rule_index(&self, id: &RuleId) -> Option<usize> {
         self.rule_indices.get(id).copied()
     }
 }

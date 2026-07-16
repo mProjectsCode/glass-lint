@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// `app.metadataCache` read may still report when a later member is dynamic or
 /// unlisted; shadowed or reassigned aliases are excluded, and call arguments
 /// are not analyzed.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("metadata.cache-read")
         .label("Reads Obsidian metadata cache")
         .category("metadata")

@@ -1,6 +1,6 @@
 //! Deterministic evidence annotation, bounding, grouping, and sorting.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, btree_map::Entry};
 
 use swc_common::Span;
 
@@ -41,13 +41,14 @@ impl AnnotatedEvidence {
                 related: evidence_related,
                 ..
             } = evidence;
-            let symbol_group = if let Some(group) = groups.get(&(kind, symbol.clone())) {
-                *group
-            } else {
-                let group = symbols.len();
-                groups.insert((kind, symbol.clone()), group);
-                symbols.push(symbol);
-                group
+            let symbol_group = match groups.entry((kind, symbol.clone())) {
+                Entry::Occupied(group) => *group.get(),
+                Entry::Vacant(entry) => {
+                    let group = symbols.len();
+                    entry.insert(group);
+                    symbols.push(symbol);
+                    group
+                }
             };
             related
                 .entry(symbol_group)

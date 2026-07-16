@@ -84,7 +84,7 @@ impl<'a> FactBuilder<'a> {
             .unwrap_or(0)
     }
 
-    fn append_path(&mut self, parent: PathId, segment: PathSegment) -> PathId {
+    fn append_path(&self, parent: PathId, segment: PathSegment) -> PathId {
         self.stream
             .intern_path(parent, segment)
             .unwrap_or(PathId::EMPTY)
@@ -136,10 +136,7 @@ impl<'a> FactBuilder<'a> {
 }
 
 #[cfg(test)]
-pub(crate) fn build_test_stream(
-    program: &swc_ecma_ast::Program,
-    resolver: &Resolver,
-) -> FactStream {
+pub fn build_test_stream(program: &swc_ecma_ast::Program, resolver: &Resolver) -> FactStream {
     let mut builder = FactBuilder::new(resolver);
     program.visit_with(&mut builder);
     builder.into_stream()
@@ -260,9 +257,8 @@ mod tests {
         let stream = builder.into_stream();
         let facts = stream.facts();
 
-        let call_facts: Vec<_> = facts.iter().filter(|f| f.kind == FactKind::Call).collect();
         assert_eq!(
-            call_facts.len(),
+            facts.iter().filter(|f| f.kind == FactKind::Call).count(),
             1,
             "optional call must emit exactly one Call fact"
         );
@@ -487,22 +483,21 @@ mod tests {
             })
             .collect();
         assert!(!str_facts.is_empty(), "should have string literal facts");
-        let values: Vec<_> = str_facts
-            .iter()
-            .filter_map(|f| {
-                if let FactPayload::Reference {
-                    static_string: Some(value),
-                    ..
-                } = &f.payload
-                {
-                    Some(value.as_str())
-                } else {
-                    None
-                }
-            })
-            .collect();
         assert!(
-            values.contains(&"hello"),
+            str_facts
+                .iter()
+                .filter_map(|f| {
+                    if let FactPayload::Reference {
+                        static_string: Some(value),
+                        ..
+                    } = &f.payload
+                    {
+                        Some(value.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .any(|value| value == "hello"),
             "should find 'hello' string literal"
         );
     }

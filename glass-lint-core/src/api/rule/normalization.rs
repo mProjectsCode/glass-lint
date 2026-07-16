@@ -90,7 +90,7 @@ impl ClassMatcher {
         self.provenance.normalize();
     }
 
-    pub(crate) fn normalize_all(values: &mut Vec<Self>) {
+    pub fn normalize_all(values: &mut Vec<Self>) {
         for value in values.iter_mut() {
             value.normalize();
         }
@@ -106,7 +106,7 @@ impl ConstructorMatcher {
         self.provenance.normalize();
     }
 
-    pub(crate) fn normalize_all(values: &mut Vec<Self>) {
+    pub fn normalize_all(values: &mut Vec<Self>) {
         for value in values.iter_mut() {
             value.normalize();
         }
@@ -178,7 +178,7 @@ impl InstanceMemberCallMatcher {
 }
 
 impl CallProvenance {
-    pub(crate) fn normalize(&mut self) {
+    pub fn normalize(&mut self) {
         if let Self::ModuleExport { module } = self {
             *module = module.trim().to_string();
         }
@@ -186,7 +186,7 @@ impl CallProvenance {
 }
 
 impl CallMatcher {
-    pub(crate) fn normalize(&mut self) {
+    pub fn normalize(&mut self) {
         self.name = self.name.trim().to_string();
         self.provenance.normalize();
         ArgumentConstraint::normalize_all(&mut self.arguments);
@@ -232,7 +232,7 @@ impl ArgumentMatcher {
 }
 
 impl ArgumentConstraint {
-    pub(crate) fn normalize_all(arguments: &mut Vec<Self>) {
+    pub fn normalize_all(arguments: &mut Vec<Self>) {
         for argument in arguments.iter_mut() {
             argument.matcher.normalize();
         }

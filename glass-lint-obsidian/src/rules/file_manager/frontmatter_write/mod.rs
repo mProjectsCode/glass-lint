@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// `app.fileManager.processFrontMatter`, including proven aliases and static
 /// computed properties. Shadowed `app` bindings, reassigned aliases, dynamic
 /// or unlisted properties, and the callback's contents are outside the rule.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("file-manager.frontmatter-write")
         .label("Updates frontmatter through Obsidian APIs")
         .category("file-manager/frontmatter-write")

@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// from the `obsidian` module through ESM, CommonJS, or namespace aliases.
 /// Local, unbound, shadowed, and reassigned names are excluded; constructor
 /// arguments and class bodies are ignored.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("ui.modal")
         .label("Uses Obsidian modal UI")
         .category("ui")

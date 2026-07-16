@@ -202,11 +202,11 @@ fn validate(config: Config) -> Result<Config> {
     Ok(config)
 }
 
-pub(crate) fn catalog(provider: Provider, profile: Profile) -> RuleCatalog {
+pub fn catalog(provider: Provider, profile: Profile) -> RuleCatalog {
     base_linter(provider, profile).catalog().clone()
 }
 
-pub(crate) fn base_linter(provider: Provider, profile: Profile) -> Linter {
+pub fn base_linter(provider: Provider, profile: Profile) -> Linter {
     match (provider, profile) {
         (Provider::Obsidian, profile) => {
             let environment = glass_lint_obsidian::default_environment();

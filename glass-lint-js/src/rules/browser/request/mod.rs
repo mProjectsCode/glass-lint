@@ -9,7 +9,7 @@ use glass_lint_core::rules::{
 /// lookalikes are excluded. The rule identifies request API use regardless of
 /// whether arguments are static or dynamic and does not model other request
 /// libraries.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("network.request")
         .label("Uses browser network request APIs")
         .category("browser/network")

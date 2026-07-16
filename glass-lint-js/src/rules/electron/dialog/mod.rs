@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// reassigned aliases do not. Inline `require("electron").dialog` chains are
 /// not followed, and the rule reports the call rather than a later read or an
 /// unlisted dialog method.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("electron.dialog")
         .label("Uses Electron native dialogs")
         .category("electron/dialog")

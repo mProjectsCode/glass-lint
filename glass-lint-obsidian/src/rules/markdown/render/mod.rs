@@ -4,7 +4,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// `obsidian.MarkdownRenderer.render`. The heuristic does not establish the
 /// renderer's provenance, does not follow aliases, and reports same-shaped
 /// local receivers; other methods and dynamic properties are excluded.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("markdown.render")
         .label("Renders markdown")
         .category("markdown")

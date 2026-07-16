@@ -2,9 +2,9 @@ use super::{ArgumentConstraint, ArgumentMatcher, ValueMatcher};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallMatcher {
-    pub(crate) name: String,
-    pub(crate) provenance: CallProvenance,
-    pub(crate) arguments: Vec<ArgumentConstraint>,
+    pub name: String,
+    pub provenance: CallProvenance,
+    pub arguments: Vec<ArgumentConstraint>,
 }
 
 impl CallMatcher {
@@ -61,14 +61,14 @@ impl CallMatcher {
         self.arg(index, value.into())
     }
 
-    pub(crate) fn evidence_symbol(&self) -> String {
+    pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             CallProvenance::Any | CallProvenance::Global => self.name.clone(),
             CallProvenance::ModuleExport { module } => format!("{module}.{}", self.name),
         }
     }
 
-    pub(crate) fn sort_key(&self) -> (&str, &str) {
+    pub fn sort_key(&self) -> (&str, &str) {
         match &self.provenance {
             CallProvenance::Any => ("any", &self.name),
             CallProvenance::Global => ("global", &self.name),

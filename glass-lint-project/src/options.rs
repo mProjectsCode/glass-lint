@@ -31,7 +31,7 @@ impl ProjectSelection {
         Self::TsConfig(path.into())
     }
 
-    pub(crate) fn path(&self) -> &std::path::Path {
+    pub fn path(&self) -> &std::path::Path {
         match self {
             Self::Entry(path) | Self::Directory(path) | Self::TsConfig(path) => path,
         }

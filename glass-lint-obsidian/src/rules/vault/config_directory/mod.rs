@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// medium-confidence literal heuristic: it does not establish vault or path
 /// provenance, reconstruct dynamic values or concatenations, or normalize
 /// casing and separators beyond the two configured spellings.
-pub(crate) fn rule() -> Rule {
+pub fn rule() -> Rule {
     Rule::builder("vault.config-directory")
         .label("References .obsidian configuration paths")
         .category("vault")
