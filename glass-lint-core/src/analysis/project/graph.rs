@@ -5,8 +5,7 @@
 //! retained as diagnostics or unknown provenance.
 
 use super::super::{
-    BTreeMap, ExportResolution, MAX_EXPORT_ENTRIES, MAX_GRAPH_EDGES, MAX_SCC_SIZE, ModuleId,
-    ProjectSemanticModel, ResolvedModule,
+    BTreeMap, ExportResolution, MAX_SCC_SIZE, ModuleId, ProjectSemanticModel, ResolvedModule,
 };
 use crate::{
     analysis::module::ModuleRequestRole, project::is_internal_module_request as is_internal_request,
@@ -48,7 +47,7 @@ impl ProjectSemanticModel {
                 for (name, export) in module.local().interface().exports() {
                     let resolved = self.resolve_export(module.id(), name, export);
                     if self.exports.resolve(module.id(), name).is_none()
-                        && self.exports.len() >= MAX_EXPORT_ENTRIES
+                        && self.exports.len() >= self.link_limit()
                     {
                         self.link_budget.mark_exhausted();
                         continue;
@@ -129,7 +128,7 @@ impl ProjectSemanticModel {
 
     /// Convert internal resolution records into bounded graph edges and SCCs.
     fn collect_graph_edges(&mut self) {
-        let mut edge_budget = crate::budget::Budget::new(MAX_GRAPH_EDGES);
+        let mut edge_budget = crate::budget::Budget::new(self.link_limit());
         for module in self.modules.values() {
             self.graph.ensure_node(module.id());
             self.diagnostics.extend(module.diagnostics());

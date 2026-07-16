@@ -54,6 +54,85 @@ fn resolver_suffix_options_are_validated_and_declarations_are_excluded() {
 }
 
 #[test]
+fn discovery_stops_at_visited_entry_budget() {
+    let root =
+        std::env::temp_dir().join(format!("glass-lint-project-entries-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("nested")).unwrap();
+    fs::write(root.join("nested/file.js"), "").unwrap();
+    let options = ProjectLoadOptions {
+        max_visited_entries: 1,
+        ..Default::default()
+    };
+    let error = ProjectLoader::new(options)
+        .unwrap()
+        .load_and_lint(&linter(), &ProjectSelection::directory(&root))
+        .unwrap_err();
+    assert!(matches!(error, ProjectLoadError::TooManyEntries(1)));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn aggregate_source_budget_is_checked_before_second_parse() {
+    let root =
+        std::env::temp_dir().join(format!("glass-lint-project-bytes-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("a.js"), "1234567890").unwrap();
+    fs::write(root.join("b.js"), "1234567890").unwrap();
+    let options = ProjectLoadOptions {
+        max_project_source_bytes: 15,
+        max_source_bytes: 10,
+        ..Default::default()
+    };
+    let error = ProjectLoader::new(options)
+        .unwrap()
+        .load_and_lint(&linter(), &ProjectSelection::directory(&root))
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        ProjectLoadError::ProjectSourceTooLarge { .. }
+    ));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn deterministic_loader_budget_returns_partial_report_and_error() {
+    let root =
+        std::env::temp_dir().join(format!("glass-lint-project-partial-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).unwrap();
+    fs::write(root.join("a.js"), "1234567890").unwrap();
+    fs::write(root.join("b.js"), "1234567890").unwrap();
+    let options = ProjectLoadOptions {
+        max_project_source_bytes: 15,
+        max_source_bytes: 10,
+        ..Default::default()
+    };
+    let outcome = ProjectLoader::new(options)
+        .unwrap()
+        .load_and_lint_with_outcome(&linter(), &ProjectSelection::directory(&root))
+        .unwrap();
+    assert!(matches!(
+        outcome.error,
+        Some(ProjectLoadError::ProjectSourceTooLarge { .. })
+    ));
+    assert_eq!(
+        outcome.report.completion,
+        glass_lint_core::ReportCompletion::Partial
+    );
+    assert_eq!(outcome.report.files.len(), 1);
+    assert!(
+        outcome
+            .report
+            .diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.code.as_str() == "incomplete_project")
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn extensionless_internal_import_is_followed() {
     let root = std::env::temp_dir().join(format!("glass-lint-project-ext-{}", std::process::id()));
     let _ = fs::remove_dir_all(&root);

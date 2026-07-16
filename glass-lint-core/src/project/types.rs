@@ -225,6 +225,10 @@ pub struct SourceLocation {
 pub struct ProjectEvidence {
     /// Human-readable explanation of the evidence.
     pub message: String,
+    #[serde(default)]
+    pub count: u32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub evidence_truncated: bool,
     /// Optional source location supporting the explanation.
     pub location: Option<SourceLocation>,
     /// Optional originating rule or evidence source identifier.
@@ -255,6 +259,16 @@ pub struct ProjectFileReport {
     /// Parser diagnostics attributed to this file.
     pub parse_diagnostics: Vec<crate::ParseDiagnostic>,
 }
+
+/// Whether the project was analyzed to completion.
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum ReportCompletion {
+    Complete,
+    Partial,
+}
 /// A project-level diagnostic not owned by one finding.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct ProjectDiagnostic {
@@ -278,6 +292,8 @@ pub struct ProjectReport {
     pub diagnostics: Vec<ProjectDiagnostic>,
     /// Bounded operation counters collected during analysis.
     pub operations: ProjectOperationCounts,
+    /// Partial reports are diagnostic output and must fail the CLI run.
+    pub completion: ReportCompletion,
 }
 
 /// Counts used by front ends when rendering a project report.

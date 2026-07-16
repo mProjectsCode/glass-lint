@@ -37,7 +37,6 @@ pub use local::{LocalModuleModel, ProjectModule};
 use syntax::SymbolCallProvenance;
 
 const MAX_EXPORT_DEPTH: usize = 1024;
-const MAX_GRAPH_EDGES: usize = 1_000_000;
 const MAX_EXPORT_ENTRIES: usize = 1_000_000;
 const MAX_SCC_SIZE: usize = 4_096;
 const MAX_PROJECT_REQUESTS: usize = 500_000;
@@ -64,6 +63,8 @@ pub struct ProjectSemanticModel {
     link_budget: crate::budget::BudgetTracker,
     /// Count of effect projections performed for operation telemetry.
     effect_projections: Cell<usize>,
+    link_limit: usize,
+    flow_limit: usize,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -84,10 +85,20 @@ enum ExportResolution {
 
 impl ProjectSemanticModel {
     /// Create a project model for one already analyzed source without linking.
+    #[allow(dead_code)]
     pub fn single(
         path: impl Into<String>,
         source_map: Lrc<SourceMap>,
         local: LocalModuleModel,
+    ) -> Self {
+        Self::single_with_limits(path, source_map, local, &crate::ResourceLimits::default())
+    }
+
+    pub fn single_with_limits(
+        path: impl Into<String>,
+        source_map: Lrc<SourceMap>,
+        local: LocalModuleModel,
+        limits: &crate::ResourceLimits,
     ) -> Self {
         Self {
             modules: std::iter::once((
@@ -108,14 +119,25 @@ impl ProjectSemanticModel {
             flow_budget: crate::budget::BudgetTracker::default(),
             link_budget: crate::budget::BudgetTracker::default(),
             effect_projections: Cell::new(0),
+            link_limit: limits.link_operations,
+            flow_limit: limits.flow_operations,
         }
     }
 
     /// Link already-built local modules to normalized resolution records.
     /// No AST or matcher work is performed here.
+    #[allow(dead_code)]
     pub fn link(
         input: ProjectInput,
+        analyzed: BTreeMap<String, (Lrc<SourceMap>, LocalModuleModel)>,
+    ) -> Result<Self, ProjectInputError> {
+        Self::link_with_limits(input, analyzed, &crate::ResourceLimits::default())
+    }
+
+    pub fn link_with_limits(
+        input: ProjectInput,
         mut analyzed: BTreeMap<String, (Lrc<SourceMap>, LocalModuleModel)>,
+        limits: &crate::ResourceLimits,
     ) -> Result<Self, ProjectInputError> {
         let input = input.validate()?;
         let ids = input.module_ids();
@@ -201,6 +223,8 @@ impl ProjectSemanticModel {
             flow_budget: crate::budget::BudgetTracker::default(),
             link_budget: crate::budget::BudgetTracker::default(),
             effect_projections: Cell::new(0),
+            link_limit: limits.link_operations,
+            flow_limit: limits.flow_operations,
         };
         project.build_graph_and_exports();
         Ok(project)
@@ -258,6 +282,8 @@ impl ProjectSemanticModel {
             .fact(crate::analysis::facts::FactId(fact))?;
         Some(crate::ProjectEvidence {
             message: "related semantic path event".into(),
+            count: 1,
+            evidence_truncated: false,
             location: Some(crate::SourceLocation {
                 path: module.path().to_owned().into(),
                 range: crate::lint::source_range_from_span(module.source_map(), fact.span),
@@ -311,6 +337,14 @@ impl ProjectSemanticModel {
         self.flow_budget.is_exhausted()
     }
 
+    pub(in crate::analysis) fn link_limit(&self) -> usize {
+        self.link_limit
+    }
+
+    pub(in crate::analysis) fn flow_limit(&self) -> usize {
+        self.flow_limit
+    }
+
     /// Return deterministic phase and evidence operation counts.
     pub fn operation_counts(&self, evidence: usize) -> crate::ProjectOperationCounts {
         crate::ProjectOperationCounts {
@@ -337,11 +371,27 @@ impl ProjectSemanticModel {
     }
 
     /// Classify selected rules against the linked project overlay.
+    #[allow(dead_code)]
     pub fn classify(
         &self,
         catalog: &crate::api::compiler::CompiledCatalog,
         rules: &[crate::api::rule::Rule],
         selected: &[usize],
+    ) -> BTreeMap<ModuleId, crate::api::classification::ApiClassificationResult> {
+        self.classify_with_evidence_limit(
+            catalog,
+            rules,
+            selected,
+            crate::api::rule::Rule::EVIDENCE_LIMIT,
+        )
+    }
+
+    pub fn classify_with_evidence_limit(
+        &self,
+        catalog: &crate::api::compiler::CompiledCatalog,
+        rules: &[crate::api::rule::Rule],
+        selected: &[usize],
+        evidence_limit: usize,
     ) -> BTreeMap<ModuleId, crate::api::classification::ApiClassificationResult> {
         let matcher_catalog = self.project(catalog.to_matcher_catalog(selected));
         self.modules()
@@ -354,7 +404,7 @@ impl ProjectSemanticModel {
                     let Some(rule) = rules.get(rule_index) else {
                         continue;
                     };
-                    let evidence = matcher_catalog.evidence_for(module, rule_index);
+                    let evidence = matcher_catalog.evidence_for(module, rule_index, evidence_limit);
                     if evidence.is_empty() {
                         continue;
                     }

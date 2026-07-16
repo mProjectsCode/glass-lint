@@ -4,6 +4,7 @@ use std::{
     collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
+    time::Instant,
 };
 
 use glass_lint_core::SourceFile;
@@ -18,12 +19,24 @@ use crate::{
 /// Discovers the bounded set of source files that belongs to a selection.
 pub struct ProjectDiscovery<'a> {
     options: &'a ProjectLoadOptions,
+    deadline: Option<Instant>,
 }
 
 impl<'a> ProjectDiscovery<'a> {
     /// Create a discovery view over validated loader options.
+    #[allow(dead_code)]
     pub fn new(options: &'a ProjectLoadOptions) -> Self {
-        Self { options }
+        Self {
+            options,
+            deadline: None,
+        }
+    }
+
+    pub fn with_deadline(options: &'a ProjectLoadOptions, deadline: Instant) -> Self {
+        Self {
+            options,
+            deadline: Some(deadline),
+        }
     }
 
     /// Borrow the discovery policy.
@@ -88,6 +101,7 @@ impl<'a> ProjectDiscovery<'a> {
 
     fn discover(&self, directory: &Path) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut entries = Vec::new();
+        let mut visited = 0usize;
         let walker = WalkDir::new(directory)
             .follow_links(self.options.follow_symlinks)
             .sort_by_file_name();
@@ -95,6 +109,13 @@ impl<'a> ProjectDiscovery<'a> {
             .into_iter()
             .filter_entry(|entry| self.include_dir(entry))
         {
+            self.check_timeout()?;
+            visited = visited.saturating_add(1);
+            if visited > self.options.max_visited_entries {
+                return Err(ProjectLoadError::TooManyEntries(
+                    self.options.max_visited_entries,
+                ));
+            }
             let entry = entry.map_err(|error| ProjectLoadError::Io {
                 path: error.path().unwrap_or(directory).to_path_buf(),
                 source: error
@@ -104,6 +125,9 @@ impl<'a> ProjectDiscovery<'a> {
             if entry.file_type().is_file() && supported_path(entry.path(), &self.options.extensions)
             {
                 entries.push(entry.into_path());
+                if entries.len() > self.options.max_files {
+                    return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
+                }
             }
         }
         Ok(entries)
@@ -232,7 +256,25 @@ impl<'a> ProjectDiscovery<'a> {
     }
 
     pub fn read_source(&self, root: &Path, path: &Path) -> Result<SourceFile, ProjectLoadError> {
+        let canonical_root = realpath(root)?;
+        let canonical_path = realpath(path)?;
+        if !inside_root(&canonical_root, &canonical_path) {
+            return Err(ProjectLoadError::SelectionOutsideRoot {
+                selection: path.to_path_buf(),
+                root: canonical_root,
+            });
+        }
         crate::corpus::SourceCorpus::new(self.options)?.load_source_file(root, path)
+    }
+
+    fn check_timeout(&self) -> Result<(), ProjectLoadError> {
+        if self
+            .deadline
+            .is_some_and(|deadline| Instant::now() > deadline)
+        {
+            return Err(ProjectLoadError::Timeout);
+        }
+        Ok(())
     }
 }
 

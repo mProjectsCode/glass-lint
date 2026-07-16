@@ -193,6 +193,7 @@ impl ObjectFlowProjector<'_, '_> {
                     kind: ApiMatchKind::CallArgument,
                     symbol: flow.evidence_symbol(),
                     count: 1,
+                    evidence_truncated: false,
                     occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
                         span: self.fact_spans.get(&anchor).copied().unwrap_or_default(),
                         fact: Some(anchor.0),

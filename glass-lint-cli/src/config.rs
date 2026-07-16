@@ -70,6 +70,10 @@ pub struct CliConfig {
     #[serde(default = "default_max_bytes")]
     /// Maximum source size accepted by project discovery, in bytes.
     pub max_bytes: u64,
+    #[serde(default = "default_project_bytes")]
+    pub max_project_bytes: u64,
+    #[serde(default = "default_visited_entries")]
+    pub max_visited_entries: usize,
     #[serde(default)]
     /// Minimum finding severity that makes the command fail.
     pub fail_on: FailOn,
@@ -106,6 +110,8 @@ impl Default for CliConfig {
             provider: Provider::default(),
             profile: Profile::default(),
             max_bytes: default_max_bytes(),
+            max_project_bytes: default_project_bytes(),
+            max_visited_entries: default_visited_entries(),
             fail_on: FailOn::default(),
             output: Output::default(),
             verbosity: Verbosity::default(),
@@ -141,6 +147,13 @@ fn default_max_bytes() -> u64 {
 
 fn default_width() -> usize {
     160
+}
+
+fn default_project_bytes() -> u64 {
+    512 * 1024 * 1024
+}
+fn default_visited_entries() -> usize {
+    250_000
 }
 
 fn default_color() -> bool {
@@ -211,6 +224,12 @@ fn discover_from_cwd() -> Result<Option<(String, &'static str)>> {
 fn validate(config: Config) -> Result<Config> {
     if config.cli.max_bytes == 0 || config.cli.max_bytes > MAX_SOURCE_BYTES as u64 {
         bail!("max_bytes must be between 1 and {MAX_SOURCE_BYTES}")
+    }
+    if config.cli.max_project_bytes < config.cli.max_bytes {
+        bail!("max_project_bytes must be at least max_bytes")
+    }
+    if config.cli.max_visited_entries == 0 {
+        bail!("visited limit must be positive")
     }
     if config.cli.pretty_max_width < 20 {
         bail!("pretty_max_width must be at least 20")

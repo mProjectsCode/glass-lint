@@ -48,6 +48,7 @@ pub(super) struct FactBuilder<'a> {
     stream: FactStream,
     /// Monotonic semantic fact identity, bounded by `MAX_FACTS`.
     next_id: u32,
+    max_facts: usize,
     /// Traversal-only state is kept separate from fact allocation and indexing.
     traversal: state::TraversalState,
     /// Call results are retained for effective-call and value-flow projections.
@@ -57,11 +58,17 @@ pub(super) struct FactBuilder<'a> {
     interface: ModuleInterface,
 }
 impl<'a> FactBuilder<'a> {
+    #[allow(dead_code)]
     pub(super) fn new(resolver: &'a Resolver) -> Self {
+        Self::with_limit(resolver, super::MAX_FACTS)
+    }
+
+    pub(super) fn with_limit(resolver: &'a Resolver, max_facts: usize) -> Self {
         Self {
             resolver,
             stream: FactStream::new(),
             next_id: 0,
+            max_facts: max_facts.min(super::MAX_FACTS),
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
             interface: ModuleInterface::default(),
@@ -69,7 +76,7 @@ impl<'a> FactBuilder<'a> {
     }
 
     fn next_fact_id(&mut self) -> Option<FactId> {
-        if self.next_id as usize >= super::MAX_FACTS {
+        if self.next_id as usize >= self.max_facts {
             return None;
         }
         let id = FactId::from_index(self.next_id as usize)?;

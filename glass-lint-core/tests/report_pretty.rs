@@ -22,6 +22,8 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
         range: range(line),
         evidence: vec![Evidence {
             message: "call of \"fetch\"".into(),
+            count: 1,
+            evidence_truncated: false,
             range: Some(range(line)),
             source: Some("fetch".into()),
         }],
@@ -88,6 +90,30 @@ fn renders_empty_reports_without_extra_output() {
         .to_string(),
         ""
     );
+}
+
+#[test]
+fn renders_terminal_controls_visibly() {
+    let report = LintReport {
+        schema_version: 3,
+        tool_version: "test".into(),
+        findings: vec![Finding {
+            rule_id: RuleId::parse("test:fetch").unwrap(),
+            message_id: "detected".into(),
+            message: "message\u{1b}[31m".into(),
+            severity: Severity::Warning,
+            range: SourceRange {
+                start: Position { line: 1, column: 1 },
+                end: Position { line: 1, column: 2 },
+            },
+            evidence: vec![],
+        }],
+        parse_diagnostics: vec![],
+    };
+    let output =
+        PrettyReport::new(&report, "bad\u{1b}[x.js", "x", PrettyOptions::default()).to_string();
+    assert!(output.contains("bad\\u{001b}[x.js"));
+    assert!(output.contains("message\\u{001b}[31m"));
 }
 
 #[test]

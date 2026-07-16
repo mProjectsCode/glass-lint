@@ -12,6 +12,11 @@ use crate::{
     project::DiagnosticCode,
 };
 
+/// Maximum syntactic nesting accepted before invoking recursive parser and
+/// visitor machinery. This is deliberately checked on source text so a
+/// hostile tree cannot first force an unbounded AST allocation.
+pub const MAX_SYNTAX_DEPTH: usize = 512;
+
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 /// Structured parser failure with an optional source range.
 pub struct ParseDiagnostic {
@@ -101,10 +106,28 @@ pub fn parse_with_language(
     filename: &str,
     language: SourceLanguage,
 ) -> Result<ParsedSource, ParseDiagnostic> {
+    parse_with_language_and_depth(source, filename, language, MAX_SYNTAX_DEPTH)
+}
+
+/// Parse with an explicit structural nesting limit.
+pub fn parse_with_language_and_depth(
+    source: &str,
+    filename: &str,
+    language: SourceLanguage,
+    max_syntax_depth: usize,
+) -> Result<ParsedSource, ParseDiagnostic> {
     if source.len() > MAX_SOURCE_BYTES {
         return Err(ParseDiagnostic {
             code: "source_too_large".into(),
             message: format!("source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"),
+            filename: filename.into(),
+            range: None,
+        });
+    }
+    if syntax_depth(source) > max_syntax_depth {
+        return Err(ParseDiagnostic {
+            code: "syntax_depth_exceeded".into(),
+            message: format!("source exceeds the {max_syntax_depth} nesting-depth analysis limit"),
             filename: filename.into(),
             range: None,
         });
@@ -188,4 +211,100 @@ pub fn parse_with_language(
                 range,
             }
         })
+}
+
+/// Count delimiter and member-chain nesting while ignoring comments and
+/// quoted strings. It is a conservative lexical guard; parser validity is
+/// still decided by SWC.
+fn syntax_depth(source: &str) -> usize {
+    let bytes = source.as_bytes();
+    let mut depth = 0usize;
+    let mut maximum = 0usize;
+    let mut member_depth = 0usize;
+    let mut index = 0usize;
+    let mut quote = None;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if let Some(delimiter) = quote {
+            if byte == b'\\' {
+                index = index.saturating_add(2);
+                continue;
+            }
+            if byte == delimiter {
+                quote = None;
+            }
+            index += 1;
+            continue;
+        }
+        if byte == b'\'' || byte == b'"' || byte == b'`' {
+            quote = Some(byte);
+            index += 1;
+            continue;
+        }
+        if byte == b'/' && bytes.get(index + 1) == Some(&b'/') {
+            index = bytes[index..]
+                .iter()
+                .position(|b| *b == b'\n')
+                .map_or(bytes.len(), |p| index + p + 1);
+            continue;
+        }
+        if byte == b'/' && bytes.get(index + 1) == Some(&b'*') {
+            index = bytes[index + 2..]
+                .windows(2)
+                .position(|w| w == b"*/")
+                .map_or(bytes.len(), |p| index + p + 4);
+            continue;
+        }
+        if byte == b'.' {
+            member_depth = member_depth.saturating_add(1);
+            maximum = maximum.max(member_depth);
+        } else if matches!(
+            byte,
+            b';' | b','
+                | b'='
+                | b'+'
+                | b'-'
+                | b'*'
+                | b'/'
+                | b':'
+                | b'?'
+                | b'!'
+                | b'&'
+                | b'|'
+                | b'<'
+                | b'>'
+        ) {
+            member_depth = 0;
+        }
+        if matches!(byte, b'(' | b'[' | b'{') {
+            depth = depth.saturating_add(1);
+            maximum = maximum.max(depth);
+        } else if matches!(byte, b')' | b']' | b'}') {
+            depth = depth.saturating_sub(1);
+        }
+        index += 1;
+    }
+    maximum
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_excessive_nesting_before_ast_construction() {
+        let mut source = "(".repeat(MAX_SYNTAX_DEPTH + 1);
+        source.push('0');
+        source.push_str(&")".repeat(MAX_SYNTAX_DEPTH + 1));
+        let Err(error) = parse(&source, "deep.js") else {
+            panic!("deep input unexpectedly parsed")
+        };
+        assert_eq!(error.code.as_str(), "syntax_depth_exceeded");
+    }
+
+    #[test]
+    fn ignores_delimiters_in_strings_and_comments() {
+        let source = "const value = '( [ { ) ] }'; // ( [ {\nvalue;";
+        assert!(parse(source, "quoted.js").is_ok());
+    }
 }

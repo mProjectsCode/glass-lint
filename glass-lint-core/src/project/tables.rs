@@ -168,11 +168,15 @@ mod tests {
     fn evidence_list_deduplicates_by_typed_identity_and_preserves_order() {
         let first = ProjectEvidence {
             message: "path".into(),
+            count: 1,
+            evidence_truncated: false,
             location: None,
             source: Some("a".into()),
         };
         let second = ProjectEvidence {
             message: "path".into(),
+            count: 1,
+            evidence_truncated: false,
             location: None,
             source: Some("b".into()),
         };

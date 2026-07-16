@@ -37,6 +37,9 @@ pub struct ApiEvidence {
     pub symbol: String,
     /// Number of source events represented by this evidence item.
     pub count: u32,
+    /// Whether the serialized occurrence list omits additional matches.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub evidence_truncated: bool,
     /// Primary occurrences with their optional canonical fact identity.
     #[serde(skip)]
     pub occurrences: Vec<ApiEvidenceOccurrence>,

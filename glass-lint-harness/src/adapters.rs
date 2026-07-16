@@ -256,6 +256,8 @@ fn project_report_to_run(report: glass_lint_core::ProjectReport) -> Result<Adapt
                     .into_iter()
                     .map(|evidence| glass_lint_core::Evidence {
                         message: evidence.message,
+                        count: evidence.count,
+                        evidence_truncated: evidence.evidence_truncated,
                         range: evidence.location.map(|location| location.range),
                         source: evidence.source,
                     })

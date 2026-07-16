@@ -23,13 +23,24 @@ pub struct LocalModuleModel {
     export_origins: BTreeMap<String, SymbolCallProvenance>,
     /// Matcher-independent function effects for project flow.
     effects: flow::effect::FunctionEffects,
+    semantic_budget_exhausted: bool,
 }
 
 impl LocalModuleModel {
     /// Analyze one parsed program against the configured host environment.
+    #[allow(dead_code)]
     pub fn analyze(program: &Program, environment: &Environment) -> Self {
+        Self::analyze_with_limits(program, environment, &crate::ResourceLimits::default())
+    }
+
+    pub fn analyze_with_limits(
+        program: &Program,
+        environment: &Environment,
+        limits: &crate::ResourceLimits,
+    ) -> Self {
         let resolver = resolution::Resolver::collect_with_environment(program, environment);
-        let facts = SemanticFacts::build(program, &resolver);
+        let facts = SemanticFacts::build_with_limit(program, &resolver, limits.semantic_operations);
+        let semantic_budget_exhausted = !facts.is_valid();
         let export_origins = facts
             .interface()
             .exports()
@@ -50,6 +61,7 @@ impl LocalModuleModel {
             facts,
             export_origins,
             effects,
+            semantic_budget_exhausted,
         }
     }
 
@@ -64,6 +76,10 @@ impl LocalModuleModel {
 
     pub(in crate::analysis) fn effects(&self) -> &flow::effect::FunctionEffects {
         &self.effects
+    }
+
+    pub(in crate::analysis) fn semantic_budget_exhausted(&self) -> bool {
+        self.semantic_budget_exhausted
     }
 
     pub(in crate::analysis) fn export_origin(&self, name: &str) -> Option<&SymbolCallProvenance> {
@@ -122,6 +138,16 @@ impl ProjectModule {
 
     pub(in crate::analysis) fn diagnostics(&self) -> Vec<crate::ProjectDiagnostic> {
         let mut diagnostics = Vec::new();
+        if self.local.semantic_budget_exhausted() {
+            diagnostics.push(crate::ProjectDiagnostic {
+                code: "semantic_budget_exhausted".into(),
+                message: format!(
+                    "semantic analysis exceeded its per-file budget in `{}`",
+                    self.path
+                ),
+                location: None,
+            });
+        }
         if self.local.effects().budget_exhausted() {
             diagnostics.push(crate::ProjectDiagnostic {
                 code: "effect_size_budget_exhausted".into(),

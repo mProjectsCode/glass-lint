@@ -10,6 +10,7 @@ pub mod budget;
 mod config;
 mod diagnostic;
 mod environment;
+pub mod limits;
 pub mod lint;
 pub mod parse;
 pub mod project;
@@ -24,13 +25,14 @@ pub use diagnostic::{
     Evidence, Finding, LintReport, Position, RuleMetadata, Severity, SourceRange,
 };
 pub use environment::{Environment, EnvironmentError};
+pub use limits::ResourceLimits;
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{
     DiagnosticCode, EvidenceList, ProjectDiagnostic, ProjectEvidence, ProjectFileReport,
     ProjectFinding, ProjectInput, ProjectInputError, ProjectOperationCounts, ProjectRelativePath,
-    ProjectReport, ProjectReportSummary, ProjectSession, ResolutionRequest, ResolutionRequestKey,
-    ResolutionRequestKind, ResolutionResult, SourceFile, SourceLocation,
+    ProjectReport, ProjectReportSummary, ProjectSession, ReportCompletion, ResolutionRequest,
+    ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile, SourceLocation,
     is_internal_module_request,
 };
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};

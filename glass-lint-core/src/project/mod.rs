@@ -17,7 +17,7 @@ pub use tables::EvidenceList;
 pub use types::{
     DiagnosticCode, ModuleId, ProjectDiagnostic, ProjectEvidence, ProjectFileReport,
     ProjectFinding, ProjectInput, ProjectInputError, ProjectOperationCounts, ProjectRelativePath,
-    ProjectReport, ProjectReportSummary, ResolutionRequest, ResolutionRequestKey,
+    ProjectReport, ProjectReportSummary, ReportCompletion, ResolutionRequest, ResolutionRequestKey,
     ResolutionRequestKind, ResolutionResult, ResolvedModule, SourceFile, SourceLocation,
     is_internal_module_request,
 };

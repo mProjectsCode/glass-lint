@@ -8,6 +8,9 @@ use crate::ProjectLoadError;
 const DEFAULT_MAX_FILES: usize = 10_000;
 const DEFAULT_MAX_REQUESTS: usize = 50_000;
 const DEFAULT_MAX_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
+const DEFAULT_MAX_PROJECT_SOURCE_BYTES: u64 = 512 * 1024 * 1024;
+const DEFAULT_MAX_VISITED_ENTRIES: usize = 250_000;
+const DEFAULT_MAX_TIMEOUT_MS: u64 = 5 * 60 * 1000;
 const DEFAULT_EXTENSIONS: &[&str] = &[".js", ".cjs", ".mjs", ".ts", ".cts", ".mts"];
 
 /// How a filesystem project is selected.
@@ -53,6 +56,12 @@ pub struct ProjectLoadOptions {
     pub max_requests: usize,
     /// Maximum bytes accepted for one source.
     pub max_source_bytes: u64,
+    /// Maximum aggregate source bytes reserved before parsing.
+    pub max_project_source_bytes: u64,
+    /// Maximum filesystem entries visited during discovery.
+    pub max_visited_entries: usize,
+    /// Cooperative total load/link timeout in milliseconds.
+    pub max_timeout_ms: u64,
     /// Case-insensitive source suffixes accepted by discovery.
     pub extensions: Vec<String>,
     /// Directory names excluded during discovery and resolution.
@@ -70,6 +79,9 @@ impl Default for ProjectLoadOptions {
             max_files: DEFAULT_MAX_FILES,
             max_requests: DEFAULT_MAX_REQUESTS,
             max_source_bytes: DEFAULT_MAX_SOURCE_BYTES,
+            max_project_source_bytes: DEFAULT_MAX_PROJECT_SOURCE_BYTES,
+            max_visited_entries: DEFAULT_MAX_VISITED_ENTRIES,
+            max_timeout_ms: DEFAULT_MAX_TIMEOUT_MS,
             extensions: DEFAULT_EXTENSIONS.iter().map(|s| (*s).to_owned()).collect(),
             excluded_directories: [".git", "node_modules", "dist", "build", "target"]
                 .into_iter()
@@ -101,6 +113,21 @@ impl ProjectLoadOptions {
                 "max_source_bytes must be between 1 and {}",
                 glass_lint_core::MAX_SOURCE_BYTES
             )));
+        }
+        if self.max_project_source_bytes < self.max_source_bytes {
+            return Err(ProjectLoadError::InvalidOptions(
+                "max_project_source_bytes must be at least max_source_bytes".into(),
+            ));
+        }
+        if self.max_visited_entries == 0 {
+            return Err(ProjectLoadError::InvalidOptions(
+                "max_visited_entries must be positive".into(),
+            ));
+        }
+        if self.max_timeout_ms == 0 {
+            return Err(ProjectLoadError::InvalidOptions(
+                "max_timeout_ms must be positive".into(),
+            ));
         }
         if self.extensions.is_empty()
             || self

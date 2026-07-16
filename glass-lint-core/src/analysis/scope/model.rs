@@ -56,6 +56,8 @@ pub(in crate::analysis) struct ScopeGraph {
     parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
     /// Dynamic-evaluation sites that invalidate later lexical assumptions.
     dynamic_evals: Vec<(ScopeId, Span)>,
+    /// Dynamic-evaluation spans grouped by scope for indexed queries.
+    dynamic_evals_by_scope: BTreeMap<ScopeId, Vec<Span>>,
     /// Static objects whose `var` binding may be mutated.
     mutable_static_objects: std::collections::BTreeSet<(ScopeId, String)>,
 }
@@ -111,6 +113,17 @@ impl ScopeGraph {
             .into_iter()
             .filter(|(_, span)| self.binding_at("eval", *span).is_none())
             .collect();
+        self.dynamic_evals.sort_by_key(|(_, span)| span.hi);
+        self.dynamic_evals_by_scope.clear();
+        for (scope, span) in &self.dynamic_evals {
+            self.dynamic_evals_by_scope
+                .entry(*scope)
+                .or_default()
+                .push(*span);
+        }
+        for spans in self.dynamic_evals_by_scope.values_mut() {
+            spans.sort_by_key(|span| span.hi);
+        }
     }
 
     pub(super) fn is_global(&self, name: &str) -> bool {
@@ -184,6 +197,7 @@ impl ScopeGraph {
             rooted_property_mutations: BTreeMap::new(),
             parameter_aliases: parts.parameter_aliases,
             dynamic_evals: Vec::new(),
+            dynamic_evals_by_scope: BTreeMap::new(),
             mutable_static_objects: parts.mutable_static_objects,
         }
     }
@@ -259,9 +273,16 @@ impl ScopeGraph {
     }
 
     pub(super) fn has_eval_after(&self, scope: ScopeId, span: Span) -> bool {
-        self.dynamic_evals.iter().any(|(eval_scope, eval_span)| {
-            span.lo > eval_span.hi && self.scope_is_within(scope, *eval_scope)
-        })
+        let mut current = Some(scope);
+        while let Some(scope) = current {
+            if let Some(evals) = self.dynamic_evals_by_scope.get(&scope)
+                && evals.partition_point(|eval_span| eval_span.hi < span.lo) > 0
+            {
+                return true;
+            }
+            current = self.scope_parent(scope);
+        }
+        false
     }
 
     /// Find the innermost lexical scope containing a source span.

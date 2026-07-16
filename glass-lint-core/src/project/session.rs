@@ -51,11 +51,17 @@ impl<'a> ProjectSession<'a> {
         let path = source.path.clone();
         self.sources.insert(source)?;
         let source = self.sources.get(&path).expect("source was just inserted");
-        match crate::parse::parse_with_language(&source.source, &source.path, source.language) {
+        match crate::parse::parse_with_language_and_depth(
+            &source.source,
+            &source.path,
+            source.language,
+            self.linter.resource_limits().syntax_depth,
+        ) {
             Ok(parsed) => {
-                let local = crate::analysis::LocalModuleModel::analyze(
+                let local = crate::analysis::LocalModuleModel::analyze_with_limits(
                     &parsed.program,
                     self.linter.analysis_environment(),
+                    self.linter.resource_limits(),
                 );
                 let requests = local
                     .interface()

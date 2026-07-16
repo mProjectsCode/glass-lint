@@ -25,7 +25,6 @@ use crate::{
 };
 
 const MAX_CONTEXTS: usize = 65_536;
-const MAX_STEPS: usize = 262_144;
 
 #[derive(Debug, Default)]
 /// Global work budget for qualified flow propagation.
@@ -39,6 +38,7 @@ struct CrossBudget {
     projections: usize,
     /// Whether the hard step limit was reached.
     exhausted: bool,
+    limit: usize,
 }
 
 impl CrossBudget {
@@ -46,7 +46,7 @@ impl CrossBudget {
         // Cross-module propagation is monotone but can fan out through helper
         // chains; stop before that fan-out can make analysis unbounded.
         self.steps = match self.steps.checked_add(1) {
-            Some(value) if value <= MAX_STEPS => value,
+            Some(value) if value <= self.limit => value,
             _ => {
                 self.exhausted = true;
                 return false;
@@ -303,7 +303,10 @@ pub(in crate::analysis) fn collect(
     let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows);
     let mut worklist = ContextWorklist::seed(project, &sources);
 
-    let mut budget = CrossBudget::default();
+    let mut budget = CrossBudget {
+        limit: project.flow_limit(),
+        ..Default::default()
+    };
     while let Some(context) = worklist.pop_front() {
         budget.projection();
         if !budget.step() {
@@ -730,6 +733,7 @@ fn emit(
         kind: ApiMatchKind::CallArgument,
         symbol: flow.evidence_symbol(),
         count: 1,
+        evidence_truncated: false,
         occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
             span,
             fact: Some(event.0),

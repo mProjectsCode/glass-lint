@@ -107,6 +107,8 @@ impl<'a> PrettyReport<'a> {
                 let cell = Cell {
                     text: if ch == '\t' {
                         " ".repeat(width)
+                    } else if ch.is_control() {
+                        format!("\\u{{{:04x}}}", ch as u32)
                     } else {
                         ch.to_string()
                     },
@@ -212,6 +214,19 @@ fn display_width_str(text: &str) -> usize {
     measure_text_width(text)
 }
 
+fn visible_text(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '\n' => "\\n".to_owned(),
+            '\r' => "\\r".to_owned(),
+            '\t' => "\\t".to_owned(),
+            ch if ch.is_control() => format!("\\u{{{:04x}}}", ch as u32),
+            ch => ch.to_string(),
+        })
+        .collect()
+}
+
 impl Display for PrettyReport<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let file = PrettyFile::new(self.report, self.filename, self.source);
@@ -304,7 +319,7 @@ fn write_rule_groups(
                 Style::new().cyan(),
                 finding.rule_id.to_string(),
             ),
-            finding.message
+            visible_text(&finding.message)
         )?;
 
         for (file, finding, evidence) in entries {
@@ -314,12 +329,12 @@ fn write_rule_groups(
 
             let message = format!(
                 "  {}:{}:{} - {}",
-                file.filename,
+                visible_text(file.filename),
                 range.start.line,
                 range.start.column,
                 evidence.map_or_else(
                     || "match".to_string(),
-                    |evidence| format!("evidence: {}", evidence.message),
+                    |evidence| format!("evidence: {}", visible_text(&evidence.message)),
                 ),
             );
 
@@ -376,21 +391,21 @@ fn write_parse_diagnostics(
             writeln!(
                 f,
                 "  {}:{}:{}: {}[{}]: {}",
-                file.filename,
+                visible_text(file.filename),
                 range.start.line,
                 range.start.column,
                 PrettyReport::style(options.color, Style::new().red(), "parse"),
                 diagnostic.code,
-                diagnostic.message
+                visible_text(&diagnostic.message)
             )?;
         } else {
             writeln!(
                 f,
                 "  {}: {}[{}]: {}",
-                file.filename,
+                visible_text(file.filename),
                 PrettyReport::style(options.color, Style::new().red(), "parse"),
                 diagnostic.code,
-                diagnostic.message
+                visible_text(&diagnostic.message)
             )?;
         }
     }

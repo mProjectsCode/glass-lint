@@ -5,10 +5,9 @@ use std::collections::{BTreeMap, btree_map::Entry};
 use swc_common::Span;
 
 use super::facts;
-use crate::api::{
-    classification::{ApiEvidence, ApiMatchKind},
-    rule::Rule,
-};
+use crate::api::classification::{ApiEvidence, ApiMatchKind};
+#[cfg(test)]
+use crate::api::rule::Rule;
 
 #[derive(Debug, PartialEq, Eq)]
 /// One rule match retained until evidence is bounded and regrouped.
@@ -23,6 +22,16 @@ pub(super) struct EvidenceOccurrence {
     symbol_group: usize,
 }
 
+fn evidence_order(item: &EvidenceOccurrence) -> (u32, u32, u32, ApiMatchKind, usize) {
+    (
+        item.event.map_or(u32::MAX, |event| event.0),
+        item.span.lo.0,
+        item.span.hi.0,
+        item.kind,
+        item.symbol_group,
+    )
+}
+
 /// Intermediate evidence representation that separates sorting/bounding from
 /// the public grouped shape and preserves related evidence by symbol group.
 pub(super) struct AnnotatedEvidence {
@@ -32,16 +41,20 @@ pub(super) struct AnnotatedEvidence {
     symbols: Vec<String>,
     /// Related evidence retained for each symbol group.
     related: BTreeMap<usize, Vec<crate::api::classification::ApiRelatedEvidence>>,
+    total_counts: BTreeMap<usize, usize>,
+    evidence_truncated: bool,
 }
 
 impl AnnotatedEvidence {
     /// Convert rule-local evidence into sortable occurrences while retaining
     /// the symbol table needed to reconstruct grouped output later.
-    pub(super) fn from_evidence(evidence: Vec<ApiEvidence>) -> Self {
+    pub(super) fn from_evidence(evidence: Vec<ApiEvidence>, limit: usize) -> Self {
         let mut symbols = Vec::with_capacity(evidence.len());
         let mut groups = BTreeMap::<(ApiMatchKind, String), usize>::new();
         let mut occurrences = Vec::new();
         let mut related = BTreeMap::new();
+        let mut total_counts = BTreeMap::new();
+        let mut evidence_truncated = false;
         for evidence in evidence {
             let ApiEvidence {
                 kind,
@@ -59,44 +72,50 @@ impl AnnotatedEvidence {
                     group
                 }
             };
+            *total_counts.entry(symbol_group).or_default() += evidence.count as usize;
             related
                 .entry(symbol_group)
                 .or_insert_with(Vec::new)
                 .extend(evidence_related);
-            occurrences.extend(
-                source_occurrences
-                    .into_iter()
-                    .filter(|occurrence| !occurrence.span.is_dummy())
-                    .map(|occurrence| EvidenceOccurrence {
-                        event: occurrence.fact.map(facts::FactId),
-                        span: occurrence.span,
-                        kind,
-                        symbol_group,
-                    }),
-            );
+            for occurrence in source_occurrences
+                .into_iter()
+                .filter(|occurrence| !occurrence.span.is_dummy())
+            {
+                let occurrence = EvidenceOccurrence {
+                    event: occurrence.fact.map(facts::FactId),
+                    span: occurrence.span,
+                    kind,
+                    symbol_group,
+                };
+                let index = occurrences
+                    .binary_search_by(|candidate| {
+                        evidence_order(candidate).cmp(&evidence_order(&occurrence))
+                    })
+                    .unwrap_or_else(|index| index);
+                if occurrences
+                    .get(index)
+                    .is_some_and(|candidate| candidate == &occurrence)
+                {
+                    continue;
+                }
+                occurrences.insert(index, occurrence);
+                if occurrences.len() > limit {
+                    occurrences.pop();
+                    evidence_truncated = true;
+                }
+            }
         }
         Self {
             occurrences,
             symbols,
             related,
+            total_counts,
+            evidence_truncated,
         }
     }
 
     /// Sort, bound, deduplicate, and regroup occurrences into public evidence.
-    pub(super) fn into_evidence(mut self) -> Vec<ApiEvidence> {
-        // Fact IDs are the primary order key because source spans alone cannot
-        // distinguish related events with identical or synthetic locations.
-        self.occurrences.sort_by_key(|item| {
-            (
-                item.event.map_or(u32::MAX, |event| event.0),
-                item.span.lo,
-                item.span.hi,
-                item.kind,
-                item.symbol_group,
-            )
-        });
-        self.occurrences.dedup();
-        self.occurrences.truncate(Rule::EVIDENCE_LIMIT);
+    pub(super) fn into_evidence(self) -> Vec<ApiEvidence> {
         let mut grouped =
             BTreeMap::<(ApiMatchKind, usize), Vec<(Option<facts::FactId>, Span)>>::new();
         for occurrence in &self.occurrences {
@@ -110,7 +129,14 @@ impl AnnotatedEvidence {
             .map(|((kind, symbol_group), occurrences)| ApiEvidence {
                 kind,
                 symbol: self.symbols[symbol_group].clone(),
-                count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
+                count: u32::try_from(
+                    self.total_counts
+                        .get(&symbol_group)
+                        .copied()
+                        .unwrap_or(occurrences.len()),
+                )
+                .unwrap_or(u32::MAX),
+                evidence_truncated: self.evidence_truncated,
                 occurrences: occurrences
                     .iter()
                     .map(
@@ -147,6 +173,7 @@ mod tests {
             kind: ApiMatchKind::Call,
             symbol: symbol.into(),
             count: u32::try_from(spans.len()).unwrap_or(u32::MAX),
+            evidence_truncated: false,
             occurrences: spans
                 .iter()
                 .map(
@@ -162,16 +189,36 @@ mod tests {
 
     #[test]
     fn symbol_groups_preserve_order_and_merge_only_equal_symbols() {
-        let normalized = AnnotatedEvidence::from_evidence(vec![
-            evidence("request", &[2, 4]),
-            evidence("request", &[6]),
-            evidence("other", &[8]),
-        ])
+        let normalized = AnnotatedEvidence::from_evidence(
+            vec![
+                evidence("request", &[2, 4]),
+                evidence("request", &[6]),
+                evidence("other", &[8]),
+            ],
+            Rule::EVIDENCE_LIMIT,
+        )
         .into_evidence();
         assert_eq!(normalized.len(), 2);
         assert_eq!(normalized[0].symbol, "request");
         assert_eq!(normalized[0].count, 3);
         assert_eq!(normalized[1].symbol, "other");
         assert_eq!(normalized[1].occurrences[0].fact, Some(8));
+    }
+
+    #[test]
+    fn truncation_preserves_exact_count_and_marker() {
+        let normalized = AnnotatedEvidence::from_evidence(
+            vec![evidence(
+                "request",
+                &(0..(Rule::EVIDENCE_LIMIT + 4))
+                    .map(|value| u32::try_from(value).unwrap() + 2)
+                    .collect::<Vec<_>>(),
+            )],
+            Rule::EVIDENCE_LIMIT,
+        )
+        .into_evidence();
+        assert_eq!(normalized[0].count as usize, Rule::EVIDENCE_LIMIT + 4);
+        assert_eq!(normalized[0].occurrences.len(), Rule::EVIDENCE_LIMIT);
+        assert!(normalized[0].evidence_truncated);
     }
 }

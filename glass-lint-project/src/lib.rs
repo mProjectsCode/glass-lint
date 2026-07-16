@@ -18,7 +18,7 @@ mod resolver;
 
 pub use corpus::{CorpusFile, SourceCorpus};
 pub use error::ProjectLoadError;
-pub use loader::{ProjectLoadMetrics, ProjectLoader};
+pub use loader::{ProjectLoadMetrics, ProjectLoadOutcome, ProjectLoader};
 pub use options::{ProjectLoadOptions, ProjectSelection};
 
 #[cfg(test)]

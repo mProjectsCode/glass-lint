@@ -198,6 +198,7 @@ fn write_project_report_to<W: Write>(
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn write_project_pretty<W: Write>(
     config: &Config,
     report: &ProjectReport,
@@ -220,12 +221,12 @@ fn write_project_pretty<W: Write>(
                     .cyan()
                     .force_styling(color)
                     .apply_to(finding.rule_id.to_string()),
-                finding.message,
+                visible_text(&finding.message),
             )?;
             writeln!(
                 out,
                 "  {}:{}:{}",
-                finding.location.path,
+                visible_text(finding.location.path.as_str()),
                 finding.location.range.start.line,
                 finding.location.range.start.column
             )?;
@@ -234,10 +235,10 @@ fn write_project_pretty<W: Write>(
                     writeln!(
                         out,
                         "    {}:{}:{} - {}",
-                        location.path,
+                        visible_text(location.path.as_str()),
                         location.range.start.line,
                         location.range.start.column,
-                        evidence.message
+                        visible_text(&evidence.message)
                     )?;
                 }
             }
@@ -248,8 +249,8 @@ fn write_project_pretty<W: Write>(
             writeln!(
                 out,
                 "diagnostic [parse] {} ({}:{}:{})",
-                diagnostic.message,
-                file.path,
+                visible_text(&diagnostic.message),
+                visible_text(file.path.as_str()),
                 diagnostic
                     .range
                     .as_ref()
@@ -267,8 +268,8 @@ fn write_project_pretty<W: Write>(
                 out,
                 "diagnostic [{}] {} ({}:{}:{})",
                 diagnostic.code,
-                diagnostic.message,
-                location.path,
+                visible_text(&diagnostic.message),
+                visible_text(location.path.as_str()),
                 location.range.start.line,
                 location.range.start.column
             )?;
@@ -276,13 +277,18 @@ fn write_project_pretty<W: Write>(
             writeln!(
                 out,
                 "diagnostic [{}] {}",
-                diagnostic.code, diagnostic.message
+                diagnostic.code,
+                visible_text(&diagnostic.message)
             )?;
         }
     }
     let summary_line = format!(
-        "{} file(s), {} finding(s), {} parse diagnostic(s), {} project diagnostic(s)",
-        summary.files, summary.findings, summary.parse_diagnostics, summary.project_diagnostics
+        "{} file(s), {} finding(s), {} parse diagnostic(s), {} project diagnostic(s), completion={:?}",
+        summary.files,
+        summary.findings,
+        summary.parse_diagnostics,
+        summary.project_diagnostics,
+        report.completion
     );
     let style = if summary.findings == 0
         && summary.parse_diagnostics == 0
@@ -308,4 +314,18 @@ fn write_project_pretty<W: Write>(
 
 fn color_enabled(config: &Config) -> bool {
     config.cli.color && console::colors_enabled()
+}
+
+/// Keep human output terminal-safe without changing the JSON contract.
+fn visible_text(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            '\n' => "\\n".to_owned(),
+            '\r' => "\\r".to_owned(),
+            '\t' => "\\t".to_owned(),
+            ch if ch.is_control() => format!("\\u{{{:04x}}}", ch as u32),
+            ch => ch.to_string(),
+        })
+        .collect()
 }

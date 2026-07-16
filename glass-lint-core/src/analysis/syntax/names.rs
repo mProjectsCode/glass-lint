@@ -122,11 +122,47 @@ pub fn expr_name(expr: &Expr) -> Option<String> {
 
 /// Render a member expression as `object.property` when both parts are static.
 pub fn member_chain(member: &MemberExpr) -> Option<String> {
-    Some(format!(
-        "{}.{}",
-        expr_name(&member.obj)?,
-        member_prop_name(&member.prop)?
-    ))
+    let mut properties = Vec::new();
+    let mut expression = &member.obj;
+    properties.push(member_prop_name(&member.prop)?);
+    loop {
+        match &**expression {
+            Expr::Member(parent) => {
+                properties.push(member_prop_name(&parent.prop)?);
+                expression = &parent.obj;
+            }
+            Expr::Ident(ident) => {
+                properties.reverse();
+                let mut result = ident.sym.to_string();
+                for property in properties {
+                    result.push('.');
+                    result.push_str(&property);
+                }
+                return Some(result);
+            }
+            Expr::This(_) => {
+                properties.reverse();
+                let mut result = String::from("this");
+                for property in properties {
+                    result.push('.');
+                    result.push_str(&property);
+                }
+                return Some(result);
+            }
+            Expr::Call(call) => {
+                let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
+                    return None;
+                };
+                expression = callee;
+            }
+            Expr::Paren(paren) => expression = &paren.expr,
+            Expr::TsAs(value) => expression = &value.expr,
+            Expr::TsNonNull(value) => expression = &value.expr,
+            Expr::TsSatisfies(value) => expression = &value.expr,
+            Expr::TsTypeAssertion(value) => expression = &value.expr,
+            _ => return None,
+        }
+    }
 }
 
 /// Return a statically known member property name, including private names.

@@ -23,12 +23,15 @@ type AnalyzedModules = BTreeMap<
 pub enum LintConfigError {
     /// A requested fully-qualified rule ID is absent from the catalog.
     UnknownRule(RuleId),
+    /// Safety limits are invalid.
+    InvalidLimits(String),
 }
 
 impl std::fmt::Display for LintConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnknownRule(id) => write!(f, "unknown rule `{id}`"),
+            Self::InvalidLimits(message) => write!(f, "invalid resource limits: {message}"),
         }
     }
 }
@@ -41,6 +44,7 @@ pub struct Linter {
     catalog: RuleCatalog,
     /// Enabled rule indexes in deterministic order.
     enabled: Vec<usize>,
+    limits: crate::ResourceLimits,
 }
 
 impl Linter {
@@ -54,9 +58,18 @@ impl Linter {
 
     /// Apply provider-neutral engine configuration to this linter.
     pub fn configured(self, config: &CoreConfig) -> Result<Self, LintConfigError> {
-        match &config.rules {
-            Some(rules) => Self::with_rules(self.catalog, rules.clone()),
-            None => Ok(self),
+        config
+            .limits
+            .validate()
+            .map_err(LintConfigError::InvalidLimits)?;
+        if let Some(rules) = &config.rules {
+            let mut linter = Self::with_rules(self.catalog, rules.clone())?;
+            linter.limits = config.limits.clone();
+            Ok(linter)
+        } else {
+            let mut linter = self;
+            linter.limits = config.limits.clone();
+            Ok(linter)
         }
     }
 
@@ -64,7 +77,11 @@ impl Linter {
     /// Construct a linter with every catalog rule enabled.
     pub fn new(catalog: RuleCatalog) -> Self {
         let enabled = (0..catalog.rules.len()).collect();
-        Self { catalog, enabled }
+        Self {
+            catalog,
+            enabled,
+            limits: crate::ResourceLimits::default(),
+        }
     }
 
     /// Select all rules at or above the requested confidence level.
@@ -78,7 +95,11 @@ impl Linter {
                 (rule.confidence() as u8 <= confidence as u8).then_some(index)
             })
             .collect();
-        Self { catalog, enabled }
+        Self {
+            catalog,
+            enabled,
+            limits: crate::ResourceLimits::default(),
+        }
     }
 
     /// Construct a linter with a validated explicit rule selection.
@@ -99,6 +120,7 @@ impl Linter {
         Ok(Self {
             catalog,
             enabled: indices,
+            limits: crate::ResourceLimits::default(),
         })
     }
 
@@ -139,6 +161,11 @@ impl Linter {
         self.catalog.environment()
     }
 
+    /// Borrow the validated parser and semantic safety limits.
+    pub fn resource_limits(&self) -> &crate::ResourceLimits {
+        &self.limits
+    }
+
     /// Lints one JavaScript/JSX or TypeScript source file.
     ///
     /// Parsing stops after the first parser diagnostic.  Findings contain
@@ -151,7 +178,12 @@ impl Linter {
         tracing::debug!(target: "glass_lint::parse", "parsing source");
 
         let language = SourceLanguage::from_filename(filename);
-        let parsed = match crate::parse::parse_with_language(source, filename, language) {
+        let parsed = match crate::parse::parse_with_language_and_depth(
+            source,
+            filename,
+            language,
+            self.limits.syntax_depth,
+        ) {
             Ok(parsed) => parsed,
             Err(error) => {
                 tracing::debug!(target: "glass_lint::parse", diagnostics = 1, "parse failed");
@@ -168,11 +200,25 @@ impl Linter {
         let classifications = {
             let _span = tracing::debug_span!(target: "glass_lint::semantic", "semantic").entered();
 
-            let local = LocalModuleModel::analyze(&parsed.program, self.catalog.environment());
+            let local = LocalModuleModel::analyze_with_limits(
+                &parsed.program,
+                self.catalog.environment(),
+                &self.limits,
+            );
 
-            let project = ProjectSemanticModel::single(filename, parsed.source_map.clone(), local);
+            let project = ProjectSemanticModel::single_with_limits(
+                filename,
+                parsed.source_map.clone(),
+                local,
+                &self.limits,
+            );
 
-            project.classify(self.catalog.compiled(), &self.catalog.rules, &self.enabled)
+            project.classify_with_evidence_limit(
+                self.catalog.compiled(),
+                &self.catalog.rules,
+                &self.enabled,
+                self.limits.evidence_items,
+            )
         };
 
         let mut findings = {
@@ -265,11 +311,15 @@ impl Linter {
             .collect::<BTreeMap<_, _>>();
 
         let linking_start = std::time::Instant::now();
-        let project = ProjectSemanticModel::link(input, analyzed)?;
+        let project = ProjectSemanticModel::link_with_limits(input, analyzed, &self.limits)?;
         let linking_elapsed = linking_start.elapsed();
         let matching_start = std::time::Instant::now();
-        let classifications =
-            project.classify(self.catalog.compiled(), &self.catalog.rules, &self.enabled);
+        let classifications = project.classify_with_evidence_limit(
+            self.catalog.compiled(),
+            &self.catalog.rules,
+            &self.enabled,
+            self.limits.evidence_items,
+        );
         let matching_elapsed = matching_start.elapsed();
         self.populate_project_files(&project, &classifications, &sources, &mut files);
 
@@ -293,12 +343,30 @@ impl Linter {
             })
             .sum();
 
+        let completion = files
+            .values()
+            .any(|file| !file.parse_diagnostics.is_empty())
+            || diagnostics.iter().any(|diagnostic| {
+                matches!(
+                    diagnostic.code.as_str(),
+                    "semantic_budget_exhausted"
+                        | "effect_size_budget_exhausted"
+                        | "graph_link_budget_exhausted"
+                        | "flow_link_budget_exhausted"
+                        | "scc_size_budget_exhausted"
+                )
+            });
         let report = ProjectReport {
             schema_version: REPORT_VERSION,
             tool_version: env!("CARGO_PKG_VERSION").into(),
             files: files.into_values().collect(),
             diagnostics,
             operations: project.operation_counts(evidence),
+            completion: if completion {
+                crate::ReportCompletion::Partial
+            } else {
+                crate::ReportCompletion::Complete
+            },
         };
 
         Ok((report, linking_elapsed, matching_elapsed))
@@ -563,9 +631,9 @@ mod tests {
     fn evidence_limit_is_source_ordered_and_applied_once() {
         let source = (0..20).map(|_| "fetch();\n").collect::<String>();
         let report = Linter::new(catalog()).lint(&source, "many.js");
-        assert_eq!(report.findings.len(), 16);
+        assert_eq!(report.findings.len(), 20);
         assert_eq!(report.findings.first().unwrap().range.start.line, 1);
-        assert_eq!(report.findings.last().unwrap().range.start.line, 16);
+        assert_eq!(report.findings.last().unwrap().range.start.line, 20);
     }
 
     #[test]

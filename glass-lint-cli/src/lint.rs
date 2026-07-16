@@ -29,6 +29,9 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
             }
             let options = ProjectLoadOptions {
                 max_source_bytes: config.cli.max_bytes,
+                max_project_source_bytes: config.cli.max_project_bytes,
+                max_visited_entries: config.cli.max_visited_entries,
+                max_timeout_ms: linter.resource_limits().timeout_ms,
                 ..ProjectLoadOptions::default()
             };
             let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;
@@ -57,13 +60,19 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
     };
     let options = ProjectLoadOptions {
         max_source_bytes: config.cli.max_bytes,
+        max_project_source_bytes: config.cli.max_project_bytes,
+        max_visited_entries: config.cli.max_visited_entries,
+        max_timeout_ms: linter.resource_limits().timeout_ms,
         ..ProjectLoadOptions::default()
     };
     let loader = ProjectLoader::new(options).map_err(|error| anyhow::anyhow!(error))?;
-    let report = loader
-        .load_and_lint(linter, &selection)
+    let outcome = loader
+        .load_and_lint_with_outcome(linter, &selection)
         .with_context(|| format!("analyze project at {}", path.display()))?;
-    let failed = !report.diagnostics.is_empty()
+    let report = outcome.report;
+    let failed = outcome.error.is_some()
+        || report.completion == glass_lint_core::ReportCompletion::Partial
+        || !report.diagnostics.is_empty()
         || report.files.iter().any(|file| {
             !file.parse_diagnostics.is_empty()
                 || file
@@ -79,6 +88,9 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
 fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<bool> {
     let options = ProjectLoadOptions {
         max_source_bytes: config.cli.max_bytes,
+        max_project_source_bytes: config.cli.max_project_bytes,
+        max_visited_entries: config.cli.max_visited_entries,
+        max_timeout_ms: linter.resource_limits().timeout_ms,
         ..ProjectLoadOptions::default()
     };
     let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;

@@ -1,6 +1,9 @@
 //! Project finding assembly and deterministic evidence ownership.
 
-use super::{ProjectEvidence, ProjectFileReport, ProjectFinding, ProjectReport, SourceLocation};
+use super::{
+    ProjectEvidence, ProjectFileReport, ProjectFinding, ProjectReport, ReportCompletion,
+    SourceLocation,
+};
 
 impl ProjectFileReport {
     /// Qualify a single-file report with its owning project path.
@@ -34,6 +37,11 @@ impl ProjectReport {
                     .sum::<usize>()
             })
             .sum();
+        let completion = if files.iter().any(|file| !file.parse_diagnostics.is_empty()) {
+            ReportCompletion::Partial
+        } else {
+            ReportCompletion::Complete
+        };
         Self {
             schema_version: crate::REPORT_VERSION,
             tool_version: tool_version.into(),
@@ -44,6 +52,7 @@ impl ProjectReport {
             },
             files,
             diagnostics: Vec::new(),
+            completion,
         }
     }
 }
@@ -65,6 +74,8 @@ impl ProjectFinding {
                 .into_iter()
                 .map(|evidence| ProjectEvidence {
                     message: evidence.message,
+                    count: evidence.count,
+                    evidence_truncated: evidence.evidence_truncated,
                     location: evidence.range.map(|range| SourceLocation {
                         path: path.to_owned().into(),
                         range,
@@ -112,11 +123,15 @@ mod tests {
             evidence: vec![
                 Evidence {
                     message: "source".into(),
+                    count: 1,
+                    evidence_truncated: false,
                     range: Some(range(1, 1, 3)),
                     source: Some("é".into()),
                 },
                 Evidence {
                     message: "context".into(),
+                    count: 1,
+                    evidence_truncated: false,
                     range: None,
                     source: None,
                 },
@@ -180,6 +195,8 @@ mod tests {
         let mut project_finding = ProjectFinding::from_finding(finding(), "main.js");
         let related = ProjectEvidence {
             message: "related".into(),
+            count: 1,
+            evidence_truncated: false,
             location: Some(SourceLocation {
                 path: "dep.js".into(),
                 range: range(3, 1, 2),

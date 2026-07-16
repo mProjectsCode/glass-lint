@@ -97,6 +97,12 @@ impl SourceRange {
 pub struct Evidence {
     /// Human-readable evidence message.
     pub message: String,
+    /// Exact number of semantic matches represented by this evidence group.
+    #[serde(default)]
+    pub count: u32,
+    /// Whether only the presentation evidence for this group was retained.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub evidence_truncated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Optional source range for the evidence.
     pub range: Option<SourceRange>,

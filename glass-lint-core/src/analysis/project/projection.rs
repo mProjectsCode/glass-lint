@@ -80,7 +80,12 @@ impl ProjectSemanticModel {
 
 impl ProjectMatcherModel<'_> {
     /// Return deterministic, deduplicated evidence for a selected rule.
-    pub fn evidence_for(&self, module: &ProjectModule, rule_index: usize) -> Vec<ApiEvidence> {
+    pub fn evidence_for(
+        &self,
+        module: &ProjectModule,
+        rule_index: usize,
+        evidence_limit: usize,
+    ) -> Vec<ApiEvidence> {
         if !self.matchers.is_selected(rule_index) {
             return Vec::new();
         }
@@ -100,6 +105,6 @@ impl ProjectMatcherModel<'_> {
         {
             evidence.extend_from_slice(projected);
         }
-        evidence::AnnotatedEvidence::from_evidence(evidence).into_evidence()
+        evidence::AnnotatedEvidence::from_evidence(evidence, evidence_limit).into_evidence()
     }
 }

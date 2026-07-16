@@ -23,6 +23,15 @@ pub struct ProjectLoader {
     options: ProjectLoadOptions,
 }
 
+/// Result of a project load that may contain deterministic partial output.
+#[derive(Debug)]
+pub struct ProjectLoadOutcome {
+    /// Completed or partial report. Timeout outcomes never contain one.
+    pub report: ProjectReport,
+    /// Deterministic boundary that caused the partial report.
+    pub error: Option<ProjectLoadError>,
+}
+
 /// Bounded construction counters and phase timings for profiling. The
 ///
 /// timings intentionally stop at the core boundary; matcher work is included
@@ -94,7 +103,22 @@ impl ProjectLoader {
         linter: &Linter,
         selection: &ProjectSelection,
     ) -> Result<ProjectReport, ProjectLoadError> {
-        Ok(self.load_and_lint_with_metrics(linter, selection)?.0)
+        let outcome = self.load_and_lint_with_outcome(linter, selection)?;
+        if let Some(error) = outcome.error {
+            return Err(error);
+        }
+        Ok(outcome.report)
+    }
+
+    /// Load while retaining completed reports when a deterministic boundary is
+    /// hit.
+    pub fn load_and_lint_with_outcome(
+        &self,
+        linter: &Linter,
+        selection: &ProjectSelection,
+    ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
+        let mut metrics = ProjectLoadMetrics::default();
+        self.load_project_with_outcome(linter, selection, &mut metrics)
     }
 
     pub fn load_and_lint_with_metrics(
@@ -115,14 +139,37 @@ impl ProjectLoader {
         selection: &ProjectSelection,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<ProjectReport, ProjectLoadError> {
+        let outcome = self.load_project_with_outcome(linter, selection, metrics)?;
+        if let Some(error) = outcome.error {
+            return Err(error);
+        }
+        Ok(outcome.report)
+    }
+
+    fn load_project_with_outcome(
+        &self,
+        linter: &Linter,
+        selection: &ProjectSelection,
+        metrics: &mut ProjectLoadMetrics,
+    ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
         let discovery_start = Instant::now();
-        let paths = ProjectPaths::from_selection(&self.options, selection)?;
+        let deadline = Instant::now() + Duration::from_millis(self.options.max_timeout_ms);
+        let paths = ProjectPaths::from_selection(&self.options, selection, deadline)?;
         metrics.discovery += discovery_start.elapsed();
 
-        let mut build = ProjectBuild::new(linter, &self.options, paths.root, selection)?;
+        let mut build = ProjectBuild::new(linter, &self.options, paths.root, selection, deadline)?;
         build.add_initial_paths(paths.initial_paths);
-        build.load_all(metrics)?;
-        build.finish(metrics)
+        match build.load_all(metrics) {
+            Ok(()) => Ok(ProjectLoadOutcome {
+                report: build.finish(metrics)?,
+                error: None,
+            }),
+            Err(ProjectLoadError::Timeout) => Err(ProjectLoadError::Timeout),
+            Err(error) => Ok(ProjectLoadOutcome {
+                report: build.finish_partial(metrics, &error)?,
+                error: Some(error),
+            }),
+        }
     }
 }
 
@@ -136,6 +183,7 @@ impl ProjectPaths {
     fn from_selection(
         options: &ProjectLoadOptions,
         selection: &ProjectSelection,
+        deadline: Instant,
     ) -> Result<Self, ProjectLoadError> {
         let selection_path = absolute_path(selection.path());
         if !selection_path.exists() {
@@ -149,8 +197,11 @@ impl ProjectPaths {
                 root,
             });
         }
-        let initial_paths =
-            ProjectDiscovery::new(options).initial_paths(selection, &selection_path, &root)?;
+        let initial_paths = ProjectDiscovery::with_deadline(options, deadline).initial_paths(
+            selection,
+            &selection_path,
+            &root,
+        )?;
         Ok(Self {
             root,
             initial_paths: initial_paths.into(),
@@ -202,6 +253,7 @@ impl ResolutionCache {
 struct LoadCounters {
     requests: usize,
     edges: usize,
+    source_bytes: u64,
 }
 
 impl LoadCounters {
@@ -232,6 +284,7 @@ struct ProjectBuild<'a> {
     admitted: AdmissionSet,
     resolved: ResolutionCache,
     counters: LoadCounters,
+    deadline: Instant,
 }
 
 impl<'a> ProjectBuild<'a> {
@@ -240,16 +293,18 @@ impl<'a> ProjectBuild<'a> {
         options: &'a ProjectLoadOptions,
         root: PathBuf,
         selection: &ProjectSelection,
+        deadline: Instant,
     ) -> Result<Self, ProjectLoadError> {
         Ok(Self {
             session: linter.begin_project(&root)?,
-            discovery: ProjectDiscovery::new(options),
+            discovery: ProjectDiscovery::with_deadline(options, deadline),
             resolver: ProjectResolver::new(&root, selection, options),
             root,
             queue: PathWorkQueue::default(),
             admitted: AdmissionSet::default(),
             resolved: ResolutionCache::default(),
             counters: LoadCounters::default(),
+            deadline,
         })
     }
 
@@ -259,6 +314,7 @@ impl<'a> ProjectBuild<'a> {
 
     fn load_all(&mut self, metrics: &mut ProjectLoadMetrics) -> Result<(), ProjectLoadError> {
         while let Some(path) = self.queue.pop_front() {
+            self.check_timeout()?;
             self.load_path(&path, metrics)?;
         }
         Ok(())
@@ -269,6 +325,7 @@ impl<'a> ProjectBuild<'a> {
         path: &Path,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
+        self.check_timeout()?;
         let path = realpath(path)?;
         if !inside_root(&self.root, &path) || !self.admitted.admit(path.clone()) {
             return Ok(());
@@ -283,6 +340,13 @@ impl<'a> ProjectBuild<'a> {
         let source = self.discovery.read_source(&self.root, &path)?;
         metrics.reads += read_start.elapsed();
         let source_bytes = u64::try_from(source.source.len()).unwrap_or(u64::MAX);
+        self.counters.source_bytes = self.counters.source_bytes.saturating_add(source_bytes);
+        if self.counters.source_bytes > self.discovery.options().max_project_source_bytes {
+            return Err(ProjectLoadError::ProjectSourceTooLarge {
+                bytes: self.counters.source_bytes,
+                limit: self.discovery.options().max_project_source_bytes,
+            });
+        }
 
         let parse_start = Instant::now();
         let requests = self.session.add_source(source)?;
@@ -302,6 +366,7 @@ impl<'a> ProjectBuild<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         for request in requests {
+            self.check_timeout()?;
             let cache_key = (
                 request.key.importer.to_string(),
                 request.key.kind,
@@ -320,6 +385,12 @@ impl<'a> ProjectBuild<'a> {
             self.session.record_resolution(request.key, result)?;
         }
         Ok(())
+    }
+
+    fn check_timeout(&self) -> Result<(), ProjectLoadError> {
+        (Instant::now() <= self.deadline)
+            .then_some(())
+            .ok_or(ProjectLoadError::Timeout)
     }
 
     fn enqueue_internal_target(
@@ -345,11 +416,39 @@ impl<'a> ProjectBuild<'a> {
     }
 
     fn finish(self, metrics: &mut ProjectLoadMetrics) -> Result<ProjectReport, ProjectLoadError> {
+        self.check_timeout()?;
+        let deadline = self.deadline;
         let link_start = Instant::now();
         let (report, linking, matching) = self.session.finish_with_timings()?;
+        if Instant::now() > deadline {
+            return Err(ProjectLoadError::Timeout);
+        }
         metrics.linking += linking;
         metrics.matching += matching;
         metrics.linking_and_matching += link_start.elapsed();
+        Ok(report)
+    }
+
+    fn finish_partial(
+        self,
+        metrics: &mut ProjectLoadMetrics,
+        error: &ProjectLoadError,
+    ) -> Result<ProjectReport, ProjectLoadError> {
+        let deadline = self.deadline;
+        let link_start = Instant::now();
+        let (mut report, linking, matching) = self.session.finish_with_timings()?;
+        if Instant::now() > deadline {
+            return Err(ProjectLoadError::Timeout);
+        }
+        metrics.linking += linking;
+        metrics.matching += matching;
+        metrics.linking_and_matching += link_start.elapsed();
+        report.completion = glass_lint_core::ReportCompletion::Partial;
+        report.diagnostics.push(glass_lint_core::ProjectDiagnostic {
+            code: "incomplete_project".into(),
+            message: error.to_string(),
+            location: None,
+        });
         Ok(report)
     }
 }

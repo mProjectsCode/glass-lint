@@ -145,23 +145,6 @@ impl ScopeGraph {
         }
     }
 
-    /// Whether one lexical scope is nested within another.
-    pub(in crate::analysis) fn scope_is_within(
-        &self,
-        mut scope: ScopeId,
-        ancestor: ScopeId,
-    ) -> bool {
-        loop {
-            if scope == ancestor {
-                return true;
-            }
-            let Some(parent) = self.scope_parent(scope) else {
-                return false;
-            };
-            scope = parent;
-        }
-    }
-
     /// Return static arguments captured by a supported bound callable.
     pub(in crate::analysis) fn bound_arguments(
         &self,

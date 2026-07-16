@@ -3,6 +3,7 @@
 use std::{
     collections::BTreeSet,
     fs,
+    io::Read,
     path::{Path, PathBuf},
 };
 
@@ -44,6 +45,7 @@ impl<'a> SourceCorpus<'a> {
         mut include: impl FnMut(&Path) -> bool,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut paths = BTreeSet::new();
+        let mut visited = 0usize;
         for root in roots {
             let metadata = fs::symlink_metadata(root).map_err(|source| ProjectLoadError::Io {
                 path: root.clone(),
@@ -84,6 +86,12 @@ impl<'a> SourceCorpus<'a> {
                             .contains(&entry.file_name().to_string_lossy().to_string())
                 });
             for entry in walker {
+                visited = visited.saturating_add(1);
+                if visited > self.options.max_visited_entries {
+                    return Err(ProjectLoadError::TooManyEntries(
+                        self.options.max_visited_entries,
+                    ));
+                }
                 let entry = entry.map_err(|error| ProjectLoadError::Io {
                     path: error.path().unwrap_or(root).to_path_buf(),
                     source: error
@@ -112,7 +120,11 @@ impl<'a> SourceCorpus<'a> {
         if !supported_path(path, &self.options.extensions) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         }
-        let metadata = fs::metadata(path).map_err(|source| ProjectLoadError::Io {
+        let file = fs::File::open(path).map_err(|source| ProjectLoadError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        let metadata = file.metadata().map_err(|source| ProjectLoadError::Io {
             path: path.to_path_buf(),
             source,
         })?;
@@ -123,13 +135,27 @@ impl<'a> SourceCorpus<'a> {
                 limit: self.options.max_source_bytes,
             });
         }
-        let source = fs::read_to_string(path).map_err(|source| ProjectLoadError::Io {
+        let mut bytes = Vec::new();
+        file.take(self.options.max_source_bytes.saturating_add(1))
+            .read_to_end(&mut bytes)
+            .map_err(|source| ProjectLoadError::Io {
+                path: path.to_path_buf(),
+                source,
+            })?;
+        if bytes.len() as u64 > self.options.max_source_bytes {
+            return Err(ProjectLoadError::SourceTooLarge {
+                path: path.to_path_buf(),
+                bytes: bytes.len() as u64,
+                limit: self.options.max_source_bytes,
+            });
+        }
+        let source = String::from_utf8(bytes).map_err(|error| ProjectLoadError::Io {
             path: path.to_path_buf(),
-            source,
+            source: std::io::Error::new(std::io::ErrorKind::InvalidData, error),
         })?;
         Ok(CorpusFile {
             path: path.to_path_buf(),
-            bytes: metadata.len(),
+            bytes: source.len() as u64,
             source,
         })
     }
@@ -140,10 +166,24 @@ impl<'a> SourceCorpus<'a> {
         root: &Path,
         path: &Path,
     ) -> Result<SourceFile, ProjectLoadError> {
-        let file = self.load(path)?;
-        let relative = path
-            .strip_prefix(root)
-            .unwrap_or(path)
+        let canonical_root = fs::canonicalize(root).map_err(|source| ProjectLoadError::Io {
+            path: root.to_path_buf(),
+            source,
+        })?;
+        let canonical_path = fs::canonicalize(path).map_err(|source| ProjectLoadError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+        if canonical_path.strip_prefix(&canonical_root).is_err() {
+            return Err(ProjectLoadError::SelectionOutsideRoot {
+                selection: path.to_path_buf(),
+                root: canonical_root,
+            });
+        }
+        let file = self.load(&canonical_path)?;
+        let relative = canonical_path
+            .strip_prefix(&canonical_root)
+            .unwrap_or(&canonical_path)
             .to_string_lossy()
             .replace('\\', "/");
         Ok(SourceFile {

@@ -107,6 +107,7 @@ impl MatcherFacts {
                     kind: ApiMatchKind::CallArgument,
                     symbol: matcher.evidence_symbol(),
                     count: 1,
+                    evidence_truncated: false,
                     occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
                         span,
                         fact: Some(event.0),
@@ -153,6 +154,7 @@ impl MatcherFacts {
                     kind: ApiMatchKind::CallArgument,
                     symbol,
                     count: 1,
+                    evidence_truncated: false,
                     occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
                         span: fact.span,
                         fact: Some(fact.id.0),

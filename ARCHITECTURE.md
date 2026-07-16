@@ -88,6 +88,9 @@ Project fixtures are either virtual inputs with explicit resolution records or
 filesystem cases delegated to `glass-lint-project`. Project reports retain
 sorted file-qualified primary locations and bounded evidence; project
 diagnostics remain separate from rule severity and affect CLI status directly.
+Project reports expose `completion` as `complete` or `partial`; deterministic
+resource-limit exhaustion may retain completed file reports as partial
+diagnostic output, while total-timeout failures discard the report.
 
 `glass-lint-cli` is deliberately thin. It owns argument parsing, configuration,
 project selection, human/JSON output, process exit behavior, and the

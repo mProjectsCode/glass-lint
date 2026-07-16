@@ -102,6 +102,8 @@ impl Linter {
     ) -> Evidence {
         Evidence {
             message: format!("{} of \"{}\"", evidence.kind().as_str(), evidence.symbol()),
+            count: evidence.count,
+            evidence_truncated: evidence.evidence_truncated,
             range: Some(source_range_from_span(source_map, span)),
             source: source_map.span_to_snippet(span).ok(),
         }

@@ -43,9 +43,18 @@ pub(in crate::analysis) struct SemanticFacts {
 impl SemanticFacts {
     /// Build facts, indexes, and the module interface from one resolver-backed
     /// AST walk, independently of the enabled matcher catalog.
+    #[allow(dead_code)]
     pub(in crate::analysis) fn build(program: &Program, resolver: &Resolver) -> Self {
+        Self::build_with_limit(program, resolver, MAX_FACTS)
+    }
+
+    pub(in crate::analysis) fn build_with_limit(
+        program: &Program,
+        resolver: &Resolver,
+        semantic_operations: usize,
+    ) -> Self {
         // Build the canonical fact stream from the authoritative FactBuilder.
-        let mut builder = FactBuilder::new(resolver);
+        let mut builder = FactBuilder::with_limit(resolver, semantic_operations);
         swc_ecma_visit::VisitWith::visit_with(program, &mut builder);
         let (stream, interface) = builder.into_parts();
 
@@ -66,6 +75,10 @@ impl SemanticFacts {
     /// Borrow the canonical facts in deterministic source traversal order.
     pub(in crate::analysis) fn stream(&self) -> &FactStream {
         &self.stream
+    }
+
+    pub(in crate::analysis) fn is_valid(&self) -> bool {
+        self.stream.is_valid()
     }
 
     /// Clone the rule-independent occurrence indexes for local or project use.
