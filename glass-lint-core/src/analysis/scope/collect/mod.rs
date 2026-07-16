@@ -23,7 +23,7 @@ use super::{
         },
         value::BindingVersion,
     },
-    AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeKind,
+    AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeId, ScopeKind,
     query::rooted::{RootedExprContext, rooted_expr_chain_with},
 };
 
@@ -54,17 +54,17 @@ pub(super) struct AliasCollector {
     /// Writes that invalidate a rooted receiver/property identity.
     pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
     /// Dynamic `eval` sites that make local provenance conservative.
-    pub(super) dynamic_evals: Vec<(usize, Span)>,
+    pub(super) dynamic_evals: Vec<(ScopeId, Span)>,
     /// Function scopes and their parameter patterns by visible name.
-    pub(super) function_scopes: BTreeMap<(usize, String), (usize, Vec<Pat>)>,
+    pub(super) function_scopes: BTreeMap<(ScopeId, String), (ScopeId, Vec<Pat>)>,
     /// Aliases that point to a locally declared helper function.
-    pub(super) function_aliases: BTreeMap<(usize, String), usize>,
+    pub(super) function_aliases: BTreeMap<(ScopeId, String), ScopeId>,
     /// Calls retained for the later, scope-aware helper parameter pass.
-    calls: Vec<(usize, String, Vec<Option<BindingProvenance>>)>,
+    calls: Vec<(ScopeId, String, Vec<Option<BindingProvenance>>)>,
     /// Proven callback arguments installed when an inline function is entered.
     inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
     /// `var`-bound objects whose mutation prevents constant projection.
-    pub(super) mutable_static_objects: BTreeSet<(usize, String)>,
+    pub(super) mutable_static_objects: BTreeSet<(ScopeId, String)>,
     reuse_scopes: bool,
     predeclared_scope_order: Vec<usize>,
     next_predeclared_scope: usize,
@@ -76,7 +76,7 @@ pub(super) struct AliasCollector {
 /// Assignment of a rooted member/property alias at a source position.
 pub(super) struct PropertyAliasAssignment {
     pub(super) span: Span,
-    pub(super) scope: usize,
+    pub(super) scope: ScopeId,
     pub(super) property: String,
     pub(super) receiver: swc_ecma_ast::Ident,
     pub(super) target: Option<String>,
@@ -86,7 +86,7 @@ pub(super) struct PropertyAliasAssignment {
 /// Mutation that can invalidate a rooted property provenance.
 pub(super) struct RootedPropertyMutation {
     pub(super) span: Span,
-    pub(super) scope: usize,
+    pub(super) scope: ScopeId,
     pub(super) receiver: String,
     pub(super) property: Option<String>,
 }
@@ -139,8 +139,8 @@ impl AliasCollector {
     }
 
     /// Return the innermost scope currently being traversed.
-    fn current_scope(&self) -> usize {
-        self.stack.last().copied().unwrap_or(0)
+    fn current_scope(&self) -> ScopeId {
+        ScopeId::from(self.stack.last().copied().unwrap_or(0))
     }
 
     /// Bundlers emit these wrappers around CommonJS imports. They are
@@ -158,7 +158,7 @@ impl AliasCollector {
     }
 
     /// Map a declaration kind to its lexical or function binding scope.
-    fn binding_scope(&self, kind: VarDeclKind) -> usize {
+    fn binding_scope(&self, kind: VarDeclKind) -> ScopeId {
         if kind != VarDeclKind::Var {
             return self.current_scope();
         }
@@ -174,15 +174,22 @@ impl AliasCollector {
                     ScopeKind::Program | ScopeKind::Function
                 )
             })
-            .unwrap_or(0)
+            .map_or_else(|| ScopeId::from(0), ScopeId::from)
     }
 
     /// Insert a declaration's initial provenance into a lexical scope.
-    pub fn insert(&mut self, scope: usize, name: impl Into<String>, provenance: BindingProvenance) {
-        self.scopes[scope].bindings.insert(name.into(), provenance);
+    pub fn insert(
+        &mut self,
+        scope: ScopeId,
+        name: impl Into<String>,
+        provenance: BindingProvenance,
+    ) {
+        self.scopes[scope.index()]
+            .bindings
+            .insert(name.into(), provenance);
     }
 
-    fn insert_local(&mut self, scope: usize, name: impl Into<String>) {
+    fn insert_local(&mut self, scope: ScopeId, name: impl Into<String>) {
         self.insert(scope, name, BindingProvenance::Local);
     }
 
@@ -190,7 +197,7 @@ impl AliasCollector {
     pub fn record_assignment(
         &mut self,
         span: Span,
-        scope: usize,
+        scope: ScopeId,
         name: String,
         provenance: BindingProvenance,
     ) {
@@ -267,7 +274,7 @@ impl AliasCollector {
     }
 
     /// Register every binding introduced by a declaration pattern as local.
-    fn insert_pat_locals(&mut self, scope: usize, pat: &Pat) {
+    fn insert_pat_locals(&mut self, scope: ScopeId, pat: &Pat) {
         let mut bindings = BTreeSet::new();
         collect_pat_bindings(pat, &mut bindings);
         for binding in bindings {
@@ -279,22 +286,27 @@ impl AliasCollector {
         // Prefer assignments over declarations inside each scope: while
         // collecting source order, `latest_assignments` is exactly the state
         // visible at the current AST position.
-        for scope in self.stack.iter().rev().copied() {
+        for scope in self.stack.iter().rev().copied().map(ScopeId::from) {
             if let Some(assignment) = self.latest_assignments.get(scope, name) {
                 return Some(assignment);
             }
-            if let Some(binding) = self.scopes[scope].bindings.get(name) {
+            if let Some(binding) = self.scopes[scope.index()].bindings.get(name) {
                 return Some(binding);
             }
         }
         None
     }
 
-    fn visible_binding_scope(&self, name: &str) -> Option<usize> {
-        self.stack.iter().rev().copied().find(|scope| {
-            self.latest_assignments.contains(*scope, name)
-                || self.scopes[*scope].bindings.contains_key(name)
-        })
+    fn visible_binding_scope(&self, name: &str) -> Option<ScopeId> {
+        self.stack
+            .iter()
+            .rev()
+            .copied()
+            .map(ScopeId::from)
+            .find(|scope| {
+                self.latest_assignments.contains(*scope, name)
+                    || self.scopes[scope.index()].bindings.contains_key(name)
+            })
     }
 
     fn is_unbound(&self, name: &str) -> bool {
@@ -326,7 +338,12 @@ impl AliasCollector {
         }) else {
             return;
         };
-        self.record_assignment(span, *scope, root.sym.to_string(), BindingProvenance::Local);
+        self.record_assignment(
+            span,
+            ScopeId::from(*scope),
+            root.sym.to_string(),
+            BindingProvenance::Local,
+        );
     }
 
     /// Copy parameter patterns into the function metadata used by the later
@@ -517,7 +534,7 @@ mod tests {
         collector.push_scope(span, ScopeKind::Block);
         let second = collector.current_scope();
 
-        assert_eq!((first, second), (1, 2));
+        assert_eq!((first, second), (ScopeId::from(1), ScopeId::from(2)));
         assert_eq!(collector.scope_reuse_steps, 2);
     }
 

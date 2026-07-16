@@ -313,7 +313,7 @@ impl ExternalAdapter {
         let mut child = Command::new(&self.command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::piped())
             .spawn()
             .with_context(|| format!("start adapter {}", self.command.display()))?;
         let request = AdapterRequest {
@@ -333,11 +333,17 @@ impl ExternalAdapter {
         child.stdin.take().unwrap().flush()?;
         let output = child.wait_with_output()?;
         if !output.status.success() {
-            bail!(
-                "adapter exited {}: {}",
-                output.status,
-                String::from_utf8_lossy(&output.stderr)
-            );
+            const STDERR_LIMIT: usize = 8 * 1024;
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr = if stderr.len() > STDERR_LIMIT {
+                format!(
+                    "{}… [stderr truncated]",
+                    stderr.chars().take(STDERR_LIMIT).collect::<String>()
+                )
+            } else {
+                stderr.into_owned()
+            };
+            bail!("adapter exited {}: {}", output.status, stderr);
         }
         let response: AdapterResponse =
             serde_json::from_slice(&output.stdout).context("invalid adapter response")?;

@@ -37,15 +37,18 @@ pub struct ApiEvidence {
     pub symbol: String,
     /// Number of source events represented by this evidence item.
     pub count: u32,
-    /// Primary source spans parallel to `event_ids`.
+    /// Primary occurrences with their optional canonical fact identity.
     #[serde(skip)]
-    pub spans: Vec<Span>,
-    /// Canonical fact IDs parallel to `spans`. `u32::MAX` is reserved for a
-    /// deliberately synthetic occurrence that has no source fact.
-    #[serde(skip)]
-    pub event_ids: Vec<u32>,
+    pub occurrences: Vec<ApiEvidenceOccurrence>,
     /// Related evidence from linked modules or flow projections.
     pub related: Vec<ApiRelatedEvidence>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A source span and the fact that established it, when available.
+pub struct ApiEvidenceOccurrence {
+    pub span: Span,
+    pub fact: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

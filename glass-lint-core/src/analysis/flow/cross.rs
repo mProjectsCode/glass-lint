@@ -146,11 +146,7 @@ impl ContextWorklist {
         state: &State,
         crossed: bool,
     ) {
-        let Some(effect) = project
-            .modules()
-            .find(|candidate| candidate.id() == module)
-            .and_then(|candidate| candidate.local().effects().get(function))
-        else {
+        let Some(effect) = project.effect(module, function) else {
             return;
         };
         for parameter in effect.parameters().iter().filter(|parameter| {
@@ -313,11 +309,7 @@ pub(in crate::analysis) fn collect(
         if !budget.step() {
             break;
         }
-        let Some(effect) = project
-            .modules()
-            .find(|module| module.id() == context.module)
-            .and_then(|module| module.local().effects().get(context.function))
-        else {
+        let Some(effect) = project.effect(context.module, context.function) else {
             continue;
         };
         if effect.is_invalid() {
@@ -554,11 +546,7 @@ impl FlowSources {
                         else {
                             continue;
                         };
-                        let Some(target) = project
-                            .modules()
-                            .find(|candidate| candidate.id() == target_module)
-                            .and_then(|candidate| candidate.local().effects().get(target_function))
-                        else {
+                        let Some(target) = project.effect(target_module, target_function) else {
                             continue;
                         };
                         for returned in target
@@ -724,27 +712,28 @@ fn emit(
         return;
     };
     let seen = values[flow_id.rule_index()].iter().any(|existing| {
-        existing.event_ids == vec![event.0]
+        existing
+            .occurrences
+            .iter()
+            .any(|occurrence| occurrence.fact == Some(event.0))
             && existing.symbol == flow.symbol
             && existing.kind == ApiMatchKind::CallArgument
     });
     if seen {
         return;
     }
-    let span = project
-        .modules()
-        .find(|candidate| candidate.id() == module)
-        .and_then(|candidate| candidate.local().facts().stream().fact(event))
-        .map_or_else(
-            || swc_common::Span::new(swc_common::BytePos(0), swc_common::BytePos(0)),
-            |fact| fact.span,
-        );
+    let span = project.fact(module, event).map_or_else(
+        || swc_common::Span::new(swc_common::BytePos(0), swc_common::BytePos(0)),
+        |fact| fact.span,
+    );
     values[flow_id.rule_index()].push(ApiEvidence {
         kind: ApiMatchKind::CallArgument,
         symbol: flow.evidence_symbol(),
         count: 1,
-        spans: vec![span],
-        event_ids: vec![event.0],
+        occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
+            span,
+            fact: Some(event.0),
+        }],
         related: related_evidence(state, module, event),
     });
     let _ = state;

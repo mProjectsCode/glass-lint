@@ -30,7 +30,7 @@ use super::{
 use crate::analysis::{
     module::ModuleInterface,
     resolution::Resolver,
-    scope::BoundArgument,
+    scope::{BoundArgument, ScopeId},
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_prop_name,
     },
@@ -77,12 +77,12 @@ impl<'a> FactBuilder<'a> {
         Some(id)
     }
 
-    fn scope_at(&self, span: Span) -> usize {
+    fn scope_at(&self, span: Span) -> ScopeId {
         self.resolver
             .scope_chain_at(span)
             .first()
             .copied()
-            .unwrap_or(0)
+            .unwrap_or_else(|| ScopeId::from(0))
     }
 
     fn append_path(&self, parent: PathId, segment: PathSegment) -> PathId {

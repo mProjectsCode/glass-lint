@@ -47,9 +47,9 @@ impl Linter {
             .iter()
             .flat_map(|evidence| {
                 evidence
-                    .spans
+                    .occurrences
                     .iter()
-                    .copied()
+                    .map(|occurrence| occurrence.span)
                     .filter(|span| !span.is_dummy())
                     .map(|span| Self::report_evidence(evidence, span, source_map))
             })

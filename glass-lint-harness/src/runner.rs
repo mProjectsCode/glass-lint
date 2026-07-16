@@ -138,6 +138,15 @@ fn matches(finding: &Finding, expected: &DiagnosticExpectation) -> bool {
             .is_none_or(|message| &finding.message == message)
 }
 
+impl DiagnosticExpectation {
+    fn matches(&self, finding: &Finding, location: Option<&crate::types::FindingLocation>) -> bool {
+        matches(finding, self)
+            && self.path.as_ref().is_none_or(|path| {
+                location.and_then(|location| location.primary.as_ref()) == Some(path)
+            })
+    }
+}
+
 fn compare(
     findings: &[Finding],
     locations: &[crate::types::FindingLocation],
@@ -148,15 +157,7 @@ fn compare(
         let actual = findings
             .iter()
             .enumerate()
-            .filter(|(index, finding)| {
-                matches(finding, expected)
-                    && expected.path.as_ref().is_none_or(|path| {
-                        locations
-                            .get(*index)
-                            .and_then(|location| location.primary.as_ref())
-                            == Some(path)
-                    })
-            })
+            .filter(|(index, finding)| expected.matches(finding, locations.get(*index)))
             .count();
         if expected.count.is_some_and(|count| actual != count) {
             errors.push(format!(
@@ -171,15 +172,7 @@ fn compare(
         let actual = findings
             .iter()
             .enumerate()
-            .filter(|(index, finding)| {
-                matches(finding, forbidden)
-                    && forbidden.path.as_ref().is_none_or(|path| {
-                        locations
-                            .get(*index)
-                            .and_then(|location| location.primary.as_ref())
-                            == Some(path)
-                    })
-            })
+            .filter(|(index, finding)| forbidden.matches(finding, locations.get(*index)))
             .count();
         if actual > 0 {
             errors.push(format!(
@@ -189,24 +182,14 @@ fn compare(
         }
     }
     for (index, finding) in findings.iter().enumerate() {
-        let is_required = expectation.required.iter().any(|expected| {
-            matches(finding, expected)
-                && expected.path.as_ref().is_none_or(|path| {
-                    locations
-                        .get(index)
-                        .and_then(|location| location.primary.as_ref())
-                        == Some(path)
-                })
-        });
-        let is_forbidden = expectation.forbidden.iter().any(|forbidden| {
-            matches(finding, forbidden)
-                && forbidden.path.as_ref().is_none_or(|path| {
-                    locations
-                        .get(index)
-                        .and_then(|location| location.primary.as_ref())
-                        == Some(path)
-                })
-        });
+        let is_required = expectation
+            .required
+            .iter()
+            .any(|expected| expected.matches(finding, locations.get(index)));
+        let is_forbidden = expectation
+            .forbidden
+            .iter()
+            .any(|forbidden| forbidden.matches(finding, locations.get(index)));
         if !is_required && !is_forbidden {
             errors.push(format!(
                 "unexpected {}:{} at {:?}",

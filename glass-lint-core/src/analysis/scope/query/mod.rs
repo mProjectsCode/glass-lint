@@ -8,7 +8,8 @@ use swc_common::{Span, Spanned};
 use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
 use super::{
-    BindingProvenance, BoundArgument, IdentValueSeed, MemberValueSeed, ScopeGraph, ScopeKind,
+    BindingProvenance, BoundArgument, IdentValueSeed, MemberValueSeed, ScopeGraph, ScopeId,
+    ScopeKind,
 };
 use crate::analysis::{
     scope::collect::aliases::{contains, member_prefix_ends},

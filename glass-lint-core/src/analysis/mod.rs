@@ -210,6 +210,27 @@ impl ProjectSemanticModel {
         self.modules.values()
     }
 
+    pub(in crate::analysis) fn effect(
+        &self,
+        module: ModuleId,
+        function: crate::analysis::value::FunctionId,
+    ) -> Option<&crate::analysis::flow::effect::FunctionEffect> {
+        self.modules.get(&module)?.local().effects().get(function)
+    }
+
+    pub(in crate::analysis) fn fact(
+        &self,
+        module: ModuleId,
+        fact: crate::analysis::facts::FactId,
+    ) -> Option<&crate::analysis::facts::SemanticFact> {
+        self.modules
+            .get(&module)?
+            .local()
+            .facts()
+            .stream()
+            .fact(fact)
+    }
+
     /// Return the result value produced by a source call fact, if known.
     pub(in crate::analysis) fn source_call_result(
         &self,

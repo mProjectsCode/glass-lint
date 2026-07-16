@@ -44,16 +44,6 @@ impl ProjectInput {
             if !source_paths.contains(&key.importer) {
                 return Err(ProjectInputError::UnknownImporter(key.importer));
             }
-            if key.range.start.line == 0
-                || key.range.start.column == 0
-                || key.range.end.line == 0
-                || key.range.end.column == 0
-                || key.range.end.line < key.range.start.line
-                || (key.range.end.line == key.range.start.line
-                    && key.range.end.column < key.range.start.column)
-            {
-                return Err(ProjectInputError::InvalidRange(key.importer));
-            }
             normalize_result(&mut result)?;
             if resolutions.insert(key.clone(), result).is_some() {
                 return Err(ProjectInputError::DuplicateResolution(key));

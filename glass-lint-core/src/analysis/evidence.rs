@@ -46,8 +46,7 @@ impl AnnotatedEvidence {
             let ApiEvidence {
                 kind,
                 symbol,
-                spans,
-                event_ids,
+                occurrences: source_occurrences,
                 related: evidence_related,
                 ..
             } = evidence;
@@ -65,15 +64,12 @@ impl AnnotatedEvidence {
                 .or_insert_with(Vec::new)
                 .extend(evidence_related);
             occurrences.extend(
-                spans
+                source_occurrences
                     .into_iter()
-                    .filter(|span| !span.is_dummy())
-                    .enumerate()
-                    .map(|(position, span)| EvidenceOccurrence {
-                        event: event_ids.get(position).and_then(|event| {
-                            (*event != u32::MAX).then_some(facts::FactId(*event))
-                        }),
-                        span,
+                    .filter(|occurrence| !occurrence.span.is_dummy())
+                    .map(|occurrence| EvidenceOccurrence {
+                        event: occurrence.fact.map(facts::FactId),
+                        span: occurrence.span,
                         kind,
                         symbol_group,
                     }),
@@ -115,17 +111,23 @@ impl AnnotatedEvidence {
                 kind,
                 symbol: self.symbols[symbol_group].clone(),
                 count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
-                spans: occurrences.iter().map(|(_, span)| *span).collect(),
-                event_ids: occurrences
+                occurrences: occurrences
                     .iter()
-                    .map(|(event, _)| event.map_or(u32::MAX, |event| event.0))
+                    .map(
+                        |(event, span)| crate::api::classification::ApiEvidenceOccurrence {
+                            span: *span,
+                            fact: event.map(|event| event.0),
+                        },
+                    )
                     .collect(),
                 related: self.related.get(&symbol_group).cloned().unwrap_or_default(),
             })
             .collect::<Vec<_>>();
         normalized.sort_by_key(|item| {
             (
-                item.spans.first().map(|span| (span.lo, span.hi)),
+                item.occurrences
+                    .first()
+                    .map(|occurrence| (occurrence.span.lo, occurrence.span.hi)),
                 item.kind,
                 item.symbol.clone(),
             )
@@ -145,11 +147,15 @@ mod tests {
             kind: ApiMatchKind::Call,
             symbol: symbol.into(),
             count: u32::try_from(spans.len()).unwrap_or(u32::MAX),
-            spans: spans
+            occurrences: spans
                 .iter()
-                .map(|position| Span::new(BytePos(*position), BytePos(*position + 1)))
+                .map(
+                    |position| crate::api::classification::ApiEvidenceOccurrence {
+                        span: Span::new(BytePos(*position), BytePos(*position + 1)),
+                        fact: Some(*position),
+                    },
+                )
                 .collect(),
-            event_ids: spans.to_vec(),
             related: Vec::new(),
         }
     }
@@ -166,6 +172,6 @@ mod tests {
         assert_eq!(normalized[0].symbol, "request");
         assert_eq!(normalized[0].count, 3);
         assert_eq!(normalized[1].symbol, "other");
-        assert_eq!(normalized[1].event_ids, vec![8]);
+        assert_eq!(normalized[1].occurrences[0].fact, Some(8));
     }
 }

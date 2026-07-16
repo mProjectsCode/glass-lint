@@ -136,32 +136,36 @@ fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
             continue;
         };
         let directive = line[comment_start + 3..].trim();
-        if let Some(rest) = directive.strip_prefix("@expect-error-after ") {
-            let line_number = previous_code_line(&lines, index)
-                .with_context(|| format!("{}:{} has no previous code line", case.id, index + 1))?;
-            add_expectation(&mut case, rest, line_number, true)?;
-        } else if let Some(rest) = directive.strip_prefix("@expect-error ") {
-            let line_number = if line[..comment_start].trim().is_empty() {
+        if let Some((rest, after, required)) = expectation_directive(directive) {
+            let line_number = if after {
+                previous_code_line(&lines, index).with_context(|| {
+                    format!("{}:{} has no previous code line", case.id, index + 1)
+                })?
+            } else if line[..comment_start].trim().is_empty() {
                 (index + 2) as u32
             } else {
                 (index + 1) as u32
             };
-            add_expectation(&mut case, rest, line_number, true)?;
-        } else if let Some(rest) = directive.strip_prefix("@expect-no-error-after ") {
-            let line_number = previous_code_line(&lines, index)
-                .with_context(|| format!("{}:{} has no previous code line", case.id, index + 1))?;
-            add_expectation(&mut case, rest, line_number, false)?;
-        } else if let Some(rest) = directive.strip_prefix("@expect-no-error ") {
-            let line_number = if line[..comment_start].trim().is_empty() {
-                (index + 2) as u32
-            } else {
-                (index + 1) as u32
-            };
-            add_expectation(&mut case, rest, line_number, false)?;
+            add_expectation(&mut case, rest, line_number, required)?;
         }
     }
 
     Ok(case)
+}
+
+fn expectation_directive(directive: &str) -> Option<(&str, bool, bool)> {
+    [
+        ("@expect-error-after ", true, true),
+        ("@expect-error ", false, true),
+        ("@expect-no-error-after ", true, false),
+        ("@expect-no-error ", false, false),
+    ]
+    .into_iter()
+    .find_map(|(prefix, after, required)| {
+        directive
+            .strip_prefix(prefix)
+            .map(|rest| (rest, after, required))
+    })
 }
 
 #[derive(Debug, serde::Deserialize)]

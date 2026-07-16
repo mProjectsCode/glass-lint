@@ -13,6 +13,22 @@ use super::super::{
     value::{BindingId, BindingKey, BindingVersion, FunctionId, SymbolPath},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Stable identity of a lexical scope within one analyzed module.
+pub(in crate::analysis) struct ScopeId(usize);
+
+impl ScopeId {
+    pub(in crate::analysis) fn index(self) -> usize {
+        self.0
+    }
+}
+
+impl From<usize> for ScopeId {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 /// Immutable lexical scope/index model consumed by resolution queries.
 pub(in crate::analysis) struct ScopeGraph {
@@ -21,17 +37,17 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Lexical scopes in predeclaration order.
     scopes: Vec<AliasScope>,
     /// Scope indexes sorted by opening position for position lookup.
-    scopes_by_start: Vec<usize>,
+    scopes_by_start: Vec<ScopeId>,
     /// Source-ordered assignments grouped by scope and name.
-    assignments: BTreeMap<usize, BTreeMap<String, Vec<AliasAssignment>>>,
+    assignments: BTreeMap<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>,
     /// Stable binding IDs keyed by lexical scope and name.
-    binding_ids: BTreeMap<(usize, String), BindingId>,
+    binding_ids: BTreeMap<(ScopeId, String), BindingId>,
     /// Stable function IDs keyed by function scope.
-    function_ids: BTreeMap<usize, FunctionId>,
+    function_ids: BTreeMap<ScopeId, FunctionId>,
     /// Direct function declarations visible from a scope.
-    function_bindings: BTreeMap<(usize, String), FunctionId>,
+    function_bindings: BTreeMap<(ScopeId, String), FunctionId>,
     /// Aliases to locally declared functions.
-    function_aliases: BTreeMap<(usize, String), FunctionId>,
+    function_aliases: BTreeMap<(ScopeId, String), FunctionId>,
     /// Property writes indexed by versioned receiver and path.
     property_assignments: BTreeMap<(BindingKey, Vec<String>), Vec<PropertyAliasFact>>,
     /// Rooted writes that invalidate member identities.
@@ -39,9 +55,9 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Proven parameter identities shared by compatible call sites.
     parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
     /// Dynamic-evaluation sites that invalidate later lexical assumptions.
-    dynamic_evals: Vec<(usize, Span)>,
+    dynamic_evals: Vec<(ScopeId, Span)>,
     /// Static objects whose `var` binding may be mutated.
-    mutable_static_objects: std::collections::BTreeSet<(usize, String)>,
+    mutable_static_objects: std::collections::BTreeSet<(ScopeId, String)>,
 }
 
 impl ScopeGraph {
@@ -50,7 +66,7 @@ impl ScopeGraph {
         &mut self,
         property_assignments: Vec<super::collect::PropertyAliasAssignment>,
         rooted_mutations: Vec<super::collect::RootedPropertyMutation>,
-        dynamic_evals: Vec<(usize, Span)>,
+        dynamic_evals: Vec<(ScopeId, Span)>,
     ) {
         for assignment in property_assignments {
             let Some(receiver_key) = self
@@ -108,7 +124,7 @@ impl ScopeGraph {
     /// Find the latest assignment at or before a source position.
     pub(super) fn assignment_at(
         &self,
-        scope: usize,
+        scope: ScopeId,
         name: &str,
         span: Span,
     ) -> Option<&AliasAssignment> {
@@ -123,13 +139,13 @@ impl ScopeGraph {
             })
     }
 
-    pub(super) fn binding_id_at(&self, scope: usize, name: &str) -> Option<BindingId> {
+    pub(super) fn binding_id_at(&self, scope: ScopeId, name: &str) -> Option<BindingId> {
         self.binding_ids.get(&(scope, name.to_string())).copied()
     }
 
     pub(super) fn parameter_alias_for(
         &self,
-        scope: usize,
+        scope: ScopeId,
         name: &str,
     ) -> Option<&BindingProvenance> {
         self.function_ids
@@ -137,20 +153,20 @@ impl ScopeGraph {
             .and_then(|function| self.parameter_aliases.get(&(*function, name.to_string())))
     }
 
-    pub(super) fn scope_parent(&self, scope: usize) -> Option<usize> {
-        self.scopes.get(scope)?.parent
+    pub(super) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
+        self.scopes.get(scope.index())?.parent
     }
 
-    pub(super) fn scope_kind(&self, scope: usize) -> Option<ScopeKind> {
-        self.scopes.get(scope).map(|scope| scope.kind)
+    pub(super) fn scope_kind(&self, scope: ScopeId) -> Option<ScopeKind> {
+        self.scopes.get(scope.index()).map(|scope| scope.kind)
     }
 
-    pub(super) fn scope_span(&self, scope: usize) -> Option<Span> {
-        self.scopes.get(scope).map(|scope| scope.span)
+    pub(super) fn scope_span(&self, scope: ScopeId) -> Option<Span> {
+        self.scopes.get(scope.index()).map(|scope| scope.span)
     }
 
-    pub(super) fn scope_binding(&self, scope: usize, name: &str) -> Option<&BindingProvenance> {
-        self.scopes.get(scope)?.bindings.get(name)
+    pub(super) fn scope_binding(&self, scope: ScopeId, name: &str) -> Option<&BindingProvenance> {
+        self.scopes.get(scope.index())?.bindings.get(name)
     }
 
     /// Assemble the immutable graph before property indexes are attached.
@@ -172,23 +188,25 @@ impl ScopeGraph {
         }
     }
 
-    pub(super) fn function_for_scope(&self, scope: usize) -> Option<FunctionId> {
+    pub(super) fn function_for_scope(&self, scope: ScopeId) -> Option<FunctionId> {
         self.function_ids.get(&scope).copied()
     }
 
     pub(super) fn function_spans(&self) -> impl Iterator<Item = (FunctionId, Span)> + '_ {
         self.function_ids.iter().filter_map(|(scope, function)| {
-            self.scopes.get(*scope).map(|scope| (*function, scope.span))
+            self.scopes
+                .get(scope.index())
+                .map(|scope| (*function, scope.span))
         })
     }
 
-    pub(super) fn function_binding(&self, scope: usize, name: &str) -> Option<FunctionId> {
+    pub(super) fn function_binding(&self, scope: ScopeId, name: &str) -> Option<FunctionId> {
         self.function_bindings
             .get(&(scope, name.to_string()))
             .copied()
     }
 
-    pub(super) fn function_alias(&self, scope: usize, name: &str) -> Option<FunctionId> {
+    pub(super) fn function_alias(&self, scope: ScopeId, name: &str) -> Option<FunctionId> {
         self.function_aliases
             .get(&(scope, name.to_string()))
             .copied()
@@ -196,7 +214,7 @@ impl ScopeGraph {
 
     pub(super) fn reassigned_between(
         &self,
-        scope: usize,
+        scope: ScopeId,
         name: &str,
         start: BytePos,
         end: BytePos,
@@ -211,7 +229,7 @@ impl ScopeGraph {
             })
     }
 
-    pub(super) fn binding_version(&self, scope: usize, name: &str, span: Span) -> BindingVersion {
+    pub(super) fn binding_version(&self, scope: ScopeId, name: &str, span: Span) -> BindingVersion {
         self.assignments
             .get(&scope)
             .and_then(|assignments| assignments.get(name))
@@ -235,31 +253,31 @@ impl ScopeGraph {
         self.rooted_property_mutations.get(root).map(Vec::as_slice)
     }
 
-    pub(super) fn is_mutable_static_object(&self, scope: usize, name: &str) -> bool {
+    pub(super) fn is_mutable_static_object(&self, scope: ScopeId, name: &str) -> bool {
         self.mutable_static_objects
             .contains(&(scope, name.to_string()))
     }
 
-    pub(super) fn has_eval_after(&self, scope: usize, span: Span) -> bool {
+    pub(super) fn has_eval_after(&self, scope: ScopeId, span: Span) -> bool {
         self.dynamic_evals.iter().any(|(eval_scope, eval_span)| {
             span.lo > eval_span.hi && self.scope_is_within(scope, *eval_scope)
         })
     }
 
     /// Find the innermost lexical scope containing a source span.
-    pub(super) fn scope_at(&self, span: Span) -> usize {
+    pub(super) fn scope_at(&self, span: Span) -> ScopeId {
         let position = self
             .scopes_by_start
-            .partition_point(|index| self.scopes[*index].span.lo <= span.lo);
+            .partition_point(|index| self.scopes[index.index()].span.lo <= span.lo);
         let Some(mut scope) = position
             .checked_sub(1)
             .map(|index| self.scopes_by_start[index])
         else {
-            return 0;
+            return ScopeId::from(0);
         };
-        while !span_contains(self.scopes[scope].span, span) {
-            let Some(parent) = self.scopes[scope].parent else {
-                return 0;
+        while !span_contains(self.scopes[scope.index()].span, span) {
+            let Some(parent) = self.scopes[scope.index()].parent else {
+                return ScopeId::from(0);
             };
             scope = parent;
         }
@@ -271,14 +289,14 @@ impl ScopeGraph {
 pub(super) struct ScopeGraphParts {
     pub(super) environment: crate::Environment,
     pub(super) scopes: Vec<AliasScope>,
-    pub(super) scopes_by_start: Vec<usize>,
-    pub(super) assignments: BTreeMap<usize, BTreeMap<String, Vec<AliasAssignment>>>,
-    pub(super) binding_ids: BTreeMap<(usize, String), BindingId>,
-    pub(super) function_ids: BTreeMap<usize, FunctionId>,
-    pub(super) function_bindings: BTreeMap<(usize, String), FunctionId>,
-    pub(super) function_aliases: BTreeMap<(usize, String), FunctionId>,
+    pub(super) scopes_by_start: Vec<ScopeId>,
+    pub(super) assignments: BTreeMap<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>,
+    pub(super) binding_ids: BTreeMap<(ScopeId, String), BindingId>,
+    pub(super) function_ids: BTreeMap<ScopeId, FunctionId>,
+    pub(super) function_bindings: BTreeMap<(ScopeId, String), FunctionId>,
+    pub(super) function_aliases: BTreeMap<(ScopeId, String), FunctionId>,
     pub(super) parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
-    pub(super) mutable_static_objects: std::collections::BTreeSet<(usize, String)>,
+    pub(super) mutable_static_objects: std::collections::BTreeSet<(ScopeId, String)>,
 }
 
 fn span_contains(outer: Span, inner: Span) -> bool {
@@ -289,7 +307,7 @@ fn span_contains(outer: Span, inner: Span) -> bool {
 /// A rooted property write that may invalidate a global/member identity.
 pub(in crate::analysis::scope) struct RootedPropertyMutationFact {
     pub(in crate::analysis::scope) span: Span,
-    pub(in crate::analysis::scope) scope: usize,
+    pub(in crate::analysis::scope) scope: ScopeId,
     pub(in crate::analysis::scope) property: Option<String>,
 }
 
@@ -299,7 +317,7 @@ pub(in crate::analysis) struct AliasScope {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) depth: usize,
     pub(in crate::analysis::scope) kind: ScopeKind,
-    pub(in crate::analysis::scope) parent: Option<usize>,
+    pub(in crate::analysis::scope) parent: Option<ScopeId>,
     pub(in crate::analysis::scope) bindings: BTreeMap<String, BindingProvenance>,
 }
 
@@ -391,7 +409,7 @@ pub(in crate::analysis) struct MemberValueSeed {
 /// One source-ordered reassignment of a lexical binding.
 pub(in crate::analysis) struct AliasAssignment {
     pub(in crate::analysis::scope) span: Span,
-    pub(in crate::analysis::scope) scope: usize,
+    pub(in crate::analysis::scope) scope: ScopeId,
     pub(in crate::analysis::scope) name: String,
     pub(in crate::analysis::scope) version: BindingVersion,
     pub(in crate::analysis::scope) provenance: BindingProvenance,
@@ -401,6 +419,6 @@ pub(in crate::analysis) struct AliasAssignment {
 /// One rooted property assignment indexed by receiver and path.
 pub(in crate::analysis) struct PropertyAliasFact {
     pub(in crate::analysis::scope) span: Span,
-    pub(in crate::analysis::scope) scope: usize,
+    pub(in crate::analysis::scope) scope: ScopeId,
     pub(in crate::analysis::scope) target: Option<SymbolPath>,
 }

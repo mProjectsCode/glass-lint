@@ -543,7 +543,7 @@ mod tests {
             .expect("sink call should be present");
         let flow = CompiledObjectFlow::from_matcher(&script_flow());
         let evidence = collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default());
-        assert_eq!(evidence[0][0].spans, vec![sink_span]);
+        assert_eq!(evidence[0][0].occurrences[0].span, sink_span);
     }
 
     #[test]
@@ -575,7 +575,7 @@ mod tests {
             .expect("configuration write should be present");
         let flow = CompiledObjectFlow::from_matcher(&flow);
         let evidence = collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default());
-        assert_eq!(evidence[0][0].spans, vec![configuration.1]);
-        assert_eq!(evidence[0][0].event_ids, vec![configuration.0.0]);
+        assert_eq!(evidence[0][0].occurrences[0].span, configuration.1);
+        assert_eq!(evidence[0][0].occurrences[0].fact, Some(configuration.0.0));
     }
 }

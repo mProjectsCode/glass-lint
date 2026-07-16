@@ -4,7 +4,7 @@
 //! bounded reports, and diagnostics. Host policy and rule catalogs are passed
 //! in through explicit configuration rather than embedded in this crate.
 
-pub mod analysis;
+mod analysis;
 pub mod api;
 pub mod budget;
 mod config;

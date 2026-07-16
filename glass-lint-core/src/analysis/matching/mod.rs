@@ -241,17 +241,20 @@ fn push_owned_evidence(
     if occurrences.is_empty() {
         return;
     }
-    let spans = occurrences.iter().map(Occurrence::span).collect();
-    let event_ids = occurrences
+    let occurrences: Vec<_> = occurrences
         .iter()
-        .map(|occurrence| occurrence.event().0)
+        .map(
+            |occurrence| crate::api::classification::ApiEvidenceOccurrence {
+                span: occurrence.span(),
+                fact: Some(occurrence.event().0),
+            },
+        )
         .collect();
     evidence.push(ApiEvidence {
         kind,
         symbol,
         count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
-        spans,
-        event_ids,
+        occurrences,
         related: Vec::new(),
     });
 }
@@ -304,7 +307,14 @@ mod tests {
             .flat_map(|(_, occurrences)| occurrences.iter().map(Occurrence::span))
             .collect::<Vec<_>>();
         assert_eq!(evidence.len(), 1);
-        assert_eq!(evidence[0].spans, reference);
+        assert_eq!(
+            evidence[0]
+                .occurrences
+                .iter()
+                .map(|occurrence| occurrence.span)
+                .collect::<Vec<_>>(),
+            reference
+        );
     }
 
     #[test]

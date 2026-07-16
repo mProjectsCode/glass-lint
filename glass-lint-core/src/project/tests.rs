@@ -72,6 +72,45 @@ fn key(importer: &str) -> ResolutionRequestKey {
     }
 }
 
+struct ProjectFixture<'a> {
+    session: ProjectSession<'a>,
+}
+
+impl<'a> ProjectFixture<'a> {
+    fn new(linter: &'a crate::Linter) -> Self {
+        Self {
+            session: linter.begin_project("/project").unwrap(),
+        }
+    }
+
+    fn add(&mut self, path: &str, source: &str) {
+        self.session
+            .add_source(SourceFile::new(path, source))
+            .unwrap();
+    }
+
+    fn add_resolved(
+        &mut self,
+        path: &str,
+        source: &str,
+        resolutions: impl IntoIterator<Item = ResolutionResult>,
+    ) {
+        let requests = self
+            .session
+            .add_source(SourceFile::new(path, source))
+            .unwrap();
+        for (request, resolution) in requests.into_iter().zip(resolutions) {
+            self.session
+                .record_resolution(request.key, resolution)
+                .unwrap();
+        }
+    }
+
+    fn finish(self) -> ProjectReport {
+        self.session.finish().unwrap()
+    }
+}
+
 #[test]
 fn validation_normalizes_and_sorts_sources_and_edges() {
     let input = ProjectInput {
@@ -280,31 +319,19 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
 #[test]
 fn project_flow_crosses_an_exported_helper_boundary() {
     let linter = flow_linter();
-    let mut session = linter.begin_project("/project").unwrap();
-    session
-            .add_source(SourceFile::new(
-                "helper.js",
-                "export function append(element) { element.src = url; document.head.appendChild(element); }",
-            ))
-            .unwrap();
-    let request = session
-            .add_source(SourceFile::new(
-                "main.js",
-                "import { append } from './helper'; const element = document.createElement('script'); append(element);",
-            ))
-            .unwrap()
-            .into_iter()
-            .next()
-            .expect("the helper import is a resolution request");
-    session
-        .record_resolution(
-            request.key,
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add(
+        "helper.js",
+        "export function append(element) { element.src = url; document.head.appendChild(element); }",
+    );
+    project.add_resolved(
+        "main.js",
+        "import { append } from './helper'; const element = document.createElement('script'); append(element);",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    let report = project.finish();
     let main = report
         .files
         .iter()
@@ -317,73 +344,45 @@ fn project_flow_crosses_an_exported_helper_boundary() {
 #[test]
 fn project_flow_preserves_requirements_through_a_helper_chain() {
     let linter = flow_linter();
-    let mut session = linter.begin_project("/project").unwrap();
-    session
-        .add_source(SourceFile::new(
-            "sink.js",
-            "export function finish(element) { document.head.appendChild(element); }",
-        ))
-        .unwrap();
-    let helper_request = session
-            .add_source(SourceFile::new(
-                "helper.js",
-                "import { finish } from './sink'; export function append(element) { element.src = url; finish(element); }",
-            ))
-            .unwrap();
-    let main_request = session
-            .add_source(SourceFile::new(
-                "main.js",
-                "import { append } from './helper'; const element = document.createElement('script'); append(element);",
-            ))
-            .unwrap();
-    session
-        .record_resolution(
-            helper_request[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "sink.js".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main_request[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add(
+        "sink.js",
+        "export function finish(element) { document.head.appendChild(element); }",
+    );
+    project.add_resolved(
+        "helper.js",
+        "import { finish } from './sink'; export function append(element) { element.src = url; finish(element); }",
+        [ResolutionResult::Internal {
+            path: "sink.js".into(),
+        }],
+    );
+    project.add_resolved(
+        "main.js",
+        "import { append } from './helper'; const element = document.createElement('script'); append(element);",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    let report = project.finish();
     assert!(report.files.iter().any(|file| !file.findings.is_empty()));
 }
 
 #[test]
 fn project_flow_follows_a_returned_parameter() {
     let linter = flow_linter();
-    let mut session = linter.begin_project("/project").unwrap();
-    session
-        .add_source(SourceFile::new(
-            "helper.js",
-            "export function identity(element) { return element; }",
-        ))
-        .unwrap();
-    let request = session
-            .add_source(SourceFile::new(
-                "main.js",
-                "import { identity } from './helper'; const element = document.createElement('script'); const returned = identity(element); returned.src = url; document.head.appendChild(returned);",
-            ))
-            .unwrap()
-            .into_iter()
-            .next()
-            .unwrap();
-    session
-        .record_resolution(
-            request.key,
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add(
+        "helper.js",
+        "export function identity(element) { return element; }",
+    );
+    project.add_resolved(
+        "main.js",
+        "import { identity } from './helper'; const element = document.createElement('script'); const returned = identity(element); returned.src = url; document.head.appendChild(returned);",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    let report = project.finish();
     let main = report
         .files
         .iter()
@@ -395,31 +394,19 @@ fn project_flow_follows_a_returned_parameter() {
 #[test]
 fn project_flow_fails_closed_for_unsupported_helper_control_flow() {
     let linter = flow_linter();
-    let mut session = linter.begin_project("/project").unwrap();
-    session
-            .add_source(SourceFile::new(
-                "helper.js",
-                "export function append(element) { if (ready) element.src = url; document.head.appendChild(element); }",
-            ))
-            .unwrap();
-    let request = session
-            .add_source(SourceFile::new(
-                "main.js",
-                "import { append } from './helper'; const element = document.createElement('script'); append(element);",
-            ))
-            .unwrap()
-            .into_iter()
-            .next()
-            .unwrap();
-    session
-        .record_resolution(
-            request.key,
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add(
+        "helper.js",
+        "export function append(element) { if (ready) element.src = url; document.head.appendChild(element); }",
+    );
+    project.add_resolved(
+        "main.js",
+        "import { append } from './helper'; const element = document.createElement('script'); append(element);",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    let report = project.finish();
     assert!(report.files.iter().all(|file| file.findings.is_empty()));
 }
 
@@ -558,36 +545,22 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
             .unwrap(),
     );
 
-    let mut session = linter.begin_project("/project").unwrap();
-    let helper = session
-        .add_source(SourceFile::new(
-            "helper.js",
-            "const { request } = require('web'); exports.send = request;",
-        ))
-        .unwrap();
-    let main = session
-        .add_source(SourceFile::new(
-            "main.js",
-            "const { send } = require('./helper'); send();",
-        ))
-        .unwrap();
-    session
-        .record_resolution(
-            helper[0].key.clone(),
-            ResolutionResult::External {
-                package: "web".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add_resolved(
+        "helper.js",
+        "const { request } = require('web'); exports.send = request;",
+        [ResolutionResult::External {
+            package: "web".into(),
+        }],
+    );
+    project.add_resolved(
+        "main.js",
+        "const { send } = require('./helper'); send();",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    let report = project.finish();
 
     let main_report = report
         .files
@@ -612,47 +585,29 @@ fn namespace_imports_follow_star_reexports() {
             .unwrap(),
     );
 
-    let mut session = linter.begin_project("/project").unwrap();
-    let helper = session
-        .add_source(SourceFile::new(
-            "helper.js",
-            "import { request } from 'web'; export { request };",
-        ))
-        .unwrap();
-    let barrel = session
-        .add_source(SourceFile::new("barrel.js", "export * from './helper';"))
-        .unwrap();
-    let main = session
-        .add_source(SourceFile::new(
-            "main.js",
-            "import * as api from './barrel'; api.request();",
-        ))
-        .unwrap();
-    session
-        .record_resolution(
-            helper[0].key.clone(),
-            ResolutionResult::External {
-                package: "web".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            barrel[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "barrel.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add_resolved(
+        "helper.js",
+        "import { request } from 'web'; export { request };",
+        [ResolutionResult::External {
+            package: "web".into(),
+        }],
+    );
+    project.add_resolved(
+        "barrel.js",
+        "export * from './helper';",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    project.add_resolved(
+        "main.js",
+        "import * as api from './barrel'; api.request();",
+        [ResolutionResult::Internal {
+            path: "barrel.js".into(),
+        }],
+    );
+    let report = project.finish();
 
     let main_report = report
         .files
@@ -676,36 +631,22 @@ fn static_dynamic_imports_follow_namespace_exports() {
         crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
             .unwrap(),
     );
-    let mut session = linter.begin_project("/project").unwrap();
-    let helper = session
-        .add_source(SourceFile::new(
-            "helper.js",
-            "import { request } from 'web'; export { request };",
-        ))
-        .unwrap();
-    let main = session
-        .add_source(SourceFile::new(
-            "main.js",
-            "async function run() { const api = await import('./helper'); api.request(); }",
-        ))
-        .unwrap();
-    session
-        .record_resolution(
-            helper[0].key.clone(),
-            ResolutionResult::External {
-                package: "web".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add_resolved(
+        "helper.js",
+        "import { request } from 'web'; export { request };",
+        [ResolutionResult::External {
+            package: "web".into(),
+        }],
+    );
+    project.add_resolved(
+        "main.js",
+        "async function run() { const api = await import('./helper'); api.request(); }",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    let report = project.finish();
     assert_eq!(
         report
             .files
@@ -732,36 +673,22 @@ fn anonymous_commonjs_functions_remain_callable_across_modules() {
         crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
             .unwrap(),
     );
-    let mut session = linter.begin_project("/project").unwrap();
-    let helper = session
-        .add_source(SourceFile::new(
-            "helper.js",
-            "const { request } = require('web'); exports.send = () => request();",
-        ))
-        .unwrap();
-    let main = session
-        .add_source(SourceFile::new(
-            "main.js",
-            "const { send } = require('./helper'); send();",
-        ))
-        .unwrap();
-    session
-        .record_resolution(
-            helper[0].key.clone(),
-            ResolutionResult::External {
-                package: "web".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add_resolved(
+        "helper.js",
+        "const { request } = require('web'); exports.send = () => request();",
+        [ResolutionResult::External {
+            package: "web".into(),
+        }],
+    );
+    project.add_resolved(
+        "main.js",
+        "const { send } = require('./helper'); send();",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    let report = project.finish();
     assert_eq!(
         report
             .files
@@ -790,36 +717,22 @@ fn returned_callable_provenance_crosses_an_exported_function() {
         crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
             .unwrap(),
     );
-    let mut session = linter.begin_project("/project").unwrap();
-    let helper = session
-        .add_source(SourceFile::new(
-            "helper.js",
-            "import { request } from 'web'; export function get() { return request; }",
-        ))
-        .unwrap();
-    let main = session
-        .add_source(SourceFile::new(
-            "main.js",
-            "import { get } from './helper'; get()('/remote');",
-        ))
-        .unwrap();
-    session
-        .record_resolution(
-            helper[0].key.clone(),
-            ResolutionResult::External {
-                package: "web".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add_resolved(
+        "helper.js",
+        "import { request } from 'web'; export function get() { return request; }",
+        [ResolutionResult::External {
+            package: "web".into(),
+        }],
+    );
+    project.add_resolved(
+        "main.js",
+        "import { get } from './helper'; get()('/remote');",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    let report = project.finish();
     assert_eq!(
         report
             .files
@@ -849,36 +762,22 @@ fn linked_external_call_arguments_are_projected_after_reexports() {
             .unwrap(),
     );
 
-    let mut session = linter.begin_project("/project").unwrap();
-    let helper = session
-        .add_source(SourceFile::new(
-            "helper.js",
-            "import { request } from 'web'; export { request as send };",
-        ))
-        .unwrap();
-    let main = session
-        .add_source(SourceFile::new(
-            "main.js",
-            "import { send } from './helper'; send('/remote');",
-        ))
-        .unwrap();
-    session
-        .record_resolution(
-            helper[0].key.clone(),
-            ResolutionResult::External {
-                package: "web".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "helper.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add_resolved(
+        "helper.js",
+        "import { request } from 'web'; export { request as send };",
+        [ResolutionResult::External {
+            package: "web".into(),
+        }],
+    );
+    project.add_resolved(
+        "main.js",
+        "import { send } from './helper'; send('/remote');",
+        [ResolutionResult::Internal {
+            path: "helper.js".into(),
+        }],
+    );
+    let report = project.finish();
 
     assert_eq!(
         report
@@ -988,113 +887,69 @@ fn type_only_reexports_do_not_create_runtime_requests() {
 #[test]
 fn linker_accepts_named_reexports_and_reports_missing_exports() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
-    let dep_requests = session
-        .add_source(SourceFile::new("dep.js", "export const value = 1;"))
-        .unwrap();
-    assert!(dep_requests.is_empty());
-    let barrel_requests = session
-        .add_source(SourceFile::new(
-            "barrel.js",
-            "export { value } from './dep';",
-        ))
-        .unwrap();
-    let main_requests = session
-        .add_source(SourceFile::new(
-            "main.js",
-            "import { value } from './barrel';",
-        ))
-        .unwrap();
-    session
-        .record_resolution(
-            barrel_requests[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "dep.js".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main_requests[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "barrel.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add("dep.js", "export const value = 1;");
+    project.add_resolved(
+        "barrel.js",
+        "export { value } from './dep';",
+        [ResolutionResult::Internal {
+            path: "dep.js".into(),
+        }],
+    );
+    project.add_resolved(
+        "main.js",
+        "import { value } from './barrel';",
+        [ResolutionResult::Internal {
+            path: "barrel.js".into(),
+        }],
+    );
+    let report = project.finish();
     assert!(
         report.diagnostics.is_empty(),
         "unexpected diagnostics: {:?}",
         report.diagnostics
     );
 
-    let mut missing = linter.begin_project("/project").unwrap();
-    let requests = missing
-        .add_source(SourceFile::new("main.js", "import { nope } from './dep';"))
-        .unwrap();
-    missing
-        .add_source(SourceFile::new("dep.js", "export const value = 1;"))
-        .unwrap();
-    missing
-        .record_resolution(
-            requests[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "dep.js".into(),
-            },
-        )
-        .unwrap();
-    let report = missing.finish().unwrap();
+    let mut missing = ProjectFixture::new(&linter);
+    missing.add_resolved(
+        "main.js",
+        "import { nope } from './dep';",
+        [ResolutionResult::Internal {
+            path: "dep.js".into(),
+        }],
+    );
+    missing.add("dep.js", "export const value = 1;");
+    let report = missing.finish();
     assert_eq!(report.diagnostics[0].code, "missing_imported_export");
 }
 
 #[test]
 fn linker_reports_ambiguous_multiple_star_exports() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
-    session
-        .add_source(SourceFile::new("a.js", "export const value = 1;"))
-        .unwrap();
-    session
-        .add_source(SourceFile::new("b.js", "export const value = 2;"))
-        .unwrap();
-    let barrel_requests = session
-        .add_source(SourceFile::new(
-            "barrel.js",
-            "export * from './a'; export * from './b';",
-        ))
-        .unwrap();
-    let main_requests = session
-        .add_source(SourceFile::new(
-            "main.js",
-            "import { value } from './barrel';",
-        ))
-        .unwrap();
-    session
-        .record_resolution(
-            barrel_requests[0].key.clone(),
+    let mut project = ProjectFixture::new(&linter);
+    project.add("a.js", "export const value = 1;");
+    project.add("b.js", "export const value = 2;");
+    project.add_resolved(
+        "barrel.js",
+        "export * from './a'; export * from './b';",
+        [
             ResolutionResult::Internal {
                 path: "a.js".into(),
             },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            barrel_requests[1].key.clone(),
             ResolutionResult::Internal {
                 path: "b.js".into(),
             },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main_requests[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "barrel.js".into(),
-            },
-        )
-        .unwrap();
+        ],
+    );
+    project.add_resolved(
+        "main.js",
+        "import { value } from './barrel';",
+        [ResolutionResult::Internal {
+            path: "barrel.js".into(),
+        }],
+    );
 
-    let report = session.finish().unwrap();
+    let report = project.finish();
     assert!(
         report
             .diagnostics
@@ -1106,48 +961,32 @@ fn linker_reports_ambiguous_multiple_star_exports() {
 #[test]
 fn outside_project_targets_accept_normalized_absolute_paths() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
-    let requests = session
-        .add_source(SourceFile::new("main.js", "import value from './outside';"))
-        .unwrap();
-    session
-        .record_resolution(
-            requests[0].key.clone(),
-            ResolutionResult::OutsideProject {
-                path: "/other/./dependency.js".into(),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add_resolved(
+        "main.js",
+        "import value from './outside';",
+        [ResolutionResult::OutsideProject {
+            path: "/other/./dependency.js".into(),
+        }],
+    );
+    let report = project.finish();
     assert_eq!(report.diagnostics[0].code, "outside_project_target");
 }
 
 #[test]
 fn dynamic_commonjs_export_shapes_are_reported_and_fail_closed() {
     let linter = test_linter();
-    let mut session = linter.begin_project("/project").unwrap();
-    let main_requests = session
-        .add_source(SourceFile::new(
-            "main.js",
-            "import { value } from './dependency';",
-        ))
-        .unwrap();
-    session
-        .add_source(SourceFile::new(
-            "dependency.js",
-            "module.exports = { value: 1, ...extra };",
-        ))
-        .unwrap();
-    session
-        .record_resolution(
-            main_requests[0].key.clone(),
-            ResolutionResult::Internal {
-                path: "dependency.js".into(),
-            },
-        )
-        .unwrap();
+    let mut project = ProjectFixture::new(&linter);
+    project.add_resolved(
+        "main.js",
+        "import { value } from './dependency';",
+        [ResolutionResult::Internal {
+            path: "dependency.js".into(),
+        }],
+    );
+    project.add("dependency.js", "module.exports = { value: 1, ...extra };");
 
-    let report = session.finish().unwrap();
+    let report = project.finish();
     assert!(
         report
             .diagnostics

@@ -10,7 +10,7 @@ use super::{
     super::super::syntax::prop_name, AliasCollector, ArrowExpr, AssignExpr, AssignTarget,
     BindingProvenance, BlockStmt, CatchClause, ClassDecl, Expr, FnDecl, ForInStmt, ForOfStmt,
     ForStmt, Function, ImportDecl, ImportSpecifier, ObjectPatProp, Pat, PropertyAliasAssignment,
-    RootedPropertyMutation, ScopeKind, SimpleAssignTarget, Spanned, SwitchStmt, VarDecl,
+    RootedPropertyMutation, ScopeId, ScopeKind, SimpleAssignTarget, Spanned, SwitchStmt, VarDecl,
     VarDeclKind, Visit, VisitWith, WithStmt, function_prototype_builtin, member_chain,
     member_prop_name, member_root_ident, module_export_name,
 };
@@ -184,7 +184,7 @@ impl Visit for AliasCollector {
                     self.scopes[*scope]
                         .bindings
                         .contains_key(ident.id.sym.as_ref())
-                        .then_some((*scope, ()))
+                        .then_some((ScopeId::from(*scope), ()))
                 }) {
                     self.record_assignment(
                         assignment.span,
@@ -364,7 +364,7 @@ impl Visit for AliasCollector {
 
 fn register_declared_function(
     collector: &mut AliasCollector,
-    scope: usize,
+    scope: ScopeId,
     declarator: &VarDeclarator,
 ) -> bool {
     let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref()) else {
@@ -379,7 +379,7 @@ fn register_declared_function(
 
 fn record_mutable_static_object(
     collector: &mut AliasCollector,
-    scope: usize,
+    scope: ScopeId,
     mutable_object: bool,
     declarator: &VarDeclarator,
 ) {

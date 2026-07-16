@@ -7,7 +7,7 @@
 use swc_common::Span;
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
-use super::{super::super::syntax::prop_name, AliasCollector, BindingProvenance};
+use super::{super::super::syntax::prop_name, AliasCollector, BindingProvenance, ScopeId};
 
 impl AliasCollector {
     /// Record aliases introduced by a destructuring declaration.
@@ -15,7 +15,7 @@ impl AliasCollector {
     /// This deliberately stops at unsupported pattern forms. A partial
     /// projection would make a later use look more precise than the source
     /// warrants, so callers should leave the binding unresolved instead.
-    pub(super) fn collect_value_aliases(&mut self, pat: &Pat, target: &str, scope: usize) {
+    pub(super) fn collect_value_aliases(&mut self, pat: &Pat, target: &str, scope: ScopeId) {
         match pat {
             Pat::Ident(ident) => self.insert(
                 scope,
@@ -60,7 +60,7 @@ impl AliasCollector {
         pat: &Pat,
         target: &str,
         span: Span,
-        scope: usize,
+        scope: ScopeId,
     ) {
         match pat {
             Pat::Ident(ident) => self.record_assignment(
@@ -107,7 +107,7 @@ impl AliasCollector {
     }
 
     /// Record CommonJS namespace and named-export aliases from a `require`.
-    pub(super) fn collect_require_aliases(&mut self, pat: &Pat, module: String, scope: usize) {
+    pub(super) fn collect_require_aliases(&mut self, pat: &Pat, module: String, scope: ScopeId) {
         match pat {
             Pat::Ident(ident) => {
                 self.insert(
@@ -153,7 +153,7 @@ impl AliasCollector {
         pat: &Pat,
         module: &str,
         export: &str,
-        scope: usize,
+        scope: ScopeId,
     ) {
         if let Pat::Ident(local) = pat {
             self.insert(

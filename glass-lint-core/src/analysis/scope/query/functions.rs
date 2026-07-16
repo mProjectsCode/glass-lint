@@ -1,10 +1,10 @@
 //! Function identity queries across lexical scopes and aliases.
 
-use super::{BindingProvenance, Expr, FunctionId, ScopeGraph, Span};
+use super::{BindingProvenance, Expr, FunctionId, ScopeGraph, ScopeId, Span};
 
 impl ScopeGraph {
     /// Find the nearest enclosing function identity for a lexical scope.
-    pub(in crate::analysis) fn function_scope_at(&self, scope: usize) -> FunctionId {
+    pub(in crate::analysis) fn function_scope_at(&self, scope: ScopeId) -> FunctionId {
         let mut current = Some(scope);
         while let Some(index) = current {
             if let Some(function) = self.function_for_scope(index) {
@@ -16,7 +16,7 @@ impl ScopeGraph {
     }
 
     /// Return the canonical function identity for a scope.
-    pub(in crate::analysis) fn function_id_for_scope(&self, scope: usize) -> FunctionId {
+    pub(in crate::analysis) fn function_id_for_scope(&self, scope: ScopeId) -> FunctionId {
         self.function_scope_at(scope)
     }
 

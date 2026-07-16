@@ -107,8 +107,10 @@ impl MatcherFacts {
                     kind: ApiMatchKind::CallArgument,
                     symbol: matcher.evidence_symbol(),
                     count: 1,
-                    spans: vec![span],
-                    event_ids: vec![event.0],
+                    occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
+                        span,
+                        fact: Some(event.0),
+                    }],
                     related: Vec::new(),
                 });
             }
@@ -151,8 +153,10 @@ impl MatcherFacts {
                     kind: ApiMatchKind::CallArgument,
                     symbol,
                     count: 1,
-                    spans: vec![fact.span],
-                    event_ids: vec![fact.id.0],
+                    occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
+                        span: fact.span,
+                        fact: Some(fact.id.0),
+                    }],
                     related: Vec::new(),
                 });
             }

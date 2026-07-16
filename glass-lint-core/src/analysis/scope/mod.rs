@@ -45,12 +45,14 @@ impl ScopeGraph {
         let parameter_aliases_by_scope = collector.parameter_aliases();
         // Scope lookup starts from the latest opening delimiter, then walks to
         // parents only when the candidate does not contain the queried span.
-        let mut scopes_by_start = (0..collector.scopes.len()).collect::<Vec<_>>();
+        let mut scopes_by_start = (0..collector.scopes.len())
+            .map(ScopeId::from)
+            .collect::<Vec<_>>();
         scopes_by_start.sort_by_key(|index| {
-            let scope = &collector.scopes[*index];
+            let scope = &collector.scopes[index.index()];
             (scope.span.lo, scope.depth)
         });
-        let mut assignments = BTreeMap::<usize, BTreeMap<String, Vec<AliasAssignment>>>::new();
+        let mut assignments = BTreeMap::<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>::new();
         for assignment in collector.assignments {
             assignments
                 .entry(assignment.scope)
@@ -67,6 +69,7 @@ impl ScopeGraph {
         let mut binding_ids = BTreeMap::new();
         let mut next_binding_id = 0u32;
         for (scope, lexical_scope) in collector.scopes.iter().enumerate() {
+            let scope = ScopeId::from(scope);
             for name in lexical_scope.bindings.keys() {
                 binding_ids.insert((scope, name.clone()), BindingId(next_binding_id));
                 next_binding_id = next_binding_id.saturating_add(1);
@@ -75,6 +78,7 @@ impl ScopeGraph {
         let mut function_ids = BTreeMap::new();
         let mut next_function_id = 0u32;
         for (scope, lexical_scope) in collector.scopes.iter().enumerate() {
+            let scope = ScopeId::from(scope);
             if matches!(lexical_scope.kind, ScopeKind::Program | ScopeKind::Function) {
                 function_ids.insert(scope, FunctionId(next_function_id));
                 next_function_id = next_function_id.saturating_add(1);

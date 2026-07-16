@@ -8,7 +8,7 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, ObjectPatProp, Pat};
 use super::{
     super::{
         super::syntax::{member_prop_name, prop_name},
-        BindingProvenance,
+        BindingProvenance, ScopeId,
     },
     AliasCollector,
 };
@@ -18,8 +18,8 @@ impl AliasCollector {
     /// a helper. Conflicting call sites are discarded rather than merged:
     /// retaining an ambiguous alias would leak one caller's provenance into
     /// another.
-    pub fn parameter_aliases(&self) -> BTreeMap<(usize, String), BindingProvenance> {
-        let mut aliases = BTreeMap::<(usize, String), Option<BindingProvenance>>::new();
+    pub fn parameter_aliases(&self) -> BTreeMap<(ScopeId, String), BindingProvenance> {
+        let mut aliases = BTreeMap::<(ScopeId, String), Option<BindingProvenance>>::new();
         for (caller_scope, callee, arguments) in &self.calls {
             let Some((scope, parameters)) = self.function_for_call(*caller_scope, callee) else {
                 continue;
@@ -145,22 +145,22 @@ impl AliasCollector {
         }
     }
 
-    fn function_for_call(&self, mut scope: usize, name: &str) -> Option<&(usize, Vec<Pat>)> {
+    fn function_for_call(&self, mut scope: ScopeId, name: &str) -> Option<&(ScopeId, Vec<Pat>)> {
         loop {
             if let Some(function) = self.function_scopes.get(&(scope, name.to_string())) {
                 return Some(function);
             }
-            scope = self.scopes.get(scope)?.parent?;
+            scope = self.scopes.get(scope.index())?.parent?;
         }
     }
 
-    pub(super) fn function_scope_for_name(&self, name: &str) -> Option<usize> {
+    pub(super) fn function_scope_for_name(&self, name: &str) -> Option<ScopeId> {
         let mut scope = self.current_scope();
         loop {
             if let Some((function, _)) = self.function_scopes.get(&(scope, name.to_string())) {
                 return Some(*function);
             }
-            scope = self.scopes.get(scope)?.parent?;
+            scope = self.scopes.get(scope.index())?.parent?;
         }
     }
 

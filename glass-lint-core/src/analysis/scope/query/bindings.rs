@@ -2,7 +2,7 @@
 
 use super::{
     BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr, Ident,
-    ScopeGraph, ScopeKind, Span,
+    ScopeGraph, ScopeId, ScopeKind, Span,
 };
 
 impl ScopeGraph {
@@ -83,7 +83,7 @@ impl ScopeGraph {
     /// Return the assignment version visible at a source position.
     pub(in crate::analysis) fn binding_version_at(
         &self,
-        scope: usize,
+        scope: ScopeId,
         name: &str,
         span: Span,
     ) -> BindingVersion {
@@ -111,7 +111,7 @@ impl ScopeGraph {
         &self,
         name: &str,
         span: Span,
-    ) -> Option<(usize, &BindingProvenance)> {
+    ) -> Option<(ScopeId, &BindingProvenance)> {
         let mut scope = self.scope_at(span);
         loop {
             if let Some(binding) = self.scope_binding(scope, name) {
@@ -131,7 +131,7 @@ impl ScopeGraph {
     /// Test a scope and all parents for a specific scope kind.
     pub(in crate::analysis) fn scope_or_ancestor_has_kind(
         &self,
-        mut scope: usize,
+        mut scope: ScopeId,
         kind: ScopeKind,
     ) -> bool {
         loop {
@@ -146,7 +146,11 @@ impl ScopeGraph {
     }
 
     /// Whether one lexical scope is nested within another.
-    pub(in crate::analysis) fn scope_is_within(&self, mut scope: usize, ancestor: usize) -> bool {
+    pub(in crate::analysis) fn scope_is_within(
+        &self,
+        mut scope: ScopeId,
+        ancestor: ScopeId,
+    ) -> bool {
         loop {
             if scope == ancestor {
                 return true;
@@ -175,7 +179,7 @@ impl ScopeGraph {
     }
 
     /// Return the innermost-to-outermost scope chain at a position.
-    pub(in crate::analysis) fn scope_chain_at(&self, span: Span) -> Vec<usize> {
+    pub(in crate::analysis) fn scope_chain_at(&self, span: Span) -> Vec<ScopeId> {
         let mut scopes = Vec::new();
         let mut scope = self.scope_at(span);
         loop {

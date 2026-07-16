@@ -4,6 +4,7 @@ use super::{
     Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
     SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,
 };
+use crate::analysis::scope::ScopeId;
 
 impl Resolver {
     /// Returns a CommonJS module only when the callee is proven to be the
@@ -56,13 +57,13 @@ impl Resolver {
         resolved
     }
 
-    pub(in crate::analysis) fn scope_chain_at(&self, span: swc_common::Span) -> Vec<usize> {
+    pub(in crate::analysis) fn scope_chain_at(&self, span: swc_common::Span) -> Vec<ScopeId> {
         self.scopes.scope_chain_at(span)
     }
 
     pub(in crate::analysis) fn function_id_for_scope(
         &self,
-        scope: usize,
+        scope: ScopeId,
     ) -> crate::analysis::value::FunctionId {
         self.scopes.function_id_for_scope(scope)
     }
