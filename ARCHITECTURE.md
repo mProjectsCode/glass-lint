@@ -1,279 +1,162 @@
 # Architecture
 
-Glass Lint separates generic JavaScript analysis from provider policy. The
-core parses and analyzes each file once, providers describe capabilities with
-declarative matchers, and front ends select rules and serialize reports.
+Glass Lint separates provider-neutral JavaScript analysis from provider policy
+and filesystem concerns. Core analyzes each source once, providers describe
+what to detect, and front ends select rules and present results.
 
-## Package boundaries
+## Workspace boundaries
 
-```mermaid
-flowchart TD
-    CLI["glass-lint-cli<br/>arguments, configuration, output"]
-    HarnessCLI["glass-lint-harness-cli<br/>harness executable"]
-    Project["glass-lint-project<br/>discovery, source loading, resolution"]
-    Harness["glass-lint-harness<br/>cases, adapters, verification, profiling"]
-    Providers["provider crates<br/>glass-lint-js<br/>glass-lint-obsidian"]
-    Core["glass-lint-core<br/>parsing, semantics, matchers, reports"]
+```text
+glass-lint-cli ---------> glass-lint-project -----> glass-lint-core
+       |                         |                        ^
+       +-------------------------+------------------------+
+       |                                                  |
+       +----------------> provider crates ----------------+
 
-    CLI --> Project
-    CLI --> Providers
-    CLI --> Core
-    HarnessCLI --> Harness
-    HarnessCLI --> Core
-    Harness --> Project
-    Harness --> Providers
-    Project --> Core
-    Harness --> Core
-    Providers --> Core
+glass-lint-harness-cli -> glass-lint-harness ------> the same layers
 ```
 
-`glass-lint-project` is the filesystem adapter between the CLI and core. It
-owns bounded discovery, source reads, project boundaries, tsconfig membership,
-and Oxc resolution. Core receives only owned sources and explicit typed
-resolution results, so it remains usable with virtual projects and has no
-filesystem or resolver dependency.
+Dependencies point toward `glass-lint-core`. Each crate has one primary role:
 
-### `glass-lint-core`
+- `glass-lint-core` owns parsing, semantic analysis, matcher execution, rule
+  catalogs, and generic reports. It has no filesystem or provider knowledge.
+- `glass-lint-project` owns discovery, source loading, project boundaries,
+  `tsconfig` membership, and module resolution. It gives core owned sources
+  and typed resolution results.
+- `glass-lint-js` owns generic JavaScript, browser, Node.js, and Electron rules
+  and host assumptions.
+- `glass-lint-obsidian` owns Obsidian rules, profiles, disclosures, and the few
+  provider-specific semantics that cannot be expressed by core matchers.
+- `glass-lint-harness` owns fixture parsing, adapters, verification,
+  comparison reports, and profiling.
+- `glass-lint-cli` and `glass-lint-harness-cli` are thin executables. Reusable
+  behavior belongs in the library crates.
 
-Core is provider-neutral. It owns:
+Do not duplicate parsing, semantic models, match paths, or report types across
+these boundaries. Move reusable semantics inward; keep policy outward.
 
-- JavaScript/JSX and ordinary TypeScript parsing (`.js`, `.cjs`, `.mjs`,
-  `.ts`, `.cts`, and `.mts`)
-- lexical scopes, bindings, shadowing, and reassignment history
-- import, CommonJS, global, rooted-chain, alias, and value provenance
-- the shared semantic fact stream and bounded flow analysis
-- matcher validation, normalization, compilation, and execution
-- validated host-environment configuration for global bindings plus
-  unrestricted current-realm and member-restricted foreign-realm global
-  objects
-- rule catalogs, rule selection, deterministic findings, and diagnostics
+## Core analysis
 
-Core must not contain Obsidian module names, API knowledge, categories,
-manifest fields, disclosure mappings, or profile policy. Likewise, generic
-JavaScript, browser, Node.js, and Electron policy belongs in
-`glass-lint-js`, not in core.
-
-### Provider crates
-
-`glass-lint-js` and `glass-lint-obsidian` construct rules through the public
-matcher API and expose complete and recommended `Linter` configurations. A
-provider owns its rule names, descriptions, confidence assignments,
-categories, disclosures, and any narrowly scoped custom policy.
-
-Rules should be declarative whenever the matcher API can express the intended
-semantics accurately. Extend the generic matcher vocabulary when a behavior is
-reusable. Provider-specific Rust callbacks are reserved for semantic rules
-that cannot be represented faithfully as generic matchers.
-
-Provider crates also own host assumptions. Core supplies a conservative
-ECMAScript environment only; browser, Node.js, Electron, Obsidian, and other
-runtime globals are declared by provider defaults and may be extended by
-library callers. Environment configuration is attached to a `RuleCatalog` and
-used by the shared semantic pass, not embedded in individual matchers.
-Member-restricted global objects prevent APIs injected into one realm from
-being inferred on another window-like realm.
-
-When generic JavaScript and provider rules run as one profile, they share the
-provider's host environment. Running the generic JavaScript catalog alone uses
-only its own browser/Node/Electron default.
-
-### Harness and CLI
-
-`glass-lint-harness` loads annotated JavaScript cases, invokes built-in or
-external adapters, checks diagnostic expectations, produces reports, and
-profiles folders. It depends on providers to offer the built-in Glass Lint
-adapter but does not implement lint semantics.
-
-Project fixtures are either virtual inputs with explicit resolution records or
-filesystem cases delegated to `glass-lint-project`. Project reports retain
-sorted file-qualified primary locations and bounded evidence; project
-diagnostics remain separate from rule severity and affect CLI status directly.
-Project reports expose `completion` as `complete` or `partial`; deterministic
-resource-limit exhaustion may retain completed file reports as partial
-diagnostic output, while total-timeout failures discard the report.
-
-`glass-lint-cli` is deliberately thin. It owns argument parsing, configuration,
-project selection, human/JSON output, process exit behavior, and the
-`glass-lint` executable; it delegates project discovery and resolution to
-`glass-lint-project`. `glass-lint-harness-cli` owns the harness executable;
-reusable harness behavior stays in `glass-lint-harness`.
-
-## Per-file analysis pipeline
+Each file follows one matcher-independent pipeline:
 
 ```text
 source
-  -> parse JavaScript/JSX or TypeScript once
-  -> normalize TypeScript in memory (TypeScript only)
-  -> collect lexical scopes and declarations
-  -> emit matcher-independent semantic facts
-  -> resolve identities, constants, aliases, calls, and value flow
-  -> build shared indexes
-  -> query compiled matchers for selected rules
-  -> group bounded evidence into findings
-  -> sort findings by location and rule ID
+  -> parse and normalize
+  -> build scopes, bindings, and provenance
+  -> emit semantic facts
+  -> resolve identities, constants, aliases, and values
+  -> build bounded indexes and flow summaries
+  -> run compiled matchers
+  -> produce bounded, sorted findings
 ```
 
-The selected rule set must not change semantic fact construction or add AST
-traversals. Shared analysis is built once per file, then queried by every
-enabled rule.
+Parsing and fact construction happen once per file. Enabling a rule must not
+add an AST traversal or alter the semantic model. Matchers query shared indexes
+after analysis.
 
-During parsing, TypeScript runs SWC's lexical resolver and fixed default
-TypeScript transform. It strips type-only syntax and lowers runtime TypeScript
-constructs in memory while retaining the original source map for findings.
-The input boundary excludes TSX, declaration files, and `tsconfig.json` as
-source. Glass Lint does not type-check or follow type-only dependencies.
-Runtime module requests are resolved separately during project construction.
+The core layers are:
 
-The main core layers are:
-
-- `analysis/syntax`: small AST naming, constant, and provenance helpers
-- `analysis/scope`: lexical model, collection, and binding/provenance queries
-- `analysis/facts`: matcher-independent semantic events emitted from the AST
+- `analysis/syntax`: small AST-level naming, constant, and provenance helpers
+- `analysis/scope`: lexical bindings, shadowing, and reassignment
+- `analysis/facts`: the canonical matcher-independent event stream
 - `analysis/resolution`: expression, call, and constant resolution
-- `analysis/value`: stable value identities and arenas
-- `analysis/flow`: bounded state projection and summary-based flow matching
+- `analysis/value`: stable value identities and property paths
+- `analysis/flow`: bounded local and cross-call flow
 - `analysis/matching`: occurrence indexes and evidence queries
-- `api/rule`: validated public rules and declarative matcher types
-- `api/compiler`: immutable matcher plans compiled at catalog construction
-- `lint`: catalog validation, rule selection, and report construction
+- `api/rule`: validated public rule and matcher definitions
+- `api/compiler`: immutable matcher plans
+- `lint`: rule selection and report construction
 
-## Multi-file project analysis
+Internal AST, scope, fact, and index types stay private. Providers extend core
+through `glass_lint_core::rules`, `RuleCatalog`, and `Linter` rather than
+building a parallel analysis path.
 
-Multi-file analysis is a staged exchange between `glass-lint-project` and
-`glass-lint-core`. The project crate decides which files exist and what module
-requests mean; core decides what those linked modules prove semantically. This
-keeps filesystem and resolver policy out of the analysis engine and permits
-the same core API to analyze virtual projects with explicit resolution
-records.
+## Project analysis
 
-### 1. Select and expand the project
+Project analysis keeps filesystem policy and semantic proof separate:
 
-The filesystem loader accepts one of three selections:
+1. `glass-lint-project` selects sources, enforces project and resource limits,
+   and resolves authored module requests.
+2. Core analyzes every admitted file once and exposes a matcher-independent
+   module interface and function-effect summary.
+3. Core links imports, exports, re-exports, identities, and supported call flow
+   over typed resolution records.
+4. Compiled matchers query the linked model. Findings remain owned by the file
+   containing the primary event.
 
-- An **entry file** starts with that file and admits supported internal
-  dependencies as they are discovered.
-- A **directory** starts with every supported source below that directory,
-  subject to exclusions and limits.
-- A **`tsconfig.json`** starts with the runtime sources selected by `files`,
-  `include`, `exclude`, inherited configuration, and project references. Its
-  compiler configuration is also available to module resolution, including
-  path aliases.
+Files, module IDs, graph edges, findings, evidence, and diagnostics have stable
+ordering. Ambiguous exports, unsupported module shapes, missing resolutions,
+and exhausted budgets remain unknown; they never become guessed provenance.
+Project diagnostics are separate from rule severity, and partial analysis is
+reported as partial.
 
-Before reading sources, the loader establishes a canonical project root. It
-rejects selections outside that boundary and excludes configured directories,
-declaration files, unsupported extensions, oversized sources, and—unless
-enabled explicitly—symlink traversal. File, request, byte, and resolver work
-are bounded.
+## Rules and host policy
 
-Each admitted source is parsed and locally analyzed exactly once through a
-`ProjectSession`. That pass produces both the ordinary semantic model and a
-matcher-independent module interface: authored `import`, dynamic `import()`,
-and `require()` requests; import bindings; exports and re-exports; exported
-functions; and supported exported constant identities. A resolution request
-is keyed by importer, request kind, and exact source range, so repeated
-specifier text at different locations remains distinct.
+Provider rules should use declarative core matchers. Add a generic matcher
+primitive when the same semantic operation benefits multiple rules. Use a
+provider callback only when the rule cannot be represented accurately by the
+declarative API.
 
-The project crate resolves each request with Oxc and records a typed result:
-internal source, external package, runtime builtin, missing target,
-outside-project target, or unsupported target. A supported internal result is
-queued for admission if it was not already loaded. This queue continues until
-no new internal modules remain; request results are cached, and duplicate or
-cyclic imports do not cause a file to be analyzed twice.
+Host globals belong to provider catalog configuration, not individual
+matchers. Core supplies conservative ECMAScript assumptions; providers add the
+browser, Node.js, Electron, or Obsidian environment they require.
 
-### 2. Link local semantic models
+Rule factories use local IDs such as `network.request`. A `RuleCatalog`
+validates and qualifies them as `js:network.request` or
+`obsidian:network.request`. High-confidence rules form the recommended profile;
+broader discovery rules require explicit heuristic opt-in. Confidence measures
+the strength of identification, not the importance of the behavior.
 
-After discovery and resolution finish, core validates all project-relative
-paths and ensures every resolution record corresponds to an authored request.
-It assigns stable module IDs from sorted paths and builds a directed graph from
-internal resolution results. Local scopes, values, facts, and source maps stay
-partitioned by module; linking adds a qualified overlay rather than merging
-lexical state across files.
+## Precision and limits
 
-Core resolves supported exports and re-exports to a bounded fixed point,
-including cycles represented as strongly connected components. The resulting
-overlay can connect an imported binding or namespace member to:
+Glass Lint is precision-first:
 
-- an external package or builtin export;
-- a proven global or static string exported through an internal module; or
-- a qualified export or function in another project module.
+- strict matches require lexical identity, supported provenance, or connected
+  flow at the use position;
+- local lookalikes, shadowed globals, and invalidated aliases do not match;
+- raw names, suffixes, and broad literal fragments are heuristic evidence;
+- unknown, dynamic, ambiguous, unsupported, or exhausted analysis fails
+  closed; and
+- work, intermediate collections, evidence, and output are bounded and
+  deterministic.
 
-That is what lets a provider matcher recognize an external API through local
-aliases, re-export barrels, and supported wrapper shapes without treating a
-same-named local value as equivalent. Dynamic or conflicting CommonJS export
-shapes, ambiguous star exports, missing resolution information, and
-non-converging or over-budget linking remain unknown.
+These are architectural invariants. New capabilities must not weaken existing
+strict matchers or leak facts across bindings, assignments, scopes, files, or
+control paths.
 
-### 3. Compose calls and object flow
+## Core Rust design
 
-Local analysis also extracts a matcher-independent `FunctionEffect` from each
-file's canonical fact tape. An effect records parameter and property-path
-copies, observable property and call uses, returns, local value roots, and
-conservative invalidation. It contains no rule IDs or matcher decisions.
+Core code should make domain ownership and invariants visible in its types:
 
-Once qualified function targets are known, project flow composes these effects
-with a bounded monotone worklist. This allows supported source, requirement,
-and sink paths to cross calls between modules while preserving the file and
-fact identity of every event. Compiled object-flow matchers query the composed
-states only after linking; selecting a rule therefore does not change effect
-construction or add another AST traversal.
+- Put behavior on the struct or trait that owns the state. Keep a free
+  function only when no single type is the natural owner.
+- Introduce semantic newtypes when they distinguish domain concepts, validate
+  construction, or hide repeated collection operations. Do not pass raw
+  indexes, strings, tuples, or maps when their meaning or invariants matter.
+- Encapsulate domain collections behind focused APIs. Callers should request a
+  domain operation instead of repeating lookup, insertion, ordering, or budget
+  logic.
+- Keep modules cohesive and APIs narrow. Expose validated operations, not
+  storage layout or analysis internals; default to private visibility.
+- Keep functions at one abstraction level. Split large or deeply nested logic
+  by named domain steps, while leaving genuinely cross-cutting operations at
+  the coordinating layer.
+- Use consistent domain vocabulary across types, methods, diagnostics, and
+  tests. Avoid aliases that name the same concept differently.
+- Centralize shared domain logic. Similar-looking implementations in multiple
+  analysis paths are a signal to identify the common owner, not copy helpers.
+- Represent expected failure explicitly and add context at crate boundaries.
+  Unsupported semantics and budget exhaustion are domain outcomes, not reasons
+  to panic.
+- Remove obsolete paths after a clean migration. Compatibility wrappers and
+  duplicate APIs require an explicit need.
 
-### 4. Report conservatively
+These rules are not formatting preferences. Apply them where they clarify
+ownership, enforce an invariant, reduce repeated logic, or make a public API
+harder to misuse.
 
-Findings remain owned by the file containing their primary event. Related
-evidence may point into other project files and always carries a
-file-qualified source location. Files, findings, evidence, graph edges, and
-diagnostics are emitted in deterministic order.
+## Change policy
 
-Parse failures are reported on their source file. Unresolved internal
-requests, outside or unsupported targets, ambiguous exports, and exhausted
-effect, graph, SCC, or qualified-flow budgets produce project diagnostics.
-They are kept separate from rule severity and cause the affected cross-file
-semantics to fail closed rather than being guessed. In particular,
-qualified-flow exhaustion adds `flow_link_budget_exhausted` instead of making
-an incomplete analysis look clean.
-
-## Rules and profiles
-
-Provider rule factories use local IDs such as `network.request`. A
-`RuleCatalog` validates them and adds the provider namespace, producing IDs
-such as `js:network.request`. Catalogs reject duplicate or malformed IDs.
-
-Every rule declares a confidence level:
-
-- `High` rules enter the provider's `recommended_linter()`.
-- The provider's `heuristic_linter()` enables the complete catalog.
-
-Confidence describes the strength of the matching mechanism, not the
-importance of the detected behavior. A broad name-only matcher can still be
-useful for discovery, but it must require an explicit heuristic opt-in. The
-Obsidian-specific promotion policy is documented in
-[`glass-lint-obsidian/ACCURACY.md`](glass-lint-obsidian/ACCURACY.md).
-
-## Precision and failure behavior
-
-The engine is precision-first:
-
-- strict matches require lexical identity or supported provenance at the use
-  position;
-- unbound names are global only when the catalog environment declares them;
-- local lookalikes and shadowed globals must not match;
-- reassignment invalidates provenance from that point forward;
-- dynamic or unsupported semantics fail closed;
-- evidence and source sizes are bounded; and
-- output ordering and source locations are deterministic.
-
-These constraints are architectural invariants. A new matcher that cannot
-prove identity should be explicitly named and classified as heuristic rather
-than silently weakening a strict matcher.
-
-## Public API design
-
-The public extension path is `glass_lint_core::rules`: build validated rules,
-place them in a namespaced `RuleCatalog`, and pass that catalog to `Linter`.
-Internal AST, scope, fact, and index types remain private so providers cannot
-couple themselves to a parallel analysis model.
-
-Breaking changes are currently allowed when they simplify the design. A clean
-break must update every workspace caller, fixture, adapter, schema consumer,
-and document in the same change; compatibility wrappers are not retained by
-default.
+Breaking Rust APIs, schemas, rule IDs, and layouts are allowed during active
+development. Make a clean break: update all callers, fixtures, adapters, tests,
+and documentation together. Do not retain parallel paths by default.
