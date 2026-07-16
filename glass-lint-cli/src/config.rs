@@ -89,6 +89,9 @@ pub struct CliConfig {
     #[serde(default = "default_width")]
     /// Maximum line width used by pretty output before it wraps evidence.
     pub pretty_max_width: usize,
+    #[serde(default = "default_show_evidence_source")]
+    /// Whether pretty output includes source excerpts for evidence rows.
+    pub show_evidence_source: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -117,6 +120,7 @@ impl Default for CliConfig {
             verbosity: Verbosity::default(),
             color: default_color(),
             pretty_max_width: default_width(),
+            show_evidence_source: default_show_evidence_source(),
         }
     }
 }
@@ -157,6 +161,10 @@ fn default_visited_entries() -> usize {
 }
 
 fn default_color() -> bool {
+    true
+}
+
+fn default_show_evidence_source() -> bool {
     true
 }
 

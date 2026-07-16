@@ -1,65 +1,56 @@
 # glass-lint-obsidian
 
-`glass-lint-obsidian` provides Glass Lint rules for detecting Obsidian API and
-plugin capabilities. It owns Obsidian rule definitions, profile membership,
-categories, and disclosure mappings; the generic semantic engine lives in
-[`glass-lint-core`](../glass-lint-core/).
+`glass-lint-obsidian` provides rules for Obsidian APIs and plugin capabilities.
+It owns the `obsidian:` rule catalog, confidence profiles, renderer globals,
+and disclosure mapping.
 
-## Profiles
+## Choose a profile
 
 ```rust
-let precise = glass_lint_obsidian::recommended_linter();
-let complete = glass_lint_obsidian::heuristic_linter();
-
-let report = precise.lint(source, "main.js");
+let linter = glass_lint_obsidian::recommended_linter();
+let report = linter.lint(source, "main.js");
 ```
 
-- `recommended_linter()` enables only high-confidence rules supported by
-  provenance-aware or otherwise constrained matching.
-- `heuristic_linter()` enables the complete catalog, including broad discovery
-  rules.
+`recommended_linter()` selects rules backed by high-confidence matching.
+`heuristic_linter()` selects the complete catalog, including broad discovery
+rules. `rule_catalog()` returns serializable metadata for every rule.
 
-Call `rule_catalog()` for serializable metadata. Rule IDs use the `obsidian:`
-namespace, for example `obsidian:vault.read` and
+Rule IDs use the `obsidian:` namespace, for example `obsidian:vault.read` and
 `obsidian:network.request`.
 
-## Runtime environment
+## Obsidian runtime globals
 
-`default_environment()` describes the globals available in Obsidian's Electron
-renderer, including `app`, `activeDocument`, `Notice`, `moment`, `request`, and
-`requestUrl`.
+`default_environment()` describes globals available to an Obsidian plugin in
+the Electron renderer, including `app`, `activeDocument`, `Notice`, `moment`,
+`request`, and `requestUrl`.
 
-Pop-out windows do not expose every global available in the main window. The
-analyzer nevertheless gives `activeWindow` the same environment because it
-cannot know at analysis time whether that value refers to the main window or a
-pop-out window.
+`activeWindow` may refer to the main window or a pop-out window. Static
+analysis cannot determine which realm it represents at a call site, so the
+default environment treats it as a global-object alias with the same configured
+identities.
 
-Extend the environment when targeting another host:
+Extend the environment when analyzing a host with additional injected names:
 
 ```rust
 let mut environment = glass_lint_obsidian::default_environment();
 environment.add_global("customPluginHost")?;
+
 let linter =
     glass_lint_obsidian::recommended_linter_with_environment(environment);
 ```
 
-The no-argument profile constructors use this provider default.
+The no-argument constructors use the crate's default environment.
 
-## Disclosures
+## Derive disclosures
 
-Use `disclosures_for_report(&report)` to derive the deterministic Obsidian
-disclosure identifiers implied by a report. Disclosure policy remains in this
-provider rather than leaking into core.
+`disclosures_for_report(&report)` returns the sorted Obsidian disclosure
+identifiers implied by `obsidian:` findings. Findings from other namespaces are
+ignored.
 
-## Accuracy policy
+The recommended profile is precision-first: rules should establish provenance,
+global identity, constrained arguments, or connected flow. Broad member names,
+class names, suffix reads, and literal fragments belong in the heuristic
+profile. [ACCURACY.md](ACCURACY.md) documents the promotion criteria.
 
-The recommended profile is precision-first. Rules should prove module
-provenance, global identity, rooted chains, constrained arguments, or connected
-flow wherever possible. Broad member names, class names, suffix reads, and raw
-literal fragments remain in the heuristic profile.
-
-The promotion criteria and accepted matching mechanisms are documented in
-[ACCURACY.md](ACCURACY.md).
-
-For rule authoring, fixture placement, and validation, see the repository
-[contributing guide](../CONTRIBUTING.md) and [testing guide](../TESTING.md).
+Rule fixtures live beside their implementations. See the repository
+[testing guide](../TESTING.md) for authoring and validation conventions.

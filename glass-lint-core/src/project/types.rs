@@ -254,6 +254,12 @@ pub struct ProjectFinding {
 pub struct ProjectFileReport {
     /// Normalized path of the analyzed file.
     pub path: ProjectRelativePath,
+    /// Original source retained for human-readable excerpt rendering.
+    ///
+    /// This is presentation context rather than part of the serialized report
+    /// contract; project JSON must not embed complete source files.
+    #[serde(skip)]
+    pub source: String,
     /// Findings attributed to this file.
     pub findings: Vec<ProjectFinding>,
     /// Parser diagnostics attributed to this file.

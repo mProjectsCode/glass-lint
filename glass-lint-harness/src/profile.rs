@@ -7,6 +7,7 @@
 
 use std::{
     collections::BTreeMap,
+    fs,
     path::{Path, PathBuf},
     sync::{
         Arc, Barrier, Mutex, OnceLock,
@@ -238,15 +239,9 @@ pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
     let setup_start = Instant::now();
     let mut prepared = Vec::with_capacity(paths.len());
     let mut file_results = Vec::new();
-    let corpus_options = ProjectLoadOptions::default();
-    let corpus = SourceCorpus::new(&corpus_options)?;
     for path in &paths {
-        match corpus.load(path) {
-            Ok(file) => prepared.push(PreparedFile {
-                path: file.path,
-                bytes: file.bytes,
-                source: file.source,
-            }),
+        match prepare_file(path) {
+            Ok(file) => prepared.push(file),
             Err(error) => {
                 let result = ProfileFileSummary {
                     path: path.clone(),
@@ -404,6 +399,16 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     })
 }
 
+fn prepare_file(path: &Path) -> Result<PreparedFile> {
+    let metadata = fs::metadata(path).with_context(|| format!("inspect {}", path.display()))?;
+    let source = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    Ok(PreparedFile {
+        path: path.to_owned(),
+        bytes: metadata.len(),
+        source,
+    })
+}
+
 pub fn discover_profile_files(
     roots: &[PathBuf],
     includes: &[String],
@@ -413,7 +418,13 @@ pub fn discover_profile_files(
     // order.
     let includes = compile_globs(includes)?;
     let excludes = compile_globs(excludes)?;
-    let corpus_options = ProjectLoadOptions::default();
+    // Folder profiling samples after discovery, so the project admission cap
+    // must not reject a corpus before `--sample` can reduce it. Traversal is
+    // still bounded by `max_visited_entries`.
+    let corpus_options = ProjectLoadOptions {
+        max_files: usize::MAX,
+        ..ProjectLoadOptions::default()
+    };
     let corpus = SourceCorpus::new(&corpus_options)?;
     let mut paths = BTreeMap::<PathBuf, ()>::new();
     for root in roots {

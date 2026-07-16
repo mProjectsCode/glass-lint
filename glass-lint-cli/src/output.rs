@@ -1,9 +1,12 @@
 //! Deterministic report aggregation for stdout.
 
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    path::Path,
+};
 
-use anyhow::Result;
-use console::Style;
+use anyhow::{Result, bail};
+use console::{Style, measure_text_width};
 use glass_lint_core::{
     LintReport, PrettyFile, PrettyOptions, PrettyReports, ProjectReport, RuleMetadata,
 };
@@ -68,32 +71,58 @@ pub fn write_project_report(config: &Config, report: &ProjectReport) -> Result<(
     stdout.flush().map_err(Into::into)
 }
 
+/// Write the human-readable input mode before analysis begins.
+pub fn write_mode(config: &Config, mode: &str, path: &Path) -> Result<()> {
+    if matches!(config.cli.output, Output::Pretty) {
+        let mut stdout = io::BufWriter::new(io::stdout().lock());
+        writeln!(
+            stdout,
+            "mode: {} ({})",
+            mode,
+            visible_text(&path.display().to_string())
+        )?;
+        stdout.flush()?;
+    }
+    Ok(())
+}
+
 /// Kept separate from stdout acquisition so output bytes can be tested exactly.
 fn write_rules_to<W: Write>(config: &Config, metadata: &[RuleMetadata], out: &mut W) -> Result<()> {
     let color = color_enabled(config);
     if matches!(config.cli.output, Output::Json) {
         serde_json::to_writer_pretty(&mut *out, metadata)?;
     } else {
-        writeln!(
-            out,
-            "{}",
+        let mut table = Table::new([
             Style::new()
                 .bold()
                 .cyan()
                 .force_styling(color)
-                .apply_to("ID\tSEVERITY\tDESCRIPTION")
-        )?;
+                .apply_to("ID")
+                .to_string(),
+            Style::new()
+                .bold()
+                .cyan()
+                .force_styling(color)
+                .apply_to("SEVERITY")
+                .to_string(),
+            Style::new()
+                .bold()
+                .cyan()
+                .force_styling(color)
+                .apply_to("DESCRIPTION")
+                .to_string(),
+        ]);
         for rule in metadata {
-            writeln!(
-                out,
-                "{}\t{}\t{}",
-                rule.id,
+            table.push([
+                rule.id.to_string(),
                 severity_style(rule.default_severity)
                     .force_styling(color)
-                    .apply_to(rule.default_severity),
-                rule.description
-            )?;
+                    .apply_to(rule.default_severity)
+                    .to_string(),
+                rule.description.clone(),
+            ])?;
         }
+        table.write(out)?;
     }
     writeln!(out)?;
     Ok(())
@@ -104,6 +133,79 @@ fn severity_style(severity: glass_lint_core::Severity) -> Style {
         glass_lint_core::Severity::Info => Style::new().blue(),
         glass_lint_core::Severity::Warning => Style::new().yellow(),
         glass_lint_core::Severity::Error => Style::new().red(),
+    }
+}
+
+/// Width-aware plain-text table used by human-readable CLI listings.
+struct Table {
+    headers: Vec<String>,
+    rows: Vec<Vec<String>>,
+}
+
+impl Table {
+    fn new<I, S>(headers: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        Self {
+            headers: headers.into_iter().map(Into::into).collect(),
+            rows: Vec::new(),
+        }
+    }
+
+    fn push<I, S>(&mut self, row: I) -> Result<()>
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let row = row.into_iter().map(Into::into).collect::<Vec<_>>();
+        if row.len() != self.headers.len() {
+            bail!(
+                "table row has {} columns; expected {}",
+                row.len(),
+                self.headers.len()
+            );
+        }
+        self.rows.push(row);
+        Ok(())
+    }
+
+    fn write<W: Write>(&self, out: &mut W) -> Result<()> {
+        let mut widths = self
+            .headers
+            .iter()
+            .map(|cell| measure_text_width(cell))
+            .collect::<Vec<_>>();
+        for row in &self.rows {
+            for (width, cell) in widths.iter_mut().zip(row) {
+                *width = (*width).max(measure_text_width(cell));
+            }
+        }
+
+        Self::write_row(&self.headers, &widths, out)?;
+        for row in &self.rows {
+            Self::write_row(row, &widths, out)?;
+        }
+        Ok(())
+    }
+
+    fn write_row<W: Write>(row: &[String], widths: &[usize], out: &mut W) -> Result<()> {
+        for (index, (cell, width)) in row.iter().zip(widths).enumerate() {
+            if index > 0 {
+                write!(out, "  ")?;
+            }
+            write!(out, "{cell}")?;
+            if index + 1 < row.len() {
+                write!(
+                    out,
+                    "{}",
+                    " ".repeat(width.saturating_sub(measure_text_width(cell)))
+                )?;
+            }
+        }
+        writeln!(out)?;
+        Ok(())
     }
 }
 
@@ -127,6 +229,7 @@ fn write_json<W: Write>(files: &[FileOutput], _summary: Summary, out: &mut W) ->
         .map(|file| {
             glass_lint_core::ProjectFileReport::from_lint_report(
                 file.path.clone(),
+                file.source.clone(),
                 file.report.clone(),
             )
         })
@@ -147,32 +250,35 @@ fn write_pretty<W: Write>(
     let options = PrettyOptions {
         max_width: config.cli.pretty_max_width,
         color: color_enabled(config),
+        show_evidence_source: config.cli.show_evidence_source,
     };
     let pretty_files = files
         .iter()
         .map(|file| PrettyFile::new(&file.report, &file.path, &file.source))
         .collect::<Vec<_>>();
-    let rendered = PrettyReports::new(&pretty_files, options).to_string();
-    if !rendered.is_empty() {
-        write!(out, "{rendered}")?;
-    }
+    write_pretty_files(&pretty_files, options, out)?;
 
     let summary_line = format!(
         "{} file(s), {} finding(s), {} parse diagnostic(s)",
         summary.files, summary.findings, summary.parse_diagnostics
     );
-    let style = if summary.findings == 0 && summary.parse_diagnostics == 0 {
-        Style::new().green()
-    } else {
-        Style::new().yellow()
-    };
-    writeln!(
+    write_summary(
+        config,
+        &summary_line,
+        summary.findings == 0 && summary.parse_diagnostics == 0,
         out,
-        "{}",
-        style
-            .force_styling(color_enabled(config))
-            .apply_to(summary_line)
-    )?;
+    )
+}
+
+fn write_pretty_files<W: Write>(
+    pretty_files: &[PrettyFile<'_>],
+    options: PrettyOptions,
+    out: &mut W,
+) -> Result<()> {
+    let rendered = PrettyReports::new(pretty_files, options).to_string();
+    if !rendered.is_empty() {
+        write!(out, "{rendered}")?;
+    }
     Ok(())
 }
 
@@ -198,70 +304,32 @@ fn write_project_report_to<W: Write>(
     Ok(())
 }
 
-#[allow(clippy::too_many_lines)]
 fn write_project_pretty<W: Write>(
     config: &Config,
     report: &ProjectReport,
     summary: ProjectSummary,
     out: &mut W,
 ) -> Result<()> {
-    // Iterate in report order: core has already established deterministic file,
-    // finding, evidence, and diagnostic ordering.
-    let color = color_enabled(config);
-    for file in &report.files {
-        for finding in &file.findings {
-            writeln!(
-                out,
-                "{}[{}] {}",
-                Style::new()
-                    .yellow()
-                    .force_styling(color)
-                    .apply_to(finding.severity),
-                Style::new()
-                    .cyan()
-                    .force_styling(color)
-                    .apply_to(finding.rule_id.to_string()),
-                visible_text(&finding.message),
-            )?;
-            writeln!(
-                out,
-                "  {}:{}:{}",
-                visible_text(finding.location.path.as_str()),
-                finding.location.range.start.line,
-                finding.location.range.start.column
-            )?;
-            for evidence in &finding.evidence {
-                if let Some(location) = &evidence.location {
-                    writeln!(
-                        out,
-                        "    {}:{}:{} - {}",
-                        visible_text(location.path.as_str()),
-                        location.range.start.line,
-                        location.range.start.column,
-                        visible_text(&evidence.message)
-                    )?;
-                }
-            }
-        }
-    }
-    for file in &report.files {
-        for diagnostic in &file.parse_diagnostics {
-            writeln!(
-                out,
-                "diagnostic [parse] {} ({}:{}:{})",
-                visible_text(&diagnostic.message),
-                visible_text(file.path.as_str()),
-                diagnostic
-                    .range
-                    .as_ref()
-                    .map_or(0, |range| range.start.line),
-                diagnostic
-                    .range
-                    .as_ref()
-                    .map_or(0, |range| range.start.column)
-            )?;
-        }
-    }
+    let files = report
+        .files
+        .iter()
+        .map(|file| FileOutput {
+            path: file.path.to_string(),
+            report: file.to_lint_report(env!("CARGO_PKG_VERSION")),
+            source: file.source.clone(),
+        })
+        .collect::<Vec<_>>();
+    let options = PrettyOptions {
+        max_width: config.cli.pretty_max_width,
+        color: color_enabled(config),
+        show_evidence_source: config.cli.show_evidence_source,
+    };
+    let pretty_files = files
+        .iter()
+        .map(|file| PrettyFile::new(&file.report, &file.path, &file.source))
+        .collect::<Vec<_>>();
+    write_pretty_files(&pretty_files, options, out)?;
+
     for diagnostic in &report.diagnostics {
         if let Some(location) = &diagnostic.location {
             writeln!(
@@ -290,24 +358,37 @@ fn write_project_pretty<W: Write>(
         summary.project_diagnostics,
         report.completion
     );
-    let style = if summary.findings == 0
-        && summary.parse_diagnostics == 0
-        && summary.project_diagnostics == 0
-    {
-        Style::new().green()
-    } else {
-        Style::new().yellow()
-    };
-    writeln!(out, "{}", style.force_styling(color).apply_to(summary_line))?;
-    writeln!(
-        out,
-        "operations: {} file(s), {} request(s), {} edge(s), {} export(s), {} effect projection(s), {} evidence item(s)",
-        report.operations.files,
+    let clean =
+        summary.findings == 0 && summary.parse_diagnostics == 0 && summary.project_diagnostics == 0;
+    let summary_line = format!(
+        "{summary_line}, operations: {} request(s), {} edge(s), {} export(s), {} effect projection(s), {} evidence item(s)",
         report.operations.requests,
         report.operations.edges,
         report.operations.exports,
         report.operations.effect_projections,
         report.operations.evidence,
+    );
+    write_summary(config, &summary_line, clean, out)?;
+    Ok(())
+}
+
+fn write_summary<W: Write>(
+    config: &Config,
+    summary_line: &str,
+    clean: bool,
+    out: &mut W,
+) -> Result<()> {
+    let style = if clean {
+        Style::new().green()
+    } else {
+        Style::new().yellow()
+    };
+    writeln!(
+        out,
+        "{}",
+        style
+            .force_styling(color_enabled(config))
+            .apply_to(summary_line)
     )?;
     Ok(())
 }
@@ -328,4 +409,23 @@ fn visible_text(value: &str) -> String {
             ch => ch.to_string(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Table;
+
+    #[test]
+    fn table_aligns_columns_without_padding_the_last_column() {
+        let mut table = Table::new(["ID", "SEVERITY", "DESCRIPTION"]);
+        table.push(["x", "warning", "short"]).unwrap();
+
+        let mut output = Vec::new();
+        table.write(&mut output).unwrap();
+
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "ID  SEVERITY  DESCRIPTION\nx   warning   short\n"
+        );
+    }
 }

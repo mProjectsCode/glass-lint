@@ -20,12 +20,15 @@ pub struct PrettyOptions {
     pub max_width: usize,
     /// Whether ANSI colors are enabled.
     pub color: bool,
+    /// Whether evidence rows include source excerpts and carets.
+    pub show_evidence_source: bool,
 }
 impl Default for PrettyOptions {
     fn default() -> Self {
         Self {
             max_width: 160,
             color: false,
+            show_evidence_source: true,
         }
     }
 }
@@ -343,8 +346,10 @@ fn write_rule_groups(
                 "{}",
                 PrettyReport::style(options.color, Style::new().dim(), message)
             )?;
-            PrettyReport::new(file.report, file.filename, file.source, options)
-                .excerpt(range, 4, f)?;
+            if evidence.is_none() || options.show_evidence_source {
+                PrettyReport::new(file.report, file.filename, file.source, options)
+                    .excerpt(range, 4, f)?;
+            }
         }
     }
 

@@ -1,0 +1,5 @@
+# Human-readable CLI output with the most detailed telemetry on stderr.
+version = 1
+
+[cli]
+verbosity = "trace"

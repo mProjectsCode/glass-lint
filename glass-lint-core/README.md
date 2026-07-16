@@ -1,22 +1,20 @@
 # glass-lint-core
 
-`glass-lint-core` is the provider-neutral JavaScript and TypeScript analysis
-engine behind Glass Lint. It parses JavaScript/JSX and ordinary TypeScript,
-builds shared lexical and semantic indexes, executes validated declarative
-matchers, and returns deterministic
-structured reports.
+`glass-lint-core` is the provider-neutral analysis engine. It parses one source
+file once, builds shared lexical and semantic facts, runs validated matchers,
+and produces deterministic reports. It also owns the bounded cross-file model
+used to link imports, exports, and supported call flow.
 
-This crate intentionally contains no Obsidian or JavaScript-platform rule
-policy. Provider crates supply catalogs of rules through the public extension
-API.
+The crate contains no host-specific rule policy. Callers provide a catalog of
+rules and an explicit host environment.
 
-## Basic usage
+## Analyze one file
 
-Build a rule with a local ID, then place it in a namespaced catalog:
+Rules use local IDs inside a namespaced `RuleCatalog`:
 
 ```rust
-use glass_lint_core::{Environment, Linter, RuleCatalog};
 use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
+use glass_lint_core::{Environment, Linter, RuleCatalog};
 
 let rule = Rule::builder("network.request")
     .label("Makes a network request")
@@ -24,106 +22,81 @@ let rule = Rule::builder("network.request")
     .severity(Severity::Warning)
     .confidence(Confidence::High)
     .matcher(CallMatcher::global("fetch"))
-    .build()
-    .expect("valid rule");
+    .build()?;
 
 let mut environment = Environment::default();
-environment.add_global("fetch").expect("valid global");
-environment
-    .add_global_object("window")
-    .expect("valid global object");
+environment.add_global("fetch")?;
 
-let catalog = RuleCatalog::with_environment("example", vec![rule], environment)
-    .expect("valid catalog");
+let catalog = RuleCatalog::with_environment("example", vec![rule], environment)?;
 let report = Linter::new(catalog).lint("fetch('/data');", "main.js");
 
 assert_eq!(report.findings[0].rule_id.as_str(), "example:network.request");
 ```
 
-`Linter::new` enables every rule in a catalog. Use `Linter::with_rules` with
-parsed `RuleId` values to enable a validated subset.
+`Linter::new` enables every rule in a catalog. `Linter::with_rules` enables an
+exact validated set of `RuleId` values, and `Linter::with_confidence` selects a
+confidence level. `Linter::combine_with_environment` combines existing
+linters into one analysis pass while preserving their enabled rule sets.
 
-Use `Linter::combine_with_environment` to run several provider profiles in one
-parse and semantic-analysis pass. The combined linter preserves the enabled
-rule selection from each input linter, permits provider catalogs to reuse local
-rule names, rejects duplicate namespaced IDs, and applies the explicit shared
-host environment to every rule.
+## Matching model
+
+Strict matchers prove what a value refers to instead of matching spelling
+alone. The public rule API covers:
+
+- global and module-provenance calls and constructors;
+- rooted, module, returned-object, and instance member behavior;
+- imports and parsed string literals;
+- static string, object-key, and rooted-expression arguments; and
+- bounded object lifecycles and connected source-to-sink flow.
+
+Argument constraints use `.arg(index, ValueMatcher::...)`.
+`ValueMatcher::any_value()` accepts a dynamic value;
+`ValueMatcher::static_string()` requires a proven static string. APIs with
+`heuristic` in their name deliberately opt into weaker syntactic evidence.
+
+Rules are normalized and validated when built, then compiled once with their
+catalog. Unsupported, ambiguous, dynamic, or budget-exhausted analysis does not
+become a strict match.
 
 ## Host environments
 
-`Environment::default()` contains only host-independent ECMAScript globals,
-including `Math`, `Function`, `eval`, and the standard `globalThis` global
-object. Strict global and rooted provenance does not treat arbitrary unbound
-names as host APIs.
+`Environment::default()` includes host-independent ECMAScript globals such as
+`Math`, `Function`, and `eval`. Add runtime bindings explicitly with
+`add_global` or `add_globals`.
 
-Providers add their own global bindings and global-object aliases before
-constructing a catalog. Environments are additive: call `add_global`,
-`add_globals`, `add_global_object`, or `add_global_object_with_members`, or
-merge another configuration with `extend`. An unrestricted global-object
-alias maps a direct property to global callable identity when that property is
-also a configured global binding. A restricted global object only promotes
-its explicitly listed members, which is useful for foreign realms that do not
-inherit current-realm host injections.
+Global-object aliases need a little more care:
 
-For example, an Obsidian-oriented caller can extend a browser/Electron
-environment with a restricted `activeWindow`, then pass it to a provider's
-`recommended_linter_with_environment` or `heuristic_linter_with_environment`
-constructor.
+- `add_global_object` models an unrestricted alias of the current global
+  object.
+- `add_global_object_with_members` exposes only listed members, which is useful
+  for another realm or a partially known host object.
+- `extend` merges another environment configuration.
 
-```rust
-environment
-    .add_global_object_with_members("activeWindow", ["eval", "fetch"])
-    .expect("valid global object and members");
-```
+Unconfigured unbound names are not treated as host APIs.
 
-## Matcher families
+## Cross-file analysis
 
-The `glass_lint_core::rules` module exports builders for:
-
-- global and module-provenance calls, including proven global-object access,
-  aliases, bind, call, and statically unpackable apply forms;
-- rooted, module, and explicitly heuristic member calls and reads;
-- global, module, and heuristic constructors and classes;
-- imports and parsed string literals;
-- static string, object-key, and rooted-expression argument constraints;
-- returned-object and instance-member behavior; and
-- bounded object-lifecycle flows declared with `ObjectFlowMatcher`, explicit
-  `FlowCondition`, and `FlowCompletion` values.
-
-Argument constraints use one vocabulary: `.arg(index, ValueMatcher::...)`.
-`ValueMatcher::any_value()` intentionally accepts dynamic values, while
-`ValueMatcher::static_string()` requires a proven static string.
-
-Prefer provenance-aware matchers. The APIs containing `heuristic` in their
-names deliberately require callers to opt in to weaker syntactic matching.
-Rules are normalized and validated when built, then compiled once when a
-catalog is constructed.
+`ProjectSession` accepts owned `SourceFile` values, exposes typed
+`ResolutionRequest` records, and consumes `ResolutionResult` values supplied by
+the caller. It never performs filesystem access or module resolution itself.
+Once resolutions are supplied, it links the supported module graph and returns
+a `ProjectReport` with deterministic findings, diagnostics, completion state,
+and operation counts.
 
 ## Reports and limits
 
-`Linter::lint` accepts one source string and filename; `.ts`, `.cts`, and `.mts`
-select the TypeScript parser, while `.js`, `.cjs`, and `.mjs` select JavaScript.
-Unknown filenames retain the historical JavaScript fallback. TypeScript
-is normalized in memory with fixed SWC defaults and is not type-checked or
-configured from `tsconfig.json`. A `LintReport` contains
-schema and tool versions, sorted findings, bounded evidence, and parse
-diagnostics. Finding locations use one-based Unicode display columns, and each
-finding contains only the evidence occurrences at its location.
+`Linter::lint` selects TypeScript for `.ts`, `.cts`, and `.mts`, and JavaScript
+for `.js`, `.cjs`, and `.mjs`. TypeScript is normalized with fixed settings; it
+is not type-checked or configured from `tsconfig.json`.
 
-Sources larger than `MAX_SOURCE_BYTES` (8 MiB) return a structured
-parse diagnostic. Parsing stops after the first parser diagnostic. Each rule
-retains at most `Rule::EVIDENCE_LIMIT` (16) source occurrences so report size
-remains bounded.
+`LintReport` contains versioned, sorted findings and structured parse
+diagnostics. Locations use one-based Unicode display columns. Evidence and
+output are bounded; sources larger than `MAX_SOURCE_BYTES` (8 MiB) return a
+parse diagnostic rather than being analyzed.
 
-See the repository [architecture](../ARCHITECTURE.md) for the internal
-pipeline and [testing guide](../TESTING.md) for matcher test expectations.
+`PrettyReport`, `PrettyReports`, and `PrettyOptions` render bounded human
+output without changing the structured report. `CoreConfig` applies resource
+limits and exact rule selection to an existing linter.
 
-`CoreConfig` is the provider-neutral analysis configuration. Its optional
-`rules` field preserves a provider profile when omitted, disables all rules
-when empty, or selects an exact validated set. Apply it through
-`Linter::configured` after constructing a provider catalog. `PrettyReport` and
-`PrettyOptions` provide bounded human rendering, including optional ANSI
-styling and terminal display-width handling. Human output is grouped by rule;
-each rule's evidence is sorted by file and source location, and every row
-retains a copyable `path:line:column`. Presentation data is not added to
-`LintReport`.
+See the repository [architecture](../ARCHITECTURE.md) for the internal pipeline
+and [testing guide](../TESTING.md) for matcher test expectations.

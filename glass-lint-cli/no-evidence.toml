@@ -1,0 +1,5 @@
+# Human-readable output without source excerpts for evidence rows.
+version = 1
+
+[cli]
+show_evidence_source = false

@@ -1,52 +1,73 @@
 # glass-lint-cli
 
-`glass-lint-cli` provides the workspace's `glass-lint` command:
+`glass-lint-cli` owns the `glass-lint` command. It selects a rule catalog,
+loads configuration, runs single-file or project analysis, renders the result,
+and maps outcomes to process exit statuses.
 
-- `glass-lint` analyzes JavaScript or TypeScript files and directories and prints reports.
-
-The harness executable is provided by the separate `glass-lint-harness-cli`
-package.
-
-The package is a front end. Reusable analysis belongs in `glass-lint-core` and
-provider crates; reusable case execution belongs in `glass-lint-harness`.
-
-## `glass-lint`
+## Commands
 
 ```sh
 cargo run -p glass-lint-cli --bin glass-lint -- rules
-cargo run -p glass-lint-cli --bin glass-lint -- check path/to/main.js
-cargo run -p glass-lint-cli --bin glass-lint -- snippet path/to/snippet.js
+cargo run -p glass-lint-cli --bin glass-lint -- check path/to/project
+cargo run -p glass-lint-cli --bin glass-lint -- snippet path/to/source.js
 ```
 
-Use `--config PATH` or `--config-json JSON`; without either, configuration is
-discovered from the current directory. `check` accepts a source entry,
-directory, or explicit `tsconfig.json`; it constructs one bounded project,
-follows admitted internal imports with Oxc, and excludes dependencies,
-declarations, output directories, and outside-boundary targets. `snippet`
-remains a single-file operation. Policy lives in the versioned `[core]` and
-`[cli]` sections.
+- `rules` lists metadata for the selected provider and profile.
+- `check` analyzes an entry file, directory, or explicit `tsconfig.json` as one
+  bounded project, including admitted internal imports.
+- `snippet` analyzes exactly one source file without cross-file linking.
 
-The default Obsidian provider runs both generic `js:*` rules and
-Obsidian-specific `obsidian:*` rules in one analysis pass using the Obsidian
-host environment. The `heuristic` profile enables all rules; set 
-`cli.profile = "recommended"` to only include high-confidence discovery rules.
+## Configuration
 
-Pretty output is the default; JSON uses a named versioned envelope. Results are
-on stdout, while operational errors and telemetry are on stderr. Exit status is
-`0` below the threshold, `1` for findings/parse diagnostics meeting it, and
-`2` for operational errors.
+Pass a TOML or JSON file with `--config PATH`, or inline JSON with
+`--config-json JSON`. Without either option, the command looks for
+`glass-lint.toml` or `glass-lint.json` in the current directory.
 
-Pretty output and tracing use color by default. Set `cli.color = false` in
-`glass-lint.toml` (or `"color": false` in inline JSON) for plain output. JSON
-output is always uncolored.
+Configuration is versioned and rejects unknown fields:
 
-## `glass-lint-harness`
+```toml
+version = 1
 
-```sh
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- verify tests/e2e
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
-  report tests/e2e --format json
+[core]
+rules = ["obsidian:network.request"]
+
+[cli]
+provider = "obsidian"
+profile = "recommended"
+fail_on = "warning"
+output = "pretty"
+verbosity = "quiet"
+color = true
+pretty_max_width = 120
+show_evidence_source = true
 ```
 
-See the [`glass-lint-harness` README](../glass-lint-harness/) for its command
-overview and [TESTING.md](../TESTING.md) for authoring cases.
+The `core.rules` field selects exact rule IDs. When omitted, the chosen profile
+is preserved; an empty list disables all rules. The CLI also accepts project
+budgets through `max_bytes`, `max_project_bytes`, and `max_visited_entries`.
+
+The default provider is `obsidian`, which runs both `js:*` and `obsidian:*`
+rules in the Obsidian host environment. The default profile is `heuristic`;
+choose `recommended` for high-confidence rules only. The standalone `js`
+provider runs only `js:*` rules.
+
+## Output and exit status
+
+Pretty output is the default. Findings are grouped by rule, and evidence is
+sorted by file and source location. Set `show_evidence_source = false` to keep
+evidence locations and messages while omitting source excerpts and carets.
+
+Set `output = "json"` for the versioned structured report. JSON is always
+uncolored. Pretty output and tracing use color by default; set `color = false`
+for plain text. Reports go to stdout, while operational errors and telemetry go
+to stderr.
+
+The process exits with:
+
+- `0` when analysis succeeds and no finding reaches `fail_on`;
+- `1` when a finding reaches the threshold, parsing fails, or project analysis
+  is partial; and
+- `2` for invalid arguments, invalid configuration, or operational errors.
+
+`fail_on` accepts `info`, `warning`, `error`, and `never`; its default is
+`error`.

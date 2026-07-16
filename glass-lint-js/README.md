@@ -1,53 +1,50 @@
 # glass-lint-js
 
-`glass-lint-js` is the Glass Lint provider for generic JavaScript runtime
-capabilities. Its catalog covers browser, DOM, network, Node.js, Electron,
-cryptography, archive, and dynamic-code behavior.
+`glass-lint-js` provides rules for capabilities available in common JavaScript
+runtimes. Its `js:` catalog covers browser and DOM APIs, networking, Node.js,
+Electron, cryptography, archives, storage, and dynamic code execution.
 
-The crate contains rule policy only. Parsing, scope analysis, provenance,
-value flow, matcher execution, and report construction live in
-[`glass-lint-core`](../glass-lint-core/).
+The crate owns the rule definitions, profile membership, default runtime
+environment, and disclosure mapping for that namespace.
 
-## Profiles
+## Choose a profile
 
 ```rust
-let precise = glass_lint_js::recommended_linter();
-let complete = glass_lint_js::heuristic_linter();
-
-let report = precise.lint(source, "bundle.js");
+let linter = glass_lint_js::recommended_linter();
+let report = linter.lint(source, "bundle.js");
 ```
 
-- `recommended_linter()` enables rules classified with high-confidence
-  matching mechanisms.
-- `heuristic_linter()` enables the entire JavaScript catalog, including broad
-  literal and syntactic discovery rules.
+`recommended_linter()` selects high-confidence rules intended for normal use.
+`heuristic_linter()` selects the complete catalog, including broader literal
+and syntactic discovery. `rule_catalog()` returns serializable metadata for
+every rule, regardless of profile.
 
-Call `rule_catalog()` to obtain serializable metadata for every rule. Rule IDs
-are namespaced with `js:`, such as `js:network.request`.
+Rule IDs are namespaced with `js:`, for example `js:network.request`.
 
-## Runtime environment
+## Describe the runtime
 
-`default_environment()` describes the browser, Node.js, and Electron globals
-used by this combined catalog. Extend it before constructing a linter when the
-runtime injects additional globals:
+`default_environment()` models the combined browser, Node.js, and Electron
+globals expected by this catalog. If the analyzed host injects more names,
+extend that environment before constructing the linter:
 
 ```rust
 let mut environment = glass_lint_js::default_environment();
+environment.add_global("customRuntimeApi")?;
 environment.add_global_object_with_members("activeWindow", ["eval", "fetch"])?;
+
 let linter = glass_lint_js::recommended_linter_with_environment(environment);
 ```
 
-Use `add_global` for an ordinary host binding and `add_global_object` for an
-unrestricted alias of the current realm's global object. Use
-`add_global_object_with_members` for a window-like object from another realm
-that should expose only explicitly proven global identities. The no-argument
-linter constructors use the provider default.
+Use `add_global_object` for an unrestricted current-realm global alias. Use
+`add_global_object_with_members` when another realm should expose only a known
+set of identities. The no-argument constructors use the crate's default
+environment.
 
-## Disclosures
+## Derive disclosures
 
-`disclosures_for_report(&report)` maps detected JavaScript capabilities to a
-deterministic set of disclosure identifiers. The provider owns this mapping;
-core reports remain policy-neutral.
+`disclosures_for_report(&report)` returns a sorted set of stable disclosure
+identifiers implied by `js:` findings. Findings from other namespaces are
+ignored.
 
-For rule authoring, fixture placement, and validation, see the repository
-[contributing guide](../CONTRIBUTING.md) and [testing guide](../TESTING.md).
+Rule fixtures live beside their implementations. See the repository
+[testing guide](../TESTING.md) for authoring and validation conventions.

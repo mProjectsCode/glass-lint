@@ -51,6 +51,7 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
             PrettyOptions {
                 max_width: 80,
                 color: false,
+                show_evidence_source: true,
             },
         )
         .to_string(),
@@ -70,6 +71,49 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
 }
 
 #[test]
+fn can_hide_source_excerpts_for_evidence_rows() {
+    let range = SourceRange {
+        start: Position { line: 1, column: 1 },
+        end: Position { line: 1, column: 6 },
+    };
+    let report = LintReport {
+        schema_version: 3,
+        tool_version: "test".into(),
+        findings: vec![Finding {
+            rule_id: RuleId::parse("test:fetch").unwrap(),
+            message_id: "detected".into(),
+            message: "Uses fetch".into(),
+            severity: Severity::Warning,
+            range: range.clone(),
+            evidence: vec![Evidence {
+                message: "call of fetch".into(),
+                count: 1,
+                evidence_truncated: false,
+                range: Some(range),
+                source: Some("fetch('x')".into()),
+            }],
+        }],
+        parse_diagnostics: vec![],
+    };
+
+    let rendered = PrettyReport::new(
+        &report,
+        "main.js",
+        "fetch('x');",
+        PrettyOptions {
+            show_evidence_source: false,
+            ..PrettyOptions::default()
+        },
+    )
+    .to_string();
+
+    assert_eq!(
+        rendered,
+        "warning[test:fetch] Uses fetch\n  main.js:1:1 - evidence: call of fetch\n"
+    );
+}
+
+#[test]
 fn renders_empty_reports_without_extra_output() {
     let report = LintReport {
         schema_version: 3,
@@ -85,6 +129,7 @@ fn renders_empty_reports_without_extra_output() {
             PrettyOptions {
                 max_width: 20,
                 color: false,
+                show_evidence_source: true,
             },
         )
         .to_string(),
@@ -148,6 +193,7 @@ fn bounds_long_excerpt() {
         PrettyOptions {
             max_width: 20,
             color: false,
+            show_evidence_source: true,
         },
     )
     .to_string();
@@ -186,6 +232,7 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
         PrettyOptions {
             max_width: 14,
             color: false,
+            show_evidence_source: true,
         },
     )
     .to_string();
@@ -251,6 +298,7 @@ fn renders_colored_findings_when_enabled() {
         PrettyOptions {
             max_width: 20,
             color: true,
+            show_evidence_source: true,
         },
     )
     .to_string();

@@ -27,6 +27,7 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
             if !path.is_file() {
                 bail!("snippet path is not a file: {}", path.display())
             }
+            crate::output::write_mode(config, "single file", &path)?;
             let options = ProjectLoadOptions {
                 max_source_bytes: config.cli.max_bytes,
                 max_project_source_bytes: config.cli.max_project_bytes,
@@ -51,13 +52,13 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
 }
 
 fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Result<bool> {
-    let selection = if path.is_dir() {
-        ProjectSelection::directory(path.to_path_buf())
-    } else if path.file_name().is_some_and(|name| name == "tsconfig.json") {
-        ProjectSelection::tsconfig(path.to_path_buf())
-    } else {
-        ProjectSelection::entry(path.to_path_buf())
+    let selection = project_selection(path);
+    let (mode, mode_path) = match &selection {
+        ProjectSelection::Entry(path) => ("single file", path.as_path()),
+        ProjectSelection::Directory(path) => ("folder", path.as_path()),
+        ProjectSelection::TsConfig(path) => ("tsconfig", path.as_path()),
     };
+    crate::output::write_mode(config, mode, mode_path)?;
     let options = ProjectLoadOptions {
         max_source_bytes: config.cli.max_bytes,
         max_project_source_bytes: config.cli.max_project_bytes,
@@ -83,6 +84,20 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
     crate::output::write_project_report(config, &report)?;
     tracing::info!(target: "glass_lint::cli", files = report.files.len(), "project command completed");
     Ok(failed)
+}
+
+fn project_selection(path: &std::path::Path) -> ProjectSelection {
+    if path.is_dir() {
+        let tsconfig = path.join("tsconfig.json");
+        if tsconfig.is_file() {
+            return ProjectSelection::tsconfig(tsconfig);
+        }
+        ProjectSelection::directory(path.to_path_buf())
+    } else if path.file_name().is_some_and(|name| name == "tsconfig.json") {
+        ProjectSelection::tsconfig(path.to_path_buf())
+    } else {
+        ProjectSelection::entry(path.to_path_buf())
+    }
 }
 
 fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<bool> {
@@ -140,7 +155,30 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
 mod tests {
     use std::fs;
 
-    use glass_lint_project::{ProjectLoadOptions, SourceCorpus};
+    use glass_lint_project::{ProjectLoadOptions, ProjectSelection, SourceCorpus};
+
+    use super::project_selection;
+
+    #[test]
+    fn directory_selection_prefers_local_tsconfig() {
+        let root =
+            std::env::temp_dir().join(format!("glass-lint-cli-selection-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+
+        assert_eq!(
+            project_selection(&root),
+            ProjectSelection::Directory(root.clone())
+        );
+
+        let tsconfig = root.join("tsconfig.json");
+        fs::write(&tsconfig, "{}").unwrap();
+        assert_eq!(
+            project_selection(&root),
+            ProjectSelection::TsConfig(tsconfig)
+        );
+
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn discovers_sorted_runtime_javascript_and_typescript_files() {

@@ -1,8 +1,8 @@
 # ESLint Obsidian adapter
 
-This external harness adapter runs `eslint-plugin-obsidianmd` and translates
-its diagnostics into the Glass Lint harness protocol. It exists for
-conformance comparisons; it is not required to build or run Glass Lint.
+This adapter runs `eslint-plugin-obsidianmd` and translates its diagnostics
+into the Glass Lint harness protocol. It exists for conformance comparisons;
+normal workspace builds do not need it.
 
 Install dependencies from the adapter directory:
 
@@ -20,10 +20,10 @@ cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   verify tests/e2e
 ```
 
-The harness starts a fresh process for each case, isolating the plugin's
-manifest cache. The adapter uses `ESLint.lintText` because the harness consumes
-structured diagnostics. Expectations remain compatible with RuleTester rule
-IDs and message IDs.
+Each invocation reads one protocol request from stdin, analyzes its source with
+`ESLint.lintText`, and writes one protocol response to stdout. A new process is
+used for every case, which isolates the plugin's manifest cache. Expectations
+remain compatible with RuleTester rule IDs and message IDs.
 
 Run `make compare` to generate the repository comparison report. See
 [`TESTING.md`](../../TESTING.md) for harness directives and external adapter

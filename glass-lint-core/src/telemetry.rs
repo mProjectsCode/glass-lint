@@ -17,13 +17,20 @@ pub enum TelemetryLevel {
     Trace,
 }
 impl TelemetryLevel {
-    fn filter(self) -> &'static str {
-        match self {
+    /// Keep verbose output scoped to Glass Lint. Dependencies such as
+    /// `oxc_resolver` have useful diagnostics, but their debug spans include
+    /// implementation details (notably the complete `ResolveOptions`) that
+    /// are not actionable at the CLI.
+    fn filter(self) -> String {
+        let level = match self {
             Self::Quiet => "warn",
             Self::Normal => "info",
             Self::Verbose => "debug",
             Self::Trace => "trace",
-        }
+        };
+        format!(
+            "warn,glass_lint={level},glass_lint_core={level},glass_lint_project={level},glass_lint_cli={level},glass_lint_harness={level}"
+        )
     }
 }
 
@@ -45,13 +52,11 @@ where
         .with_target(true)
         .with_ansi(color)
         .without_time()
-        .with_span_events(
-            if matches!(level, TelemetryLevel::Verbose | TelemetryLevel::Trace) {
-                tracing_subscriber::fmt::format::FmtSpan::CLOSE
-            } else {
-                tracing_subscriber::fmt::format::FmtSpan::NONE
-            },
-        )
+        .with_span_events(if matches!(level, TelemetryLevel::Trace) {
+            tracing_subscriber::fmt::format::FmtSpan::CLOSE
+        } else {
+            tracing_subscriber::fmt::format::FmtSpan::NONE
+        })
 }
 
 /// Build the shared formatter with an explicitly supplied output writer.
@@ -81,13 +86,11 @@ where
         .with_target(true)
         .with_ansi(color)
         .without_time()
-        .with_span_events(
-            if matches!(level, TelemetryLevel::Verbose | TelemetryLevel::Trace) {
-                tracing_subscriber::fmt::format::FmtSpan::CLOSE
-            } else {
-                tracing_subscriber::fmt::format::FmtSpan::NONE
-            },
-        )
+        .with_span_events(if matches!(level, TelemetryLevel::Trace) {
+            tracing_subscriber::fmt::format::FmtSpan::CLOSE
+        } else {
+            tracing_subscriber::fmt::format::FmtSpan::NONE
+        })
 }
 
 /// Install normal telemetry output on stderr.

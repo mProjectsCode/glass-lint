@@ -74,11 +74,23 @@ impl LocalModuleModel {
         &self.facts
     }
 
+    pub(crate) fn fact_count(&self) -> usize {
+        self.facts.stream().facts().len()
+    }
+
+    pub(crate) fn request_count(&self) -> usize {
+        self.facts.interface().requests().count()
+    }
+
+    pub(crate) fn export_count(&self) -> usize {
+        self.facts.interface().exports().count()
+    }
+
     pub(in crate::analysis) fn effects(&self) -> &flow::effect::FunctionEffects {
         &self.effects
     }
 
-    pub(in crate::analysis) fn semantic_budget_exhausted(&self) -> bool {
+    pub(crate) fn semantic_budget_exhausted(&self) -> bool {
         self.semantic_budget_exhausted
     }
 

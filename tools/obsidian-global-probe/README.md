@@ -1,18 +1,18 @@
 # Obsidian plugin global probe
 
 This development-only probe inventories globals visible to a loaded Obsidian
-plugin. It is intended to validate the default `Environment` in
-`glass-lint-obsidian` and reveal additional global-object aliases such as
-`activeWindow`, including aliases associated with pop-out windows.
+plugin. It helps verify which unqualified bindings and global-object aliases,
+including `activeWindow`, are actually available in main and pop-out windows.
 
 In addition to enumerating global-object properties, the plugin checks every
 valid identifier exported by the `obsidian` module using unqualified binding
 resolution. This discovers global lexical bindings that cannot be found with
 `Object.getOwnPropertyNames(globalThis)`.
 
-The report contains property names, descriptor flags, value types/tags, and
-object-identity relationships. It does not serialize global values, vault
-paths, filenames, or note content. Arbitrary property getters are not invoked.
+The report contains property names, descriptor flags, value types and tags,
+and object-identity relationships. It does not serialize global values, vault
+paths, filenames, or note content. It does not invoke arbitrary property
+getters.
 
 ## Run it as a plugin
 

@@ -174,8 +174,9 @@ impl Linter {
     /// primary range.
     #[must_use]
     pub fn lint(&self, source: &str, filename: &str) -> LintReport {
-        let _span = tracing::info_span!(target: "glass_lint::lint", "lint", filename, source_bytes = source.len(), selected_rules = self.enabled.len()).entered();
-        tracing::debug!(target: "glass_lint::parse", "parsing source");
+        let _span = tracing::info_span!(target: "glass_lint::lint", "lint", filename).entered();
+        tracing::info!(target: "glass_lint::lint", source_bytes = source.len(), selected_rules = self.enabled.len(), "lint started");
+        tracing::debug!(target: "glass_lint::parse", stage = "parse", "stage started");
 
         let language = SourceLanguage::from_filename(filename);
         let parsed = match crate::parse::parse_with_language_and_depth(
@@ -186,7 +187,7 @@ impl Linter {
         ) {
             Ok(parsed) => parsed,
             Err(error) => {
-                tracing::debug!(target: "glass_lint::parse", diagnostics = 1, "parse failed");
+                tracing::debug!(target: "glass_lint::parse", stage = "parse", diagnostics = 1, "stage finished");
 
                 return LintReport {
                     schema_version: REPORT_VERSION,
@@ -196,6 +197,7 @@ impl Linter {
                 };
             }
         };
+        tracing::debug!(target: "glass_lint::parse", stage = "parse", diagnostics = 0, "stage finished");
 
         let classifications = {
             let _span = tracing::debug_span!(target: "glass_lint::semantic", "semantic").entered();
@@ -204,6 +206,14 @@ impl Linter {
                 &parsed.program,
                 self.catalog.environment(),
                 &self.limits,
+            );
+            tracing::debug!(
+                target: "glass_lint::semantic",
+                facts = local.fact_count(),
+                requests = local.request_count(),
+                exports = local.export_count(),
+                valid = !local.semantic_budget_exhausted(),
+                "stage finished"
             );
 
             let project = ProjectSemanticModel::single_with_limits(
@@ -223,6 +233,7 @@ impl Linter {
 
         let mut findings = {
             let _span = tracing::debug_span!(target: "glass_lint::matching", "matching").entered();
+            tracing::debug!(target: "glass_lint::matching", rules = self.enabled.len(), "stage started");
             classifications
                 .get(&ModuleId(0))
                 .map_or_else(Vec::new, |classification| {
@@ -243,8 +254,8 @@ impl Linter {
                 ))
         });
 
-        tracing::debug!(target: "glass_lint::lint", findings = findings.len(), "report assembled");
-        tracing::info!(target: "glass_lint::lint", findings = findings.len(), parse_diagnostics = 0, "lint complete");
+        tracing::debug!(target: "glass_lint::matching", findings = findings.len(), "stage finished");
+        tracing::info!(target: "glass_lint::lint", findings = findings.len(), parse_diagnostics = 0, "lint finished");
 
         LintReport {
             schema_version: REPORT_VERSION,
@@ -258,6 +269,12 @@ impl Linter {
     /// resolution results.  Filesystem loading belongs to the project crate.
     pub fn lint_project(&self, input: ProjectInput) -> Result<ProjectReport, ProjectInputError> {
         let input = input.validate()?;
+        tracing::info!(
+            target: "glass_lint::project",
+            files = input.sources.len(),
+            resolutions = input.resolutions.len(),
+            "project analysis started"
+        );
         let mut session = self.begin_project(input.root)?;
         for source in input.sources {
             session.add_source(source)?;
@@ -302,7 +319,8 @@ impl Linter {
                 (
                     path.clone(),
                     crate::ProjectFileReport {
-                        path: path.into(),
+                        path: path.clone().into(),
+                        source: sources.get(&path).cloned().unwrap_or_default(),
                         findings: Vec::new(),
                         parse_diagnostics: vec![diagnostic],
                     },
@@ -310,10 +328,14 @@ impl Linter {
             })
             .collect::<BTreeMap<_, _>>();
 
+        tracing::debug!(target: "glass_lint::project::link", modules = analyzed.len(), resolutions = input.resolutions.len(), "stage started");
         let linking_start = std::time::Instant::now();
         let project = ProjectSemanticModel::link_with_limits(input, analyzed, &self.limits)?;
         let linking_elapsed = linking_start.elapsed();
+        let link_counts = project.operation_counts(0);
+        tracing::info!(target: "glass_lint::project::link", files = link_counts.files, requests = link_counts.requests, edges = link_counts.edges, elapsed = ?linking_elapsed, "stage finished");
         let matching_start = std::time::Instant::now();
+        tracing::debug!(target: "glass_lint::project::matching", rules = self.enabled.len(), "stage started");
         let classifications = project.classify_with_evidence_limit(
             self.catalog.compiled(),
             &self.catalog.rules,
@@ -369,6 +391,9 @@ impl Linter {
             },
         };
 
+        let summary = report.summary();
+        tracing::info!(target: "glass_lint::project::matching", files = report.operations.files, findings = summary.findings, evidence = report.operations.evidence, diagnostics = report.diagnostics.len() + summary.parse_diagnostics, elapsed = ?matching_elapsed, "stage finished");
+
         Ok((report, linking_elapsed, matching_elapsed))
     }
 
@@ -400,6 +425,7 @@ impl Linter {
                 module.path().to_owned(),
                 crate::ProjectFileReport {
                     path: module.path().to_owned().into(),
+                    source: source.clone(),
                     findings,
                     parse_diagnostics: Vec::new(),
                 },
