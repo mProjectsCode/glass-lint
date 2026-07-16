@@ -7,7 +7,7 @@ impl ProjectFileReport {
     pub fn from_lint_report(path: impl Into<String>, report: crate::LintReport) -> Self {
         let path = path.into();
         Self {
-            path: path.clone(),
+            path: path.clone().into(),
             findings: report
                 .findings
                 .into_iter()
@@ -57,7 +57,7 @@ impl ProjectFinding {
             message: finding.message,
             severity: finding.severity,
             location: SourceLocation {
-                path: path.to_owned(),
+                path: path.to_owned().into(),
                 range: finding.range,
             },
             evidence: finding
@@ -66,7 +66,7 @@ impl ProjectFinding {
                 .map(|evidence| ProjectEvidence {
                     message: evidence.message,
                     location: evidence.range.map(|range| SourceLocation {
-                        path: path.to_owned(),
+                        path: path.to_owned().into(),
                         range,
                     }),
                     source: evidence.source,

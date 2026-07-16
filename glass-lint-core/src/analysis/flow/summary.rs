@@ -39,7 +39,7 @@ pub(super) struct FunctionSummary {
     id: FunctionId,
     // Retained to make lexical nesting available to future closure-aware
     // summary propagation; current helper summaries only follow call edges.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Reserved for closure-aware summary propagation.
     owner: FunctionId,
     /// Parameter bindings and destructuring paths.
     parameters: Vec<ParameterBinding>,

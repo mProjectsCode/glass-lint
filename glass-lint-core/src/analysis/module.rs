@@ -288,7 +288,7 @@ impl ModuleInterface {
             .iter()
             .map(|request| ResolutionRequest {
                 key: ResolutionRequestKey {
-                    importer: importer.to_string(),
+                    importer: importer.to_string().into(),
                     kind: request.kind(),
                     range: crate::lint::source_range_from_span(source_map, request.span()),
                 },

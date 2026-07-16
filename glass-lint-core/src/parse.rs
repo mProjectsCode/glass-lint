@@ -9,13 +9,14 @@ use swc_ecma_transforms_typescript::strip;
 use crate::{
     MAX_SOURCE_BYTES,
     diagnostic::{Position, SourceRange},
+    project::DiagnosticCode,
 };
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 /// Structured parser failure with an optional source range.
 pub struct ParseDiagnostic {
     /// Stable diagnostic code.
-    pub code: String,
+    pub code: DiagnosticCode,
     /// Human-readable parser message.
     pub message: String,
     /// Authored filename.

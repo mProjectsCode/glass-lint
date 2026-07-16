@@ -194,9 +194,9 @@ impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolutionResult) {
             AdapterResolutionKind::Require => ResolutionRequestKind::Require,
         };
         let result = match &resolution.result {
-            AdapterResolutionResult::Internal { path } => {
-                ResolutionResult::Internal { path: path.clone() }
-            }
+            AdapterResolutionResult::Internal { path } => ResolutionResult::Internal {
+                path: path.clone().into(),
+            },
             AdapterResolutionResult::External { package } => ResolutionResult::External {
                 package: package.clone(),
             },

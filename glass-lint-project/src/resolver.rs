@@ -2,7 +2,9 @@
 
 use std::path::{Path, PathBuf};
 
-use glass_lint_core::{ResolutionRequest, ResolutionRequestKind, ResolutionResult};
+use glass_lint_core::{
+    ResolutionRequest, ResolutionRequestKind, ResolutionResult, is_internal_module_request,
+};
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
 use crate::{
@@ -45,7 +47,7 @@ impl ProjectResolver {
             Err(ResolveError::Builtin { resolved, .. }) => {
                 ResolutionResult::Builtin { name: resolved }
             }
-            Err(_) if is_internal_request(&request.request) => ResolutionResult::Missing,
+            Err(_) if is_internal_module_request(&request.request) => ResolutionResult::Missing,
             Err(_) => ResolutionResult::External {
                 package: package_name(&request.request),
             },
@@ -57,7 +59,7 @@ impl ProjectResolver {
             return ResolutionResult::Missing;
         };
         if !inside_root(&self.root, &path) {
-            return if is_internal_request(request) {
+            return if is_internal_module_request(request) {
                 ResolutionResult::OutsideProject {
                     path: path.to_string_lossy().into_owned(),
                 }
@@ -68,7 +70,7 @@ impl ProjectResolver {
             };
         }
         if excluded_path(&self.root, &path, &self.options.excluded_directories) {
-            return if is_internal_request(request) {
+            return if is_internal_module_request(request) {
                 ResolutionResult::Unsupported {
                     reason: format!("excluded target `{}`", path.display()),
                 }
@@ -88,7 +90,9 @@ impl ProjectResolver {
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
-        ResolutionResult::Internal { path: relative }
+        ResolutionResult::Internal {
+            path: relative.into(),
+        }
     }
 }
 
@@ -125,10 +129,6 @@ fn resolver_options(
         ));
     }
     resolver_options
-}
-
-fn is_internal_request(request: &str) -> bool {
-    request.starts_with('.') || request.starts_with('/') || request.starts_with('#')
 }
 
 fn package_name(request: &str) -> String {

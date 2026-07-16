@@ -6,9 +6,11 @@
 
 use super::super::{
     BTreeMap, ExportResolution, MAX_EXPORT_ENTRIES, MAX_GRAPH_EDGES, MAX_SCC_SIZE, ModuleId,
-    ProjectSemanticModel, ResolvedModule, is_internal_request,
+    ProjectSemanticModel, ResolvedModule,
 };
-use crate::analysis::module::ModuleRequestRole;
+use crate::{
+    analysis::module::ModuleRequestRole, project::is_internal_module_request as is_internal_request,
+};
 
 impl ProjectSemanticModel {
     /// Build edges, resolve exports, validate imports, and canonicalize
@@ -84,7 +86,7 @@ impl ProjectSemanticModel {
         for module in self.modules.values() {
             for request in module.local().interface().requests() {
                 let key = crate::project::ResolutionRequestKey {
-                    importer: module.path().to_owned(),
+                    importer: module.path().to_owned().into(),
                     kind: request.kind(),
                     range: crate::lint::source_range_from_span(module.source_map(), request.span()),
                 };
@@ -105,7 +107,7 @@ impl ProjectSemanticModel {
                                 code: "ambiguous_star_export".into(),
                                 message: format!("module export `{imported}` is ambiguous"),
                                 location: Some(crate::SourceLocation {
-                                    path: module.path().to_owned(),
+                                    path: module.path().to_owned().into(),
                                     range: key.range.clone(),
                                 }),
                             });
@@ -114,7 +116,7 @@ impl ProjectSemanticModel {
                             code: "missing_imported_export".into(),
                             message: format!("module does not export `{imported}`"),
                             location: Some(crate::SourceLocation {
-                                path: module.path().to_owned(),
+                                path: module.path().to_owned().into(),
                                 range: key.range.clone(),
                             }),
                         }),
@@ -141,7 +143,7 @@ impl ProjectSemanticModel {
                                 request.request
                             ),
                             location: Some(crate::SourceLocation {
-                                path: module.path().to_owned(),
+                                path: module.path().to_owned().into(),
                                 range: request.key.range.clone(),
                             }),
                         });
@@ -220,7 +222,7 @@ impl ProjectSemanticModel {
             code: code.into(),
             message,
             location: Some(crate::SourceLocation {
-                path: module.path().to_owned(),
+                path: module.path().to_owned().into(),
                 range: request.key.range.clone(),
             }),
         }

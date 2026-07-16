@@ -233,7 +233,7 @@ fn project_report_to_run(report: glass_lint_core::ProjectReport) -> Result<Adapt
     for file in report.files {
         for finding in file.findings {
             finding_locations.push(FindingLocation {
-                primary: Some(finding.location.path.clone()),
+                primary: Some(finding.location.path.to_string()),
                 evidence: finding
                     .evidence
                     .iter()
@@ -241,7 +241,7 @@ fn project_report_to_run(report: glass_lint_core::ProjectReport) -> Result<Adapt
                         evidence
                             .location
                             .as_ref()
-                            .map(|location| location.path.clone())
+                            .map(|location| location.path.to_string())
                     })
                     .collect(),
             });

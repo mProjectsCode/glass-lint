@@ -121,15 +121,15 @@ impl ProjectSemanticModel {
         let ids = input.module_ids();
         let mut modules = BTreeMap::new();
         for source in &input.sources {
-            let Some((source_map, local)) = analyzed.remove(&source.path) else {
+            let Some((source_map, local)) = analyzed.remove(source.path.as_str()) else {
                 continue;
             };
-            let Some(id) = ids.get(&source.path).copied() else {
-                return Err(ProjectInputError::InvalidTarget(source.path.clone()));
+            let Some(id) = ids.get(source.path.as_str()).copied() else {
+                return Err(ProjectInputError::InvalidTarget(source.path.to_string()));
             };
             modules.insert(
                 id,
-                ProjectModule::new(id, source.path.clone(), source_map, local),
+                ProjectModule::new(id, source.path.to_string(), source_map, local),
             );
         }
 
@@ -172,8 +172,8 @@ impl ProjectSemanticModel {
             .map(|(key, result)| {
                 let resolved = match result {
                     ResolutionResult::Internal { path } => {
-                        let Some(id) = ids.get(&path).copied() else {
-                            return Err(ProjectInputError::InvalidTarget(path));
+                        let Some(id) = ids.get(path.as_str()).copied() else {
+                            return Err(ProjectInputError::InvalidTarget(path.to_string()));
                         };
                         ResolvedModule::Internal { id, path }
                     }
@@ -259,7 +259,7 @@ impl ProjectSemanticModel {
         Some(crate::ProjectEvidence {
             message: "related semantic path event".into(),
             location: Some(crate::SourceLocation {
-                path: module.path().to_owned(),
+                path: module.path().to_owned().into(),
                 range: crate::lint::source_range_from_span(module.source_map(), fact.span),
             }),
             source: module.source_map().span_to_snippet(fact.span).ok(),
@@ -400,10 +400,6 @@ impl From<ExportResolution> for matching::LinkedModuleIdentity {
             ExportResolution::Unknown | ExportResolution::Ambiguous => Self::Unknown,
         }
     }
-}
-
-fn is_internal_request(request: &str) -> bool {
-    request.starts_with('.') || request.starts_with('/') || request.starts_with('#')
 }
 
 #[cfg(test)]

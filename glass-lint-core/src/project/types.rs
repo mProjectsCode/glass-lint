@@ -4,14 +4,139 @@
 //! sources and explicit resolver outcomes, and reports retain normalized paths
 //! and source ranges for deterministic downstream rendering.
 
-use std::path::PathBuf;
+use std::{
+    borrow::Borrow,
+    ops::Deref,
+    path::{Path, PathBuf},
+};
 
 use crate::{SourceLanguage, SourceRange};
+
+/// Whether a module request uses syntax that denotes an authored/internal
+/// target.
+pub fn is_internal_module_request(request: &str) -> bool {
+    request.starts_with('.') || request.starts_with('/') || request.starts_with('#')
+}
+
+/// A normalized project-relative path whose representation cannot be mutated
+/// back into an absolute or escaping path by callers.
+#[derive(
+    Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, serde::Deserialize, serde::Serialize,
+)]
+#[serde(transparent)]
+pub struct ProjectRelativePath(String);
+
+impl ProjectRelativePath {
+    pub(crate) fn from_normalized(path: String) -> Self {
+        Self(path)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Borrow<str> for ProjectRelativePath {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for ProjectRelativePath {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for ProjectRelativePath {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for ProjectRelativePath {
+    fn as_ref(&self) -> &Path {
+        Path::new(&self.0)
+    }
+}
+
+impl std::fmt::Display for ProjectRelativePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for ProjectRelativePath {
+    fn from(path: String) -> Self {
+        Self(path)
+    }
+}
+
+impl From<&str> for ProjectRelativePath {
+    fn from(path: &str) -> Self {
+        Self(path.into())
+    }
+}
+
+impl PartialEq<&str> for ProjectRelativePath {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+/// Stable machine-readable identity for a project diagnostic.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
+#[serde(transparent)]
+pub struct DiagnosticCode(String);
+
+impl DiagnosticCode {
+    /// Validate and construct a diagnostic code in the documented identifier
+    /// form.
+    pub fn new(code: impl Into<String>) -> Result<Self, String> {
+        let code = code.into();
+        if !code.is_empty()
+            && code.chars().all(|character| {
+                character.is_ascii_lowercase() || character == '_' || character.is_ascii_digit()
+            })
+            && code.as_bytes()[0].is_ascii_lowercase()
+        {
+            Ok(Self(code))
+        } else {
+            Err(code)
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for DiagnosticCode {
+    type Error = String;
+
+    fn try_from(code: String) -> Result<Self, Self::Error> {
+        Self::new(code)
+    }
+}
+
+impl From<&str> for DiagnosticCode {
+    fn from(code: &str) -> Self {
+        Self::new(code).expect("diagnostic code literals must be valid identifiers")
+    }
+}
+
+impl std::fmt::Display for DiagnosticCode {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
 pub struct SourceFile {
     /// Normalized project-relative source path.
-    pub path: String,
+    pub path: ProjectRelativePath,
     /// Parser language selected for this source.
     pub language: SourceLanguage,
     /// Source text to parse and analyze.
@@ -33,7 +158,7 @@ pub enum ResolutionRequestKind {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
 pub struct ResolutionRequestKey {
     /// Normalized path of the file containing the request.
-    pub importer: String,
+    pub importer: ProjectRelativePath,
     /// Syntax family that produced the request.
     pub kind: ResolutionRequestKind,
     /// Exact source range identifying the request.
@@ -51,7 +176,7 @@ pub struct ResolutionRequest {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ResolutionResult {
     /// Resolve to another authored project source.
-    Internal { path: String },
+    Internal { path: ProjectRelativePath },
     /// Resolve to a package outside the authored project.
     External { package: String },
     /// Resolve to a runtime-provided builtin module.
@@ -72,7 +197,10 @@ pub struct ModuleId(pub u32);
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub enum ResolvedModule {
     /// An authored module, identified by its stable project ID and path.
-    Internal { id: ModuleId, path: String },
+    Internal {
+        id: ModuleId,
+        path: ProjectRelativePath,
+    },
     /// A package boundary rather than an authored module.
     External { package: String },
     /// A runtime-provided builtin module.
@@ -88,7 +216,7 @@ pub enum ResolvedModule {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct SourceLocation {
     /// Normalized path containing the location.
-    pub path: String,
+    pub path: ProjectRelativePath,
     /// Exact source range within that path.
     pub range: SourceRange,
 }
@@ -121,7 +249,7 @@ pub struct ProjectFinding {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct ProjectFileReport {
     /// Normalized path of the analyzed file.
-    pub path: String,
+    pub path: ProjectRelativePath,
     /// Findings attributed to this file.
     pub findings: Vec<ProjectFinding>,
     /// Parser diagnostics attributed to this file.
@@ -131,7 +259,7 @@ pub struct ProjectFileReport {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct ProjectDiagnostic {
     /// Stable diagnostic code.
-    pub code: String,
+    pub code: DiagnosticCode,
     /// Human-readable diagnostic message.
     pub message: String,
     /// Optional project source location.
@@ -273,7 +401,7 @@ impl SourceFile {
         let path = path.into();
         Self {
             language: SourceLanguage::from_filename(&path),
-            path,
+            path: path.into(),
             source: source.into(),
         }
     }

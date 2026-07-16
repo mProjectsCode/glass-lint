@@ -5,7 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::{ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey, ResolutionResult};
+use super::{
+    ModuleId, ProjectInput, ProjectInputError, ProjectRelativePath, ResolutionRequestKey,
+    ResolutionResult,
+};
 
 impl ProjectInput {
     /// Canonicalizes project identities and validates all cross-record
@@ -34,7 +37,7 @@ impl ProjectInput {
             source.path = normalize_relative(&source.path)?;
             let path = source.path.clone();
             if sources.insert(path.clone(), source).is_some() {
-                return Err(ProjectInputError::DuplicateSource(path));
+                return Err(ProjectInputError::DuplicateSource(path.to_string()));
             }
         }
         let source_paths = sources.keys().cloned().collect::<BTreeSet<_>>();
@@ -42,7 +45,7 @@ impl ProjectInput {
         for (mut key, mut result) in self.resolutions {
             normalize_resolution_key(&mut key)?;
             if !source_paths.contains(&key.importer) {
-                return Err(ProjectInputError::UnknownImporter(key.importer));
+                return Err(ProjectInputError::UnknownImporter(key.importer.to_string()));
             }
             normalize_result(&mut result)?;
             if resolutions.insert(key.clone(), result).is_some() {
@@ -68,7 +71,7 @@ impl ProjectInput {
             .enumerate()
             .map(|(index, path)| {
                 (
-                    path,
+                    path.to_string(),
                     ModuleId(u32::try_from(index).expect("module count exceeds ModuleId range")),
                 )
             })
@@ -86,9 +89,9 @@ pub fn normalize_root(path: &Path) -> Result<PathBuf, ProjectInputError> {
 }
 
 /// Normalize a project-relative path and reject escapes/absolute paths.
-pub fn normalize_relative(path: &str) -> Result<String, ProjectInputError> {
-    let original = path.to_string();
-    let path = path.replace('\\', "/");
+pub fn normalize_relative(path: impl AsRef<str>) -> Result<ProjectRelativePath, ProjectInputError> {
+    let original = path.as_ref().to_string();
+    let path = path.as_ref().replace('\\', "/");
     if path.is_empty()
         || path.starts_with('/')
         || path.contains('\0')
@@ -103,7 +106,7 @@ pub fn normalize_relative(path: &str) -> Result<String, ProjectInputError> {
     if parts.is_empty() {
         Err(ProjectInputError::InvalidPath(original))
     } else {
-        Ok(parts.join("/"))
+        Ok(ProjectRelativePath::from_normalized(parts.join("/")))
     }
 }
 
@@ -146,7 +149,7 @@ pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError>
 /// Normalize and validate one typed resolver result.
 pub fn normalize_result(result: &mut ResolutionResult) -> Result<(), ProjectInputError> {
     match result {
-        ResolutionResult::Internal { path } => *path = normalize_relative(path)?,
+        ResolutionResult::Internal { path } => *path = normalize_relative(path.as_str())?,
         ResolutionResult::OutsideProject { path } => *path = normalize_outside_target(path)?,
         ResolutionResult::External { package } if package.trim().is_empty() => {
             return Err(ProjectInputError::InvalidTarget(package.clone()));
@@ -164,7 +167,7 @@ pub fn normalize_result(result: &mut ResolutionResult) -> Result<(), ProjectInpu
 
 /// Normalize an importer/range key and enforce one-based ordered positions.
 pub fn normalize_resolution_key(key: &mut ResolutionRequestKey) -> Result<(), ProjectInputError> {
-    key.importer = normalize_relative(&key.importer)?;
+    key.importer = normalize_relative(key.importer.as_str())?;
     if key.range.start.line == 0
         || key.range.start.column == 0
         || key.range.end.line == 0
@@ -173,7 +176,7 @@ pub fn normalize_resolution_key(key: &mut ResolutionRequestKey) -> Result<(), Pr
         || (key.range.end.line == key.range.start.line
             && key.range.end.column < key.range.start.column)
     {
-        return Err(ProjectInputError::InvalidRange(key.importer.clone()));
+        return Err(ProjectInputError::InvalidRange(key.importer.to_string()));
     }
     Ok(())
 }

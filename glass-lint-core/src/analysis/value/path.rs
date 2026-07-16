@@ -7,8 +7,6 @@
 //! Shared prefixes are canonicalized by `(parent, segment)`, which bounds
 //! duplicate storage and makes path IDs suitable for equality and flow maps.
 
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 
 const MAX_PATH_NODES: usize = 1 << 20;
@@ -19,9 +17,11 @@ pub(in crate::analysis) struct PathId(u32);
 
 impl PathId {
     /// Sentinel representing no path segments.
+    #[allow(dead_code)] // Used when flow path projection is enabled.
     pub(in crate::analysis) const EMPTY: Self = Self(0);
 
     /// Whether this ID denotes the empty path.
+    #[allow(dead_code)] // Used when flow path projection is enabled.
     pub(in crate::analysis) fn is_empty(self) -> bool {
         self == Self::EMPTY
     }
@@ -132,16 +132,19 @@ impl PathInterner {
     }
 
     /// Borrow the final segment of a valid non-empty path.
+    #[allow(dead_code)]
     pub(in crate::analysis) fn last(&self, path: PathId) -> Option<&PathSegment> {
         self.nodes.get(path.index()?)?.segment.as_ref()
     }
 
     /// Return the parent path ID of a valid path.
+    #[allow(dead_code)]
     pub(in crate::analysis) fn parent(&self, path: PathId) -> Option<PathId> {
         self.nodes.get(path.index()?).map(|node| node.parent)
     }
 
     /// Iterate segments in source/root-to-leaf order.
+    #[allow(dead_code)]
     pub(in crate::analysis) fn iter_segments(
         &self,
         path: PathId,

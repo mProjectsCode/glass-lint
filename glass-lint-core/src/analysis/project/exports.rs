@@ -7,9 +7,11 @@
 
 use super::super::{
     BTreeSet, ExportResolution, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
-    ResolutionRequestKey, ResolvedModule, SymbolCallProvenance, is_internal_request, module,
+    ResolutionRequestKey, ResolvedModule, SymbolCallProvenance, module,
 };
-use crate::analysis::module::ModuleRequestRole;
+use crate::{
+    analysis::module::ModuleRequestRole, project::is_internal_module_request as is_internal_request,
+};
 
 impl ProjectSemanticModel {
     /// Resolve one local export into external, qualified, or conservative
@@ -75,7 +77,7 @@ impl ProjectSemanticModel {
                     return ExportResolution::Unknown;
                 };
                 let key = ResolutionRequestKey {
-                    importer: self.modules[&module].path().to_owned(),
+                    importer: self.modules[&module].path().to_owned().into(),
                     kind: request.kind(),
                     range: crate::lint::source_range_from_span(
                         self.modules[&module].source_map(),
@@ -180,7 +182,7 @@ impl ProjectSemanticModel {
         request: &module::ModuleRequest,
     ) -> ResolutionRequestKey {
         ResolutionRequestKey {
-            importer: self.modules[&module].path().to_owned(),
+            importer: self.modules[&module].path().to_owned().into(),
             kind: request.kind(),
             range: crate::lint::source_range_from_span(
                 self.modules[&module].source_map(),
@@ -222,7 +224,7 @@ impl ProjectSemanticModel {
                 continue;
             };
             let key = ResolutionRequestKey {
-                importer: self.modules[&module].path().to_owned(),
+                importer: self.modules[&module].path().to_owned().into(),
                 kind: request.kind(),
                 range: crate::lint::source_range_from_span(
                     self.modules[&module].source_map(),
@@ -277,7 +279,7 @@ impl ProjectSemanticModel {
             return ExportResolution::Unknown;
         };
         let key = ResolutionRequestKey {
-            importer: self.modules[&module].path().to_owned(),
+            importer: self.modules[&module].path().to_owned().into(),
             kind: request.kind(),
             range: crate::lint::source_range_from_span(
                 self.modules[&module].source_map(),

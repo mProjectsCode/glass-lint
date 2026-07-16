@@ -17,9 +17,9 @@ impl<K> Default for RequirementSet<K> {
     }
 }
 
-#[allow(dead_code)]
 impl<K: Clone + PartialEq> RequirementSet<K> {
     /// Record a requirement without replacing an earlier proof for the key.
+    #[allow(dead_code)]
     pub(super) fn record(&mut self, parameter: usize, value: K) {
         self.0.entry(parameter).or_insert(value);
     }
@@ -35,11 +35,13 @@ impl<K: Clone + PartialEq> RequirementSet<K> {
     }
 
     /// Check whether a requirement key is present.
+    #[allow(dead_code)]
     pub(super) fn contains_key(&self, parameter: usize) -> bool {
         self.0.contains_key(&parameter)
     }
 
     /// Retain only requirements satisfying the supplied path predicate.
+    #[allow(dead_code)]
     pub(super) fn retain(&mut self, keep: impl FnMut(&usize, &mut K) -> bool) {
         self.0.retain(keep);
     }
@@ -55,6 +57,7 @@ impl<K: Clone + PartialEq> RequirementSet<K> {
     }
 
     /// Iterate parameter keys and their typed proofs in key order.
+    #[allow(dead_code)]
     pub(super) fn iter(&self) -> impl Iterator<Item = (&usize, &K)> {
         self.0.iter()
     }
@@ -64,6 +67,7 @@ impl<K: Clone + PartialEq> RequirementSet<K> {
         self.0.values()
     }
 
+    #[allow(dead_code)]
     pub(super) fn intersect(&mut self, other: &Self) {
         self.0
             .retain(|parameter, fact| other.0.get(parameter) == Some(fact));

@@ -303,7 +303,7 @@ impl<'a> ProjectBuild<'a> {
     ) -> Result<(), ProjectLoadError> {
         for request in requests {
             let cache_key = (
-                request.key.importer.clone(),
+                request.key.importer.to_string(),
                 request.key.kind,
                 request.request.clone(),
             );

@@ -5,7 +5,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    ops::{Deref, DerefMut},
+    ops::Index,
 };
 
 use super::{
@@ -19,12 +19,22 @@ struct EvidenceKey {
     source: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub struct EvidenceList {
     /// Evidence in the order in which it was first observed.
     items: Vec<ProjectEvidence>,
     #[serde(skip)]
     seen: BTreeSet<EvidenceKey>,
+}
+
+impl<'de> serde::Deserialize<'de> for EvidenceList {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let items = Vec::<ProjectEvidence>::deserialize(deserializer)?;
+        Ok(items.into_iter().collect())
+    }
 }
 
 impl EvidenceList {
@@ -35,12 +45,30 @@ impl EvidenceList {
             location: item
                 .location
                 .as_ref()
-                .map(|location| (location.path.clone(), location.range.clone())),
+                .map(|location| (location.path.to_string(), location.range.clone())),
             source: item.source.clone(),
         };
         if self.seen.insert(key) {
             self.items.push(item);
         }
+    }
+
+    /// Borrow evidence without exposing mutation that could invalidate
+    /// deduplication.
+    pub fn as_slice(&self) -> &[ProjectEvidence] {
+        &self.items
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, ProjectEvidence> {
+        self.items.iter()
     }
 }
 
@@ -53,16 +81,19 @@ impl FromIterator<ProjectEvidence> for EvidenceList {
         list
     }
 }
-impl Deref for EvidenceList {
-    type Target = Vec<ProjectEvidence>;
 
-    fn deref(&self) -> &Self::Target {
-        &self.items
+impl Extend<ProjectEvidence> for EvidenceList {
+    fn extend<T: IntoIterator<Item = ProjectEvidence>>(&mut self, iter: T) {
+        for item in iter {
+            self.push_unique(item);
+        }
     }
 }
-impl DerefMut for EvidenceList {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.items
+impl Index<usize> for EvidenceList {
+    type Output = ProjectEvidence;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.items[index]
     }
 }
 impl IntoIterator for EvidenceList {
@@ -89,7 +120,7 @@ impl SourceTable {
     /// Insert one normalized source path, rejecting replacement of an existing
     /// source.
     pub fn insert(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
-        let path = source.path.clone();
+        let path = source.path.to_string();
         if self.0.insert(path.clone(), source).is_some() {
             return Err(ProjectInputError::DuplicateSource(path));
         }

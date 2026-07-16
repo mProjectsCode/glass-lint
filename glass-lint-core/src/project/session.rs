@@ -4,8 +4,9 @@ use std::collections::BTreeMap;
 
 use super::{
     ProjectInput, ProjectInputError, ProjectReport, ResolutionRequest, ResolutionRequestKey,
-    ResolutionResult, ResolutionTable, SourceFile, SourceTable,
+    ResolutionResult, SourceFile,
     input::{normalize_relative, normalize_resolution_key, normalize_result, normalize_root},
+    tables::{ResolutionTable, SourceTable},
 };
 
 pub struct ProjectSession<'a> {
@@ -63,11 +64,12 @@ impl<'a> ProjectSession<'a> {
                     self.authored_requests
                         .insert(request.key.clone(), request.clone());
                 }
-                self.analyzed.insert(path, (parsed.source_map, local));
+                self.analyzed
+                    .insert(path.to_string(), (parsed.source_map, local));
                 Ok(requests)
             }
             Err(error) => {
-                self.parse_diagnostics.insert(path, error);
+                self.parse_diagnostics.insert(path.to_string(), error);
                 Ok(Vec::new())
             }
         }

@@ -125,6 +125,21 @@ impl std::ops::AddAssign for ProfilePhaseTimings {
     }
 }
 
+impl ProfilePhaseTimings {
+    fn from_project_metrics(metrics: &glass_lint_project::ProjectLoadMetrics) -> Self {
+        Self {
+            discovery: metrics.discovery,
+            reads: metrics.reads,
+            parse_and_local_analysis: metrics.parse_and_local_analysis,
+            resolution: metrics.resolution,
+            linking: metrics.linking,
+            linking_and_matching: metrics.linking_and_matching,
+            matching: metrics.matching,
+            total: metrics.total,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ProfileOperationCounts {
     /// Files included in the profile.
@@ -152,6 +167,23 @@ impl std::ops::AddAssign for ProfileOperationCounts {
     }
 }
 
+impl ProfileOperationCounts {
+    fn from_project(
+        report: &glass_lint_core::ProjectReport,
+        metrics: &glass_lint_project::ProjectLoadMetrics,
+    ) -> Self {
+        Self {
+            files: metrics.files,
+            requests: metrics.requests,
+            edges: metrics.edges,
+            exports: report.operations.exports,
+            scc_rounds: report.operations.scc_rounds,
+            effect_projections: report.operations.effect_projections,
+            evidence: report.operations.evidence,
+        }
+    }
+}
+
 #[derive(Default)]
 struct RunOutcome {
     findings: usize,
@@ -174,25 +206,8 @@ fn project_run_outcome(
                 .map(|file| file.parse_diagnostics.len())
                 .sum::<usize>(),
         bytes: metrics.bytes,
-        phases: ProfilePhaseTimings {
-            discovery: metrics.discovery,
-            reads: metrics.reads,
-            parse_and_local_analysis: metrics.parse_and_local_analysis,
-            resolution: metrics.resolution,
-            linking_and_matching: metrics.linking_and_matching,
-            linking: metrics.linking,
-            matching: metrics.matching,
-            total: metrics.total,
-        },
-        counts: ProfileOperationCounts {
-            files: metrics.files,
-            requests: metrics.requests,
-            edges: metrics.edges,
-            exports: report.operations.exports,
-            scc_rounds: report.operations.scc_rounds,
-            effect_projections: report.operations.effect_projections,
-            evidence: report.operations.evidence,
-        },
+        phases: ProfilePhaseTimings::from_project_metrics(metrics),
+        counts: ProfileOperationCounts::from_project(report, metrics),
     }
 }
 

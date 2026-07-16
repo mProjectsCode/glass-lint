@@ -27,10 +27,11 @@ pub use environment::{Environment, EnvironmentError};
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{
-    EvidenceList, ProjectDiagnostic, ProjectEvidence, ProjectFileReport, ProjectFinding,
-    ProjectInput, ProjectInputError, ProjectOperationCounts, ProjectReport, ProjectReportSummary,
-    ProjectSession, ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind,
-    ResolutionResult, SourceFile, SourceLocation,
+    DiagnosticCode, EvidenceList, ProjectDiagnostic, ProjectEvidence, ProjectFileReport,
+    ProjectFinding, ProjectInput, ProjectInputError, ProjectOperationCounts, ProjectRelativePath,
+    ProjectReport, ProjectReportSummary, ProjectSession, ResolutionRequest, ResolutionRequestKey,
+    ResolutionRequestKind, ResolutionResult, SourceFile, SourceLocation,
+    is_internal_module_request,
 };
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
 pub use rule_id::RuleId;

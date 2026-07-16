@@ -223,7 +223,7 @@ impl Linter {
     }
 
     /// Link an already analyzed project and return phase timings.
-    pub fn lint_analyzed_project_timed(
+    pub(crate) fn lint_analyzed_project_timed(
         &self,
         input: ProjectInput,
         analyzed: AnalyzedModules,
@@ -248,7 +248,7 @@ impl Linter {
         let sources = input
             .sources
             .iter()
-            .map(|source| (source.path.clone(), source.source.clone()))
+            .map(|source| (source.path.to_string(), source.source.clone()))
             .collect::<BTreeMap<_, _>>();
         let mut files = parse_diagnostics
             .into_iter()
@@ -256,7 +256,7 @@ impl Linter {
                 (
                     path.clone(),
                     crate::ProjectFileReport {
-                        path,
+                        path: path.into(),
                         findings: Vec::new(),
                         parse_diagnostics: vec![diagnostic],
                     },
@@ -331,7 +331,7 @@ impl Linter {
             files.insert(
                 module.path().to_owned(),
                 crate::ProjectFileReport {
-                    path: module.path().to_owned(),
+                    path: module.path().to_owned().into(),
                     findings,
                     parse_diagnostics: Vec::new(),
                 },
@@ -519,7 +519,7 @@ mod tests {
             Linter::new(catalog()).lint(&"x".repeat(crate::MAX_SOURCE_BYTES + 1), "large.js");
         assert!(report.findings.is_empty());
         assert_eq!(report.parse_diagnostics.len(), 1);
-        assert_eq!(report.parse_diagnostics[0].code, "source_too_large");
+        assert_eq!(report.parse_diagnostics[0].code, "source_too_large".into());
         assert_eq!(report.parse_diagnostics[0].filename, "large.js");
         assert!(report.parse_diagnostics[0].range.is_none());
     }
@@ -529,7 +529,7 @@ mod tests {
         let report = Linter::new(catalog()).lint("fetch(", "broken.js");
         assert!(report.findings.is_empty());
         let diagnostic = &report.parse_diagnostics[0];
-        assert_eq!(diagnostic.code, "syntax_error");
+        assert_eq!(diagnostic.code, "syntax_error".into());
         assert_eq!(diagnostic.filename, "broken.js");
         assert!(diagnostic.message.starts_with("JavaScript parse error:"));
         assert!(diagnostic.range.is_some());

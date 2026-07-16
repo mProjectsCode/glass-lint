@@ -148,7 +148,7 @@ impl<'a> SourceCorpus<'a> {
             .replace('\\', "/");
         Ok(SourceFile {
             language: SourceLanguage::from_filename(&relative),
-            path: relative,
+            path: relative.into(),
             source: file.source,
         })
     }

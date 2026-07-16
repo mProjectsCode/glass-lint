@@ -45,7 +45,6 @@ impl Occurrence {
 /// Ordered occurrence buckets keyed by a typed semantic identity.
 pub(in crate::analysis) struct OccurrenceIndex<K: Ord>(BTreeMap<K, Vec<Occurrence>>);
 
-#[allow(dead_code)]
 impl<K: Ord> OccurrenceIndex<K> {
     /// Append an already constructed occurrence before normalization.
     pub(super) fn push_occurrence(&mut self, key: K, occurrence: Occurrence) {
@@ -68,6 +67,7 @@ impl<K: Ord> OccurrenceIndex<K> {
     }
 
     /// Merge another index and normalize the combined buckets.
+    #[allow(dead_code)]
     pub(super) fn merge(&mut self, other: Self) {
         for (key, occurrences) in other.0 {
             self.0.entry(key).or_default().extend(occurrences);
@@ -76,6 +76,7 @@ impl<K: Ord> OccurrenceIndex<K> {
     }
 
     /// Borrow one normalized occurrence bucket, or an empty slice if absent.
+    #[allow(dead_code)]
     pub(super) fn occurrences(&self, key: &K) -> &[Occurrence] {
         self.0.get(key).map_or(&[], Vec::as_slice)
     }
