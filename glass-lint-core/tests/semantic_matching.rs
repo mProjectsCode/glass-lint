@@ -4,7 +4,7 @@
 //! the matcher to prove each match without falling back to name-only matching.
 
 use glass_lint_core::{
-    Environment, Linter, RuleCatalog,
+    Environment, Linter, LinterConfig, RuleCatalog,
     rules::{
         CallMatcher, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
         MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
@@ -22,8 +22,10 @@ fn findings(source: &str, matcher: Matcher) -> usize {
         .matcher(matcher)
         .build()
         .unwrap();
-    let catalog = RuleCatalog::with_environment("test", vec![rule], test_environment()).unwrap();
-    Linter::new(catalog)
+    let environment = test_environment();
+    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+    Linter::new(LinterConfig::new(vec![catalog], environment))
+        .unwrap()
         .lint_snippet(source, "semantic-matching.js")
         .unwrap()
         .files[0]

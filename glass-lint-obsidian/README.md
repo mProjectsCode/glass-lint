@@ -1,22 +1,24 @@
 # glass-lint-obsidian
 
 `glass-lint-obsidian` provides the `obsidian:` rule catalog, renderer host
-assumptions, confidence profiles, and disclosure mapping.
+assumptions, and disclosure mapping.
 
 ```rust
-let report = glass_lint_obsidian::recommended_linter()
-    .lint_snippet(source, "main.js")?;
+let linter = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+    vec![glass_lint_obsidian::catalog()], glass_lint_obsidian::environment(),
+))?;
+let report = linter.lint_snippet(source, "main.js")?;
 ```
 
-- `recommended_linter()` selects high-confidence Obsidian rules.
-- `heuristic_linter()` selects the complete Obsidian catalog.
+- `catalog()` returns the isolated Obsidian catalog.
+- `environment()` returns the complete Obsidian renderer environment.
 - `rule_catalog()` returns metadata for every Obsidian rule.
 - `disclosures_for_report()` derives sorted Obsidian disclosure identifiers.
 
 This crate does not include the `js:` catalog. The command-line front end
 combines both catalogs when its provider is `obsidian`.
 
-`default_environment()` models configured globals in the Obsidian Electron
+`environment()` models configured globals in the Obsidian Electron
 renderer, including `app`, `activeDocument`, `Notice`, `moment`, `request`, and
 `requestUrl`. It treats `activeWindow` as a global-object alias because static
 analysis cannot determine whether it represents the main or a pop-out window.
@@ -24,11 +26,12 @@ analysis cannot determine whether it represents the main or a pop-out window.
 Extend the environment for additional host bindings:
 
 ```rust
-let mut environment = glass_lint_obsidian::default_environment();
+let mut environment = glass_lint_obsidian::environment();
 environment.add_global("customPluginHost")?;
 
-let linter =
-    glass_lint_obsidian::recommended_linter_with_environment(environment);
+let linter = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+    vec![glass_lint_obsidian::catalog()], environment,
+))?;
 ```
 
 See [ACCURACY.md](ACCURACY.md) for profile policy,

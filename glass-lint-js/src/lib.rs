@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use glass_lint_core::{AnalysisReport, Environment, Linter, RuleCatalog, RuleMetadata};
+use glass_lint_core::{AnalysisReport, Environment, RuleCatalog, RuleMetadata};
 
 mod disclosures;
 mod rules;
@@ -14,34 +14,32 @@ mod rules;
 #[must_use]
 /// Return metadata for every rule in the `js:` provider catalog.
 pub fn rule_catalog() -> Vec<RuleMetadata> {
-    catalog(default_environment()).metadata()
+    [
+        js_catalog(),
+        browser_catalog(),
+        electron_catalog(),
+        node_catalog(),
+    ]
+    .into_iter()
+    .flat_map(|catalog| catalog.metadata())
+    .collect()
 }
 
 #[must_use]
-/// Build the recommended high-confidence JavaScript linter.
-pub fn recommended_linter() -> Linter {
-    recommended_linter_with_environment(default_environment())
+pub fn js_catalog() -> RuleCatalog {
+    RuleCatalog::new("js", rules::js()).expect("valid JS catalog")
 }
-
-/// Build the recommended linter with an exact caller-supplied environment.
 #[must_use]
-/// Build the recommended linter with the provider's default environment.
-pub fn recommended_linter_with_environment(environment: Environment) -> Linter {
-    let catalog = catalog(environment);
-    Linter::with_confidence(catalog, glass_lint_core::rules::Confidence::High)
+pub fn browser_catalog() -> RuleCatalog {
+    RuleCatalog::new("browser", rules::browser()).expect("valid browser catalog")
 }
-
 #[must_use]
-/// Build the complete JavaScript linter, including heuristic rules.
-pub fn heuristic_linter() -> Linter {
-    heuristic_linter_with_environment(default_environment())
+pub fn electron_catalog() -> RuleCatalog {
+    RuleCatalog::new("electron", rules::electron()).expect("valid Electron catalog")
 }
-
-/// Build the complete linter with an exact caller-supplied environment.
 #[must_use]
-/// Build the complete linter with an exact caller-supplied environment.
-pub fn heuristic_linter_with_environment(environment: Environment) -> Linter {
-    Linter::new(catalog(environment))
+pub fn node_catalog() -> RuleCatalog {
+    RuleCatalog::new("node", rules::node()).expect("valid Node catalog")
 }
 
 #[must_use]
@@ -63,14 +61,28 @@ pub fn disclosures_for_report(report: &AnalysisReport) -> BTreeSet<&'static str>
         .collect()
 }
 
-/// Browser, Node.js, and Electron globals used by the combined JavaScript
-/// catalog.
 #[must_use]
-pub fn default_environment() -> Environment {
+pub fn js_environment() -> Environment {
     let mut environment = Environment::default();
     environment
         .add_globals([
-            "Buffer",
+            "console",
+            "eval",
+            "queueMicrotask",
+            "setTimeout",
+            "setInterval",
+            "clearTimeout",
+            "clearInterval",
+        ])
+        .expect("valid JS globals");
+    environment
+}
+
+#[must_use]
+pub fn browser_environment() -> Environment {
+    let mut environment = js_environment();
+    environment
+        .add_globals([
             "EventSource",
             "Notification",
             "URL",
@@ -78,66 +90,111 @@ pub fn default_environment() -> Environment {
             "WebSocket",
             "XMLHttpRequest",
             "caches",
-            "clearImmediate",
-            "clearInterval",
-            "clearTimeout",
-            "console",
             "document",
             "fetch",
             "indexedDB",
             "localStorage",
-            "module",
             "navigator",
-            "process",
-            "queueMicrotask",
-            "require",
             "sessionStorage",
-            "setImmediate",
-            "setInterval",
-            "setTimeout",
         ])
-        .expect("built-in JavaScript environment names are valid");
-    for name in ["window", "self", "global"] {
+        .expect("valid browser globals");
+    for name in ["window", "self"] {
         environment
             .add_global_object(name)
-            .expect("built-in JavaScript global-object names are valid");
+            .expect("valid browser global object");
     }
     environment
 }
 
-fn catalog(environment: Environment) -> RuleCatalog {
-    // Construct one namespaced catalog so every public profile shares the same
-    // rule metadata and environment, differing only in confidence filtering.
-    RuleCatalog::with_environment("js", rules::all(), environment).unwrap()
+#[must_use]
+pub fn node_environment() -> Environment {
+    let mut environment = js_environment();
+    environment
+        .add_globals([
+            "Buffer",
+            "module",
+            "process",
+            "require",
+            "setImmediate",
+            "clearImmediate",
+        ])
+        .expect("valid Node globals");
+    environment
+        .add_global_object("global")
+        .expect("valid Node global object");
+    environment
+}
+
+#[must_use]
+pub fn electron_environment() -> Environment {
+    let mut environment = browser_environment();
+    environment
+        .add_globals([
+            "Buffer",
+            "module",
+            "process",
+            "require",
+            "setImmediate",
+            "clearImmediate",
+        ])
+        .expect("valid Electron globals");
+    environment
+        .add_global_object("global")
+        .expect("valid Electron global object");
+    environment
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn catalog_is_namespaced() {
+    fn catalogs_are_namespaced() {
         assert!(
-            rule_catalog()
+            js_catalog()
+                .rule_ids()
                 .iter()
-                .all(|rule| rule.id.as_str().starts_with("js:"))
+                .all(|rule| rule.as_str().starts_with("js:"))
         );
-        let environment = default_environment();
+        assert!(
+            browser_catalog()
+                .rule_ids()
+                .iter()
+                .all(|rule| rule.as_str().starts_with("browser:"))
+        );
+        assert!(
+            electron_catalog()
+                .rule_ids()
+                .iter()
+                .all(|rule| rule.as_str().starts_with("electron:"))
+        );
+        assert!(
+            node_catalog()
+                .rule_ids()
+                .iter()
+                .all(|rule| rule.as_str().starts_with("node:"))
+        );
+        let environment = electron_environment();
         assert!(environment.global_bindings().any(|name| name == "fetch"));
         assert!(environment.global_objects().any(|name| name == "window"));
     }
 
     #[test]
-    fn caller_can_extend_the_default_global_objects() {
-        let mut environment = default_environment();
+    fn caller_can_extend_the_electron_environment() {
+        let mut environment = electron_environment();
         environment.add_global_object("activeWindow").unwrap();
-        let report = heuristic_linter_with_environment(environment)
+        let linter = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+            vec![js_catalog(), browser_catalog()],
+            environment,
+        ))
+        .unwrap();
+        let report = linter
             .lint_snippet("activeWindow.fetch('/x')", "main.js")
             .unwrap();
         assert!(
             report.files[0]
                 .findings
                 .iter()
-                .any(|finding| finding.rule_id.as_str() == "js:network.request")
+                .any(|finding| finding.rule_id.as_str() == "browser:network.request")
         );
     }
 }

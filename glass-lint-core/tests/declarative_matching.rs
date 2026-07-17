@@ -6,7 +6,7 @@
 use std::collections::BTreeSet;
 
 use glass_lint_core::{
-    Environment, Linter, RuleCatalog,
+    Environment, Linter, LinterConfig, RuleCatalog,
     rules::{
         CallMatcher, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
         MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
@@ -57,9 +57,9 @@ fn script_insertion_flow() -> Matcher {
 
 /// Lint one source with exactly the supplied rules and record matched IDs.
 fn classify(source: &str, rules: &[Rule]) -> Classification {
-    let catalog =
-        RuleCatalog::with_environment("test", rules.to_vec(), test_environment()).unwrap();
-    let report = Linter::new(catalog)
+    let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
+    let report = Linter::new(LinterConfig::new(vec![catalog], test_environment()))
+        .unwrap()
         .lint_snippet(source, "matcher.js")
         .unwrap();
     Classification {
@@ -209,13 +209,17 @@ fn host_globals_require_explicit_environment_configuration() {
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
     assert!(
-        Linter::new(default_catalog)
-            .lint_snippet(
-                "fetch('/unconfigured'); const run = fetch; run('/alias')",
-                "matcher.js",
-            )
-            .unwrap()
-            .files[0]
+        Linter::new(LinterConfig::new(
+            vec![default_catalog],
+            Environment::default()
+        ))
+        .unwrap()
+        .lint_snippet(
+            "fetch('/unconfigured'); const run = fetch; run('/alias')",
+            "matcher.js",
+        )
+        .unwrap()
+        .files[0]
             .findings
             .is_empty()
     );
@@ -223,8 +227,9 @@ fn host_globals_require_explicit_environment_configuration() {
     let mut environment = Environment::default();
     environment.add_global("fetch").unwrap();
     environment.add_global_object("activeWindow").unwrap();
-    let configured = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
-    let report = Linter::new(configured)
+    let configured = RuleCatalog::new("test", vec![rule]).unwrap();
+    let report = Linter::new(LinterConfig::new(vec![configured], environment))
+        .unwrap()
         .lint_snippet(
             "fetch('/direct'); activeWindow.fetch('/window')",
             "matcher.js",
@@ -241,19 +246,24 @@ fn rooted_host_globals_also_require_environment_configuration() {
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
     assert!(
-        Linter::new(default_catalog)
-            .lint_snippet("host.open()", "matcher.js")
-            .unwrap()
-            .files[0]
+        Linter::new(LinterConfig::new(
+            vec![default_catalog],
+            Environment::default()
+        ))
+        .unwrap()
+        .lint_snippet("host.open()", "matcher.js")
+        .unwrap()
+        .files[0]
             .findings
             .is_empty()
     );
 
     let mut environment = Environment::default();
     environment.add_global("host").unwrap();
-    let configured = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
+    let configured = RuleCatalog::new("test", vec![rule]).unwrap();
     assert_eq!(
-        Linter::new(configured)
+        Linter::new(LinterConfig::new(vec![configured], environment))
+            .unwrap()
             .lint_snippet("host.open()", "matcher.js")
             .unwrap()
             .files[0]
@@ -271,9 +281,10 @@ fn custom_global_objects_do_not_make_unconfigured_members_global() {
         .unwrap();
     let mut environment = Environment::default();
     environment.add_global_object("activeWindow").unwrap();
-    let catalog = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
+    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
     assert!(
-        Linter::new(catalog)
+        Linter::new(LinterConfig::new(vec![catalog], environment))
+            .unwrap()
             .lint_snippet("activeWindow.fetch('/unknown')", "matcher.js")
             .unwrap()
             .files[0]

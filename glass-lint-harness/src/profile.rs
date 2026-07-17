@@ -18,7 +18,10 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::{AnalysisReport, Linter, ReportCompletion, RuleId};
+use glass_lint_core::{
+    AnalysisReport, Linter, LinterConfig, ReportCompletion, RuleBaseline, RuleId, RuleOverride,
+    RuleSelection, RuleState,
+};
 use glass_lint_project::{ProjectLoadOptions, ProjectLoadOutcome, ProjectLoader, ProjectSelection};
 
 use crate::{
@@ -743,11 +746,6 @@ fn build_linters(
         if !rules.is_empty() && selected.is_empty() {
             continue;
         }
-        let environment = if provider == ProfileProvider::Both {
-            Some(glass_lint_obsidian::default_environment())
-        } else {
-            None
-        };
         let provider = builtins::provider(prefix)?;
         let profile = match mode {
             ProfileMode::Recommended => BuiltInProfile::Recommended,
@@ -756,12 +754,32 @@ fn build_linters(
         let linter = builtins::linter(
             provider,
             profile,
-            environment.unwrap_or_else(glass_lint_core::Environment::default),
+            match provider {
+                builtins::BuiltInProvider::Js => glass_lint_js::js_environment(),
+                builtins::BuiltInProvider::Node => glass_lint_js::node_environment(),
+                builtins::BuiltInProvider::Electron => glass_lint_js::electron_environment(),
+                builtins::BuiltInProvider::Obsidian => glass_lint_obsidian::environment(),
+            },
         );
         let linter = if rules.is_empty() {
             linter
         } else {
-            Linter::with_rules(linter.catalog().clone(), selected)?
+            let selection = selected.into_iter().try_fold(
+                RuleSelection::new(RuleBaseline::None),
+                |selection, id| {
+                    Ok::<_, glass_lint_core::LintConfigError>(
+                        selection
+                            .with_override(RuleOverride::new(id.to_string(), RuleState::Enabled)?),
+                    )
+                },
+            )?;
+            Linter::new(
+                LinterConfig::new(
+                    vec![linter.catalog().clone()],
+                    linter.analysis_environment().clone(),
+                )
+                .with_rules(selection),
+            )?
         };
         linters.push(ProfileLinter(Arc::new(linter)));
     }

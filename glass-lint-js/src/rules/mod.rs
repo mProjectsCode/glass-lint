@@ -5,21 +5,20 @@
 
 mod browser;
 mod electron;
-mod general;
+mod js;
 mod node;
 
 use glass_lint_core::rules::Rule;
 
-pub fn all() -> Vec<Rule> {
-    // Keep category order explicit rather than relying on filesystem/module
-    // discovery, which would make catalogs less reproducible.
-    [
-        browser::rules(),
-        electron::rules(),
-        general::rules(),
-        node::rules(),
-    ]
-    .into_iter()
-    .flatten()
-    .collect()
+pub fn js() -> Vec<Rule> {
+    js::rules()
+}
+pub fn browser() -> Vec<Rule> {
+    browser::rules()
+}
+pub fn electron() -> Vec<Rule> {
+    electron::rules()
+}
+pub fn node() -> Vec<Rule> {
+    node::rules()
 }

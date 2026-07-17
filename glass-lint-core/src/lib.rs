@@ -27,7 +27,10 @@ pub use diagnostic::{
 };
 pub use environment::{Environment, EnvironmentError};
 pub use limits::AnalysisLimits;
-pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
+pub use lint::{
+    LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog, RuleCatalogError,
+    RuleOverride, RuleSelection, RuleState,
+};
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{
     AnalysisReport, AnalysisReportSummary, AnalysisSession, Diagnostic, DiagnosticCode, Evidence,

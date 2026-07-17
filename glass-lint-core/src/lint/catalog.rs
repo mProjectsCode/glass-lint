@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    Environment, RuleId, RuleMetadata,
+    RuleId, RuleMetadata,
     api::{compiler::CompiledCatalog, rule::Rule},
 };
 
@@ -32,28 +32,18 @@ impl fmt::Display for RuleCatalogError {
 impl Error for RuleCatalogError {}
 
 #[derive(Clone, Debug)]
-/// Provider rules, namespaced IDs, environment, and compiled plans.
+/// Provider rules, namespaced IDs, and compiled plans.
 pub struct RuleCatalog {
     /// Rules in stable declaration order.
     pub(crate) rules: Vec<Rule>,
     rule_ids: Vec<RuleId>,
     rule_indices: BTreeMap<RuleId, crate::api::classification::RuleIndex>,
-    environment: Environment,
     compiled: CompiledCatalog,
 }
 
 impl RuleCatalog {
-    /// Build a catalog under the default ECMAScript environment.
+    /// Build a provider catalog from locally named rules.
     pub fn new(provider: impl Into<String>, rules: Vec<Rule>) -> Result<Self, RuleCatalogError> {
-        Self::with_environment(provider, rules, Environment::default())
-    }
-
-    /// Build a catalog under an explicit host environment.
-    pub fn with_environment(
-        provider: impl Into<String>,
-        rules: Vec<Rule>,
-        environment: Environment,
-    ) -> Result<Self, RuleCatalogError> {
         let provider = provider.into();
         RuleId::parse(format!("{provider}:placeholder"))?;
 
@@ -78,7 +68,6 @@ impl RuleCatalog {
             rules,
             rule_ids,
             rule_indices,
-            environment,
             compiled,
         })
     }
@@ -89,10 +78,7 @@ impl RuleCatalog {
     /// overlap between providers because catalog identity is retained by rule
     /// position rather than inferred from the local name.
     /// Combine catalogs while rejecting duplicate fully-qualified IDs.
-    pub fn combine_with_environment(
-        catalogs: impl IntoIterator<Item = Self>,
-        environment: Environment,
-    ) -> Result<Self, RuleCatalogError> {
+    pub fn combine(catalogs: impl IntoIterator<Item = Self>) -> Result<Self, RuleCatalogError> {
         let mut rules = Vec::new();
         let mut rule_ids = Vec::new();
         let mut seen = BTreeSet::new();
@@ -121,7 +107,6 @@ impl RuleCatalog {
             rules,
             rule_ids,
             rule_indices,
-            environment,
             compiled,
         })
     }
@@ -151,11 +136,6 @@ impl RuleCatalog {
     }
 
     #[must_use]
-    /// Borrow the analysis host environment.
-    pub fn environment(&self) -> &Environment {
-        &self.environment
-    }
-
     /// Borrow the ID at a stable catalog index.
     pub fn rule_id(&self, index: crate::api::classification::RuleIndex) -> Option<&RuleId> {
         self.rule_ids.get(index.get())
@@ -191,11 +171,7 @@ mod tests {
 
     #[test]
     fn combined_catalog_rejects_duplicate_namespaced_ids() {
-        let error = RuleCatalog::combine_with_environment(
-            [catalog("same"), catalog("same")],
-            Environment::default(),
-        )
-        .unwrap_err();
+        let error = RuleCatalog::combine([catalog("same"), catalog("same")]).unwrap_err();
 
         assert_eq!(
             error,

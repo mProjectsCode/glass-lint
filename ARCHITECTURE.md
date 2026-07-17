@@ -10,7 +10,7 @@ Arrows point from a crate to its workspace dependency:
 ```text
 glass-lint-cli ─────────┬──> glass-lint-project ──> glass-lint-core
                        ├──> glass-lint-js ────────> glass-lint-core
-                       ├──> glass-lint-obsidian ──> glass-lint-core
+                       ├──> glass-lint-obsidian ──> glass-lint-js ──> glass-lint-core
                        └──────────────────────────> glass-lint-core
 
 glass-lint-harness-cli ─┬──> glass-lint-harness ──┬──> glass-lint-project
@@ -20,9 +20,10 @@ glass-lint-harness-cli ─┬──> glass-lint-harness ──┬──> glass-l
                        └──────────────────────────> glass-lint-core
 ```
 
-Provider crates do not depend on each other. `glass-lint-project` knows
-nothing about providers. Production crates do not depend on either harness
-crate.
+Provider dependencies follow real host-extension relationships and remain
+acyclic: Obsidian extends the Electron renderer model supplied by
+`glass-lint-js`. `glass-lint-project` knows nothing about providers.
+Production crates do not depend on either harness crate.
 
 ## Workspace boundaries
 

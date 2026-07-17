@@ -274,12 +274,10 @@ fn rule_selection_changes_projection_without_relowering() {
     let cache = std::mem::take(&mut first.artifact_cache);
     assert_eq!(first.finish().unwrap().files[0].findings.len(), 1);
 
-    let disabled = test_linter()
-        .configured(&crate::CoreConfig {
-            rules: Some(Vec::new()),
-            limits: crate::AnalysisLimits::default(),
-        })
-        .unwrap();
+    let disabled = test_linter_with_selection(
+        crate::RuleSelection::new(crate::RuleBaseline::None),
+        crate::AnalysisLimits::default(),
+    );
     let mut second = disabled.begin_analysis("/project").unwrap();
     second.artifact_cache = cache;
     second
@@ -454,18 +452,57 @@ fn test_linter_with_environment(environment: crate::Environment) -> crate::Linte
         .matcher(Matcher::global_call("fetch"))
         .build()
         .unwrap();
-    crate::Linter::new(
-        crate::RuleCatalog::with_environment("test", vec![rule], environment).unwrap(),
-    )
+    crate::Linter::new(crate::LinterConfig::new(
+        vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+        environment,
+    ))
+    .unwrap()
 }
 
 fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
-    test_linter()
-        .configured(&crate::CoreConfig {
-            rules: None,
-            limits,
-        })
-        .unwrap()
+    let mut environment = crate::Environment::default();
+    environment.add_global("fetch").unwrap();
+    let rule = Rule::builder("network.fetch")
+        .label("Uses fetch")
+        .category("network")
+        .severity(Severity::Warning)
+        .confidence(Confidence::High)
+        .matcher(Matcher::global_call("fetch"))
+        .build()
+        .unwrap();
+    crate::Linter::new(
+        crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment,
+        )
+        .with_limits(limits),
+    )
+    .unwrap()
+}
+
+fn test_linter_with_selection(
+    selection: crate::RuleSelection,
+    limits: crate::AnalysisLimits,
+) -> crate::Linter {
+    let mut environment = crate::Environment::default();
+    environment.add_global("fetch").unwrap();
+    let rule = Rule::builder("network.fetch")
+        .label("Uses fetch")
+        .category("network")
+        .severity(Severity::Warning)
+        .confidence(Confidence::High)
+        .matcher(Matcher::global_call("fetch"))
+        .build()
+        .unwrap();
+    crate::Linter::new(
+        crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment,
+        )
+        .with_rules(selection)
+        .with_limits(limits),
+    )
+    .unwrap()
 }
 
 fn flow_linter() -> crate::Linter {
@@ -497,9 +534,11 @@ fn flow_linter() -> crate::Linter {
     environment
         .add_globals(["document", "url"])
         .expect("test environment globals");
-    crate::Linter::new(
-        crate::RuleCatalog::with_environment("test", vec![rule], environment).unwrap(),
-    )
+    crate::Linter::new(crate::LinterConfig::new(
+        vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+        environment,
+    ))
+    .unwrap()
 }
 
 fn key(importer: &str) -> ResolutionRequestKey {
@@ -661,14 +700,11 @@ mod linking_and_flow {
             .unwrap();
         let mut environment = crate::Environment::default();
         environment.add_global("fetch").unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment(
-                "test",
-                vec![external_rule, global_rule],
-                environment,
-            )
-            .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![external_rule, global_rule]).unwrap()],
+            environment,
+        ))
+        .unwrap();
 
         let mut session = linter.begin_analysis("/project").unwrap();
         let helper = session
@@ -847,10 +883,11 @@ mod linking_and_flow {
             .matcher(Matcher::module_call("web", "request"))
             .build()
             .unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
-                .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            crate::Environment::default(),
+        ))
+        .unwrap();
 
         let mut session = linter.begin_analysis("/project").unwrap();
         let helper = session
@@ -934,10 +971,11 @@ mod linking_and_flow {
             .matcher(Matcher::module_call("./helper", "request"))
             .build()
             .unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
-                .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            crate::Environment::default(),
+        ))
+        .unwrap();
 
         let mut session = linter.begin_analysis("/project").unwrap();
         session
@@ -968,10 +1006,11 @@ mod linking_and_flow {
             .matcher(Matcher::module_call("web", "request"))
             .build()
             .unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
-                .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            crate::Environment::default(),
+        ))
+        .unwrap();
 
         let mut project = ProjectFixture::new(&linter);
         project.add_resolved(
@@ -1008,10 +1047,11 @@ mod linking_and_flow {
             .matcher(Matcher::module_call("web", "request"))
             .build()
             .unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
-                .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            crate::Environment::default(),
+        ))
+        .unwrap();
 
         let mut project = ProjectFixture::new(&linter);
         project.add_resolved(
@@ -1055,10 +1095,11 @@ mod linking_and_flow {
             .matcher(Matcher::module_call("web", "request"))
             .build()
             .unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
-                .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            crate::Environment::default(),
+        ))
+        .unwrap();
         let mut project = ProjectFixture::new(&linter);
         project.add_resolved(
             "helper.js",
@@ -1097,10 +1138,11 @@ mod linking_and_flow {
             .matcher(Matcher::module_call("web", "request"))
             .build()
             .unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
-                .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            crate::Environment::default(),
+        ))
+        .unwrap();
         let mut project = ProjectFixture::new(&linter);
         project.add_resolved(
             "helper.js",
@@ -1141,10 +1183,11 @@ mod linking_and_flow {
             ))
             .build()
             .unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
-                .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            crate::Environment::default(),
+        ))
+        .unwrap();
         let mut project = ProjectFixture::new(&linter);
         project.add_resolved(
             "helper.js",
@@ -1185,10 +1228,11 @@ mod linking_and_flow {
             ))
             .build()
             .unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
-                .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            crate::Environment::default(),
+        ))
+        .unwrap();
 
         let mut project = ProjectFixture::new(&linter);
         project.add_resolved(
@@ -1435,24 +1479,21 @@ fn dynamic_commonjs_export_shapes_are_reported_and_fail_closed() {
 
 mod status_policy {
     use super::*;
-    use crate::{AnalysisLimits, CoreConfig};
+    use crate::AnalysisLimits;
 
     fn configured_linter(limits: AnalysisLimits) -> crate::Linter {
-        test_linter()
-            .configured(&CoreConfig {
-                rules: None,
-                limits,
-            })
-            .unwrap()
+        test_linter_with_selection(crate::RuleSelection::default(), limits)
     }
 
     fn configured_flow_linter(limits: AnalysisLimits) -> crate::Linter {
-        flow_linter()
-            .configured(&CoreConfig {
-                rules: None,
-                limits,
-            })
-            .unwrap()
+        crate::Linter::new(
+            crate::LinterConfig::new(
+                vec![flow_linter().catalog().clone()],
+                flow_linter().analysis_environment().clone(),
+            )
+            .with_limits(limits),
+        )
+        .unwrap()
     }
 
     fn lint_one(linter: &crate::Linter, path: &str, source: &str) -> AnalysisReport {
@@ -1746,10 +1787,11 @@ mod status_policy {
             .matcher(Matcher::module_call("./dep", "request"))
             .build()
             .unwrap();
-        let linter = crate::Linter::new(
-            crate::RuleCatalog::with_environment("test", vec![rule], crate::Environment::default())
-                .unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![crate::RuleCatalog::new("test", vec![rule]).unwrap()],
+            crate::Environment::default(),
+        ))
+        .unwrap();
         let report = lint_one(
             &linter,
             "main.js",

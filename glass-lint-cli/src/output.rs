@@ -413,8 +413,8 @@ fn visible_text(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use glass_lint_core::{
-        AnalysisLimits, AnalysisReport, CoreConfig, Diagnostic, DiagnosticCode, Environment,
-        Linter, ProjectDiagnostic, ReportCompletion, Rule, RuleCatalog, Severity,
+        AnalysisLimits, AnalysisReport, Diagnostic, DiagnosticCode, Environment, Linter,
+        ProjectDiagnostic, ReportCompletion, Rule, RuleCatalog, Severity,
         rules::{Confidence, Matcher},
     };
 
@@ -431,15 +431,17 @@ mod tests {
             .unwrap();
         let mut environment = Environment::default();
         environment.add_global("fetch").unwrap();
-        Linter::new(RuleCatalog::with_environment("test", vec![rule], environment).unwrap())
-            .configured(&CoreConfig {
-                rules: None,
-                limits: AnalysisLimits {
-                    semantic_operations,
-                    ..AnalysisLimits::default()
-                },
-            })
-            .unwrap()
+        Linter::new(
+            glass_lint_core::LinterConfig::new(
+                vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+                environment,
+            )
+            .with_limits(AnalysisLimits {
+                semantic_operations,
+                ..AnalysisLimits::default()
+            }),
+        )
+        .unwrap()
     }
 
     fn output(path: &str, source: &str, report: AnalysisReport) -> FileOutput {

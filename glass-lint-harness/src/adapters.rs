@@ -10,14 +10,13 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use glass_lint_core::{Finding, Linter, SourceFile};
+use glass_lint_core::{
+    Finding, Linter, LinterConfig, RuleBaseline, RuleOverride, RuleSelection, RuleState, SourceFile,
+};
 
-use crate::{
-    builtins::{self, BuiltInProfile},
-    types::{
-        ADAPTER_PROTOCOL_VERSION, AdapterProject, AdapterRequest, AdapterResolution,
-        AdapterResponse, AdapterRun, Case, ProjectCase, ToolExpectation,
-    },
+use crate::types::{
+    ADAPTER_PROTOCOL_VERSION, AdapterProject, AdapterRequest, AdapterResolution, AdapterResponse,
+    AdapterRun, Case, ProjectCase, ToolExpectation,
 };
 
 pub trait Adapter {
@@ -75,60 +74,39 @@ impl Adapter for GlassLintAdapter {
 }
 
 fn configured_linter(expectation: &ToolExpectation) -> Result<Linter> {
-    // Build provider linters from one shared environment so selected-rule and
-    // whole-profile paths have identical host-global semantics.
-    let environment = glass_lint_obsidian::default_environment();
-    let js = builtins::linter(
-        builtins::BuiltInProvider::Js,
-        BuiltInProfile::Heuristic,
-        environment.clone(),
-    );
-    let obsidian = builtins::linter(
-        builtins::BuiltInProvider::Obsidian,
-        BuiltInProfile::Heuristic,
-        environment.clone(),
-    );
+    let environment = glass_lint_obsidian::environment();
+    let catalogs = vec![
+        glass_lint_js::js_catalog(),
+        glass_lint_js::browser_catalog(),
+        glass_lint_js::node_catalog(),
+        glass_lint_js::electron_catalog(),
+        glass_lint_obsidian::catalog(),
+    ];
     if let Some(config) = expectation.config.as_deref() {
         if config != "heuristic" {
             bail!("unknown built-in glass-lint config `{config}`");
         }
-        return Ok(Linter::combine_with_environment(
-            [js, obsidian],
-            environment,
-        )?);
+        return Ok(Linter::new(LinterConfig::new(catalogs, environment))?);
     }
     let enabled = expectation
         .rules
         .iter()
         .map(|id| glass_lint_core::RuleId::parse(id.clone()))
         .collect::<Result<Vec<_>, _>>()?;
-    let js_ids = enabled
-        .iter()
-        .filter(|id| id.as_str().starts_with("js:"))
-        .cloned()
-        .collect::<Vec<_>>();
-    let obsidian_ids = enabled
-        .iter()
-        .filter(|id| id.as_str().starts_with("obsidian:"))
-        .cloned()
-        .collect::<Vec<_>>();
-    let mut linters = Vec::new();
-    if !js_ids.is_empty() {
-        linters.push(Linter::with_rules(js.catalog().clone(), js_ids)?);
-    }
-    if !obsidian_ids.is_empty() {
-        linters.push(Linter::with_rules(
-            obsidian.catalog().clone(),
-            obsidian_ids,
-        )?);
-    }
-    if linters.is_empty() {
+    if enabled.is_empty() {
         bail!("project tool has no selected built-in rules");
     }
-    if linters.len() == 1 {
-        return Ok(linters.pop().expect("one linter"));
-    }
-    Ok(Linter::combine_with_environment(linters, environment)?)
+    let selection =
+        enabled
+            .into_iter()
+            .try_fold(RuleSelection::new(RuleBaseline::None), |selection, id| {
+                Ok::<_, glass_lint_core::LintConfigError>(
+                    selection.with_override(RuleOverride::new(id.to_string(), RuleState::Enabled)?),
+                )
+            })?;
+    Ok(Linter::new(
+        LinterConfig::new(catalogs, environment).with_rules(selection),
+    )?)
 }
 
 fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<AdapterRun> {

@@ -4,7 +4,10 @@ use std::{fs, path::Path};
 
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
-use glass_lint_core::{CoreConfig, Linter, MAX_SOURCE_BYTES, RuleCatalog, Severity};
+use glass_lint_core::{
+    CoreConfig, Linter, LinterConfig, MAX_SOURCE_BYTES, RuleBaseline, RuleCatalog, RuleSelection,
+    Severity,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::args::Args;
@@ -16,6 +19,8 @@ pub enum Provider {
     #[default]
     Obsidian,
     Js,
+    Node,
+    Electron,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
@@ -287,30 +292,56 @@ pub fn catalog(provider: Provider, profile: Profile) -> RuleCatalog {
 /// generic JavaScript rules; the standalone JavaScript catalog uses its own
 /// provider defaults.
 pub fn base_linter(provider: Provider, profile: Profile) -> Linter {
-    match (provider, profile) {
-        (Provider::Obsidian, profile) => {
-            let environment = glass_lint_obsidian::default_environment();
-            let js = match profile {
-                Profile::Recommended => {
-                    glass_lint_js::recommended_linter_with_environment(environment.clone())
-                }
-                Profile::Heuristic => {
-                    glass_lint_js::heuristic_linter_with_environment(environment.clone())
-                }
-            };
-            let obsidian = match profile {
-                Profile::Recommended => {
-                    glass_lint_obsidian::recommended_linter_with_environment(environment.clone())
-                }
-                Profile::Heuristic => {
-                    glass_lint_obsidian::heuristic_linter_with_environment(environment.clone())
-                }
-            };
-            Linter::combine_with_environment([js, obsidian], environment)
-                .expect("built-in provider catalogs have unique namespaced rule IDs")
+    let baseline = match profile {
+        Profile::Recommended => {
+            RuleBaseline::MinimumConfidence(glass_lint_core::rules::Confidence::High)
         }
-        (Provider::Js, Profile::Recommended) => glass_lint_js::recommended_linter(),
-        (Provider::Js, Profile::Heuristic) => glass_lint_js::heuristic_linter(),
+        Profile::Heuristic => RuleBaseline::All,
+    };
+    match (provider, profile) {
+        (Provider::Obsidian, _) => Linter::new(
+            LinterConfig::new(
+                vec![
+                    glass_lint_js::js_catalog(),
+                    glass_lint_js::browser_catalog(),
+                    glass_lint_js::node_catalog(),
+                    glass_lint_js::electron_catalog(),
+                    glass_lint_obsidian::catalog(),
+                ],
+                glass_lint_obsidian::environment(),
+            )
+            .with_rules(RuleSelection::new(baseline)),
+        )
+        .expect("built-in catalogs are valid"),
+        (Provider::Js, _) => Linter::new(
+            LinterConfig::new(
+                vec![glass_lint_js::js_catalog()],
+                glass_lint_js::js_environment(),
+            )
+            .with_rules(RuleSelection::new(baseline)),
+        )
+        .expect("built-in catalog is valid"),
+        (Provider::Node, _) => Linter::new(
+            LinterConfig::new(
+                vec![glass_lint_js::js_catalog(), glass_lint_js::node_catalog()],
+                glass_lint_js::node_environment(),
+            )
+            .with_rules(RuleSelection::new(baseline)),
+        )
+        .expect("built-in catalogs are valid"),
+        (Provider::Electron, _) => Linter::new(
+            LinterConfig::new(
+                vec![
+                    glass_lint_js::js_catalog(),
+                    glass_lint_js::browser_catalog(),
+                    glass_lint_js::node_catalog(),
+                    glass_lint_js::electron_catalog(),
+                ],
+                glass_lint_js::electron_environment(),
+            )
+            .with_rules(RuleSelection::new(baseline)),
+        )
+        .expect("built-in catalogs are valid"),
     }
 }
 
@@ -319,15 +350,31 @@ pub fn base_linter(provider: Provider, profile: Profile) -> Linter {
 /// Validation happens after catalog construction so rule selections and core
 /// limits are checked against the exact provider environment that will run.
 pub fn selected_linter(config: &Config) -> Result<Linter> {
+    let profile_baseline = match config.cli.profile {
+        Profile::Recommended => {
+            RuleBaseline::MinimumConfidence(glass_lint_core::rules::Confidence::High)
+        }
+        Profile::Heuristic => RuleBaseline::All,
+    };
+    let selection = config.core.selection.overrides().iter().cloned().fold(
+        RuleSelection::new(profile_baseline),
+        RuleSelection::with_override,
+    );
     let linter = base_linter(config.cli.provider, config.cli.profile);
     tracing::debug!(
         target: "glass_lint::cli",
         rules = linter.catalog().rule_ids().len(),
         "linter built"
     );
-    linter
-        .configured(&config.core)
-        .map_err(|error| anyhow::anyhow!(error))
+    Linter::new(
+        LinterConfig::new(
+            vec![linter.catalog().clone()],
+            linter.analysis_environment().clone(),
+        )
+        .with_rules(selection)
+        .with_limits(config.core.limits.clone()),
+    )
+    .map_err(|error| anyhow::anyhow!(error))
 }
 
 impl FailOn {
@@ -395,6 +442,38 @@ mod tests {
 
         assert_eq!(evals, 2);
         assert_eq!(processors, 2);
+    }
+
+    #[test]
+    fn selected_linter_keeps_profile_baseline_before_core_overrides() {
+        let mut recommended = Config::default();
+        recommended.cli.provider = Provider::Js;
+        recommended.cli.profile = Profile::Recommended;
+        let recommended = selected_linter(&recommended).unwrap();
+        assert!(
+            !recommended
+                .enabled_rule_ids()
+                .iter()
+                .any(|id| id.as_str() == "js:dynamic-code.eval")
+        );
+
+        let mut override_config = Config::default();
+        override_config.cli.provider = Provider::Js;
+        override_config.cli.profile = Profile::Recommended;
+        override_config.core.selection = RuleSelection::new(RuleBaseline::All).with_override(
+            glass_lint_core::RuleOverride::new(
+                "js:dynamic-code.eval",
+                glass_lint_core::RuleState::Enabled,
+            )
+            .unwrap(),
+        );
+        let overridden = selected_linter(&override_config).unwrap();
+        assert!(
+            overridden
+                .enabled_rule_ids()
+                .iter()
+                .any(|id| id.as_str() == "js:dynamic-code.eval")
+        );
     }
 
     #[test]

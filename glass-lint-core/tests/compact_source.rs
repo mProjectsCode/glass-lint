@@ -6,7 +6,7 @@
 #![allow(clippy::needless_raw_string_hashes)]
 
 use glass_lint_core::{
-    Environment, Linter, RuleCatalog,
+    Environment, Linter, LinterConfig, RuleCatalog,
     rules::{
         BuildError, Builder, CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity,
         ValueMatcher,
@@ -25,8 +25,10 @@ fn rule(id: &str) -> Builder {
 
 /// Run one compact source through a fresh catalog and assert exact findings.
 fn assert_count(source: &str, rule: Rule, expected: usize) {
-    let catalog = RuleCatalog::with_environment("test", vec![rule], test_environment()).unwrap();
-    let count = Linter::new(catalog)
+    let environment = test_environment();
+    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+    let count = Linter::new(LinterConfig::new(vec![catalog], environment))
+        .unwrap()
         .lint_snippet(source, "minified.js")
         .unwrap()
         .files[0]

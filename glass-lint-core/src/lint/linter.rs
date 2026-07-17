@@ -1,9 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use super::catalog::RuleCatalog;
 use crate::{
-    AnalysisReport, AnalysisSession, CoreConfig, Environment, ProjectInput, ProjectInputError,
-    REPORT_VERSION, RuleCatalogError, RuleId,
+    AnalysisReport, AnalysisSession, Environment, ProjectInput, ProjectInputError, REPORT_VERSION,
+    RuleCatalogError, RuleId,
     analysis::{LocalArtifact, ProjectSemanticModel},
     api::classification::ApiClassificationResult,
     project::ModuleId,
@@ -135,6 +135,10 @@ fn assemble_project_report(
 pub enum LintConfigError {
     /// A requested fully-qualified rule ID is absent from the catalog.
     UnknownRule(RuleId),
+    /// A selector is malformed or did not select any assembled rule.
+    InvalidSelector(String),
+    /// A catalog contains the same fully-qualified rule more than once.
+    DuplicateRule(RuleId),
     /// Safety limits are invalid.
     InvalidLimits(String),
 }
@@ -143,6 +147,8 @@ impl std::fmt::Display for LintConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnknownRule(id) => write!(f, "unknown rule `{id}`"),
+            Self::InvalidSelector(message) => write!(f, "invalid rule selector: {message}"),
+            Self::DuplicateRule(id) => write!(f, "duplicate rule `{id}`"),
             Self::InvalidLimits(message) => write!(f, "invalid resource limits: {message}"),
         }
     }
@@ -150,10 +156,152 @@ impl std::fmt::Display for LintConfigError {
 
 impl std::error::Error for LintConfigError {}
 
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Default, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleBaseline {
+    #[default]
+    All,
+    None,
+    MinimumConfidence(crate::api::rule::Confidence),
+}
+
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RuleState {
+    Disabled,
+    Enabled,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RuleOverride {
+    selector: String,
+    enabled: bool,
+}
+
+impl RuleOverride {
+    pub fn new(selector: impl Into<String>, state: RuleState) -> Result<Self, LintConfigError> {
+        let selector = selector.into();
+        validate_selector(&selector)?;
+        Ok(Self {
+            selector,
+            enabled: state == RuleState::Enabled,
+        })
+    }
+
+    pub fn selector(&self) -> &str {
+        &self.selector
+    }
+
+    pub fn state(&self) -> RuleState {
+        if self.enabled {
+            RuleState::Enabled
+        } else {
+            RuleState::Disabled
+        }
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RuleSelection {
+    baseline: RuleBaseline,
+    overrides: Vec<RuleOverride>,
+}
+
+impl Default for RuleSelection {
+    fn default() -> Self {
+        Self::new(RuleBaseline::All)
+    }
+}
+
+impl RuleSelection {
+    pub fn new(baseline: RuleBaseline) -> Self {
+        Self {
+            baseline,
+            overrides: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_override(mut self, value: RuleOverride) -> Self {
+        self.overrides.push(value);
+        self
+    }
+
+    pub fn baseline(&self) -> RuleBaseline {
+        self.baseline
+    }
+
+    pub fn overrides(&self) -> &[RuleOverride] {
+        &self.overrides
+    }
+}
+
+fn validate_selector(selector: &str) -> Result<(), LintConfigError> {
+    if selector.is_empty()
+        || selector
+            .chars()
+            .any(|c| c == '?' || c == '[' || c == ']' || c == '{' || c == '}')
+    {
+        return Err(LintConfigError::InvalidSelector(selector.into()));
+    }
+    RuleId::parse(selector.replace('*', "placeholder"))
+        .map_err(|_| LintConfigError::InvalidSelector(selector.into()))?;
+    Ok(())
+}
+
+pub fn selector_matches(selector: &str, id: &str) -> bool {
+    selector.split('*').enumerate().all(|(i, part)| {
+        if i == 0 {
+            id.starts_with(part)
+        } else {
+            id.contains(part)
+        }
+    }) && (selector.ends_with('*') || id.ends_with(selector.rsplit('*').next().unwrap_or_default()))
+}
+
+/// Complete, validated input to linter construction.
+#[derive(Clone, Debug)]
+pub struct LinterConfig {
+    catalogs: Vec<RuleCatalog>,
+    environment: Environment,
+    selection: RuleSelection,
+    limits: crate::AnalysisLimits,
+}
+
+impl LinterConfig {
+    pub fn new(catalogs: Vec<RuleCatalog>, environment: Environment) -> Self {
+        Self {
+            catalogs,
+            environment,
+            selection: RuleSelection::default(),
+            limits: crate::AnalysisLimits::default(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_rules(mut self, selection: RuleSelection) -> Self {
+        self.selection = selection;
+        self
+    }
+
+    #[must_use]
+    pub fn with_limits(mut self, limits: crate::AnalysisLimits) -> Self {
+        self.limits = limits;
+        self
+    }
+
+    pub fn selection(&self) -> &RuleSelection {
+        &self.selection
+    }
+}
+
 /// Immutable catalog plus sorted enabled-rule indexes for lint execution.
 pub struct Linter {
     /// Validated rule catalog and compiled matcher plans.
     catalog: RuleCatalog,
+    environment: Environment,
     /// Enabled rule indexes in deterministic order.
     enabled: Vec<crate::api::classification::RuleIndex>,
     limits: crate::AnalysisLimits,
@@ -164,6 +312,7 @@ impl Clone for Linter {
     fn clone(&self) -> Self {
         Self {
             catalog: self.catalog.clone(),
+            environment: self.environment.clone(),
             enabled: self.enabled.clone(),
             limits: self.limits.clone(),
             artifact_cache: self.artifact_cache.clone(),
@@ -186,96 +335,63 @@ impl Linter {
         AnalysisSession::new(self, root)
     }
 
-    /// Apply provider-neutral engine configuration to this linter.
-    pub fn configured(self, config: &CoreConfig) -> Result<Self, LintConfigError> {
+    /// Construct a linter from validated catalogs, one complete environment,
+    /// rule selection, and analysis limits.
+    pub fn new(config: LinterConfig) -> Result<Self, LintConfigError> {
+        let catalog = RuleCatalog::combine(config.catalogs).map_err(|error| match error {
+            RuleCatalogError::InvalidRule(id, _) => {
+                LintConfigError::DuplicateRule(RuleId::parse(id).expect("catalog IDs validated"))
+            }
+            RuleCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
+        })?;
+        let mut enabled = Vec::new();
+        for (index, rule_id) in catalog.rule_ids().iter().enumerate() {
+            let baseline = match config.selection.baseline {
+                RuleBaseline::All => true,
+                RuleBaseline::None => false,
+                RuleBaseline::MinimumConfidence(confidence) => {
+                    catalog.rules[index].confidence() as u8 <= confidence as u8
+                }
+            };
+            let mut state = baseline;
+            for override_ in &config.selection.overrides {
+                if selector_matches(override_.selector(), rule_id.as_str()) {
+                    state = override_.state() == RuleState::Enabled;
+                }
+            }
+            if state {
+                enabled.push(crate::api::classification::RuleIndex::new(index));
+            }
+        }
+        for override_ in &config.selection.overrides {
+            if !catalog
+                .rule_ids()
+                .iter()
+                .any(|id| selector_matches(override_.selector(), id.as_str()))
+            {
+                if !override_.selector().contains('*') {
+                    return Err(LintConfigError::UnknownRule(
+                        RuleId::parse(override_.selector()).map_err(|_| {
+                            LintConfigError::InvalidSelector(override_.selector().into())
+                        })?,
+                    ));
+                }
+                return Err(LintConfigError::InvalidSelector(
+                    override_.selector().into(),
+                ));
+            }
+        }
         config
             .limits
             .validate()
             .map_err(LintConfigError::InvalidLimits)?;
-        if let Some(rules) = &config.rules {
-            let mut linter = Self::with_rules(self.catalog, rules.clone())?;
-            linter.limits = config.limits.clone();
-            linter.artifact_cache = self.artifact_cache;
-            Ok(linter)
-        } else {
-            let mut linter = self;
-            linter.limits = config.limits.clone();
-            Ok(linter)
-        }
-    }
-
-    #[must_use]
-    /// Construct a linter with every catalog rule enabled.
-    pub fn new(catalog: RuleCatalog) -> Self {
-        let enabled = (0..catalog.rules.len())
-            .map(crate::api::classification::RuleIndex::new)
-            .collect();
-        Self {
-            catalog,
-            enabled,
-            limits: crate::AnalysisLimits::default(),
-            artifact_cache: crate::analysis::ArtifactCacheHandle::default(),
-        }
-    }
-
-    /// Select all rules at or above the requested confidence level.
-    /// Construct a linter with rules at or above a confidence threshold.
-    pub fn with_confidence(catalog: RuleCatalog, confidence: crate::api::rule::Confidence) -> Self {
-        let enabled = catalog
-            .rules
-            .iter()
-            .enumerate()
-            .filter_map(|(index, rule)| {
-                (rule.confidence() as u8 <= confidence as u8).then_some(index)
-            })
-            .map(crate::api::classification::RuleIndex::new)
-            .collect();
-        Self {
-            catalog,
-            enabled,
-            limits: crate::AnalysisLimits::default(),
-            artifact_cache: crate::analysis::ArtifactCacheHandle::default(),
-        }
-    }
-
-    /// Construct a linter with a validated explicit rule selection.
-    pub fn with_rules(
-        catalog: RuleCatalog,
-        enabled: impl IntoIterator<Item = RuleId>,
-    ) -> Result<Self, LintConfigError> {
-        let mut indices = enabled
-            .into_iter()
-            .map(|id| {
-                catalog
-                    .rule_index(&id)
-                    .ok_or(LintConfigError::UnknownRule(id))
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        indices.sort_unstable();
-        indices.dedup();
         Ok(Self {
             catalog,
-            enabled: indices,
-            limits: crate::AnalysisLimits::default(),
+            environment: config.environment,
+            enabled,
+            limits: config.limits,
             artifact_cache: crate::analysis::ArtifactCacheHandle::default(),
         })
-    }
-
-    /// Combine provider linters into one analysis pass under a shared host
-    /// environment while preserving each linter's enabled rule selection.
-    pub fn combine_with_environment(
-        linters: impl IntoIterator<Item = Self>,
-        environment: Environment,
-    ) -> Result<Self, RuleCatalogError> {
-        let mut catalogs = Vec::new();
-        let mut enabled = BTreeSet::new();
-        for linter in linters {
-            enabled.extend(linter.enabled_rule_ids());
-            catalogs.push(linter.catalog);
-        }
-        let catalog = RuleCatalog::combine_with_environment(catalogs, environment)?;
-        Ok(Self::with_rules(catalog, enabled)
-            .expect("combined catalog retains every selected rule"))
     }
 
     #[must_use]
@@ -293,14 +409,14 @@ impl Linter {
             .collect()
     }
 
-    /// Borrow the environment used by semantic analysis.
-    pub fn analysis_environment(&self) -> &Environment {
-        self.catalog.environment()
-    }
-
     /// Borrow the validated parser and semantic safety limits.
     pub fn analysis_limits(&self) -> &crate::AnalysisLimits {
         &self.limits
+    }
+
+    /// Borrow the complete host environment used by semantic analysis.
+    pub fn analysis_environment(&self) -> &Environment {
+        &self.environment
     }
 
     pub(crate) fn artifact_cache_handle(&self) -> crate::analysis::ArtifactCacheHandle {
@@ -311,9 +427,15 @@ impl Linter {
     /// resolution results.  Filesystem loading belongs to the project crate.
     ///
     /// ```
-    /// use glass_lint_core::{Linter, ProjectInput, RuleCatalog, SourceFile};
+    /// use glass_lint_core::{
+    ///     Environment, Linter, LinterConfig, ProjectInput, RuleCatalog, SourceFile,
+    /// };
     ///
-    /// let linter = Linter::new(RuleCatalog::new("example", vec![]).unwrap());
+    /// let linter = Linter::new(LinterConfig::new(
+    ///     vec![RuleCatalog::new("example", vec![]).unwrap()],
+    ///     Environment::default(),
+    /// ))
+    /// .unwrap();
     /// let report = linter
     ///     .lint_project(ProjectInput {
     ///         root: ".".into(),
@@ -348,9 +470,13 @@ impl Linter {
     /// and [`Self::lint_project`].
     ///
     /// ```
-    /// use glass_lint_core::{Linter, RuleCatalog};
+    /// use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
     ///
-    /// let linter = Linter::new(RuleCatalog::new("example", vec![]).unwrap());
+    /// let linter = Linter::new(LinterConfig::new(
+    ///     vec![RuleCatalog::new("example", vec![]).unwrap()],
+    ///     Environment::default(),
+    /// ))
+    /// .unwrap();
     /// let report = linter.lint_snippet("", "snippet.js").unwrap();
     /// assert_eq!(report.files[0].path.as_str(), "snippet.js");
     /// ```
@@ -503,14 +629,22 @@ mod tests {
             .matcher(Matcher::global_call("fetch"))
             .build()
             .unwrap();
+        RuleCatalog::new("test", vec![rule]).unwrap()
+    }
+
+    fn test_linter(catalog: RuleCatalog, environment: crate::Environment) -> Linter {
+        Linter::new(LinterConfig::new(vec![catalog], environment)).unwrap()
+    }
+
+    fn catalog_linter(catalog: RuleCatalog) -> Linter {
         let mut environment = crate::Environment::default();
         environment.add_global("fetch").unwrap();
-        RuleCatalog::with_environment("test", vec![rule], environment).unwrap()
+        test_linter(catalog, environment)
     }
 
     #[test]
     fn emits_one_located_finding_per_match() {
-        let report = Linter::new(catalog()).lint("fetch('/a');\nfetch('/b');", "input.js");
+        let report = catalog_linter(catalog()).lint("fetch('/a');\nfetch('/b');", "input.js");
         assert_eq!(report.files[0].findings.len(), 2);
         assert_eq!(report.files[0].findings[0].location.range.start().line(), 1);
         assert_eq!(report.files[0].findings[1].location.range.start().line(), 2);
@@ -547,7 +681,11 @@ mod tests {
             .matcher(Matcher::rooted_member_call("app.vault.createFolder"))
             .build()
             .unwrap();
-        let report = Linter::new(RuleCatalog::new("test", vec![rule]).unwrap()).lint(
+        let report = test_linter(
+            RuleCatalog::new("test", vec![rule]).unwrap(),
+            crate::Environment::default(),
+        )
+        .lint(
             "this.app.vault.create('a');\nthis.app.vault.createFolder('b');",
             "input.js",
         );
@@ -567,7 +705,7 @@ mod tests {
 
     #[test]
     fn rejects_shadowed_global_lookalikes() {
-        let report = Linter::new(catalog()).lint(
+        let report = catalog_linter(catalog()).lint(
             "function demo(fetch) { fetch('/local'); } fetch('/global');",
             "input.js",
         );
@@ -588,8 +726,8 @@ mod tests {
             .build()
             .unwrap();
         let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-        let report =
-            Linter::new(catalog).lint("this.app.metadataCache.getFileCache(file);", "input.js");
+        let report = test_linter(catalog, crate::Environment::default())
+            .lint("this.app.metadataCache.getFileCache(file);", "input.js");
 
         assert_eq!(report.files[0].findings.len(), 1);
         assert_eq!(
@@ -631,7 +769,58 @@ mod tests {
     fn validates_custom_rule_selection() {
         let unknown = RuleId::parse("test:missing").unwrap();
         assert!(matches!(
-            Linter::with_rules(catalog(), [unknown]),
+            Linter::new(
+                LinterConfig::new(vec![catalog()], Environment::default()).with_rules(
+                    RuleSelection::new(RuleBaseline::None).with_override(
+                        RuleOverride::new(unknown.to_string(), RuleState::Enabled).unwrap(),
+                    ),
+                ),
+            ),
+            Err(LintConfigError::UnknownRule(_))
+        ));
+    }
+
+    #[test]
+    fn ordered_rule_overrides_select_stable_catalog_indexes() {
+        let first = Rule::builder("network.first")
+            .label("First")
+            .category("network")
+            .severity(Severity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap();
+        let second = Rule::builder("network.second")
+            .label("Second")
+            .category("network")
+            .severity(Severity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap();
+        let catalog = RuleCatalog::new("test", vec![first, second]).unwrap();
+        let selection = RuleSelection::new(RuleBaseline::None)
+            .with_override(RuleOverride::new("test:*", RuleState::Enabled).unwrap())
+            .with_override(RuleOverride::new("test:network.first", RuleState::Disabled).unwrap());
+        let linter = Linter::new(
+            LinterConfig::new(vec![catalog], Environment::default()).with_rules(selection),
+        )
+        .unwrap();
+        assert_eq!(
+            linter.enabled_rule_ids(),
+            vec![RuleId::parse("test:network.second").unwrap()]
+        );
+    }
+
+    #[test]
+    fn selectors_require_a_known_match() {
+        let catalog = RuleCatalog::new("test", vec![]).unwrap();
+        let selection = RuleSelection::new(RuleBaseline::None)
+            .with_override(RuleOverride::new("test:missing", RuleState::Enabled).unwrap());
+        assert!(matches!(
+            Linter::new(
+                LinterConfig::new(vec![catalog], Environment::default()).with_rules(selection)
+            ),
             Err(LintConfigError::UnknownRule(_))
         ));
     }
@@ -639,7 +828,7 @@ mod tests {
     #[test]
     fn reports_structured_diagnostic_for_oversized_source() {
         let report =
-            Linter::new(catalog()).lint(&"x".repeat(crate::MAX_SOURCE_BYTES + 1), "large.js");
+            catalog_linter(catalog()).lint(&"x".repeat(crate::MAX_SOURCE_BYTES + 1), "large.js");
         assert!(report.files[0].findings.is_empty());
         assert_eq!(report.files[0].parse_diagnostic_count(), 1);
         assert_eq!(
@@ -667,7 +856,7 @@ mod tests {
 
     #[test]
     fn parse_diagnostics_carry_stable_location_context() {
-        let report = Linter::new(catalog()).lint("fetch(", "broken.js");
+        let report = catalog_linter(catalog()).lint("fetch(", "broken.js");
         assert!(report.files[0].findings.is_empty());
         let diagnostic = &report.files[0].diagnostics[0].parse_diagnostic().unwrap();
         assert_eq!(
@@ -681,7 +870,7 @@ mod tests {
 
     #[test]
     fn source_locations_handle_crlf_and_eof_without_byte_columns() {
-        let report = Linter::new(catalog()).lint("fetch('/a');\r\nfetch('/é');", "crlf.js");
+        let report = catalog_linter(catalog()).lint("fetch('/a');\r\nfetch('/é');", "crlf.js");
         assert_eq!(report.files[0].findings.len(), 2);
         assert_eq!(report.files[0].findings[0].location.range.start().line(), 1);
         assert_eq!(report.files[0].findings[1].location.range.start().line(), 2);
@@ -690,14 +879,14 @@ mod tests {
                 > report.files[0].findings[1].location.range.start().column()
         );
 
-        let empty = Linter::new(catalog()).lint("", "empty.js");
+        let empty = catalog_linter(catalog()).lint("", "empty.js");
         assert!(empty.files[0].findings.is_empty());
         assert!(!empty.files[0].has_parse_diagnostics());
     }
 
     #[test]
     fn evidence_ranges_and_snippets_are_populated_for_unicode_source() {
-        let report = Linter::new(catalog()).lint("// é\nfetch('/x');", "unicode.js");
+        let report = catalog_linter(catalog()).lint("// é\nfetch('/x');", "unicode.js");
         let evidence = &report.files[0].findings[0].evidence[0];
         assert_eq!(
             evidence
@@ -711,7 +900,7 @@ mod tests {
     #[test]
     fn evidence_limit_is_source_ordered_and_applied_once() {
         let source = (0..20).map(|_| "fetch();\n").collect::<String>();
-        let report = Linter::new(catalog()).lint(&source, "many.js");
+        let report = catalog_linter(catalog()).lint(&source, "many.js");
         assert_eq!(report.files[0].findings.len(), 20);
         assert_eq!(
             report.files[0]
@@ -759,28 +948,24 @@ mod tests {
         environment
             .add_globals(["fetch", "XMLHttpRequest"])
             .unwrap();
-        let catalog =
-            RuleCatalog::with_environment("test", vec![rule_a, rule_b], environment).unwrap();
+        let catalog = RuleCatalog::new("test", vec![rule_a, rule_b]).unwrap();
 
         let source = "fetch('/a'); new XMLHttpRequest();";
-        let report_asc = Linter::with_rules(
-            catalog.clone(),
-            [
-                RuleId::parse("test:alpha.first").unwrap(),
-                RuleId::parse("test:beta.second").unwrap(),
-            ],
+        let enabled = RuleSelection::new(RuleBaseline::None)
+            .with_override(RuleOverride::new("test:alpha.first", RuleState::Enabled).unwrap())
+            .with_override(RuleOverride::new("test:beta.second", RuleState::Enabled).unwrap());
+        let report_asc = Linter::new(
+            LinterConfig::new(vec![catalog.clone()], environment.clone()).with_rules(enabled),
         )
         .unwrap()
         .lint(source, "order.js");
-        let report_desc = Linter::with_rules(
-            catalog,
-            [
-                RuleId::parse("test:beta.second").unwrap(),
-                RuleId::parse("test:alpha.first").unwrap(),
-            ],
-        )
-        .unwrap()
-        .lint(source, "order.js");
+        let enabled = RuleSelection::new(RuleBaseline::None)
+            .with_override(RuleOverride::new("test:beta.second", RuleState::Enabled).unwrap())
+            .with_override(RuleOverride::new("test:alpha.first", RuleState::Enabled).unwrap());
+        let report_desc =
+            Linter::new(LinterConfig::new(vec![catalog], environment).with_rules(enabled))
+                .unwrap()
+                .lint(source, "order.js");
 
         // Both runs produce identical findings regardless of internal order.
         assert_eq!(
@@ -820,11 +1005,13 @@ mod tests {
         environment
             .add_globals(["fetch", "XMLHttpRequest"])
             .unwrap();
-        let catalog =
-            RuleCatalog::with_environment("test", vec![rule_a, rule_b], environment).unwrap();
-        let report = Linter::with_rules(catalog, [RuleId::parse("test:beta.second").unwrap()])
-            .unwrap()
-            .lint("fetch(); XMLHttpRequest();", "subset.js");
+        let catalog = RuleCatalog::new("test", vec![rule_a, rule_b]).unwrap();
+        let selection = RuleSelection::new(RuleBaseline::None)
+            .with_override(RuleOverride::new("test:beta.second", RuleState::Enabled).unwrap());
+        let report =
+            Linter::new(LinterConfig::new(vec![catalog], environment).with_rules(selection))
+                .unwrap()
+                .lint("fetch(); XMLHttpRequest();", "subset.js");
         assert_eq!(report.files[0].findings.len(), 1);
         assert_eq!(
             report.files[0].findings[0].rule_id.as_str(),
@@ -852,13 +1039,13 @@ mod tests {
             .unwrap();
         let mut environment = crate::Environment::default();
         environment.add_globals(["fetch", "requestUrl"]).unwrap();
-        let linter = Linter::combine_with_environment(
-            [
-                Linter::new(RuleCatalog::new("first", vec![first]).unwrap()),
-                Linter::new(RuleCatalog::new("second", vec![second]).unwrap()),
+        let linter = Linter::new(LinterConfig::new(
+            vec![
+                RuleCatalog::new("first", vec![first]).unwrap(),
+                RuleCatalog::new("second", vec![second]).unwrap(),
             ],
             environment,
-        )
+        ))
         .unwrap();
 
         let report = linter.lint("fetch('/a'); requestUrl('/b');", "combined.js");
@@ -891,16 +1078,22 @@ mod tests {
             .matcher(Matcher::global_call("requestUrl"))
             .build()
             .unwrap();
-        let enabled = Linter::new(RuleCatalog::new("first", vec![enabled_rule]).unwrap());
-        let disabled =
-            Linter::with_rules(RuleCatalog::new("second", vec![disabled_rule]).unwrap(), [])
-                .unwrap();
         let mut environment = crate::Environment::default();
         environment.add_globals(["fetch", "requestUrl"]).unwrap();
-
-        let report = Linter::combine_with_environment([enabled, disabled], environment)
-            .unwrap()
-            .lint("fetch(); requestUrl();", "selection.js");
+        let selection = RuleSelection::new(RuleBaseline::None)
+            .with_override(RuleOverride::new("first:enabled", RuleState::Enabled).unwrap());
+        let report = Linter::new(
+            LinterConfig::new(
+                vec![
+                    RuleCatalog::new("first", vec![enabled_rule]).unwrap(),
+                    RuleCatalog::new("second", vec![disabled_rule]).unwrap(),
+                ],
+                environment,
+            )
+            .with_rules(selection),
+        )
+        .unwrap()
+        .lint("fetch(); requestUrl();", "selection.js");
 
         assert_eq!(report.files[0].findings.len(), 1);
         assert_eq!(

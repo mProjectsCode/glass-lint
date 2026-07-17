@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use glass_lint_core::{AnalysisReport, Environment, Linter, RuleCatalog, RuleMetadata};
+use glass_lint_core::{AnalysisReport, Environment, RuleCatalog, RuleMetadata};
 
 mod catalog;
 mod rules;
@@ -13,34 +13,32 @@ mod rules;
 #[must_use]
 /// Return metadata for every rule in the `obsidian:` provider catalog.
 pub fn rule_catalog() -> Vec<RuleMetadata> {
-    catalog(default_environment()).metadata()
+    catalog().metadata()
 }
 
 #[must_use]
-/// Build the recommended high-confidence Obsidian linter.
-pub fn recommended_linter() -> Linter {
-    recommended_linter_with_environment(default_environment())
-}
-
-/// Build the recommended linter with an exact caller-supplied environment.
-#[must_use]
-/// Build the recommended linter with a caller-supplied environment.
-pub fn recommended_linter_with_environment(environment: Environment) -> Linter {
-    let catalog = catalog(environment);
-    Linter::with_confidence(catalog, glass_lint_core::rules::Confidence::High)
+pub fn catalog() -> RuleCatalog {
+    RuleCatalog::new("obsidian", catalog::obsidian_api_rules().to_vec())
+        .expect("valid Obsidian catalog")
 }
 
 #[must_use]
-/// Build the complete Obsidian linter, including heuristic rules.
-pub fn heuristic_linter() -> Linter {
-    heuristic_linter_with_environment(default_environment())
-}
-
-/// Build the complete linter with an exact caller-supplied environment.
-#[must_use]
-/// Build the complete linter with a caller-supplied environment.
-pub fn heuristic_linter_with_environment(environment: Environment) -> Linter {
-    Linter::new(catalog(environment))
+pub fn environment() -> Environment {
+    let mut environment = glass_lint_js::electron_environment();
+    environment
+        .add_globals([
+            "Notice",
+            "activeDocument",
+            "app",
+            "moment",
+            "request",
+            "requestUrl",
+        ])
+        .expect("valid Obsidian globals");
+    environment
+        .add_global_object("activeWindow")
+        .expect("valid Obsidian global object");
+    environment
 }
 
 #[must_use]
@@ -61,71 +59,6 @@ pub fn disclosures_for_report(report: &AnalysisReport) -> BTreeSet<&'static str>
         .collect()
 }
 
-/// Globals provided by the Obsidian Electron renderer.
-///
-/// `activeWindow` is treated as sharing the same environment as the current
-/// window. The runtime may return either the main window or a pop-out window,
-/// and static analysis cannot determine which one is in use at a call site.
-#[must_use]
-pub fn default_environment() -> Environment {
-    let mut environment = Environment::default();
-    environment
-        .add_globals([
-            "Buffer",
-            "EventSource",
-            "Notification",
-            "Notice",
-            "URL",
-            "URLSearchParams",
-            "WebSocket",
-            "XMLHttpRequest",
-            "activeDocument",
-            "app",
-            "caches",
-            "clearImmediate",
-            "clearInterval",
-            "clearTimeout",
-            "console",
-            "document",
-            "fetch",
-            "indexedDB",
-            "localStorage",
-            "module",
-            "moment",
-            "navigator",
-            "process",
-            "queueMicrotask",
-            "require",
-            "request",
-            "requestUrl",
-            "sessionStorage",
-            "setImmediate",
-            "setInterval",
-            "setTimeout",
-        ])
-        .expect("built-in Obsidian environment names are valid");
-    for name in ["window", "self", "global"] {
-        environment
-            .add_global_object(name)
-            .expect("built-in Obsidian global-object names are valid");
-    }
-    environment
-        .add_global_object("activeWindow")
-        .expect("activeWindow global-object name is valid");
-    environment
-}
-
-fn catalog(environment: Environment) -> RuleCatalog {
-    // Apply the environment only at catalog construction so all profiles use
-    // the same provider rule set and differ only by confidence filtering.
-    RuleCatalog::with_environment(
-        "obsidian",
-        catalog::obsidian_api_rules().to_vec(),
-        environment,
-    )
-    .unwrap()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,7 +72,7 @@ mod tests {
                 .iter()
                 .all(|rule| rule.id.as_str().starts_with("obsidian:"))
         );
-        let environment = default_environment();
+        let environment = environment();
         assert!(environment.global_bindings().any(|name| name == "app"));
         assert!(!environment.global_bindings().any(|name| name == "Modal"));
         assert!(
@@ -171,11 +104,13 @@ mod tests {
             .matcher(CallMatcher::global("eval"))
             .build()
             .unwrap();
-        let catalog =
-            RuleCatalog::with_environment("test", vec![rule], default_environment()).unwrap();
-        let report = Linter::new(catalog)
-            .lint_snippet("activeWindow.eval('x')", "main.js")
-            .unwrap();
+        let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment(),
+        ))
+        .unwrap()
+        .lint_snippet("activeWindow.eval('x')", "main.js")
+        .unwrap();
         assert_eq!(report.files[0].findings.len(), 1);
     }
 
@@ -191,25 +126,37 @@ mod tests {
             .matcher(CallMatcher::global("requestUrl"))
             .build()
             .unwrap();
-        let catalog =
-            RuleCatalog::with_environment("test", vec![rule], default_environment()).unwrap();
-        let report = Linter::new(catalog)
-            .lint_snippet(
-                "requestUrl('/a'); window.requestUrl('/b'); activeWindow.requestUrl('/c');",
-                "main.js",
-            )
-            .unwrap();
+        let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment(),
+        ))
+        .unwrap()
+        .lint_snippet(
+            "requestUrl('/a'); window.requestUrl('/b'); activeWindow.requestUrl('/c');",
+            "main.js",
+        )
+        .unwrap();
         assert_eq!(report.files[0].findings.len(), 3);
     }
 
     #[test]
     fn preconfigured_linter_reports_precise_network_calls() {
-        let report = heuristic_linter()
-            .lint_snippet(
-                "import { request } from 'obsidian';\nrequest('/one');\nrequest('/two');",
-                "main.js",
-            )
-            .unwrap();
+        let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+            vec![
+                glass_lint_js::js_catalog(),
+                glass_lint_js::browser_catalog(),
+                glass_lint_js::node_catalog(),
+                glass_lint_js::electron_catalog(),
+                catalog(),
+            ],
+            environment(),
+        ))
+        .unwrap()
+        .lint_snippet(
+            "import { request } from 'obsidian';\nrequest('/one');\nrequest('/two');",
+            "main.js",
+        )
+        .unwrap();
         let findings: Vec<_> = report.files[0]
             .findings
             .iter()
@@ -222,12 +169,22 @@ mod tests {
 
     #[test]
     fn disclosure_policy_is_applied_by_the_obsidian_adapter() {
-        let report = heuristic_linter()
-            .lint_snippet(
-                "import { request } from 'obsidian'; request('/network');",
-                "main.js",
-            )
-            .unwrap();
+        let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+            vec![
+                glass_lint_js::js_catalog(),
+                glass_lint_js::browser_catalog(),
+                glass_lint_js::node_catalog(),
+                glass_lint_js::electron_catalog(),
+                catalog(),
+            ],
+            environment(),
+        ))
+        .unwrap()
+        .lint_snippet(
+            "import { request } from 'obsidian'; request('/network');",
+            "main.js",
+        )
+        .unwrap();
         assert_eq!(
             disclosures_for_report(&report),
             BTreeSet::from([

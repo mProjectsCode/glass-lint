@@ -70,11 +70,14 @@ and exit statuses.
 
 ## Rust API
 
-Provider crates expose ready-to-use linters:
+Provider crates expose catalogs and complete host environments; core constructs
+the linter:
 
 ```rust
-let report = glass_lint_obsidian::recommended_linter()
-    .lint_snippet(source, "main.js")?;
+let linter = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+    vec![glass_lint_obsidian::catalog()], glass_lint_obsidian::environment(),
+))?;
+let report = linter.lint_snippet(source, "main.js")?;
 ```
 
 Use [`glass-lint-core`](glass-lint-core/) to define custom catalogs,

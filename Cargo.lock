@@ -491,6 +491,7 @@ name = "glass-lint-obsidian"
 version = "0.1.0"
 dependencies = [
  "glass-lint-core",
+ "glass-lint-js",
 ]
 
 [[package]]

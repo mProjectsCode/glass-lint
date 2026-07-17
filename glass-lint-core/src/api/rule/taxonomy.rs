@@ -48,7 +48,7 @@ impl From<String> for Category {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 /// Confidence assigned to the semantic evidence.
 pub enum Confidence {

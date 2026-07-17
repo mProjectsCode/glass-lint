@@ -11,7 +11,7 @@ Rules use local IDs; `RuleCatalog` adds the provider namespace:
 
 ```rust
 use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
-use glass_lint_core::{Environment, Linter, RuleCatalog};
+use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
 
 let rule = Rule::builder("network.request")
     .label("Makes a network request")
@@ -24,16 +24,20 @@ let rule = Rule::builder("network.request")
 let mut environment = Environment::default();
 environment.add_global("fetch")?;
 
-let catalog = RuleCatalog::with_environment("example", vec![rule], environment)?;
-let linter = Linter::new(catalog);
+let catalog = RuleCatalog::new("example", vec![rule])?;
+let linter = Linter::new(LinterConfig::new(
+    vec![catalog],
+    environment,
+))?;
 let report = linter.lint_snippet("fetch('/data');", "main.js")?;
 
 assert_eq!(report.files[0].findings[0].rule_id.as_str(), "example:network.request");
 ```
 
-`Linter::new` enables the complete catalog. `Linter::with_rules` selects exact
-qualified IDs, `Linter::with_confidence` selects a confidence threshold, and
-`Linter::configured` applies `CoreConfig`.
+`LinterConfig` accepts one or more catalogs, one complete host environment, a
+`RuleSelection`, and analysis limits. `Linter::new` validates and compiles the
+complete configuration once. Selection baselines and ordered exact or glob
+overrides are resolved during construction.
 
 ## Matching
 

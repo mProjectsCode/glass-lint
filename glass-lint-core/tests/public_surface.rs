@@ -1,5 +1,5 @@
 use glass_lint_core::{
-    AnalysisLimits, ByteRange, CoreConfig, DiagnosticCode, Environment, InvalidPosition,
+    AnalysisLimits, ByteRange, DiagnosticCode, Environment, InvalidPosition,
     InvalidSourcePositionRange, Linter, Position, ProjectInput, Rule, RuleCatalog, Severity,
     SourceFile, SourceRange,
     rules::{CallMatcher, Confidence},
@@ -17,13 +17,12 @@ fn supported_public_operations_do_not_require_engine_storage() {
         .unwrap();
     let mut environment = Environment::default();
     environment.add_global("fetch").unwrap();
-    let catalog = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
-    let linter = Linter::new(catalog)
-        .configured(&CoreConfig {
-            rules: None,
-            limits: AnalysisLimits::default(),
-        })
-        .unwrap();
+    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
+    let linter = Linter::new(
+        glass_lint_core::LinterConfig::new(vec![catalog], environment)
+            .with_limits(AnalysisLimits::default()),
+    )
+    .unwrap();
     let report = linter
         .lint_project(ProjectInput {
             root: "/project".into(),

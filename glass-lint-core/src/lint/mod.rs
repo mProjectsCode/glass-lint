@@ -10,4 +10,7 @@ mod linter;
 mod ranges;
 
 pub use catalog::{RuleCatalog, RuleCatalogError};
-pub use linter::{LintConfigError, Linter};
+pub use linter::{
+    LintConfigError, Linter, LinterConfig, RuleBaseline, RuleOverride, RuleSelection, RuleState,
+    selector_matches,
+};

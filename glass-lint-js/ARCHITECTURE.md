@@ -5,22 +5,21 @@ or command-line responsibilities.
 
 ```text
 rule factories + JavaScript host environment
-  -> namespaced RuleCatalog (`js:`)
-  -> confidence selection
-  -> core Linter
+  -> namespaced RuleCatalogs (`js:`, `browser:`, `node:`, `electron:`)
+  -> caller-selected core Linter configuration
   -> JavaScript disclosure mapping
 ```
 
 Rules are grouped by runtime area under `src/rules`. Each factory returns a
-provider-neutral core `Rule` with a local ID; catalog construction validates
-the rules and adds the `js:` namespace. `default_environment` supplies the
-browser, Node.js, and Electron globals assumed by the combined catalog.
+provider-neutral core `Rule` with a local ID; the four exported catalogs add
+their own namespace. Environment builders model complete host targets, with
+browser and Node extending JavaScript and Electron extending both.
 
-`recommended_linter` enables high-confidence rules.
-`heuristic_linter` enables the complete catalog. Disclosure derivation is a
-provider policy applied after core produces a report.
+Callers choose a catalog and environment, then apply their own baseline and
+overrides through core. Disclosure derivation is a provider policy applied
+after core produces a report.
 
 Shared semantics belong in core. This crate owns rule metadata, matcher
-composition, host assumptions, profile membership, fixtures, and disclosure
-mapping only. It must not traverse an AST, load files, resolve modules, or
-define a competing report type.
+composition, host assumptions, fixtures, and disclosure mapping only. Named
+selection policy belongs to callers. It must not traverse an AST, load files,
+resolve modules, or define a competing report type.

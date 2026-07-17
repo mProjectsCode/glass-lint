@@ -5,7 +5,7 @@
 //! source coordinates authoritative after TypeScript syntax is stripped.
 
 use glass_lint_core::{
-    Environment, Linter, RuleCatalog, SourceLanguage,
+    Environment, Linter, LinterConfig, RuleCatalog, SourceLanguage,
     rules::{Confidence, Matcher, Rule, Severity},
 };
 
@@ -21,7 +21,11 @@ fn linter() -> Linter {
         .unwrap();
     let mut environment = Environment::default();
     environment.add_global("fetch").unwrap();
-    Linter::new(RuleCatalog::with_environment("test", vec![rule], environment).unwrap())
+    Linter::new(LinterConfig::new(
+        vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+        environment,
+    ))
+    .unwrap()
 }
 
 #[test]

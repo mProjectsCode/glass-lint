@@ -3,13 +3,17 @@
 
 use std::fs;
 
-use glass_lint_core::{Environment, Linter, RuleCatalog};
+use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
 
 use crate::{ProjectLoadError, ProjectLoadOptions, ProjectLoader, ProjectSelection};
 
 /// Use an empty catalog to isolate loader behavior from rule matching.
 fn linter() -> Linter {
-    Linter::new(RuleCatalog::with_environment("test", vec![], Environment::default()).unwrap())
+    Linter::new(LinterConfig::new(
+        vec![RuleCatalog::new("test", vec![]).unwrap()],
+        Environment::default(),
+    ))
+    .unwrap()
 }
 
 #[test]

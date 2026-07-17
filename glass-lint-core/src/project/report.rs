@@ -40,8 +40,12 @@ impl AnalysisReport {
     /// Losslessly combine reports produced by independent analyses.
     ///
     /// ```
-    /// # use glass_lint_core::{Linter, RuleCatalog, AnalysisReport};
-    /// let linter = Linter::new(RuleCatalog::new("example", vec![]).unwrap());
+    /// # use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog, AnalysisReport};
+    /// let linter = Linter::new(LinterConfig::new(
+    ///     vec![RuleCatalog::new("example", vec![]).unwrap()],
+    ///     Environment::default(),
+    /// ))
+    /// .unwrap();
     /// let first = linter.lint_snippet("", "first.js").unwrap();
     /// let second = linter.lint_snippet("", "second.js").unwrap();
     /// let combined = AnalysisReport::combine([first, second]).unwrap();
@@ -344,9 +348,11 @@ mod tests {
             .unwrap();
         let mut environment = crate::Environment::default();
         environment.add_global("fetch").unwrap();
-        let linter = crate::Linter::new(
-            RuleCatalog::with_environment("test", vec![rule], environment).unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment,
+        ))
+        .unwrap();
         let source = "fetch(\"https://example.test\");";
         let direct = linter
             .lint_snippet(source, "main.js")
@@ -396,9 +402,11 @@ mod tests {
             .unwrap();
         let mut environment = crate::Environment::default();
         environment.add_global("fetch").unwrap();
-        let linter = crate::Linter::new(
-            RuleCatalog::with_environment("test", vec![rule], environment).unwrap(),
-        );
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment,
+        ))
+        .unwrap();
         let report = linter.lint_snippet("fetch('/');", "main.js").unwrap();
         let json = serde_json::to_value(&report).unwrap();
         assert_eq!(json["files"].as_array().unwrap().len(), 1);
