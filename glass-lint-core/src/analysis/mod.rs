@@ -14,7 +14,6 @@ use std::{
 };
 
 use project::state::{ExportTable, ModuleGraph};
-use swc_common::{SourceMap, SourceMapper, sync::Lrc};
 
 use crate::project::{
     ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey, ResolutionResult,
@@ -24,16 +23,23 @@ use crate::project::{
 mod evidence;
 mod facts;
 pub mod flow;
-pub mod local;
+mod local;
+mod lowering;
 mod matching;
 pub mod module;
 pub mod project;
 mod resolution;
 mod scope;
+mod status;
 mod syntax;
 mod value;
 
-pub use local::{LocalModuleModel, ProjectModule};
+pub use local::{
+    ArtifactCache, ArtifactFingerprint, CachedArtifact, LocalArtifact, ProjectModule,
+    SemanticArtifact, SourceContext,
+};
+pub use lowering::{LoweredSource, lower_artifact, lower_source};
+use status::AnalysisStatus;
 use syntax::SymbolCallProvenance;
 
 const MAX_EXPORT_DEPTH: usize = 1024;
@@ -57,6 +63,7 @@ pub struct ProjectSemanticModel {
     link_rounds: usize,
     /// Project diagnostics accumulated during linking and budgets.
     diagnostics: Vec<crate::ProjectDiagnostic>,
+    status: std::cell::RefCell<AnalysisStatus>,
     /// Budget used by cross-module flow projection.
     flow_budget: crate::budget::BudgetTracker,
     /// Budget used by export identity linking.
@@ -83,85 +90,31 @@ enum ExportResolution {
     Ambiguous,
 }
 
-impl ProjectSemanticModel {
-    /// Create a project model for one already analyzed source without linking.
-    #[allow(dead_code)]
-    pub fn single(
-        path: impl Into<String>,
-        source_map: Lrc<SourceMap>,
-        local: LocalModuleModel,
-    ) -> Self {
-        Self::single_with_limits(path, source_map, local, &crate::ResourceLimits::default())
-    }
+struct ValidatedLinkInput {
+    modules: BTreeMap<ModuleId, ProjectModule>,
+    resolutions: BTreeMap<ResolutionRequestKey, ResolvedModule>,
+}
 
-    pub fn single_with_limits(
-        path: impl Into<String>,
-        source_map: Lrc<SourceMap>,
-        local: LocalModuleModel,
-        limits: &crate::ResourceLimits,
-    ) -> Self {
-        Self {
-            modules: std::iter::once((
-                ModuleId(0),
-                ProjectModule::new(ModuleId(0), path.into(), source_map, local),
-            ))
-            .collect(),
-            resolutions: BTreeMap::new(),
-            exports: ExportTable::default(),
-            graph: {
-                let mut graph = ModuleGraph::default();
-                graph.ensure_node(ModuleId(0));
-                graph.set_components(vec![vec![ModuleId(0)]]);
-                graph
-            },
-            link_rounds: 0,
-            diagnostics: Vec::new(),
-            flow_budget: crate::budget::BudgetTracker::default(),
-            link_budget: crate::budget::BudgetTracker::default(),
-            effect_projections: Cell::new(0),
-            link_limit: limits.link_operations,
-            flow_limit: limits.flow_operations,
-        }
-    }
-
-    /// Link already-built local modules to normalized resolution records.
-    /// No AST or matcher work is performed here.
-    #[allow(dead_code)]
-    pub fn link(
+impl ValidatedLinkInput {
+    fn build(
         input: ProjectInput,
-        analyzed: BTreeMap<String, (Lrc<SourceMap>, LocalModuleModel)>,
+        mut analyzed: BTreeMap<crate::ProjectRelativePath, LocalArtifact>,
     ) -> Result<Self, ProjectInputError> {
-        Self::link_with_limits(input, analyzed, &crate::ResourceLimits::default())
-    }
-
-    pub fn link_with_limits(
-        input: ProjectInput,
-        mut analyzed: BTreeMap<String, (Lrc<SourceMap>, LocalModuleModel)>,
-        limits: &crate::ResourceLimits,
-    ) -> Result<Self, ProjectInputError> {
-        let input = input.validate()?;
         let ids = input.module_ids();
         let mut modules = BTreeMap::new();
         for source in &input.sources {
-            let Some((source_map, local)) = analyzed.remove(source.path.as_str()) else {
+            let Some(local) = analyzed.remove(&source.path) else {
                 continue;
             };
-            let Some(id) = ids.get(source.path.as_str()).copied() else {
+            let Some(id) = ids.get(&source.path).copied() else {
                 return Err(ProjectInputError::InvalidTarget(source.path.to_string()));
             };
-            modules.insert(
-                id,
-                ProjectModule::new(id, source.path.to_string(), source_map, local),
-            );
+            modules.insert(id, ProjectModule::new(id, local));
         }
 
-        // Resolution records are part of the authored project contract, not a
-        // free-form edge list. Validate their exact source spans after local
-        // construction so repeated requests with the same specifier cannot be
-        // accidentally collapsed onto the first request.
         let authored = modules
             .values()
-            .flat_map(Self::authored_requests)
+            .flat_map(ProjectSemanticModel::authored_requests)
             .map(|request| request.key)
             .collect::<BTreeSet<_>>();
         for (key, _) in &input.resolutions {
@@ -169,6 +122,7 @@ impl ProjectSemanticModel {
                 return Err(ProjectInputError::UnknownRequest(key.clone()));
             }
         }
+
         let request_count = modules
             .values()
             .map(|module| module.local().interface().requests().count())
@@ -191,43 +145,131 @@ impl ProjectSemanticModel {
         let resolutions = input
             .resolutions
             .into_iter()
-            .map(|(key, result)| {
-                let resolved = match result {
-                    ResolutionResult::Internal { path } => {
-                        let Some(id) = ids.get(path.as_str()).copied() else {
-                            return Err(ProjectInputError::InvalidTarget(path.to_string()));
-                        };
-                        ResolvedModule::Internal { id, path }
-                    }
-                    ResolutionResult::External { package } => ResolvedModule::External { package },
-                    ResolutionResult::Builtin { name } => ResolvedModule::Builtin { name },
-                    ResolutionResult::Missing => ResolvedModule::Missing,
-                    ResolutionResult::OutsideProject { path } => {
-                        ResolvedModule::OutsideProject { path }
-                    }
-                    ResolutionResult::Unsupported { reason } => {
-                        ResolvedModule::Unsupported { reason }
-                    }
-                };
-                Ok((key, resolved))
-            })
-            .collect::<Result<BTreeMap<_, _>, ProjectInputError>>()?;
-
-        let mut project = Self {
+            .map(|(key, result)| resolve_record(key, result, &ids))
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
+        Ok(Self {
             modules,
             resolutions,
+        })
+    }
+}
+
+fn resolve_record(
+    key: ResolutionRequestKey,
+    result: ResolutionResult,
+    ids: &BTreeMap<crate::ProjectRelativePath, ModuleId>,
+) -> Result<(ResolutionRequestKey, ResolvedModule), ProjectInputError> {
+    let resolved = match result {
+        ResolutionResult::Internal { path } => {
+            let Some(id) = ids.get(&path).copied() else {
+                return Err(ProjectInputError::InvalidTarget(path.to_string()));
+            };
+            ResolvedModule::Internal { id, path }
+        }
+        ResolutionResult::External { package } => ResolvedModule::External { package },
+        ResolutionResult::Builtin { name } => ResolvedModule::Builtin { name },
+        ResolutionResult::Missing => ResolvedModule::Missing,
+        ResolutionResult::OutsideProject { path } => ResolvedModule::OutsideProject { path },
+        ResolutionResult::Unsupported { reason } => ResolvedModule::Unsupported { reason },
+    };
+    Ok((key, resolved))
+}
+
+impl ProjectSemanticModel {
+    /// Create a project model for one already analyzed source without linking.
+    #[allow(dead_code)]
+    pub fn single(path: impl Into<String>, source: SourceContext, local: LocalArtifact) -> Self {
+        Self::single_with_limits(path, source, local, &crate::ResourceLimits::default())
+    }
+
+    pub fn single_with_limits(
+        _path: impl Into<String>,
+        _source: SourceContext,
+        local: LocalArtifact,
+        limits: &crate::ResourceLimits,
+    ) -> Self {
+        let status = local.status().clone();
+        Self {
+            modules: std::iter::once((
+                ModuleId::new(0),
+                ProjectModule::new(ModuleId::new(0), local),
+            ))
+            .collect(),
+            resolutions: BTreeMap::new(),
+            exports: ExportTable::default(),
+            graph: {
+                let mut graph = ModuleGraph::default();
+                graph.ensure_node(ModuleId::new(0));
+                graph.set_components(vec![vec![ModuleId::new(0)]]);
+                graph
+            },
+            link_rounds: 0,
+            diagnostics: Vec::new(),
+            status: std::cell::RefCell::new(status),
+            flow_budget: crate::budget::BudgetTracker::default(),
+            link_budget: crate::budget::BudgetTracker::default(),
+            effect_projections: Cell::new(0),
+            link_limit: limits.link_operations,
+            flow_limit: limits.flow_operations,
+        }
+    }
+
+    /// Link already-built local modules to normalized resolution records.
+    /// No AST or matcher work is performed here.
+    #[allow(dead_code)]
+    pub fn link(
+        input: ProjectInput,
+        analyzed: BTreeMap<crate::ProjectRelativePath, LocalArtifact>,
+    ) -> Result<Self, ProjectInputError> {
+        Self::link_with_limits(input, analyzed, &crate::ResourceLimits::default())
+    }
+
+    pub fn link_with_limits(
+        input: ProjectInput,
+        analyzed: BTreeMap<crate::ProjectRelativePath, LocalArtifact>,
+        limits: &crate::ResourceLimits,
+    ) -> Result<Self, ProjectInputError> {
+        let input = input.validate()?;
+        let validated = ValidatedLinkInput::build(input, analyzed)?;
+
+        let mut project = Self {
+            modules: validated.modules,
+            resolutions: validated.resolutions,
             exports: ExportTable::default(),
             graph: ModuleGraph::default(),
             link_rounds: 0,
             diagnostics: Vec::new(),
+            status: std::cell::RefCell::new(AnalysisStatus::default()),
             flow_budget: crate::budget::BudgetTracker::default(),
             link_budget: crate::budget::BudgetTracker::default(),
             effect_projections: Cell::new(0),
             link_limit: limits.link_operations,
             flow_limit: limits.flow_operations,
         };
+        project.propagate_local_status();
         project.build_graph_and_exports();
         Ok(project)
+    }
+
+    fn propagate_local_status(&self) {
+        let local_statuses = self
+            .modules
+            .values()
+            .map(|module| module.local().status().clone())
+            .collect::<Vec<_>>();
+        for (module, status) in self.modules.values().zip(local_statuses) {
+            self.status
+                .borrow_mut()
+                .extend(&status.for_file(module.path()));
+            if module.local().interface().is_unknown() {
+                self.status.borrow_mut().record(
+                    status::StatusScope::File(module.path().clone()),
+                    status::IncompleteReason::UnsupportedModuleInterface {
+                        kind: status::ModuleInterfaceKind::CommonJsExports,
+                    },
+                );
+            }
+        }
     }
 
     pub fn modules(&self) -> impl Iterator<Item = &ProjectModule> {
@@ -273,22 +315,22 @@ impl ProjectSemanticModel {
     }
 
     /// Convert a module/fact identity into reportable related evidence.
-    pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<crate::ProjectEvidence> {
+    pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<crate::Evidence> {
         let module = self.modules.get(&module)?;
         let fact = module
             .local()
             .facts()
             .stream()
             .fact(crate::analysis::facts::FactId(fact))?;
-        Some(crate::ProjectEvidence {
+        let range = module.source().range(fact.span).ok()?;
+        Some(crate::Evidence {
             message: "related semantic path event".into(),
             count: 1,
             evidence_truncated: false,
             location: Some(crate::SourceLocation {
-                path: module.path().to_owned().into(),
-                range: crate::lint::source_range_from_span(module.source_map(), fact.span),
+                path: module.path().clone(),
+                range,
             }),
-            source: module.source_map().span_to_snippet(fact.span).ok(),
         })
     }
 
@@ -332,9 +374,36 @@ impl ProjectSemanticModel {
         &self.diagnostics
     }
 
-    /// Whether bounded cross-module flow exhausted its budget.
-    pub fn flow_budget_exhausted(&self) -> bool {
-        self.flow_budget.is_exhausted()
+    pub(crate) fn is_complete(&self) -> bool {
+        self.status.borrow().is_complete()
+    }
+
+    pub(crate) fn status_diagnostics(
+        &self,
+    ) -> (
+        Vec<(
+            crate::project::ProjectRelativePath,
+            crate::ProjectDiagnostic,
+        )>,
+        Vec<crate::ProjectDiagnostic>,
+    ) {
+        self.status.borrow().diagnostics()
+    }
+
+    pub(crate) fn record_parse_failure(
+        &self,
+        path: crate::project::ProjectRelativePath,
+        code: &str,
+    ) {
+        let kind = match code {
+            "source_too_large" => status::ParseFailureKind::SourceTooLarge,
+            "syntax_depth_exceeded" => status::ParseFailureKind::SyntaxDepth,
+            _ => status::ParseFailureKind::Syntax,
+        };
+        self.status.borrow_mut().record(
+            status::StatusScope::File(path),
+            status::IncompleteReason::ParseFailure { kind },
+        );
     }
 
     pub(in crate::analysis) fn link_limit(&self) -> usize {
@@ -346,8 +415,8 @@ impl ProjectSemanticModel {
     }
 
     /// Return deterministic phase and evidence operation counts.
-    pub fn operation_counts(&self, evidence: usize) -> crate::ProjectOperationCounts {
-        crate::ProjectOperationCounts {
+    pub fn operation_counts(&self, evidence: usize) -> crate::OperationCounts {
+        crate::OperationCounts {
             files: self.modules.len(),
             requests: self
                 .modules
@@ -364,10 +433,11 @@ impl ProjectSemanticModel {
 
     /// Return all authored module requests with source-qualified keys.
     pub fn authored_requests(module: &ProjectModule) -> Vec<crate::ResolutionRequest> {
-        module
-            .local()
-            .interface()
-            .authored_requests(module.path(), module.source_map())
+        module.local().interface().authored_requests(
+            module.path(),
+            &module.source().lines,
+            &module.source().text,
+        )
     }
 
     /// Classify selected rules against the linked project overlay.
@@ -376,7 +446,7 @@ impl ProjectSemanticModel {
         &self,
         catalog: &crate::api::compiler::CompiledCatalog,
         rules: &[crate::api::rule::Rule],
-        selected: &[usize],
+        selected: &[crate::api::classification::RuleIndex],
     ) -> BTreeMap<ModuleId, crate::api::classification::ApiClassificationResult> {
         self.classify_with_evidence_limit(
             catalog,
@@ -390,28 +460,30 @@ impl ProjectSemanticModel {
         &self,
         catalog: &crate::api::compiler::CompiledCatalog,
         rules: &[crate::api::rule::Rule],
-        selected: &[usize],
+        selected: &[crate::api::classification::RuleIndex],
         evidence_limit: usize,
     ) -> BTreeMap<ModuleId, crate::api::classification::ApiClassificationResult> {
         let matcher_catalog = self.project(catalog.to_matcher_catalog(selected));
         self.modules()
             .map(|module| {
                 let mut result = crate::api::classification::ApiClassificationResult::default();
-                for rule_index in 0..rules.len() {
-                    if selected.binary_search(&rule_index).is_err() {
+                for rule_index in selected {
+                    let index = rule_index.get();
+                    if rules.get(index).is_none() {
                         continue;
                     }
-                    let Some(rule) = rules.get(rule_index) else {
+                    let Some(rule) = rules.get(index) else {
                         continue;
                     };
-                    let evidence = matcher_catalog.evidence_for(module, rule_index, evidence_limit);
+                    let evidence =
+                        matcher_catalog.evidence_for(module, *rule_index, evidence_limit);
                     if evidence.is_empty() {
                         continue;
                     }
                     result
                         .capabilities
                         .push(crate::api::classification::ApiCapability {
-                            rule_index,
+                            rule_index: *rule_index,
                             id: rule.id().to_string(),
                             label: rule.label().to_string(),
                             category: rule.category().clone(),
@@ -444,7 +516,7 @@ impl From<ExportResolution> for matching::LinkedModuleIdentity {
             ExportResolution::Global { name } => Self::Global { name },
             ExportResolution::StaticString { value } => Self::StaticString { value },
             ExportResolution::Qualified { module, export } => Self::Qualified {
-                module: module.0,
+                module: module.get(),
                 export,
             },
             ExportResolution::Unknown | ExportResolution::Ambiguous => Self::Unknown,
@@ -465,14 +537,28 @@ mod tests {
 
     #[test]
     fn local_model_is_unchanged_by_matcher_projection() {
-        let parsed = crate::parse(
-            "fetch('/remote'); document.createElement('div');",
+        let text = "fetch('/remote'); document.createElement('div');";
+        let parsed = crate::parse(text, "projection-invariant.js").expect("source should parse");
+        let coordinates = lowering::SpanNormalizer::new(parsed.source_start, text);
+        let local = lowering::lower_program(
+            &parsed.program,
+            &Environment::default(),
+            &crate::ResourceLimits::default(),
+            &coordinates,
+        );
+        let source = crate::SourceFile::new(
             "projection-invariant.js",
+            "fetch('/remote'); document.createElement('div');",
         )
-        .expect("source should parse");
-        let local = LocalModuleModel::analyze(&parsed.program, &Environment::default());
-        let project =
-            ProjectSemanticModel::single("projection-invariant.js", parsed.source_map, local);
+        .unwrap();
+        let project = ProjectSemanticModel::single(
+            "projection-invariant.js",
+            local::SourceContext::new(&source),
+            LocalArtifact::new(
+                local::SourceContext::new(&source),
+                std::sync::Arc::new(local),
+            ),
+        );
         let before = format!(
             "{:?}",
             project
@@ -487,7 +573,7 @@ mod tests {
             ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
                 .normalized();
         let fetch_plan = CompiledMatcherPlan::compile(&fetch);
-        let selected = [0];
+        let selected = [crate::api::classification::RuleIndex::new(0)];
         let fetch_rule = crate::api::compiler::CompiledRule {
             matcher: fetch_plan,
         };

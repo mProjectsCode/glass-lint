@@ -288,7 +288,7 @@ pub(in crate::analysis) fn collect(
 ) -> (BTreeMap<ModuleId, Vec<Vec<ApiEvidence>>>, bool, usize) {
     let mut flows = BTreeMap::<FlowId, &CompiledObjectFlow>::new();
     for (rule_index, matcher) in matchers.selected_matchers() {
-        for (flow_index, flow) in matcher.flows.iter().enumerate() {
+        for (flow_index, flow) in matcher.query().flows().iter().enumerate() {
             flows.insert(FlowId::new(rule_index, flow_index), flow);
         }
     }
@@ -714,7 +714,7 @@ fn emit(
     let Some(values) = evidence.get_mut(&module) else {
         return;
     };
-    let seen = values[flow_id.rule_index()].iter().any(|existing| {
+    let seen = values[flow_id.rule_index().get()].iter().any(|existing| {
         existing
             .occurrences
             .iter()
@@ -725,11 +725,10 @@ fn emit(
     if seen {
         return;
     }
-    let span = project.fact(module, event).map_or_else(
-        || swc_common::Span::new(swc_common::BytePos(0), swc_common::BytePos(0)),
-        |fact| fact.span,
-    );
-    values[flow_id.rule_index()].push(ApiEvidence {
+    let span = project
+        .fact(module, event)
+        .map_or_else(crate::ByteRange::empty, |fact| fact.span);
+    values[flow_id.rule_index().get()].push(ApiEvidence {
         kind: ApiMatchKind::CallArgument,
         symbol: flow.evidence_symbol(),
         count: 1,
@@ -749,19 +748,19 @@ fn related_evidence(
     sink_event: FactId,
 ) -> Vec<ApiRelatedEvidence> {
     let mut related = vec![ApiRelatedEvidence {
-        module: state.source.module.0,
+        module: state.source.module.get(),
         event: state.source.fact.0,
         kind: ApiMatchKind::CallArgument,
         symbol: "flow source".into(),
     }];
     related.extend(state.requirements.values().map(|event| ApiRelatedEvidence {
-        module: event.module.0,
+        module: event.module.get(),
         event: event.fact.0,
         kind: ApiMatchKind::CallArgument,
         symbol: "flow requirement".into(),
     }));
     related.push(ApiRelatedEvidence {
-        module: sink_module.0,
+        module: sink_module.get(),
         event: sink_event.0,
         kind: ApiMatchKind::CallArgument,
         symbol: "flow sink".into(),

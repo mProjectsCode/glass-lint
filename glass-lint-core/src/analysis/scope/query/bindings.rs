@@ -161,20 +161,6 @@ impl ScopeGraph {
         }
     }
 
-    /// Return the innermost-to-outermost scope chain at a position.
-    pub(in crate::analysis) fn scope_chain_at(&self, span: Span) -> Vec<ScopeId> {
-        let mut scopes = Vec::new();
-        let mut scope = self.scope_at(span);
-        loop {
-            scopes.push(scope);
-            let Some(parent) = self.scope_parent(scope) else {
-                break;
-            };
-            scope = parent;
-        }
-        scopes
-    }
-
     /// Require a configured global to be unshadowed and dynamically resolvable.
     pub(in crate::analysis) fn unshadowed_global_at(&self, name: &str, span: Span) -> bool {
         self.is_global(name)

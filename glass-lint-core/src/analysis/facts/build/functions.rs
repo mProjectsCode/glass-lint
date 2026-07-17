@@ -31,9 +31,7 @@ impl FactBuilder<'_> {
         let id = self.resolver.function_id_for_scope(scope);
         let owner = self
             .resolver
-            .scope_chain_at(span)
-            .get(1)
-            .copied()
+            .scope_parent(scope)
             .map_or(id, |scope| self.resolver.function_id_for_scope(scope));
         let mut parameter_bindings = Vec::new();
         for (parameter_index, parameter) in parameters {

@@ -8,7 +8,7 @@ mod arena;
 mod identity;
 mod path;
 
-pub(in crate::analysis) use arena::{CallableValue, ObjectId, Value, ValueTable};
+pub(in crate::analysis) use arena::{CallableValue, MAX_VALUES, ObjectId, Value, ValueTable};
 pub(in crate::analysis) use identity::{
     BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, SymbolPath, ValueId,
 };

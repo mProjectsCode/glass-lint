@@ -15,7 +15,8 @@ use crate::{
 /// Maximum syntactic nesting accepted before invoking recursive parser and
 /// visitor machinery. This is deliberately checked on source text so a
 /// hostile tree cannot first force an unbounded AST allocation.
-pub const MAX_SYNTAX_DEPTH: usize = 512;
+#[cfg(test)]
+const MAX_SYNTAX_DEPTH: usize = 512;
 
 #[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
 /// Structured parser failure with an optional source range.
@@ -86,27 +87,23 @@ impl SourceLanguage {
     }
 }
 
-/// Parsed program and its source map for location conversion.
+/// Parsed program consumed by lowering.
 pub struct ParsedSource {
     /// SWC AST consumed by semantic analysis.
-    pub program: Program,
-    /// Source map retaining authored locations.
-    pub source_map: Lrc<SourceMap>,
+    pub(crate) program: Program,
+    /// Absolute SWC position assigned to authored byte offset zero.
+    pub(crate) source_start: swc_common::BytePos,
 }
 
 #[cfg(test)]
 /// Parse JavaScript using the default JavaScript language mode.
 pub fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnostic> {
-    parse_with_language(source, filename, SourceLanguage::JavaScript)
-}
-
-/// Parse a supported language while preserving authored source locations.
-pub fn parse_with_language(
-    source: &str,
-    filename: &str,
-    language: SourceLanguage,
-) -> Result<ParsedSource, ParseDiagnostic> {
-    parse_with_language_and_depth(source, filename, language, MAX_SYNTAX_DEPTH)
+    parse_with_language_and_depth(
+        source,
+        filename,
+        SourceLanguage::JavaScript,
+        MAX_SYNTAX_DEPTH,
+    )
 }
 
 /// Parse with an explicit structural nesting limit.
@@ -118,7 +115,7 @@ pub fn parse_with_language_and_depth(
 ) -> Result<ParsedSource, ParseDiagnostic> {
     if source.len() > MAX_SOURCE_BYTES {
         return Err(ParseDiagnostic {
-            code: "source_too_large".into(),
+            code: crate::project::types::DiagnosticKind::SourceTooLarge.into(),
             message: format!("source exceeds the {MAX_SOURCE_BYTES} byte analysis limit"),
             filename: filename.into(),
             range: None,
@@ -126,7 +123,7 @@ pub fn parse_with_language_and_depth(
     }
     if syntax_depth(source) > max_syntax_depth {
         return Err(ParseDiagnostic {
-            code: "syntax_depth_exceeded".into(),
+            code: crate::project::types::DiagnosticKind::SyntaxDepthExceeded.into(),
             message: format!("source exceeds the {max_syntax_depth} nesting-depth analysis limit"),
             filename: filename.into(),
             range: None,
@@ -171,34 +168,34 @@ pub fn parse_with_language_and_depth(
             };
             ParsedSource {
                 program,
-                source_map: source_map.clone(),
+                source_start: file.start_pos,
             }
         })
         .map_err(|error| {
             let range = (!error.span().is_dummy()).then(|| {
                 let start = source_map.lookup_char_pos(error.span().lo());
                 let end = source_map.lookup_char_pos(error.span().hi());
-                SourceRange {
-                    start: Position {
-                        line: start.line.try_into().unwrap_or(u32::MAX),
-                        column: start
-                            .col_display
-                            .try_into()
-                            .unwrap_or(u32::MAX)
-                            .saturating_add(1),
-                    },
-                    end: Position {
-                        line: end.line.try_into().unwrap_or(u32::MAX),
-                        column: end
-                            .col_display
-                            .try_into()
-                            .unwrap_or(u32::MAX)
-                            .saturating_add(1),
-                    },
-                }
+                let start = Position::new(
+                    start.line.try_into().unwrap_or(u32::MAX),
+                    start
+                        .col_display
+                        .try_into()
+                        .unwrap_or(u32::MAX)
+                        .saturating_add(1),
+                )
+                .expect("parser locations are one-based");
+                let end = Position::new(
+                    end.line.try_into().unwrap_or(u32::MAX),
+                    end.col_display
+                        .try_into()
+                        .unwrap_or(u32::MAX)
+                        .saturating_add(1),
+                )
+                .expect("parser locations are one-based");
+                SourceRange::new(start, end).expect("parser spans are ordered")
             });
             ParseDiagnostic {
-                code: "syntax_error".into(),
+                code: crate::project::types::DiagnosticKind::SyntaxError.into(),
                 message: format!(
                     "{} parse error: {}",
                     match language {

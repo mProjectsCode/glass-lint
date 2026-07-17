@@ -35,9 +35,9 @@ impl Error for RuleCatalogError {}
 /// Provider rules, namespaced IDs, environment, and compiled plans.
 pub struct RuleCatalog {
     /// Rules in stable declaration order.
-    pub rules: Vec<Rule>,
+    pub(crate) rules: Vec<Rule>,
     rule_ids: Vec<RuleId>,
-    rule_indices: BTreeMap<RuleId, usize>,
+    rule_indices: BTreeMap<RuleId, crate::api::classification::RuleIndex>,
     environment: Environment,
     compiled: CompiledCatalog,
 }
@@ -72,7 +72,7 @@ impl RuleCatalog {
             .iter()
             .cloned()
             .enumerate()
-            .map(|(index, id)| (id, index))
+            .map(|(index, id)| (id, crate::api::classification::RuleIndex::new(index)))
             .collect();
         Ok(Self {
             rules,
@@ -114,7 +114,7 @@ impl RuleCatalog {
             .iter()
             .cloned()
             .enumerate()
-            .map(|(index, id)| (id, index))
+            .map(|(index, id)| (id, crate::api::classification::RuleIndex::new(index)))
             .collect();
         let compiled = CompiledCatalog::from_rules(&rules);
         Ok(Self {
@@ -135,7 +135,7 @@ impl RuleCatalog {
             .map(|(rule, id)| RuleMetadata {
                 id: id.clone(),
                 description: rule.label().to_string(),
-                default_severity: rule.severity().as_diagnostic_severity(),
+                default_severity: rule.severity(),
                 messages: BTreeMap::from([(
                     String::from("detected"),
                     String::from("Detected matching capability"),
@@ -157,8 +157,8 @@ impl RuleCatalog {
     }
 
     /// Borrow the ID at a stable catalog index.
-    pub fn rule_id(&self, index: usize) -> Option<&RuleId> {
-        self.rule_ids.get(index)
+    pub fn rule_id(&self, index: crate::api::classification::RuleIndex) -> Option<&RuleId> {
+        self.rule_ids.get(index.get())
     }
 
     /// Borrow compiled matcher plans.
@@ -167,7 +167,7 @@ impl RuleCatalog {
     }
 
     /// Resolve a fully-qualified ID to its catalog index.
-    pub fn rule_index(&self, id: &RuleId) -> Option<usize> {
+    pub fn rule_index(&self, id: &RuleId) -> Option<crate::api::classification::RuleIndex> {
         self.rule_indices.get(id).copied()
     }
 }

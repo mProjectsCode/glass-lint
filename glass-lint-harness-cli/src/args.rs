@@ -43,6 +43,7 @@ pub enum Command {
 }
 
 #[derive(ClapArgs)]
+#[allow(clippy::struct_excessive_bools)]
 /// File-selection and execution controls for profiling.
 pub struct ProfileArgs {
     #[arg(long = "path", required = true)]
@@ -71,8 +72,20 @@ pub struct ProfileArgs {
     pub continue_on_error: bool,
     #[arg(long)]
     pub quiet: bool,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "admitted_project")]
     pub project: bool,
+    /// Exercise the explicit admitted-source AnalysisSession path.
+    #[arg(long = "admitted-project", conflicts_with = "project")]
+    pub admitted_project: bool,
+    /// Verify and use an immutable corpus selection manifest.
+    #[arg(long)]
+    pub manifest: Option<PathBuf>,
+    /// Create an immutable corpus selection manifest and exit.
+    #[arg(long = "create-manifest", conflicts_with = "manifest")]
+    pub create_manifest: Option<PathBuf>,
+    /// Machine-independent label stored in a newly created manifest.
+    #[arg(long = "root-label", requires = "create_manifest")]
+    pub root_label: Option<String>,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -124,4 +137,41 @@ fn parse_adapter(value: &str) -> Result<(String, PathBuf), String> {
         return Err("expected NAME=COMMAND".into());
     }
     Ok((name.into(), path.into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::*;
+
+    #[test]
+    fn project_profile_modes_are_mutually_exclusive() {
+        let error = Args::try_parse_from([
+            "glass-lint-harness",
+            "profile",
+            "--path",
+            ".",
+            "--project",
+            "--admitted-project",
+        ])
+        .err()
+        .unwrap();
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn profile_help_documents_manifest_and_admitted_modes() {
+        let mut command = Args::command();
+        let profile = command.find_subcommand_mut("profile").unwrap();
+        let help = profile.render_long_help().to_string();
+        for option in [
+            "--admitted-project",
+            "--manifest",
+            "--create-manifest",
+            "--root-label",
+        ] {
+            assert!(help.contains(option), "missing {option} from profile help");
+        }
+    }
 }

@@ -76,12 +76,12 @@ Unconfigured unbound names are not treated as host APIs.
 
 ## Cross-file analysis
 
-`ProjectSession` accepts owned `SourceFile` values, exposes typed
-`ResolutionRequest` records, and consumes `ResolutionResult` values supplied by
-the caller. It never performs filesystem access or module resolution itself.
-Once resolutions are supplied, it links the supported module graph and returns
-a `ProjectReport` with deterministic findings, diagnostics, completion state,
-and operation counts.
+`AnalysisSession` admits owned `SourceFile` values, analyzes each admitted file
+once, exposes typed `ResolutionRequest` records, and consumes
+`ResolutionResult` values supplied by the caller. It never performs filesystem
+access or module resolution itself. Once resolutions are supplied, it links the
+supported module graph and returns one `AnalysisReport` with deterministic
+findings, diagnostics, completion state, and operation counts.
 
 ## Reports and limits
 
@@ -89,10 +89,10 @@ and operation counts.
 for `.js`, `.cjs`, and `.mjs`. TypeScript is normalized with fixed settings; it
 is not type-checked or configured from `tsconfig.json`.
 
-`LintReport` contains versioned, sorted findings and structured parse
-diagnostics. Locations use one-based Unicode display columns. Evidence and
-output are bounded; sources larger than `MAX_SOURCE_BYTES` (8 MiB) return a
-parse diagnostic rather than being analyzed.
+`AnalysisReport` contains versioned, sorted file reports and structured parse
+or project diagnostics. Locations use one-based Unicode display columns.
+Evidence and output are bounded; sources larger than `MAX_SOURCE_BYTES` (8 MiB)
+return a parse diagnostic rather than being analyzed.
 
 `PrettyReport`, `PrettyReports`, and `PrettyOptions` render bounded human
 output without changing the structured report. `CoreConfig` applies resource

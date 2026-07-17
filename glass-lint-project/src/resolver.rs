@@ -3,7 +3,8 @@
 use std::path::{Path, PathBuf};
 
 use glass_lint_core::{
-    ResolutionRequest, ResolutionRequestKind, ResolutionResult, is_internal_module_request,
+    ProjectRelativePath, ResolutionRequest, ResolutionRequestKind, ResolutionResult,
+    is_internal_module_request,
 };
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
@@ -90,9 +91,12 @@ impl ProjectResolver {
             .unwrap_or(&path)
             .to_string_lossy()
             .replace('\\', "/");
-        ResolutionResult::Internal {
-            path: relative.into(),
-        }
+        let Ok(path) = ProjectRelativePath::new(&relative) else {
+            return ResolutionResult::Unsupported {
+                reason: format!("invalid normalized target `{relative}`"),
+            };
+        };
+        ResolutionResult::Internal { path }
     }
 }
 
@@ -141,19 +145,17 @@ fn package_name(request: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use glass_lint_core::{Position, ResolutionRequestKey, SourceRange};
+    use glass_lint_core::{Position, ProjectRelativePath, ResolutionRequestKey, SourceRange};
 
     use super::*;
 
     fn request(specifier: &str) -> ResolutionRequest {
         ResolutionRequest {
             key: ResolutionRequestKey {
-                importer: "main.js".into(),
+                importer: ProjectRelativePath::new("main.js").unwrap(),
                 kind: ResolutionRequestKind::Import,
-                range: SourceRange {
-                    start: Position { line: 1, column: 1 },
-                    end: Position { line: 1, column: 2 },
-                },
+                range: SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 2).unwrap())
+                    .unwrap(),
             },
             request: specifier.into(),
         }

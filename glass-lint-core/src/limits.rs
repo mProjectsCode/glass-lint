@@ -9,6 +9,8 @@ pub struct ResourceLimits {
     pub syntax_depth: usize,
     #[serde(default = "default_semantic_operations")]
     pub semantic_operations: usize,
+    #[serde(default = "default_effect_operations")]
+    pub effect_operations: usize,
     #[serde(default = "default_evidence_items")]
     pub evidence_items: usize,
     #[serde(default = "default_link_operations")]
@@ -24,6 +26,9 @@ const fn default_syntax_depth() -> usize {
 }
 const fn default_semantic_operations() -> usize {
     1_048_576
+}
+const fn default_effect_operations() -> usize {
+    65_536
 }
 const fn default_evidence_items() -> usize {
     65_536
@@ -43,6 +48,7 @@ impl Default for ResourceLimits {
         Self {
             syntax_depth: default_syntax_depth(),
             semantic_operations: default_semantic_operations(),
+            effect_operations: default_effect_operations(),
             evidence_items: default_evidence_items(),
             link_operations: default_link_operations(),
             flow_operations: default_flow_operations(),
@@ -58,6 +64,9 @@ impl ResourceLimits {
         }
         if self.semantic_operations == 0 {
             return Err("semantic_operations must be positive".into());
+        }
+        if self.effect_operations == 0 {
+            return Err("effect_operations must be positive".into());
         }
         if self.evidence_items == 0 {
             return Err("evidence_items must be positive".into());

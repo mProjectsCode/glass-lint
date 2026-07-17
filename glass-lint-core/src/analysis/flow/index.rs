@@ -50,19 +50,22 @@ impl Default for FlowLimits {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable identifier for one selected rule flow matcher.
 pub(super) struct FlowId {
-    rule_index: usize,
+    rule_index: crate::api::classification::RuleIndex,
     flow_index: usize,
 }
 
 impl FlowId {
-    pub(super) fn new(rule_index: usize, flow_index: usize) -> Self {
+    pub(super) fn new(
+        rule_index: crate::api::classification::RuleIndex,
+        flow_index: usize,
+    ) -> Self {
         Self {
             rule_index,
             flow_index,
         }
     }
 
-    pub(super) fn rule_index(self) -> usize {
+    pub(super) fn rule_index(self) -> crate::api::classification::RuleIndex {
         self.rule_index
     }
 
@@ -80,7 +83,13 @@ pub(super) struct FlowIndex<'rules> {
 }
 
 impl<'rules> FlowIndex<'rules> {
-    pub(super) fn new(rules: &[(usize, usize, &'rules CompiledObjectFlow)]) -> Self {
+    pub(super) fn new(
+        rules: &[(
+            crate::api::classification::RuleIndex,
+            usize,
+            &'rules CompiledObjectFlow,
+        )],
+    ) -> Self {
         // BTreeMap-backed keys make matcher lookup and emission deterministic
         // regardless of catalog construction order.
         let mut index = Self::default();

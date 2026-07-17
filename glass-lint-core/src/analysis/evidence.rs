@@ -2,12 +2,13 @@
 
 use std::collections::{BTreeMap, btree_map::Entry};
 
-use swc_common::Span;
-
 use super::facts;
-use crate::api::classification::{ApiEvidence, ApiMatchKind};
 #[cfg(test)]
 use crate::api::rule::Rule;
+use crate::{
+    ByteRange,
+    api::classification::{ApiEvidence, ApiMatchKind},
+};
 
 #[derive(Debug, PartialEq, Eq)]
 /// One rule match retained until evidence is bounded and regrouped.
@@ -15,7 +16,7 @@ pub(super) struct EvidenceOccurrence {
     /// Fact identity used as the primary deterministic ordering key.
     event: Option<facts::FactId>,
     /// Source location, including synthetic locations when no fact exists.
-    span: Span,
+    span: ByteRange,
     /// Semantic match category shown in the public evidence.
     kind: ApiMatchKind,
     /// Interned `(kind, symbol)` group used to merge equivalent entries.
@@ -24,9 +25,9 @@ pub(super) struct EvidenceOccurrence {
 
 fn evidence_order(item: &EvidenceOccurrence) -> (u32, u32, u32, ApiMatchKind, usize) {
     (
+        item.span.start(),
+        item.span.end(),
         item.event.map_or(u32::MAX, |event| event.0),
-        item.span.lo.0,
-        item.span.hi.0,
         item.kind,
         item.symbol_group,
     )
@@ -79,7 +80,7 @@ impl AnnotatedEvidence {
                 .extend(evidence_related);
             for occurrence in source_occurrences
                 .into_iter()
-                .filter(|occurrence| !occurrence.span.is_dummy())
+                .filter(|occurrence| !occurrence.span.is_empty())
             {
                 let occurrence = EvidenceOccurrence {
                     event: occurrence.fact.map(facts::FactId),
@@ -117,7 +118,7 @@ impl AnnotatedEvidence {
     /// Sort, bound, deduplicate, and regroup occurrences into public evidence.
     pub(super) fn into_evidence(self) -> Vec<ApiEvidence> {
         let mut grouped =
-            BTreeMap::<(ApiMatchKind, usize), Vec<(Option<facts::FactId>, Span)>>::new();
+            BTreeMap::<(ApiMatchKind, usize), Vec<(Option<facts::FactId>, ByteRange)>>::new();
         for occurrence in &self.occurrences {
             grouped
                 .entry((occurrence.kind, occurrence.symbol_group))
@@ -153,7 +154,7 @@ impl AnnotatedEvidence {
             (
                 item.occurrences
                     .first()
-                    .map(|occurrence| (occurrence.span.lo, occurrence.span.hi)),
+                    .map(|occurrence| (occurrence.span.start(), occurrence.span.end())),
                 item.kind,
                 item.symbol.clone(),
             )
@@ -164,8 +165,6 @@ impl AnnotatedEvidence {
 
 #[cfg(test)]
 mod tests {
-    use swc_common::BytePos;
-
     use super::*;
 
     fn evidence(symbol: &str, spans: &[u32]) -> ApiEvidence {
@@ -178,7 +177,7 @@ mod tests {
                 .iter()
                 .map(
                     |position| crate::api::classification::ApiEvidenceOccurrence {
-                        span: Span::new(BytePos(*position), BytePos(*position + 1)),
+                        span: ByteRange::new(*position, *position + 1).unwrap(),
                         fact: Some(*position),
                     },
                 )

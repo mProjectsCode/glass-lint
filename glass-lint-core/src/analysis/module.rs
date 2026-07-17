@@ -1,8 +1,9 @@
-//! ApiMatcher-independent module requests and export interfaces.
+//! Public-matcher-independent module requests and export interfaces.
 //!
-//! These records deliberately contain syntax-level names and source spans,
-//! not matcher state or filesystem decisions.  The project linker turns the
-//! request spans into public resolver keys after a source map is available.
+//! These records deliberately contain syntax-level names and source byte
+//! ranges, not matcher state or filesystem decisions. The project linker turns
+//! the request byte ranges into public resolver keys after a source map is
+//! available.
 //!
 //! Dynamic or conflicting export shapes are retained as explicit unknown
 //! state. The project linker can therefore distinguish “not exported” from
@@ -10,12 +11,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use swc_common::Span;
-use swc_ecma_ast::Pat;
-
 use crate::{
+    ByteRange,
     analysis::value::FunctionId,
-    project::{ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind},
+    project::{
+        ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind,
+    },
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -59,7 +60,7 @@ pub struct ReExportBinding {
 /// Authored module request before filesystem resolution.
 pub struct ModuleRequest {
     /// Source span of the literal specifier.
-    span: Span,
+    span: ByteRange,
     /// Resolver classification requested by the syntax.
     kind: ResolutionRequestKind,
     /// Literal module specifier as authored.
@@ -102,7 +103,7 @@ impl ReExportBinding {
 
 impl ModuleRequest {
     /// Return the literal specifier span.
-    pub fn span(&self) -> Span {
+    pub fn span(&self) -> ByteRange {
         self.span
     }
 
@@ -155,17 +156,10 @@ impl ModuleInterface {
         self.locals.insert(name.into());
     }
 
-    /// Record every binding introduced by a pattern.
-    pub fn add_pattern_locals(&mut self, pattern: &Pat) {
-        let mut names = BTreeSet::new();
-        crate::analysis::syntax::collect_pat_bindings(pattern, &mut names);
-        self.locals.extend(names);
-    }
-
     /// Append one authored module request and return its stable local index.
     pub fn add_request(
         &mut self,
-        span: Span,
+        span: ByteRange,
         kind: ResolutionRequestKind,
         specifier: impl Into<String>,
         role: ModuleRequestRole,
@@ -278,21 +272,24 @@ impl ModuleInterface {
     }
 
     /// Convert authored requests into public resolver keys using the source
-    /// map.
+    /// line index.
     pub fn authored_requests(
         &self,
         importer: &str,
-        source_map: &swc_common::sync::Lrc<swc_common::SourceMap>,
+        lines: &crate::SourceLineIndex,
+        source: &str,
     ) -> Vec<ResolutionRequest> {
         self.requests
             .iter()
-            .map(|request| ResolutionRequest {
-                key: ResolutionRequestKey {
-                    importer: importer.to_string().into(),
-                    kind: request.kind(),
-                    range: crate::lint::source_range_from_span(source_map, request.span()),
-                },
-                request: request.specifier().to_owned(),
+            .filter_map(|request| {
+                Some(ResolutionRequest {
+                    key: ResolutionRequestKey {
+                        importer: ProjectRelativePath::from_normalized(importer.to_string()),
+                        kind: request.kind(),
+                        range: lines.try_range(source, request.span()).ok()?,
+                    },
+                    request: request.specifier().to_owned(),
+                })
             })
             .collect()
     }

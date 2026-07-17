@@ -69,6 +69,11 @@ impl Budget {
     pub fn exhausted(&self) -> bool {
         self.exhausted
     }
+
+    /// Number of operations successfully charged before exhaustion.
+    pub fn used(&self) -> usize {
+        self.used
+    }
 }
 
 #[cfg(test)]

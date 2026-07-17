@@ -29,7 +29,8 @@ make build
    their provider crates.
 2. Add or update focused tests with the implementation. Matching changes need
    positive cases and adversarial negatives.
-3. Run the narrowest relevant test while iterating.
+3. Run the narrowest relevant test while iterating. For session changes,
+   exercise both deterministic source admission and the worker-count path.
 4. Run the full validation gate before considering the change complete.
 5. Update public documentation, fixtures, adapters, and callers when making a
    breaking change.
@@ -130,15 +131,59 @@ make profile \
   PROFILE_ARGS="--quiet --sample 20 --seed 20260712"
 ```
 
-Performance changes should compare the same build profile, sample, seed,
+Normal profiling measures independent prepared files. `--project` measures
+filesystem discovery, source loading, resolution, linking, and matching as a
+project. `--admitted-project` measures the explicit `AnalysisSession`
+admission path from exactly one directory root; it intentionally supplies no
+resolver answers, so authored requests are reported as typed partial outcomes
+unless a future manifest contract carries resolutions. The two project modes
+are mutually exclusive.
+
+Performance changes should compare the same build profile, verified manifest,
 worker count, and repeat policy. Prefer deterministic operation-count tests to
 wall-clock assertions in the normal suite.
+
+Freeze a sampled corpus once, then drive every mode and binary from the same
+content-verified manifest:
+
+```sh
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- profile \
+  --path /path/to/plugin/bundles \
+  --sample 100 --seed 0 \
+  --create-manifest /durable/path/profile-manifest.json \
+  --root-label plugin-release-mainjs
+
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- profile \
+  --path /path/to/plugin/bundles \
+  --manifest /durable/path/profile-manifest.json \
+  --warm-up 1 --repeat 3 --workers 1 --quiet
+```
+
+Use that same manifest for every comparison cell; it records normalized
+relative paths, byte lengths, content hashes, and a manifest digest. Manifest
+verification rejects missing, added, changed, duplicate, absolute, traversal,
+and symlink-escape paths. A fixed comparison records independent-file and
+admitted-project modes at worker counts 1 and `N = min(4, available CPUs)`,
+with three measured repetitions after one warm-up. Record medians, throughput,
+peak RSS, completion, all diagnostics, evidence ordering, operation counts,
+and the literal commands.
+
+Manifest verification rejects selection drift, missing or changed files,
+duplicate/non-relative paths, and symlink escapes. The manifest—not later
+sampler changes—owns the selection seed and requested sample size.
 
 For project profiling, add `--project`. The summary reports discovery, reads,
 parse/local analysis, resolution, linking/matching, and total time, together
 with deterministic counts for files, requests, edges, and evidence. Use a
 representative mixed-language project and keep resolver/network work out of
 the timed corpus setup when comparing runs.
+
+Use `--admitted-project` instead to profile the explicit `AnalysisSession`
+admission path. It conflicts with `--project`, requires exactly one directory
+root, and accepts the same `--manifest`. Admitted-project mode intentionally
+supplies no resolver answers; unresolved authored requests therefore produce
+typed partial diagnostics unless a future manifest contract carries explicit
+resolutions.
 
 ## External comparison adapter
 

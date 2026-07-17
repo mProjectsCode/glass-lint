@@ -59,7 +59,7 @@ impl ProjectInput {
 
     /// Assign stable IDs from the normalized path order used by the linker.
     #[must_use]
-    pub fn module_ids(&self) -> BTreeMap<String, ModuleId> {
+    pub(crate) fn module_ids(&self) -> BTreeMap<ProjectRelativePath, ModuleId> {
         let mut paths = self
             .sources
             .iter()
@@ -71,8 +71,10 @@ impl ProjectInput {
             .enumerate()
             .map(|(index, path)| {
                 (
-                    path.to_string(),
-                    ModuleId(u32::try_from(index).expect("module count exceeds ModuleId range")),
+                    path,
+                    ModuleId::new(
+                        u32::try_from(index).expect("module count exceeds ModuleId range"),
+                    ),
                 )
             })
             .collect()
@@ -168,15 +170,5 @@ pub fn normalize_result(result: &mut ResolutionResult) -> Result<(), ProjectInpu
 /// Normalize an importer/range key and enforce one-based ordered positions.
 pub fn normalize_resolution_key(key: &mut ResolutionRequestKey) -> Result<(), ProjectInputError> {
     key.importer = normalize_relative(key.importer.as_str())?;
-    if key.range.start.line == 0
-        || key.range.start.column == 0
-        || key.range.end.line == 0
-        || key.range.end.column == 0
-        || key.range.end.line < key.range.start.line
-        || (key.range.end.line == key.range.start.line
-            && key.range.end.column < key.range.start.column)
-    {
-        return Err(ProjectInputError::InvalidRange(key.importer.to_string()));
-    }
     Ok(())
 }

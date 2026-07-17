@@ -9,15 +9,11 @@
 //! semantics cannot accidentally make one path definite on another.
 
 use super::{AbruptExit, ControlFrame, ControlKind, FlowEnvironment, ObjectFlowProjector};
+use crate::analysis::facts::ControlRegionId;
 
 impl ObjectFlowProjector<'_, '_> {
     /// Apply one balanced control marker to the current environment.
-    pub(super) fn transfer_control(
-        &mut self,
-        kind: ControlKind,
-        region: u32,
-        _span: swc_common::Span,
-    ) {
+    pub(super) fn transfer_control(&mut self, kind: ControlKind, region: ControlRegionId) {
         // Control markers are consumed in the same order they were emitted;
         // reconstructing branches from nearby calls would lose empty paths.
         match kind {
@@ -41,7 +37,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
-    fn transfer_branch(&mut self, kind: ControlKind, region: u32) {
+    fn transfer_branch(&mut self, kind: ControlKind, region: ControlRegionId) {
         match kind {
             ControlKind::BranchStart => self.control.push(ControlFrame::Branch {
                 region,
@@ -101,7 +97,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
-    fn transfer_loop(&mut self, kind: ControlKind, region: u32) {
+    fn transfer_loop(&mut self, kind: ControlKind, region: ControlRegionId) {
         match kind {
             ControlKind::LoopStart { guaranteed } => self.control.push(ControlFrame::Loop {
                 region,
@@ -147,7 +143,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
-    fn transfer_switch(&mut self, kind: ControlKind, region: u32) {
+    fn transfer_switch(&mut self, kind: ControlKind, region: ControlRegionId) {
         match kind {
             ControlKind::SwitchStart => self.control.push(ControlFrame::Switch {
                 region,
@@ -198,7 +194,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
-    fn transfer_try(&mut self, kind: ControlKind, region: u32) {
+    fn transfer_try(&mut self, kind: ControlKind, region: ControlRegionId) {
         match kind {
             ControlKind::TryStart => self.control.push(ControlFrame::Try {
                 region,
@@ -234,7 +230,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
-    fn start_finally(&mut self, region: u32) {
+    fn start_finally(&mut self, region: ControlRegionId) {
         let current = self.environment();
         let restore = if let Some(ControlFrame::Try {
             region: expected,
@@ -272,7 +268,7 @@ impl ObjectFlowProjector<'_, '_> {
         }
     }
 
-    fn end_try(&mut self, region: u32) {
+    fn end_try(&mut self, region: ControlRegionId) {
         let Some(ControlFrame::Try {
             region: expected,
             try_exit,

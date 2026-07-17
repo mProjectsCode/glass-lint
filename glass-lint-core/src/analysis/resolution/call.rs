@@ -7,6 +7,10 @@
 use super::{
     CallExpr, Callee, Expr, Lit, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
 };
+use crate::analysis::{
+    syntax::{BudgetComponent, UnknownReason},
+    value::MAX_VALUES,
+};
 
 impl Resolver {
     /// Recover global callable provenance for a resolved value at a position.
@@ -17,14 +21,17 @@ impl Resolver {
         span: swc_common::Span,
     ) -> SymbolCallProvenance {
         let provenance = self.call_provenance_for_value(id);
-        if provenance != SymbolCallProvenance::Local {
+        if matches!(
+            provenance,
+            SymbolCallProvenance::Global { .. }
+                | SymbolCallProvenance::ModuleExport { .. }
+                | SymbolCallProvenance::Ambiguous
+        ) {
             return provenance;
         }
         rooted
             .and_then(|chain| self.scopes.global_callable_member_at(chain, span))
-            .map_or(SymbolCallProvenance::Local, |name| {
-                SymbolCallProvenance::Global { name }
-            })
+            .map_or(provenance, |name| SymbolCallProvenance::Global { name })
     }
 
     /// Return a literal module name for an unshadowed global `require` call.
@@ -128,6 +135,7 @@ impl Resolver {
                 export: export.clone(),
             },
             SymbolCallProvenance::Local => rooted.map_or(Value::Local, Self::rooted_value),
+            SymbolCallProvenance::Unknown(_) | SymbolCallProvenance::Ambiguous => Value::Unknown,
         };
         let id = self.values.borrow_mut().intern_with_binding(value, binding);
         debug_assert!(self.values.borrow().get(id).is_some());
@@ -137,14 +145,25 @@ impl Resolver {
     /// Convert the canonical value back into matcher provenance. This keeps
     /// the arena authoritative for call identity: scope collection supplies a
     /// typed seed once, but matchers never consume a separately reconstructed
-    /// spelling. Unknown or exhausted values are local and therefore fail
+    /// spelling. Unknown or exhausted values remain non-matchable and fail
     /// closed for strict global/module matchers.
     pub(in crate::analysis) fn call_provenance_for_value(
         &self,
         id: ValueId,
     ) -> SymbolCallProvenance {
+        if id == ValueId::UNKNOWN {
+            return if self.value_arena_exhausted() {
+                SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
+                    component: BudgetComponent::Values,
+                    limit: MAX_VALUES,
+                    observed: None,
+                })
+            } else {
+                SymbolCallProvenance::Unknown(UnknownReason::Unsupported)
+            };
+        }
         let Some(value) = self.values.borrow().get(id).cloned() else {
-            return SymbolCallProvenance::Local;
+            return SymbolCallProvenance::Unknown(UnknownReason::Missing);
         };
         match value {
             Value::Binding { target, .. } => self.call_provenance_for_value(target),
@@ -158,7 +177,8 @@ impl Resolver {
             {
                 SymbolCallProvenance::Global { name: root }
             }
-            _ => SymbolCallProvenance::Local,
+            Value::Unknown => SymbolCallProvenance::Unknown(UnknownReason::Unsupported),
+            _ => SymbolCallProvenance::Unknown(UnknownReason::Unresolved),
         }
     }
 }

@@ -68,14 +68,14 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
     };
     let loader = ProjectLoader::new(options).map_err(|error| anyhow::anyhow!(error))?;
     let outcome = loader
-        .load_and_lint_with_outcome(linter, &selection)
+        .load_and_lint(linter, &selection)
         .with_context(|| format!("analyze project at {}", path.display()))?;
     let report = outcome.report;
     let failed = outcome.error.is_some()
         || report.completion == glass_lint_core::ReportCompletion::Partial
         || !report.diagnostics.is_empty()
         || report.files.iter().any(|file| {
-            !file.parse_diagnostics.is_empty()
+            file.has_parse_diagnostics()
                 || file
                     .findings
                     .iter()
@@ -125,26 +125,43 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
             "file inspected"
         );
 
-        let report = linter.lint(&source, &name);
-        failed |= !report.parse_diagnostics.is_empty()
-            || report
-                .findings
-                .iter()
-                .any(|finding| config.cli.fail_on.fails(finding.severity));
+        let project_report = linter
+            .lint_snippet(&source, &name)
+            .map_err(|error| anyhow::anyhow!(error))?;
+        failed |= project_report.completion == glass_lint_core::ReportCompletion::Partial
+            || !project_report.diagnostics.is_empty()
+            || project_report.files.iter().any(|file| {
+                file.has_parse_diagnostics()
+                    || file
+                        .findings
+                        .iter()
+                        .any(|finding| config.cli.fail_on.fails(finding.severity))
+            });
         files.push(FileOutput {
             path: name,
-            report,
+            report: project_report,
             source,
         });
     }
 
     let summary = Summary {
         files: files.len(),
-        findings: files.iter().map(|file| file.report.findings.len()).sum(),
+        findings: files
+            .iter()
+            .flat_map(|file| &file.report.files)
+            .map(|file| file.findings.len())
+            .sum(),
         parse_diagnostics: files
             .iter()
-            .map(|file| file.report.parse_diagnostics.len())
+            .flat_map(|file| &file.report.files)
+            .map(glass_lint_core::FileReport::parse_diagnostic_count)
             .sum(),
+        analysis_diagnostics: files
+            .iter()
+            .flat_map(|file| &file.report.files)
+            .flat_map(|file| &file.diagnostics)
+            .filter(|diagnostic| matches!(diagnostic, glass_lint_core::Diagnostic::Project(_)))
+            .count(),
     };
     crate::output::write_report(config, &files, summary)?;
     tracing::info!(target: "glass_lint::cli", files = files.len(), "command completed");

@@ -27,7 +27,9 @@ fn rule(id: &str) -> Builder {
 fn assert_count(source: &str, rule: Rule, expected: usize) {
     let catalog = RuleCatalog::with_environment("test", vec![rule], test_environment()).unwrap();
     let count = Linter::new(catalog)
-        .lint(source, "minified.js")
+        .lint_snippet(source, "minified.js")
+        .unwrap()
+        .files[0]
         .findings
         .len();
     assert_eq!(count, expected, "{source}");

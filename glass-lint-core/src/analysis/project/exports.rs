@@ -10,7 +10,8 @@ use super::super::{
     ResolutionRequestKey, ResolvedModule, SymbolCallProvenance, module,
 };
 use crate::{
-    analysis::module::ModuleRequestRole, project::is_internal_module_request as is_internal_request,
+    analysis::module::ModuleRequestRole,
+    project::{ProjectRelativePath, is_internal_module_request as is_internal_request},
 };
 
 impl ProjectSemanticModel {
@@ -40,7 +41,12 @@ impl ProjectSemanticModel {
                     Some(SymbolCallProvenance::Global { name }) => {
                         ExportResolution::Global { name: name.clone() }
                     }
-                    Some(SymbolCallProvenance::Local) | None => project_module
+                    Some(
+                        SymbolCallProvenance::Local
+                        | SymbolCallProvenance::Unknown(_)
+                        | SymbolCallProvenance::Ambiguous,
+                    )
+                    | None => project_module
                         .local()
                         .interface()
                         .static_string(name)
@@ -76,13 +82,15 @@ impl ProjectSemanticModel {
                 else {
                     return ExportResolution::Unknown;
                 };
+                let Ok(range) = self.modules[&module].source().range(request.span()) else {
+                    return ExportResolution::Unknown;
+                };
                 let key = ResolutionRequestKey {
-                    importer: self.modules[&module].path().to_owned().into(),
-                    kind: request.kind(),
-                    range: crate::lint::source_range_from_span(
-                        self.modules[&module].source_map(),
-                        request.span(),
+                    importer: ProjectRelativePath::from_normalized(
+                        self.modules[&module].path().to_string(),
                     ),
+                    kind: request.kind(),
+                    range,
                 };
                 match self.resolutions.get(&key) {
                     Some(ResolvedModule::Internal { id, .. }) => ExportResolution::Qualified {
@@ -140,7 +148,9 @@ impl ProjectSemanticModel {
         // selecting the first source-order request.
         let mut resolved = None;
         for request in requests {
-            let key = self.request_key(importer, request);
+            let Some(key) = self.request_key(importer, request) else {
+                return ExportResolution::Unknown;
+            };
             let candidate = match self.resolutions.get(&key) {
                 None if is_internal_request(authored_module) => ExportResolution::Unknown,
                 None => ExportResolution::External {
@@ -180,15 +190,12 @@ impl ProjectSemanticModel {
         &self,
         module: ModuleId,
         request: &module::ModuleRequest,
-    ) -> ResolutionRequestKey {
-        ResolutionRequestKey {
-            importer: self.modules[&module].path().to_owned().into(),
+    ) -> Option<ResolutionRequestKey> {
+        Some(ResolutionRequestKey {
+            importer: self.modules[&module].path().clone(),
             kind: request.kind(),
-            range: crate::lint::source_range_from_span(
-                self.modules[&module].source_map(),
-                request.span(),
-            ),
-        }
+            range: self.modules[&module].source().range(request.span()).ok()?,
+        })
     }
 
     /// Resolve an export through direct and star re-exports with cycle bounds.
@@ -223,13 +230,16 @@ impl ProjectSemanticModel {
                 saw_unknown = true;
                 continue;
             };
+            let Ok(range) = self.modules[&module].source().range(request.span()) else {
+                saw_unknown = true;
+                continue;
+            };
             let key = ResolutionRequestKey {
-                importer: self.modules[&module].path().to_owned().into(),
-                kind: request.kind(),
-                range: crate::lint::source_range_from_span(
-                    self.modules[&module].source_map(),
-                    request.span(),
+                importer: ProjectRelativePath::from_normalized(
+                    self.modules[&module].path().to_string(),
                 ),
+                kind: request.kind(),
+                range,
             };
             let resolution = self.resolutions.get(&key);
             let candidate_export = match resolution {
@@ -278,13 +288,13 @@ impl ProjectSemanticModel {
         else {
             return ExportResolution::Unknown;
         };
+        let Ok(range) = self.modules[&module].source().range(request.span()) else {
+            return ExportResolution::Unknown;
+        };
         let key = ResolutionRequestKey {
-            importer: self.modules[&module].path().to_owned().into(),
+            importer: self.modules[&module].path().clone(),
             kind: request.kind(),
-            range: crate::lint::source_range_from_span(
-                self.modules[&module].source_map(),
-                request.span(),
-            ),
+            range,
         };
         match self.resolutions.get(&key) {
             Some(ResolvedModule::Internal { id, .. }) => self

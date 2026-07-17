@@ -55,9 +55,9 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Proven parameter identities shared by compatible call sites.
     parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
     /// Dynamic-evaluation sites that invalidate later lexical assumptions.
-    dynamic_evals: Vec<(ScopeId, Span)>,
+    dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
     /// Dynamic-evaluation spans grouped by scope for indexed queries.
-    dynamic_evals_by_scope: BTreeMap<ScopeId, Vec<Span>>,
+    dynamic_evals_by_scope: BTreeMap<ScopeId, Vec<ScopeEffect>>,
     /// Static objects whose `var` binding may be mutated.
     mutable_static_objects: std::collections::BTreeSet<(ScopeId, String)>,
 }
@@ -68,7 +68,7 @@ impl ScopeGraph {
         &mut self,
         property_assignments: Vec<super::collect::PropertyAliasAssignment>,
         rooted_mutations: Vec<super::collect::RootedPropertyMutation>,
-        dynamic_evals: Vec<(ScopeId, Span)>,
+        dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
     ) {
         for assignment in property_assignments {
             let Some(receiver_key) = self
@@ -111,18 +111,19 @@ impl ScopeGraph {
         }
         self.dynamic_evals = dynamic_evals
             .into_iter()
-            .filter(|(_, span)| self.binding_at("eval", *span).is_none())
+            .filter(|(_, effect)| self.binding_at("eval", effect.span()).is_none())
             .collect();
-        self.dynamic_evals.sort_by_key(|(_, span)| span.hi);
+        self.dynamic_evals
+            .sort_by_key(|(_, effect)| effect.span().hi);
         self.dynamic_evals_by_scope.clear();
-        for (scope, span) in &self.dynamic_evals {
+        for (scope, effect) in &self.dynamic_evals {
             self.dynamic_evals_by_scope
                 .entry(*scope)
                 .or_default()
-                .push(*span);
+                .push(effect.clone());
         }
         for spans in self.dynamic_evals_by_scope.values_mut() {
-            spans.sort_by_key(|span| span.hi);
+            spans.sort_by_key(|effect| effect.span().hi);
         }
     }
 
@@ -166,7 +167,7 @@ impl ScopeGraph {
             .and_then(|function| self.parameter_aliases.get(&(*function, name.to_string())))
     }
 
-    pub(super) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
+    pub(in crate::analysis) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
         self.scopes.get(scope.index())?.parent
     }
 
@@ -276,7 +277,7 @@ impl ScopeGraph {
         let mut current = Some(scope);
         while let Some(scope) = current {
             if let Some(evals) = self.dynamic_evals_by_scope.get(&scope)
-                && evals.partition_point(|eval_span| eval_span.hi < span.lo) > 0
+                && evals.partition_point(|effect| effect.span().hi < span.lo) > 0
             {
                 return true;
             }
@@ -286,7 +287,7 @@ impl ScopeGraph {
     }
 
     /// Find the innermost lexical scope containing a source span.
-    pub(super) fn scope_at(&self, span: Span) -> ScopeId {
+    pub(in crate::analysis) fn scope_at(&self, span: Span) -> ScopeId {
         let position = self
             .scopes_by_start
             .partition_point(|index| self.scopes[index.index()].span.lo <= span.lo);
@@ -349,6 +350,21 @@ pub(in crate::analysis) enum ScopeKind {
     Function,
     Block,
     Dynamic,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+/// Typed scope-level effects that invalidate later semantic assumptions.
+pub(in crate::analysis) enum ScopeEffect {
+    /// A proven direct dynamic-evaluation call occurred at this range.
+    DynamicEvaluation { span: Span },
+}
+
+impl ScopeEffect {
+    fn span(&self) -> Span {
+        match self {
+            Self::DynamicEvaluation { span } => *span,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

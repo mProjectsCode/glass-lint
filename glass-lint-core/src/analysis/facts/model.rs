@@ -1,11 +1,10 @@
 //! Rule-independent semantic fact identities and payloads.
 
-use swc_common::Span;
-
 use super::super::{
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
     value::{FunctionId, PathId, ValueId},
 };
+use crate::ByteRange;
 
 // ── Fact stream types ───────────────────────────────────────────────────
 
@@ -27,6 +26,21 @@ impl FactId {
         usize::try_from(self.0)
             .ok()
             .filter(|index| *index < MAX_FACTS)
+    }
+}
+
+/// Identity of one control-flow construct within a local artifact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub(in crate::analysis) struct ControlRegionId(pub(in crate::analysis) u32);
+
+#[cfg(test)]
+mod control_region_tests {
+    use super::ControlRegionId;
+
+    #[test]
+    fn control_regions_are_typed_and_orderable() {
+        assert!(ControlRegionId(1) < ControlRegionId(2));
+        assert_eq!(ControlRegionId::default(), ControlRegionId(0));
     }
 }
 
@@ -235,8 +249,9 @@ pub(in crate::analysis) enum FactPayload {
         receiver: Option<ValueId>,
         /// Value identity allocated for this call's result.
         result: ValueId,
-        /// Span of the callee expression, distinct from the full call span.
-        callee_span: Span,
+        /// Byte range of the callee expression, distinct from the full call
+        /// range.
+        callee_span: ByteRange,
         /// Direct callee name when syntax supplies one.
         callee_name: Option<String>,
         /// Resolver-backed callable provenance.
@@ -275,7 +290,7 @@ pub(in crate::analysis) enum FactPayload {
         /// Kind of boundary and completion event.
         kind: ControlKind,
         /// Region identity shared by all markers for one construct.
-        region: u32,
+        region: ControlRegionId,
         /// Reserved value slot; currently unknown for control events.
         value: ValueId,
     },
@@ -289,8 +304,8 @@ pub(in crate::analysis) enum FactPayload {
         /// Allocated identity for the constructed instance.
         #[allow(dead_code)]
         result: ValueId,
-        /// Span of the constructor expression.
-        callee_span: Span,
+        /// Byte range of the constructor expression.
+        callee_span: ByteRange,
         /// Constructor name when strict provenance permits one.
         callee_name: Option<String>,
         /// Resolver-backed constructor provenance.
@@ -315,8 +330,8 @@ pub(in crate::analysis) enum FactPayload {
 pub(in crate::analysis) struct SemanticFact {
     /// Dense identity used by indexes and evidence ordering.
     pub(in crate::analysis) id: FactId,
-    /// Original source span for the semantic event.
-    pub(in crate::analysis) span: Span,
+    /// Original source byte range for the semantic event.
+    pub(in crate::analysis) span: ByteRange,
     /// Lexical function owning the event.
     pub(in crate::analysis) function: FunctionId,
     #[cfg(test)]
@@ -328,7 +343,7 @@ pub(in crate::analysis) struct SemanticFact {
 impl SemanticFact {
     pub(in crate::analysis) fn new(
         id: FactId,
-        span: Span,
+        span: ByteRange,
         function: FunctionId,
         kind: FactKind,
         payload: FactPayload,

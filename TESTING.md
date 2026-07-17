@@ -16,6 +16,20 @@ or tool boundaries.
 | External comparisons | Harness adapters and `reports/` | Compare structured findings across tools |
 | Profiling checks | Harness `profile` command | Throughput, slow files, determinism, and error totals on corpora |
 
+Local-artifact tests cover `Send + Sync`, fingerprint invalidation, bounded
+in-memory cache reuse, parser invocation/hit observers, exhausted-artifact
+reuse, and identical serialized reports for worker counts 1, 2, and 4.
+Matcher parity tests exercise the private normalized query compiler; provider
+rules continue to use the ordinary Rust builder API.
+
+The remediation boundary has direct tests for the typed status policy matrix
+(including below/at/above limits and fail-closed findings), lossless report
+combination, checked zero-based coordinates, controlled result release,
+production outstanding-work bounds, the public invariant inventory, and
+manifest rejection of selection drift. Profiler tests cover warm-up timing,
+all diagnostic and completion counters, full operation counts, and worker
+correctness parity.
+
 Run all required layers with `make ci`. During development, prefer a targeted
 command first:
 
@@ -34,7 +48,7 @@ Multi-file cases live below `tests/projects/<name>/` and contain a
 `.mts`. A virtual case lists explicit `[[resolution]]` records; a filesystem
 case sets `filesystem = true` and exercises bounded discovery and Oxc
 resolution. Assertions remain in the source file they describe, while the
-project adapter runs all files through one `ProjectSession`.
+project adapter runs all files through one `AnalysisSession`.
 
 External single-file adapters are skipped, with a stable reason, when a
 project case is encountered. This keeps comparison reports deterministic while
@@ -66,6 +80,10 @@ returned parameter/object identities, reassignment or unsupported control
 flow, and deterministic budget exhaustion. Assert the sink file and exact
 source location; do not accept a finding merely because another file reports
 the same rule.
+
+Snippet analysis is a convenience entry point over the same one-file project
+session. Compare it with an equivalent `AnalysisReport` from
+`AnalysisSession` when changing orchestration or report construction.
 
 ## Writing a rule fixture
 

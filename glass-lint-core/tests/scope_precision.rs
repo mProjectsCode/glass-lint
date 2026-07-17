@@ -25,9 +25,11 @@ fn assert_count(source: &str, rule: Rule, expected: usize) {
         .add_globals(["fetch", "host", "require"])
         .unwrap();
     let catalog = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
-    let report = Linter::new(catalog).lint(source, "scope-precision.js");
-    assert!(report.parse_diagnostics.is_empty(), "{source}");
-    assert_eq!(report.findings.len(), expected, "{source}");
+    let report = Linter::new(catalog)
+        .lint_snippet(source, "scope-precision.js")
+        .unwrap();
+    assert!(!report.files[0].has_parse_diagnostics(), "{source}");
+    assert_eq!(report.files[0].findings.len(), expected, "{source}");
 }
 
 /// Create the rooted alias rule shared by lexical-scope cases.

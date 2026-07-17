@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use glass_lint_core::{Environment, LintReport, Linter, RuleCatalog, RuleMetadata};
+use glass_lint_core::{AnalysisReport, Environment, Linter, RuleCatalog, RuleMetadata};
 
 mod disclosures;
 mod rules;
@@ -47,10 +47,11 @@ pub fn heuristic_linter_with_environment(environment: Environment) -> Linter {
 #[must_use]
 /// Collect stable disclosure categories for findings in the JavaScript
 /// namespace.
-pub fn disclosures_for_report(report: &LintReport) -> BTreeSet<&'static str> {
+pub fn disclosures_for_report(report: &AnalysisReport) -> BTreeSet<&'static str> {
     report
-        .findings
+        .files
         .iter()
+        .flat_map(|file| file.findings.iter())
         .flat_map(|finding| {
             finding
                 .rule_id
@@ -130,9 +131,10 @@ mod tests {
         let mut environment = default_environment();
         environment.add_global_object("activeWindow").unwrap();
         let report = heuristic_linter_with_environment(environment)
-            .lint("activeWindow.fetch('/x')", "main.js");
+            .lint_snippet("activeWindow.fetch('/x')", "main.js")
+            .unwrap();
         assert!(
-            report
+            report.files[0]
                 .findings
                 .iter()
                 .any(|finding| finding.rule_id.as_str() == "js:network.request")

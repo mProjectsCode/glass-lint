@@ -59,10 +59,12 @@ fn script_insertion_flow() -> Matcher {
 fn classify(source: &str, rules: &[Rule]) -> Classification {
     let catalog =
         RuleCatalog::with_environment("test", rules.to_vec(), test_environment()).unwrap();
-    let report = Linter::new(catalog).lint(source, "matcher.js");
+    let report = Linter::new(catalog)
+        .lint_snippet(source, "matcher.js")
+        .unwrap();
     Classification {
-        finding_count: report.findings.len(),
-        rule_ids: report
+        finding_count: report.files[0].findings.len(),
+        rule_ids: report.files[0]
             .findings
             .iter()
             .map(|finding| finding.rule_id.as_str().to_owned())
@@ -208,10 +210,12 @@ fn host_globals_require_explicit_environment_configuration() {
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
     assert!(
         Linter::new(default_catalog)
-            .lint(
+            .lint_snippet(
                 "fetch('/unconfigured'); const run = fetch; run('/alias')",
                 "matcher.js",
             )
+            .unwrap()
+            .files[0]
             .findings
             .is_empty()
     );
@@ -220,11 +224,13 @@ fn host_globals_require_explicit_environment_configuration() {
     environment.add_global("fetch").unwrap();
     environment.add_global_object("activeWindow").unwrap();
     let configured = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
-    let report = Linter::new(configured).lint(
-        "fetch('/direct'); activeWindow.fetch('/window')",
-        "matcher.js",
-    );
-    assert_eq!(report.findings.len(), 2);
+    let report = Linter::new(configured)
+        .lint_snippet(
+            "fetch('/direct'); activeWindow.fetch('/window')",
+            "matcher.js",
+        )
+        .unwrap();
+    assert_eq!(report.files[0].findings.len(), 2);
 }
 
 #[test]
@@ -236,7 +242,9 @@ fn rooted_host_globals_also_require_environment_configuration() {
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
     assert!(
         Linter::new(default_catalog)
-            .lint("host.open()", "matcher.js")
+            .lint_snippet("host.open()", "matcher.js")
+            .unwrap()
+            .files[0]
             .findings
             .is_empty()
     );
@@ -246,7 +254,9 @@ fn rooted_host_globals_also_require_environment_configuration() {
     let configured = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
     assert_eq!(
         Linter::new(configured)
-            .lint("host.open()", "matcher.js")
+            .lint_snippet("host.open()", "matcher.js")
+            .unwrap()
+            .files[0]
             .findings
             .len(),
         1
@@ -264,7 +274,9 @@ fn custom_global_objects_do_not_make_unconfigured_members_global() {
     let catalog = RuleCatalog::with_environment("test", vec![rule], environment).unwrap();
     assert!(
         Linter::new(catalog)
-            .lint("activeWindow.fetch('/unknown')", "matcher.js")
+            .lint_snippet("activeWindow.fetch('/unknown')", "matcher.js")
+            .unwrap()
+            .files[0]
             .findings
             .is_empty()
     );

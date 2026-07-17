@@ -130,7 +130,9 @@ impl MatcherFacts {
                     *callee_span,
                 );
             }
-            SymbolCallProvenance::Local => {}
+            SymbolCallProvenance::Local
+            | SymbolCallProvenance::Unknown(_)
+            | SymbolCallProvenance::Ambiguous => {}
         }
         self.record_call_paths(fact);
         self.record_call_special_cases(fact);
@@ -285,7 +287,9 @@ impl MatcherFacts {
                     *callee_span,
                 );
             }
-            SymbolCallProvenance::Local => {}
+            SymbolCallProvenance::Local
+            | SymbolCallProvenance::Unknown(_)
+            | SymbolCallProvenance::Ambiguous => {}
         }
     }
 }

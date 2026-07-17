@@ -35,7 +35,11 @@ use crate::api::{
 
 pub(in crate::analysis) fn collect(
     stream: &FactStream,
-    rules: &[(usize, usize, &CompiledObjectFlow)],
+    rules: &[(
+        crate::api::classification::RuleIndex,
+        usize,
+        &CompiledObjectFlow,
+    )],
     rule_count: usize,
 ) -> Vec<Vec<ApiEvidence>> {
     collect_with_limits(stream, rules, rule_count, FlowLimits::default())
@@ -43,7 +47,11 @@ pub(in crate::analysis) fn collect(
 
 pub(super) fn collect_with_limits(
     stream: &FactStream,
-    rules: &[(usize, usize, &CompiledObjectFlow)],
+    rules: &[(
+        crate::api::classification::RuleIndex,
+        usize,
+        &CompiledObjectFlow,
+    )],
     rule_count: usize,
     limits: FlowLimits,
 ) -> Vec<Vec<ApiEvidence>> {
@@ -69,7 +77,7 @@ struct ObjectFlowProjector<'rules, 'stream> {
     /// without rescanning the fact stream.
     calls_by_result: BTreeMap<ValueId, SourceCall>,
     /// Evidence uses the exact fact that established a match as its anchor.
-    fact_spans: BTreeMap<FactId, swc_common::Span>,
+    fact_spans: BTreeMap<FactId, crate::ByteRange>,
     /// Evidence is grouped and deduplicated by the flow-specific evidence
     /// owner.
     flow_evidence: FlowEvidence,
@@ -127,7 +135,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         match &fact.payload {
             FactPayload::Function { boundary, .. } => self.transfer_function(*boundary),
             FactPayload::Control { kind, region, .. } => {
-                self.transfer_control(*kind, *region, fact.span);
+                self.transfer_control(*kind, *region);
             }
             FactPayload::Declaration { target, source } => {
                 if !self.reachable {
@@ -317,7 +325,12 @@ mod tests {
         let resolver = Resolver::collect(&parsed.program);
         let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);
         let flow = CompiledObjectFlow::from_matcher(flow);
-        collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default())
+        collect_with_limits(
+            &stream,
+            &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
+            1,
+            FlowLimits::default(),
+        )
     }
 
     fn script_flow() -> ObjectFlowMatcher {
@@ -542,7 +555,12 @@ mod tests {
             })
             .expect("sink call should be present");
         let flow = CompiledObjectFlow::from_matcher(&script_flow());
-        let evidence = collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default());
+        let evidence = collect_with_limits(
+            &stream,
+            &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
+            1,
+            FlowLimits::default(),
+        );
         assert_eq!(evidence[0][0].occurrences[0].span, sink_span);
     }
 
@@ -574,7 +592,12 @@ mod tests {
             })
             .expect("configuration write should be present");
         let flow = CompiledObjectFlow::from_matcher(&flow);
-        let evidence = collect_with_limits(&stream, &[(0, 0, &flow)], 1, FlowLimits::default());
+        let evidence = collect_with_limits(
+            &stream,
+            &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
+            1,
+            FlowLimits::default(),
+        );
         assert_eq!(evidence[0][0].occurrences[0].span, configuration.1);
         assert_eq!(evidence[0][0].occurrences[0].fact, Some(configuration.0.0));
     }

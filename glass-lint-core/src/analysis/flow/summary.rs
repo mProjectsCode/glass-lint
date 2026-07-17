@@ -13,7 +13,7 @@
 use super::{
     super::{
         facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
-        value::{FunctionId, PathId, ValueId},
+        value::{FunctionId, PathId, PathInterner, ValueId},
     },
     index::{FlowId, FlowIndex},
     table::FunctionTable,
@@ -157,9 +157,10 @@ impl FunctionSummaries {
     pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Self {
         let mut summaries = Self::default();
         let calls_by_function = summaries.collect_facts(stream);
+        let mut paths: PathInterner = stream.paths().clone();
 
         // First collect facts whose sink is directly visible in the function.
-        summaries.collect_direct_sinks(stream, flow_index, &calls_by_function);
+        summaries.collect_direct_sinks(stream, flow_index, &calls_by_function, &mut paths);
 
         // Propagate sink projections through proven FunctionId call edges. Since
         // every propagation only adds a deduplicated projection, this is a finite
@@ -249,6 +250,7 @@ impl FunctionSummaries {
         stream: &FactStream,
         flow_index: &FlowIndex<'_>,
         calls_by_function: &FunctionTable<Vec<FactId>>,
+        paths: &mut PathInterner,
     ) {
         for (_, summary) in self.by_id.iter_mut() {
             let Some(call_ids) = calls_by_function.get(summary.id) else {
@@ -286,8 +288,7 @@ impl FunctionSummaries {
                             }) else {
                                 continue;
                             };
-                            let Some(path) =
-                                stream.concat_paths(parameter.path, argument.base_path)
+                            let Some(path) = paths.concat(parameter.path, argument.base_path)
                             else {
                                 continue;
                             };

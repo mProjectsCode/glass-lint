@@ -4,16 +4,29 @@
 //! separate. `rule_index` and event IDs are internal correlation keys and are
 //! intentionally omitted from serialized reports.
 
-use swc_common::Span;
-
 use super::rule::{Category, Confidence, Severity};
+use crate::ByteRange;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Stable position of a rule within a validated catalog.
+pub struct RuleIndex(usize);
+
+impl RuleIndex {
+    pub(crate) const fn new(value: usize) -> Self {
+        Self(value)
+    }
+
+    pub(crate) const fn get(self) -> usize {
+        self.0
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 /// One classified capability emitted by a compiled matcher.
 pub struct ApiCapability {
     /// Internal catalog position used to correlate rule selections.
     #[serde(skip)]
-    pub rule_index: usize,
+    pub rule_index: RuleIndex,
     /// Stable namespaced rule ID.
     pub id: String,
     /// Human-readable capability label.
@@ -50,7 +63,7 @@ pub struct ApiEvidence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// A source span and the fact that established it, when available.
 pub struct ApiEvidenceOccurrence {
-    pub span: Span,
+    pub span: ByteRange,
     pub fact: Option<u32>,
 }
 

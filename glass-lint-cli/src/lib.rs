@@ -20,9 +20,9 @@ pub fn run(args: args::Args) -> Result<bool> {
     // The boolean is deliberately separate from `Result`: operational errors
     // are exit code 2, while a valid report that crosses `fail_on` is exit 1.
     let config = config::load(&args)?;
-    let _ = glass_lint_core::telemetry::try_init_with_writer_and_color(
-        config.cli.verbosity.telemetry(),
-        config.cli.color && console::colors_enabled_stderr(),
+    let _ = glass_lint_core::telemetry::try_init(
+        glass_lint_core::telemetry::TelemetryOptions::new(config.cli.verbosity.telemetry())
+            .color(config.cli.color && console::colors_enabled_stderr()),
         io::stderr,
     );
     tracing::debug!(target: "glass_lint::cli", source = "resolved", "configuration resolved");

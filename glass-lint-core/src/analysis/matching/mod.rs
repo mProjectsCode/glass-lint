@@ -2,26 +2,20 @@
 //!
 //! Collection is intentionally separated from `evidence_for`: the AST is
 //! walked once, then each rule selects from deterministic occurrence maps.
-//! Argument and flow evidence remain per-rule because their matchers carry
-//! rule-specific predicates that cannot be represented as a shared key.
+//! Constrained clauses and flow evidence remain per-rule because their
+//! predicates cannot be represented as a shared physical lookup key.
 //!
 //! Provenance levels stay in separate indexes so heuristic names cannot be
 //! mistaken for rooted or module-identified identities. All shared indexes
 //! are normalized before queries run.
 
-use swc_common::Span;
-
 use super::{
-    facts::{CallArgInfo, FactId, FactPayload, FactStream},
+    facts::{CallArgInfo, FactPayload, FactStream},
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
 use crate::api::{
     classification::{ApiEvidence, ApiMatchKind},
-    rule::{
-        ApiMatcher, CallMatcher, CallProvenance, ClassMatcher, ConstructorMatcher,
-        MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
-        canonical_rooted_chain,
-    },
+    rule::canonical_rooted_chain,
 };
 
 mod occurrence;
@@ -33,9 +27,9 @@ mod query;
 #[derive(Clone, Debug, Default)]
 /// Matcher-independent occurrence indexes projected from one fact stream.
 ///
-/// The indexes are reusable across rule catalogs; argument-bearing calls and
-/// flow matchers are evaluated from facts because their predicates are not
-/// safe to collapse into a simple lookup key.
+/// The indexes are reusable across rule catalogs; constrained clauses and flow
+/// subplans are evaluated from facts because their predicates are not safe to
+/// collapse into a simple lookup key.
 pub struct MatcherFacts {
     // Each map represents a different confidence/provenance level. Do not
     // collapse these into one index: a global spelling, rooted alias, and
@@ -220,16 +214,7 @@ impl MatcherFacts {
     }
 }
 
-fn push_evidence(
-    evidence: &mut Vec<ApiEvidence>,
-    kind: ApiMatchKind,
-    symbol: String,
-    occurrences: Option<&Vec<Occurrence>>,
-) {
-    push_owned_evidence(evidence, kind, symbol, occurrences.cloned());
-}
-
-fn push_owned_evidence(
+pub(super) fn push_owned_evidence(
     evidence: &mut Vec<ApiEvidence>,
     kind: ApiMatchKind,
     symbol: String,
@@ -262,12 +247,15 @@ fn push_owned_evidence(
 
 #[cfg(test)]
 mod tests {
-    use swc_common::BytePos;
-
     use super::*;
+    use crate::{
+        ByteRange,
+        analysis::facts::FactId,
+        api::rule::{ApiMatcher, MemberCallMatcher},
+    };
 
-    fn span(start: u32, end: u32) -> Span {
-        Span::new(BytePos(start), BytePos(end))
+    fn span(start: u32, end: u32) -> ByteRange {
+        ByteRange::new(start, end).unwrap()
     }
 
     #[test]
@@ -299,7 +287,8 @@ mod tests {
         let matcher = ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::member_call(
             MemberCallMatcher::syntactic_heuristic("client.request"),
         )]);
-        let evidence = facts.evidence_for(&matcher);
+        let compiled = crate::api::compiler::CompiledMatcherPlan::compile(&matcher);
+        let evidence = facts.evidence_for(compiled.query());
         let reference = facts
             .members
             .calls

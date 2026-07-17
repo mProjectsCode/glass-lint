@@ -280,16 +280,10 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
                     other => bail!("unknown project request kind `{other}`"),
                 },
                 request: resolution.request,
-                range: glass_lint_core::SourceRange {
-                    start: glass_lint_core::Position {
-                        line: resolution.line,
-                        column: resolution.column,
-                    },
-                    end: glass_lint_core::Position {
-                        line: resolution.end_line,
-                        column: resolution.end_column,
-                    },
-                },
+                range: glass_lint_core::SourceRange::new(
+                    glass_lint_core::Position::new(resolution.line, resolution.column)?,
+                    glass_lint_core::Position::new(resolution.end_line, resolution.end_column)?,
+                )?,
                 result,
             })
         })

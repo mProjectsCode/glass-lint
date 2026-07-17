@@ -348,18 +348,22 @@ mod tests {
 
     #[test]
     fn combined_obsidian_profile_uses_the_obsidian_host_environment() {
-        let report = base_linter(Provider::Obsidian, Profile::Heuristic).lint(
-            include_str!("../../tests/e2e/render-executable-code-blocks.js"),
-            "render-executable-code-blocks.js",
-        );
+        let report = base_linter(Provider::Obsidian, Profile::Heuristic)
+            .lint_snippet(
+                include_str!("../../tests/e2e/render-executable-code-blocks.js"),
+                "render-executable-code-blocks.js",
+            )
+            .unwrap();
         let evals = report
-            .findings
+            .files
             .iter()
+            .flat_map(|file| file.findings.iter())
             .filter(|finding| finding.rule_id.as_str() == "js:dynamic-code.eval")
             .count();
         let processors = report
-            .findings
+            .files
             .iter()
+            .flat_map(|file| file.findings.iter())
             .filter(|finding| finding.rule_id.as_str() == "obsidian:markdown.code-block-processor")
             .count();
 

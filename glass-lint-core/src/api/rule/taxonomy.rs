@@ -50,39 +50,6 @@ impl From<String> for Category {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-/// Severity used for a reported capability.
-pub enum Severity {
-    /// Informational finding.
-    Info,
-    /// Warning finding.
-    Warning,
-    /// Error finding.
-    Error,
-}
-
-impl Severity {
-    #[must_use]
-    /// Return the stable serialized spelling.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Info => "info",
-            Self::Warning => "warning",
-            Self::Error => "error",
-        }
-    }
-
-    /// Convert to the generic diagnostic severity type.
-    pub fn as_diagnostic_severity(self) -> crate::diagnostic::Severity {
-        match self {
-            Self::Info => crate::diagnostic::Severity::Info,
-            Self::Warning => crate::diagnostic::Severity::Warning,
-            Self::Error => crate::diagnostic::Severity::Error,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
 /// Confidence assigned to the semantic evidence.
 pub enum Confidence {
     /// Strongly proven identity/flow.

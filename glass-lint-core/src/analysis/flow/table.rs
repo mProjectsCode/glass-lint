@@ -81,7 +81,7 @@ impl<T> FunctionTable<T> {
             })
     }
 
-    /// Count present entries, excluding vacant sparse slots.
+    #[cfg(test)]
     pub(in crate::analysis) fn len(&self) -> usize {
         self.values.iter().filter(|value| value.is_some()).count()
     }

@@ -23,7 +23,7 @@ use super::{
         },
         value::BindingVersion,
     },
-    AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeId, ScopeKind,
+    AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeEffect, ScopeId, ScopeKind,
     query::rooted::{RootedExprContext, rooted_expr_chain_with},
 };
 
@@ -54,7 +54,7 @@ pub(super) struct AliasCollector {
     /// Writes that invalidate a rooted receiver/property identity.
     pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
     /// Dynamic `eval` sites that make local provenance conservative.
-    pub(super) dynamic_evals: Vec<(ScopeId, Span)>,
+    pub(super) dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
     /// Function scopes and their parameter patterns by visible name.
     pub(super) function_scopes: BTreeMap<(ScopeId, String), (ScopeId, Vec<Pat>)>,
     /// Aliases that point to a locally declared helper function.

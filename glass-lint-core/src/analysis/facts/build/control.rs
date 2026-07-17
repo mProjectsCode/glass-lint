@@ -10,16 +10,16 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::VisitWith;
 
-use super::{ControlKind, FactBuilder, FactKind, FactPayload, Span};
+use super::{ControlKind, ControlRegionId, FactBuilder, FactKind, FactPayload, Span};
 
 impl FactBuilder<'_> {
     /// Allocate the region identity shared by all markers for one construct.
-    pub(super) fn next_control_region(&mut self) -> u32 {
+    pub(super) fn next_control_region(&mut self) -> ControlRegionId {
         self.traversal.next_control_region()
     }
 
     /// Emit a control marker without attaching a speculative value to it.
-    pub(super) fn emit_control(&mut self, span: Span, kind: ControlKind, region: u32) {
+    pub(super) fn emit_control(&mut self, span: Span, kind: ControlKind, region: ControlRegionId) {
         self.emit(
             FactKind::Control,
             span,

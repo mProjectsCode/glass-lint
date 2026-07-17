@@ -1,23 +1,27 @@
-//! Argument predicate evaluation over precomputed fact projections.
+//! Constrained query-clause evaluation over canonical call facts.
 //!
-//! Argument-bearing matchers consume cloned, AST-independent projections. A
-//! project overlay may strengthen a proven module identity or static string,
-//! but unknown and qualified-local identities remain non-matches.
+//! Clauses that require argument data retain the same compiled representation
+//! as ordinary indexed clauses. A project overlay may strengthen a proven
+//! module identity or static string, but unknown and qualified-local identities
+//! remain non-matches.
 
 use super::{
-    ApiEvidence, ApiMatchKind, CallArgInfo, CallMatcher, CallProvenance, FactId, FactPayload,
-    FactStream, MatcherFacts, MemberCallMatcher, MemberCallProvenance, Span, SymbolCallProvenance,
-    SymbolMemberProvenance, canonical_rooted_chain,
+    ApiEvidence, CallArgInfo, FactPayload, FactStream, MatcherFacts, Occurrence,
+    SymbolCallProvenance, SymbolMemberProvenance, canonical_rooted_chain, push_owned_evidence,
+};
+use crate::{
+    analysis::syntax::UnknownReason,
+    api::compiler::rule::{
+        EventPredicate, IdentityConstraint, QueryClause, QueryConstraint, SubjectConstraint,
+    },
 };
 
 impl MatcherFacts {
-    /// Evaluate all argument-bearing call/member matchers over canonical facts,
-    /// applying only the supplied linked identity overlays.
-    pub(in crate::analysis) fn compute_argument_evidence_from_stream_with_overlay(
+    /// Evaluate selected constrained clauses once over canonical call facts.
+    pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay(
         stream: &FactStream,
-        member_argument_matchers: &[(usize, &MemberCallMatcher)],
-        call_argument_matchers: &[(usize, &CallMatcher)],
-        argument_evidence: &mut [Vec<ApiEvidence>],
+        clauses: &[(usize, &QueryClause)],
+        evidence: &mut [Vec<ApiEvidence>],
         identities: Option<
             &std::collections::BTreeMap<(String, String), super::LinkedModuleIdentity>,
         >,
@@ -48,119 +52,41 @@ impl MatcherFacts {
                     .iter()
                     .map(|argument| argument_with_overlay(argument, identities, result_identities))
                     .collect::<Vec<_>>();
-                // Member argument predicates use the original args.
-                if !member_argument_matchers.is_empty() {
-                    Self::collect_member_argument_evidence_from_args(
-                        member_argument_matchers,
-                        argument_evidence,
-                        fact,
-                        linked_member_provenance.as_ref(),
-                        &linked_args,
-                    );
-                }
-
-                // Call argument predicates: for .call()/.apply(), use the
-                // effective args after unwrapping.
-                if !call_argument_matchers.is_empty() {
-                    let (effective_args, effective_name, effective_provenance) =
-                        unwrap.as_ref().map_or(
-                            (
-                                &linked_args,
-                                callee_name.as_deref(),
-                                &linked_call_provenance,
-                            ),
-                            |u| {
-                                (
-                                    &u.effective_args,
-                                    Some(u.chain.as_str()),
-                                    &linked_call_provenance,
-                                )
-                            },
-                        );
-                    Self::collect_call_argument_evidence_from_args(
-                        call_argument_matchers,
-                        argument_evidence,
-                        fact.id,
-                        fact.span,
-                        effective_name,
-                        effective_provenance,
-                        effective_args,
-                    );
-                }
-            }
-        }
-    }
-
-    fn collect_call_argument_evidence_from_args(
-        matchers: &[(usize, &CallMatcher)],
-        evidence: &mut [Vec<ApiEvidence>],
-        event: FactId,
-        span: Span,
-        callee_name: Option<&str>,
-        call_provenance: &SymbolCallProvenance,
-        args: &[CallArgInfo],
-    ) {
-        for (rule_index, matcher) in matchers {
-            let matcher = *matcher;
-            if matcher.matches_call(callee_name, call_provenance, args) {
-                evidence[*rule_index].push(ApiEvidence {
-                    kind: ApiMatchKind::CallArgument,
-                    symbol: matcher.evidence_symbol(),
-                    count: 1,
-                    evidence_truncated: false,
-                    occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
-                        span,
-                        fact: Some(event.0),
-                    }],
-                    related: Vec::new(),
-                });
-            }
-        }
-    }
-
-    fn collect_member_argument_evidence_from_args(
-        matchers: &[(usize, &MemberCallMatcher)],
-        evidence: &mut [Vec<ApiEvidence>],
-        fact: &super::super::facts::SemanticFact,
-        module_member: Option<&SymbolMemberProvenance>,
-        args: &[CallArgInfo],
-    ) {
-        let FactPayload::Call {
-            syntactic_chain,
-            rooted_chain,
-            ..
-        } = &fact.payload
-        else {
-            return;
-        };
-        for (rule_index, matcher) in matchers {
-            let matcher = *matcher;
-            if matcher.matches_member(
-                syntactic_chain.as_deref(),
-                rooted_chain.as_deref(),
-                module_member,
-                args,
-            ) {
-                let symbol = match matcher.provenance {
-                    MemberCallProvenance::Any => matcher.evidence_symbol(),
-                    MemberCallProvenance::Rooted | MemberCallProvenance::ModuleNamespace { .. } => {
-                        syntactic_chain
-                            .as_deref()
-                            .unwrap_or(&matcher.chain)
-                            .to_string()
+                let (effective_args, effective_name) = unwrap
+                    .as_ref()
+                    .map_or((&linked_args, callee_name.as_deref()), |unwrapped| {
+                        (&unwrapped.effective_args, Some(unwrapped.chain.as_str()))
+                    });
+                for (rule_index, clause) in clauses {
+                    let matches = match clause.event {
+                        EventPredicate::Call => matches_call_clause(
+                            clause,
+                            effective_name,
+                            &linked_call_provenance,
+                            effective_args,
+                        ),
+                        EventPredicate::MemberCall { .. } => matches_member_clause(
+                            clause,
+                            fact,
+                            linked_member_provenance.as_ref(),
+                            &linked_args,
+                        ),
+                        EventPredicate::Construct
+                        | EventPredicate::MemberRead { .. }
+                        | EventPredicate::ClassReference
+                        | EventPredicate::Import
+                        | EventPredicate::StringReference => false,
+                    };
+                    if !matches {
+                        continue;
                     }
-                };
-                evidence[*rule_index].push(ApiEvidence {
-                    kind: ApiMatchKind::CallArgument,
-                    symbol,
-                    count: 1,
-                    evidence_truncated: false,
-                    occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
-                        span: fact.span,
-                        fact: Some(fact.id.0),
-                    }],
-                    related: Vec::new(),
-                });
+                    push_owned_evidence(
+                        &mut evidence[*rule_index],
+                        clause.evidence.kind,
+                        clause.evidence.symbol.clone(),
+                        Some(vec![Occurrence::new(fact.id, fact.span)]),
+                    );
+                }
             }
         }
     }
@@ -208,6 +134,9 @@ fn call_provenance_with_overlay(
     >,
     callee: super::super::value::ValueId,
 ) -> SymbolCallProvenance {
+    if !provenance.knowledge().is_known() {
+        return provenance.clone();
+    }
     if let Some(result_identities) = result_identities
         && matches!(provenance, SymbolCallProvenance::Local)
         && let Some(super::LinkedModuleIdentity::External { module, export }) =
@@ -239,9 +168,9 @@ fn call_provenance_with_overlay(
         }
         Some(
             super::LinkedModuleIdentity::Qualified { .. }
-            | super::LinkedModuleIdentity::StaticString { .. }
-            | super::LinkedModuleIdentity::Unknown,
-        ) => SymbolCallProvenance::Local,
+            | super::LinkedModuleIdentity::StaticString { .. },
+        ) => SymbolCallProvenance::Unknown(UnknownReason::Unresolved),
+        Some(super::LinkedModuleIdentity::Unknown) => SymbolCallProvenance::Ambiguous,
         None => provenance.clone(),
     }
 }
@@ -276,66 +205,409 @@ fn module_member_with_overlay(
     }
 }
 
-impl CallMatcher {
-    /// Match a call fact using the matcher’s provenance and argument rules.
-    /// The fact already contains all AST-independent projections needed here.
-    fn matches_call(
-        &self,
-        callee_name: Option<&str>,
-        call_provenance: &SymbolCallProvenance,
-        args: &[CallArgInfo],
-    ) -> bool {
-        let provenance_matches = match &self.provenance {
-            CallProvenance::Any => callee_name.is_some_and(|name| name == self.name),
-            CallProvenance::Global => matches!(
-                call_provenance,
-                SymbolCallProvenance::Global { name } if name == &self.name
-            ),
-            CallProvenance::ModuleExport { module } => matches!(
-                call_provenance,
-                SymbolCallProvenance::ModuleExport {
-                    module: found_module,
-                    export
-                } if found_module == module && export == &self.name
-            ),
-        };
-        provenance_matches
-            && self.arguments.iter().all(|argument| {
-                args.get(argument.index)
-                    .is_some_and(|arg| argument.matcher.matches(arg))
-            })
+fn matches_call_clause(
+    clause: &QueryClause,
+    callee_name: Option<&str>,
+    call_provenance: &SymbolCallProvenance,
+    args: &[CallArgInfo],
+) -> bool {
+    if !matches!(clause.subject, SubjectConstraint::Direct) {
+        return false;
     }
+    let identity_matches = match &clause.identity {
+        IdentityConstraint::Any { name, .. } => callee_name == Some(name.as_str()),
+        IdentityConstraint::Global { name, .. } => matches!(
+            call_provenance,
+            SymbolCallProvenance::Global { name: found } if found == name
+        ),
+        IdentityConstraint::ModuleExport { module, export } => matches!(
+            call_provenance,
+            SymbolCallProvenance::ModuleExport {
+                module: found_module,
+                export: found_export
+            } if found_module == module && found_export == export
+        ),
+        IdentityConstraint::ModuleNamespace { .. }
+        | IdentityConstraint::Rooted { .. }
+        | IdentityConstraint::LiteralString { .. } => false,
+    };
+    identity_matches && constraints_match(&clause.constraints, args)
 }
 
-impl MemberCallMatcher {
-    /// Match a member-call fact using syntactic, rooted, or module provenance.
-    fn matches_member(
-        &self,
-        syntactic_chain: Option<&str>,
-        resolved_chain: Option<&str>,
-        module_member: Option<&SymbolMemberProvenance>,
-        args: &[CallArgInfo],
-    ) -> bool {
-        let provenance_matches = match &self.provenance {
-            MemberCallProvenance::Any => {
-                syntactic_chain == Some(self.chain.as_str())
-                    || resolved_chain == Some(self.chain.as_str())
-            }
-            MemberCallProvenance::Rooted => resolved_chain
-                .map(canonical_rooted_chain)
-                .is_some_and(|chain| chain == self.chain),
-            MemberCallProvenance::ModuleNamespace { module } => matches!(
-                module_member,
-                Some(SymbolMemberProvenance::ModuleNamespace {
-                    module: found_module,
-                    member
-                }) if found_module == module && member == &self.chain
-            ),
+fn matches_member_clause(
+    clause: &QueryClause,
+    fact: &super::super::facts::SemanticFact,
+    module_member: Option<&SymbolMemberProvenance>,
+    args: &[CallArgInfo],
+) -> bool {
+    let FactPayload::Call {
+        syntactic_chain,
+        rooted_chain,
+        returned_member,
+        instance_class,
+        ..
+    } = &fact.payload
+    else {
+        return false;
+    };
+    let EventPredicate::MemberCall { member } = &clause.event else {
+        return false;
+    };
+    let subject_matches = match &clause.subject {
+        SubjectConstraint::Direct => true,
+        SubjectConstraint::ReturnedFrom { producer } => returned_member
+            .as_ref()
+            .is_some_and(|(source, found)| found == member && exact_root_matches(producer, source)),
+        SubjectConstraint::InstanceOf { constructor } => instance_class
+            .as_ref()
+            .is_some_and(|(module, export)| identity_module_matches(constructor, module, export)),
+    };
+    if !subject_matches {
+        return false;
+    }
+    let identity_matches = match (&clause.identity, &clause.subject) {
+        (IdentityConstraint::Any { name, .. }, SubjectConstraint::Direct) => {
+            name == member
+                && (syntactic_chain.as_deref() == Some(name.as_str())
+                    || rooted_chain.as_deref() == Some(name.as_str()))
+        }
+        (IdentityConstraint::Rooted { path }, SubjectConstraint::Direct) => rooted_chain
+            .as_deref()
+            .map(canonical_rooted_chain)
+            .is_some_and(|chain| chain == path && path == member),
+        (IdentityConstraint::ModuleNamespace { module }, SubjectConstraint::Direct) => matches!(
+            module_member,
+            Some(SymbolMemberProvenance::ModuleNamespace {
+                module: found_module,
+                member: found_member
+            }) if found_module == module && found_member == member
+        ),
+        (IdentityConstraint::Rooted { path }, SubjectConstraint::ReturnedFrom { .. }) => {
+            returned_member
+                .as_ref()
+                .is_some_and(|(source, found)| source == path && found == member)
+        }
+        (
+            IdentityConstraint::ModuleExport { module, export },
+            SubjectConstraint::InstanceOf { .. },
+        ) => {
+            instance_class
+                .as_ref()
+                .is_some_and(|(found_module, found_export)| {
+                    found_module == module && found_export == export
+                })
+                && syntactic_chain
+                    .as_deref()
+                    .and_then(|chain| chain.rsplit('.').next())
+                    == Some(member.as_str())
+        }
+        _ => false,
+    };
+    identity_matches && constraints_match(&clause.constraints, args)
+}
+
+fn constraints_match(constraints: &[QueryConstraint], args: &[CallArgInfo]) -> bool {
+    constraints.iter().all(|constraint| match constraint {
+        QueryConstraint::Argument(argument) => args
+            .get(argument.index)
+            .is_some_and(|value| argument.matcher.matches(value)),
+    })
+}
+
+fn exact_root_matches(identity: &IdentityConstraint, source: &str) -> bool {
+    matches!(identity, IdentityConstraint::Rooted { path } if path == source)
+}
+
+fn identity_module_matches(identity: &IdentityConstraint, module: &str, export: &str) -> bool {
+    matches!(identity, IdentityConstraint::ModuleExport { module: expected_module, export: expected_export } if expected_module == module && expected_export == export)
+}
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use super::{
+        MatcherFacts, argument_with_overlay, call_provenance_with_overlay,
+        module_member_with_overlay,
+    };
+    use crate::{
+        analysis::{
+            facts::{CallArgInfo, FactStream, build::build_test_stream},
+            lowering::SpanNormalizer,
+            matching::LinkedModuleIdentity,
+            resolution::Resolver,
+            syntax::{SymbolCallProvenance, SymbolMemberProvenance, UnknownReason},
+            value::{PathId, ValueId},
+        },
+        api::{
+            classification::ApiMatchKind,
+            compiler::{
+                CompiledMatcherPlan,
+                rule::{
+                    EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength,
+                    QueryClause, QueryConstraint, SubjectConstraint,
+                },
+            },
+            rule::{ApiMatcher, ArgumentConstraint, CallMatcher, Matcher, ValueMatcher},
+        },
+    };
+
+    fn stream(source: &str, environment: &crate::Environment) -> FactStream {
+        let parsed = crate::parse(source, "constrained.js").unwrap();
+        let coordinates = SpanNormalizer::new(parsed.source_start, source);
+        let resolver =
+            Resolver::collect_with_environment(&parsed.program, environment, coordinates);
+        build_test_stream(&parsed.program, &resolver)
+    }
+
+    fn exact_argument(value: &str) -> Box<[QueryConstraint]> {
+        Box::new([QueryConstraint::Argument(ArgumentConstraint {
+            index: 0,
+            matcher: ValueMatcher::static_string().equals(value).into(),
+        })])
+    }
+
+    fn clause(
+        identity: IdentityConstraint,
+        event: EventPredicate,
+        subject: SubjectConstraint,
+        symbol: &str,
+    ) -> QueryClause {
+        QueryClause {
+            identity,
+            event,
+            subject,
+            constraints: exact_argument("/api"),
+            evidence: EvidenceDescriptor {
+                kind: ApiMatchKind::CallArgument,
+                symbol: symbol.into(),
+            },
+        }
+    }
+
+    #[test]
+    fn constrained_calls_and_members_execute_once() {
+        let stream = stream(
+            "fetch('/api'); client.open('/api');",
+            &crate::Environment::default(),
+        );
+        let call = clause(
+            IdentityConstraint::Any {
+                name: "fetch".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            EventPredicate::Call,
+            SubjectConstraint::Direct,
+            "fetch",
+        );
+        let member = clause(
+            IdentityConstraint::Any {
+                name: "client.open".into(),
+                strength: IdentityStrength::Heuristic,
+            },
+            EventPredicate::MemberCall {
+                member: "client.open".into(),
+            },
+            SubjectConstraint::Direct,
+            "client.open",
+        );
+        let mut evidence = vec![Vec::new()];
+        MatcherFacts::compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &[(0, &call), (0, &member)],
+            &mut evidence,
+            None,
+            None,
+        );
+        assert_eq!(evidence[0].len(), 2);
+        assert!(evidence[0].iter().all(|item| item.count == 1));
+        assert_ne!(
+            evidence[0][0].occurrences[0].fact,
+            evidence[0][1].occurrences[0].fact
+        );
+    }
+
+    #[test]
+    fn constraints_compose_with_non_direct_subject() {
+        let mut environment = crate::Environment::default();
+        environment.add_global_object("app").unwrap();
+        let stream = stream(
+            "import { Client } from 'pkg';\nconst leaf = app.workspace.getLeaf();\nleaf.openFile('/api');\nclass Child extends Client { sendNow() { this.send('/api'); } }",
+            &environment,
+        );
+        let returned = clause(
+            IdentityConstraint::Rooted {
+                path: "app.workspace.getLeaf".into(),
+            },
+            EventPredicate::MemberCall {
+                member: "openFile".into(),
+            },
+            SubjectConstraint::ReturnedFrom {
+                producer: Box::new(IdentityConstraint::Rooted {
+                    path: "app.workspace.getLeaf".into(),
+                }),
+            },
+            "app.workspace.getLeaf.openFile",
+        );
+        let constructor = IdentityConstraint::ModuleExport {
+            module: "pkg".into(),
+            export: "Client".into(),
         };
-        provenance_matches
-            && self.arguments.iter().all(|argument| {
-                args.get(argument.index)
-                    .is_some_and(|arg| argument.matcher.matches(arg))
-            })
+        let instance = clause(
+            constructor.clone(),
+            EventPredicate::MemberCall {
+                member: "send".into(),
+            },
+            SubjectConstraint::InstanceOf {
+                constructor: Box::new(constructor),
+            },
+            "pkg:Client.send",
+        );
+        let mut evidence = vec![Vec::new()];
+        MatcherFacts::compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &[(0, &returned), (0, &instance)],
+            &mut evidence,
+            None,
+            None,
+        );
+        assert_eq!(
+            evidence[0]
+                .iter()
+                .map(|item| item.symbol.as_str())
+                .collect::<Vec<_>>(),
+            ["app.workspace.getLeaf.openFile", "pkg:Client.send"]
+        );
+    }
+
+    #[test]
+    fn constrained_clause_evidence_is_source_ordered_and_deduplicated() {
+        let declaration = Matcher::call(CallMatcher::heuristic("fetch").arg_string(0, ["/api"]));
+        let matcher = ApiMatcher::from_matchers(vec![declaration.clone(), declaration]);
+        let plan = CompiledMatcherPlan::compile(&matcher);
+        let clauses = plan.query().clauses();
+        assert_eq!(clauses.len(), 1, "equivalent clauses compile once");
+
+        let stream = stream(
+            "fetch('/api');\nfetch('/api');",
+            &crate::Environment::default(),
+        );
+        let mut evidence = vec![Vec::new()];
+        MatcherFacts::compute_constrained_evidence_from_stream_with_overlay(
+            &stream,
+            &[(0, &clauses[0])],
+            &mut evidence,
+            None,
+            None,
+        );
+        assert_eq!(evidence[0].len(), 2);
+        assert!(
+            evidence[0]
+                .iter()
+                .all(|item| !item.occurrences[0].span.is_empty())
+        );
+        evidence[0].reverse();
+        let normalized = crate::analysis::evidence::AnnotatedEvidence::from_evidence(
+            std::mem::take(&mut evidence[0]),
+            usize::MAX,
+        )
+        .into_evidence();
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized[0].count, 2);
+        assert_eq!(normalized[0].occurrences.len(), 2);
+        assert!(
+            normalized[0]
+                .occurrences
+                .windows(2)
+                .all(|pair| { (pair[0].span, pair[0].fact) < (pair[1].span, pair[1].fact) })
+        );
+    }
+
+    #[test]
+    fn evidence_overlay_preserves_unknown_and_ambiguous_boundaries() {
+        let mut identities = BTreeMap::new();
+        identities.insert(
+            ("api".into(), "request".into()),
+            LinkedModuleIdentity::Global {
+                name: "fetch".into(),
+            },
+        );
+        assert_eq!(
+            call_provenance_with_overlay(
+                &SymbolCallProvenance::Unknown(UnknownReason::Cycle),
+                Some(&identities),
+                None,
+                ValueId::UNKNOWN,
+            ),
+            SymbolCallProvenance::Unknown(UnknownReason::Cycle)
+        );
+
+        let module_export = SymbolCallProvenance::ModuleExport {
+            module: "api".into(),
+            export: "request".into(),
+        };
+        assert_eq!(
+            call_provenance_with_overlay(&module_export, Some(&identities), None, ValueId::UNKNOWN,),
+            SymbolCallProvenance::Global {
+                name: "fetch".into()
+            }
+        );
+
+        identities.insert(
+            ("api".into(), "request".into()),
+            LinkedModuleIdentity::Unknown,
+        );
+        assert_eq!(
+            call_provenance_with_overlay(&module_export, Some(&identities), None, ValueId::UNKNOWN,),
+            SymbolCallProvenance::Ambiguous
+        );
+    }
+
+    #[test]
+    fn argument_and_member_overlays_cover_all_linked_identity_outcomes() {
+        let mut identities = BTreeMap::new();
+        identities.insert(
+            ("api".into(), "request".into()),
+            LinkedModuleIdentity::StaticString {
+                value: "https://example.test".into(),
+            },
+        );
+        let argument = CallArgInfo {
+            value: ValueId(7),
+            base_value: ValueId::UNKNOWN,
+            base_path: PathId::EMPTY,
+            static_string: None,
+            object_keys: None,
+            rooted_chain: None,
+            projections: Vec::new(),
+            spread: false,
+            provenance: SymbolCallProvenance::ModuleExport {
+                module: "api".into(),
+                export: "request".into(),
+            },
+        };
+        assert_eq!(
+            argument_with_overlay(&argument, Some(&identities), None).static_string,
+            Some("https://example.test".into())
+        );
+
+        let member = Some(SymbolMemberProvenance::ModuleNamespace {
+            module: "api".into(),
+            member: "request".into(),
+        });
+        identities.insert(
+            ("api".into(), "request".into()),
+            LinkedModuleIdentity::External {
+                module: "platform".into(),
+                export: "request".into(),
+            },
+        );
+        assert!(
+            module_member_with_overlay(Some(&member.clone().unwrap()), Some(&identities)).is_some()
+        );
+        identities.insert(
+            ("api".into(), "request".into()),
+            LinkedModuleIdentity::Unknown,
+        );
+        assert!(module_member_with_overlay(member.as_ref(), Some(&identities)).is_none());
     }
 }

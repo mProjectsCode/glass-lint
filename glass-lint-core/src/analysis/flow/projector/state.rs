@@ -145,25 +145,25 @@ impl FlowEvidence {
 /// Saved control construct state used to restore and join environments.
 pub(super) enum ControlFrame {
     Branch {
-        region: u32,
+        region: super::super::super::facts::ControlRegionId,
         base: FlowEnvironment,
         then_exit: Option<FlowEnvironment>,
     },
     Loop {
-        region: u32,
+        region: super::super::super::facts::ControlRegionId,
         baseline: FlowEnvironment,
         guaranteed: bool,
         breaks: Vec<FlowEnvironment>,
         continues: Vec<FlowEnvironment>,
     },
     Switch {
-        region: u32,
+        region: super::super::super::facts::ControlRegionId,
         baseline: FlowEnvironment,
         breaks: Vec<FlowEnvironment>,
         has_default: bool,
     },
     Try {
-        region: u32,
+        region: super::super::super::facts::ControlRegionId,
         baseline: FlowEnvironment,
         try_exit: Option<FlowEnvironment>,
         catch_exit: Option<FlowEnvironment>,

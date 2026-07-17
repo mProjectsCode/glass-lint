@@ -238,8 +238,10 @@ impl Visit for AliasCollector {
             && let Expr::Ident(callee) = &**callee
         {
             if callee.sym == *"eval" {
-                self.dynamic_evals
-                    .push((self.binding_scope(VarDeclKind::Var), call.span));
+                self.dynamic_evals.push((
+                    self.binding_scope(VarDeclKind::Var),
+                    super::super::ScopeEffect::DynamicEvaluation { span: call.span },
+                ));
             }
             self.calls.push((
                 self.current_scope(),

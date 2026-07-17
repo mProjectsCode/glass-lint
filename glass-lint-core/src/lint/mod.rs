@@ -5,10 +5,9 @@
 //! policy stay separate from semantic fact construction.
 
 mod catalog;
-pub mod findings;
+mod findings;
 mod linter;
-pub mod ranges;
+mod ranges;
 
 pub use catalog::{RuleCatalog, RuleCatalogError};
 pub use linter::{LintConfigError, Linter};
-pub use ranges::source_range_from_span;

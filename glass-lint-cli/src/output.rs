@@ -7,9 +7,7 @@ use std::{
 
 use anyhow::{Result, bail};
 use console::{Style, measure_text_width};
-use glass_lint_core::{
-    LintReport, PrettyFile, PrettyOptions, PrettyReports, ProjectReport, RuleMetadata,
-};
+use glass_lint_core::{AnalysisReport, PrettyFile, PrettyOptions, PrettyReports, RuleMetadata};
 use serde::Serialize;
 
 use crate::config::{Config, Output};
@@ -19,8 +17,8 @@ use crate::config::{Config, Output};
 pub struct FileOutput {
     /// Source is retained because pretty output must match the analyzed bytes.
     pub path: String,
-    /// Findings and parse diagnostics produced for this source.
-    pub report: LintReport,
+    /// Complete one-file report, including completion and report diagnostics.
+    pub report: AnalysisReport,
     /// Original source text used for rendering snippets and locations.
     pub source: String,
 }
@@ -33,6 +31,8 @@ pub struct Summary {
     pub findings: usize,
     /// Number of parse diagnostics across those files.
     pub parse_diagnostics: usize,
+    /// Number of file-owned semantic/status diagnostics.
+    pub analysis_diagnostics: usize,
 }
 
 /// Counts for a linked project report, including diagnostics from resolution.
@@ -44,6 +44,8 @@ pub struct ProjectSummary {
     pub(crate) findings: usize,
     /// Number of parse diagnostics across those files.
     pub(crate) parse_diagnostics: usize,
+    /// Number of file-owned semantic/status diagnostics.
+    pub(crate) analysis_diagnostics: usize,
     /// Number of project-level diagnostics such as unresolved links.
     pub project_diagnostics: usize,
 }
@@ -65,7 +67,7 @@ pub fn write_report(config: &Config, files: &[FileOutput], summary: Summary) -> 
 }
 
 /// Write a report produced by resolver-aware project analysis.
-pub fn write_project_report(config: &Config, report: &ProjectReport) -> Result<()> {
+pub fn write_project_report(config: &Config, report: &AnalysisReport) -> Result<()> {
     let mut stdout = io::BufWriter::new(io::stdout().lock());
     write_project_report_to(config, report, &mut stdout)?;
     stdout.flush().map_err(Into::into)
@@ -224,18 +226,11 @@ fn write_report_to<W: Write>(
 fn write_json<W: Write>(files: &[FileOutput], _summary: Summary, out: &mut W) -> Result<()> {
     // Reuse the public project report shape so snippet and project JSON remain
     // consumable by the same downstream tooling.
-    let files = files
+    let reports = files
         .iter()
-        .map(|file| {
-            glass_lint_core::ProjectFileReport::from_lint_report(
-                file.path.clone(),
-                file.source.clone(),
-                file.report.clone(),
-            )
-        })
+        .map(|file| file.report.clone())
         .collect::<Vec<_>>();
-    let report =
-        glass_lint_core::ProjectReport::from_file_reports(env!("CARGO_PKG_VERSION"), files);
+    let report = glass_lint_core::AnalysisReport::combine(reports)?;
     serde_json::to_writer_pretty(&mut *out, &report)?;
     writeln!(out)?;
     Ok(())
@@ -254,18 +249,26 @@ fn write_pretty<W: Write>(
     };
     let pretty_files = files
         .iter()
-        .map(|file| PrettyFile::new(&file.report, &file.path, &file.source))
+        .flat_map(|file| {
+            file.report
+                .files
+                .iter()
+                .take(1)
+                .map(|report| PrettyFile::new(report, &file.path, &file.source))
+        })
         .collect::<Vec<_>>();
     write_pretty_files(&pretty_files, options, out)?;
 
     let summary_line = format!(
-        "{} file(s), {} finding(s), {} parse diagnostic(s)",
-        summary.files, summary.findings, summary.parse_diagnostics
+        "{} file(s), {} finding(s), {} parse diagnostic(s), {} analysis diagnostic(s)",
+        summary.files, summary.findings, summary.parse_diagnostics, summary.analysis_diagnostics
     );
     write_summary(
         config,
         &summary_line,
-        summary.findings == 0 && summary.parse_diagnostics == 0,
+        summary.findings == 0
+            && summary.parse_diagnostics == 0
+            && summary.analysis_diagnostics == 0,
         out,
     )
 }
@@ -284,7 +287,7 @@ fn write_pretty_files<W: Write>(
 
 fn write_project_report_to<W: Write>(
     config: &Config,
-    report: &ProjectReport,
+    report: &AnalysisReport,
     out: &mut W,
 ) -> Result<()> {
     let core_summary = report.summary();
@@ -292,6 +295,7 @@ fn write_project_report_to<W: Write>(
         files: core_summary.files,
         findings: core_summary.findings,
         parse_diagnostics: core_summary.parse_diagnostics,
+        analysis_diagnostics: core_summary.analysis_diagnostics,
         project_diagnostics: core_summary.project_diagnostics,
     };
     match config.cli.output {
@@ -306,60 +310,55 @@ fn write_project_report_to<W: Write>(
 
 fn write_project_pretty<W: Write>(
     config: &Config,
-    report: &ProjectReport,
+    report: &AnalysisReport,
     summary: ProjectSummary,
     out: &mut W,
 ) -> Result<()> {
-    let files = report
-        .files
-        .iter()
-        .map(|file| FileOutput {
-            path: file.path.to_string(),
-            report: file.to_lint_report(env!("CARGO_PKG_VERSION")),
-            source: file.source.clone(),
-        })
-        .collect::<Vec<_>>();
     let options = PrettyOptions {
         max_width: config.cli.pretty_max_width,
         color: color_enabled(config),
         show_evidence_source: config.cli.show_evidence_source,
     };
-    let pretty_files = files
+    let pretty_files = report
+        .files
         .iter()
-        .map(|file| PrettyFile::new(&file.report, &file.path, &file.source))
+        .map(|file| PrettyFile::new(file, file.path.as_str(), ""))
         .collect::<Vec<_>>();
     write_pretty_files(&pretty_files, options, out)?;
 
     for diagnostic in &report.diagnostics {
-        if let Some(location) = &diagnostic.location {
+        if let Some(location) = diagnostic.path().zip(diagnostic.range()) {
             writeln!(
                 out,
                 "diagnostic [{}] {} ({}:{}:{})",
-                diagnostic.code,
-                visible_text(&diagnostic.message),
-                visible_text(location.path.as_str()),
-                location.range.start.line,
-                location.range.start.column
+                diagnostic.code(),
+                visible_text(diagnostic.message()),
+                visible_text(location.0.as_str()),
+                location.1.start().line(),
+                location.1.start().column()
             )?;
         } else {
             writeln!(
                 out,
                 "diagnostic [{}] {}",
-                diagnostic.code,
-                visible_text(&diagnostic.message)
+                diagnostic.code(),
+                visible_text(diagnostic.message())
             )?;
         }
     }
     let summary_line = format!(
-        "{} file(s), {} finding(s), {} parse diagnostic(s), {} project diagnostic(s), completion={:?}",
+        "{} file(s), {} finding(s), {} parse diagnostic(s), {} analysis diagnostic(s), {} project diagnostic(s), completion={:?}",
         summary.files,
         summary.findings,
         summary.parse_diagnostics,
+        summary.analysis_diagnostics,
         summary.project_diagnostics,
         report.completion
     );
-    let clean =
-        summary.findings == 0 && summary.parse_diagnostics == 0 && summary.project_diagnostics == 0;
+    let clean = summary.findings == 0
+        && summary.parse_diagnostics == 0
+        && summary.analysis_diagnostics == 0
+        && summary.project_diagnostics == 0;
     let summary_line = format!(
         "{summary_line}, operations: {} request(s), {} edge(s), {} export(s), {} effect projection(s), {} evidence item(s)",
         report.operations.requests,
@@ -413,7 +412,59 @@ fn visible_text(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::Table;
+    use glass_lint_core::{
+        AnalysisReport, CoreConfig, Diagnostic, DiagnosticCode, Environment, Linter,
+        ProjectDiagnostic, ReportCompletion, ResourceLimits, Rule, RuleCatalog, Severity,
+        rules::{Confidence, Matcher},
+    };
+
+    use super::{FileOutput, Summary, Table, write_json};
+
+    fn linter(semantic_operations: usize) -> Linter {
+        let rule = Rule::builder("network.fetch")
+            .label("Uses fetch")
+            .category("network")
+            .severity(Severity::Warning)
+            .confidence(Confidence::High)
+            .matcher(Matcher::global_call("fetch"))
+            .build()
+            .unwrap();
+        let mut environment = Environment::default();
+        environment.add_global("fetch").unwrap();
+        Linter::new(RuleCatalog::with_environment("test", vec![rule], environment).unwrap())
+            .configured(&CoreConfig {
+                rules: None,
+                limits: ResourceLimits {
+                    semantic_operations,
+                    ..ResourceLimits::default()
+                },
+            })
+            .unwrap()
+    }
+
+    fn output(path: &str, source: &str, report: AnalysisReport) -> FileOutput {
+        FileOutput {
+            path: path.into(),
+            report,
+            source: source.into(),
+        }
+    }
+
+    fn json(files: &[FileOutput]) -> AnalysisReport {
+        let mut bytes = Vec::new();
+        write_json(
+            files,
+            Summary {
+                files: files.len(),
+                findings: 0,
+                parse_diagnostics: 0,
+                analysis_diagnostics: 0,
+            },
+            &mut bytes,
+        )
+        .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
 
     #[test]
     fn table_aligns_columns_without_padding_the_last_column() {
@@ -427,5 +478,60 @@ mod tests {
             String::from_utf8(output).unwrap(),
             "ID  SEVERITY  DESCRIPTION\nx   warning   short\n"
         );
+    }
+
+    #[test]
+    fn snippet_json_completion_matches_cli_exit_decision() {
+        let source = "fetch('/remote');";
+        let report = linter(1).lint_snippet(source, "partial.js").unwrap();
+        let cli_failed = report.completion == ReportCompletion::Partial
+            || !report.diagnostics.is_empty()
+            || report.files.iter().any(|file| !file.diagnostics.is_empty());
+        let combined = json(&[output("partial.js", source, report)]);
+
+        assert!(cli_failed);
+        assert_eq!(combined.completion, ReportCompletion::Partial);
+        assert_eq!(
+            combined.files[0].diagnostics[0].code(),
+            "semantic_budget_exhausted"
+        );
+    }
+
+    #[test]
+    fn mixed_complete_parse_partial_and_semantic_partial_json_is_stable() {
+        let complete_source = "fetch('/ok');";
+        let broken_source = "fetch(";
+        let semantic_source = "fetch('/partial');";
+        let complete = linter(64).lint_snippet(complete_source, "a.js").unwrap();
+        let parse_partial = linter(64).lint_snippet(broken_source, "b.js").unwrap();
+        let mut semantic_partial = linter(1).lint_snippet(semantic_source, "c.js").unwrap();
+        semantic_partial
+            .diagnostics
+            .push(Diagnostic::Project(ProjectDiagnostic {
+                code: DiagnosticCode::new("incomplete_project").unwrap(),
+                message: "project scope retained".into(),
+                location: None,
+            }));
+        let files = [
+            output("c.js", semantic_source, semantic_partial),
+            output("a.js", complete_source, complete),
+            output("b.js", broken_source, parse_partial),
+        ];
+
+        let first = json(&files);
+        let second = json(&files);
+        assert_eq!(first, second);
+        assert_eq!(first.completion, ReportCompletion::Partial);
+        assert_eq!(
+            first
+                .files
+                .iter()
+                .map(|file| file.path.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a.js", "b.js", "c.js"]
+        );
+        assert_eq!(first.summary().parse_diagnostics, 1);
+        assert_eq!(first.summary().analysis_diagnostics, 1);
+        assert_eq!(first.diagnostics[0].code(), "incomplete_project");
     }
 }

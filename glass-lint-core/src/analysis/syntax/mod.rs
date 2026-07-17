@@ -9,4 +9,6 @@ mod names;
 mod provenance;
 
 pub use names::*;
-pub(in crate::analysis) use provenance::{SymbolCallProvenance, SymbolMemberProvenance};
+pub(in crate::analysis) use provenance::{
+    BudgetComponent, SymbolCallProvenance, SymbolMemberProvenance, UnknownReason,
+};

@@ -24,24 +24,27 @@ use swc_ecma_ast::{
 use swc_ecma_visit::{Visit, VisitWith};
 
 use super::{
-    CallArgInfo, CallUnwrap, ControlKind, FactId, FactKind, FactPayload, FactStream,
-    FunctionBoundary, ParameterBinding, SemanticFact, ValueProjection,
+    CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactId, FactKind, FactPayload,
+    FactStream, FunctionBoundary, ParameterBinding, SemanticFact, ValueProjection,
 };
-use crate::analysis::{
-    module::ModuleInterface,
-    resolution::Resolver,
-    scope::{BoundArgument, ScopeId},
-    syntax::{
-        SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_prop_name,
+use crate::{
+    ByteRange,
+    analysis::{
+        module::ModuleInterface,
+        resolution::Resolver,
+        scope::{BoundArgument, ScopeId},
+        syntax::{
+            SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_prop_name,
+        },
+        value::{PathId, PathSegment, ValueId},
     },
-    value::{PathId, PathSegment, ValueId},
 };
 
 /// The single authoritative semantic fact builder. After the lexical scope
 /// prepass, this visitor walks the AST exactly once and emits an immutable
 /// `FactStream` containing all semantic facts and a matcher-independent module
 /// interface.
-pub(super) struct FactBuilder<'a> {
+pub struct FactBuilder<'a> {
     /// Scope and provenance answers are prepared before this AST walk.
     resolver: &'a Resolver,
     /// Facts are appended in source traversal order and never rewritten.
@@ -63,7 +66,7 @@ impl<'a> FactBuilder<'a> {
         Self::with_limit(resolver, super::MAX_FACTS)
     }
 
-    pub(super) fn with_limit(resolver: &'a Resolver, max_facts: usize) -> Self {
+    pub fn with_limit(resolver: &'a Resolver, max_facts: usize) -> Self {
         Self {
             resolver,
             stream: FactStream::new(),
@@ -85,36 +88,39 @@ impl<'a> FactBuilder<'a> {
     }
 
     fn scope_at(&self, span: Span) -> ScopeId {
-        self.resolver
-            .scope_chain_at(span)
-            .first()
-            .copied()
-            .unwrap_or_else(|| ScopeId::from(0))
+        self.resolver.scope_at(span)
     }
 
-    fn append_path(&self, parent: PathId, segment: PathSegment) -> PathId {
-        self.stream
-            .intern_path(parent, segment)
-            .unwrap_or(PathId::EMPTY)
+    fn append_path(&mut self, parent: PathId, segment: PathSegment) -> PathId {
+        self.stream.intern_path(parent, segment).unwrap_or_else(|| {
+            self.stream.mark_path_exhausted();
+            PathId::EMPTY
+        })
     }
 
     fn emit(&mut self, kind: FactKind, span: Span, payload: FactPayload) {
         #[cfg(not(test))]
         let _ = kind;
-        let Some(id) = self.next_fact_id() else {
-            // Keep the stream structurally usable after the budget is spent.
-            // The synthetic ID cannot participate in normal indexed lookups,
-            // but callers can still observe a deterministic fail-closed tail.
-            self.stream.push(SemanticFact::new(
-                FactId(self.next_id),
-                span,
-                crate::analysis::value::FunctionId(0),
-                kind,
-                payload,
-            ));
+        let scope = self.scope_at(span);
+        let normalized_span = if span.is_dummy() {
+            match &payload {
+                FactPayload::Call { callee_span, .. }
+                | FactPayload::Construction { callee_span, .. } => Some(*callee_span),
+                _ => None,
+            }
+        } else {
+            self.byte_range(span)
+        };
+        let Some(span) = normalized_span else {
             return;
         };
-        let scope = self.scope_at(span);
+        let Some(id) = self.next_fact_id() else {
+            // Exhaustion is typed status, not a synthetic semantic event.
+            // The retained prefix remains available only to fail-closed
+            // diagnostic/reporting paths.
+            self.stream.mark_budget_exhausted();
+            return;
+        };
         let fact = SemanticFact::new(
             id,
             span,
@@ -125,12 +131,28 @@ impl<'a> FactBuilder<'a> {
         self.stream.push(fact);
     }
 
+    fn byte_range(&mut self, span: Span) -> Option<ByteRange> {
+        // TypeScript lowering deliberately synthesizes wrapper nodes with
+        // DUMMY_SP. They retain semantic connectivity at a non-reportable
+        // empty range; this is expected transform output, not invalid parser
+        // data. Findings explicitly discard empty ranges.
+        if span.is_dummy() {
+            return Some(ByteRange::empty());
+        }
+        if let Ok(range) = self.resolver.normalize_span(span) {
+            Some(range)
+        } else {
+            self.stream.mark_invalid_parser_span();
+            None
+        }
+    }
+
     #[cfg(test)]
     pub(super) fn into_stream(self) -> FactStream {
         self.stream
     }
 
-    pub(super) fn into_parts(self) -> (FactStream, ModuleInterface) {
+    pub fn into_parts(self) -> (FactStream, ModuleInterface) {
         (self.stream, self.interface)
     }
 
@@ -139,7 +161,11 @@ impl<'a> FactBuilder<'a> {
     }
 
     pub(super) fn record_pattern_locals(&mut self, pattern: &Pat) {
-        self.interface.add_pattern_locals(pattern);
+        let mut names = std::collections::BTreeSet::new();
+        crate::analysis::syntax::collect_pat_bindings(pattern, &mut names);
+        for name in names {
+            self.interface.add_local(name);
+        }
     }
 }
 
@@ -304,8 +330,8 @@ mod tests {
         assert_eq!(calls.len(), 2);
         assert_eq!(members.len(), 1);
         assert_ne!(calls[0].id, calls[1].id);
-        assert!(members[0].span.lo >= calls[0].span.lo);
-        assert!(members[0].span.hi <= calls[0].span.hi);
+        assert!(members[0].span.start() >= calls[0].span.start());
+        assert!(members[0].span.end() <= calls[0].span.end());
     }
 
     #[test]
@@ -325,7 +351,7 @@ mod tests {
             stream
                 .facts()
                 .iter()
-                .map(|f| (f.kind, f.span.lo.0, f.span.hi.0, f.function))
+                .map(|f| (f.kind, f.span.start(), f.span.end(), f.function))
                 .collect::<Vec<_>>()
         };
 

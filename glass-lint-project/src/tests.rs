@@ -30,6 +30,7 @@ fn directory_discovery_is_sorted_and_excludes_runtime_directories() {
         .unwrap();
     assert_eq!(
         report
+            .report
             .files
             .iter()
             .map(|file| file.path.as_str())
@@ -85,13 +86,13 @@ fn aggregate_source_budget_is_checked_before_second_parse() {
         max_source_bytes: 10,
         ..Default::default()
     };
-    let error = ProjectLoader::new(options)
+    let outcome = ProjectLoader::new(options)
         .unwrap()
         .load_and_lint(&linter(), &ProjectSelection::directory(&root))
-        .unwrap_err();
+        .unwrap();
     assert!(matches!(
-        error,
-        ProjectLoadError::ProjectSourceTooLarge { .. }
+        outcome.error,
+        Some(ProjectLoadError::ProjectSourceTooLarge { .. })
     ));
     fs::remove_dir_all(root).unwrap();
 }
@@ -111,7 +112,7 @@ fn deterministic_loader_budget_returns_partial_report_and_error() {
     };
     let outcome = ProjectLoader::new(options)
         .unwrap()
-        .load_and_lint_with_outcome(&linter(), &ProjectSelection::directory(&root))
+        .load_and_lint(&linter(), &ProjectSelection::directory(&root))
         .unwrap();
     assert!(matches!(
         outcome.error,
@@ -127,7 +128,7 @@ fn deterministic_loader_budget_returns_partial_report_and_error() {
             .report
             .diagnostics
             .iter()
-            .any(|diagnostic| diagnostic.code.as_str() == "incomplete_project")
+            .any(|diagnostic| diagnostic.code() == "incomplete_project")
     );
     fs::remove_dir_all(root).unwrap();
 }
@@ -143,7 +144,7 @@ fn extensionless_internal_import_is_followed() {
     let report = loader
         .load_and_lint(&linter(), &ProjectSelection::entry(root.join("main.js")))
         .unwrap();
-    assert_eq!(report.files.len(), 2);
+    assert_eq!(report.report.files.len(), 2);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -156,14 +157,14 @@ fn reports_project_phase_metrics_and_operation_counts() {
     fs::write(root.join("main.js"), "import './helper';").unwrap();
     fs::write(root.join("helper.ts"), "export const value = 1;").unwrap();
     let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
-    let (report, metrics) = loader
-        .load_and_lint_with_metrics(&linter(), &ProjectSelection::entry(root.join("main.js")))
+    let outcome = loader
+        .load_and_lint(&linter(), &ProjectSelection::entry(root.join("main.js")))
         .unwrap();
-    assert_eq!(report.files.len(), 2);
-    assert_eq!(metrics.files, 2);
-    assert_eq!(metrics.requests, 1);
-    assert_eq!(metrics.edges, 1);
-    assert!(metrics.total >= metrics.linking_and_matching);
+    assert_eq!(outcome.report.files.len(), 2);
+    assert_eq!(outcome.metrics.files, 2);
+    assert_eq!(outcome.metrics.requests, 1);
+    assert_eq!(outcome.metrics.edges, 1);
+    assert!(outcome.metrics.total >= outcome.metrics.linking_and_matching);
     fs::remove_dir_all(root).unwrap();
 }
 
@@ -191,6 +192,7 @@ fn tsconfig_membership_accepts_jsonc_and_excludes_files() {
         .unwrap();
     assert_eq!(
         report
+            .report
             .files
             .iter()
             .map(|file| file.path.as_str())
@@ -246,6 +248,7 @@ fn tsconfig_membership_inherits_extends_and_collects_references() {
         .unwrap();
     assert_eq!(
         report
+            .report
             .files
             .iter()
             .map(|file| file.path.as_str())

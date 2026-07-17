@@ -8,7 +8,11 @@ use super::super::{
     BTreeMap, ExportResolution, MAX_SCC_SIZE, ModuleId, ProjectSemanticModel, ResolvedModule,
 };
 use crate::{
-    analysis::module::ModuleRequestRole, project::is_internal_module_request as is_internal_request,
+    analysis::{
+        module::ModuleRequestRole,
+        status::{AnalysisComponent, IncompleteReason},
+    },
+    project::{ProjectRelativePath, is_internal_module_request as is_internal_request},
 };
 
 impl ProjectSemanticModel {
@@ -62,20 +66,26 @@ impl ProjectSemanticModel {
         }
         self.link_rounds = rounds;
         if changed {
-            self.diagnostics.push(crate::ProjectDiagnostic {
-                code: "graph_link_budget_exhausted".into(),
-                message: "module export linking did not reach a stable fixed point".into(),
-                location: None,
-            });
             self.exports.mark_unknown();
             self.link_budget.mark_exhausted();
+            self.status.borrow_mut().record(
+                crate::analysis::status::StatusScope::Project,
+                IncompleteReason::BudgetExhausted {
+                    component: AnalysisComponent::Linking,
+                    limit: self.link_limit(),
+                    observed: Some(rounds),
+                },
+            );
         }
         if self.link_budget.is_exhausted() {
-            self.diagnostics.push(crate::ProjectDiagnostic {
-                code: "graph_link_budget_exhausted".into(),
-                message: "project graph linking exceeded a bounded linker budget".into(),
-                location: None,
-            });
+            self.status.borrow_mut().record(
+                crate::analysis::status::StatusScope::Project,
+                IncompleteReason::BudgetExhausted {
+                    component: AnalysisComponent::Linking,
+                    limit: self.link_limit(),
+                    observed: Some(self.exports.len()),
+                },
+            );
         }
     }
 
@@ -84,10 +94,13 @@ impl ProjectSemanticModel {
     fn validate_imported_exports(&mut self) {
         for module in self.modules.values() {
             for request in module.local().interface().requests() {
+                let Ok(range) = module.source().range(request.span()) else {
+                    continue;
+                };
                 let key = crate::project::ResolutionRequestKey {
-                    importer: module.path().to_owned().into(),
+                    importer: module.path().clone(),
                     kind: request.kind(),
-                    range: crate::lint::source_range_from_span(module.source_map(), request.span()),
+                    range,
                 };
                 let Some(ResolvedModule::Internal { id, .. }) = self.resolutions.get(&key) else {
                     continue;
@@ -102,20 +115,21 @@ impl ProjectSemanticModel {
                     match self.lookup_export(*id, imported, &mut std::collections::BTreeSet::new())
                     {
                         Some(ExportResolution::Ambiguous) => {
-                            self.diagnostics.push(crate::ProjectDiagnostic {
-                                code: "ambiguous_star_export".into(),
-                                message: format!("module export `{imported}` is ambiguous"),
-                                location: Some(crate::SourceLocation {
-                                    path: module.path().to_owned().into(),
-                                    range: key.range.clone(),
-                                }),
-                            });
+                            self.status.borrow_mut().record(
+                                crate::analysis::status::StatusScope::File(module.path().clone()),
+                                IncompleteReason::AmbiguousModuleInterface {
+                                    request: imported.to_owned(),
+                                },
+                            );
                         }
                         None => self.diagnostics.push(crate::ProjectDiagnostic {
-                            code: "missing_imported_export".into(),
+                            code: crate::project::types::DiagnosticKind::MissingImportedExport
+                                .into(),
                             message: format!("module does not export `{imported}`"),
                             location: Some(crate::SourceLocation {
-                                path: module.path().to_owned().into(),
+                                path: ProjectRelativePath::from_normalized(
+                                    module.path().to_string(),
+                                ),
                                 range: key.range.clone(),
                             }),
                         }),
@@ -131,21 +145,15 @@ impl ProjectSemanticModel {
         let mut edge_budget = crate::budget::Budget::new(self.link_limit());
         for module in self.modules.values() {
             self.graph.ensure_node(module.id());
-            self.diagnostics.extend(module.diagnostics());
             for request in Self::authored_requests(module) {
                 let Some(resolution) = self.resolutions.get(&request.key) else {
                     if is_internal_request(&request.request) {
-                        self.diagnostics.push(crate::ProjectDiagnostic {
-                            code: "unresolved_internal_request".into(),
-                            message: format!(
-                                "internal-looking module request `{}` has no resolution",
-                                request.request
-                            ),
-                            location: Some(crate::SourceLocation {
-                                path: module.path().to_owned().into(),
-                                range: request.key.range.clone(),
-                            }),
-                        });
+                        self.status.borrow_mut().record(
+                            crate::analysis::status::StatusScope::File(module.path().clone()),
+                            IncompleteReason::MissingInternalResolution {
+                                request: request.request.clone(),
+                            },
+                        );
                     }
                     continue;
                 };
@@ -159,32 +167,28 @@ impl ProjectSemanticModel {
                 } else if matches!(resolution, ResolvedModule::Missing)
                     && is_internal_request(&request.request)
                 {
-                    self.diagnostics.push(Self::request_diagnostic(
-                        "unresolved_internal_request",
-                        format!("internal module request `{}` is missing", request.request),
-                        module,
-                        &request,
-                    ));
+                    self.status.borrow_mut().record(
+                        crate::analysis::status::StatusScope::File(module.path().clone()),
+                        IncompleteReason::MissingInternalResolution {
+                            request: request.request.clone(),
+                        },
+                    );
                 } else if matches!(resolution, ResolvedModule::OutsideProject { .. }) {
-                    self.diagnostics.push(Self::request_diagnostic(
-                        "outside_project_target",
-                        format!(
-                            "module request `{}` resolves outside the project",
-                            request.request
-                        ),
-                        module,
-                        &request,
-                    ));
+                    self.status.borrow_mut().record(
+                        crate::analysis::status::StatusScope::File(module.path().clone()),
+                        IncompleteReason::UnsupportedResolution {
+                            request: request.request.clone(),
+                            kind: crate::analysis::status::ResolutionKind::OutsideProject,
+                        },
+                    );
                 } else if matches!(resolution, ResolvedModule::Unsupported { .. }) {
-                    self.diagnostics.push(Self::request_diagnostic(
-                        "unsupported_project_target",
-                        format!(
-                            "module request `{}` is not an analyzable project target",
-                            request.request
-                        ),
-                        module,
-                        &request,
-                    ));
+                    self.status.borrow_mut().record(
+                        crate::analysis::status::StatusScope::File(module.path().clone()),
+                        IncompleteReason::UnsupportedResolution {
+                            request: request.request.clone(),
+                            kind: crate::analysis::status::ResolutionKind::Unsupported,
+                        },
+                    );
                 }
             }
         }
@@ -201,29 +205,7 @@ impl ProjectSemanticModel {
             .iter()
             .any(|component| component.len() > MAX_SCC_SIZE)
         {
-            self.diagnostics.push(crate::ProjectDiagnostic {
-                code: "scc_size_budget_exhausted".into(),
-                message: format!("a module SCC exceeds the bounded size of {MAX_SCC_SIZE}"),
-                location: None,
-            });
             self.link_budget.mark_exhausted();
-        }
-    }
-
-    /// Create a source-qualified diagnostic for one rejected request target.
-    fn request_diagnostic(
-        code: &str,
-        message: String,
-        module: &super::super::ProjectModule,
-        request: &crate::ResolutionRequest,
-    ) -> crate::ProjectDiagnostic {
-        crate::ProjectDiagnostic {
-            code: code.into(),
-            message,
-            location: Some(crate::SourceLocation {
-                path: module.path().to_owned().into(),
-                range: request.key.range.clone(),
-            }),
         }
     }
 }

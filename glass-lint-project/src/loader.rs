@@ -7,7 +7,7 @@ use std::{
 };
 
 use glass_lint_core::{
-    Linter, ProjectReport, ResolutionRequest, ResolutionRequestKind, ResolutionResult,
+    AnalysisReport, Linter, ResolutionRequest, ResolutionRequestKind, ResolutionResult,
 };
 
 use crate::{
@@ -27,9 +27,11 @@ pub struct ProjectLoader {
 #[derive(Debug)]
 pub struct ProjectLoadOutcome {
     /// Completed or partial report. Timeout outcomes never contain one.
-    pub report: ProjectReport,
+    pub report: AnalysisReport,
     /// Deterministic boundary that caused the partial report.
     pub error: Option<ProjectLoadError>,
+    /// Phase timings and deterministic counters for this load.
+    pub metrics: ProjectLoadMetrics,
 }
 
 /// Bounded construction counters and phase timings for profiling. The
@@ -102,48 +104,13 @@ impl ProjectLoader {
         &self,
         linter: &Linter,
         selection: &ProjectSelection,
-    ) -> Result<ProjectReport, ProjectLoadError> {
-        let outcome = self.load_and_lint_with_outcome(linter, selection)?;
-        if let Some(error) = outcome.error {
-            return Err(error);
-        }
-        Ok(outcome.report)
-    }
-
-    /// Load while retaining completed reports when a deterministic boundary is
-    /// hit.
-    pub fn load_and_lint_with_outcome(
-        &self,
-        linter: &Linter,
-        selection: &ProjectSelection,
     ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
         let mut metrics = ProjectLoadMetrics::default();
-        self.load_project_with_outcome(linter, selection, &mut metrics)
-    }
-
-    pub fn load_and_lint_with_metrics(
-        &self,
-        linter: &Linter,
-        selection: &ProjectSelection,
-    ) -> Result<(ProjectReport, ProjectLoadMetrics), ProjectLoadError> {
-        let mut metrics = ProjectLoadMetrics::default();
         let total_start = Instant::now();
-        let report = self.load_project(linter, selection, &mut metrics)?;
+        let mut outcome = self.load_project_with_outcome(linter, selection, &mut metrics)?;
         metrics.total = total_start.elapsed();
-        Ok((report, metrics))
-    }
-
-    fn load_project(
-        &self,
-        linter: &Linter,
-        selection: &ProjectSelection,
-        metrics: &mut ProjectLoadMetrics,
-    ) -> Result<ProjectReport, ProjectLoadError> {
-        let outcome = self.load_project_with_outcome(linter, selection, metrics)?;
-        if let Some(error) = outcome.error {
-            return Err(error);
-        }
-        Ok(outcome.report)
+        outcome.metrics = metrics;
+        Ok(outcome)
     }
 
     fn load_project_with_outcome(
@@ -163,11 +130,13 @@ impl ProjectLoader {
             Ok(()) => Ok(ProjectLoadOutcome {
                 report: build.finish(metrics)?,
                 error: None,
+                metrics: ProjectLoadMetrics::default(),
             }),
             Err(ProjectLoadError::Timeout) => Err(ProjectLoadError::Timeout),
             Err(error) => Ok(ProjectLoadOutcome {
                 report: build.finish_partial(metrics, &error)?,
                 error: Some(error),
+                metrics: ProjectLoadMetrics::default(),
             }),
         }
     }
@@ -276,7 +245,7 @@ impl LoadCounters {
 /// Mutable state for one project construction. Keeping the queue, cache, and
 /// counters together makes the main loading phases explicit and auditable.
 struct ProjectBuild<'a> {
-    session: glass_lint_core::ProjectSession<'a>,
+    session: glass_lint_core::AnalysisSession<'a>,
     discovery: ProjectDiscovery<'a>,
     resolver: ProjectResolver,
     root: PathBuf,
@@ -296,7 +265,7 @@ impl<'a> ProjectBuild<'a> {
         deadline: Instant,
     ) -> Result<Self, ProjectLoadError> {
         Ok(Self {
-            session: linter.begin_project(&root)?,
+            session: linter.begin_analysis(&root)?,
             discovery: ProjectDiscovery::with_deadline(options, deadline),
             resolver: ProjectResolver::new(&root, selection, options),
             root,
@@ -349,7 +318,9 @@ impl<'a> ProjectBuild<'a> {
         }
 
         let parse_start = Instant::now();
-        let requests = self.session.add_source(source)?;
+        let source_path = source.path.to_string();
+        self.session.admit_source(source)?;
+        let requests = self.session.analyze_source(source_path)?;
         metrics.parse_and_local_analysis += parse_start.elapsed();
         metrics.bytes = metrics.bytes.saturating_add(source_bytes);
         metrics.files = self.admitted.len();
@@ -415,7 +386,7 @@ impl<'a> ProjectBuild<'a> {
         }
     }
 
-    fn finish(self, metrics: &mut ProjectLoadMetrics) -> Result<ProjectReport, ProjectLoadError> {
+    fn finish(self, metrics: &mut ProjectLoadMetrics) -> Result<AnalysisReport, ProjectLoadError> {
         self.check_timeout()?;
         let deadline = self.deadline;
         let link_start = Instant::now();
@@ -433,7 +404,7 @@ impl<'a> ProjectBuild<'a> {
         self,
         metrics: &mut ProjectLoadMetrics,
         error: &ProjectLoadError,
-    ) -> Result<ProjectReport, ProjectLoadError> {
+    ) -> Result<AnalysisReport, ProjectLoadError> {
         let deadline = self.deadline;
         let link_start = Instant::now();
         let (mut report, linking, matching) = self.session.finish_with_timings()?;
@@ -444,11 +415,17 @@ impl<'a> ProjectBuild<'a> {
         metrics.matching += matching;
         metrics.linking_and_matching += link_start.elapsed();
         report.completion = glass_lint_core::ReportCompletion::Partial;
-        report.diagnostics.push(glass_lint_core::ProjectDiagnostic {
-            code: "incomplete_project".into(),
-            message: error.to_string(),
-            location: None,
-        });
+        let code = glass_lint_core::DiagnosticCode::new("incomplete_project")
+            .map_err(ProjectLoadError::InvalidOptions)?;
+        report
+            .diagnostics
+            .push(glass_lint_core::Diagnostic::Project(
+                glass_lint_core::ProjectDiagnostic {
+                    code,
+                    message: error.to_string(),
+                    location: None,
+                },
+            ));
         Ok(report)
     }
 }

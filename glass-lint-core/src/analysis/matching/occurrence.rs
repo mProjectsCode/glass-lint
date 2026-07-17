@@ -9,9 +9,8 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use swc_common::Span;
-
 use super::super::facts::FactId;
+use crate::ByteRange;
 
 /// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different
@@ -21,12 +20,12 @@ pub(in crate::analysis) struct Occurrence {
     /// Canonical semantic event identity.
     event: FactId,
     /// Source span used for evidence rendering and tie-breaking.
-    span: Span,
+    span: ByteRange,
 }
 
 impl Occurrence {
     /// Construct one typed event/span occurrence.
-    pub(super) fn new(event: FactId, span: Span) -> Self {
+    pub(super) fn new(event: FactId, span: ByteRange) -> Self {
         Self { event, span }
     }
 
@@ -36,7 +35,7 @@ impl Occurrence {
     }
 
     /// Return the source span associated with the event.
-    pub(super) fn span(&self) -> Span {
+    pub(super) fn span(&self) -> ByteRange {
         self.span
     }
 }
@@ -52,7 +51,7 @@ impl<K: Ord> OccurrenceIndex<K> {
     }
 
     /// Append one event/span pair before normalization.
-    pub(super) fn push(&mut self, key: K, event: FactId, span: Span) {
+    pub(super) fn push(&mut self, key: K, event: FactId, span: ByteRange) {
         self.push_occurrence(key, Occurrence::new(event, span));
     }
 
@@ -60,7 +59,11 @@ impl<K: Ord> OccurrenceIndex<K> {
     pub(super) fn normalize(&mut self) {
         for occurrences in self.0.values_mut() {
             occurrences.sort_by_key(|occurrence| {
-                (occurrence.event, occurrence.span.lo, occurrence.span.hi)
+                (
+                    occurrence.event,
+                    occurrence.span.start(),
+                    occurrence.span.end(),
+                )
             });
             occurrences.dedup();
         }

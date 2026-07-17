@@ -7,13 +7,13 @@
 use super::MemberCallMatcher;
 
 /// A context-independent predicate over an argument value.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ValueMatcher {
     /// Predicate family and payload.
     pub kind: ValueMatcherKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ValueMatcherKind {
     /// Accept any value, including unknown/dynamic values.
     Any,
@@ -21,7 +21,7 @@ pub enum ValueMatcherKind {
     StaticString(StaticStringPredicate),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StaticStringPredicate {
     /// Accept any proven static string.
     Any,
@@ -108,7 +108,7 @@ impl ValueMatcher {
 }
 
 /// A predicate applied to one selected call argument.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ArgumentMatcher {
     /// Apply a value predicate.
     Value(ValueMatcher),
@@ -142,7 +142,7 @@ impl From<ValueMatcher> for ArgumentMatcher {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ArgumentConstraint {
     /// Zero-based argument position.
     pub index: usize,

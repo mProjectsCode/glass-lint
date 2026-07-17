@@ -6,18 +6,14 @@
 //! state has been built.
 
 #[cfg(test)]
-use swc_common::Span;
-use swc_ecma_ast::Program;
-
 use self::build::FactBuilder;
+#[cfg(test)]
+use super::resolution::Resolver;
 #[cfg(test)]
 use super::syntax::SymbolCallProvenance;
 #[cfg(test)]
 use super::value::{FunctionId, ValueId};
-use super::{
-    flow::projector as object_flow, matching::MatcherFacts, module::ModuleInterface,
-    resolution::Resolver,
-};
+use super::{flow::projector as object_flow, matching::MatcherFacts, module::ModuleInterface};
 use crate::api::compiler::CompiledMatcherCatalog;
 
 pub mod build;
@@ -29,7 +25,7 @@ pub(in crate::analysis) use stream::FactStream;
 
 // ── SemanticFacts ───────────────────────────────────────────────────────
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Immutable per-file semantic state shared by all selected matchers.
 ///
 /// A malformed or budget-exhausted stream remains available for diagnostics,
@@ -41,23 +37,11 @@ pub(in crate::analysis) struct SemanticFacts {
 }
 
 impl SemanticFacts {
-    /// Build facts, indexes, and the module interface from one resolver-backed
-    /// AST walk, independently of the enabled matcher catalog.
-    #[allow(dead_code)]
-    pub(in crate::analysis) fn build(program: &Program, resolver: &Resolver) -> Self {
-        Self::build_with_limit(program, resolver, MAX_FACTS)
-    }
-
-    pub(in crate::analysis) fn build_with_limit(
-        program: &Program,
-        resolver: &Resolver,
-        semantic_operations: usize,
+    /// Assemble immutable indexes from the stream produced by lowering.
+    pub(in crate::analysis) fn from_lowering(
+        stream: FactStream,
+        interface: ModuleInterface,
     ) -> Self {
-        // Build the canonical fact stream from the authoritative FactBuilder.
-        let mut builder = FactBuilder::with_limit(resolver, semantic_operations);
-        swc_ecma_visit::VisitWith::visit_with(program, &mut builder);
-        let (stream, interface) = builder.into_parts();
-
         // Project the fact stream into rule-independent occurrence indexes.
         let mut index = MatcherFacts::default();
         if stream.is_valid() {
@@ -91,7 +75,7 @@ impl SemanticFacts {
         &self.interface
     }
 
-    /// Projects matcher-specific argument and flow evidence after linking.
+    /// Projects constrained-clause and flow evidence after linking.
     pub(in crate::analysis) fn project(
         &self,
         matchers: &CompiledMatcherCatalog<'_>,
@@ -105,48 +89,38 @@ impl SemanticFacts {
             >,
         >,
     ) -> Vec<Vec<crate::api::classification::ApiEvidence>> {
-        let member_argument_matchers = matchers
+        let constrained_clauses = matchers
             .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
                 matcher
-                    .matcher
-                    .member_calls
+                    .query()
+                    .clauses()
                     .iter()
-                    .filter(|matcher| !matcher.arguments.is_empty())
-                    .map(move |matcher| (rule_index, matcher))
+                    .filter(|clause| !clause.constraints.is_empty())
+                    .map(move |clause| (rule_index, clause))
             })
-            .collect::<Vec<_>>();
-        let call_argument_matchers = matchers
-            .selected_matchers()
-            .flat_map(|(rule_index, matcher)| {
-                matcher
-                    .matcher
-                    .calls
-                    .iter()
-                    .filter(|matcher| !matcher.arguments.is_empty())
-                    .map(move |matcher| (rule_index, matcher))
-            })
+            .map(|(rule, clause)| (rule.get(), clause))
             .collect::<Vec<_>>();
         let flow_matchers = matchers
             .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
                 matcher
-                    .flows
+                    .query()
+                    .flows()
                     .iter()
                     .enumerate()
                     .map(move |(flow_index, matcher)| (rule_index, flow_index, matcher))
             })
             .collect::<Vec<_>>();
 
-        let mut argument_evidence = vec![Vec::new(); matchers.len()];
+        let mut projected_evidence = vec![Vec::new(); matchers.len()];
         if !self.stream.is_valid() {
-            return argument_evidence;
+            return projected_evidence;
         }
-        MatcherFacts::compute_argument_evidence_from_stream_with_overlay(
+        MatcherFacts::compute_constrained_evidence_from_stream_with_overlay(
             &self.stream,
-            &member_argument_matchers,
-            &call_argument_matchers,
-            &mut argument_evidence,
+            &constrained_clauses,
+            &mut projected_evidence,
             identities,
             result_identities,
         );
@@ -155,20 +129,21 @@ impl SemanticFacts {
                 .into_iter()
                 .enumerate()
         {
-            argument_evidence[rule_index].extend(evidence);
+            projected_evidence[rule_index].extend(evidence);
         }
-        argument_evidence
+        projected_evidence
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use swc_common::BytePos;
-
     use super::*;
-    use crate::api::{compiler::CompiledMatcherPlan, rule::ApiMatcher};
+    use crate::{
+        ByteRange,
+        api::{compiler::CompiledMatcherPlan, rule::ApiMatcher},
+    };
 
-    fn test_fact(id: u32, kind: FactKind, span: Span) -> SemanticFact {
+    fn test_fact(id: u32, kind: FactKind, span: ByteRange) -> SemanticFact {
         SemanticFact::new(
             FactId(id),
             span,
@@ -211,7 +186,7 @@ mod tests {
                 },
                 FactKind::Control => FactPayload::Control {
                     kind: ControlKind::BranchStart,
-                    region: 0,
+                    region: ControlRegionId(0),
                     value: ValueId::UNKNOWN,
                 },
                 _ => FactPayload::Declaration {
@@ -224,7 +199,7 @@ mod tests {
 
     #[test]
     fn direct_lookup_and_linear_test_helper_preserve_fact_order() {
-        let span = Span::new(BytePos(10), BytePos(20));
+        let span = ByteRange::new(10, 20).unwrap();
         let mut stream = FactStream::new();
         stream.push(test_fact(0, FactKind::Call, span));
         stream.push(test_fact(1, FactKind::MemberRead, span));
@@ -232,7 +207,7 @@ mod tests {
 
         assert_eq!(
             stream
-                .facts_at(span.lo(), span.hi(), FactKind::Call)
+                .facts_at(span.start(), span.end(), FactKind::Call)
                 .iter()
                 .map(|fact| fact.id())
                 .collect::<Vec<_>>(),
@@ -251,12 +226,12 @@ mod tests {
 
     #[test]
     fn dense_fact_stream_preserves_every_same_span_fact() {
-        let span = Span::new(BytePos(100), BytePos(120));
+        let span = ByteRange::new(100, 120).unwrap();
         let mut stream = FactStream::new();
         for id in 0..10_001 {
             stream.push(test_fact(id, FactKind::Call, span));
         }
-        let calls = stream.facts_at(span.lo(), span.hi(), FactKind::Call);
+        let calls = stream.facts_at(span.start(), span.end(), FactKind::Call);
         assert_eq!(calls.len(), 10_001);
         assert_eq!(calls.first().map(|fact| fact.id()), Some(FactId(0)));
         assert_eq!(calls.last().map(|fact| fact.id()), Some(FactId(10_000)));
@@ -296,9 +271,12 @@ mod tests {
                      selected: &[usize]| {
             let resolver = Resolver::collect(&parsed.program);
             let _ = (matchers, selected);
+            let mut builder = FactBuilder::new(&resolver);
+            swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
+            let (stream, interface) = builder.into_parts();
             format!(
                 "{:?}",
-                SemanticFacts::build(&parsed.program, &resolver).index
+                SemanticFacts::from_lowering(stream, interface).index
             )
         };
 

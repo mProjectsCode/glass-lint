@@ -47,7 +47,6 @@ pub fn run_suite(
                         skip_reason: Some("tool not configured for this case".into()),
                         passed: true,
                         findings: vec![],
-                        finding_locations: vec![],
                         errors: vec![],
                     },
                 );
@@ -64,20 +63,17 @@ pub fn run_suite(
                         skip_reason: Some(reason),
                         passed: true,
                         findings: vec![],
-                        finding_locations: vec![],
                         errors: vec![],
                     },
                 );
                 continue;
             }
-            let (findings, finding_locations, errors) = match adapter
-                .run_with_locations(case, expectation)
-            {
+            let (findings, errors) = match adapter.run_with_locations(case, expectation) {
                 Ok(output) => {
-                    let errors = compare(&output.findings, &output.finding_locations, expectation);
-                    (output.findings, output.finding_locations, errors)
+                    let errors = compare(&output.findings, expectation);
+                    (output.findings, errors)
                 }
-                Err(error) => (vec![], vec![], vec![error.to_string()]),
+                Err(error) => (vec![], vec![error.to_string()]),
             };
             timings.insert(adapter.name().into(), tool_start.elapsed());
             tools.insert(
@@ -88,7 +84,6 @@ pub fn run_suite(
                     skip_reason: None,
                     passed: errors.is_empty(),
                     findings,
-                    finding_locations,
                     errors,
                 },
             );
@@ -128,10 +123,10 @@ fn matches(finding: &Finding, expected: &DiagnosticExpectation) -> bool {
             .is_none_or(|severity| finding.severity == severity)
         && expected
             .line
-            .is_none_or(|line| finding.range.start.line == line)
+            .is_none_or(|line| finding.location.range.start().line() == line)
         && expected
             .column
-            .is_none_or(|column| finding.range.start.column == column)
+            .is_none_or(|column| finding.location.range.start().column() == column)
         && expected
             .message
             .as_ref()
@@ -139,25 +134,22 @@ fn matches(finding: &Finding, expected: &DiagnosticExpectation) -> bool {
 }
 
 impl DiagnosticExpectation {
-    fn matches(&self, finding: &Finding, location: Option<&crate::types::FindingLocation>) -> bool {
+    fn matches(&self, finding: &Finding) -> bool {
         matches(finding, self)
-            && self.path.as_ref().is_none_or(|path| {
-                location.and_then(|location| location.primary.as_ref()) == Some(path)
-            })
+            && self
+                .path
+                .as_ref()
+                .is_none_or(|path| finding.location.path.as_str() == path)
     }
 }
 
-fn compare(
-    findings: &[Finding],
-    locations: &[crate::types::FindingLocation],
-    expectation: &ToolExpectation,
-) -> Vec<String> {
+fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
     let mut errors = Vec::new();
     for expected in &expectation.required {
         let actual = findings
             .iter()
             .enumerate()
-            .filter(|(index, finding)| expected.matches(finding, locations.get(*index)))
+            .filter(|(_, finding)| expected.matches(finding))
             .count();
         if expected.count.is_some_and(|count| actual != count) {
             errors.push(format!(
@@ -172,7 +164,7 @@ fn compare(
         let actual = findings
             .iter()
             .enumerate()
-            .filter(|(index, finding)| forbidden.matches(finding, locations.get(*index)))
+            .filter(|(_, finding)| forbidden.matches(finding))
             .count();
         if actual > 0 {
             errors.push(format!(
@@ -181,19 +173,19 @@ fn compare(
             ));
         }
     }
-    for (index, finding) in findings.iter().enumerate() {
+    for finding in findings {
         let is_required = expectation
             .required
             .iter()
-            .any(|expected| expected.matches(finding, locations.get(index)));
+            .any(|expected| expected.matches(finding));
         let is_forbidden = expectation
             .forbidden
             .iter()
-            .any(|forbidden| forbidden.matches(finding, locations.get(index)));
+            .any(|forbidden| forbidden.matches(finding));
         if !is_required && !is_forbidden {
             errors.push(format!(
                 "unexpected {}:{} at {:?}",
-                finding.rule_id, finding.message_id, finding.range
+                finding.rule_id, finding.message_id, finding.location.range
             ));
         }
     }
@@ -212,11 +204,15 @@ mod tests {
             message_id: "m".into(),
             message: "text".into(),
             severity: Severity::Warning,
-            range: glass_lint_core::SourceRange {
-                start: glass_lint_core::Position { line: 2, column: 3 },
-                end: glass_lint_core::Position { line: 2, column: 4 },
+            location: glass_lint_core::SourceLocation {
+                path: glass_lint_core::ProjectRelativePath::new("main.js").unwrap(),
+                range: glass_lint_core::SourceRange::new(
+                    glass_lint_core::Position::new(2, 3).unwrap(),
+                    glass_lint_core::Position::new(2, 4).unwrap(),
+                )
+                .unwrap(),
             },
-            evidence: vec![],
+            evidence: Vec::new().into_iter().collect(),
         }
     }
 
@@ -237,7 +233,7 @@ mod tests {
             }],
             forbidden: vec![],
         };
-        assert_eq!(compare(&[finding()], &[], &expected).len(), 1);
+        assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
 
     #[test]
@@ -248,7 +244,7 @@ mod tests {
             required: vec![],
             forbidden: vec![],
         };
-        assert_eq!(compare(&[finding()], &[], &expected).len(), 1);
+        assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
 
     #[test]
@@ -268,6 +264,6 @@ mod tests {
                 message: None,
             }],
         };
-        assert_eq!(compare(&[finding()], &[], &expected).len(), 1);
+        assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
 }

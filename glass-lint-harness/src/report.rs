@@ -6,7 +6,7 @@
 #![allow(clippy::format_push_string)]
 
 use anyhow::Result;
-use glass_lint_core::LintReport;
+use glass_lint_core::AnalysisReport;
 
 use crate::types::SuiteReport;
 
@@ -67,8 +67,8 @@ pub fn failure_details(report: &SuiteReport) -> String {
                     "  finding: {}:{} at {}:{} - {}\n",
                     finding.rule_id,
                     finding.message_id,
-                    finding.range.start.line,
-                    finding.range.start.column,
+                    finding.location.range.start().line(),
+                    finding.location.range.start().column(),
                     finding.message
                 ));
             }
@@ -192,8 +192,8 @@ pub fn comparison(report: &SuiteReport) -> String {
                     "- {}:{} at {}:{} - {}\n",
                     finding.rule_id,
                     finding.message_id,
-                    finding.range.start.line,
-                    finding.range.start.column,
+                    finding.location.range.start().line(),
+                    finding.location.range.start().column(),
                     finding.message
                 ));
             }
@@ -202,6 +202,6 @@ pub fn comparison(report: &SuiteReport) -> String {
     out
 }
 
-pub fn report_json(report: &LintReport) -> Result<String> {
+pub fn report_json(report: &AnalysisReport) -> Result<String> {
     Ok(serde_json::to_string_pretty(report)?)
 }

@@ -24,7 +24,9 @@ fn findings(source: &str, matcher: Matcher) -> usize {
         .unwrap();
     let catalog = RuleCatalog::with_environment("test", vec![rule], test_environment()).unwrap();
     Linter::new(catalog)
-        .lint(source, "semantic-matching.js")
+        .lint_snippet(source, "semantic-matching.js")
+        .unwrap()
+        .files[0]
         .findings
         .len()
 }

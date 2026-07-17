@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use glass_lint_core::{Finding, ResolutionRequestKind, ResolutionResult, Severity};
+use glass_lint_core::{
+    Finding, ProjectRelativePath, ResolutionRequestKind, ResolutionResult, Severity,
+};
 use serde::{Deserialize, Serialize};
 
 pub const ADAPTER_PROTOCOL_VERSION: u32 = 3;
@@ -195,7 +197,7 @@ impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolutionResult) {
         };
         let result = match &resolution.result {
             AdapterResolutionResult::Internal { path } => ResolutionResult::Internal {
-                path: path.clone().into(),
+                path: ProjectRelativePath::new(path).map_err(|error| error.to_string())?,
             },
             AdapterResolutionResult::External { package } => ResolutionResult::External {
                 package: package.clone(),
@@ -225,16 +227,12 @@ pub struct AdapterResponse {
     pub tool_version: String,
     /// Normalized findings.
     pub findings: Vec<Finding>,
-    #[serde(default)]
-    pub finding_locations: Vec<FindingLocation>,
 }
 
 #[derive(Clone, Debug)]
 pub struct AdapterRun {
     /// Findings produced by one adapter invocation.
     pub findings: Vec<Finding>,
-    /// Optional file ownership aligned by finding index.
-    pub finding_locations: Vec<FindingLocation>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -261,19 +259,7 @@ pub struct ToolResult {
     pub passed: bool,
     /// Findings returned by the adapter.
     pub findings: Vec<Finding>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub finding_locations: Vec<FindingLocation>,
     pub errors: Vec<String>,
-}
-
-/// File-qualified locations retained by the harness report. The core
-/// `Finding` remains the stable single-file compatibility shape.
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct FindingLocation {
-    /// Primary file owning the finding.
-    pub primary: Option<String>,
-    /// Evidence file paths aligned with the finding evidence list.
-    pub evidence: Vec<Option<String>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -305,10 +291,11 @@ mod tests {
             importer: "main.js".into(),
             kind,
             request: "request".into(),
-            range: glass_lint_core::SourceRange {
-                start: glass_lint_core::Position { line: 1, column: 2 },
-                end: glass_lint_core::Position { line: 1, column: 8 },
-            },
+            range: glass_lint_core::SourceRange::new(
+                glass_lint_core::Position::new(1, 2).unwrap(),
+                glass_lint_core::Position::new(1, 8).unwrap(),
+            )
+            .unwrap(),
             result,
         }
     }

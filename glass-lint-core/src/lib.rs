@@ -5,16 +5,16 @@
 //! in through explicit configuration rather than embedded in this crate.
 
 mod analysis;
-pub mod api;
-pub mod budget;
+mod api;
+mod budget;
 mod config;
 mod diagnostic;
 mod environment;
-pub mod limits;
-pub mod lint;
-pub mod parse;
+mod limits;
+mod lint;
+mod parse;
 pub mod project;
-pub mod report;
+mod report;
 mod rule_id;
 #[cfg(feature = "telemetry")]
 pub mod telemetry;
@@ -22,23 +22,24 @@ pub mod telemetry;
 pub use api::rule::{Rule, RuleBuildError as BuildError};
 pub use config::CoreConfig;
 pub use diagnostic::{
-    Evidence, Finding, LintReport, Position, RuleMetadata, Severity, SourceRange,
+    ByteRange, InvalidPosition, InvalidSourcePositionRange, InvalidSourceRange, Position,
+    RuleMetadata, Severity, SourceLineIndex, SourceRange,
 };
 pub use environment::{Environment, EnvironmentError};
 pub use limits::ResourceLimits;
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{
-    DiagnosticCode, EvidenceList, ProjectDiagnostic, ProjectEvidence, ProjectFileReport,
-    ProjectFinding, ProjectInput, ProjectInputError, ProjectOperationCounts, ProjectRelativePath,
-    ProjectReport, ProjectReportSummary, ProjectSession, ReportCompletion, ResolutionRequest,
-    ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile, SourceLocation,
-    is_internal_module_request,
+    AnalysisReport, AnalysisReportSummary, AnalysisSession, Diagnostic, DiagnosticCode, Evidence,
+    EvidenceList, FileReport, Finding, OperationCounts, ProjectDiagnostic, ProjectInput,
+    ProjectInputError, ProjectRelativePath, ReportCombineError, ReportCompletion,
+    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile,
+    SourceLocation, is_internal_module_request,
 };
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
 pub use rule_id::RuleId;
 
-pub const REPORT_VERSION: u32 = 3;
+pub const REPORT_VERSION: u32 = 5;
 pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 
 /// Declarative rule-building API for provider crates and custom catalogs.
@@ -52,4 +53,4 @@ pub mod rules {
     };
 }
 #[cfg(test)]
-pub use parse::parse;
+pub(crate) use parse::parse;

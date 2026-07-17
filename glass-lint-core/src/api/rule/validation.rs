@@ -37,6 +37,9 @@ pub(super) fn validate(matcher: &ApiMatcher) -> Result<(), String> {
     for class in &matcher.classes {
         validate_name_at(&class.name, "class name")?;
         class.provenance.validate_at("provenance")?;
+        if matches!(class.provenance, CallProvenance::Global) {
+            return Err("class provenance cannot be global".into());
+        }
     }
     for constructor in &matcher.constructors {
         validate_name_at(&constructor.name, "constructor name")?;

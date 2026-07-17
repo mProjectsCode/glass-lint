@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use super::{BindingKey, ValueId};
 
-const MAX_VALUES: usize = 65_536;
+pub(in crate::analysis) const MAX_VALUES: usize = 65_536;
 const MAX_OBJECTS: u32 = 65_536;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -87,6 +87,7 @@ pub(in crate::analysis) struct ValueTable {
     ids: HashMap<Value, ValueId>,
     /// Next bounded object identity.
     next_object: u32,
+    exhausted: bool,
 }
 
 impl Default for ValueTable {
@@ -97,6 +98,7 @@ impl Default for ValueTable {
             values: vec![Value::Unknown],
             ids,
             next_object: 0,
+            exhausted: false,
         }
     }
 }
@@ -108,6 +110,7 @@ impl ValueTable {
             return *id;
         }
         if self.values.len() >= MAX_VALUES {
+            self.exhausted = true;
             return ValueId::UNKNOWN;
         }
         let Ok(index) = u32::try_from(self.values.len()) else {
@@ -133,6 +136,7 @@ impl ValueTable {
     /// Allocate a distinct object identity within the object budget.
     pub(in crate::analysis) fn allocate_object_id(&mut self) -> Option<ObjectId> {
         if self.next_object >= MAX_OBJECTS {
+            self.exhausted = true;
             return None;
         }
         let object = ObjectId(self.next_object);
@@ -143,5 +147,27 @@ impl ValueTable {
     /// Borrow an interned value, rejecting malformed/out-of-range IDs.
     pub(in crate::analysis) fn get(&self, id: ValueId) -> Option<&Value> {
         self.values.get(usize::try_from(id.0).ok()?)
+    }
+
+    pub(in crate::analysis) fn exhausted(&self) -> bool {
+        self.exhausted
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn value_capacity_is_typed_as_exhaustion() {
+        let mut table = ValueTable::default();
+        for index in 0..MAX_VALUES {
+            let _ = table.intern(Value::StaticNumber(index));
+        }
+        assert!(table.exhausted());
+        assert_eq!(
+            table.intern(Value::StaticNumber(MAX_VALUES + 1)),
+            ValueId::UNKNOWN
+        );
     }
 }

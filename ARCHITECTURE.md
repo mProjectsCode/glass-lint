@@ -40,19 +40,24 @@ these boundaries. Move reusable semantics inward; keep policy outward.
 Each file follows one matcher-independent pipeline:
 
 ```text
-source
-  -> parse and normalize
+authored source
+  -> deterministic admission
+  -> private parser adapter and zero-based coordinate normalization
   -> build scopes, bindings, and provenance
   -> emit semantic facts
   -> resolve identities, constants, aliases, and values
-  -> build bounded indexes and flow summaries
-  -> run compiled matchers
-  -> produce bounded, sorted findings
+  -> immutable LocalArtifact
+  -> shared indexes and flow summaries
+  -> private compiled query execution
+  -> canonical AnalysisReport construction
 ```
 
 Parsing and fact construction happen once per file. Enabling a rule must not
 add an AST traversal or alter the semantic model. Matchers query shared indexes
-after analysis.
+after analysis. Admitted files may be lowered in bounded parallel jobs; results
+and operation counts are merged by normalized source identity. Project
+linking remains deterministic and single-threaded until a measured need says
+otherwise.
 
 The core layers are:
 
@@ -67,9 +72,41 @@ The core layers are:
 - `api/compiler`: immutable matcher plans
 - `lint`: rule selection and report construction
 
-Internal AST, scope, fact, and index types stay private. Providers extend core
-through `glass_lint_core::rules`, `RuleCatalog`, and `Linter` rather than
-building a parallel analysis path.
+The parser, AST, scope, fact, index, compiler, and budget modules are private
+implementation details. Providers extend core through
+`glass_lint_core::rules`, `RuleCatalog`, and `Linter` rather than building a
+parallel analysis path. The retained local artifact contains no interior
+mutation and is `Send + Sync`; construction-local caches do not cross the
+artifact boundary.
+
+### Artifact and cache boundary
+
+`LocalArtifact` is keyed privately by source bytes, source language and
+normalization mode, host `Environment`, semantic engine version, and all
+`ResourceLimits` that affect retained state. Rule selection is not a key input.
+The process-local cache is bounded, uses deterministic eviction, and
+intentionally does not define a persistent serialization format; parse
+failures are not cached, while exhausted successful artifacts retain their
+typed status. A cache hit attaches only the current path-specific source
+context.
+
+### Query and report boundary
+
+Validated provider matchers compile once per catalog into a private normalized
+query. Query execution consumes fact and identity indexes and returns typed
+evidence. Identity, event, subject, and `QueryConstraint` predicates are
+evaluated by the same ordinary clause executor; there is no family-specific
+argument execution path. Completion is represented by `ReportCompletion`, and
+diagnostics remain typed records rather than string-based completion signals.
+
+SWC positions are converted once during lowering into checked, zero-based,
+half-open `ByteRange` values. `SourceLineIndex::try_range` is then used by
+retained consumers such as findings, authored requests, and module/linking
+diagnostics; invalid bounds or UTF-8 boundaries become incomplete analysis
+rather than clamped or fabricated locations. `AnalysisReport` is source-free:
+front ends retain source text only in presentation state. Reports combine
+losslessly, preserving completion, file/project diagnostics, and operation
+counters while rejecting incompatible schema or tool versions.
 
 ## Project analysis
 
@@ -88,7 +125,9 @@ Files, module IDs, graph edges, findings, evidence, and diagnostics have stable
 ordering. Ambiguous exports, unsupported module shapes, missing resolutions,
 and exhausted budgets remain unknown; they never become guessed provenance.
 Project diagnostics are separate from rule severity, and partial analysis is
-reported as partial.
+reported as partial. Session workers release results through a deterministic
+merge path with one shared outstanding-work bound, so worker count cannot
+change the serialized result.
 
 ## Rules and host policy
 

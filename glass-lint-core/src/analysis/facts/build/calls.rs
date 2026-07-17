@@ -19,6 +19,9 @@ impl FactBuilder<'_> {
     pub(super) fn record_call_expr(&mut self, call: &CallExpr) {
         self.record_module_call_request(call);
         let Callee::Expr(callee_expr) = &call.callee else {
+            let Some(callee_span) = self.byte_range(call.span) else {
+                return;
+            };
             let result = if matches!(call.callee, Callee::Import(_)) {
                 self.resolver.resolve_expr(&Expr::Call(call.clone())).id
             } else {
@@ -32,7 +35,7 @@ impl FactBuilder<'_> {
                     callee: ValueId::UNKNOWN,
                     receiver: None,
                     result,
-                    callee_span: call.span,
+                    callee_span,
                     callee_name: None,
                     call_provenance: self.resolver.resolve_expr(&Expr::Call(call.clone())).call,
                     syntactic_chain: None,
@@ -64,7 +67,9 @@ impl FactBuilder<'_> {
             return;
         }
 
-        let resolved = self.resolve_call_callee(callee_expr);
+        let Some(resolved) = self.resolve_call_callee(callee_expr) else {
+            return;
+        };
         self.visit_callee_children(callee_expr);
         call.args.visit_with(self);
         self.emit_call(call.span, resolved, &call.args, None);
@@ -356,7 +361,9 @@ impl FactBuilder<'_> {
                 let effective_args: Vec<_> =
                     args[1..].iter().map(|a| self.arg_info(&a.expr)).collect();
                 let target = crate::analysis::syntax::effective_callee_expr(&member.obj);
-                let resolved = self.resolve_call_callee(target);
+                let Some(resolved) = self.resolve_call_callee(target) else {
+                    return;
+                };
                 let unwrap = Some(Box::new(CallUnwrap {
                     chain: chain.unwrap_or_default(),
                     effective_args,
@@ -370,7 +377,9 @@ impl FactBuilder<'_> {
                 };
                 let chain = self.resolve_target_chain(&member.obj);
                 let target = crate::analysis::syntax::effective_callee_expr(&member.obj);
-                let resolved = self.resolve_call_callee(target);
+                let Some(resolved) = self.resolve_call_callee(target) else {
+                    return;
+                };
                 let unwrap = Some(Box::new(CallUnwrap {
                     chain: chain.unwrap_or_default(),
                     effective_args,
@@ -443,16 +452,16 @@ impl FactBuilder<'_> {
         }
     }
 
-    pub(super) fn resolve_call_callee(&self, callee: &Expr) -> ResolvedCallee {
+    pub(super) fn resolve_call_callee(&mut self, callee: &Expr) -> Option<ResolvedCallee> {
         use crate::analysis::syntax::effective_callee_expr;
         let effective = effective_callee_expr(callee);
         match effective {
             Expr::Ident(ident) => {
                 let resolved = self.resolver.resolve_ident(ident);
-                ResolvedCallee {
+                Some(ResolvedCallee {
                     value: resolved.id,
                     receiver: None,
-                    callee_span: ident.span,
+                    callee_span: self.byte_range(ident.span)?,
                     callee_name: Some(ident.sym.to_string()),
                     call_provenance: resolved.call.clone(),
                     syntactic_chain: None,
@@ -462,7 +471,7 @@ impl FactBuilder<'_> {
                     bound_arguments: resolved.bound_arguments,
                     instance_class: None,
                     target_function: self.resolver.function_id_for_expr(effective),
-                }
+                })
             }
             Expr::Member(member) => self.resolve_member_callee(member),
             Expr::OptChain(chain) => {
@@ -470,10 +479,10 @@ impl FactBuilder<'_> {
                     self.resolve_member_callee(member)
                 } else {
                     let resolved = self.resolver.resolve_expr(effective);
-                    ResolvedCallee {
+                    Some(ResolvedCallee {
                         value: resolved.id,
                         receiver: None,
-                        callee_span: effective.span(),
+                        callee_span: self.byte_range(effective.span())?,
                         callee_name: None,
                         call_provenance: resolved.call.clone(),
                         syntactic_chain: None,
@@ -483,15 +492,15 @@ impl FactBuilder<'_> {
                         bound_arguments: resolved.bound_arguments,
                         instance_class: None,
                         target_function: self.resolver.function_id_for_expr(effective),
-                    }
+                    })
                 }
             }
             _ => {
                 let resolved = self.resolver.resolve_expr(effective);
-                ResolvedCallee {
+                Some(ResolvedCallee {
                     value: resolved.id,
                     receiver: None,
-                    callee_span: effective.span(),
+                    callee_span: self.byte_range(effective.span())?,
                     callee_name: None,
                     call_provenance: resolved.call.clone(),
                     syntactic_chain: None,
@@ -501,19 +510,19 @@ impl FactBuilder<'_> {
                     bound_arguments: resolved.bound_arguments,
                     instance_class: None,
                     target_function: self.resolver.function_id_for_expr(effective),
-                }
+                })
             }
         }
     }
 
-    pub(super) fn resolve_member_callee(&self, member: &MemberExpr) -> ResolvedCallee {
+    pub(super) fn resolve_member_callee(&mut self, member: &MemberExpr) -> Option<ResolvedCallee> {
         let resolved = self.resolver.resolve_member(member);
         let syntactic_chain = self.resolver.member_chain(member);
         let instance_class = self.instance_class_for_receiver(&member.obj);
-        ResolvedCallee {
+        Some(ResolvedCallee {
             value: resolved.id,
             receiver: Some(self.resolver.resolve_expr(&member.obj).id),
-            callee_span: member.span,
+            callee_span: self.byte_range(member.span)?,
             callee_name: None,
             call_provenance: resolved.call.clone(),
             syntactic_chain,
@@ -523,7 +532,7 @@ impl FactBuilder<'_> {
             bound_arguments: resolved.bound_arguments,
             instance_class,
             target_function: self.resolver.function_id_for_expr(&member.obj),
-        }
+        })
     }
 
     pub(super) fn instance_class_for_receiver(&self, receiver: &Expr) -> Option<(String, String)> {
@@ -584,7 +593,7 @@ impl FactBuilder<'_> {
 pub(super) struct ResolvedCallee {
     value: ValueId,
     receiver: Option<ValueId>,
-    callee_span: Span,
+    callee_span: crate::ByteRange,
     callee_name: Option<String>,
     call_provenance: SymbolCallProvenance,
     syntactic_chain: Option<String>,

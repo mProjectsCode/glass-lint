@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use glass_lint_core::{Environment, LintReport, Linter, RuleCatalog, RuleMetadata};
+use glass_lint_core::{AnalysisReport, Environment, Linter, RuleCatalog, RuleMetadata};
 
 mod catalog;
 mod rules;
@@ -45,10 +45,11 @@ pub fn heuristic_linter_with_environment(environment: Environment) -> Linter {
 
 #[must_use]
 /// Collect disclosure categories for findings in the `obsidian:` namespace.
-pub fn disclosures_for_report(report: &LintReport) -> BTreeSet<&'static str> {
+pub fn disclosures_for_report(report: &AnalysisReport) -> BTreeSet<&'static str> {
     report
-        .findings
+        .files
         .iter()
+        .flat_map(|file| file.findings.iter())
         .flat_map(|finding| {
             finding
                 .rule_id
@@ -172,8 +173,10 @@ mod tests {
             .unwrap();
         let catalog =
             RuleCatalog::with_environment("test", vec![rule], default_environment()).unwrap();
-        let report = Linter::new(catalog).lint("activeWindow.eval('x')", "main.js");
-        assert_eq!(report.findings.len(), 1);
+        let report = Linter::new(catalog)
+            .lint_snippet("activeWindow.eval('x')", "main.js")
+            .unwrap();
+        assert_eq!(report.files[0].findings.len(), 1);
     }
 
     #[test]
@@ -190,35 +193,41 @@ mod tests {
             .unwrap();
         let catalog =
             RuleCatalog::with_environment("test", vec![rule], default_environment()).unwrap();
-        let report = Linter::new(catalog).lint(
-            "requestUrl('/a'); window.requestUrl('/b'); activeWindow.requestUrl('/c');",
-            "main.js",
-        );
-        assert_eq!(report.findings.len(), 3);
+        let report = Linter::new(catalog)
+            .lint_snippet(
+                "requestUrl('/a'); window.requestUrl('/b'); activeWindow.requestUrl('/c');",
+                "main.js",
+            )
+            .unwrap();
+        assert_eq!(report.files[0].findings.len(), 3);
     }
 
     #[test]
     fn preconfigured_linter_reports_precise_network_calls() {
-        let report = heuristic_linter().lint(
-            "import { request } from 'obsidian';\nrequest('/one');\nrequest('/two');",
-            "main.js",
-        );
-        let findings: Vec<_> = report
+        let report = heuristic_linter()
+            .lint_snippet(
+                "import { request } from 'obsidian';\nrequest('/one');\nrequest('/two');",
+                "main.js",
+            )
+            .unwrap();
+        let findings: Vec<_> = report.files[0]
             .findings
             .iter()
             .filter(|finding| finding.rule_id.as_str() == "obsidian:network.request")
             .collect();
         assert_eq!(findings.len(), 2);
-        assert_eq!(findings[0].range.start.line, 2);
-        assert_eq!(findings[1].range.start.line, 3);
+        assert_eq!(findings[0].location.range.start().line(), 2);
+        assert_eq!(findings[1].location.range.start().line(), 3);
     }
 
     #[test]
     fn disclosure_policy_is_applied_by_the_obsidian_adapter() {
-        let report = heuristic_linter().lint(
-            "import { request } from 'obsidian'; request('/network');",
-            "main.js",
-        );
+        let report = heuristic_linter()
+            .lint_snippet(
+                "import { request } from 'obsidian'; request('/network');",
+                "main.js",
+            )
+            .unwrap();
         assert_eq!(
             disclosures_for_report(&report),
             BTreeSet::from([

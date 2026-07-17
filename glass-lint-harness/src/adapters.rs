@@ -16,7 +16,7 @@ use crate::{
     builtins::{self, BuiltInProfile},
     types::{
         ADAPTER_PROTOCOL_VERSION, AdapterProject, AdapterRequest, AdapterResolution,
-        AdapterResponse, AdapterRun, Case, FindingLocation, ProjectCase, ToolExpectation,
+        AdapterResponse, AdapterRun, Case, ProjectCase, ToolExpectation,
     },
 };
 
@@ -28,20 +28,10 @@ pub trait Adapter {
     /// Execute one case and return its normalized findings.
     fn run(&self, case: &Case, expectation: &ToolExpectation) -> Result<Vec<Finding>>;
 
-    /// Execute one case while retaining project/file ownership for comparisons.
+    /// Execute one case while retaining canonical source locations.
     fn run_with_locations(&self, case: &Case, expectation: &ToolExpectation) -> Result<AdapterRun> {
         let findings = self.run(case, expectation)?;
-        let finding_locations = findings
-            .iter()
-            .map(|_| FindingLocation {
-                primary: None,
-                evidence: Vec::new(),
-            })
-            .collect();
-        Ok(AdapterRun {
-            findings,
-            finding_locations,
-        })
+        Ok(AdapterRun { findings })
     }
 
     /// Whether the adapter accepts multi-file project requests.
@@ -70,39 +60,17 @@ impl Adapter for GlassLintAdapter {
             return run_project(project, expectation);
         }
         let findings = self.run(case, expectation)?;
-        Ok(AdapterRun {
-            finding_locations: findings
-                .iter()
-                .map(|finding| FindingLocation {
-                    primary: Some(case.filename.clone()),
-                    evidence: finding
-                        .evidence
-                        .iter()
-                        .map(|_| Some(case.filename.clone()))
-                        .collect(),
-                })
-                .collect(),
-            findings,
-        })
+        Ok(AdapterRun { findings })
     }
 
     fn run(&self, case: &Case, expectation: &ToolExpectation) -> Result<Vec<Finding>> {
         if let Some(project) = &case.project {
             return Ok(run_project(project, expectation)?.findings);
         }
-        let report = configured_linter(expectation)?.lint(&case.source, &case.filename);
-        if !report.parse_diagnostics.is_empty() {
-            bail!(
-                "{}",
-                report
-                    .parse_diagnostics
-                    .into_iter()
-                    .map(|d| d.message)
-                    .collect::<Vec<_>>()
-                    .join("; ")
-            );
-        }
-        Ok(report.findings)
+        Ok(project_report_to_run(
+            configured_linter(expectation)?.lint_snippet(&case.source, &case.filename)?,
+        )?
+        .findings)
     }
 }
 
@@ -170,16 +138,17 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
     let report = if project.filesystem {
         glass_lint_project::ProjectLoader::new(glass_lint_project::ProjectLoadOptions::default())?
             .load_and_lint(
-            &linter,
-            &glass_lint_project::ProjectSelection::directory(project.root.clone()),
-        )?
+                &linter,
+                &glass_lint_project::ProjectSelection::directory(project.root.clone()),
+            )?
+            .report
     } else {
-        let mut session = linter.begin_project(project.root.clone())?;
+        let mut session = linter.begin_analysis(project.root.clone())?;
         let mut authored = Vec::new();
         for file in &project.files {
             authored.extend(
                 session
-                    .add_source(SourceFile::new(file.path.clone(), file.source.clone()))?
+                    .add_source(SourceFile::new(file.path.clone(), file.source.clone())?)?
                     .into_iter()
                     .map(|request| (request, file.path.clone())),
             );
@@ -210,65 +179,31 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
     project_report_to_run(report)
 }
 
-fn project_report_to_run(report: glass_lint_core::ProjectReport) -> Result<AdapterRun> {
+fn project_report_to_run(report: glass_lint_core::AnalysisReport) -> Result<AdapterRun> {
     // Keep diagnostics fatal for harness execution: a partial project report
     // cannot be compared reliably against finding expectations.
     let diagnostics = report
         .files
         .iter()
-        .flat_map(|file| file.parse_diagnostics.iter())
-        .map(|diagnostic| diagnostic.message.clone())
+        .flat_map(|file| file.diagnostics.iter())
+        .map(|diagnostic| diagnostic.message().to_owned())
         .chain(
             report
                 .diagnostics
                 .iter()
-                .map(|diagnostic| format!("[{}] {}", diagnostic.code, diagnostic.message)),
+                .map(|diagnostic| format!("[{}] {}", diagnostic.code(), diagnostic.message())),
         )
         .collect::<Vec<_>>();
     if !diagnostics.is_empty() {
         bail!("{}", diagnostics.join("; "));
     }
     let mut findings = Vec::new();
-    let mut finding_locations = Vec::new();
     for file in report.files {
         for finding in file.findings {
-            finding_locations.push(FindingLocation {
-                primary: Some(finding.location.path.to_string()),
-                evidence: finding
-                    .evidence
-                    .iter()
-                    .map(|evidence| {
-                        evidence
-                            .location
-                            .as_ref()
-                            .map(|location| location.path.to_string())
-                    })
-                    .collect(),
-            });
-            findings.push(Finding {
-                rule_id: finding.rule_id,
-                message_id: finding.message_id,
-                message: finding.message,
-                severity: finding.severity,
-                range: finding.location.range,
-                evidence: finding
-                    .evidence
-                    .into_iter()
-                    .map(|evidence| glass_lint_core::Evidence {
-                        message: evidence.message,
-                        count: evidence.count,
-                        evidence_truncated: evidence.evidence_truncated,
-                        range: evidence.location.map(|location| location.range),
-                        source: evidence.source,
-                    })
-                    .collect(),
-            });
+            findings.push(finding);
         }
     }
-    Ok(AdapterRun {
-        findings,
-        finding_locations,
-    })
+    Ok(AdapterRun { findings })
 }
 
 pub struct ExternalAdapter {
@@ -292,26 +227,20 @@ impl Adapter for ExternalAdapter {
     }
 
     fn run_with_locations(&self, case: &Case, expectation: &ToolExpectation) -> Result<AdapterRun> {
-        let (findings, finding_locations) = self.run_protocol(case, expectation)?;
         Ok(AdapterRun {
-            findings,
-            finding_locations,
+            findings: self.run_protocol(case, expectation)?,
         })
     }
 
     fn run(&self, case: &Case, expectation: &ToolExpectation) -> Result<Vec<Finding>> {
-        Ok(self.run_protocol(case, expectation)?.0)
+        self.run_protocol(case, expectation)
     }
 }
 
 impl ExternalAdapter {
     /// Send one complete JSON request and validate the complete response
     /// envelope.
-    fn run_protocol(
-        &self,
-        case: &Case,
-        expectation: &ToolExpectation,
-    ) -> Result<(Vec<Finding>, Vec<FindingLocation>)> {
+    fn run_protocol(&self, case: &Case, expectation: &ToolExpectation) -> Result<Vec<Finding>> {
         let mut child = Command::new(&self.command)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -363,7 +292,7 @@ impl ExternalAdapter {
                 self.name
             );
         }
-        Ok((response.findings, response.finding_locations))
+        Ok(response.findings)
     }
 }
 

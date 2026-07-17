@@ -58,7 +58,7 @@ impl FactBuilder<'_> {
             }
             swc_ecma_ast::Decl::Var(variable) => {
                 for declarator in &variable.decls {
-                    self.interface.add_pattern_locals(&declarator.name);
+                    self.record_pattern_locals(&declarator.name);
                     let mut names = std::collections::BTreeSet::new();
                     crate::analysis::syntax::collect_pat_bindings(&declarator.name, &mut names);
                     for name in names {
@@ -100,8 +100,11 @@ impl FactBuilder<'_> {
                 else {
                     return;
                 };
+                let Some(span) = self.byte_range(specifier.span) else {
+                    return;
+                };
                 self.interface.add_request(
-                    specifier.span,
+                    span,
                     crate::project::ResolutionRequestKind::DynamicImport,
                     specifier.value.to_string_lossy(),
                     crate::analysis::module::ModuleRequestRole::DynamicImport,
@@ -122,8 +125,11 @@ impl FactBuilder<'_> {
                 else {
                     return;
                 };
+                let Some(span) = self.byte_range(specifier.span) else {
+                    return;
+                };
                 self.interface.add_request(
-                    specifier.span,
+                    span,
                     crate::project::ResolutionRequestKind::Require,
                     specifier.value.to_string_lossy(),
                     crate::analysis::module::ModuleRequestRole::Require,
@@ -179,8 +185,11 @@ impl FactBuilder<'_> {
         if specifiers.is_empty() {
             return;
         }
+        let Some(span) = self.byte_range(source.span) else {
+            return;
+        };
         let request = self.interface.add_request(
-            source.span,
+            span,
             ResolutionRequestKind::Import,
             source.value.to_string_lossy(),
             ModuleRequestRole::ReExport {
@@ -249,8 +258,11 @@ impl FactBuilder<'_> {
         if export.type_only {
             return;
         }
+        let Some(span) = self.byte_range(export.src.span) else {
+            return;
+        };
         let request = self.interface.add_request(
-            export.src.span,
+            span,
             ResolutionRequestKind::Import,
             export.src.value.to_string_lossy(),
             ModuleRequestRole::StarExport,

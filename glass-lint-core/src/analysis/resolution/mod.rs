@@ -21,12 +21,13 @@ use std::{
 use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
 
 use super::{
+    lowering::ParserSpanKey,
     scope::ScopeGraph,
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
     },
-    value::{BindingKey, Value, ValueId, ValueTable},
+    value::{BindingKey, MAX_VALUES, Value, ValueId, ValueTable},
 };
 
 #[derive(Debug, Clone)]
@@ -70,20 +71,24 @@ impl ResolvedValue {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum ResolutionKey {
-    /// Identifier lookup keyed by span and spelling.
-    Ident { lo: u32, hi: u32, symbol: String },
-    /// Member lookup keyed by its source span.
-    Member { lo: u32, hi: u32 },
+    /// Identifier lookup keyed by a checked source range and spelling.
+    Ident {
+        range: ParserSpanKey,
+        symbol: String,
+    },
+    /// Member lookup keyed by its checked source range.
+    Member { range: ParserSpanKey },
 }
 
 #[derive(Debug)]
 pub(super) struct Resolver {
     /// Scope/provenance seeds from the lexical collection pass.
     scopes: ScopeGraph,
+    coordinates: super::lowering::SpanNormalizer,
     /// Interned abstract values and binding identities.
     values: RefCell<ValueTable>,
-    /// Fresh object values reused by source span.
-    fresh_values: RefCell<BTreeMap<(u32, u32), ValueId>>,
+    /// Fresh object values reused by checked source range.
+    fresh_values: RefCell<BTreeMap<ParserSpanKey, ValueId>>,
     /// Cached expression resolutions keyed by source position.
     resolved_values: RefCell<BTreeMap<ResolutionKey, ResolvedValue>>,
     /// Active lookups used to break recursive resolution cycles.
@@ -94,6 +99,7 @@ impl Default for Resolver {
     fn default() -> Self {
         Self {
             scopes: ScopeGraph::default(),
+            coordinates: crate::analysis::lowering::SpanNormalizer::default(),
             values: RefCell::new(ValueTable::default()),
             fresh_values: RefCell::new(BTreeMap::new()),
             resolved_values: RefCell::new(BTreeMap::new()),
@@ -162,21 +168,34 @@ impl Resolver {
         environment
             .add_global_object("window")
             .expect("test global object is valid");
-        Self::collect_with_environment(program, &environment)
+        Self::collect_with_environment(
+            program,
+            &environment,
+            super::lowering::SpanNormalizer::for_program(program),
+        )
     }
 
     pub(in crate::analysis) fn collect_with_environment(
         program: &Program,
         environment: &crate::Environment,
+        coordinates: super::lowering::SpanNormalizer,
     ) -> Self {
         let scopes = ScopeGraph::collect_with_environment(program, environment);
         Self {
             scopes,
+            coordinates,
             values: RefCell::new(ValueTable::default()),
             fresh_values: RefCell::new(BTreeMap::new()),
             resolved_values: RefCell::new(BTreeMap::new()),
             resolving: RefCell::new(BTreeSet::new()),
         }
+    }
+
+    pub(in crate::analysis) fn normalize_span(
+        &self,
+        span: swc_common::Span,
+    ) -> Result<crate::ByteRange, super::lowering::InvalidParserSpan> {
+        self.coordinates.normalize(span)
     }
 
     /// Returns the callable/value provenance visible for an exported local
@@ -192,5 +211,49 @@ impl Resolver {
 
     pub(in crate::analysis) fn static_string_value(&self, id: ValueId) -> Option<String> {
         self.const_value(id).string().map(str::to_owned)
+    }
+
+    pub(in crate::analysis) fn value_arena_exhausted(&self) -> bool {
+        self.values.borrow().exhausted()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Resolver, SymbolCallProvenance, ValueId, ValueTable};
+    use crate::analysis::{
+        syntax::{BudgetComponent, UnknownReason},
+        value::MAX_VALUES,
+    };
+
+    #[test]
+    fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
+        let resolver = Resolver::default();
+        assert_eq!(
+            resolver.call_provenance_for_value(ValueId::UNKNOWN),
+            SymbolCallProvenance::Unknown(UnknownReason::Unsupported)
+        );
+
+        let mut values = ValueTable::default();
+        for value in 0..MAX_VALUES {
+            let _ = values.intern(super::Value::StaticNumber(value));
+        }
+        assert!(values.exhausted());
+        let resolver = Resolver {
+            scopes: super::ScopeGraph::default(),
+            coordinates: crate::analysis::lowering::SpanNormalizer::default(),
+            values: std::cell::RefCell::new(values),
+            fresh_values: std::cell::RefCell::new(std::collections::BTreeMap::new()),
+            resolved_values: std::cell::RefCell::new(std::collections::BTreeMap::new()),
+            resolving: std::cell::RefCell::new(std::collections::BTreeSet::new()),
+        };
+        assert_eq!(
+            resolver.call_provenance_for_value(ValueId::UNKNOWN),
+            SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
+                component: BudgetComponent::Values,
+                limit: MAX_VALUES,
+                observed: None,
+            })
+        );
     }
 }

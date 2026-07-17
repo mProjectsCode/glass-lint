@@ -1,18 +1,10 @@
 //! Conversion of semantic evidence into located lint findings.
 
-use swc_common::SourceMapper;
-
-use super::{
-    Linter,
-    ranges::{remove_contained_ranges, source_range, source_range_from_span},
-};
+use super::{Linter, ranges::remove_contained_ranges};
 use crate::{
-    Severity as DiagnosticSeverity,
-    api::{
-        classification::{ApiCapability, ApiClassificationResult, ApiEvidence},
-        rule::Severity as RuleSeverity,
-    },
-    diagnostic::{Evidence, Finding, SourceRange},
+    Evidence, Finding, ProjectRelativePath, SourceLocation,
+    api::classification::{ApiCapability, ApiClassificationResult, ApiEvidence},
+    diagnostic::{SourceLineIndex, SourceRange},
 };
 
 impl Linter {
@@ -22,26 +14,27 @@ impl Linter {
     pub(super) fn findings_for(
         &self,
         classification: &ApiClassificationResult,
-        source_map: &swc_common::sync::Lrc<swc_common::SourceMap>,
+        lines: &SourceLineIndex,
         source: &str,
+        path: &str,
     ) -> Vec<Finding> {
         classification
             .capabilities()
             .iter()
-            .flat_map(|capability| self.findings_for_capability(capability, source_map, source))
+            .flat_map(|capability| self.findings_for_capability(capability, lines, source, path))
             .collect()
     }
 
     fn findings_for_capability(
         &self,
         capability: &ApiCapability,
-        source_map: &swc_common::sync::Lrc<swc_common::SourceMap>,
+        lines: &SourceLineIndex,
         source: &str,
+        path: &str,
     ) -> Vec<Finding> {
         let Some(rule_id) = self.catalog().rule_id(capability.rule_index).cloned() else {
             return Vec::new();
         };
-
         let evidence: Vec<_> = capability
             .evidence()
             .iter()
@@ -50,20 +43,21 @@ impl Linter {
                     .occurrences
                     .iter()
                     .map(|occurrence| occurrence.span)
-                    .filter(|span| !span.is_dummy())
-                    .map(|span| Self::report_evidence(evidence, span, source_map))
+                    .filter(|span| !span.is_empty())
+                    .filter_map(|span| Self::report_evidence(evidence, span, lines, source, path))
             })
             .collect();
 
         let mut ranges: Vec<_> = evidence
             .iter()
-            .filter_map(|evidence| evidence.range.clone())
+            .filter_map(|evidence| {
+                evidence
+                    .location
+                    .as_ref()
+                    .map(|location| location.range.clone())
+            })
             .collect();
         remove_contained_ranges(&mut ranges);
-
-        if ranges.is_empty() {
-            ranges.push(source_range(source, 0, 0));
-        }
 
         ranges
             .into_iter()
@@ -72,9 +66,9 @@ impl Linter {
                     .iter()
                     .filter(|evidence| {
                         evidence
-                            .range
+                            .location
                             .as_ref()
-                            .is_some_and(|evidence_range| contains_range(&range, evidence_range))
+                            .is_some_and(|location| contains_range(&range, &location.range))
                     })
                     .cloned()
                     .collect();
@@ -83,12 +77,11 @@ impl Linter {
                     rule_id: rule_id.clone(),
                     message_id: "detected".into(),
                     message: capability.label().into(),
-                    severity: match capability.severity() {
-                        RuleSeverity::Info => DiagnosticSeverity::Info,
-                        RuleSeverity::Warning => DiagnosticSeverity::Warning,
-                        RuleSeverity::Error => DiagnosticSeverity::Error,
+                    severity: capability.severity(),
+                    location: SourceLocation {
+                        path: ProjectRelativePath::from_normalized(path.to_owned()),
+                        range,
                     },
-                    range,
                     evidence: local_evidence,
                 }
             })
@@ -97,16 +90,21 @@ impl Linter {
 
     fn report_evidence(
         evidence: &ApiEvidence,
-        span: swc_common::Span,
-        source_map: &swc_common::sync::Lrc<swc_common::SourceMap>,
-    ) -> Evidence {
-        Evidence {
+        span: crate::ByteRange,
+        lines: &SourceLineIndex,
+        source: &str,
+        path: &str,
+    ) -> Option<Evidence> {
+        let range = lines.try_range(source, span).ok()?;
+        Some(Evidence {
             message: format!("{} of \"{}\"", evidence.kind().as_str(), evidence.symbol()),
             count: evidence.count,
             evidence_truncated: evidence.evidence_truncated,
-            range: Some(source_range_from_span(source_map, span)),
-            source: source_map.span_to_snippet(span).ok(),
-        }
+            location: Some(SourceLocation {
+                path: ProjectRelativePath::from_normalized(path.to_owned()),
+                range,
+            }),
+        })
     }
 }
 

@@ -4,7 +4,10 @@ use super::{
     Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
     SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,
 };
-use crate::analysis::scope::ScopeId;
+use crate::analysis::{
+    scope::ScopeId,
+    syntax::{BudgetComponent, UnknownReason},
+};
 
 impl Resolver {
     /// Returns a CommonJS module only when the callee is proven to be the
@@ -16,15 +19,14 @@ impl Resolver {
 
     fn resolve_ident_uncached(&self, ident: &Ident) -> ResolvedValue {
         let key = ResolutionKey::Ident {
-            lo: ident.span.lo.0,
-            hi: ident.span.hi.0,
+            range: ident.span.into(),
             symbol: ident.sym.to_string(),
         };
         if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
             return value;
         }
         if !self.resolving.borrow_mut().insert(key.clone()) {
-            return Self::unknown();
+            return Self::unknown_with_reason(UnknownReason::Cycle);
         }
         let seed = self.scopes.ident_value_seed(ident);
         let rooted_chain = seed.rooted_chain.map(|chain| chain.to_string());
@@ -34,7 +36,21 @@ impl Resolver {
             }
             value => self.intern_const_value(value, seed.binding),
         };
-        let call = self.call_provenance_at(id, rooted_chain.as_deref(), ident.span);
+        let call = if id == ValueId::UNKNOWN
+            && !matches!(
+                seed.call,
+                SymbolCallProvenance::Unknown(_) | SymbolCallProvenance::Ambiguous
+            )
+            && self.value_arena_exhausted()
+        {
+            SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
+                component: BudgetComponent::Values,
+                limit: super::MAX_VALUES,
+                observed: None,
+            })
+        } else {
+            self.call_provenance_at(id, rooted_chain.as_deref(), ident.span)
+        };
         let module_member = match &call {
             SymbolCallProvenance::ModuleExport { module, export } => {
                 Some(SymbolMemberProvenance::ModuleNamespace {
@@ -57,8 +73,12 @@ impl Resolver {
         resolved
     }
 
-    pub(in crate::analysis) fn scope_chain_at(&self, span: swc_common::Span) -> Vec<ScopeId> {
-        self.scopes.scope_chain_at(span)
+    pub(in crate::analysis) fn scope_at(&self, span: swc_common::Span) -> ScopeId {
+        self.scopes.scope_at(span)
+    }
+
+    pub(in crate::analysis) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
+        self.scopes.scope_parent(scope)
     }
 
     pub(in crate::analysis) fn function_id_for_scope(
@@ -96,14 +116,13 @@ impl Resolver {
 
     fn resolve_member_uncached(&self, member: &MemberExpr) -> ResolvedValue {
         let key = ResolutionKey::Member {
-            lo: member.span.lo.0,
-            hi: member.span.hi.0,
+            range: member.span.into(),
         };
         if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
             return value;
         }
         if !self.resolving.borrow_mut().insert(key.clone()) {
-            return Self::unknown();
+            return Self::unknown_with_reason(UnknownReason::Cycle);
         }
         let seed = self.scopes.member_value_seed(member);
         let syntactic = seed.syntactic_chain.map(|chain| chain.to_string());
@@ -121,7 +140,15 @@ impl Resolver {
             None => SymbolCallProvenance::Local,
         };
         let id = self.intern_call_value(&scoped_call, rooted_chain.as_deref(), seed.binding);
-        let call = self.call_provenance_at(id, rooted_chain.as_deref(), member.span);
+        let call = if id == ValueId::UNKNOWN && self.value_arena_exhausted() {
+            SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
+                component: BudgetComponent::Values,
+                limit: super::MAX_VALUES,
+                observed: None,
+            })
+        } else {
+            self.call_provenance_at(id, rooted_chain.as_deref(), member.span)
+        };
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values
                 .borrow_mut()
@@ -255,8 +282,7 @@ impl Resolver {
 
     pub(in crate::analysis) fn member_chain(&self, member: &MemberExpr) -> Option<String> {
         let key = ResolutionKey::Member {
-            lo: member.span.lo.0,
-            hi: member.span.hi.0,
+            range: member.span.into(),
         };
         self.resolved_values
             .borrow()
@@ -273,11 +299,25 @@ impl Resolver {
     }
 
     pub(in crate::analysis) fn unknown() -> ResolvedValue {
-        ResolvedValue::local(ValueId::UNKNOWN)
+        Self::unknown_with_reason(UnknownReason::Unresolved)
+    }
+
+    pub(in crate::analysis) fn unknown_with_reason(reason: UnknownReason) -> ResolvedValue {
+        let mut value = ResolvedValue::local(ValueId::UNKNOWN);
+        value.call = SymbolCallProvenance::Unknown(reason);
+        value
     }
 
     pub(in crate::analysis) fn static_value(&self, value: Value) -> ResolvedValue {
+        let is_unknown = matches!(value, Value::Unknown);
         let id = self.values.borrow_mut().intern(value);
+        if id == ValueId::UNKNOWN && !is_unknown && self.value_arena_exhausted() {
+            return Self::unknown_with_reason(UnknownReason::BudgetExhausted {
+                component: BudgetComponent::Values,
+                limit: super::MAX_VALUES,
+                observed: None,
+            });
+        }
         ResolvedValue::local(id)
     }
 
@@ -292,7 +332,7 @@ impl Resolver {
         &self,
         span: swc_common::Span,
     ) -> ResolvedValue {
-        let key = (span.lo.0, span.hi.0);
+        let key = span.into();
         if let Some(value) = self.fresh_values.borrow().get(&key).copied() {
             return ResolvedValue::local(value);
         }

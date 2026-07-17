@@ -4,42 +4,57 @@
 //! width bounds, missing-source resilience, and optional terminal coloring.
 
 use glass_lint_core::{
-    Evidence, Finding, LintReport, Position, PrettyFile, PrettyOptions, PrettyReport,
-    PrettyReports, RuleId, Severity, SourceRange,
+    Evidence, FileReport, Finding, Position, PrettyFile, PrettyOptions, PrettyReport,
+    PrettyReports, ProjectRelativePath, RuleId, Severity, SourceLocation, SourceRange,
 };
+
+fn path(path: &str) -> ProjectRelativePath {
+    ProjectRelativePath::new(path).unwrap()
+}
+
+fn location(range: SourceRange) -> SourceLocation {
+    SourceLocation {
+        path: path("main.js"),
+        range,
+    }
+}
+
+fn range(line: u32, start: u32, end: u32) -> SourceRange {
+    SourceRange::new(
+        Position::new(line, start).unwrap(),
+        Position::new(line, end).unwrap(),
+    )
+    .unwrap()
+}
+
+fn file(findings: Vec<Finding>) -> FileReport {
+    FileReport {
+        path: path("main.js"),
+        findings,
+        diagnostics: Vec::new(),
+    }
+}
 
 #[test]
 fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
-    let range = |line| SourceRange {
-        start: Position { line, column: 1 },
-        end: Position { line, column: 6 },
-    };
+    let range = |line| range(line, 1, 6);
     let finding = |line| Finding {
         rule_id: RuleId::parse("test:fetch").unwrap(),
         message_id: "detected".into(),
         message: "Uses fetch".into(),
         severity: Severity::Warning,
-        range: range(line),
+        location: location(range(line)),
         evidence: vec![Evidence {
             message: "call of \"fetch\"".into(),
             count: 1,
             evidence_truncated: false,
-            range: Some(range(line)),
-            source: Some("fetch".into()),
-        }],
+            location: Some(location(range(line))),
+        }]
+        .into_iter()
+        .collect(),
     };
-    let report_a = LintReport {
-        schema_version: 3,
-        tool_version: "test".into(),
-        findings: vec![finding(2), finding(1)],
-        parse_diagnostics: vec![],
-    };
-    let report_b = LintReport {
-        schema_version: 3,
-        tool_version: "test".into(),
-        findings: vec![finding(1)],
-        parse_diagnostics: vec![],
-    };
+    let report_a = file(vec![finding(2), finding(1)]);
+    let report_b = file(vec![finding(1)]);
     let files = [
         PrettyFile::new(&report_b, "b.js", "fetch('/b');"),
         PrettyFile::new(&report_a, "a.js", "fetch('/a1');\nfetch('/a2');"),
@@ -72,28 +87,25 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
 
 #[test]
 fn can_hide_source_excerpts_for_evidence_rows() {
-    let range = SourceRange {
-        start: Position { line: 1, column: 1 },
-        end: Position { line: 1, column: 6 },
-    };
-    let report = LintReport {
-        schema_version: 3,
-        tool_version: "test".into(),
+    let range = range(1, 1, 6);
+    let report = FileReport {
+        path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:fetch").unwrap(),
             message_id: "detected".into(),
             message: "Uses fetch".into(),
             severity: Severity::Warning,
-            range: range.clone(),
+            location: location(range.clone()),
             evidence: vec![Evidence {
                 message: "call of fetch".into(),
                 count: 1,
                 evidence_truncated: false,
-                range: Some(range),
-                source: Some("fetch('x')".into()),
-            }],
+                location: Some(location(range)),
+            }]
+            .into_iter()
+            .collect(),
         }],
-        parse_diagnostics: vec![],
+        diagnostics: vec![],
     };
 
     let rendered = PrettyReport::new(
@@ -115,11 +127,10 @@ fn can_hide_source_excerpts_for_evidence_rows() {
 
 #[test]
 fn renders_empty_reports_without_extra_output() {
-    let report = LintReport {
-        schema_version: 3,
-        tool_version: "test".into(),
+    let report = FileReport {
+        path: path("main.js"),
         findings: vec![],
-        parse_diagnostics: vec![],
+        diagnostics: vec![],
     };
     assert_eq!(
         PrettyReport::new(
@@ -139,21 +150,17 @@ fn renders_empty_reports_without_extra_output() {
 
 #[test]
 fn renders_terminal_controls_visibly() {
-    let report = LintReport {
-        schema_version: 3,
-        tool_version: "test".into(),
+    let report = FileReport {
+        path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:fetch").unwrap(),
             message_id: "detected".into(),
             message: "message\u{1b}[31m".into(),
             severity: Severity::Warning,
-            range: SourceRange {
-                start: Position { line: 1, column: 1 },
-                end: Position { line: 1, column: 2 },
-            },
-            evidence: vec![],
+            location: location(range(1, 1, 2)),
+            evidence: Vec::new().into_iter().collect(),
         }],
-        parse_diagnostics: vec![],
+        diagnostics: vec![],
     };
     let output =
         PrettyReport::new(&report, "bad\u{1b}[x.js", "x", PrettyOptions::default()).to_string();
@@ -163,27 +170,17 @@ fn renders_terminal_controls_visibly() {
 
 #[test]
 fn bounds_long_excerpt() {
-    let report = LintReport {
-        schema_version: 3,
-        tool_version: "test".into(),
+    let report = FileReport {
+        path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:long-line").unwrap(),
             message_id: "detected".into(),
             message: "long line".into(),
             severity: Severity::Warning,
-            range: SourceRange {
-                start: Position {
-                    line: 1,
-                    column: 201,
-                },
-                end: Position {
-                    line: 1,
-                    column: 206,
-                },
-            },
-            evidence: vec![],
+            location: location(range(1, 201, 206)),
+            evidence: Vec::new().into_iter().collect(),
         }],
-        parse_diagnostics: vec![],
+        diagnostics: vec![],
     };
     let source = format!("{}fetch('x')", "x".repeat(200));
     let rendered = PrettyReport::new(
@@ -206,24 +203,17 @@ fn bounds_long_excerpt() {
 
 #[test]
 fn renders_tabs_and_wide_unicode_within_the_display_budget() {
-    let report = LintReport {
-        schema_version: 3,
-        tool_version: "test".into(),
+    let report = FileReport {
+        path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:unicode").unwrap(),
             message_id: "detected".into(),
             message: "unicode".into(),
             severity: Severity::Info,
-            range: SourceRange {
-                start: Position { line: 1, column: 9 },
-                end: Position {
-                    line: 1,
-                    column: 12,
-                },
-            },
-            evidence: vec![],
+            location: location(range(1, 9, 12)),
+            evidence: Vec::new().into_iter().collect(),
         }],
-        parse_diagnostics: vec![],
+        diagnostics: vec![],
     };
     let rendered = PrettyReport::new(
         &report,
@@ -246,27 +236,17 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
 
 #[test]
 fn renders_missing_source_lines_without_panicking() {
-    let report = LintReport {
-        schema_version: 3,
-        tool_version: "test".into(),
+    let report = FileReport {
+        path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:missing").unwrap(),
             message_id: "detected".into(),
             message: "missing".into(),
             severity: Severity::Error,
-            range: SourceRange {
-                start: Position {
-                    line: 99,
-                    column: 1,
-                },
-                end: Position {
-                    line: 99,
-                    column: 2,
-                },
-            },
-            evidence: vec![],
+            location: location(range(99, 1, 2)),
+            evidence: Vec::new().into_iter().collect(),
         }],
-        parse_diagnostics: vec![],
+        diagnostics: vec![],
     };
     let rendered = PrettyReport::new(&report, "main.js", "", PrettyOptions::default()).to_string();
     assert!(rendered.contains("error[test:missing] missing"));
@@ -275,21 +255,17 @@ fn renders_missing_source_lines_without_panicking() {
 
 #[test]
 fn renders_colored_findings_when_enabled() {
-    let report = LintReport {
-        schema_version: 3,
-        tool_version: "test".into(),
+    let report = FileReport {
+        path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:color").unwrap(),
             message_id: "detected".into(),
             message: "colored".into(),
             severity: Severity::Error,
-            range: SourceRange {
-                start: Position { line: 1, column: 1 },
-                end: Position { line: 1, column: 2 },
-            },
-            evidence: vec![],
+            location: location(range(1, 1, 2)),
+            evidence: Vec::new().into_iter().collect(),
         }],
-        parse_diagnostics: vec![],
+        diagnostics: vec![],
     };
     let rendered = PrettyReport::new(
         &report,

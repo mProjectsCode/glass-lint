@@ -1,4 +1,4 @@
-//! ApiMatcher overlays and project-level matcher evidence.
+//! Compiled matcher overlays and project-level matcher evidence.
 //!
 //! Projection is deliberately after local fact construction and project
 //! linking. It applies qualified identities once, composes bounded flow, and
@@ -8,7 +8,10 @@ use std::collections::BTreeMap;
 
 use super::super::{ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow};
 use crate::{
-    analysis::matching::MatcherFacts,
+    analysis::{
+        matching::MatcherFacts,
+        status::{AnalysisComponent, IncompleteReason},
+    },
     api::{classification::ApiEvidence, compiler::CompiledMatcherCatalog},
 };
 
@@ -17,7 +20,7 @@ use crate::{
 pub struct ProjectMatcherModel<'matchers> {
     /// The immutable catalog used to select and query rules.
     matchers: CompiledMatcherCatalog<'matchers>,
-    /// Per-module local indexes plus projected argument evidence.
+    /// Per-module local indexes plus projected constrained/flow evidence.
     projections: BTreeMap<ModuleId, ProjectModuleProjection>,
 }
 
@@ -26,8 +29,8 @@ pub struct ProjectMatcherModel<'matchers> {
 struct ProjectModuleProjection {
     /// Local occurrences after applying imported/namespace identities.
     index: MatcherFacts,
-    /// Direct and cross-module argument evidence grouped by rule index.
-    arguments: Vec<Vec<ApiEvidence>>,
+    /// Direct constrained and cross-module flow evidence by rule index.
+    projected: Vec<Vec<ApiEvidence>>,
 }
 
 impl ProjectSemanticModel {
@@ -49,7 +52,7 @@ impl ProjectSemanticModel {
                     module.id(),
                     ProjectModuleProjection {
                         index: facts,
-                        arguments: module.local().facts().project(
+                        projected: module.local().facts().project(
                             &matchers,
                             Some(&identities),
                             Some(&result_identities),
@@ -61,13 +64,21 @@ impl ProjectSemanticModel {
         let (cross, exhausted, projection_count) = flow::cross::collect(self, &matchers);
         if exhausted {
             self.flow_budget.mark_exhausted();
+            self.status.borrow_mut().record(
+                crate::analysis::status::StatusScope::Project,
+                IncompleteReason::BudgetExhausted {
+                    component: AnalysisComponent::Flow,
+                    limit: self.flow_limit(),
+                    observed: Some(projection_count),
+                },
+            );
         }
         self.effect_projections.set(projection_count);
         let mut projections = projections;
         for (module, evidence) in cross {
             if let Some(projection) = projections.get_mut(&module) {
                 for (rule, values) in evidence.into_iter().enumerate() {
-                    projection.arguments[rule].extend(values);
+                    projection.projected[rule].extend(values);
                 }
             }
         }
@@ -83,7 +94,7 @@ impl ProjectMatcherModel<'_> {
     pub fn evidence_for(
         &self,
         module: &ProjectModule,
-        rule_index: usize,
+        rule_index: crate::api::classification::RuleIndex,
         evidence_limit: usize,
     ) -> Vec<ApiEvidence> {
         if !self.matchers.is_selected(rule_index) {
@@ -96,12 +107,12 @@ impl ProjectMatcherModel<'_> {
             .projections
             .get(&module.id())
             .map_or_else(Vec::new, |projection| {
-                projection.index.evidence_for(&matcher.matcher)
+                projection.index.evidence_for(matcher.query())
             });
         if let Some(projected) = self
             .projections
             .get(&module.id())
-            .and_then(|projection| projection.arguments.get(rule_index))
+            .and_then(|projection| projection.projected.get(rule_index.get()))
         {
             evidence.extend_from_slice(projected);
         }

@@ -8,7 +8,7 @@
 /// Ephemeral nesting state that affects how the current syntax is interpreted.
 pub(super) struct TraversalState {
     /// Monotonic identity source for branch and loop regions.
-    next_control_region: u32,
+    next_control_region: super::ControlRegionId,
     /// Class-superclass provenance for the current nesting stack.
     class_stack: Vec<Option<(String, String)>>,
     /// Number of function bodies currently being visited.
@@ -20,9 +20,9 @@ pub(super) struct TraversalState {
 impl TraversalState {
     /// Allocate a monotonic region ID; saturation keeps malformedly large
     /// inputs deterministic instead of wrapping into an earlier region.
-    pub(super) fn next_control_region(&mut self) -> u32 {
+    pub(super) fn next_control_region(&mut self) -> super::ControlRegionId {
         let region = self.next_control_region;
-        self.next_control_region = self.next_control_region.saturating_add(1);
+        self.next_control_region = super::ControlRegionId(region.0.saturating_add(1));
         region
     }
 

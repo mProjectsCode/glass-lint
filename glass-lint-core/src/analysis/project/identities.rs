@@ -63,6 +63,9 @@ impl ProjectSemanticModel {
                                 }
                             })
                     }
+                    SymbolCallProvenance::Unknown(_) | SymbolCallProvenance::Ambiguous => {
+                        ExportResolution::Unknown
+                    }
                 };
                 identities.insert(call.result(), resolution.into());
             }
@@ -148,7 +151,9 @@ impl ProjectSemanticModel {
             let Some(request) = interface.request(*request_index) else {
                 continue;
             };
-            let key = self.request_key(module, request);
+            let Some(key) = self.request_key(module, request) else {
+                continue;
+            };
             if let Some(ResolvedModule::Internal { id, .. }) = self.resolutions.get(&key) {
                 names.extend(self.exported_names(*id, visiting));
             }
@@ -159,7 +164,10 @@ impl ProjectSemanticModel {
 
     /// Resolve a namespace request without guessing at unsupported targets.
     fn resolve_namespace(&self, module: ModuleId, request: &ModuleRequest) -> ExportResolution {
-        match self.resolutions.get(&self.request_key(module, request)) {
+        let Some(key) = self.request_key(module, request) else {
+            return ExportResolution::Unknown;
+        };
+        match self.resolutions.get(&key) {
             None => ExportResolution::External {
                 module: request.specifier().to_owned(),
                 export: "*".into(),

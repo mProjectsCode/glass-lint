@@ -1,6 +1,6 @@
 //! SWC visitor that turns syntax into the canonical semantic fact stream.
 //!
-//! Each visit method records semantic roles in evaluation order. ApiMatcher
+//! Each visit method records semantic roles in evaluation order. Public
 //! selection never reaches this visitor; all values, provenance, and control
 //! regions are computed once for every file.
 //!
@@ -156,7 +156,9 @@ impl Visit for FactBuilder<'_> {
                     call.args.visit_with(self);
                     self.try_emit_callable_wrapper_opt(member, call);
                 } else {
-                    let resolved = self.resolve_call_callee(callee_expr);
+                    let Some(resolved) = self.resolve_call_callee(callee_expr) else {
+                        return;
+                    };
                     self.visit_callee_children(callee_expr);
                     call.args.visit_with(self);
                     self.emit_call(chain.span(), resolved, &call.args, None);
@@ -236,6 +238,9 @@ impl Visit for FactBuilder<'_> {
         };
 
         new_expr.visit_children_with(self);
+        let Some(callee_span) = self.byte_range(callee_span) else {
+            return;
+        };
         let result = self.resolver.fresh_object_value_at(new_expr.span).id;
         self.emit(
             FactKind::Construction,
@@ -279,8 +284,11 @@ impl Visit for FactBuilder<'_> {
             })
             .collect();
         self.record_local_imports(import);
+        let Some(span) = self.byte_range(import.src.span) else {
+            return;
+        };
         self.interface.add_request(
-            import.src.span,
+            span,
             ResolutionRequestKind::Import,
             module.clone(),
             ModuleRequestRole::Import { bindings },
@@ -394,11 +402,15 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_break_stmt(&mut self, stmt: &swc_ecma_ast::BreakStmt) {
-        self.emit_control(stmt.span(), ControlKind::Break, 0);
+        self.emit_control(stmt.span(), ControlKind::Break, super::ControlRegionId(0));
     }
 
     fn visit_continue_stmt(&mut self, stmt: &swc_ecma_ast::ContinueStmt) {
-        self.emit_control(stmt.span(), ControlKind::Continue, 0);
+        self.emit_control(
+            stmt.span(),
+            ControlKind::Continue,
+            super::ControlRegionId(0),
+        );
     }
 
     fn visit_return_stmt(&mut self, stmt: &swc_ecma_ast::ReturnStmt) {
@@ -414,7 +426,7 @@ impl Visit for FactBuilder<'_> {
             stmt.span(),
             FactPayload::Control {
                 kind: ControlKind::Return,
-                region: 0,
+                region: super::ControlRegionId(0),
                 value,
             },
         );

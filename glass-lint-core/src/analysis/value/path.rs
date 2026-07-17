@@ -53,7 +53,7 @@ struct PathNode {
     depth: u32,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 /// Bounded canonical interner for static member/index paths.
 pub(in crate::analysis) struct PathInterner {
     /// Parent-linked path nodes, with node zero as the empty path.

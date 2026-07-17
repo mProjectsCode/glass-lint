@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glass_lint_core::{SourceFile, SourceLanguage};
+use glass_lint_core::SourceFile;
 use walkdir::WalkDir;
 
 use crate::{error::ProjectLoadError, options::ProjectLoadOptions};
@@ -186,11 +186,7 @@ impl<'a> SourceCorpus<'a> {
             .unwrap_or(&canonical_path)
             .to_string_lossy()
             .replace('\\', "/");
-        Ok(SourceFile {
-            language: SourceLanguage::from_filename(&relative),
-            path: relative.into(),
-            source: file.source,
-        })
+        Ok(SourceFile::new(relative, file.source)?)
     }
 }
 

@@ -19,7 +19,9 @@ pub use matcher::{
     ReturnedMemberReadMatcher, StaticStringPredicate, ValueMatcher, ValueMatcherKind,
     canonical_rooted_chain,
 };
-pub use taxonomy::{Category, Confidence, Severity};
+pub use taxonomy::{Category, Confidence};
+
+pub use crate::Severity;
 
 #[derive(Debug, Clone)]
 /// Validated provider rule with canonical matcher declarations.
@@ -258,5 +260,18 @@ mod tests {
             .build()
             .unwrap_err();
         assert!(error.contains("condition"));
+
+        let error = Rule::builder("class.invalid-global")
+            .label("rule")
+            .category("classes")
+            .severity(Severity::Info)
+            .confidence(Confidence::High)
+            .matcher(Matcher::class(ClassMatcher {
+                name: "Client".into(),
+                provenance: CallProvenance::Global,
+            }))
+            .build()
+            .unwrap_err();
+        assert!(matches!(error, RuleBuildError::InvalidMatcher(_)));
     }
 }

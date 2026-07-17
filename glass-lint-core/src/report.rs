@@ -11,7 +11,7 @@ use std::{
 
 use console::{Style, measure_text_width};
 
-use crate::{LintReport, SourceRange};
+use crate::{FileReport, SourceRange};
 
 #[derive(Clone, Copy, Debug)]
 /// Display controls for pretty report rendering.
@@ -35,7 +35,7 @@ impl Default for PrettyOptions {
 
 /// One report/source pair rendered as a file section.
 pub struct PrettyReport<'a> {
-    report: &'a LintReport,
+    report: &'a FileReport,
     filename: &'a str,
     source: &'a str,
     options: PrettyOptions,
@@ -44,14 +44,14 @@ pub struct PrettyReport<'a> {
 #[derive(Clone, Copy)]
 /// Borrowed report/source input used by grouped rendering.
 pub struct PrettyFile<'a> {
-    report: &'a LintReport,
+    report: &'a FileReport,
     filename: &'a str,
     source: &'a str,
 }
 
 impl<'a> PrettyFile<'a> {
     /// Pair a report with its authored filename and source text.
-    pub fn new(report: &'a LintReport, filename: &'a str, source: &'a str) -> Self {
+    pub fn new(report: &'a FileReport, filename: &'a str, source: &'a str) -> Self {
         Self {
             report,
             filename,
@@ -76,7 +76,7 @@ impl<'a> PrettyReports<'a> {
 impl<'a> PrettyReport<'a> {
     /// Construct a renderer for one report and source file.
     pub fn new(
-        report: &'a LintReport,
+        report: &'a FileReport,
         filename: &'a str,
         source: &'a str,
         options: PrettyOptions,
@@ -95,7 +95,7 @@ impl<'a> PrettyReport<'a> {
         indent: usize,
         out: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        let line_no = range.start.line as usize;
+        let line_no = range.start().line() as usize;
         let Some(line) = self.source.split('\n').nth(line_no.saturating_sub(1)) else {
             return Ok(());
         };
@@ -124,8 +124,8 @@ impl<'a> PrettyReport<'a> {
             .collect();
 
         let total_width = cells.last().map_or(0, |cell| cell.start + cell.width);
-        let start = range.start.column.saturating_sub(1) as usize;
-        let end = (range.end.column.saturating_sub(1) as usize).max(start + 1);
+        let start = range.start().column().saturating_sub(1) as usize;
+        let end = (range.end().column().saturating_sub(1) as usize).max(start + 1);
         let (window_start, window_end, leading, trailing) =
             select_window(&cells, total_width, start, width);
 
@@ -279,25 +279,25 @@ fn write_rule_groups(
         entries.sort_by(|left, right| {
             let left_range = left
                 .2
-                .and_then(|evidence| evidence.range.as_ref())
-                .unwrap_or(&left.1.range);
+                .and_then(|evidence| evidence.location.as_ref())
+                .map_or(&left.1.location.range, |location| &location.range);
             let right_range = right
                 .2
-                .and_then(|evidence| evidence.range.as_ref())
-                .unwrap_or(&right.1.range);
+                .and_then(|evidence| evidence.location.as_ref())
+                .map_or(&right.1.location.range, |location| &location.range);
             (
                 left.0.filename,
-                left_range.start.line,
-                left_range.start.column,
-                left_range.end.line,
-                left_range.end.column,
+                left_range.start().line(),
+                left_range.start().column(),
+                left_range.end().line(),
+                left_range.end().column(),
             )
                 .cmp(&(
                     right.0.filename,
-                    right_range.start.line,
-                    right_range.start.column,
-                    right_range.end.line,
-                    right_range.end.column,
+                    right_range.start().line(),
+                    right_range.start().column(),
+                    right_range.end().line(),
+                    right_range.end().column(),
                 ))
         });
         if wrote_group {
@@ -327,14 +327,14 @@ fn write_rule_groups(
 
         for (file, finding, evidence) in entries {
             let range = evidence
-                .and_then(|evidence| evidence.range.as_ref())
-                .unwrap_or(&finding.range);
+                .and_then(|evidence| evidence.location.as_ref())
+                .map_or(&finding.location.range, |location| &location.range);
 
             let message = format!(
                 "  {}:{}:{} - {}",
                 visible_text(file.filename),
-                range.start.line,
-                range.start.column,
+                range.start().line(),
+                range.start().column(),
                 evidence.map_or_else(
                     || "match".to_string(),
                     |evidence| format!("evidence: {}", visible_text(&evidence.message)),
@@ -366,9 +366,14 @@ fn write_parse_diagnostics(
         .iter()
         .flat_map(|file| {
             file.report
-                .parse_diagnostics
+                .diagnostics
                 .iter()
-                .map(move |diagnostic| (file, diagnostic))
+                .filter_map(move |diagnostic| {
+                    let crate::Diagnostic::Parse { diagnostic, .. } = diagnostic else {
+                        return None;
+                    };
+                    Some((file, diagnostic))
+                })
         })
         .collect::<Vec<_>>();
     diagnostics.sort_by_key(|(file, diagnostic)| {
@@ -376,10 +381,10 @@ fn write_parse_diagnostics(
             file.filename,
             diagnostic.range.as_ref().map(|range| {
                 (
-                    range.start.line,
-                    range.start.column,
-                    range.end.line,
-                    range.end.column,
+                    range.start().line(),
+                    range.start().column(),
+                    range.end().line(),
+                    range.end().column(),
                 )
             }),
             diagnostic.code.as_str(),
@@ -397,8 +402,8 @@ fn write_parse_diagnostics(
                 f,
                 "  {}:{}:{}: {}[{}]: {}",
                 visible_text(file.filename),
-                range.start.line,
-                range.start.column,
+                range.start().line(),
+                range.start().column(),
                 PrettyReport::style(options.color, Style::new().red(), "parse"),
                 diagnostic.code,
                 visible_text(&diagnostic.message)

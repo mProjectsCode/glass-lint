@@ -35,7 +35,10 @@ impl CompiledCatalog {
     }
 
     /// Borrow a selected-rule view over this catalog.
-    pub fn to_matcher_catalog<'a>(&'a self, selected: &'a [usize]) -> CompiledMatcherCatalog<'a> {
+    pub fn to_matcher_catalog<'a>(
+        &'a self,
+        selected: &'a [crate::api::classification::RuleIndex],
+    ) -> CompiledMatcherCatalog<'a> {
         CompiledMatcherCatalog::new(&self.rules, selected)
     }
 }

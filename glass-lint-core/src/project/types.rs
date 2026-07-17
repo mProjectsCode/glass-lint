@@ -20,13 +20,26 @@ pub fn is_internal_module_request(request: &str) -> bool {
 
 /// A normalized project-relative path whose representation cannot be mutated
 /// back into an absolute or escaping path by callers.
-#[derive(
-    Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, serde::Deserialize, serde::Serialize,
-)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, serde::Serialize)]
 #[serde(transparent)]
 pub struct ProjectRelativePath(String);
 
+impl<'de> serde::Deserialize<'de> for ProjectRelativePath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::new(&raw).map_err(|error| serde::de::Error::custom(error.to_string()))
+    }
+}
+
 impl ProjectRelativePath {
+    /// Validate and normalize a project-relative path.
+    pub fn new(path: impl AsRef<str>) -> Result<Self, ProjectInputError> {
+        super::input::normalize_relative(path)
+    }
+
     pub(crate) fn from_normalized(path: String) -> Self {
         Self(path)
     }
@@ -68,18 +81,6 @@ impl std::fmt::Display for ProjectRelativePath {
     }
 }
 
-impl From<String> for ProjectRelativePath {
-    fn from(path: String) -> Self {
-        Self(path)
-    }
-}
-
-impl From<&str> for ProjectRelativePath {
-    fn from(path: &str) -> Self {
-        Self(path.into())
-    }
-}
-
 impl PartialEq<&str> for ProjectRelativePath {
     fn eq(&self, other: &&str) -> bool {
         self.as_str() == *other
@@ -87,9 +88,50 @@ impl PartialEq<&str> for ProjectRelativePath {
 }
 
 /// Stable machine-readable identity for a project diagnostic.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
 #[serde(transparent)]
 pub struct DiagnosticCode(String);
+
+const MAX_DIAGNOSTIC_CODE_LEN: usize = 64;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DiagnosticKind {
+    AmbiguousStarExport,
+    EffectSizeBudgetExhausted,
+    FlowLinkBudgetExhausted,
+    GraphLinkBudgetExhausted,
+    InvalidParserSpan,
+    MissingImportedExport,
+    OutsideProjectTarget,
+    SemanticBudgetExhausted,
+    SourceTooLarge,
+    SyntaxDepthExceeded,
+    SyntaxError,
+    UnresolvedInternalRequest,
+    UnsupportedCommonjsExports,
+    UnsupportedProjectTarget,
+}
+
+impl DiagnosticKind {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::AmbiguousStarExport => "ambiguous_star_export",
+            Self::EffectSizeBudgetExhausted => "effect_size_budget_exhausted",
+            Self::FlowLinkBudgetExhausted => "flow_link_budget_exhausted",
+            Self::GraphLinkBudgetExhausted => "graph_link_budget_exhausted",
+            Self::InvalidParserSpan => "invalid_parser_span",
+            Self::MissingImportedExport => "missing_imported_export",
+            Self::OutsideProjectTarget => "outside_project_target",
+            Self::SemanticBudgetExhausted => "semantic_budget_exhausted",
+            Self::SourceTooLarge => "source_too_large",
+            Self::SyntaxDepthExceeded => "syntax_depth_exceeded",
+            Self::SyntaxError => "syntax_error",
+            Self::UnresolvedInternalRequest => "unresolved_internal_request",
+            Self::UnsupportedCommonjsExports => "unsupported_commonjs_exports",
+            Self::UnsupportedProjectTarget => "unsupported_project_target",
+        }
+    }
+}
 
 impl DiagnosticCode {
     /// Validate and construct a diagnostic code in the documented identifier
@@ -97,6 +139,7 @@ impl DiagnosticCode {
     pub fn new(code: impl Into<String>) -> Result<Self, String> {
         let code = code.into();
         if !code.is_empty()
+            && code.len() <= MAX_DIAGNOSTIC_CODE_LEN
             && code.chars().all(|character| {
                 character.is_ascii_lowercase() || character == '_' || character.is_ascii_digit()
             })
@@ -113,6 +156,16 @@ impl DiagnosticCode {
     }
 }
 
+impl<'de> serde::Deserialize<'de> for DiagnosticCode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::new(raw).map_err(serde::de::Error::custom)
+    }
+}
+
 impl TryFrom<String> for DiagnosticCode {
     type Error = String;
 
@@ -121,9 +174,17 @@ impl TryFrom<String> for DiagnosticCode {
     }
 }
 
-impl From<&str> for DiagnosticCode {
-    fn from(code: &str) -> Self {
-        Self::new(code).expect("diagnostic code literals must be valid identifiers")
+impl TryFrom<&str> for DiagnosticCode {
+    type Error = String;
+
+    fn try_from(code: &str) -> Result<Self, Self::Error> {
+        Self::new(code)
+    }
+}
+
+impl From<DiagnosticKind> for DiagnosticCode {
+    fn from(kind: DiagnosticKind) -> Self {
+        Self::new(kind.as_str()).expect("DiagnosticKind literals are canonical")
     }
 }
 
@@ -189,12 +250,27 @@ pub enum ResolutionResult {
     Unsupported { reason: String },
 }
 
-#[derive(
-    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
-)]
-pub struct ModuleId(pub u32);
+/// Stable opaque identity assigned from normalized project path order.
+///
+/// ```compile_fail
+/// use glass_lint_core::project::ModuleId;
+/// let forged = ModuleId(0);
+/// ```
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
+pub struct ModuleId(u32);
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+impl ModuleId {
+    pub(crate) const fn new(value: u32) -> Self {
+        Self(value)
+    }
+
+    /// Return the stable numeric identity assigned by project validation.
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
 pub enum ResolvedModule {
     /// An authored module, identified by its stable project ID and path.
     Internal {
@@ -222,7 +298,7 @@ pub struct SourceLocation {
 }
 /// Evidence attached to a project finding.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct ProjectEvidence {
+pub struct Evidence {
     /// Human-readable explanation of the evidence.
     pub message: String,
     #[serde(default)]
@@ -231,12 +307,10 @@ pub struct ProjectEvidence {
     pub evidence_truncated: bool,
     /// Optional source location supporting the explanation.
     pub location: Option<SourceLocation>,
-    /// Optional originating rule or evidence source identifier.
-    pub source: Option<String>,
 }
 /// A rule finding whose location and evidence are project-qualified.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct ProjectFinding {
+pub struct Finding {
     /// Fully qualified rule identifier.
     pub rule_id: crate::RuleId,
     /// Stable message identifier within the rule.
@@ -251,19 +325,30 @@ pub struct ProjectFinding {
     pub evidence: super::EvidenceList,
 }
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct ProjectFileReport {
+pub struct FileReport {
     /// Normalized path of the analyzed file.
     pub path: ProjectRelativePath,
-    /// Original source retained for human-readable excerpt rendering.
-    ///
-    /// This is presentation context rather than part of the serialized report
-    /// contract; project JSON must not embed complete source files.
-    #[serde(skip)]
-    pub source: String,
     /// Findings attributed to this file.
-    pub findings: Vec<ProjectFinding>,
-    /// Parser diagnostics attributed to this file.
-    pub parse_diagnostics: Vec<crate::ParseDiagnostic>,
+    pub findings: Vec<Finding>,
+    /// Diagnostics attributed to this file.
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+impl FileReport {
+    #[must_use]
+    pub fn has_parse_diagnostics(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
+    }
+
+    #[must_use]
+    pub fn parse_diagnostic_count(&self) -> usize {
+        self.diagnostics
+            .iter()
+            .filter(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
+            .count()
+    }
 }
 
 /// Whether the project was analyzed to completion.
@@ -285,54 +370,137 @@ pub struct ProjectDiagnostic {
     /// Optional project source location.
     pub location: Option<SourceLocation>,
 }
+
+/// One diagnostic envelope shared by file-owned and project-wide output.
+///
+/// The payload remains typed so callers can distinguish parser details from
+/// linking/status details without maintaining separate report collections.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum Diagnostic {
+    /// A parser diagnostic owned by the source path in the payload.
+    Parse {
+        path: ProjectRelativePath,
+        diagnostic: crate::ParseDiagnostic,
+    },
+    /// A project-wide semantic, linking, or resource diagnostic.
+    Project(ProjectDiagnostic),
+}
+
+impl Diagnostic {
+    pub(crate) fn parse(path: ProjectRelativePath, diagnostic: crate::ParseDiagnostic) -> Self {
+        Self::Parse { path, diagnostic }
+    }
+
+    pub(crate) fn project(diagnostic: ProjectDiagnostic) -> Self {
+        Self::Project(diagnostic)
+    }
+
+    #[must_use]
+    pub fn code(&self) -> &str {
+        match self {
+            Self::Parse { diagnostic, .. } => diagnostic.code.as_str(),
+            Self::Project(diagnostic) => diagnostic.code.as_str(),
+        }
+    }
+
+    #[must_use]
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Parse { diagnostic, .. } => &diagnostic.message,
+            Self::Project(diagnostic) => &diagnostic.message,
+        }
+    }
+
+    #[must_use]
+    pub fn path(&self) -> Option<&ProjectRelativePath> {
+        match self {
+            Self::Parse { path, .. } => Some(path),
+            Self::Project(diagnostic) => {
+                diagnostic.location.as_ref().map(|location| &location.path)
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn range(&self) -> Option<&SourceRange> {
+        match self {
+            Self::Parse { diagnostic, .. } => diagnostic.range.as_ref(),
+            Self::Project(diagnostic) => {
+                diagnostic.location.as_ref().map(|location| &location.range)
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn parse_diagnostic(&self) -> Option<&crate::ParseDiagnostic> {
+        match self {
+            Self::Parse { diagnostic, .. } => Some(diagnostic),
+            Self::Project(_) => None,
+        }
+    }
+}
 /// Complete deterministic output of one project analysis.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct ProjectReport {
+pub struct AnalysisReport {
     /// Version of the serialized project-report contract.
     pub schema_version: u32,
     /// Tool version that produced the report.
     pub tool_version: String,
     /// Per-file findings and parse diagnostics in normalized path order.
-    pub files: Vec<ProjectFileReport>,
+    pub files: Vec<FileReport>,
     /// Diagnostics that are not owned by a single file.
-    pub diagnostics: Vec<ProjectDiagnostic>,
+    pub diagnostics: Vec<Diagnostic>,
     /// Bounded operation counters collected during analysis.
-    pub operations: ProjectOperationCounts,
+    pub operations: OperationCounts,
     /// Partial reports are diagnostic output and must fail the CLI run.
     pub completion: ReportCompletion,
 }
 
 /// Counts used by front ends when rendering a project report.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct ProjectReportSummary {
+pub struct AnalysisReportSummary {
     /// Number of reported source files.
     pub files: usize,
     /// Number of findings across all files.
     pub findings: usize,
     /// Number of file-owned parse diagnostics.
     pub parse_diagnostics: usize,
+    /// Number of file-owned semantic/status diagnostics.
+    pub analysis_diagnostics: usize,
     /// Number of project-level diagnostics.
     pub project_diagnostics: usize,
 }
 
-impl ProjectReport {
+impl AnalysisReport {
     /// Summarize the report from its canonical file and diagnostic collections.
-    pub fn summary(&self) -> ProjectReportSummary {
-        ProjectReportSummary {
+    pub fn summary(&self) -> AnalysisReportSummary {
+        AnalysisReportSummary {
             files: self.files.len(),
             findings: self.files.iter().map(|file| file.findings.len()).sum(),
             parse_diagnostics: self
                 .files
                 .iter()
-                .map(|file| file.parse_diagnostics.len())
-                .sum(),
-            project_diagnostics: self.diagnostics.len(),
+                .flat_map(|file| file.diagnostics.iter())
+                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
+                .count(),
+            analysis_diagnostics: self
+                .files
+                .iter()
+                .flat_map(|file| file.diagnostics.iter())
+                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
+                .count(),
+            project_diagnostics: self
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
+                .count(),
         }
     }
 }
 /// Bounded counters describing work performed while linking the project.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct ProjectOperationCounts {
+pub struct OperationCounts {
     /// Number of sources analyzed.
     pub files: usize,
     /// Number of authored resolution requests.
@@ -349,7 +517,7 @@ pub struct ProjectOperationCounts {
     pub evidence: usize,
 }
 
-impl std::ops::AddAssign for ProjectOperationCounts {
+impl std::ops::AddAssign for OperationCounts {
     fn add_assign(&mut self, rhs: Self) {
         self.files = self.files.saturating_add(rhs.files);
         self.requests = self.requests.saturating_add(rhs.requests);
@@ -382,8 +550,6 @@ pub enum ProjectInputError {
     DuplicateSource(String),
     /// A resolution refers to a non-authored importer.
     UnknownImporter(String),
-    /// A resolution range is malformed or outside its source.
-    InvalidRange(String),
     /// More than one answer was supplied for a request key.
     DuplicateResolution(ResolutionRequestKey),
     /// A resolution target violates the target-path contract.
@@ -401,7 +567,6 @@ impl std::fmt::Display for ProjectInputError {
             Self::UnknownImporter(path) => {
                 write!(f, "resolution importer is not a source: `{path}`")
             }
-            Self::InvalidRange(path) => write!(f, "resolution range is invalid for `{path}`"),
             Self::DuplicateResolution(key) => {
                 write!(f, "duplicate resolution for `{}`", key.importer)
             }
@@ -418,13 +583,48 @@ impl std::fmt::Display for ProjectInputError {
 impl std::error::Error for ProjectInputError {}
 
 impl SourceFile {
-    /// Construct a source file and infer its parser language from its path.
-    pub fn new(path: impl Into<String>, source: impl Into<String>) -> Self {
+    /// Validate a source path, construct a source file, and infer its parser
+    /// language from the normalized path.
+    pub fn new(
+        path: impl Into<String>,
+        source: impl Into<String>,
+    ) -> Result<Self, ProjectInputError> {
         let path = path.into();
-        Self {
+        let path = ProjectRelativePath::new(&path)?;
+        Ok(Self {
             language: SourceLanguage::from_filename(&path),
-            path: path.into(),
+            path,
             source: source.into(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DiagnosticCode, DiagnosticKind};
+
+    #[test]
+    fn diagnostic_kind_table_contains_only_canonical_codes() {
+        let kinds = [
+            DiagnosticKind::AmbiguousStarExport,
+            DiagnosticKind::EffectSizeBudgetExhausted,
+            DiagnosticKind::FlowLinkBudgetExhausted,
+            DiagnosticKind::GraphLinkBudgetExhausted,
+            DiagnosticKind::InvalidParserSpan,
+            DiagnosticKind::MissingImportedExport,
+            DiagnosticKind::OutsideProjectTarget,
+            DiagnosticKind::SemanticBudgetExhausted,
+            DiagnosticKind::SourceTooLarge,
+            DiagnosticKind::SyntaxDepthExceeded,
+            DiagnosticKind::SyntaxError,
+            DiagnosticKind::UnresolvedInternalRequest,
+            DiagnosticKind::UnsupportedCommonjsExports,
+            DiagnosticKind::UnsupportedProjectTarget,
+        ];
+
+        for kind in kinds {
+            let owned: DiagnosticCode = kind.into();
+            assert_eq!(DiagnosticCode::try_from(kind.as_str()), Ok(owned));
         }
     }
 }

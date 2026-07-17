@@ -4,17 +4,19 @@
 //! budget. Query callers receive an immutable view; path interning is the only
 //! interior mutation and is deterministic for the same traversal.
 
-use std::cell::RefCell;
-
-#[cfg(test)]
-use swc_common::BytePos;
-
 #[cfg(test)]
 use super::FactKind;
 use super::{FactId, MAX_FACTS, SemanticFact};
 use crate::analysis::value::{PathId, PathInterner, PathSegment};
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum FactStreamIssue {
+    BudgetExhausted,
+    PathExhausted,
+    InvalidParserSpan,
+}
+
+#[derive(Debug, Clone)]
 /// Canonical facts plus the path interner used by argument and flow queries.
 /// Invalid streams are retained only as a diagnostic boundary and must not be
 /// indexed or projected as if their suffix were trustworthy.
@@ -22,9 +24,11 @@ pub(in crate::analysis) struct FactStream {
     /// Dense facts in canonical visitor order.
     facts: Vec<SemanticFact>,
     /// Interned property/index paths used by argument projections.
-    paths: RefCell<PathInterner>,
+    paths: PathInterner,
     /// False after any ID, budget, or append invariant is violated.
     valid: bool,
+    /// Typed construction outcomes that make the retained stream incomplete.
+    issues: std::collections::BTreeSet<FactStreamIssue>,
 }
 
 impl FactStream {
@@ -33,8 +37,9 @@ impl FactStream {
     pub(super) fn new() -> Self {
         Self {
             facts: Vec::new(),
-            paths: RefCell::new(PathInterner::new()),
+            paths: PathInterner::new(),
             valid: true,
+            issues: std::collections::BTreeSet::new(),
         }
     }
 
@@ -64,41 +69,50 @@ impl FactStream {
         self.valid
     }
 
+    pub(super) fn mark_budget_exhausted(&mut self) {
+        self.issues.insert(FactStreamIssue::BudgetExhausted);
+    }
+
+    pub(super) fn mark_path_exhausted(&mut self) {
+        self.issues.insert(FactStreamIssue::PathExhausted);
+    }
+
+    pub(super) fn mark_invalid_parser_span(&mut self) {
+        self.issues.insert(FactStreamIssue::InvalidParserSpan);
+    }
+
+    pub(in crate::analysis) fn budget_exhausted(&self) -> bool {
+        self.issues.contains(&FactStreamIssue::BudgetExhausted)
+    }
+
+    pub(in crate::analysis) fn path_exhausted(&self) -> bool {
+        self.issues.contains(&FactStreamIssue::PathExhausted)
+    }
+
+    pub(in crate::analysis) fn invalid_parser_span(&self) -> bool {
+        self.issues.contains(&FactStreamIssue::InvalidParserSpan)
+    }
+
     /// Look up a fact by its bounded dense identity.
     pub(in crate::analysis) fn fact(&self, id: FactId) -> Option<&SemanticFact> {
         self.facts.get(id.index()?)
     }
 
     /// Borrow the canonical path table for read-only projection queries.
-    pub(in crate::analysis) fn paths(&self) -> std::cell::Ref<'_, PathInterner> {
-        self.paths.borrow()
+    pub(in crate::analysis) fn paths(&self) -> &PathInterner {
+        &self.paths
     }
 
     /// Intern one path extension without exposing mutable stream state.
-    pub(in crate::analysis) fn intern_path(
-        &self,
-        parent: PathId,
-        segment: PathSegment,
-    ) -> Option<PathId> {
-        // Path interning is the one mutable sub-index needed after the fact
-        // walk. RefCell keeps the public stream immutable to query callers.
-        self.paths.borrow_mut().append(parent, segment)
-    }
-
-    /// Intern the concatenation of two previously validated paths.
-    pub(in crate::analysis) fn concat_paths(
-        &self,
-        prefix: PathId,
-        suffix: PathId,
-    ) -> Option<PathId> {
-        self.paths.borrow_mut().concat(prefix, suffix)
+    pub(super) fn intern_path(&mut self, parent: PathId, segment: PathSegment) -> Option<PathId> {
+        self.paths.append(parent, segment)
     }
 
     #[cfg(test)]
-    pub(super) fn facts_at(&self, lo: BytePos, hi: BytePos, kind: FactKind) -> Vec<&SemanticFact> {
+    pub(super) fn facts_at(&self, lo: u32, hi: u32, kind: FactKind) -> Vec<&SemanticFact> {
         self.facts
             .iter()
-            .filter(|fact| fact.span.lo() == lo && fact.span.hi() == hi && fact.kind() == kind)
+            .filter(|fact| fact.span.start() == lo && fact.span.end() == hi && fact.kind() == kind)
             .collect()
     }
 
@@ -110,5 +124,17 @@ impl FactStream {
     #[cfg(test)]
     pub(super) fn fingerprint(&self) -> String {
         format!("{:?}", self.facts)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn failed_path_interning_is_recorded_as_incomplete() {
+        let mut stream = FactStream::new();
+        stream.mark_path_exhausted();
+        assert!(stream.path_exhausted());
     }
 }
