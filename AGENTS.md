@@ -3,8 +3,9 @@
 ## Before editing
 
 - Inspect `git status` and preserve unrelated changes.
-- Read [`ARCHITECTURE.md`](ARCHITECTURE.md) before changing analysis, matchers,
-  crate boundaries, or public APIs.
+- Read [`ARCHITECTURE.md`](ARCHITECTURE.md) and the owning crate's
+  `ARCHITECTURE.md` before changing analysis, matchers, crate boundaries, or
+  public APIs.
 - Read [`TESTING.md`](TESTING.md) before changing matching behavior or rules.
   Use [`CONTRIBUTING.md`](CONTRIBUTING.md) for commands and tooling.
 

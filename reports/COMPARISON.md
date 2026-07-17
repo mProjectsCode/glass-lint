@@ -1,26 +1,27 @@
 # Glass Lint and ESLint comparison
 
-This generated snapshot compares findings from Glass Lint's heuristic profile
-with `eslint-plugin-obsidianmd` on the end-to-end harness suite. Counts measure
-different rule catalogs and are descriptive, not a precision or recall score.
-Regenerate the report with `make compare`; adapter setup is documented in
-[`adapters/eslint-obsidianmd/README.md`](../adapters/eslint-obsidianmd/README.md).
+This generated report compares findings on the end-to-end fixture suite.
+The tools have different rule catalogs, so counts are descriptive rather
+than precision or recall scores. Run `make compare` to regenerate it.
 
 | Case | eslint-obsidianmd | glass-lint |
 |---|---:|---:|
-| count-note-words | 1 | 7 |
+| count-note-words | 0 | 7 |
 | create-meeting-note | 0 | 9 |
 | download-daily-quote | 0 | 2 |
-| fetch-remote-catalog | 1 | 4 |
-| inspect-note-tags | 1 | 6 |
+| fetch-remote-catalog | 0 | 4 |
+| inspect-note-tags | 0 | 6 |
 | open-workspace-links | 0 | 4 |
 | persist-refresh-settings | 0 | 4 |
-| render-executable-code-blocks | 1 | 4 |
+| render-executable-code-blocks | 0 | 4 |
 | roll-ribbon-dice | 0 | 3 |
 | transform-text-case | 0 | 1 |
-| watch-vault-changes | 1 | 9 |
+| typescript-input | skip | 1 |
+| watch-vault-changes | 0 | 9 |
 
 ## count-note-words
+
+A plugin reads the active file from its vault
 
 ```js
 // @case description A plugin reads the active file from its vault
@@ -80,10 +81,12 @@ export default class VaultReaderPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (1 finding(s))
-- eslint-obsidianmd:rule-custom-message:customMessage at 30:5 - [no-console] Avoid unnecessary logging to console. See https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
+### eslint-obsidianmd (0 finding(s))
+
+No findings.
 
 ### glass-lint (7 finding(s))
+
 - obsidian:ui.command:detected at 16:5 - Registers commands
 - obsidian:lifecycle.events:detected at 21:5 - Registers Obsidian lifecycle events
 - obsidian:vault.access:detected at 21:24 - Accesses Obsidian vault APIs
@@ -93,6 +96,8 @@ export default class VaultReaderPlugin extends Plugin {
 - obsidian:vault.read:detected at 38:28 - Reads vault files
 
 ## create-meeting-note
+
+A plugin creates a note in the vault
 
 ```js
 // @case description A plugin creates a note in the vault
@@ -165,7 +170,10 @@ export default class NoteCreatorPlugin extends Plugin {
 
 ### eslint-obsidianmd (0 finding(s))
 
+No findings.
+
 ### glass-lint (9 finding(s))
+
 - obsidian:ui.command:detected at 13:5 - Registers commands
 - obsidian:vault.access:detected at 24:22 - Accesses Obsidian vault APIs
 - obsidian:workspace.open:detected at 26:13 - Opens files through the workspace
@@ -177,6 +185,8 @@ export default class NoteCreatorPlugin extends Plugin {
 - obsidian:vault.write:detected at 37:13 - Writes vault files
 
 ## download-daily-quote
+
+A plugin uses Obsidian's network request API
 
 ```js
 // @case description A plugin uses Obsidian's network request API
@@ -236,11 +246,16 @@ export default class RequestPlugin extends Plugin {
 
 ### eslint-obsidianmd (0 finding(s))
 
+No findings.
+
 ### glass-lint (2 finding(s))
+
 - obsidian:ui.command:detected at 12:5 - Registers commands
 - obsidian:network.request:detected at 22:28 - Uses Obsidian request APIs
 
 ## fetch-remote-catalog
+
+A plugin can make a browser network request
 
 ```js
 // @case description A plugin can make a browser network request
@@ -297,16 +312,20 @@ export default class NetworkPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (1 finding(s))
-- eslint-config:no-restricted-globals:customMessage at 24:28 - Unexpected use of 'fetch'. Use the built-in `requestUrl` function instead of `fetch` for network requests in Obsidian.
+### eslint-obsidianmd (0 finding(s))
+
+No findings.
 
 ### glass-lint (4 finding(s))
+
+- obsidian:ui.command:detected at 14:5 - Registers commands
 - js:network.request:detected at 24:28 - Uses browser network request APIs
 - js:network.url-construction:detected at 37:21 - Constructs or references URLs
-- obsidian:ui.command:detected at 14:5 - Registers commands
 - obsidian:ui.status-bar:detected at 43:20 - Registers status bar items
 
 ## inspect-note-tags
+
+A plugin reads metadata for the active file
 
 ```js
 // @case description A plugin reads metadata for the active file
@@ -364,10 +383,12 @@ export default class MetadataPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (1 finding(s))
-- eslint-obsidianmd:rule-custom-message:customMessage at 32:5 - [no-console] Avoid unnecessary logging to console. See https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
+### eslint-obsidianmd (0 finding(s))
+
+No findings.
 
 ### glass-lint (6 finding(s))
+
 - obsidian:ui.command:detected at 15:5 - Registers commands
 - obsidian:lifecycle.events:detected at 20:5 - Registers Obsidian lifecycle events
 - obsidian:metadata.cache-read:detected at 20:24 - Reads Obsidian metadata cache
@@ -376,6 +397,8 @@ export default class MetadataPlugin extends Plugin {
 - obsidian:metadata.cache-read:detected at 29:19 - Reads Obsidian metadata cache
 
 ## open-workspace-links
+
+A plugin opens a link in the workspace
 
 ```js
 // @case description A plugin opens a link in the workspace
@@ -435,13 +458,18 @@ export default class LinkOpenerPlugin extends Plugin {
 
 ### eslint-obsidianmd (0 finding(s))
 
+No findings.
+
 ### glass-lint (4 finding(s))
+
 - obsidian:ui.command:detected at 13:5 - Registers commands
 - obsidian:ui.command:detected at 18:5 - Registers commands
 - obsidian:workspace.open:detected at 28:11 - Opens files through the workspace
 - obsidian:workspace.active-file:detected at 39:18 - Accesses the active file
 
 ## persist-refresh-settings
+
+A plugin persists its own settings
 
 ```js
 // @case description A plugin persists its own settings
@@ -505,13 +533,18 @@ export default class SettingsPlugin extends Plugin {
 
 ### eslint-obsidianmd (0 finding(s))
 
+No findings.
+
 ### glass-lint (4 finding(s))
+
 - obsidian:storage.plugin-data-read:detected at 13:62 - Reads plugin data
 - obsidian:ui.command:detected at 14:5 - Registers commands
 - obsidian:storage.plugin-data-write:detected at 37:11 - Writes plugin data
 - obsidian:lifecycle.events:detected at 45:5 - Registers Obsidian lifecycle events
 
 ## render-executable-code-blocks
+
+A plugin evaluates JavaScript code blocks and renders string results
 
 ```js
 // @case description A plugin evaluates JavaScript code blocks and renders string results
@@ -527,8 +560,8 @@ export default class ExecutableCodeBlocksPlugin extends Plugin {
         this.registerMarkdownCodeBlockProcessor(
             "run-js",
             (source, element) => {
-                const run = new Function(`return (${source})`);
-                this.renderResult(element, run());
+                const result = activeWindow.eval(`${source}`);
+                this.renderResult(element, result);
             },
         );
         this.registerMarkdownCodeBlockProcessor(
@@ -551,16 +584,20 @@ export default class ExecutableCodeBlocksPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (1 finding(s))
-- eslint-obsidianmd:rule-custom-message:customMessage at 14:29 - [no-new-func] Using the `Function` constructor is dangerous because it executes arbitrary code, similar to `eval()`
+### eslint-obsidianmd (0 finding(s))
+
+No findings.
 
 ### glass-lint (4 finding(s))
-- js:dynamic-code.eval:detected at 14:33 - Evaluates dynamic code
-- js:dynamic-code.eval:detected at 24:33 - Evaluates dynamic code
+
 - obsidian:markdown.code-block-processor:detected at 11:9 - Registers markdown code-block processors
+- js:dynamic-code.eval:detected at 14:32 - Evaluates dynamic code
 - obsidian:markdown.code-block-processor:detected at 18:9 - Registers markdown code-block processors
+- js:dynamic-code.eval:detected at 24:33 - Evaluates dynamic code
 
 ## roll-ribbon-dice
+
+A plugin adds a ribbon action
 
 ```js
 // @case description A plugin adds a ribbon action
@@ -619,12 +656,17 @@ export default class RibbonPlugin extends Plugin {
 
 ### eslint-obsidianmd (0 finding(s))
 
+No findings.
+
 ### glass-lint (3 finding(s))
+
 - obsidian:ui.status-bar:detected at 13:19 - Registers status bar items
 - obsidian:ui.ribbon:detected at 14:19 - Registers ribbon icons
 - obsidian:ui.command:detected at 16:5 - Registers commands
 
 ## transform-text-case
+
+A plugin registers a command
 
 ```js
 // @case description A plugin registers a command
@@ -684,10 +726,44 @@ export default class CommandPlugin extends Plugin {
 
 ### eslint-obsidianmd (0 finding(s))
 
+No findings.
+
 ### glass-lint (1 finding(s))
+
 - obsidian:ui.command:detected at 21:7 - Registers commands
 
+## typescript-input
+
+TypeScript runtime and type-only input
+
+```js
+// @case description TypeScript runtime and type-only input
+// @case tags typescript,network
+// @tool glass-lint rules=js:network.request
+
+interface RequestShape { url: string }
+type FetchType = typeof fetch;
+import type { fetch as ImportedFetch } from "api";
+
+const request = (value: RequestShape): ReturnType<FetchType> =>
+    fetch(value.url); // @expect-error glass-lint rule=js:network.request message_id=detected
+
+declare const fetchTypeOnly: ImportedFetch;
+void fetchTypeOnly;
+
+```
+
+### eslint-obsidianmd (skipped)
+
+tool not configured for this case
+
+### glass-lint (1 finding(s))
+
+- js:network.request:detected at 10:5 - Uses browser network request APIs
+
 ## watch-vault-changes
+
+A plugin subscribes to vault changes through lifecycle cleanup
 
 ```js
 // @case description A plugin subscribes to vault changes through lifecycle cleanup
@@ -745,10 +821,12 @@ export default class VaultWatcherPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (1 finding(s))
-- eslint-obsidianmd:rule-custom-message:customMessage at 43:27 - [no-console] Avoid unnecessary logging to console. See https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
+### eslint-obsidianmd (0 finding(s))
+
+No findings.
 
 ### glass-lint (9 finding(s))
+
 - obsidian:lifecycle.events:detected at 14:5 - Registers Obsidian lifecycle events
 - obsidian:vault.access:detected at 15:7 - Accesses Obsidian vault APIs
 - obsidian:vault.events:detected at 15:7 - Registers vault events

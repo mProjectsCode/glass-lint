@@ -132,7 +132,12 @@ pub fn comparison(report: &SuiteReport) -> String {
         .cloned()
         .collect();
 
-    let mut out = String::from("# Glass Lint vs ESLint comparison\n\n");
+    let mut out = String::from(
+        "# Glass Lint and ESLint comparison\n\n\
+         This generated report compares findings on the end-to-end fixture suite.\n\
+         The tools have different rule catalogs, so counts are descriptive rather\n\
+         than precision or recall scores. Run `make compare` to regenerate it.\n\n",
+    );
 
     out.push_str(&format!(
         "| Case | {} |\n|---|{}|\n",
@@ -172,8 +177,8 @@ pub fn comparison(report: &SuiteReport) -> String {
             continue;
         }
         out.push_str(&format!(
-            "\n## {}\n\n```js\n{}\n```\n",
-            case.id, case.source
+            "\n## {}\n\n{}\n\n```js\n{}\n```\n",
+            case.id, case.description, case.source
         ));
         for (tool, result) in &case.tools {
             if result.skipped {
@@ -184,9 +189,12 @@ pub fn comparison(report: &SuiteReport) -> String {
                 continue;
             }
             out.push_str(&format!(
-                "\n### {tool} ({} finding(s))\n",
+                "\n### {tool} ({} finding(s))\n\n",
                 result.findings.len()
             ));
+            if result.findings.is_empty() {
+                out.push_str("No findings.\n");
+            }
             for finding in &result.findings {
                 out.push_str(&format!(
                     "- {}:{} at {}:{} - {}\n",

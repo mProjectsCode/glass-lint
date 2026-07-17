@@ -1,100 +1,48 @@
-# Testing strategy
+# Testing
 
-Glass Lint tests behavior at several layers. Use the lowest layer that proves
-the change, then add higher-level coverage when the behavior crosses package
-or tool boundaries.
+Use the lowest test layer that proves a change. Add a higher layer only when
+behavior crosses a crate or executable boundary.
 
-## Test layers
+## Test placement
 
 | Layer | Location | Purpose |
 |---|---|---|
-| Unit tests | Rust modules under `src/` | Local invariants, validation, normalization, and small algorithms |
-| Core integration tests | `glass-lint-core/tests/` | Public matcher behavior, scope precision, semantic flow, and compact-source behavior |
-| Project adapter tests | `glass-lint-project/src/` | Bounded discovery, source admission, boundary checks, and resolver classification |
-| Rule fixtures | Beside provider rules | One rule's intended positives and adversarial negatives |
-| End-to-end cases | `tests/e2e/` | Realistic snippets that exercise several rules and providers together |
-| External comparisons | Harness adapters and `reports/` | Compare structured findings across tools |
-| Profiling checks | Harness `profile` command | Throughput, slow files, determinism, and error totals on corpora |
+| Unit | Rust modules under `src/` | Private invariants, validation, and small algorithms |
+| Core integration | `glass-lint-core/tests/` | Public matcher, scope, provenance, flow, and report behavior |
+| Project | `glass-lint-project/src/tests.rs` and `tests/projects/` | Discovery, boundaries, resolution, and multi-file behavior |
+| Provider contract | Beside each rule | One rule's positives and adversarial negatives |
+| End to end | `tests/e2e/` | Realistic cross-rule and cross-provider workflows |
+| External comparison | Adapters and `reports/` | Descriptive output comparison across tools |
 
-Local-artifact tests cover `Send + Sync`, fingerprint invalidation, bounded
-in-memory cache reuse, parser invocation/hit observers, exhausted-artifact
-reuse, and identical serialized reports for worker counts 1, 2, and 4.
-Matcher parity tests exercise the private normalized query compiler; provider
-rules continue to use the ordinary Rust builder API.
+Do not copy a large case across layers. Extract the smallest regression at the
+layer that owns the behavior.
 
-The remediation boundary has direct tests for the typed status policy matrix
-(including below/at/above limits and fail-closed findings), lossless report
-combination, checked zero-based coordinates, controlled result release,
-production outstanding-work bounds, the public invariant inventory, and
-manifest rejection of selection drift. Profiler tests cover warm-up timing,
-all diagnostic and completion counters, full operation counts, and worker
-correctness parity.
+## Required matching coverage
 
-Run all required layers with `make ci`. During development, prefer a targeted
-command first:
+Cover each boundary relevant to the matcher:
 
-```sh
-cargo test -p glass-lint-core --test scope_precision
-cargo test -p glass-lint-project
-cargo test -p glass-lint-obsidian
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
-  verify glass-lint-obsidian/src/rules/network/request
-```
-
-### Project fixtures
-
-Multi-file cases live below `tests/projects/<name>/` and contain a
-`case.toml`. Their sources may mix `.js`, `.cjs`, `.mjs`, `.ts`, `.cts`, and
-`.mts`. A virtual case lists explicit `[[resolution]]` records; a filesystem
-case sets `filesystem = true` and exercises bounded discovery and Oxc
-resolution. Assertions remain in the source file they describe, while the
-project adapter runs all files through one `AnalysisSession`.
-
-External single-file adapters are skipped, with a stable reason, when a
-project case is encountered. This keeps comparison reports deterministic while
-allowing adapters to adopt protocol version 3 independently.
-
-## What matching tests must cover
-
-A rule or matcher change needs a focused positive and an adversarial negative
-for every relevant boundary:
-
-- direct usage and supported call variants;
+- direct use and supported call forms;
 - ESM, CommonJS, namespace, destructured, and interop provenance;
 - aliases before and after reassignment;
 - lexical shadowing and local same-name lookalikes;
-- static computed properties and dynamic property exclusions;
-- supported static values and rejected dynamic values;
-- connected source-to-sink flow and disconnected lookalikes;
-- constructors, instances, callbacks, or returned-object lifecycles where
-  applicable;
-- minified or bundled shapes when transformations affect the behavior.
+- static computed properties and rejected dynamic properties;
+- accepted static values and rejected dynamic values;
+- connected and disconnected source-to-sink flow;
+- constructors, returned objects, callbacks, and lifecycle stages; and
+- minified or bundled shapes where transformation affects semantics.
 
-Tests should demonstrate the intended precision boundary, not merely increase
-line coverage. Unknown or unsupported semantics should fail closed. Avoid
-brittle wall-clock assertions and unordered snapshots.
+Unknown, ambiguous, unsupported, dynamic, or budget-exhausted semantics must
+fail closed. Assert deterministic rule IDs and exact locations. Avoid
+wall-clock tests and unordered snapshots.
 
-Project flow tests should exercise a virtual project with explicit resolution
-records. Cover a source passed through an exported helper, a helper chain,
-returned parameter/object identities, reassignment or unsupported control
-flow, and deterministic budget exhaustion. Assert the sink file and exact
-source location; do not accept a finding merely because another file reports
-the same rule.
+For cross-file flow, use a virtual project with explicit resolution records.
+Assert the finding in the sink file, not merely the presence of the same rule
+elsewhere.
 
-Snippet analysis is a convenience entry point over the same one-file project
-session. Compare it with an equivalent `AnalysisReport` from
-`AnalysisSession` when changing orchestration or report construction.
+## Rule fixtures
 
-## Writing a rule fixture
-
-Each provider rule normally has two harness cases next to its `mod.rs`:
-
-- `positive.js` contains supported forms that must report.
-- `negative.js` contains shadowed, reassigned, local, dynamic, or near-name
-  forms that must not report.
-
-Configuration directives must appear in the leading comment block, before
-executable code:
+A provider rule normally has `positive.js` and `negative.js` beside `mod.rs`.
+Only tools named in a leading `@tool` directive run:
 
 ```js
 // @case description Detects a proven Obsidian request import
@@ -107,127 +55,78 @@ requestUrl("https://example.com");
 // @expect-error-after glass-lint rule=obsidian:network.request message_id=detected
 ```
 
-The default case ID is the path below the suite root without `.js`. Override
-metadata only when useful:
+The built-in adapter accepts either comma-separated `rules=` or
+`config=heuristic`; do not combine them. Optional leading metadata includes
+`@case id`, `description`, `tags`, `filename`, and `language`.
+
+Expectations can target the next, current, or previous code line:
 
 ```js
-// @case id network/import-alias
-// @case description Detects an aliased request import
-// @case tags network,alias
-// @case filename main.js
-// @case language javascript
-```
-
-The harness supports `javascript` fixtures (`.js`, `.cjs`, `.mjs`) and
-`typescript` fixtures (`.ts`, `.cts`, `.mts`). TypeScript cases are parsed
-without type-checking and use the core's fixed SWC normalization semantics.
-TSX and declaration files are not supported.
-
-### Tool configuration
-
-Only tools named by `@tool` run for a case. Configure focused rules with a
-comma-separated list:
-
-```js
-// @tool glass-lint rules=js:network.request,js:network.url-construction
-```
-
-The built-in adapter also accepts `config=heuristic`, which runs the complete
-JavaScript and Obsidian catalogs:
-
-```js
-// @tool glass-lint config=heuristic
-```
-
-Do not combine `rules=` and `config=` in one tool directive. External adapters
-define their own accepted configurations and rule IDs.
-
-### Diagnostic assertions
-
-Put an assertion immediately before, on, or after the source line it describes:
-
-```js
-// Applies to the next line.
 // @expect-error glass-lint rule=js:network.request
-fetch("/before");
+fetch("/next");
 
-// Applies to this line.
 fetch("/inline"); // @expect-error glass-lint rule=js:network.request
 
-// Applies to the previous code line.
-fetch("/after");
+fetch("/previous");
 // @expect-error-after glass-lint rule=js:network.request
 ```
 
-Supported fields are:
+Use `@expect-no-error` and `@expect-no-error-after` for a specific forbidden
+diagnostic while allowing other expected findings. A configured case with no
+expectations asserts that the tool emits no diagnostics.
+
+Expectation fields are:
 
 | Field | Meaning |
 |---|---|
 | `rule` | Required namespaced rule ID |
-| `message_id` | Stable diagnostic message identifier |
+| `message_id` | Stable message identifier |
 | `severity` | `info`, `warning`, or `error` |
-| `count` | Expected number of matching diagnostics, or `any` |
-| `line` | One-based source line, or `any` |
-| `column` | One-based display column, or `any` |
-| `message` | Exact message value without whitespace |
+| `count` | Expected count or `any` |
+| `line` | One-based source line or `any` |
+| `column` | One-based display column or `any` |
+| `message` | Exact whitespace-free message value |
 
-The default is `count=1` on the adjacent source line. Prefer exact locations
-and one assertion per diagnostic. Use `count=any`, `line=any`, or
-`column=any` only when testing aggregate capability presence rather than the
-shape of evidence.
+The default is one diagnostic on the adjacent source line. Use `any` only for
+intentional aggregate assertions.
 
-Use `@expect-no-error` or `@expect-no-error-after` for a specific forbidden
-diagnostic while allowing other expected findings in the same case:
+Supported fixture extensions are `.js`, `.cjs`, `.mjs`, `.ts`, `.cts`, and
+`.mts`. The extension determines the language; TypeScript is not type-checked.
 
-```js
-// @tool glass-lint rules=js:network.request
+## Project fixtures
 
-fetch("/remote"); // @expect-error glass-lint rule=js:network.request
-function local(fetch) {
-  fetch("/local"); // @expect-no-error glass-lint rule=js:network.request
-}
-```
+Multi-file cases live under `tests/projects/<name>/` with a `case.toml`.
+Virtual projects list explicit `[[resolution]]` records. Filesystem projects
+set `filesystem = true` to exercise discovery and Oxc resolution. Assertions
+stay in the source file they describe.
 
-A configured case with no assertions verifies that the tool emits no
-diagnostics.
+Snippet-only external adapters are skipped deterministically for project
+cases.
 
-## Choosing the right fixture location
+## Commands
 
-- Put one rule's semantic contract in its colocated `positive.js` and
-  `negative.js` files.
-- Put reusable public matcher semantics in `glass-lint-core/tests/`.
-- Put realistic workflows or interactions among rules in `tests/e2e/`.
-- Do not duplicate a large case at several layers; extract the smallest
-  regression at the layer that owns the behavior.
-
-## Harness commands
-
-Verify cases and fail on mismatches:
+Run a narrow test first:
 
 ```sh
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- verify tests/e2e
+cargo test -p glass-lint-core --test scope_precision
+cargo test -p glass-lint-project
+cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
+  verify glass-lint-obsidian/src/rules/network/request
 ```
 
-Render results without verification:
+Render without verification:
 
 ```sh
 cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
   report tests/e2e --format markdown
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- \
-  report tests/e2e --format json
 ```
 
-Register an external adapter with `--adapter NAME=COMMAND`. The harness sends
-one JSON request to a fresh process for each case and expects one JSON response
-using `ADAPTER_PROTOCOL_VERSION`; see `glass-lint-harness` for the public Rust
-request and response types.
+External adapters use `--adapter NAME=COMMAND`. The harness starts a fresh
+process per case, writes one versioned JSON request to stdin, and reads one
+JSON response from stdout.
 
-## Completion checklist
+Before finishing a behavior change, run:
 
-Before finishing a behavior change, confirm that:
-
-1. positives report at deterministic, correct locations;
-2. shadowed, reassigned, local, and dynamic lookalikes do not report;
-3. the narrow fixture or integration test passes;
-4. `make ci` passes; and
-5. documentation reflects any changed boundary.
+```sh
+make ci
+```

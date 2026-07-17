@@ -1,93 +1,68 @@
 # Contributing
 
-Glass Lint is a Rust workspace under active development. Contributions should
-preserve its provider boundaries, precision-first matching, bounded analysis,
-and deterministic output.
+Glass Lint is an actively developed Rust workspace. Changes must preserve
+provider boundaries, precision-first matching, bounded analysis, and
+deterministic output.
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md) before changing analysis or matcher
-behavior. Read [TESTING.md](TESTING.md) before adding a rule or changing an
-existing match boundary.
+Read [ARCHITECTURE.md](ARCHITECTURE.md) and the owning crate's
+`ARCHITECTURE.md` before changing analysis, public APIs, or crate boundaries.
+Read [TESTING.md](TESTING.md) before changing matcher or rule behavior.
 
 ## Prerequisites
 
-- A recent Rust toolchain with `cargo`, `rustfmt`, and Clippy
-- GNU Make for the documented shortcuts
-- Bun only when working on the ESLint comparison adapter
-- Samply only when collecting profiling traces
+- A recent Rust toolchain with Cargo, rustfmt, and Clippy
+- GNU Make for repository shortcuts
+- Bun only for the external ESLint adapter
+- Samply only for profiling traces
 
-Build the complete workspace with:
+## Workflow
 
-```sh
-make build
-```
+1. Inspect `git status` and preserve unrelated changes.
+2. Put the change in the owning crate.
+3. Add the narrowest test that proves the behavior. Matching changes need
+   focused positives and adversarial negatives.
+4. Run a targeted test while iterating.
+5. Update affected callers, fixtures, schemas, and documentation in the same
+   change.
+6. Run `make ci`.
 
-## Development workflow
+Breaking changes are allowed during active development. Make one clean
+migration and remove obsolete paths instead of adding compatibility layers by
+default.
 
-1. Identify the owning crate before editing. Generic analysis belongs in
-   `glass-lint-core`; filesystem discovery and Oxc resolution belong in
-   `glass-lint-project`; JavaScript platform and Obsidian policy belong in
-   their provider crates.
-2. Add or update focused tests with the implementation. Matching changes need
-   positive cases and adversarial negatives.
-3. Run the narrowest relevant test while iterating. For session changes,
-   exercise both deterministic source admission and the worker-count path.
-4. Run the full validation gate before considering the change complete.
-5. Update public documentation, fixtures, adapters, and callers when making a
-   breaking change.
+## Commands
 
-The full local gate is:
-
-```sh
-make ci
-```
-
-This checks formatting, compilation, warnings-denied Clippy, workspace tests,
-end-to-end harness cases, and both providers' rule fixtures.
-
-## Make targets
-
-| Target | Purpose |
+| Command | Purpose |
 |---|---|
-| `make build` | Build every workspace package |
+| `make build` | Build the workspace |
 | `make check` | Type-check the workspace |
 | `make fmt` | Format Rust sources |
-| `make fmt-check` | Verify Rust formatting without modifying files |
+| `make fmt-check` | Check Rust formatting |
 | `make clippy` | Run Clippy for all targets with warnings denied |
-| `make test` | Run all Rust unit and integration tests |
-| `make test-e2e` | Verify `tests/e2e` through the harness |
-| `make test-projects` | Verify virtual and filesystem project fixtures |
-| `make test-rules` | Verify colocated JavaScript and Obsidian rule fixtures |
-| `make profile` | Build the profiling harness and record with Samply |
-| `make compare` | Compare Glass Lint with the external ESLint adapter |
-| `make ci` | Run the complete required validation gate |
-| `make clean` | Remove Cargo build artifacts |
+| `make test` | Run workspace unit and integration tests |
+| `make test-e2e` | Verify `tests/e2e` |
+| `make test-projects` | Verify `tests/projects` |
+| `make test-rules` | Verify provider rule fixtures |
+| `make ci` | Run the complete validation gate |
+| `make profile` | Build and record a Samply profile |
+| `make compare` | Regenerate `reports/COMPARISON.md` |
 
-Override Make variables on the command line when needed. For example:
+Override Make variables when needed:
 
 ```sh
 make test-e2e HARNESS_SUITE=path/to/cases
 make profile PROFILE_PATH=path/to/bundles PROFILE_PROVIDER=js
 ```
 
-## Adding or changing rules
+## Rule changes
 
-Use the declarative matcher API from `glass-lint-core` whenever possible. A
-typical provider rule supplies a local rule ID, label, category, severity,
-confidence, and one or more matchers. The catalog adds the provider prefix.
+Prefer the declarative matcher API in `glass-lint-core`. Add a reusable
+provider-neutral matcher primitive when multiple rules need the same semantic
+operation; use provider callbacks only when the matcher API cannot express the
+rule accurately.
 
-Choose the strongest matcher supported by the intended semantics:
-
-- global or module-provenance matchers for identified calls and constructors;
-- rooted member matchers for proven object chains;
-- argument constraints for static values or rooted expressions;
-- connected flow matchers when source, transformation, and sink must coexist;
-- syntactic heuristics only for opt-in discovery behavior.
-
-Do not use raw strings or property names when the rule claims a proven API
-identity. Add shared matcher capability to core if several providers need the
-same semantic operation.
-
-Place provider fixture files beside the rule implementation:
+Rule factories use local IDs. `RuleCatalog` adds the namespace, producing IDs
+such as `js:network.request`. Keep each provider contract beside its rule:
 
 ```text
 rules/<area>/<rule>/
@@ -96,119 +71,29 @@ rules/<area>/<rule>/
   negative.js
 ```
 
-Document the rule's intended matches, precision boundary, and known
-limitations in a Rust doc comment.
+Document the intended match, precision boundary, and known limitations in the
+rule's Rust doc comment. [TESTING.md](TESTING.md) defines the required
+adversarial coverage and fixture directives.
 
-## Profiling
+## Profiling and external comparison
 
-Folder profiling reads selected JavaScript and TypeScript runtime files into memory before timing `Linter::lint`,
-so measured lint wall time excludes discovery, file reads, and decoding. File
-discovery is recursive and deterministic and does not follow symlinks.
+Use `glass-lint-harness profile` for deterministic corpus selection, manifests,
+worker comparisons, and phase metrics. Keep the build profile, verified
+manifest, provider, rule profile, worker count, warm-up count, and repetition
+count fixed across measurements. Prefer operation-count regression tests over
+wall-clock assertions.
 
-Use one representative subfolder of a production corpus rather than an entire
-release archive:
+The [harness CLI README](glass-lint-harness-cli/) documents profiling modes.
+The [ESLint adapter README](adapters/eslint-obsidianmd/) documents external
+comparison setup.
 
-```sh
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- profile \
-  --path /path/to/plugin/bundles \
-  --provider obsidian \
-  --profile recommended \
-  --sample 20 \
-  --seed 20260712 \
-  --quiet
-```
+## Documentation ownership
 
-Repeated `--path` options combine roots. `--include` and `--exclude` use
-`glob::Pattern` syntax with slash-separated paths; a pattern without a slash
-also matches basenames. Use `--warm-up`, `--repeat`, and `--workers` to control
-execution. The default is one measured pass on one worker.
+- Root `README.md`: user entry point
+- Root `ARCHITECTURE.md`: crate graph and workspace boundaries only
+- Crate `README.md`: public purpose and usage
+- Crate `ARCHITECTURE.md`: internal design and invariants
+- `TESTING.md`: test placement and fixture authoring
+- `AGENTS.md`: concise coding-agent instructions
 
-For a Samply trace:
-
-```sh
-make profile \
-  PROFILE_PATH=/path/to/plugin/bundles \
-  PROFILE_ARGS="--quiet --sample 20 --seed 20260712"
-```
-
-Normal profiling measures independent prepared files. `--project` measures
-filesystem discovery, source loading, resolution, linking, and matching as a
-project. `--admitted-project` measures the explicit `AnalysisSession`
-admission path from exactly one directory root; it intentionally supplies no
-resolver answers, so authored requests are reported as typed partial outcomes
-unless a future manifest contract carries resolutions. The two project modes
-are mutually exclusive.
-
-Performance changes should compare the same build profile, verified manifest,
-worker count, and repeat policy. Prefer deterministic operation-count tests to
-wall-clock assertions in the normal suite.
-
-Freeze a sampled corpus once, then drive every mode and binary from the same
-content-verified manifest:
-
-```sh
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- profile \
-  --path /path/to/plugin/bundles \
-  --sample 100 --seed 0 \
-  --create-manifest /durable/path/profile-manifest.json \
-  --root-label plugin-release-mainjs
-
-cargo run -p glass-lint-harness-cli --bin glass-lint-harness -- profile \
-  --path /path/to/plugin/bundles \
-  --manifest /durable/path/profile-manifest.json \
-  --warm-up 1 --repeat 3 --workers 1 --quiet
-```
-
-Use that same manifest for every comparison cell; it records normalized
-relative paths, byte lengths, content hashes, and a manifest digest. Manifest
-verification rejects missing, added, changed, duplicate, absolute, traversal,
-and symlink-escape paths. A fixed comparison records independent-file and
-admitted-project modes at worker counts 1 and `N = min(4, available CPUs)`,
-with three measured repetitions after one warm-up. Record medians, throughput,
-peak RSS, completion, all diagnostics, evidence ordering, operation counts,
-and the literal commands.
-
-Manifest verification rejects selection drift, missing or changed files,
-duplicate/non-relative paths, and symlink escapes. The manifest—not later
-sampler changes—owns the selection seed and requested sample size.
-
-For project profiling, add `--project`. The summary reports discovery, reads,
-parse/local analysis, resolution, linking/matching, and total time, together
-with deterministic counts for files, requests, edges, and evidence. Use a
-representative mixed-language project and keep resolver/network work out of
-the timed corpus setup when comparing runs.
-
-Use `--admitted-project` instead to profile the explicit `AnalysisSession`
-admission path. It conflicts with `--project`, requires exactly one directory
-root, and accepts the same `--manifest`. Admitted-project mode intentionally
-supplies no resolver answers; unresolved authored requests therefore produce
-typed partial diagnostics unless a future manifest contract carries explicit
-resolutions.
-
-## External comparison adapter
-
-The adapter under `adapters/eslint-obsidianmd` requires Bun dependencies:
-
-```sh
-cd adapters/eslint-obsidianmd
-bun install
-cd ../..
-make compare
-```
-
-The comparison command writes [`reports/COMPARISON.md`](reports/COMPARISON.md).
-See the [adapter README](adapters/eslint-obsidianmd/README.md) for protocol and
-isolation details.
-
-## Documentation
-
-Keep docs close to their audience:
-
-- `README.md` is the user-facing entry point.
-- Each crate README explains that crate's purpose and public surface.
-- `ARCHITECTURE.md` records durable boundaries and data flow.
-- `TESTING.md` defines test layers and fixture authoring.
-- `AGENTS.md` contains concise repository instructions for coding agents.
-
-When commands, rule IDs, schemas, or directory layouts change, update every
-affected document in the same change.
+Keep one source of truth and link to it instead of copying it.

@@ -1,27 +1,15 @@
-# Obsidian rule accuracy policy
+# Obsidian profile policy
 
-The default `recommended` profile is precision-first. A rule belongs in this
-profile only when positive examples and adversarial negatives support the
-matching mechanism it uses. Glass Lint does not make a numeric precision claim
-until a representative, manually labeled bundle corpus exists.
+The `recommended` profile contains rules backed by proven lexical identity,
+module provenance, exact static constraints, or connected flow. Relevant
+shadowing, reassignment, lookalike, dynamic-value, and lifecycle boundaries
+must have adversarial fixtures.
 
-## Accepted mechanisms
+The `heuristic` profile adds broader literal and syntactic discovery. These
+rules are useful for review but are not high-confidence lint failures.
+Promotion to `recommended` requires removing or explicitly justifying every
+unconstrained matcher.
 
-- Lexically resolved global calls with local shadowing excluded.
-- ESM, CommonJS, namespace, bundled-wrapper, alias, and destructuring provenance.
-- Rooted member chains with reassignment-aware alias flow.
-- Exact static call-argument constraints.
-- Connected AST flows whose source, transformations, and sink are all observed.
-- Parsed literals rather than raw matches in comments or identifiers.
-
-## Heuristic profile
-
-The `heuristic` profile additionally includes rules based on broad literal
-fragments, unconstrained syntactic member names, suffix member reads, or class
-and method names without verified provenance. These rules remain useful for
-discovery but are not suitable as high-confidence lint failures.
-
-Every heuristic rule remains available under its stable `obsidian:<name>` ID.
-Promotion to `recommended` requires focused negative coverage and the removal
-or explicit justification of every unconstrained matcher. See the repository
-[testing strategy](../TESTING.md) for required rule coverage.
+Glass Lint makes no numeric precision claim until a representative, manually
+labeled bundle corpus exists. See [TESTING.md](../TESTING.md) for fixture
+requirements.

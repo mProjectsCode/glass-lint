@@ -1,16 +1,13 @@
 # glass-lint-core
 
-`glass-lint-core` is the provider-neutral analysis engine. It parses one source
-file once, builds shared lexical and semantic facts, runs validated matchers,
-and produces deterministic reports. It also owns the bounded cross-file model
-used to link imports, exports, and supported call flow.
+`glass-lint-core` is the provider-neutral analysis engine. It accepts owned
+JavaScript or TypeScript sources, a validated rule catalog, an explicit host
+environment, and typed module resolutions. It produces bounded,
+deterministically ordered reports without filesystem access.
 
-The crate contains no host-specific rule policy. Callers provide a catalog of
-rules and an explicit host environment.
+## Define a catalog
 
-## Analyze one file
-
-Rules use local IDs inside a namespaced `RuleCatalog`:
+Rules use local IDs; `RuleCatalog` adds the provider namespace:
 
 ```rust
 use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
@@ -28,82 +25,47 @@ let mut environment = Environment::default();
 environment.add_global("fetch")?;
 
 let catalog = RuleCatalog::with_environment("example", vec![rule], environment)?;
-let report = Linter::new(catalog).lint("fetch('/data');", "main.js");
+let linter = Linter::new(catalog);
+let report = linter.lint_snippet("fetch('/data');", "main.js")?;
 
-assert_eq!(report.findings[0].rule_id.as_str(), "example:network.request");
+assert_eq!(report.files[0].findings[0].rule_id.as_str(), "example:network.request");
 ```
 
-`Linter::new` enables every rule in a catalog. `Linter::with_rules` enables an
-exact validated set of `RuleId` values, and `Linter::with_confidence` selects a
-confidence level. `Linter::combine_with_environment` combines existing
-linters into one analysis pass while preserving their enabled rule sets.
+`Linter::new` enables the complete catalog. `Linter::with_rules` selects exact
+qualified IDs, `Linter::with_confidence` selects a confidence threshold, and
+`Linter::configured` applies `CoreConfig`.
 
-## Matching model
+## Matching
 
-Strict matchers prove what a value refers to instead of matching spelling
-alone. The public rule API covers:
+Strict matchers prove identity or connected semantics instead of matching
+spelling alone. The public builder API covers:
 
 - global and module-provenance calls and constructors;
-- rooted, module, returned-object, and instance member behavior;
-- imports and parsed string literals;
-- static string, object-key, and rooted-expression arguments; and
+- rooted, returned-object, instance, and module member behavior;
+- imports and parsed literals;
+- static value and rooted-expression argument constraints; and
 - bounded object lifecycles and connected source-to-sink flow.
 
-Argument constraints use `.arg(index, ValueMatcher::...)`.
-`ValueMatcher::any_value()` accepts a dynamic value;
-`ValueMatcher::static_string()` requires a proven static string. APIs with
-`heuristic` in their name deliberately opt into weaker syntactic evidence.
+APIs named `heuristic` deliberately use weaker syntactic evidence.
+Unsupported, ambiguous, dynamic, or exhausted analysis does not become a
+strict match.
 
-Rules are normalized and validated when built, then compiled once with their
-catalog. Unsupported, ambiguous, dynamic, or budget-exhausted analysis does not
-become a strict match.
+## Environments and projects
 
-## Host environments
+`Environment::default()` contains host-independent ECMAScript globals.
+Providers add browser, Node.js, Electron, or application bindings. Use
+`add_global_object` for an unrestricted current-realm alias and
+`add_global_object_with_members` for a restricted host object.
 
-`Environment::default()` includes host-independent ECMAScript globals such as
-`Math`, `Function`, and `eval`. Add runtime bindings explicitly with
-`add_global` or `add_globals`.
+For one source, call `Linter::lint_snippet`. For an in-memory project, use
+`Linter::lint_project` or `AnalysisSession` with owned `SourceFile` values and
+typed `ResolutionResult` records. Filesystem discovery and module resolution
+belong in `glass-lint-project`.
 
-Global-object aliases need a little more care:
+`AnalysisReport` contains sorted file reports, structured diagnostics,
+operation counts, and `ReportCompletion`. Locations use one-based Unicode
+display columns. TypeScript is normalized but not type-checked. Sources larger
+than 8 MiB are rejected.
 
-- `add_global_object` models an unrestricted alias of the current global
-  object.
-- `add_global_object_with_members` exposes only listed members, which is useful
-  for another realm or a partially known host object.
-- `extend` merges another environment configuration.
-
-Unconfigured unbound names are not treated as host APIs.
-
-## Cross-file analysis
-
-`AnalysisSession` admits owned `SourceFile` values, analyzes each admitted file
-once, exposes typed `ResolutionRequest` records, and consumes
-`ResolutionResult` values supplied by the caller. It never performs filesystem
-access or module resolution itself. Once resolutions are supplied, it links the
-supported module graph and returns one `AnalysisReport` with deterministic
-findings, diagnostics, completion state, and operation counts.
-
-## Reports and limits
-
-`Linter::lint` selects TypeScript for `.ts`, `.cts`, and `.mts`, and JavaScript
-for `.js`, `.cjs`, and `.mjs`. TypeScript is normalized with fixed settings; it
-is not type-checked or configured from `tsconfig.json`.
-
-`AnalysisReport` contains versioned, sorted file reports and structured parse
-or project diagnostics. Locations use one-based Unicode display columns.
-Evidence and output are bounded; sources larger than `MAX_SOURCE_BYTES` (8 MiB)
-return a parse diagnostic rather than being analyzed.
-
-`PrettyReport`, `PrettyReports`, and `PrettyOptions` render bounded human
-output without changing the structured report. `CoreConfig` applies
-`AnalysisLimits` (syntax, semantic, effect, evidence, link, and flow budgets)
-and exact rule selection to an existing linter. The `Linter` owns a bounded
-in-memory artifact cache reused across its lint calls; cache state is not
-serialized and does not change reports.
-
-Parsing and TypeScript normalization are implemented by a private SWC-backed
-local frontend. It lowers directly into the retained matcher-independent
-semantic artifact; no parser-neutral mirror AST is part of the public API.
-
-See the repository [architecture](../ARCHITECTURE.md) for the internal pipeline
-and [testing guide](../TESTING.md) for matcher test expectations.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the internal pipeline and the
+workspace [testing guide](../TESTING.md) for matcher coverage.

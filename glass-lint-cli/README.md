@@ -77,3 +77,5 @@ The process exits with:
 
 `fail_on` accepts `info`, `warning`, `error`, and `never`; its default is
 `error`.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for command-layer boundaries.
