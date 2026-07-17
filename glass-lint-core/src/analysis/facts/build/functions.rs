@@ -25,14 +25,8 @@ impl FactBuilder<'_> {
         parameters: impl IntoIterator<Item = (usize, Pat)>,
         boundary: FunctionBoundary,
     ) {
-        // The owner is the enclosing function, not the function being entered;
-        // this distinction keeps nested effects attached to the right scope.
         let scope = self.scope_at(span);
         let id = self.resolver.function_id_for_scope(scope);
-        let owner = self
-            .resolver
-            .scope_parent(scope)
-            .map_or(id, |scope| self.resolver.function_id_for_scope(scope));
         let mut parameter_bindings = Vec::new();
         for (parameter_index, parameter) in parameters {
             self.parameter_bindings(
@@ -49,7 +43,6 @@ impl FactBuilder<'_> {
             span,
             FactPayload::Function {
                 id,
-                owner,
                 parameters: parameter_bindings,
                 boundary,
             },

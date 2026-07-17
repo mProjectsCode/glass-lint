@@ -1,0 +1,60 @@
+use super::*;
+
+#[test]
+fn validation_normalizes_and_sorts_sources_and_edges() {
+    let input = ProjectInput {
+        root: "/project".into(),
+        sources: vec![source_file("./z.js", ""), source_file("a.js", "")],
+        resolutions: vec![(
+            key("./z.js"),
+            ResolutionResult::Internal {
+                path: project_path("./a.js"),
+            },
+        )],
+    }
+    .validate()
+    .unwrap();
+
+    assert_eq!(
+        input
+            .sources
+            .iter()
+            .map(|source| source.path.as_str())
+            .collect::<Vec<_>>(),
+        ["a.js", "z.js"]
+    );
+    assert_eq!(input.resolutions[0].0.importer, "z.js");
+    assert_eq!(
+        input.resolutions[0].1,
+        ResolutionResult::Internal {
+            path: project_path("a.js")
+        }
+    );
+    assert_eq!(input.module_ids()["a.js"], ModuleId::new(0));
+    assert_eq!(input.module_ids()["z.js"], ModuleId::new(1));
+}
+
+#[test]
+fn duplicate_and_foreign_records_are_rejected() {
+    let duplicate = ProjectInput {
+        root: "/project".into(),
+        sources: vec![source_file("a.js", ""), source_file("./a.js", "")],
+        resolutions: vec![],
+    }
+    .validate();
+    assert!(matches!(
+        duplicate,
+        Err(ProjectInputError::DuplicateSource(_))
+    ));
+
+    let foreign = ProjectInput {
+        root: "/project".into(),
+        sources: vec![source_file("a.js", "")],
+        resolutions: vec![(key("missing.js"), ResolutionResult::Missing)],
+    }
+    .validate();
+    assert!(matches!(
+        foreign,
+        Err(ProjectInputError::UnknownImporter(_))
+    ));
+}

@@ -48,7 +48,6 @@ impl Visit for FactBuilder<'_> {
             FactKind::MemberRead,
             member.span(),
             FactPayload::MemberRead {
-                value: resolved.id,
                 syntactic_chain,
                 rooted_chain: resolved.rooted_chain.clone(),
                 module_member: resolved.module_member.clone(),
@@ -171,7 +170,6 @@ impl Visit for FactBuilder<'_> {
                     FactKind::MemberRead,
                     member.span(),
                     FactPayload::MemberRead {
-                        value: resolved.id,
                         syntactic_chain,
                         rooted_chain: resolved.rooted_chain.clone(),
                         module_member: resolved.module_member.clone(),
@@ -191,12 +189,11 @@ impl Visit for FactBuilder<'_> {
         // like `new globalThis.URL(...)` or `new mod.Foo(...)`.
         let (callee_name, provenance) = match &*new_expr.callee {
             Expr::Ident(ident) => {
-                let p = resolved.call.clone();
+                let p = resolved.call;
                 (
                     Some(
                         resolved
                             .rooted_chain
-                            .clone()
                             .unwrap_or_else(|| ident.sym.to_string()),
                     ),
                     p,
@@ -231,23 +228,20 @@ impl Visit for FactBuilder<'_> {
                         },
                     )
                 } else {
-                    (None, resolved.call.clone())
+                    (None, resolved.call)
                 }
             }
-            _ => (None, resolved.call.clone()),
+            _ => (None, resolved.call),
         };
 
         new_expr.visit_children_with(self);
         let Some(callee_span) = self.byte_range(callee_span) else {
             return;
         };
-        let result = self.resolver.fresh_object_value_at(new_expr.span).id;
         self.emit(
             FactKind::Construction,
             new_expr.span(),
             FactPayload::Construction {
-                callee: resolved.id,
-                result,
                 callee_span,
                 callee_name,
                 provenance,

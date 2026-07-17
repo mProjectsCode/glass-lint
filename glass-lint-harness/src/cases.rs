@@ -103,16 +103,8 @@ fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
         || default_filename(path),
         |name| name.to_string_lossy().into_owned(),
     );
-    let mut case = Case {
-        id: id.clone(),
-        description: id,
-        tags: vec![],
-        language: language_for_path(path).into(),
-        filename,
-        source,
-        project: None,
-        tools: BTreeMap::new(),
-    };
+    let mut case = Case::new(id.clone(), id, language_for_path(path), filename, source)
+        .map_err(|error| anyhow::anyhow!(error))?;
 
     let lines: Vec<_> = case.source.lines().map(str::to_owned).collect();
     for line in &lines {
@@ -431,19 +423,15 @@ fn parse_tool_directive(case: &mut Case, rest: &str) -> Result<()> {
     let (name, fields) = rest
         .split_once(' ')
         .with_context(|| format!("invalid @tool directive `{rest}`"))?;
-    let mut expectation = ToolExpectation {
-        config: None,
-        rules: vec![],
-        required: vec![],
-        forbidden: vec![],
-    };
+    let mut config = None;
+    let mut rules = Vec::new();
     for (key, value) in parse_fields(fields)? {
         match key.as_str() {
             "config" => {
-                expectation.config = Some(value);
+                config = Some(value);
             }
             "rules" => {
-                expectation.rules = value
+                rules = value
                     .split(',')
                     .map(str::trim)
                     .filter(|rule| !rule.is_empty())
@@ -453,9 +441,8 @@ fn parse_tool_directive(case: &mut Case, rest: &str) -> Result<()> {
             _ => bail!("unknown @tool field `{key}`"),
         }
     }
-    if expectation.config.is_none() && expectation.rules.is_empty() {
-        bail!("@tool {name} must specify rules= or config=");
-    }
+    let expectation = ToolExpectation::new(config, rules)
+        .map_err(|error| anyhow::anyhow!("@tool {name}: {error}"))?;
     case.tools.insert(name.into(), expectation);
     Ok(())
 }
@@ -468,31 +455,35 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
         .tools
         .get_mut(tool)
         .with_context(|| format!("@expect-error references unconfigured tool `{tool}`"))?;
-    let mut diagnostic = DiagnosticExpectation {
-        path: None,
-        rule_id: String::new(),
-        message_id: None,
-        severity: None,
-        count: Some(1),
-        line: Some(line),
-        column: None,
-        message: None,
-    };
+    let mut rule_id = None;
+    let mut message_id = None;
+    let mut severity = None;
+    let mut count = Some(1);
+    let mut expected_line = Some(line);
+    let mut column = None;
+    let mut message = None;
     for (key, value) in parse_fields(fields)? {
         match key.as_str() {
-            "rule" => diagnostic.rule_id = value,
-            "message_id" => diagnostic.message_id = Some(value),
-            "severity" => diagnostic.severity = Some(parse_severity(&value)?),
-            "count" => diagnostic.count = parse_optional_usize(&value)?,
-            "line" => diagnostic.line = parse_optional_u32(&value)?,
-            "column" => diagnostic.column = parse_optional_u32(&value)?,
-            "message" => diagnostic.message = Some(value),
+            "rule" => rule_id = Some(value),
+            "message_id" => message_id = Some(value),
+            "severity" => severity = Some(parse_severity(&value)?),
+            "count" => count = parse_optional_usize(&value)?,
+            "line" => expected_line = parse_optional_u32(&value)?,
+            "column" => column = parse_optional_u32(&value)?,
+            "message" => message = Some(value),
             _ => bail!("unknown @expect-error field `{key}`"),
         }
     }
-    if diagnostic.rule_id.is_empty() {
-        bail!("@expect-error for {tool} must specify rule=");
-    }
+    let mut diagnostic = DiagnosticExpectation::new(
+        rule_id.with_context(|| format!("@expect-error for {tool} must specify rule="))?,
+    )
+    .map_err(|error| anyhow::anyhow!(error))?;
+    diagnostic.message_id = message_id;
+    diagnostic.severity = severity;
+    diagnostic.count = count;
+    diagnostic.line = expected_line;
+    diagnostic.column = column;
+    diagnostic.message = message;
     if required {
         expectation.required.push(diagnostic);
     } else {

@@ -74,21 +74,6 @@ impl<K: Ord> OccurrenceIndex<K> {
             occurrences.dedup();
         }
     }
-
-    /// Merge another index and normalize the combined buckets.
-    #[allow(dead_code)]
-    pub(super) fn merge(&mut self, other: Self) {
-        for (key, occurrences) in other.0 {
-            self.0.entry(key).or_default().extend(occurrences);
-        }
-        self.normalize();
-    }
-
-    /// Borrow one normalized occurrence bucket, or an empty slice if absent.
-    #[allow(dead_code)]
-    pub(super) fn occurrences(&self, key: &K) -> &[Occurrence] {
-        self.0.get(key).map_or(&[], Vec::as_slice)
-    }
 }
 
 impl<K: Ord + Clone> OccurrenceIndex<K> {

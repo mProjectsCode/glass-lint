@@ -21,9 +21,6 @@ pub(in crate::analysis) enum UnknownReason {
     Missing,
     /// Resolution encountered a recursive identity cycle.
     Cycle,
-    /// Several independent unknown outcomes contributed to one join.
-    #[allow(dead_code)]
-    Multiple(Vec<Self>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -47,45 +44,6 @@ pub(in crate::analysis) enum Knowledge<T> {
 impl<T> Knowledge<T> {
     pub(in crate::analysis) fn is_known(&self) -> bool {
         matches!(self, Self::Known(_))
-    }
-
-    /// Join knowledge from two control-flow or alias paths without treating
-    /// absence from either path as proof of a single identity.
-    #[allow(dead_code)]
-    pub(in crate::analysis) fn join(self, other: Self) -> Self
-    where
-        T: Eq,
-    {
-        match (self, other) {
-            (Self::Known(left), Self::Known(right)) if left == right => Self::Known(left),
-            (Self::Ambiguous, _) | (_, Self::Ambiguous) | (Self::Known(_), Self::Known(_)) => {
-                Self::Ambiguous
-            }
-            (Self::Known(_), Self::Unknown(reason)) | (Self::Unknown(reason), Self::Known(_)) => {
-                Self::Unknown(reason)
-            }
-            (Self::Unknown(left), Self::Unknown(right)) => {
-                Self::Unknown(merge_unknown_reasons(left, right))
-            }
-        }
-    }
-}
-
-#[allow(dead_code)]
-fn merge_unknown_reasons(left: UnknownReason, right: UnknownReason) -> UnknownReason {
-    let mut reasons = Vec::new();
-    for reason in [left, right] {
-        match reason {
-            UnknownReason::Multiple(nested) => reasons.extend(nested),
-            reason => reasons.push(reason),
-        }
-    }
-    reasons.sort();
-    reasons.dedup();
-    if reasons.len() == 1 {
-        reasons.pop().expect("one reason exists")
-    } else {
-        UnknownReason::Multiple(reasons)
     }
 }
 
@@ -153,31 +111,5 @@ mod tests {
             SymbolCallProvenance::Unknown(UnknownReason::Cycle).knowledge(),
             Knowledge::Unknown(UnknownReason::Cycle)
         ));
-    }
-
-    #[test]
-    fn knowledge_join_is_conservative_and_retains_unknown_reasons() {
-        let known = Knowledge::Known("fetch");
-        assert_eq!(known.clone().join(Knowledge::Known("fetch")), known);
-        assert_eq!(
-            Knowledge::Known("fetch").join(Knowledge::Known("require")),
-            Knowledge::Ambiguous
-        );
-        assert_eq!(
-            Knowledge::Known("fetch").join(Knowledge::Unknown(UnknownReason::Cycle)),
-            Knowledge::Unknown(UnknownReason::Cycle)
-        );
-        assert_eq!(
-            Knowledge::<&str>::Unknown(UnknownReason::Cycle)
-                .join(Knowledge::Unknown(UnknownReason::Unsupported)),
-            Knowledge::Unknown(UnknownReason::Multiple(vec![
-                UnknownReason::Unsupported,
-                UnknownReason::Cycle,
-            ]))
-        );
-        assert_eq!(
-            Knowledge::<&str>::Ambiguous.join(Knowledge::Unknown(UnknownReason::Missing)),
-            Knowledge::Ambiguous
-        );
     }
 }

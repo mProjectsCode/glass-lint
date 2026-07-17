@@ -13,14 +13,14 @@ use glass_lint_core::{
 use crate::{
     discovery::{ProjectDiscovery, absolute_path, inside_root, realpath},
     error::ProjectLoadError,
-    options::{ProjectLoadOptions, ProjectSelection},
+    options::{ProjectLoadOptions, ProjectSelection, ValidatedProjectLoadOptions},
     resolver::ProjectResolver,
 };
 
 /// Filesystem loader and Oxc resolver configuration.
 #[derive(Clone, Debug)]
 pub struct ProjectLoader {
-    options: ProjectLoadOptions,
+    options: ValidatedProjectLoadOptions,
 }
 
 /// Result of a project load that may contain deterministic partial output.
@@ -89,9 +89,8 @@ impl std::ops::AddAssign for ProjectLoadMetrics {
 
 impl ProjectLoader {
     /// Validate options and construct a reusable filesystem loader.
-    pub fn new(options: ProjectLoadOptions) -> Result<Self, ProjectLoadError> {
-        options.validate()?;
-        Ok(Self { options })
+    pub fn new(options: ValidatedProjectLoadOptions) -> Self {
+        Self { options }
     }
 
     /// Borrow the validated policy used by this loader.

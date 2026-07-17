@@ -165,7 +165,6 @@ mod tests {
                     unwrap: None,
                 },
                 FactKind::MemberRead => FactPayload::MemberRead {
-                    value: ValueId::UNKNOWN,
                     syntactic_chain: None,
                     rooted_chain: None,
                     module_member: None,
@@ -178,7 +177,6 @@ mod tests {
                 },
                 FactKind::Function => FactPayload::Function {
                     id: FunctionId(0),
-                    owner: FunctionId(0),
                     parameters: Vec::new(),
                     boundary: FunctionBoundary::Enter,
                 },

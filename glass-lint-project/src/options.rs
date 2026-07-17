@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    ops::Deref,
     path::PathBuf,
 };
 
@@ -49,27 +50,116 @@ impl ProjectSelection {
 #[derive(Clone, Debug)]
 pub struct ProjectLoadOptions {
     /// Project boundary. If omitted, the selection's directory is used.
-    pub root: Option<PathBuf>,
+    pub(crate) root: Option<PathBuf>,
     /// Maximum number of admitted source files.
-    pub max_files: usize,
+    pub(crate) max_files: usize,
     /// Maximum number of resolver requests.
-    pub max_requests: usize,
+    pub(crate) max_requests: usize,
     /// Maximum bytes accepted for one source.
-    pub max_source_bytes: u64,
+    pub(crate) max_source_bytes: u64,
     /// Maximum aggregate source bytes reserved before parsing.
-    pub max_project_source_bytes: u64,
+    pub(crate) max_project_source_bytes: u64,
     /// Maximum filesystem entries visited during discovery.
-    pub max_visited_entries: usize,
+    pub(crate) max_visited_entries: usize,
     /// Cooperative total load/link timeout in milliseconds.
-    pub max_timeout_ms: u64,
+    pub(crate) max_timeout_ms: u64,
     /// Case-insensitive source suffixes accepted by discovery.
-    pub extensions: Vec<String>,
+    pub(crate) extensions: Vec<String>,
     /// Directory names excluded during discovery and resolution.
-    pub excluded_directories: BTreeSet<String>,
+    pub(crate) excluded_directories: BTreeSet<String>,
     /// Whether directory traversal and resolution may follow symlinks.
-    pub follow_symlinks: bool,
+    pub(crate) follow_symlinks: bool,
     /// Resolver extension aliases applied to module requests.
-    pub extension_aliases: BTreeMap<String, Vec<String>>,
+    pub(crate) extension_aliases: BTreeMap<String, Vec<String>>,
+}
+
+/// Checked construction for filesystem loading policy.
+#[derive(Clone, Debug, Default)]
+pub struct ProjectLoadOptionsBuilder {
+    options: ProjectLoadOptions,
+}
+
+/// A project policy that has passed every cross-field validation rule.
+#[derive(Clone, Debug)]
+pub struct ValidatedProjectLoadOptions(ProjectLoadOptions);
+
+impl Deref for ValidatedProjectLoadOptions {
+    type Target = ProjectLoadOptions;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl ProjectLoadOptionsBuilder {
+    #[must_use]
+    pub fn root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.options.root = Some(root.into());
+        self
+    }
+
+    #[must_use]
+    pub fn max_files(mut self, value: usize) -> Self {
+        self.options.max_files = value;
+        self
+    }
+
+    #[must_use]
+    pub fn max_requests(mut self, value: usize) -> Self {
+        self.options.max_requests = value;
+        self
+    }
+
+    #[must_use]
+    pub fn source_bytes(mut self, one_file: u64, project: u64) -> Self {
+        self.options.max_source_bytes = one_file;
+        self.options.max_project_source_bytes = project;
+        self
+    }
+
+    #[must_use]
+    pub fn max_visited_entries(mut self, value: usize) -> Self {
+        self.options.max_visited_entries = value;
+        self
+    }
+
+    #[must_use]
+    pub fn timeout_ms(mut self, value: u64) -> Self {
+        self.options.max_timeout_ms = value;
+        self
+    }
+
+    #[must_use]
+    pub fn extensions(mut self, values: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.options.extensions = values.into_iter().map(Into::into).collect();
+        self
+    }
+
+    #[must_use]
+    pub fn excluded_directories(
+        mut self,
+        values: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        self.options.excluded_directories = values.into_iter().map(Into::into).collect();
+        self
+    }
+
+    #[must_use]
+    pub fn follow_symlinks(mut self, value: bool) -> Self {
+        self.options.follow_symlinks = value;
+        self
+    }
+
+    #[must_use]
+    pub fn extension_aliases(mut self, values: BTreeMap<String, Vec<String>>) -> Self {
+        self.options.extension_aliases = values;
+        self
+    }
+
+    pub fn build(self) -> Result<ValidatedProjectLoadOptions, ProjectLoadError> {
+        self.options.validate()?;
+        Ok(ValidatedProjectLoadOptions(self.options))
+    }
 }
 
 impl Default for ProjectLoadOptions {
@@ -94,6 +184,17 @@ impl Default for ProjectLoadOptions {
 }
 
 impl ProjectLoadOptions {
+    /// Start a checked project-loading policy.
+    pub fn builder() -> ProjectLoadOptionsBuilder {
+        ProjectLoadOptionsBuilder::default()
+    }
+
+    /// Validate this policy and mark it safe for the project loader boundary.
+    pub fn validated(self) -> Result<ValidatedProjectLoadOptions, ProjectLoadError> {
+        self.validate()?;
+        Ok(ValidatedProjectLoadOptions(self))
+    }
+
     /// Validate budgets, suffixes, and alias mappings before any I/O begins.
     pub fn validate(&self) -> Result<(), ProjectLoadError> {
         if self.max_files == 0 {

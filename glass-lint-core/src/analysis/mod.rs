@@ -177,12 +177,13 @@ fn resolve_record(
 
 impl ProjectSemanticModel {
     /// Create a project model for one already analyzed source without linking.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn single(path: impl Into<String>, source: SourceContext, local: LocalArtifact) -> Self {
         Self::single_with_limits(path, source, local, &crate::AnalysisLimits::default())
     }
 
-    pub fn single_with_limits(
+    #[cfg(test)]
+    fn single_with_limits(
         _path: impl Into<String>,
         _source: SourceContext,
         local: LocalArtifact,
@@ -212,16 +213,6 @@ impl ProjectSemanticModel {
             link_limit: limits.link_operations,
             flow_limit: limits.flow_operations,
         }
-    }
-
-    /// Link already-built local modules to normalized resolution records.
-    /// No AST or matcher work is performed here.
-    #[allow(dead_code)]
-    pub fn link(
-        input: ProjectInput,
-        analyzed: BTreeMap<crate::ProjectRelativePath, LocalArtifact>,
-    ) -> Result<Self, ProjectInputError> {
-        Self::link_with_limits(input, analyzed, &crate::AnalysisLimits::default())
     }
 
     pub fn link_with_limits(
@@ -437,22 +428,6 @@ impl ProjectSemanticModel {
             module.path(),
             &module.source().lines,
             &module.source().text,
-        )
-    }
-
-    /// Classify selected rules against the linked project overlay.
-    #[allow(dead_code)]
-    pub fn classify(
-        &self,
-        catalog: &crate::api::compiler::CompiledCatalog,
-        rules: &[crate::api::rule::Rule],
-        selected: &[crate::api::classification::RuleIndex],
-    ) -> BTreeMap<ModuleId, crate::api::classification::ApiClassificationResult> {
-        self.classify_with_evidence_limit(
-            catalog,
-            rules,
-            selected,
-            crate::api::rule::Rule::EVIDENCE_LIMIT,
         )
     }
 

@@ -77,10 +77,6 @@ impl Resolver {
         self.scopes.scope_at(span)
     }
 
-    pub(in crate::analysis) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
-        self.scopes.scope_parent(scope)
-    }
-
     pub(in crate::analysis) fn function_id_for_scope(
         &self,
         scope: ScopeId,

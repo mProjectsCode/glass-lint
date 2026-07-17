@@ -88,7 +88,9 @@ fn print_report(report: &ProfileSummary, quiet: bool) {
         report.total_elapsed
     );
     println!("Median measured repetition: {:.1?}", report.median_elapsed);
-    if let Some(digest) = &report.manifest_digest {
+    if report.workload.verified
+        && let Some(digest) = &report.workload.corpus_digest
+    {
         println!(
             "Manifest: sha256 {digest}, {} verified byte(s)",
             report.bytes

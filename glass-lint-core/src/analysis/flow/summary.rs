@@ -37,10 +37,6 @@ pub(super) struct FunctionSinkSummary {
 pub(super) struct FunctionSummary {
     /// Function identity owning the summary.
     id: FunctionId,
-    // Retained to make lexical nesting available to future closure-aware
-    // summary propagation; current helper summaries only follow call edges.
-    #[allow(dead_code)] // Reserved for closure-aware summary propagation.
-    owner: FunctionId,
     /// Parameter bindings and destructuring paths.
     parameters: Vec<ParameterBinding>,
     /// Number of top-level parameters in the callable shape.
@@ -54,8 +50,6 @@ pub(super) struct FunctionSummary {
     sinks: SinkSet,
     /// Writes that may invalidate a propagated object.
     writes: Vec<PropertyWriteProjection>,
-    /// Return events retained for future summary composition.
-    returns: Vec<ReturnProjection>,
     /// Reasons this summary must not be used for precise propagation.
     invalid: SummaryInvalidation,
 }
@@ -102,12 +96,6 @@ pub(super) struct PropertyWriteProjection {
     target: ValueId,
     receiver: Option<ValueId>,
     property: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// Return event retained in a helper summary.
-pub(super) struct ReturnProjection {
-    event: FactId,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -179,7 +167,6 @@ impl FunctionSummaries {
             match &fact.payload {
                 FactPayload::Function {
                     id,
-                    owner,
                     parameters,
                     boundary: crate::analysis::facts::FunctionBoundary::Enter,
                     ..
@@ -192,14 +179,12 @@ impl FunctionSummaries {
                     if self.get(*id).is_none() {
                         self.insert(FunctionSummary {
                             id: *id,
-                            owner: *owner,
                             parameters: parameters.clone(),
                             parameter_count,
                             has_rest: parameters.iter().any(|parameter| parameter.rest),
                             calls: Vec::new(),
                             sinks: SinkSet::default(),
                             writes: Vec::new(),
-                            returns: Vec::new(),
                             invalid: SummaryInvalidation::default(),
                         });
                     }
@@ -225,14 +210,6 @@ impl FunctionSummaries {
                             property.clone(),
                             false,
                         );
-                    }
-                }
-                FactPayload::Control {
-                    kind: crate::analysis::facts::ControlKind::Return,
-                    ..
-                } => {
-                    if let Some(summary) = self.by_id.get_mut(fact.function) {
-                        summary.returns.push(ReturnProjection { event: fact.id });
                     }
                 }
                 FactPayload::Call { .. } => calls_by_function

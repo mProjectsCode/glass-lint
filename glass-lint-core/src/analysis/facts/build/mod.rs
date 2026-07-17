@@ -61,7 +61,7 @@ pub struct FactBuilder<'a> {
     interface: ModuleInterface,
 }
 impl<'a> FactBuilder<'a> {
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(super) fn new(resolver: &'a Resolver) -> Self {
         Self::with_limit(resolver, super::MAX_FACTS)
     }
@@ -399,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn facts_retain_identities_for_future_connected_matchers() {
+    fn facts_retain_current_value_identities() {
         let src = r"
             function factory() {}
             const source = factory();
@@ -425,32 +425,7 @@ mod tests {
         assert!(stream.facts().iter().any(|fact| {
             matches!(
                 fact.payload,
-                FactPayload::MemberRead { value, .. } if value != ValueId::UNKNOWN
-            )
-        }));
-        assert!(stream.facts().iter().any(|fact| {
-            matches!(
-                fact.payload,
-                FactPayload::PropertyWrite { source, .. } if source != ValueId::UNKNOWN
-            )
-        }));
-        assert!(stream.facts().iter().any(|fact| {
-            matches!(
-                fact.payload,
                 FactPayload::Call { callee, .. } if callee != ValueId::UNKNOWN
-            )
-        }));
-        assert!(stream.facts().iter().any(|fact| {
-            matches!(
-                fact.payload,
-                FactPayload::Construction { callee, result, .. }
-                    if callee != ValueId::UNKNOWN && result != ValueId::UNKNOWN
-            )
-        }));
-        assert!(stream.facts().iter().any(|fact| {
-            matches!(
-                fact.payload,
-                FactPayload::Function { id, owner, .. } if id != owner
             )
         }));
     }

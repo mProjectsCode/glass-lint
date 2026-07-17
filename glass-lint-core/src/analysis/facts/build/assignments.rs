@@ -69,7 +69,7 @@ impl FactBuilder<'_> {
         &mut self,
         assignment: &AssignExpr,
         member: &MemberExpr,
-        source: ValueId,
+        _source: ValueId,
     ) {
         // Evaluate the member reference (including computed keys) and the RHS
         // before emitting the write/kill fact.
@@ -80,7 +80,6 @@ impl FactBuilder<'_> {
             FactKind::MemberRead,
             member.span(),
             FactPayload::MemberRead {
-                value: resolved_member.id,
                 syntactic_chain: self.resolver.member_chain(member),
                 rooted_chain: resolved_member.rooted_chain.clone(),
                 module_member: resolved_member.module_member.clone(),
@@ -97,7 +96,6 @@ impl FactBuilder<'_> {
                 FactPayload::PropertyWrite {
                     target,
                     receiver,
-                    source,
                     property: member_prop_name(&member.prop),
                     static_value: self.resolver.static_string_expr(&assignment.right),
                 },

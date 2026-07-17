@@ -13,21 +13,74 @@ pub const ADAPTER_PROTOCOL_VERSION: u32 = 3;
 /// One source fixture and its per-tool expectations.
 pub struct Case {
     /// Stable path-derived case identifier.
-    pub id: String,
+    pub(crate) id: String,
     /// Human-readable case description.
-    pub description: String,
+    pub(crate) description: String,
     /// Tags used by fixture consumers.
-    pub tags: Vec<String>,
+    pub(crate) tags: Vec<String>,
     /// Adapter protocol language name.
-    pub language: String,
+    pub(crate) language: String,
     /// Filename used for parser and location semantics.
-    pub filename: String,
+    pub(crate) filename: String,
     /// Source text, including expectation directives.
-    pub source: String,
+    pub(crate) source: String,
     /// Optional multi-file project input.
-    pub project: Option<ProjectCase>,
+    pub(crate) project: Option<ProjectCase>,
     /// Expectations keyed by adapter name.
-    pub tools: BTreeMap<String, ToolExpectation>,
+    pub(crate) tools: BTreeMap<String, ToolExpectation>,
+}
+
+impl Case {
+    /// Construct a fixture case with the required identity fields validated.
+    pub fn new(
+        id: impl Into<String>,
+        description: impl Into<String>,
+        language: impl Into<String>,
+        filename: impl Into<String>,
+        source: impl Into<String>,
+    ) -> Result<Self, String> {
+        let id = id.into();
+        let language = language.into();
+        let filename = filename.into();
+        if id.trim().is_empty() || language.trim().is_empty() || filename.trim().is_empty() {
+            return Err("case id, language, and filename must not be empty".into());
+        }
+        Ok(Self {
+            description: description.into(),
+            id,
+            tags: Vec::new(),
+            language,
+            filename,
+            source: source.into(),
+            project: None,
+            tools: BTreeMap::new(),
+        })
+    }
+
+    #[must_use]
+    pub fn with_tags(mut self, tags: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.tags = tags.into_iter().map(Into::into).collect();
+        self
+    }
+
+    #[must_use]
+    pub fn with_project(mut self, project: ProjectCase) -> Self {
+        self.project = Some(project);
+        self
+    }
+
+    pub fn with_tool(
+        mut self,
+        name: impl Into<String>,
+        expectation: ToolExpectation,
+    ) -> Result<Self, String> {
+        let name = name.into();
+        if name.trim().is_empty() {
+            return Err("case tool name must not be empty".into());
+        }
+        self.tools.insert(name, expectation);
+        Ok(self)
+    }
 }
 
 /// A multi-file harness input. Paths are project-relative and sources are
@@ -73,33 +126,124 @@ impl From<AdapterProject> for ProjectCase {
 /// Expectations for one adapter on one case.
 pub struct ToolExpectation {
     /// Named adapter configuration, if any.
-    pub config: Option<String>,
+    pub(crate) config: Option<String>,
     /// Explicit rule IDs to enable.
-    pub rules: Vec<String>,
+    pub(crate) rules: Vec<String>,
     /// Findings that must be present.
-    pub required: Vec<DiagnosticExpectation>,
+    pub(crate) required: Vec<DiagnosticExpectation>,
     /// Findings that must be absent.
-    pub forbidden: Vec<DiagnosticExpectation>,
+    pub(crate) forbidden: Vec<DiagnosticExpectation>,
+}
+
+impl ToolExpectation {
+    /// Construct an expectation after validating its mutually exclusive rule
+    /// and config selectors.
+    pub fn new(config: Option<String>, rules: Vec<String>) -> Result<Self, String> {
+        if config.is_some() != rules.is_empty() {
+            return Err("tool expectation must specify exactly one of config or rules".into());
+        }
+        Ok(Self {
+            config,
+            rules,
+            required: Vec::new(),
+            forbidden: Vec::new(),
+        })
+    }
+
+    /// Construct an expectation with its complete diagnostic lists checked.
+    pub fn from_parts(
+        config: Option<String>,
+        rules: Vec<String>,
+        required: Vec<DiagnosticExpectation>,
+        forbidden: Vec<DiagnosticExpectation>,
+    ) -> Result<Self, String> {
+        let mut expectation = Self::new(config, rules)?;
+        expectation.required = required;
+        expectation.forbidden = forbidden;
+        Ok(expectation)
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct DiagnosticExpectation {
     /// Optional project-relative finding path.
-    pub path: Option<String>,
+    pub(crate) path: Option<String>,
     /// Stable rule ID to compare.
-    pub rule_id: String,
+    pub(crate) rule_id: String,
     /// Optional message ID constraint.
-    pub message_id: Option<String>,
+    pub(crate) message_id: Option<String>,
     /// Optional severity constraint.
-    pub severity: Option<Severity>,
+    pub(crate) severity: Option<Severity>,
     /// Exact expected count when specified.
-    pub count: Option<usize>,
+    pub(crate) count: Option<usize>,
     /// Optional one-based source line.
-    pub line: Option<u32>,
+    pub(crate) line: Option<u32>,
     /// Optional one-based source column.
-    pub column: Option<u32>,
+    pub(crate) column: Option<u32>,
     /// Optional rendered-message constraint.
-    pub message: Option<String>,
+    pub(crate) message: Option<String>,
+}
+
+impl DiagnosticExpectation {
+    /// Construct a required or forbidden diagnostic with a validated rule ID.
+    pub fn new(rule_id: impl Into<String>) -> Result<Self, String> {
+        let rule_id = rule_id.into();
+        if rule_id.trim().is_empty() {
+            return Err("diagnostic expectation rule ID must not be empty".into());
+        }
+        Ok(Self {
+            path: None,
+            rule_id,
+            message_id: None,
+            severity: None,
+            count: Some(1),
+            line: None,
+            column: None,
+            message: None,
+        })
+    }
+
+    #[must_use]
+    pub fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(path.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
+        self.message_id = Some(message_id.into());
+        self
+    }
+
+    #[must_use]
+    pub fn with_severity(mut self, severity: Severity) -> Self {
+        self.severity = Some(severity);
+        self
+    }
+
+    #[must_use]
+    pub fn with_count(mut self, count: Option<usize>) -> Self {
+        self.count = count;
+        self
+    }
+
+    #[must_use]
+    pub fn with_line(mut self, line: u32) -> Self {
+        self.line = Some(line);
+        self
+    }
+
+    #[must_use]
+    pub fn with_column(mut self, column: u32) -> Self {
+        self.column = Some(column);
+        self
+    }
+
+    #[must_use]
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

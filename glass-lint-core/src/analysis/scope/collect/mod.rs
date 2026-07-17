@@ -21,7 +21,7 @@ use super::{
             collect_pat_bindings, function_prototype_builtin, is_function_constructor_member,
             member_chain, member_prop_name, member_root_ident, module_export_name,
         },
-        value::BindingVersion,
+        value::{BindingId, BindingVersion, FunctionId},
     },
     AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeEffect, ScopeId, ScopeKind,
     ScopedName,
@@ -137,6 +137,111 @@ impl AliasCollector {
         {
             self.scope_reuse_steps = 0;
         }
+    }
+
+    /// Freeze collected facts into the immutable query graph.
+    ///
+    /// ID allocation, normalization, and post-collection property indexing
+    /// belong to this transition so callers cannot observe a partially built
+    /// graph or pass the collector's storage around independently.
+    pub(super) fn freeze(self, environment: &crate::Environment) -> super::ScopeGraph {
+        let parameter_aliases_by_scope = self.parameter_aliases();
+        let mut scopes_by_start = (0..self.scopes.len())
+            .map(super::ScopeId::from)
+            .collect::<Vec<_>>();
+        scopes_by_start.sort_by_key(|index| {
+            let scope = &self.scopes[index.index()];
+            (scope.span.lo, scope.depth)
+        });
+
+        let mut assignments =
+            BTreeMap::<super::ScopeId, BTreeMap<String, Vec<super::AliasAssignment>>>::new();
+        for assignment in self.assignments {
+            assignments
+                .entry(assignment.scope)
+                .or_default()
+                .entry(assignment.name.clone())
+                .or_default()
+                .push(assignment);
+        }
+        for scope_assignments in assignments.values_mut() {
+            for binding_assignments in scope_assignments.values_mut() {
+                binding_assignments.sort_by_key(|assignment| assignment.span.lo);
+            }
+        }
+
+        let mut binding_ids = BTreeMap::new();
+        let mut next_binding_id = 0u32;
+        for (scope, lexical_scope) in self.scopes.iter().enumerate() {
+            let scope = super::ScopeId::from(scope);
+            for name in lexical_scope.bindings.keys() {
+                binding_ids.insert(
+                    super::ScopedName::new(scope, name),
+                    BindingId(next_binding_id),
+                );
+                next_binding_id = next_binding_id.saturating_add(1);
+            }
+        }
+
+        let mut function_ids = BTreeMap::new();
+        let mut next_function_id = 0u32;
+        for (scope, lexical_scope) in self.scopes.iter().enumerate() {
+            let scope = super::ScopeId::from(scope);
+            if matches!(
+                lexical_scope.kind,
+                super::ScopeKind::Program | super::ScopeKind::Function
+            ) {
+                function_ids.insert(scope, FunctionId(next_function_id));
+                next_function_id = next_function_id.saturating_add(1);
+            }
+        }
+
+        let function_bindings = self
+            .function_scopes
+            .iter()
+            .filter_map(|((scope, name), (function_scope, _))| {
+                function_ids
+                    .get(function_scope)
+                    .copied()
+                    .map(|function| (super::ScopedName::new(*scope, name), function))
+            })
+            .collect();
+        let function_aliases = self
+            .function_aliases
+            .into_iter()
+            .filter_map(|(key, function_scope)| {
+                function_ids
+                    .get(&function_scope)
+                    .copied()
+                    .map(|function| (key, function))
+            })
+            .collect();
+        let parameter_aliases = parameter_aliases_by_scope
+            .into_iter()
+            .filter_map(|(key, provenance)| {
+                function_ids
+                    .get(&key.scope())
+                    .copied()
+                    .map(|function| ((function, key.name().to_owned()), provenance))
+            })
+            .collect();
+        let property_assignments = self.property_assignments;
+        let rooted_mutations = self.rooted_property_mutations;
+        let dynamic_evals = self.dynamic_evals;
+        let mut graph = super::ScopeGraph::from_parts(super::ScopeGraphParts {
+            environment: environment.clone(),
+            scopes: self.scopes,
+            scopes_by_start,
+            assignments,
+            binding_ids,
+            function_ids,
+            function_bindings,
+            function_aliases,
+            parameter_aliases,
+            mutable_static_objects: self.mutable_static_objects,
+        });
+        graph.finish_collected_properties(property_assignments, rooted_mutations, dynamic_evals);
+        graph
     }
 
     /// Return the innermost scope currently being traversed.

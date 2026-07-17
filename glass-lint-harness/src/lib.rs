@@ -16,8 +16,8 @@ pub use adapters::{Adapter, ExternalAdapter, GlassLintAdapter};
 pub use cases::load_cases;
 pub use profile::{
     ProfileConfig, ProfileFileSummary, ProfileMode, ProfileOperationCounts, ProfilePhaseTimings,
-    ProfileProvider, ProfileRepetitionSummary, ProfileSummary, discover_profile_files,
-    ensure_profile_correctness_match, profile_folder,
+    ProfileProvider, ProfileRepetitionSummary, ProfileSummary, ProfileWorkloadIdentity,
+    ProfileWorkloadMode, discover_profile_files, ensure_profile_correctness_match, profile_folder,
 };
 pub use profile_manifest::{
     ProfileManifest, ProfileManifestEntry, VerifiedProfileManifest, create_profile_manifest,

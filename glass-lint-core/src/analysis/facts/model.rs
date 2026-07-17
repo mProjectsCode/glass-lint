@@ -184,9 +184,6 @@ pub(in crate::analysis) enum FactPayload {
     /// this value/reference fact, not a parallel `StringLiteral` fact kind;
     /// string matchers consume the projection through the occurrence index.
     Reference {
-        // Kept even before a matcher consumes it: reference identity is the
-        // canonical input for future value-use and connected-flow matchers.
-        #[allow(dead_code)]
         value: ValueId,
         /// Constant string projection, if this reference is statically known.
         static_string: Option<String>,
@@ -195,10 +192,6 @@ pub(in crate::analysis) enum FactPayload {
     },
     /// Member expression read.
     MemberRead {
-        // Kept so a future read/value-flow matcher can connect this event to
-        // declarations and assignments without another AST traversal.
-        #[allow(dead_code)]
-        value: ValueId,
         /// Original member spelling when statically recoverable.
         syntactic_chain: Option<String>,
         /// Proven rooted chain used by strict member matchers.
@@ -230,10 +223,6 @@ pub(in crate::analysis) enum FactPayload {
         target: ValueId,
         /// Object identity receiving the property write.
         receiver: ValueId,
-        // Static-value matching uses `static_value` today, while `source`
-        // preserves the RHS identity needed by future property-flow matchers.
-        #[allow(dead_code)]
-        source: ValueId,
         /// Statically known property name, if the key is not dynamic.
         property: Option<String>,
         /// Statically evaluated string assigned to the property.
@@ -241,9 +230,6 @@ pub(in crate::analysis) enum FactPayload {
     },
     /// Function or method call.
     Call {
-        // Provenance matchers do not consume the identity yet, but callable
-        // value flow needs the callee linked to its declaration or alias.
-        #[allow(dead_code)]
         callee: ValueId,
         /// Receiver identity for member calls.
         receiver: Option<ValueId>,
@@ -278,8 +264,6 @@ pub(in crate::analysis) enum FactPayload {
     Function {
         /// Function identity of the body being entered or exited.
         id: FunctionId,
-        /// Enclosing function identity that owns this boundary event.
-        owner: FunctionId,
         /// Path-aware bindings extracted from the parameters.
         parameters: Vec<ParameterBinding>,
         /// Whether this fact marks entry or exit.
@@ -296,14 +280,6 @@ pub(in crate::analysis) enum FactPayload {
     },
     /// `new Constructor()`.
     Construction {
-        // Constructor identity and the allocated value are retained together
-        // so construction can become a connected-flow source without
-        // changing matcher-independent fact construction.
-        #[allow(dead_code)]
-        callee: ValueId,
-        /// Allocated identity for the constructed instance.
-        #[allow(dead_code)]
-        result: ValueId,
         /// Byte range of the constructor expression.
         callee_span: ByteRange,
         /// Constructor name when strict provenance permits one.

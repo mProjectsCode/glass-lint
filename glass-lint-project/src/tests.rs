@@ -28,7 +28,7 @@ fn directory_discovery_is_sorted_and_excludes_runtime_directories() {
     fs::write(root.join("src/types.d.cts"), "").unwrap();
     fs::write(root.join("src/types.d.mts"), "").unwrap();
     fs::write(root.join("node_modules/pkg/index.js"), "").unwrap();
-    let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
+    let loader = ProjectLoader::new(ProjectLoadOptions::default().validated().unwrap());
     let report = loader
         .load_and_lint(&linter(), &ProjectSelection::directory(&root))
         .unwrap();
@@ -49,13 +49,13 @@ fn resolver_suffix_options_are_validated_and_declarations_are_excluded() {
     let mut options = ProjectLoadOptions::default();
     options.extension_aliases.insert(".js".into(), vec![]);
     assert!(matches!(
-        ProjectLoader::new(options),
+        options.validated(),
         Err(ProjectLoadError::InvalidOptions(_))
     ));
 
     let mut options = ProjectLoadOptions::default();
     options.extensions.push(".d.cts".into());
-    assert!(ProjectLoader::new(options).is_ok());
+    let _loader = ProjectLoader::new(options.validated().unwrap());
 }
 
 #[test]
@@ -69,8 +69,7 @@ fn discovery_stops_at_visited_entry_budget() {
         max_visited_entries: 1,
         ..Default::default()
     };
-    let error = ProjectLoader::new(options)
-        .unwrap()
+    let error = ProjectLoader::new(options.validated().unwrap())
         .load_and_lint(&linter(), &ProjectSelection::directory(&root))
         .unwrap_err();
     assert!(matches!(error, ProjectLoadError::TooManyEntries(1)));
@@ -90,8 +89,7 @@ fn aggregate_source_budget_is_checked_before_second_parse() {
         max_source_bytes: 10,
         ..Default::default()
     };
-    let outcome = ProjectLoader::new(options)
-        .unwrap()
+    let outcome = ProjectLoader::new(options.validated().unwrap())
         .load_and_lint(&linter(), &ProjectSelection::directory(&root))
         .unwrap();
     assert!(matches!(
@@ -114,8 +112,7 @@ fn deterministic_loader_budget_returns_partial_report_and_error() {
         max_source_bytes: 10,
         ..Default::default()
     };
-    let outcome = ProjectLoader::new(options)
-        .unwrap()
+    let outcome = ProjectLoader::new(options.validated().unwrap())
         .load_and_lint(&linter(), &ProjectSelection::directory(&root))
         .unwrap();
     assert!(matches!(
@@ -144,7 +141,7 @@ fn extensionless_internal_import_is_followed() {
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("main.js"), "import './helper';").unwrap();
     fs::write(root.join("helper.ts"), "export const value = 1;").unwrap();
-    let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
+    let loader = ProjectLoader::new(ProjectLoadOptions::default().validated().unwrap());
     let report = loader
         .load_and_lint(&linter(), &ProjectSelection::entry(root.join("main.js")))
         .unwrap();
@@ -160,7 +157,7 @@ fn reports_project_phase_metrics_and_operation_counts() {
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("main.js"), "import './helper';").unwrap();
     fs::write(root.join("helper.ts"), "export const value = 1;").unwrap();
-    let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
+    let loader = ProjectLoader::new(ProjectLoadOptions::default().validated().unwrap());
     let outcome = loader
         .load_and_lint(&linter(), &ProjectSelection::entry(root.join("main.js")))
         .unwrap();
@@ -187,7 +184,7 @@ fn tsconfig_membership_accepts_jsonc_and_excludes_files() {
         "{\n  // runtime project\n  \"include\": [\"src/**/*.ts\",],\n  \"exclude\": [\"src/test.ts\",],\n}",
     )
     .unwrap();
-    let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
+    let loader = ProjectLoader::new(ProjectLoadOptions::default().validated().unwrap());
     let report = loader
         .load_and_lint(
             &linter(),
@@ -243,7 +240,7 @@ fn tsconfig_membership_inherits_extends_and_collects_references() {
     )
     .unwrap();
 
-    let loader = ProjectLoader::new(ProjectLoadOptions::default()).unwrap();
+    let loader = ProjectLoader::new(ProjectLoadOptions::default().validated().unwrap());
     let report = loader
         .load_and_lint(
             &linter(),

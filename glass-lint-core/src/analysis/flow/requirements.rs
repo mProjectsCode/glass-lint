@@ -17,13 +17,7 @@ impl<K> Default for RequirementSet<K> {
     }
 }
 
-impl<K: Clone + PartialEq> RequirementSet<K> {
-    /// Record a requirement without replacing an earlier proof for the key.
-    #[allow(dead_code)]
-    pub(super) fn record(&mut self, parameter: usize, value: K) {
-        self.0.entry(parameter).or_insert(value);
-    }
-
+impl<K: PartialEq> RequirementSet<K> {
     /// Replace the proof for a requirement key.
     pub(super) fn insert(&mut self, parameter: usize, value: K) {
         self.0.insert(parameter, value);
@@ -32,18 +26,6 @@ impl<K: Clone + PartialEq> RequirementSet<K> {
     /// Remove one parameter requirement after invalidation.
     pub(super) fn remove(&mut self, parameter: usize) {
         self.0.remove(&parameter);
-    }
-
-    /// Check whether a requirement key is present.
-    #[allow(dead_code)]
-    pub(super) fn contains_key(&self, parameter: usize) -> bool {
-        self.0.contains_key(&parameter)
-    }
-
-    /// Retain only requirements satisfying the supplied path predicate.
-    #[allow(dead_code)]
-    pub(super) fn retain(&mut self, keep: impl FnMut(&usize, &mut K) -> bool) {
-        self.0.retain(keep);
     }
 
     /// Number of currently proven requirements.
@@ -56,21 +38,9 @@ impl<K: Clone + PartialEq> RequirementSet<K> {
         self.0.is_empty()
     }
 
-    /// Iterate parameter keys and their typed proofs in key order.
-    #[allow(dead_code)]
-    pub(super) fn iter(&self) -> impl Iterator<Item = (&usize, &K)> {
-        self.0.iter()
-    }
-
     /// Iterate only the typed proofs in parameter-key order.
     pub(super) fn values(&self) -> impl Iterator<Item = &K> {
         self.0.values()
-    }
-
-    #[allow(dead_code)]
-    pub(super) fn intersect(&mut self, other: &Self) {
-        self.0
-            .retain(|parameter, fact| other.0.get(parameter) == Some(fact));
     }
 
     /// Join control-flow paths by retaining requirements proven on both paths.

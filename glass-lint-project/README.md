@@ -9,7 +9,8 @@ sources and typed resolutions to `glass-lint-core`.
 ```rust
 use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
 
-let loader = ProjectLoader::new(ProjectLoadOptions::default())?;
+let options = ProjectLoadOptions::builder().build()?.validated()?;
+let loader = ProjectLoader::new(options);
 let selection = ProjectSelection::entry("src/main.ts");
 let outcome = loader.load_and_lint(&linter, &selection)?;
 
@@ -21,8 +22,8 @@ let report = outcome.report;
 
 Use `ProjectSelection::entry` for one entry and reachable internal imports,
 `directory` for all admitted sources below a directory, or `tsconfig` for
-TypeScript configuration membership. Set `ProjectLoadOptions::root` when the
-project boundary must be explicit.
+TypeScript configuration membership. Configure limits through the checked
+`ProjectLoadOptions::builder()` before calling `validated()`.
 
 ## Policy
 

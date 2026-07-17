@@ -1,7 +1,7 @@
 //! Provider/profile selection shared by adapters and profiling.
 
 use anyhow::{Result, bail};
-use glass_lint_core::{Environment, Linter, LinterConfig, RuleBaseline, RuleSelection};
+use glass_lint_core::{Linter, RuleBaseline, RuleSelection};
 
 #[derive(Clone, Copy)]
 /// Built-in rule provider available to the harness.
@@ -22,44 +22,20 @@ pub enum BuiltInProfile {
 /// Construct one built-in provider linter with the caller's host environment.
 /// All harness entry points use this boundary so profile and adapter behavior
 /// cannot drift when provider defaults change.
-pub fn linter(
-    provider: BuiltInProvider,
-    profile: BuiltInProfile,
-    environment: Environment,
-) -> Linter {
+pub fn linter(provider: BuiltInProvider, profile: BuiltInProfile) -> Linter {
     let baseline = match profile {
         BuiltInProfile::Recommended => {
             RuleBaseline::MinimumConfidence(glass_lint_core::rules::Confidence::High)
         }
         BuiltInProfile::Heuristic => RuleBaseline::All,
     };
-    let (catalogs, environment) = match provider {
-        BuiltInProvider::Js => (vec![glass_lint_js::js_catalog()], environment),
-        BuiltInProvider::Node => (
-            vec![glass_lint_js::js_catalog(), glass_lint_js::node_catalog()],
-            environment,
-        ),
-        BuiltInProvider::Electron => (
-            vec![
-                glass_lint_js::js_catalog(),
-                glass_lint_js::browser_catalog(),
-                glass_lint_js::node_catalog(),
-                glass_lint_js::electron_catalog(),
-            ],
-            environment,
-        ),
-        BuiltInProvider::Obsidian => (
-            vec![
-                glass_lint_js::js_catalog(),
-                glass_lint_js::browser_catalog(),
-                glass_lint_js::node_catalog(),
-                glass_lint_js::electron_catalog(),
-                glass_lint_obsidian::catalog(),
-            ],
-            environment,
-        ),
+    let config = match provider {
+        BuiltInProvider::Js => glass_lint_js::js_config(),
+        BuiltInProvider::Node => glass_lint_js::node_config(),
+        BuiltInProvider::Electron => glass_lint_js::electron_config(),
+        BuiltInProvider::Obsidian => glass_lint_obsidian::config(),
     };
-    Linter::new(LinterConfig::new(catalogs, environment).with_rules(RuleSelection::new(baseline)))
+    Linter::new(config.with_rules(RuleSelection::new(baseline)))
         .expect("built-in catalogs are valid")
 }
 

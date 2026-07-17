@@ -5,7 +5,7 @@
 
 use std::collections::BTreeSet;
 
-use glass_lint_core::{AnalysisReport, Environment, RuleCatalog, RuleMetadata};
+use glass_lint_core::{AnalysisReport, Environment, LinterConfig, RuleCatalog, RuleMetadata};
 
 mod catalog;
 mod rules;
@@ -39,6 +39,21 @@ pub fn environment() -> Environment {
         .add_global_object("activeWindow")
         .expect("valid Obsidian global object");
     environment
+}
+
+/// Return the complete core configuration for the Obsidian renderer target.
+#[must_use]
+pub fn config() -> LinterConfig {
+    LinterConfig::new(
+        vec![
+            glass_lint_js::js_catalog(),
+            glass_lint_js::browser_catalog(),
+            glass_lint_js::node_catalog(),
+            glass_lint_js::electron_catalog(),
+            catalog(),
+        ],
+        environment(),
+    )
 }
 
 #[must_use]

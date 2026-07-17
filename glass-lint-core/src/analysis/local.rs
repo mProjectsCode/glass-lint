@@ -18,8 +18,6 @@ use crate::project::ModuleId;
 #[derive(Clone, Debug)]
 pub struct SourceContext {
     pub(crate) path: crate::project::ProjectRelativePath,
-    #[allow(dead_code)]
-    pub(crate) language: crate::SourceLanguage,
     pub(crate) text: Arc<str>,
     pub(crate) lines: Arc<crate::SourceLineIndex>,
 }
@@ -28,7 +26,6 @@ impl SourceContext {
     pub(crate) fn new(source: &crate::SourceFile) -> Self {
         Self {
             path: source.path.clone(),
-            language: source.language,
             text: Arc::from(source.source.as_str()),
             lines: Arc::new(crate::SourceLineIndex::new(&source.source)),
         }

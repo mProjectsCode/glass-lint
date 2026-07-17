@@ -14,10 +14,9 @@ pub fn discover_profile_files(
 ) -> Result<Vec<PathBuf>> {
     let includes = compile_globs(includes)?;
     let excludes = compile_globs(excludes)?;
-    let corpus_options = ProjectLoadOptions {
-        max_files: usize::MAX,
-        ..ProjectLoadOptions::default()
-    };
+    let corpus_options = ProjectLoadOptions::builder()
+        .max_files(usize::MAX)
+        .build()?;
     let corpus = SourceCorpus::new(&corpus_options)?;
     let mut paths = BTreeMap::<PathBuf, ()>::new();
     for root in roots {

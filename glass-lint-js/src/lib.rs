@@ -6,7 +6,7 @@
 
 use std::collections::BTreeSet;
 
-use glass_lint_core::{AnalysisReport, Environment, RuleCatalog, RuleMetadata};
+use glass_lint_core::{AnalysisReport, Environment, LinterConfig, RuleCatalog, RuleMetadata};
 
 mod disclosures;
 mod rules;
@@ -40,6 +40,38 @@ pub fn electron_catalog() -> RuleCatalog {
 #[must_use]
 pub fn node_catalog() -> RuleCatalog {
     RuleCatalog::new("node", rules::node()).expect("valid Node catalog")
+}
+
+/// Return the complete core configuration for the plain JavaScript target.
+#[must_use]
+pub fn js_config() -> LinterConfig {
+    LinterConfig::new(vec![js_catalog()], js_environment())
+}
+
+/// Return the complete core configuration for the browser target.
+#[must_use]
+pub fn browser_config() -> LinterConfig {
+    LinterConfig::new(vec![js_catalog(), browser_catalog()], browser_environment())
+}
+
+/// Return the complete core configuration for the Node target.
+#[must_use]
+pub fn node_config() -> LinterConfig {
+    LinterConfig::new(vec![js_catalog(), node_catalog()], node_environment())
+}
+
+/// Return the complete core configuration for the Electron target.
+#[must_use]
+pub fn electron_config() -> LinterConfig {
+    LinterConfig::new(
+        vec![
+            js_catalog(),
+            browser_catalog(),
+            node_catalog(),
+            electron_catalog(),
+        ],
+        electron_environment(),
+    )
 }
 
 #[must_use]

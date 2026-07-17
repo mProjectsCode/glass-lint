@@ -24,14 +24,6 @@ pub struct ProjectDiscovery<'a> {
 
 impl<'a> ProjectDiscovery<'a> {
     /// Create a discovery view over validated loader options.
-    #[allow(dead_code)]
-    pub fn new(options: &'a ProjectLoadOptions) -> Self {
-        Self {
-            options,
-            deadline: None,
-        }
-    }
-
     pub fn with_deadline(options: &'a ProjectLoadOptions, deadline: Instant) -> Self {
         Self {
             options,

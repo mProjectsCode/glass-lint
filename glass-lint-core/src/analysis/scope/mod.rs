@@ -9,14 +9,10 @@
 //! immutable query indexes. Binding IDs and assignment versions make later
 //! queries position-sensitive without rebuilding the AST.
 
-use std::collections::BTreeMap;
-
 use collect::AliasCollector;
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
-
-use super::value::{BindingId, FunctionId};
 
 mod collect;
 mod query;
@@ -42,97 +38,7 @@ impl ScopeGraph {
         // an accidentally unshadowed global.
         collector.predeclare(program);
         program.visit_children_with(&mut collector);
-        let parameter_aliases_by_scope = collector.parameter_aliases();
-        // Scope lookup starts from the latest opening delimiter, then walks to
-        // parents only when the candidate does not contain the queried span.
-        let mut scopes_by_start = (0..collector.scopes.len())
-            .map(ScopeId::from)
-            .collect::<Vec<_>>();
-        scopes_by_start.sort_by_key(|index| {
-            let scope = &collector.scopes[index.index()];
-            (scope.span.lo, scope.depth)
-        });
-        let mut assignments = BTreeMap::<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>::new();
-        for assignment in collector.assignments {
-            assignments
-                .entry(assignment.scope)
-                .or_default()
-                .entry(assignment.name.clone())
-                .or_default()
-                .push(assignment);
-        }
-        for scope_assignments in assignments.values_mut() {
-            for binding_assignments in scope_assignments.values_mut() {
-                binding_assignments.sort_by_key(|assignment| assignment.span.lo);
-            }
-        }
-        let mut binding_ids = BTreeMap::new();
-        let mut next_binding_id = 0u32;
-        for (scope, lexical_scope) in collector.scopes.iter().enumerate() {
-            let scope = ScopeId::from(scope);
-            for name in lexical_scope.bindings.keys() {
-                binding_ids.insert(ScopedName::new(scope, name), BindingId(next_binding_id));
-                next_binding_id = next_binding_id.saturating_add(1);
-            }
-        }
-        let mut function_ids = BTreeMap::new();
-        let mut next_function_id = 0u32;
-        for (scope, lexical_scope) in collector.scopes.iter().enumerate() {
-            let scope = ScopeId::from(scope);
-            if matches!(lexical_scope.kind, ScopeKind::Program | ScopeKind::Function) {
-                function_ids.insert(scope, FunctionId(next_function_id));
-                next_function_id = next_function_id.saturating_add(1);
-            }
-        }
-        let function_bindings = collector
-            .function_scopes
-            .iter()
-            .filter_map(|((scope, name), (function_scope, _))| {
-                function_ids
-                    .get(function_scope)
-                    .copied()
-                    .map(|function| (ScopedName::new(*scope, name), function))
-            })
-            .collect();
-        let function_aliases = collector
-            .function_aliases
-            .into_iter()
-            .filter_map(|(key, function_scope)| {
-                function_ids
-                    .get(&function_scope)
-                    .copied()
-                    .map(|function| (key, function))
-            })
-            .collect();
-        let parameter_aliases = parameter_aliases_by_scope
-            .into_iter()
-            .filter_map(|(key, provenance)| {
-                function_ids
-                    .get(&key.scope())
-                    .copied()
-                    .map(|function| ((function, key.name().to_owned()), provenance))
-            })
-            .collect();
-        let collected_property_assignments = collector.property_assignments;
-        let collected_rooted_property_mutations = collector.rooted_property_mutations;
-        let mut graph = Self::from_parts(ScopeGraphParts {
-            environment: environment.clone(),
-            scopes: collector.scopes,
-            scopes_by_start,
-            assignments,
-            binding_ids,
-            function_ids,
-            function_bindings,
-            function_aliases,
-            parameter_aliases,
-            mutable_static_objects: collector.mutable_static_objects.clone(),
-        });
-        graph.finish_collected_properties(
-            collected_property_assignments,
-            collected_rooted_property_mutations,
-            collector.dynamic_evals,
-        );
-        graph
+        collector.freeze(environment)
     }
 }
 

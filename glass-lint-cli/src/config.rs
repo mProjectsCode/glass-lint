@@ -5,9 +5,9 @@ use std::{fs, path::Path};
 use anyhow::{Context, Result, bail};
 use clap::ValueEnum;
 use glass_lint_core::{
-    CoreConfig, Linter, LinterConfig, MAX_SOURCE_BYTES, RuleBaseline, RuleCatalog, RuleSelection,
-    Severity,
+    CoreConfig, Linter, MAX_SOURCE_BYTES, RuleBaseline, RuleCatalog, RuleSelection, Severity,
 };
+use glass_lint_project::{ProjectLoadOptions, ValidatedProjectLoadOptions};
 use serde::{Deserialize, Serialize};
 
 use crate::args::Args;
@@ -258,18 +258,7 @@ fn discover_from_cwd() -> Result<Option<(String, &'static str)>> {
 }
 
 fn validate(config: Config) -> Result<Config> {
-    if config.cli.project.max_bytes == 0 || config.cli.project.max_bytes > MAX_SOURCE_BYTES as u64 {
-        bail!("max_bytes must be between 1 and {MAX_SOURCE_BYTES}")
-    }
-    if config.cli.project.max_project_bytes < config.cli.project.max_bytes {
-        bail!("max_project_bytes must be at least max_bytes")
-    }
-    if config.cli.project.max_visited_entries == 0 {
-        bail!("visited limit must be positive")
-    }
-    if config.cli.project.max_timeout_ms == 0 {
-        bail!("max_timeout_ms must be positive")
-    }
+    config.project_load_options()?;
     if config.cli.pretty_max_width < 20 {
         bail!("pretty_max_width must be at least 20")
     }
@@ -279,6 +268,35 @@ fn validate(config: Config) -> Result<Config> {
         .validate(&catalog)
         .map_err(|error| anyhow::anyhow!("rule/provider mismatch: {error}"))?;
     Ok(config)
+}
+
+impl Config {
+    /// Construct and validate the one project-loading policy used by all CLI
+    /// modes.
+    pub fn project_load_options(&self) -> Result<ValidatedProjectLoadOptions> {
+        ProjectLoadOptions::builder()
+            .source_bytes(
+                self.cli.project.max_bytes,
+                self.cli.project.max_project_bytes,
+            )
+            .max_visited_entries(self.cli.project.max_visited_entries)
+            .timeout_ms(self.cli.project.max_timeout_ms)
+            .build()
+            .map_err(|error| anyhow::anyhow!(error))
+    }
+
+    /// Apply the CLI completion, diagnostic, and finding policy to one report.
+    pub fn report_fails(&self, report: &glass_lint_core::AnalysisReport) -> bool {
+        report.completion == glass_lint_core::ReportCompletion::Partial
+            || !report.diagnostics.is_empty()
+            || report.files.iter().any(|file| {
+                file.has_parse_diagnostics()
+                    || file
+                        .findings
+                        .iter()
+                        .any(|finding| self.cli.fail_on.fails(finding.severity))
+            })
+    }
 }
 
 /// Build the immutable rule metadata selected by the CLI settings.
@@ -298,51 +316,14 @@ pub fn base_linter(provider: Provider, profile: Profile) -> Linter {
         }
         Profile::Heuristic => RuleBaseline::All,
     };
-    match (provider, profile) {
-        (Provider::Obsidian, _) => Linter::new(
-            LinterConfig::new(
-                vec![
-                    glass_lint_js::js_catalog(),
-                    glass_lint_js::browser_catalog(),
-                    glass_lint_js::node_catalog(),
-                    glass_lint_js::electron_catalog(),
-                    glass_lint_obsidian::catalog(),
-                ],
-                glass_lint_obsidian::environment(),
-            )
-            .with_rules(RuleSelection::new(baseline)),
-        )
-        .expect("built-in catalogs are valid"),
-        (Provider::Js, _) => Linter::new(
-            LinterConfig::new(
-                vec![glass_lint_js::js_catalog()],
-                glass_lint_js::js_environment(),
-            )
-            .with_rules(RuleSelection::new(baseline)),
-        )
-        .expect("built-in catalog is valid"),
-        (Provider::Node, _) => Linter::new(
-            LinterConfig::new(
-                vec![glass_lint_js::js_catalog(), glass_lint_js::node_catalog()],
-                glass_lint_js::node_environment(),
-            )
-            .with_rules(RuleSelection::new(baseline)),
-        )
-        .expect("built-in catalogs are valid"),
-        (Provider::Electron, _) => Linter::new(
-            LinterConfig::new(
-                vec![
-                    glass_lint_js::js_catalog(),
-                    glass_lint_js::browser_catalog(),
-                    glass_lint_js::node_catalog(),
-                    glass_lint_js::electron_catalog(),
-                ],
-                glass_lint_js::electron_environment(),
-            )
-            .with_rules(RuleSelection::new(baseline)),
-        )
-        .expect("built-in catalogs are valid"),
-    }
+    let config = match provider {
+        Provider::Obsidian => glass_lint_obsidian::config(),
+        Provider::Js => glass_lint_js::js_config(),
+        Provider::Node => glass_lint_js::node_config(),
+        Provider::Electron => glass_lint_js::electron_config(),
+    };
+    Linter::new(config.with_rules(RuleSelection::new(baseline)))
+        .expect("built-in provider configuration is valid")
 }
 
 /// Construct and validate the linter requested by a complete CLI config.
@@ -367,7 +348,7 @@ pub fn selected_linter(config: &Config) -> Result<Linter> {
         "linter built"
     );
     Linter::new(
-        LinterConfig::new(
+        glass_lint_core::LinterConfig::new(
             vec![linter.catalog().clone()],
             linter.analysis_environment().clone(),
         )

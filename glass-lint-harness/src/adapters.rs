@@ -114,12 +114,14 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
     // session API, but both paths converge on the same report conversion.
     let linter = configured_linter(expectation)?;
     let report = if project.filesystem {
-        glass_lint_project::ProjectLoader::new(glass_lint_project::ProjectLoadOptions::default())?
-            .load_and_lint(
-                &linter,
-                &glass_lint_project::ProjectSelection::directory(project.root.clone()),
-            )?
-            .report
+        glass_lint_project::ProjectLoader::new(
+            glass_lint_project::ProjectLoadOptions::default().validated()?,
+        )
+        .load_and_lint(
+            &linter,
+            &glass_lint_project::ProjectSelection::directory(project.root.clone()),
+        )?
+        .report
     } else {
         let mut session = linter.begin_analysis(project.root.clone())?;
         let mut authored = Vec::new();

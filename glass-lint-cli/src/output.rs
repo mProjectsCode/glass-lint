@@ -7,8 +7,9 @@ use std::{
 
 use anyhow::{Result, bail};
 use console::{Style, measure_text_width};
-use glass_lint_core::{AnalysisReport, PrettyFile, PrettyOptions, PrettyReports, RuleMetadata};
-use serde::Serialize;
+use glass_lint_core::{
+    AnalysisReport, AnalysisReportSummary, PrettyFile, PrettyOptions, PrettyReports, RuleMetadata,
+};
 
 use crate::config::{Config, Output};
 
@@ -23,33 +24,6 @@ pub struct FileOutput {
     pub source: String,
 }
 
-#[derive(Clone, Copy, Serialize)]
-pub struct Summary {
-    /// Number of independently linted source files.
-    pub files: usize,
-    /// Number of rule findings across those files.
-    pub findings: usize,
-    /// Number of parse diagnostics across those files.
-    pub parse_diagnostics: usize,
-    /// Number of file-owned semantic/status diagnostics.
-    pub analysis_diagnostics: usize,
-}
-
-/// Counts for a linked project report, including diagnostics from resolution.
-#[derive(Clone, Copy, Serialize)]
-pub struct ProjectSummary {
-    /// Number of files represented in the report.
-    pub(crate) files: usize,
-    /// Number of rule findings across those files.
-    pub(crate) findings: usize,
-    /// Number of parse diagnostics across those files.
-    pub(crate) parse_diagnostics: usize,
-    /// Number of file-owned semantic/status diagnostics.
-    pub(crate) analysis_diagnostics: usize,
-    /// Number of project-level diagnostics such as unresolved links.
-    pub project_diagnostics: usize,
-}
-
 /// Write the selected rule metadata and never request a failing exit status.
 pub fn write_rules(config: &Config) -> Result<bool> {
     let metadata = crate::config::catalog(config.cli.provider, config.cli.profile).metadata();
@@ -60,9 +34,9 @@ pub fn write_rules(config: &Config) -> Result<bool> {
 }
 
 /// Write reports for independently linted snippet files.
-pub fn write_report(config: &Config, files: &[FileOutput], summary: Summary) -> Result<()> {
+pub fn write_report(config: &Config, files: &[FileOutput]) -> Result<()> {
     let mut stdout = io::BufWriter::new(io::stdout().lock());
-    write_report_to(config, files, summary, &mut stdout)?;
+    write_report_to(config, files, &mut stdout)?;
     stdout.flush().map_err(Into::into)
 }
 
@@ -211,26 +185,16 @@ impl Table {
     }
 }
 
-fn write_report_to<W: Write>(
-    config: &Config,
-    files: &[FileOutput],
-    summary: Summary,
-    out: &mut W,
-) -> Result<()> {
+fn write_report_to<W: Write>(config: &Config, files: &[FileOutput], out: &mut W) -> Result<()> {
+    let report = AnalysisReport::combine(files.iter().map(|file| file.report.clone()))?;
+    let summary = report.summary();
     match config.cli.output {
-        Output::Json => write_json(files, summary, out),
+        Output::Json => write_json(&report, out),
         Output::Pretty => write_pretty(config, files, summary, out),
     }
 }
 
-fn write_json<W: Write>(files: &[FileOutput], _summary: Summary, out: &mut W) -> Result<()> {
-    // Reuse the public project report shape so snippet and project JSON remain
-    // consumable by the same downstream tooling.
-    let reports = files
-        .iter()
-        .map(|file| file.report.clone())
-        .collect::<Vec<_>>();
-    let report = glass_lint_core::AnalysisReport::combine(reports)?;
+fn write_json<W: Write>(report: &AnalysisReport, out: &mut W) -> Result<()> {
     serde_json::to_writer_pretty(&mut *out, &report)?;
     writeln!(out)?;
     Ok(())
@@ -239,7 +203,7 @@ fn write_json<W: Write>(files: &[FileOutput], _summary: Summary, out: &mut W) ->
 fn write_pretty<W: Write>(
     config: &Config,
     files: &[FileOutput],
-    summary: Summary,
+    summary: AnalysisReportSummary,
     out: &mut W,
 ) -> Result<()> {
     let options = PrettyOptions {
@@ -290,14 +254,7 @@ fn write_project_report_to<W: Write>(
     report: &AnalysisReport,
     out: &mut W,
 ) -> Result<()> {
-    let core_summary = report.summary();
-    let summary = ProjectSummary {
-        files: core_summary.files,
-        findings: core_summary.findings,
-        parse_diagnostics: core_summary.parse_diagnostics,
-        analysis_diagnostics: core_summary.analysis_diagnostics,
-        project_diagnostics: core_summary.project_diagnostics,
-    };
+    let summary = report.summary();
     match config.cli.output {
         Output::Json => {
             serde_json::to_writer_pretty(&mut *out, report)?;
@@ -311,7 +268,7 @@ fn write_project_report_to<W: Write>(
 fn write_project_pretty<W: Write>(
     config: &Config,
     report: &AnalysisReport,
-    summary: ProjectSummary,
+    summary: AnalysisReportSummary,
     out: &mut W,
 ) -> Result<()> {
     let options = PrettyOptions {
@@ -404,7 +361,7 @@ mod tests {
         rules::{Confidence, Matcher},
     };
 
-    use super::{FileOutput, Summary, Table, write_json};
+    use super::{FileOutput, Table, write_json};
 
     fn linter(semantic_operations: usize) -> Linter {
         let rule = Rule::builder("network.fetch")
@@ -440,17 +397,8 @@ mod tests {
 
     fn json(files: &[FileOutput]) -> AnalysisReport {
         let mut bytes = Vec::new();
-        write_json(
-            files,
-            Summary {
-                files: files.len(),
-                findings: 0,
-                parse_diagnostics: 0,
-                analysis_diagnostics: 0,
-            },
-            &mut bytes,
-        )
-        .unwrap();
+        let report = AnalysisReport::combine(files.iter().map(|file| file.report.clone())).unwrap();
+        write_json(&report, &mut bytes).unwrap();
         serde_json::from_slice(&bytes).unwrap()
     }
 

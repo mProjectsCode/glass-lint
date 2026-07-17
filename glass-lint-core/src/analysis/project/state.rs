@@ -13,8 +13,6 @@ use crate::project::ResolutionRequestKey;
 pub(in crate::analysis) struct ModuleGraph {
     /// Outgoing internal edges by importer.
     forward: BTreeMap<ModuleId, Vec<ModuleId>>,
-    /// Reverse edges retained for graph algorithms and future consumers.
-    reverse: BTreeMap<ModuleId, Vec<ModuleId>>,
     /// Authored request keys that justify each collapsed edge.
     provenance: BTreeMap<(ModuleId, ModuleId), Vec<ResolutionRequestKey>>,
     /// Sorted strongly connected components of the graph.
@@ -40,13 +38,12 @@ impl ModuleGraph {
             return false;
         }
         targets.push(to);
-        self.reverse.entry(to).or_default().push(from);
         true
     }
 
     /// Sort and deduplicate all graph collections for deterministic output.
     pub(in crate::analysis) fn normalize(&mut self) {
-        for values in self.forward.values_mut().chain(self.reverse.values_mut()) {
+        for values in self.forward.values_mut() {
             values.sort_unstable();
             values.dedup();
         }

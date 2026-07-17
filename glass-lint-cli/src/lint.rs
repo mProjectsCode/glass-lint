@@ -4,12 +4,12 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
 use glass_lint_core::Linter;
-use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection, SourceCorpus};
+use glass_lint_project::{ProjectLoader, ProjectSelection, SourceCorpus};
 
 use crate::{
     args::Command,
     config::{self, Config},
-    output::{FileOutput, Summary},
+    output::FileOutput,
 };
 
 /// Execute a linting command and return whether its findings should fail CI.
@@ -28,13 +28,7 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
                 bail!("snippet path is not a file: {}", path.display())
             }
             crate::output::write_mode(config, "single file", &path)?;
-            let options = ProjectLoadOptions {
-                max_source_bytes: config.cli.project.max_bytes,
-                max_project_source_bytes: config.cli.project.max_project_bytes,
-                max_visited_entries: config.cli.project.max_visited_entries,
-                max_timeout_ms: config.cli.project.max_timeout_ms,
-                ..ProjectLoadOptions::default()
-            };
+            let options = config.project_load_options()?;
             let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;
             let paths = corpus
                 .discover(std::slice::from_ref(&path))
@@ -59,28 +53,13 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
         ProjectSelection::TsConfig(path) => ("tsconfig", path.as_path()),
     };
     crate::output::write_mode(config, mode, mode_path)?;
-    let options = ProjectLoadOptions {
-        max_source_bytes: config.cli.project.max_bytes,
-        max_project_source_bytes: config.cli.project.max_project_bytes,
-        max_visited_entries: config.cli.project.max_visited_entries,
-        max_timeout_ms: config.cli.project.max_timeout_ms,
-        ..ProjectLoadOptions::default()
-    };
-    let loader = ProjectLoader::new(options).map_err(|error| anyhow::anyhow!(error))?;
+    let options = config.project_load_options()?;
+    let loader = ProjectLoader::new(options);
     let outcome = loader
         .load_and_lint(linter, &selection)
         .with_context(|| format!("analyze project at {}", path.display()))?;
     let report = outcome.report;
-    let failed = outcome.error.is_some()
-        || report.completion == glass_lint_core::ReportCompletion::Partial
-        || !report.diagnostics.is_empty()
-        || report.files.iter().any(|file| {
-            file.has_parse_diagnostics()
-                || file
-                    .findings
-                    .iter()
-                    .any(|finding| config.cli.fail_on.fails(finding.severity))
-        });
+    let failed = outcome.error.is_some() || config.report_fails(&report);
     crate::output::write_project_report(config, &report)?;
     tracing::info!(target: "glass_lint::cli", files = report.files.len(), "project command completed");
     Ok(failed)
@@ -101,13 +80,7 @@ fn project_selection(path: &std::path::Path) -> ProjectSelection {
 }
 
 fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<bool> {
-    let options = ProjectLoadOptions {
-        max_source_bytes: config.cli.project.max_bytes,
-        max_project_source_bytes: config.cli.project.max_project_bytes,
-        max_visited_entries: config.cli.project.max_visited_entries,
-        max_timeout_ms: config.cli.project.max_timeout_ms,
-        ..ProjectLoadOptions::default()
-    };
+    let options = config.project_load_options()?;
     let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;
     let mut files = Vec::with_capacity(paths.len());
     let mut failed = false;
@@ -128,15 +101,7 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
         let project_report = linter
             .lint_snippet(&source, &name)
             .map_err(|error| anyhow::anyhow!(error))?;
-        failed |= project_report.completion == glass_lint_core::ReportCompletion::Partial
-            || !project_report.diagnostics.is_empty()
-            || project_report.files.iter().any(|file| {
-                file.has_parse_diagnostics()
-                    || file
-                        .findings
-                        .iter()
-                        .any(|finding| config.cli.fail_on.fails(finding.severity))
-            });
+        failed |= config.report_fails(&project_report);
         files.push(FileOutput {
             path: name,
             report: project_report,
@@ -144,26 +109,7 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
         });
     }
 
-    let summary = Summary {
-        files: files.len(),
-        findings: files
-            .iter()
-            .flat_map(|file| &file.report.files)
-            .map(|file| file.findings.len())
-            .sum(),
-        parse_diagnostics: files
-            .iter()
-            .flat_map(|file| &file.report.files)
-            .map(glass_lint_core::FileReport::parse_diagnostic_count)
-            .sum(),
-        analysis_diagnostics: files
-            .iter()
-            .flat_map(|file| &file.report.files)
-            .flat_map(|file| &file.diagnostics)
-            .filter(|diagnostic| matches!(diagnostic, glass_lint_core::Diagnostic::Project(_)))
-            .count(),
-    };
-    crate::output::write_report(config, &files, summary)?;
+    crate::output::write_report(config, &files)?;
     tracing::info!(target: "glass_lint::cli", files = files.len(), "command completed");
     Ok(failed)
 }
