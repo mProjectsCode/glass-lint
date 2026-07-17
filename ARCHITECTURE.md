@@ -83,12 +83,14 @@ artifact boundary.
 
 `LocalArtifact` is keyed privately by source bytes, source language and
 normalization mode, host `Environment`, semantic engine version, and all
-`ResourceLimits` that affect retained state. Rule selection is not a key input.
-The process-local cache is bounded, uses deterministic eviction, and
-intentionally does not define a persistent serialization format; parse
-failures are not cached, while exhausted successful artifacts retain their
-typed status. A cache hit attaches only the current path-specific source
-context.
+`AnalysisLimits` that affect retained state. Rule selection is not a key input.
+The bounded cache is owned by a reusable `Linter` runtime and shared by its
+analysis sessions, including clones and rule-only selection changes. Its
+synchronization is private and poisoning is treated as a miss; parsing and
+lowering never run while the cache lock is held. It intentionally does not
+define a persistent serialization format; parse failures are not cached, while
+exhausted successful artifacts retain their typed status. A cache hit attaches
+only the current path-specific source context.
 
 ### Query and report boundary
 
@@ -99,7 +101,11 @@ evaluated by the same ordinary clause executor; there is no family-specific
 argument execution path. Completion is represented by `ReportCompletion`, and
 diagnostics remain typed records rather than string-based completion signals.
 
-SWC positions are converted once during lowering into checked, zero-based,
+The private SWC-backed local frontend includes parsing, TypeScript
+normalization, scope collection, and fact lowering. SWC types do not cross
+the retained `SemanticArtifact` boundary: project linking, matcher
+compilation, reports, and provider crates consume domain values only. SWC
+positions are converted once during lowering into checked, zero-based,
 half-open `ByteRange` values. `SourceLineIndex::try_range` is then used by
 retained consumers such as findings, authored requests, and module/linking
 diagnostics; invalid bounds or UTF-8 boundaries become incomplete analysis
@@ -193,6 +199,14 @@ Core code should make domain ownership and invariants visible in its types:
 These rules are not formatting preferences. Apply them where they clarify
 ownership, enforce an invariant, reduce repeated logic, or make a public API
 harder to misuse.
+
+## Compile-time crate decision
+
+Core remains one crate because syntax, scope, facts, flow, matching, linking,
+and reports share a private, evolving semantic pipeline. Internal modules—not
+workspace crates—enforce those boundaries. A future split requires Cargo
+timings, a stable independently owned contract, and an acyclic dependency
+direction; source size alone is insufficient evidence.
 
 ## Change policy
 

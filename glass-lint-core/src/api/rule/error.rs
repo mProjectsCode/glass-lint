@@ -17,6 +17,8 @@ pub enum RuleBuildError {
     MissingSeverity,
     /// Confidence was not supplied.
     MissingConfidence,
+    /// A required metadata field was supplied more than once.
+    DuplicateField(&'static str),
     /// No valid matcher survived normalization.
     MissingMatcher,
     /// Category failed taxonomy validation.
@@ -41,6 +43,9 @@ impl fmt::Display for RuleBuildError {
             Self::MissingCategory => formatter.write_str("rule category is required"),
             Self::MissingSeverity => formatter.write_str("rule severity is required"),
             Self::MissingConfidence => formatter.write_str("rule confidence is required"),
+            Self::DuplicateField(field) => {
+                write!(formatter, "rule {field} was supplied more than once")
+            }
             Self::MissingMatcher => formatter.write_str("at least one matcher is required"),
             Self::InvalidCategory(value) => write!(formatter, "invalid rule category `{value}`"),
             Self::InvalidMatcher(value) => write!(formatter, "invalid matcher: {value}"),

@@ -11,7 +11,6 @@ pub fn rule() -> Rule {
     Rule::builder("dynamic-code.script-injection")
         .label("Injects executable script elements")
         .category("browser/dom")
-        .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
         .matcher(Matcher::member_call(

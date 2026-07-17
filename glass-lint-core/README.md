@@ -95,8 +95,15 @@ Evidence and output are bounded; sources larger than `MAX_SOURCE_BYTES` (8 MiB)
 return a parse diagnostic rather than being analyzed.
 
 `PrettyReport`, `PrettyReports`, and `PrettyOptions` render bounded human
-output without changing the structured report. `CoreConfig` applies resource
-limits and exact rule selection to an existing linter.
+output without changing the structured report. `CoreConfig` applies
+`AnalysisLimits` (syntax, semantic, effect, evidence, link, and flow budgets)
+and exact rule selection to an existing linter. The `Linter` owns a bounded
+in-memory artifact cache reused across its lint calls; cache state is not
+serialized and does not change reports.
+
+Parsing and TypeScript normalization are implemented by a private SWC-backed
+local frontend. It lowers directly into the retained matcher-independent
+semantic artifact; no parser-neutral mirror AST is part of the public API.
 
 See the repository [architecture](../ARCHITECTURE.md) for the internal pipeline
 and [testing guide](../TESTING.md) for matcher test expectations.

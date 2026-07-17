@@ -42,9 +42,9 @@ fn admitted_sources_have_identical_reports_across_worker_counts() {
 
 #[test]
 fn controlled_release_orders_produce_identical_full_report() {
-    let limits = crate::ResourceLimits {
+    let limits = crate::AnalysisLimits {
         semantic_operations: 40,
-        ..crate::ResourceLimits::default()
+        ..crate::AnalysisLimits::default()
     };
     let sources = [
         source_file("z.js", "import value from './dependency.js'; fetch('/z');"),
@@ -173,6 +173,38 @@ fn identical_successful_source_lowers_once_then_hits() {
 }
 
 #[test]
+fn separate_sessions_on_one_linter_reuse_the_artifact_cache() {
+    let linter = test_linter();
+    let first_observer = super::session::CountingExecutionObserver::new();
+    let mut first = linter.begin_analysis("/project").unwrap();
+    first
+        .admit_source(source_file("first.js", "fetch('/api');"))
+        .unwrap();
+    first
+        .analyze_source_counted("first.js", &first_observer)
+        .unwrap();
+    first.finish().unwrap();
+
+    let second_observer = super::session::CountingExecutionObserver::new();
+    let mut second = linter.begin_analysis("/project").unwrap();
+    second
+        .admit_source(source_file("second.js", "fetch('/api');"))
+        .unwrap();
+    second
+        .analyze_source_counted("second.js", &second_observer)
+        .unwrap();
+    let report = second.finish().unwrap();
+
+    assert_eq!(first_observer.invocations().lowers, 1);
+    assert_eq!(second_observer.invocations().hits, 1);
+    assert_eq!(second_observer.invocations().lowers, 0);
+    assert_eq!(
+        report.files[0].findings[0].location.path.as_str(),
+        "second.js"
+    );
+}
+
+#[test]
 fn session_retry_does_not_cache_parse_failure() {
     let linter = test_linter();
     let mut session = linter.begin_analysis("/project").unwrap();
@@ -200,9 +232,9 @@ fn session_retry_does_not_cache_parse_failure() {
 
 #[test]
 fn session_reuses_exhausted_artifact_with_partial_status() {
-    let limits = crate::ResourceLimits {
+    let limits = crate::AnalysisLimits {
         semantic_operations: 1,
-        ..crate::ResourceLimits::default()
+        ..crate::AnalysisLimits::default()
     };
     let linter = test_linter_with_limits(limits);
     let mut session = linter.begin_analysis("/project").unwrap();
@@ -245,7 +277,7 @@ fn rule_selection_changes_projection_without_relowering() {
     let disabled = test_linter()
         .configured(&crate::CoreConfig {
             rules: Some(Vec::new()),
-            limits: crate::ResourceLimits::default(),
+            limits: crate::AnalysisLimits::default(),
         })
         .unwrap();
     let mut second = disabled.begin_analysis("/project").unwrap();
@@ -309,34 +341,30 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
         |_| {},
     );
 
-    let defaults = crate::ResourceLimits::default();
+    let defaults = crate::AnalysisLimits::default();
     let changed_limits = [
-        crate::ResourceLimits {
+        crate::AnalysisLimits {
             syntax_depth: defaults.syntax_depth + 1,
             ..defaults.clone()
         },
-        crate::ResourceLimits {
+        crate::AnalysisLimits {
             semantic_operations: defaults.semantic_operations + 1,
             ..defaults.clone()
         },
-        crate::ResourceLimits {
+        crate::AnalysisLimits {
             effect_operations: defaults.effect_operations + 1,
             ..defaults.clone()
         },
-        crate::ResourceLimits {
+        crate::AnalysisLimits {
             evidence_items: defaults.evidence_items + 1,
             ..defaults.clone()
         },
-        crate::ResourceLimits {
+        crate::AnalysisLimits {
             link_operations: defaults.link_operations + 1,
             ..defaults.clone()
         },
-        crate::ResourceLimits {
+        crate::AnalysisLimits {
             flow_operations: defaults.flow_operations + 1,
-            ..defaults.clone()
-        },
-        crate::ResourceLimits {
-            timeout_ms: defaults.timeout_ms + 1,
             ..defaults
         },
     ];
@@ -365,7 +393,7 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
 fn cache_eviction_is_bounded_and_deterministic() {
     let linter = test_linter();
     let mut session = linter.begin_analysis("/project").unwrap();
-    let capacity = crate::analysis::ArtifactCache::capacity();
+    let capacity = crate::analysis::ArtifactCacheHandle::capacity();
     for index in 0..=capacity {
         session
             .admit_source(source_file(
@@ -431,7 +459,7 @@ fn test_linter_with_environment(environment: crate::Environment) -> crate::Linte
     )
 }
 
-fn test_linter_with_limits(limits: crate::ResourceLimits) -> crate::Linter {
+fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
     test_linter()
         .configured(&crate::CoreConfig {
             rules: None,
@@ -1407,9 +1435,9 @@ fn dynamic_commonjs_export_shapes_are_reported_and_fail_closed() {
 
 mod status_policy {
     use super::*;
-    use crate::{CoreConfig, ResourceLimits};
+    use crate::{AnalysisLimits, CoreConfig};
 
-    fn configured_linter(limits: ResourceLimits) -> crate::Linter {
+    fn configured_linter(limits: AnalysisLimits) -> crate::Linter {
         test_linter()
             .configured(&CoreConfig {
                 rules: None,
@@ -1418,7 +1446,7 @@ mod status_policy {
             .unwrap()
     }
 
-    fn configured_flow_linter(limits: ResourceLimits) -> crate::Linter {
+    fn configured_flow_linter(limits: AnalysisLimits) -> crate::Linter {
         flow_linter()
             .configured(&CoreConfig {
                 rules: None,
@@ -1489,9 +1517,9 @@ mod status_policy {
     fn status_policy_matrix_has_expected_scope_and_completion() {
         let linter = test_linter();
         let syntax = lint_one(&linter, "syntax.js", "function {");
-        let depth_limits = ResourceLimits {
+        let depth_limits = AnalysisLimits {
             syntax_depth: 1,
-            ..ResourceLimits::default()
+            ..AnalysisLimits::default()
         };
         let depth = lint_one(
             &configured_linter(depth_limits),
@@ -1598,8 +1626,8 @@ mod status_policy {
     }
 
     fn assert_limit_triplet(
-        configure: fn(ResourceLimits) -> crate::Linter,
-        component: fn(&mut ResourceLimits) -> &mut usize,
+        configure: fn(AnalysisLimits) -> crate::Linter,
+        component: fn(&mut AnalysisLimits) -> &mut usize,
         required: usize,
         code: &str,
         scope: Option<&str>,
@@ -1611,7 +1639,7 @@ mod status_policy {
             (required, ReportCompletion::Complete),
             (required + 1, ReportCompletion::Complete),
         ] {
-            let mut limits = ResourceLimits::default();
+            let mut limits = AnalysisLimits::default();
             *component(&mut limits) = limit;
             let report = analyze(&configure(limits));
             assert_eq!(report.completion, expected, "{code} limit={limit}");

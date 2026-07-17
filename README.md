@@ -76,7 +76,7 @@ high-confidence invocation is:
 
 ```sh
 cargo run -p glass-lint-cli --bin glass-lint -- \
-  --config-json '{"version":1,"cli":{"profile":"recommended"}}' \
+  --config-json '{"version":2,"cli":{"profile":"recommended"}}' \
   check path/to/main.js
 ```
 
@@ -85,11 +85,11 @@ needed:
 
 ```sh
 cargo run -p glass-lint-cli --bin glass-lint -- \
-  --config-json '{"version":1,"cli":{"provider":"js"}}' \
+  --config-json '{"version":2,"cli":{"provider":"js"}}' \
   check path/to/main.js
 
 cargo run -p glass-lint-cli --bin glass-lint -- \
-  --config-json '{"version":1,"core":{"rules":["obsidian:network.request"]}}' \
+  --config-json '{"version":2,"core":{"rules":["obsidian:network.request"]}}' \
   check path/to/main.js
 ```
 

@@ -4,7 +4,10 @@
 //! function effects exactly once. Project linking and rule selection consume
 //! this model later without revisiting the AST.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{Arc, Mutex},
+};
 
 use facts::SemanticFacts;
 use syntax::SymbolCallProvenance;
@@ -47,7 +50,7 @@ pub struct ArtifactFingerprint {
     language: crate::SourceLanguage,
     normalization_mode: &'static str,
     environment: crate::Environment,
-    limits: crate::ResourceLimits,
+    limits: crate::AnalysisLimits,
     engine_version: &'static str,
 }
 
@@ -55,7 +58,7 @@ impl ArtifactFingerprint {
     pub fn new(
         source: &crate::SourceFile,
         environment: &crate::Environment,
-        limits: &crate::ResourceLimits,
+        limits: &crate::AnalysisLimits,
     ) -> Self {
         Self::with_engine_version(source, environment, limits, env!("CARGO_PKG_VERSION"))
     }
@@ -63,7 +66,7 @@ impl ArtifactFingerprint {
     fn with_engine_version(
         source: &crate::SourceFile,
         environment: &crate::Environment,
-        limits: &crate::ResourceLimits,
+        limits: &crate::AnalysisLimits,
         engine_version: &'static str,
     ) -> Self {
         let normalization_mode = match source.language {
@@ -82,7 +85,7 @@ impl ArtifactFingerprint {
     fn from_inputs(
         source: &crate::SourceFile,
         environment: &crate::Environment,
-        limits: &crate::ResourceLimits,
+        limits: &crate::AnalysisLimits,
         normalization_mode: &'static str,
         engine_version: &'static str,
     ) -> Self {
@@ -100,7 +103,7 @@ impl ArtifactFingerprint {
     pub(crate) fn for_engine_version(
         source: &crate::SourceFile,
         environment: &crate::Environment,
-        limits: &crate::ResourceLimits,
+        limits: &crate::AnalysisLimits,
         engine_version: &'static str,
     ) -> Self {
         Self::with_engine_version(source, environment, limits, engine_version)
@@ -110,7 +113,7 @@ impl ArtifactFingerprint {
     pub(crate) fn for_test_inputs(
         source: &crate::SourceFile,
         environment: &crate::Environment,
-        limits: &crate::ResourceLimits,
+        limits: &crate::AnalysisLimits,
         normalization_mode: &'static str,
         engine_version: &'static str,
     ) -> Self {
@@ -129,12 +132,40 @@ pub struct CachedArtifact {
     pub semantic: Arc<SemanticArtifact>,
 }
 
-/// Small process-local cache used only as an internal proof of key semantics.
+/// Bounded cache of successfully lowered artifacts owned by a reusable runtime.
 /// Parse failures are deliberately not cached; successfully lowered artifacts,
 /// including exhausted ones, are safe to reuse because their status is data.
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct ArtifactCache {
     entries: Vec<(ArtifactFingerprint, CachedArtifact)>,
+}
+
+/// Synchronized runtime-owned cache. A poisoned mutex is recovered so an
+/// optimization can never make analysis panic.
+#[derive(Clone, Default)]
+pub struct ArtifactCacheHandle(Arc<Mutex<ArtifactCache>>);
+
+impl ArtifactCacheHandle {
+    pub fn get(&self, key: &ArtifactFingerprint) -> Option<CachedArtifact> {
+        let cache = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        cache.get(key)
+    }
+
+    pub fn insert(&self, key: ArtifactFingerprint, artifact: CachedArtifact) -> bool {
+        let mut cache = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        cache.insert(key, artifact)
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn capacity() -> usize {
+        ArtifactCache::capacity()
+    }
 }
 
 impl ArtifactCache {

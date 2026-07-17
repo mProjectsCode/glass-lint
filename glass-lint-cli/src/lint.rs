@@ -29,10 +29,10 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
             }
             crate::output::write_mode(config, "single file", &path)?;
             let options = ProjectLoadOptions {
-                max_source_bytes: config.cli.max_bytes,
-                max_project_source_bytes: config.cli.max_project_bytes,
-                max_visited_entries: config.cli.max_visited_entries,
-                max_timeout_ms: linter.resource_limits().timeout_ms,
+                max_source_bytes: config.cli.project.max_bytes,
+                max_project_source_bytes: config.cli.project.max_project_bytes,
+                max_visited_entries: config.cli.project.max_visited_entries,
+                max_timeout_ms: config.cli.project.max_timeout_ms,
                 ..ProjectLoadOptions::default()
             };
             let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;
@@ -60,10 +60,10 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
     };
     crate::output::write_mode(config, mode, mode_path)?;
     let options = ProjectLoadOptions {
-        max_source_bytes: config.cli.max_bytes,
-        max_project_source_bytes: config.cli.max_project_bytes,
-        max_visited_entries: config.cli.max_visited_entries,
-        max_timeout_ms: linter.resource_limits().timeout_ms,
+        max_source_bytes: config.cli.project.max_bytes,
+        max_project_source_bytes: config.cli.project.max_project_bytes,
+        max_visited_entries: config.cli.project.max_visited_entries,
+        max_timeout_ms: config.cli.project.max_timeout_ms,
         ..ProjectLoadOptions::default()
     };
     let loader = ProjectLoader::new(options).map_err(|error| anyhow::anyhow!(error))?;
@@ -102,10 +102,10 @@ fn project_selection(path: &std::path::Path) -> ProjectSelection {
 
 fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<bool> {
     let options = ProjectLoadOptions {
-        max_source_bytes: config.cli.max_bytes,
-        max_project_source_bytes: config.cli.max_project_bytes,
-        max_visited_entries: config.cli.max_visited_entries,
-        max_timeout_ms: linter.resource_limits().timeout_ms,
+        max_source_bytes: config.cli.project.max_bytes,
+        max_project_source_bytes: config.cli.project.max_project_bytes,
+        max_visited_entries: config.cli.project.max_visited_entries,
+        max_timeout_ms: config.cli.project.max_timeout_ms,
         ..ProjectLoadOptions::default()
     };
     let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;

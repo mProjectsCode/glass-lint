@@ -268,7 +268,7 @@ use super::{
     tables::{ResolutionTable, SourceTable},
 };
 use crate::analysis::{
-    ArtifactCache, ArtifactFingerprint, CachedArtifact, LoweredSource, SourceContext,
+    ArtifactCacheHandle, ArtifactFingerprint, CachedArtifact, LoweredSource, SourceContext,
 };
 
 pub struct AnalysisSession<'a> {
@@ -279,7 +279,7 @@ pub struct AnalysisSession<'a> {
     pub(super) authored_requests: BTreeMap<ResolutionRequestKey, ResolutionRequest>,
     pub(super) analyzed: BTreeMap<super::ProjectRelativePath, crate::analysis::LocalArtifact>,
     pub(super) parse_diagnostics: BTreeMap<super::ProjectRelativePath, crate::ParseDiagnostic>,
-    pub(super) artifact_cache: ArtifactCache,
+    pub(super) artifact_cache: ArtifactCacheHandle,
     #[cfg(test)]
     fingerprint_engine_version: &'static str,
     #[cfg(test)]
@@ -295,7 +295,7 @@ impl<'a> AnalysisSession<'a> {
             return ArtifactFingerprint::new(
                 source,
                 self.linter.analysis_environment(),
-                self.linter.resource_limits(),
+                self.linter.analysis_limits(),
             );
         }
         self.fingerprint_normalization.map_or_else(
@@ -303,7 +303,7 @@ impl<'a> AnalysisSession<'a> {
                 ArtifactFingerprint::for_engine_version(
                     source,
                     self.linter.analysis_environment(),
-                    self.linter.resource_limits(),
+                    self.linter.analysis_limits(),
                     self.fingerprint_engine_version,
                 )
             },
@@ -311,7 +311,7 @@ impl<'a> AnalysisSession<'a> {
                 ArtifactFingerprint::for_test_inputs(
                     source,
                     self.linter.analysis_environment(),
-                    self.linter.resource_limits(),
+                    self.linter.analysis_limits(),
                     normalization,
                     self.fingerprint_engine_version,
                 )
@@ -324,7 +324,7 @@ impl<'a> AnalysisSession<'a> {
         ArtifactFingerprint::new(
             source,
             self.linter.analysis_environment(),
-            self.linter.resource_limits(),
+            self.linter.analysis_limits(),
         )
     }
 
@@ -341,7 +341,7 @@ impl<'a> AnalysisSession<'a> {
             authored_requests: BTreeMap::new(),
             analyzed: BTreeMap::new(),
             parse_diagnostics: BTreeMap::new(),
-            artifact_cache: ArtifactCache::default(),
+            artifact_cache: linter.artifact_cache_handle(),
             #[cfg(test)]
             fingerprint_engine_version: env!("CARGO_PKG_VERSION"),
             #[cfg(test)]
@@ -499,7 +499,7 @@ impl<'a> AnalysisSession<'a> {
             }
         }
 
-        let artifact_cache = &mut self.artifact_cache;
+        let artifact_cache = self.artifact_cache.clone();
         let authored_requests = &mut self.authored_requests;
         let analyzed = &mut self.analyzed;
         let parse_diagnostics = &mut self.parse_diagnostics;

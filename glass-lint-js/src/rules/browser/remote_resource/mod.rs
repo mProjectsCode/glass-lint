@@ -14,7 +14,6 @@ pub fn rule() -> Rule {
     Rule::builder("dom.remote-resource")
         .label("Loads remote DOM resources")
         .category("browser/dom")
-        .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
         .matcher(remote_element_flow(

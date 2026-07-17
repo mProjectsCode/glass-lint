@@ -35,7 +35,7 @@ mod syntax;
 mod value;
 
 pub use local::{
-    ArtifactCache, ArtifactFingerprint, CachedArtifact, LocalArtifact, ProjectModule,
+    ArtifactCacheHandle, ArtifactFingerprint, CachedArtifact, LocalArtifact, ProjectModule,
     SemanticArtifact, SourceContext,
 };
 pub use lowering::{LoweredSource, lower_artifact, lower_source};
@@ -179,14 +179,14 @@ impl ProjectSemanticModel {
     /// Create a project model for one already analyzed source without linking.
     #[allow(dead_code)]
     pub fn single(path: impl Into<String>, source: SourceContext, local: LocalArtifact) -> Self {
-        Self::single_with_limits(path, source, local, &crate::ResourceLimits::default())
+        Self::single_with_limits(path, source, local, &crate::AnalysisLimits::default())
     }
 
     pub fn single_with_limits(
         _path: impl Into<String>,
         _source: SourceContext,
         local: LocalArtifact,
-        limits: &crate::ResourceLimits,
+        limits: &crate::AnalysisLimits,
     ) -> Self {
         let status = local.status().clone();
         Self {
@@ -221,13 +221,13 @@ impl ProjectSemanticModel {
         input: ProjectInput,
         analyzed: BTreeMap<crate::ProjectRelativePath, LocalArtifact>,
     ) -> Result<Self, ProjectInputError> {
-        Self::link_with_limits(input, analyzed, &crate::ResourceLimits::default())
+        Self::link_with_limits(input, analyzed, &crate::AnalysisLimits::default())
     }
 
     pub fn link_with_limits(
         input: ProjectInput,
         analyzed: BTreeMap<crate::ProjectRelativePath, LocalArtifact>,
-        limits: &crate::ResourceLimits,
+        limits: &crate::AnalysisLimits,
     ) -> Result<Self, ProjectInputError> {
         let input = input.validate()?;
         let validated = ValidatedLinkInput::build(input, analyzed)?;
@@ -543,7 +543,7 @@ mod tests {
         let local = lowering::lower_program(
             &parsed.program,
             &Environment::default(),
-            &crate::ResourceLimits::default(),
+            &crate::AnalysisLimits::default(),
             &coordinates,
         );
         let source = crate::SourceFile::new(

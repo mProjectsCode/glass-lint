@@ -156,7 +156,19 @@ pub struct Linter {
     catalog: RuleCatalog,
     /// Enabled rule indexes in deterministic order.
     enabled: Vec<crate::api::classification::RuleIndex>,
-    limits: crate::ResourceLimits,
+    limits: crate::AnalysisLimits,
+    artifact_cache: crate::analysis::ArtifactCacheHandle,
+}
+
+impl Clone for Linter {
+    fn clone(&self) -> Self {
+        Self {
+            catalog: self.catalog.clone(),
+            enabled: self.enabled.clone(),
+            limits: self.limits.clone(),
+            artifact_cache: self.artifact_cache.clone(),
+        }
+    }
 }
 
 impl Linter {
@@ -183,6 +195,7 @@ impl Linter {
         if let Some(rules) = &config.rules {
             let mut linter = Self::with_rules(self.catalog, rules.clone())?;
             linter.limits = config.limits.clone();
+            linter.artifact_cache = self.artifact_cache;
             Ok(linter)
         } else {
             let mut linter = self;
@@ -200,7 +213,8 @@ impl Linter {
         Self {
             catalog,
             enabled,
-            limits: crate::ResourceLimits::default(),
+            limits: crate::AnalysisLimits::default(),
+            artifact_cache: crate::analysis::ArtifactCacheHandle::default(),
         }
     }
 
@@ -219,7 +233,8 @@ impl Linter {
         Self {
             catalog,
             enabled,
-            limits: crate::ResourceLimits::default(),
+            limits: crate::AnalysisLimits::default(),
+            artifact_cache: crate::analysis::ArtifactCacheHandle::default(),
         }
     }
 
@@ -241,7 +256,8 @@ impl Linter {
         Ok(Self {
             catalog,
             enabled: indices,
-            limits: crate::ResourceLimits::default(),
+            limits: crate::AnalysisLimits::default(),
+            artifact_cache: crate::analysis::ArtifactCacheHandle::default(),
         })
     }
 
@@ -283,8 +299,12 @@ impl Linter {
     }
 
     /// Borrow the validated parser and semantic safety limits.
-    pub fn resource_limits(&self) -> &crate::ResourceLimits {
+    pub fn analysis_limits(&self) -> &crate::AnalysisLimits {
         &self.limits
+    }
+
+    pub(crate) fn artifact_cache_handle(&self) -> crate::analysis::ArtifactCacheHandle {
+        self.artifact_cache.clone()
     }
 
     /// Lints an in-memory project using explicit, already-classified

@@ -26,7 +26,7 @@ pub use diagnostic::{
     RuleMetadata, Severity, SourceLineIndex, SourceRange,
 };
 pub use environment::{Environment, EnvironmentError};
-pub use limits::ResourceLimits;
+pub use limits::AnalysisLimits;
 pub use lint::{LintConfigError, Linter, RuleCatalog, RuleCatalogError};
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{

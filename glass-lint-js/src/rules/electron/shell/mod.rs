@@ -12,7 +12,6 @@ pub fn rule() -> Rule {
     Rule::builder("electron.shell")
         .label("Uses Electron shell APIs")
         .category("electron/shell")
-        .severity(Severity::Info)
         .confidence(Confidence::High)
         .severity(Severity::Warning)
         .matcher(Matcher::module_member_call(

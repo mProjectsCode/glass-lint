@@ -11,7 +11,6 @@ pub fn rule() -> Rule {
     Rule::builder("vault.delete")
         .label("Deletes or trashes vault files")
         .category("vault")
-        .severity(Severity::Info)
         .confidence(Confidence::High)
         .severity(Severity::Warning)
         .matcher(Matcher::rooted_member_call("app.vault.delete"))

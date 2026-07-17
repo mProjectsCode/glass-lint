@@ -42,5 +42,7 @@ uses `node` and `require`. Unresolved bare packages remain opaque external
 results; unresolved internal requests remain diagnostics and never become
 guessed provenance.
 
-`ProjectLoadOptions::validate` rejects invalid limits, source suffixes, and
-extension aliases before I/O begins.
+`ProjectLoadOptions::validate` rejects invalid limits, including the positive
+`max_timeout_ms` cooperative loading deadline, source suffixes, and extension
+aliases before I/O begins. Filesystem limits are intentionally owned here,
+separately from core `AnalysisLimits`.

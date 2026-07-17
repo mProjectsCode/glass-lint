@@ -26,7 +26,7 @@ Pass a TOML or JSON file with `--config PATH`, or inline JSON with
 Configuration is versioned and rejects unknown fields:
 
 ```toml
-version = 1
+version = 2
 
 [core]
 rules = ["obsidian:network.request"]
@@ -40,11 +40,17 @@ verbosity = "quiet"
 color = true
 pretty_max_width = 120
 show_evidence_source = true
+
+[cli.project]
+max_bytes = 8388608
+max_project_bytes = 536870912
+max_visited_entries = 250000
+max_timeout_ms = 300000
 ```
 
 The `core.rules` field selects exact rule IDs. When omitted, the chosen profile
-is preserved; an empty list disables all rules. The CLI also accepts project
-budgets through `max_bytes`, `max_project_bytes`, and `max_visited_entries`.
+is preserved; an empty list disables all rules. Project budgets are nested
+under `[cli.project]` and are passed directly to `glass-lint-project`.
 
 The default provider is `obsidian`, which runs both `js:*` and `obsidian:*`
 rules in the Obsidian host environment. The default profile is `heuristic`;

@@ -1,7 +1,7 @@
 use glass_lint_core::{
-    ByteRange, CoreConfig, DiagnosticCode, Environment, InvalidPosition,
-    InvalidSourcePositionRange, Linter, Position, ProjectInput, ResourceLimits, Rule, RuleCatalog,
-    Severity, SourceFile, SourceRange,
+    AnalysisLimits, ByteRange, CoreConfig, DiagnosticCode, Environment, InvalidPosition,
+    InvalidSourcePositionRange, Linter, Position, ProjectInput, Rule, RuleCatalog, Severity,
+    SourceFile, SourceRange,
     rules::{CallMatcher, Confidence},
 };
 
@@ -21,7 +21,7 @@ fn supported_public_operations_do_not_require_engine_storage() {
     let linter = Linter::new(catalog)
         .configured(&CoreConfig {
             rules: None,
-            limits: ResourceLimits::default(),
+            limits: AnalysisLimits::default(),
         })
         .unwrap();
     let report = linter

@@ -67,13 +67,9 @@ pub struct CliConfig {
     #[serde(default)]
     /// Rule confidence profile used to select the catalog.
     pub profile: Profile,
-    #[serde(default = "default_max_bytes")]
-    /// Maximum source size accepted by project discovery, in bytes.
-    pub max_bytes: u64,
-    #[serde(default = "default_project_bytes")]
-    pub max_project_bytes: u64,
-    #[serde(default = "default_visited_entries")]
-    pub max_visited_entries: usize,
+    #[serde(default)]
+    /// Filesystem and project-loading limits, owned by the project boundary.
+    pub project: ProjectConfig,
     #[serde(default)]
     /// Minimum finding severity that makes the command fail.
     pub fail_on: FailOn,
@@ -96,6 +92,31 @@ pub struct CliConfig {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+#[allow(clippy::struct_field_names)]
+pub struct ProjectConfig {
+    #[serde(default = "default_max_bytes")]
+    pub max_bytes: u64,
+    #[serde(default = "default_project_bytes")]
+    pub max_project_bytes: u64,
+    #[serde(default = "default_visited_entries")]
+    pub max_visited_entries: usize,
+    #[serde(default = "default_timeout_ms")]
+    pub max_timeout_ms: u64,
+}
+
+impl Default for ProjectConfig {
+    fn default() -> Self {
+        Self {
+            max_bytes: default_max_bytes(),
+            max_project_bytes: default_project_bytes(),
+            max_visited_entries: default_visited_entries(),
+            max_timeout_ms: default_timeout_ms(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// Versioned top-level configuration consumed by the CLI.
     pub version: u32,
@@ -112,9 +133,7 @@ impl Default for CliConfig {
         Self {
             provider: Provider::default(),
             profile: Profile::default(),
-            max_bytes: default_max_bytes(),
-            max_project_bytes: default_project_bytes(),
-            max_visited_entries: default_visited_entries(),
+            project: ProjectConfig::default(),
             fail_on: FailOn::default(),
             output: Output::default(),
             verbosity: Verbosity::default(),
@@ -128,14 +147,14 @@ impl Default for CliConfig {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: 2,
             core: CoreConfig::default(),
             cli: CliConfig::default(),
         }
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawConfig {
     version: Option<u32>,
@@ -158,6 +177,10 @@ fn default_project_bytes() -> u64 {
 }
 fn default_visited_entries() -> usize {
     250_000
+}
+
+fn default_timeout_ms() -> u64 {
+    5 * 60 * 1000
 }
 
 fn default_color() -> bool {
@@ -198,8 +221,8 @@ pub fn load(args: &Args) -> Result<Config> {
     let version = raw
         .version
         .ok_or_else(|| anyhow::anyhow!("config version is required"))?;
-    if version != 1 {
-        bail!("unsupported config version {version}; expected 1")
+    if version != 2 {
+        bail!("unsupported config version {version}; expected 2")
     }
 
     validate(Config {
@@ -230,14 +253,17 @@ fn discover_from_cwd() -> Result<Option<(String, &'static str)>> {
 }
 
 fn validate(config: Config) -> Result<Config> {
-    if config.cli.max_bytes == 0 || config.cli.max_bytes > MAX_SOURCE_BYTES as u64 {
+    if config.cli.project.max_bytes == 0 || config.cli.project.max_bytes > MAX_SOURCE_BYTES as u64 {
         bail!("max_bytes must be between 1 and {MAX_SOURCE_BYTES}")
     }
-    if config.cli.max_project_bytes < config.cli.max_bytes {
+    if config.cli.project.max_project_bytes < config.cli.project.max_bytes {
         bail!("max_project_bytes must be at least max_bytes")
     }
-    if config.cli.max_visited_entries == 0 {
+    if config.cli.project.max_visited_entries == 0 {
         bail!("visited limit must be positive")
+    }
+    if config.cli.project.max_timeout_ms == 0 {
+        bail!("max_timeout_ms must be positive")
     }
     if config.cli.pretty_max_width < 20 {
         bail!("pretty_max_width must be at least 20")
@@ -369,5 +395,20 @@ mod tests {
 
         assert_eq!(evals, 2);
         assert_eq!(processors, 2);
+    }
+
+    #[test]
+    fn project_timeout_is_validated_at_the_cli_boundary() {
+        let mut config = Config::default();
+        config.cli.project.max_timeout_ms = 0;
+        let error = validate(config).unwrap_err();
+        assert!(error.to_string().contains("max_timeout_ms"));
+    }
+
+    #[test]
+    fn legacy_flat_project_limits_are_rejected() {
+        let error = serde_json::from_str::<RawConfig>(r#"{"version":2,"cli":{"max_bytes":1024}}"#)
+            .unwrap_err();
+        assert!(error.to_string().contains("unknown field"));
     }
 }

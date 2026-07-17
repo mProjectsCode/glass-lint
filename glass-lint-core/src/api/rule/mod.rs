@@ -55,6 +55,7 @@ impl Rule {
             severity: None,
             confidence: None,
             matchers: Vec::new(),
+            duplicate_field: None,
         }
     }
 
@@ -104,6 +105,7 @@ pub struct RuleBuilder {
     severity: Option<Severity>,
     confidence: Option<Confidence>,
     matchers: Vec<Matcher>,
+    duplicate_field: Option<&'static str>,
 }
 
 impl RuleBuilder {
@@ -117,6 +119,9 @@ impl RuleBuilder {
     #[must_use]
     /// Set the human-readable label.
     pub fn label(mut self, label: impl Into<String>) -> Self {
+        if self.label.is_some() {
+            self.duplicate_field = Some("label");
+        }
         self.label = Some(label.into());
         self
     }
@@ -124,6 +129,9 @@ impl RuleBuilder {
     #[must_use]
     /// Set the provider category.
     pub fn category(mut self, category: impl Into<Category>) -> Self {
+        if self.category.is_some() {
+            self.duplicate_field = Some("category");
+        }
         self.category = Some(category.into());
         self
     }
@@ -131,6 +139,9 @@ impl RuleBuilder {
     #[must_use]
     /// Set report severity.
     pub fn severity(mut self, severity: Severity) -> Self {
+        if self.severity.is_some() {
+            self.duplicate_field = Some("severity");
+        }
         self.severity = Some(severity);
         self
     }
@@ -138,12 +149,18 @@ impl RuleBuilder {
     #[must_use]
     /// Set evidence confidence.
     pub fn confidence(mut self, confidence: Confidence) -> Self {
+        if self.confidence.is_some() {
+            self.duplicate_field = Some("confidence");
+        }
         self.confidence = Some(confidence);
         self
     }
 
     /// Validate metadata/matchers, normalize them, and construct the rule.
     pub fn build(self) -> Result<Rule, RuleBuildError> {
+        if let Some(field) = self.duplicate_field {
+            return Err(RuleBuildError::DuplicateField(field));
+        }
         let label = required_string(self.label, RuleBuildError::MissingLabel)?;
         let category = self.category.ok_or(RuleBuildError::MissingCategory)?;
         let severity = self.severity.ok_or(RuleBuildError::MissingSeverity)?;
@@ -239,6 +256,40 @@ mod tests {
         assert!(build("network.fetch", "browser/network").is_ok());
         let error = build("UPPER", "network").unwrap_err();
         assert!(error.to_string().contains("invalid rule ID"));
+    }
+
+    #[test]
+    fn rejects_duplicate_required_metadata() {
+        let cases = [
+            (
+                "label",
+                Rule::builder("network.fetch").label("one").label("two"),
+            ),
+            (
+                "category",
+                Rule::builder("network.fetch")
+                    .category("one")
+                    .category("two"),
+            ),
+            (
+                "severity",
+                Rule::builder("network.fetch")
+                    .severity(Severity::Info)
+                    .severity(Severity::Warning),
+            ),
+            (
+                "confidence",
+                Rule::builder("network.fetch")
+                    .confidence(Confidence::High)
+                    .confidence(Confidence::Medium),
+            ),
+        ];
+        for (field, builder) in cases {
+            assert!(matches!(
+                builder.build(),
+                Err(RuleBuildError::DuplicateField(actual)) if actual == field
+            ));
+        }
     }
 
     #[test]

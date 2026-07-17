@@ -1,10 +1,10 @@
-//! Validated resource limits shared by parsing and semantic analysis.
+//! Validated limits for parsing and semantic analysis.
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
-pub struct ResourceLimits {
+pub struct AnalysisLimits {
     #[serde(default = "default_syntax_depth")]
     pub syntax_depth: usize,
     #[serde(default = "default_semantic_operations")]
@@ -17,8 +17,6 @@ pub struct ResourceLimits {
     pub link_operations: usize,
     #[serde(default = "default_flow_operations")]
     pub flow_operations: usize,
-    #[serde(default = "default_timeout_ms")]
-    pub timeout_ms: u64,
 }
 
 const fn default_syntax_depth() -> usize {
@@ -39,11 +37,7 @@ const fn default_link_operations() -> usize {
 const fn default_flow_operations() -> usize {
     262_144
 }
-const fn default_timeout_ms() -> u64 {
-    5 * 60 * 1000
-}
-
-impl Default for ResourceLimits {
+impl Default for AnalysisLimits {
     fn default() -> Self {
         Self {
             syntax_depth: default_syntax_depth(),
@@ -52,12 +46,11 @@ impl Default for ResourceLimits {
             evidence_items: default_evidence_items(),
             link_operations: default_link_operations(),
             flow_operations: default_flow_operations(),
-            timeout_ms: default_timeout_ms(),
         }
     }
 }
 
-impl ResourceLimits {
+impl AnalysisLimits {
     pub fn validate(&self) -> Result<(), String> {
         if self.syntax_depth == 0 {
             return Err("syntax_depth must be positive".into());
@@ -77,9 +70,36 @@ impl ResourceLimits {
         if self.flow_operations == 0 {
             return Err("flow_operations must be positive".into());
         }
-        if self.timeout_ms == 0 {
-            return Err("timeout_ms must be positive".into());
-        }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AnalysisLimits;
+
+    #[test]
+    fn every_analysis_limit_rejects_zero() {
+        let defaults = AnalysisLimits::default();
+        let mut cases = [
+            ("syntax_depth", defaults.clone()),
+            ("semantic_operations", defaults.clone()),
+            ("effect_operations", defaults.clone()),
+            ("evidence_items", defaults.clone()),
+            ("link_operations", defaults.clone()),
+            ("flow_operations", defaults),
+        ];
+        for (name, limits) in &mut cases {
+            match *name {
+                "syntax_depth" => limits.syntax_depth = 0,
+                "semantic_operations" => limits.semantic_operations = 0,
+                "effect_operations" => limits.effect_operations = 0,
+                "evidence_items" => limits.evidence_items = 0,
+                "link_operations" => limits.link_operations = 0,
+                "flow_operations" => limits.flow_operations = 0,
+                _ => unreachable!(),
+            }
+            assert_eq!(limits.validate(), Err(format!("{name} must be positive")));
+        }
     }
 }

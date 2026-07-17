@@ -101,13 +101,13 @@ pub fn lower_source(
         &source.source,
         &source.path,
         source.language,
-        linter.resource_limits().syntax_depth,
+        linter.analysis_limits().syntax_depth,
     )?;
     let coordinates = SpanNormalizer::new(parsed.source_start, &source.source);
     let semantic = lower_program(
         &parsed.program,
         linter.analysis_environment(),
-        linter.resource_limits(),
+        linter.analysis_limits(),
         &coordinates,
     );
     Ok(LoweredSource {
@@ -124,13 +124,13 @@ pub fn lower_artifact(
         &source.source,
         &source.path,
         source.language,
-        linter.resource_limits().syntax_depth,
+        linter.analysis_limits().syntax_depth,
     )?;
     let coordinates = SpanNormalizer::new(parsed.source_start, &source.source);
     Ok(lower_program(
         &parsed.program,
         linter.analysis_environment(),
-        linter.resource_limits(),
+        linter.analysis_limits(),
         &coordinates,
     ))
 }
@@ -138,7 +138,7 @@ pub fn lower_artifact(
 pub fn lower_program(
     program: &Program,
     environment: &crate::Environment,
-    limits: &crate::ResourceLimits,
+    limits: &crate::AnalysisLimits,
     coordinates: &SpanNormalizer,
 ) -> SemanticArtifact {
     let resolver =
@@ -233,7 +233,7 @@ mod tests {
         let artifact = lower_program(
             &parsed.program,
             &crate::Environment::default(),
-            &crate::ResourceLimits::default(),
+            &crate::AnalysisLimits::default(),
             &invalid,
         );
         assert!(!artifact.status().is_complete());

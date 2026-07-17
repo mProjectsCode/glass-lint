@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{ResourceLimits, RuleCatalog, RuleId, lint::LintConfigError};
+use crate::{AnalysisLimits, RuleCatalog, RuleId, lint::LintConfigError};
 
 /// Provider-neutral choices that affect analysis, independent of files or
 /// presentation.
@@ -13,7 +13,7 @@ pub struct CoreConfig {
     #[serde(default)]
     pub rules: Option<Vec<RuleId>>,
     #[serde(default)]
-    pub limits: ResourceLimits,
+    pub limits: AnalysisLimits,
 }
 
 impl CoreConfig {
