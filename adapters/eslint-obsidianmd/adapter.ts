@@ -2,6 +2,7 @@
 
 import { ESLint, type Linter } from "eslint";
 import obsidianmdPlugin from "eslint-plugin-obsidianmd";
+import tseslint from "typescript-eslint";
 
 const ADAPTER_PROTOCOL_VERSION = 3;
 const TOOL_NAME = "eslint-obsidianmd";
@@ -41,11 +42,14 @@ interface AdapterFinding {
     message_id: string;
     message: string;
     severity: FindingSeverity;
-    range: {
+    location: {
+        path: string;
+        range: {
         start: { line: number; column: number };
         end: { line: number; column: number };
+        };
     };
-    evidence: [];
+    evidence: { items: [] };
 }
 
 interface AdapterResponse {
@@ -135,9 +139,30 @@ function createEslint(request: AdapterRequest): ESLint {
             throw new Error(`unknown config ${request.config}`);
         }
 
+        const configForRequest = request.language === "typescript"
+            ? [
+                ...config,
+                // The harness deliberately does not type-check fixture files.
+                // Disable the type-aware preset rules so the plugin can still
+                // lint syntax-only TS snippets without a tsconfig.
+                tseslint.configs.disableTypeChecked,
+                {
+                    files: ["**/*.{ts,cts,mts,tsx}"],
+                    rules: {
+                        "obsidianmd/no-plugin-as-component": "off",
+                        "obsidianmd/no-view-references-in-plugin": "off",
+                        "obsidianmd/no-unsupported-api": "off",
+                        "obsidianmd/prefer-create-el": "off",
+                        "obsidianmd/prefer-file-manager-trash-file": "off",
+                        "obsidianmd/prefer-instanceof": "off",
+                    },
+                },
+            ]
+            : config;
+
         return new ESLint({
             overrideConfigFile: true,
-            overrideConfig: config,
+            overrideConfig: configForRequest,
         });
     }
 
@@ -192,20 +217,26 @@ function createEslint(request: AdapterRequest): ESLint {
     });
 }
 
-function createFinding(message: Linter.LintMessage): AdapterFinding {
+function createFinding(
+    message: Linter.LintMessage,
+    filename: string,
+): AdapterFinding {
     return {
         rule_id: mapRuleId(message.ruleId),
         message_id: message.messageId ?? "unknown",
         message: message.message,
         severity: mapSeverity(message.severity),
-        range: {
-            start: { line: message.line, column: message.column },
-            end: {
-                line: message.endLine ?? message.line,
-                column: message.endColumn ?? message.column,
+        location: {
+            path: filename,
+            range: {
+                start: { line: message.line, column: message.column },
+                end: {
+                    line: message.endLine ?? message.line,
+                    column: message.endColumn ?? message.column,
+                },
             },
         },
-        evidence: [],
+        evidence: { items: [] },
     };
 }
 
@@ -217,9 +248,6 @@ async function main(): Promise<void> {
     
     let before = performance.now();
     const request = await readRequest();
-    if (request.language !== "javascript") {
-        throw new Error("eslint-obsidianmd adapter does not support TypeScript");
-    }
     process.stderr.write(`[${TOOL_NAME}] read request in ${Math.round(performance.now() - before)}ms\n`);
 
     before = performance.now();
@@ -236,7 +264,9 @@ async function main(): Promise<void> {
         protocol_version: ADAPTER_PROTOCOL_VERSION,
         tool: TOOL_NAME,
         tool_version: obsidianmdPlugin.meta?.version ?? FALLBACK_PLUGIN_VERSION,
-        findings: result.messages.map(createFinding),
+        findings: result.messages.map((message) =>
+            createFinding(message, request.filename)
+        ),
     };
 
     process.stderr.write(`[${TOOL_NAME}] total time ${Math.round(performance.now() - start)}ms\n`);

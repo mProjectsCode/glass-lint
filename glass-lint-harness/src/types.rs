@@ -259,7 +259,11 @@ pub struct ToolResult {
     pub passed: bool,
     /// Findings returned by the adapter.
     pub findings: Vec<Finding>,
+    /// Expectation mismatches between returned findings and fixture metadata.
     pub errors: Vec<String>,
+    /// Failures while starting or executing the adapter, or decoding its
+    /// response.
+    pub operational_errors: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]

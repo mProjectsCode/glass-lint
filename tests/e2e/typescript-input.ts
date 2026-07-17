@@ -1,6 +1,7 @@
 // @case description TypeScript runtime and type-only input
 // @case tags typescript,network
 // @tool glass-lint rules=js:network.request
+// @tool eslint-obsidianmd config=recommended
 
 interface RequestShape { url: string }
 type FetchType = typeof fetch;

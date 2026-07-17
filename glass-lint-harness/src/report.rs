@@ -53,14 +53,18 @@ pub fn failure_details(report: &SuiteReport) -> String {
                 continue;
             }
             out.push_str(&format!(
-                "\n{} [{}] failed with {} error(s) and {} finding(s)\n",
+                "\n{} [{}] failed with {} lint error(s), {} operational error(s), and {} finding(s)\n",
                 case.id,
                 tool,
                 result.errors.len(),
+                result.operational_errors.len(),
                 result.findings.len()
             ));
             for error in &result.errors {
-                out.push_str(&format!("  error: {error}\n"));
+                out.push_str(&format!("  lint error: {error}\n"));
+            }
+            for error in &result.operational_errors {
+                out.push_str(&format!("  operational error: {error}\n"));
             }
             for finding in &result.findings {
                 out.push_str(&format!(
@@ -114,7 +118,10 @@ pub fn markdown(report: &SuiteReport) -> String {
                 out.push_str(&format!("- `{tool}` skipped: {reason}\n"));
             }
             for error in &result.errors {
-                out.push_str(&format!("- `{tool}`: {error}\n"));
+                out.push_str(&format!("- `{tool}` lint mismatch: {error}\n"));
+            }
+            for error in &result.operational_errors {
+                out.push_str(&format!("- `{tool}` operational error: {error}\n"));
             }
         }
     }
@@ -158,8 +165,14 @@ pub fn comparison(report: &SuiteReport) -> String {
                     |r| {
                         if r.skipped {
                             "skip".into()
-                        } else {
+                        } else if r.operational_errors.is_empty() {
                             r.findings.len().to_string()
+                        } else {
+                            format!(
+                                "{} ({} operational error(s))",
+                                r.findings.len(),
+                                r.operational_errors.len()
+                            )
                         }
                     },
                 )
@@ -172,7 +185,7 @@ pub fn comparison(report: &SuiteReport) -> String {
         let has_findings = case
             .tools
             .values()
-            .any(|r| !r.skipped && !r.findings.is_empty());
+            .any(|r| !r.skipped && (!r.findings.is_empty() || !r.operational_errors.is_empty()));
         if !has_findings {
             continue;
         }
@@ -189,9 +202,16 @@ pub fn comparison(report: &SuiteReport) -> String {
                 continue;
             }
             out.push_str(&format!(
-                "\n### {tool} ({} finding(s))\n\n",
-                result.findings.len()
+                "\n### {tool} ({} finding(s), {} operational error(s))\n\n",
+                result.findings.len(),
+                result.operational_errors.len()
             ));
+            for error in &result.operational_errors {
+                out.push_str(&format!("- Operational error: {error}\n"));
+            }
+            if !result.operational_errors.is_empty() {
+                out.push('\n');
+            }
             if result.findings.is_empty() {
                 out.push_str("No findings.\n");
             }

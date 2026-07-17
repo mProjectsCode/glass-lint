@@ -276,8 +276,8 @@ impl ExternalAdapter {
             };
             bail!("adapter exited {}: {}", output.status, stderr);
         }
-        let response: AdapterResponse =
-            serde_json::from_slice(&output.stdout).context("invalid adapter response")?;
+        let response: AdapterResponse = serde_json::from_slice(&output.stdout)
+            .map_err(|error| anyhow::anyhow!("invalid adapter response: {error}"))?;
         if response.protocol_version != ADAPTER_PROTOCOL_VERSION {
             bail!(
                 "adapter protocol version {}, expected {}",

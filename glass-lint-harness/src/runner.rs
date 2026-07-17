@@ -48,6 +48,7 @@ pub fn run_suite(
                         passed: true,
                         findings: vec![],
                         errors: vec![],
+                        operational_errors: vec![],
                     },
                 );
                 continue;
@@ -64,17 +65,19 @@ pub fn run_suite(
                         passed: true,
                         findings: vec![],
                         errors: vec![],
+                        operational_errors: vec![],
                     },
                 );
                 continue;
             }
-            let (findings, errors) = match adapter.run_with_locations(case, expectation) {
-                Ok(output) => {
-                    let errors = compare(&output.findings, expectation);
-                    (output.findings, errors)
-                }
-                Err(error) => (vec![], vec![error.to_string()]),
-            };
+            let (findings, errors, operational_errors) =
+                match adapter.run_with_locations(case, expectation) {
+                    Ok(output) => {
+                        let errors = compare(&output.findings, expectation);
+                        (output.findings, errors, vec![])
+                    }
+                    Err(error) => (vec![], vec![], vec![error.to_string()]),
+                };
             timings.insert(adapter.name().into(), tool_start.elapsed());
             tools.insert(
                 adapter.name().into(),
@@ -82,9 +85,10 @@ pub fn run_suite(
                     version,
                     skipped: false,
                     skip_reason: None,
-                    passed: errors.is_empty(),
+                    passed: errors.is_empty() && operational_errors.is_empty(),
                     findings,
                     errors,
+                    operational_errors,
                 },
             );
         }

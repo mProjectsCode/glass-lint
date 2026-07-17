@@ -6,18 +6,18 @@ than precision or recall scores. Run `make compare` to regenerate it.
 
 | Case | eslint-obsidianmd | glass-lint |
 |---|---:|---:|
-| count-note-words | 0 | 7 |
+| count-note-words | 1 | 7 |
 | create-meeting-note | 0 | 9 |
 | download-daily-quote | 0 | 2 |
-| fetch-remote-catalog | 0 | 4 |
-| inspect-note-tags | 0 | 6 |
+| fetch-remote-catalog | 1 | 4 |
+| inspect-note-tags | 1 | 6 |
 | open-workspace-links | 0 | 4 |
 | persist-refresh-settings | 0 | 4 |
 | render-executable-code-blocks | 0 | 4 |
 | roll-ribbon-dice | 0 | 3 |
 | transform-text-case | 0 | 1 |
-| typescript-input | skip | 1 |
-| watch-vault-changes | 0 | 9 |
+| typescript-input | 2 | 1 |
+| watch-vault-changes | 1 | 9 |
 
 ## count-note-words
 
@@ -81,11 +81,11 @@ export default class VaultReaderPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (1 finding(s), 0 operational error(s))
 
-No findings.
+- eslint-obsidianmd:rule-custom-message:customMessage at 30:5 - [no-console] Avoid unnecessary logging to console. See https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
 
-### glass-lint (7 finding(s))
+### glass-lint (7 finding(s), 0 operational error(s))
 
 - obsidian:ui.command:detected at 16:5 - Registers commands
 - obsidian:lifecycle.events:detected at 21:5 - Registers Obsidian lifecycle events
@@ -168,11 +168,11 @@ export default class NoteCreatorPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (0 finding(s), 0 operational error(s))
 
 No findings.
 
-### glass-lint (9 finding(s))
+### glass-lint (9 finding(s), 0 operational error(s))
 
 - obsidian:ui.command:detected at 13:5 - Registers commands
 - obsidian:vault.access:detected at 24:22 - Accesses Obsidian vault APIs
@@ -244,11 +244,11 @@ export default class RequestPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (0 finding(s), 0 operational error(s))
 
 No findings.
 
-### glass-lint (2 finding(s))
+### glass-lint (2 finding(s), 0 operational error(s))
 
 - obsidian:ui.command:detected at 12:5 - Registers commands
 - obsidian:network.request:detected at 22:28 - Uses Obsidian request APIs
@@ -312,11 +312,11 @@ export default class NetworkPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (1 finding(s), 0 operational error(s))
 
-No findings.
+- eslint-config:no-restricted-globals:customMessage at 24:28 - Unexpected use of 'fetch'. Use the built-in `requestUrl` function instead of `fetch` for network requests in Obsidian.
 
-### glass-lint (4 finding(s))
+### glass-lint (4 finding(s), 0 operational error(s))
 
 - obsidian:ui.command:detected at 14:5 - Registers commands
 - js:network.request:detected at 24:28 - Uses browser network request APIs
@@ -383,11 +383,11 @@ export default class MetadataPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (1 finding(s), 0 operational error(s))
 
-No findings.
+- eslint-obsidianmd:rule-custom-message:customMessage at 32:5 - [no-console] Avoid unnecessary logging to console. See https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
 
-### glass-lint (6 finding(s))
+### glass-lint (6 finding(s), 0 operational error(s))
 
 - obsidian:ui.command:detected at 15:5 - Registers commands
 - obsidian:lifecycle.events:detected at 20:5 - Registers Obsidian lifecycle events
@@ -456,11 +456,11 @@ export default class LinkOpenerPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (0 finding(s), 0 operational error(s))
 
 No findings.
 
-### glass-lint (4 finding(s))
+### glass-lint (4 finding(s), 0 operational error(s))
 
 - obsidian:ui.command:detected at 13:5 - Registers commands
 - obsidian:ui.command:detected at 18:5 - Registers commands
@@ -531,11 +531,11 @@ export default class SettingsPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (0 finding(s), 0 operational error(s))
 
 No findings.
 
-### glass-lint (4 finding(s))
+### glass-lint (4 finding(s), 0 operational error(s))
 
 - obsidian:storage.plugin-data-read:detected at 13:62 - Reads plugin data
 - obsidian:ui.command:detected at 14:5 - Registers commands
@@ -584,11 +584,11 @@ export default class ExecutableCodeBlocksPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (0 finding(s), 0 operational error(s))
 
 No findings.
 
-### glass-lint (4 finding(s))
+### glass-lint (4 finding(s), 0 operational error(s))
 
 - obsidian:markdown.code-block-processor:detected at 11:9 - Registers markdown code-block processors
 - js:dynamic-code.eval:detected at 14:32 - Evaluates dynamic code
@@ -654,11 +654,11 @@ export default class RibbonPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (0 finding(s), 0 operational error(s))
 
 No findings.
 
-### glass-lint (3 finding(s))
+### glass-lint (3 finding(s), 0 operational error(s))
 
 - obsidian:ui.status-bar:detected at 13:19 - Registers status bar items
 - obsidian:ui.ribbon:detected at 14:19 - Registers ribbon icons
@@ -724,11 +724,11 @@ export default class CommandPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (0 finding(s), 0 operational error(s))
 
 No findings.
 
-### glass-lint (1 finding(s))
+### glass-lint (1 finding(s), 0 operational error(s))
 
 - obsidian:ui.command:detected at 21:7 - Registers commands
 
@@ -740,6 +740,7 @@ TypeScript runtime and type-only input
 // @case description TypeScript runtime and type-only input
 // @case tags typescript,network
 // @tool glass-lint rules=js:network.request
+// @tool eslint-obsidianmd config=recommended
 
 interface RequestShape { url: string }
 type FetchType = typeof fetch;
@@ -753,13 +754,14 @@ void fetchTypeOnly;
 
 ```
 
-### eslint-obsidianmd (skipped)
+### eslint-obsidianmd (2 finding(s), 0 operational error(s))
 
-tool not configured for this case
+- eslint-config:typescript-eslint.no-unused-vars:unusedVar at 10:7 - 'request' is assigned a value but never used.
+- eslint-config:no-restricted-globals:customMessage at 11:5 - Unexpected use of 'fetch'. Use the built-in `requestUrl` function instead of `fetch` for network requests in Obsidian.
 
-### glass-lint (1 finding(s))
+### glass-lint (1 finding(s), 0 operational error(s))
 
-- js:network.request:detected at 10:5 - Uses browser network request APIs
+- js:network.request:detected at 11:5 - Uses browser network request APIs
 
 ## watch-vault-changes
 
@@ -821,11 +823,11 @@ export default class VaultWatcherPlugin extends Plugin {
 
 ```
 
-### eslint-obsidianmd (0 finding(s))
+### eslint-obsidianmd (1 finding(s), 0 operational error(s))
 
-No findings.
+- eslint-obsidianmd:rule-custom-message:customMessage at 43:27 - [no-console] Avoid unnecessary logging to console. See https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines#Avoid+unnecessary+logging+to+console
 
-### glass-lint (9 finding(s))
+### glass-lint (9 finding(s), 0 operational error(s))
 
 - obsidian:lifecycle.events:detected at 14:5 - Registers Obsidian lifecycle events
 - obsidian:vault.access:detected at 15:7 - Accesses Obsidian vault APIs
