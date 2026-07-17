@@ -3,12 +3,12 @@
 use std::path::PathBuf;
 
 use clap::{Args as ClapArgs, Parser, Subcommand, ValueEnum};
-use glass_lint_harness::{ProfileMode, ProfileProvider};
+use glass_lint_harness::{ProfileCatalogProvider, RuleSelectionProfile};
 
 #[derive(Parser)]
-#[command(version, about = "Run snippet conformance cases")]
-/// Top-level CLI arguments shared by verification, reporting, comparison, and
-/// profiling.
+#[command(version, about = "Run conformance cases and profiling workloads")]
+/// Top-level CLI arguments shared by verification, reporting,
+/// render_adapter_comparison, and profiling.
 pub struct Args {
     #[command(subcommand)]
     /// Operation to execute.
@@ -19,7 +19,8 @@ pub struct Args {
 }
 
 #[derive(Subcommand)]
-/// Commands that consume harness cases.
+/// Commands for conformance cases, reports, render_adapter_comparison, and
+/// profiling.
 pub enum Command {
     /// Run cases and return a failing exit status when expectations differ.
     Verify {
@@ -33,25 +34,31 @@ pub enum Command {
         #[arg(long, value_enum, default_value_t = Format::Markdown)]
         format: Format,
     },
-    /// Run all configured adapters and write a comparison report.
+    /// Run all configured adapters and write a render_adapter_comparison
+    /// report.
     Compare {
         /// Case file or directory to execute.
         path: PathBuf,
     },
-    /// Profile source files using the configured provider and analysis mode.
+    /// Profile file inputs or project workloads using the configured provider
+    /// and rule-selection profile.
     Profile(ProfileArgs),
 }
 
 #[derive(ClapArgs)]
 #[allow(clippy::struct_excessive_bools)]
-/// File-selection and execution controls for profiling.
+/// Input-selection and execution controls for profiling.
+///
+/// `--project` selects loader-project work; `--admitted-project` selects the
+/// explicit admitted project path; without either flag, inputs are profiled as
+/// source files.
 pub struct ProfileArgs {
     #[arg(long = "path", required = true)]
     pub paths: Vec<PathBuf>,
-    #[arg(long, value_enum, default_value_t = ProfileProviderArg::Obsidian)]
-    pub provider: ProfileProviderArg,
-    #[arg(long, value_enum, default_value_t = ProfileModeArg::Recommended)]
-    pub profile: ProfileModeArg,
+    #[arg(long, value_enum, default_value_t = ProfileCatalogProviderArg::Obsidian)]
+    pub provider: ProfileCatalogProviderArg,
+    #[arg(long, value_enum, default_value_t = RuleSelectionProfileArg::Recommended)]
+    pub profile: RuleSelectionProfileArg,
     #[arg(long = "rule")]
     pub rules: Vec<String>,
     #[arg(long)]
@@ -89,7 +96,7 @@ pub struct ProfileArgs {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
-/// Output format for the report command.
+/// Render format for the report command.
 pub enum Format {
     Markdown,
     Json,
@@ -97,34 +104,34 @@ pub enum Format {
 
 #[derive(Clone, Copy, ValueEnum)]
 /// Provider set whose rules are profiled.
-pub enum ProfileProviderArg {
+pub enum ProfileCatalogProviderArg {
     Js,
     Obsidian,
     Both,
 }
 
-impl From<ProfileProviderArg> for ProfileProvider {
-    fn from(provider: ProfileProviderArg) -> Self {
+impl From<ProfileCatalogProviderArg> for ProfileCatalogProvider {
+    fn from(provider: ProfileCatalogProviderArg) -> Self {
         match provider {
-            ProfileProviderArg::Js => Self::Js,
-            ProfileProviderArg::Obsidian => Self::Obsidian,
-            ProfileProviderArg::Both => Self::Both,
+            ProfileCatalogProviderArg::Js => Self::Js,
+            ProfileCatalogProviderArg::Obsidian => Self::Obsidian,
+            ProfileCatalogProviderArg::Both => Self::Both,
         }
     }
 }
 
 #[derive(Clone, Copy, ValueEnum)]
 /// Precision mode used by profiling.
-pub enum ProfileModeArg {
+pub enum RuleSelectionProfileArg {
     Recommended,
     Heuristic,
 }
 
-impl From<ProfileModeArg> for ProfileMode {
-    fn from(mode: ProfileModeArg) -> Self {
+impl From<RuleSelectionProfileArg> for RuleSelectionProfile {
+    fn from(mode: RuleSelectionProfileArg) -> Self {
         match mode {
-            ProfileModeArg::Recommended => Self::Recommended,
-            ProfileModeArg::Heuristic => Self::Heuristic,
+            RuleSelectionProfileArg::Recommended => Self::Recommended,
+            RuleSelectionProfileArg::Heuristic => Self::Heuristic,
         }
     }
 }

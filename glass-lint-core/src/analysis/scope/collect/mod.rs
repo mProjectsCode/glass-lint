@@ -1,4 +1,8 @@
-//! Single-pass collection of conservative lexical and alias facts.
+//! Two-phase collection of conservative lexical and alias facts.
+//!
+//! The collector first predeclares bindings for visibility and hoisting, then
+//! traverses the source in order to collect references, assignments, and
+//! mutation.
 //!
 //! The visitor records declarations as it enters scopes and assignments in
 //! source order. It deliberately models only callback forms whose argument-to-
@@ -19,12 +23,13 @@ use super::{
     super::{
         syntax::{
             collect_pat_bindings, function_prototype_builtin, is_function_constructor_member,
-            member_chain, member_prop_name, member_root_ident, module_export_name,
+            member_expression_chain, member_property_name, member_root_identifier,
+            module_export_name,
         },
         value::{BindingId, BindingVersion, FunctionId},
     },
-    AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeEffect, ScopeId, ScopeKind,
-    ScopedName,
+    AliasAssignment, BindingProvenance, BoundArgument, LexicalScope, ScopeEffect, ScopeId,
+    ScopeKind, ScopedName,
     query::rooted::{RootedExprContext, rooted_expr_chain_with},
 };
 
@@ -41,9 +46,9 @@ mod visitor;
 /// The prepass establishes lexical binding identity; the normal visitor then
 /// reuses that scope tree while recording assignments and supported
 /// provenance at each use position.
-pub(super) struct AliasCollector {
+pub(super) struct LexicalScopeCollector {
     /// Lexical scopes in predeclaration/traversal order.
-    pub(super) scopes: Vec<AliasScope>,
+    pub(super) scopes: Vec<LexicalScope>,
     /// Current lexical path during AST traversal.
     stack: Vec<usize>,
     /// Assignment events retain source order for use-position provenance.
@@ -92,11 +97,11 @@ pub(super) struct RootedPropertyMutation {
     pub(super) property: Option<String>,
 }
 
-impl AliasCollector {
+impl LexicalScopeCollector {
     /// Initialize an empty collector with a program-level lexical scope.
     pub fn new(program_span: Span) -> Self {
         Self {
-            scopes: vec![AliasScope {
+            scopes: vec![LexicalScope {
                 span: program_span,
                 depth: 0,
                 kind: ScopeKind::Program,
@@ -122,12 +127,11 @@ impl AliasCollector {
         }
     }
 
-    /// Populate the same scope tree that the fact collector will use, but do
-    /// only declaration work.  JavaScript lexical bindings are visible for
-    /// the whole lexical scope (with TDZ handled as an unresolved/local fact),
-    /// and `var`/function declarations are hoisted.  The old collector made
-    /// visibility depend on whether traversal had reached the declaration,
-    /// which incorrectly treated an earlier use as a global.
+    /// Predeclare bindings before source-order collection.
+    ///
+    /// JavaScript lexical bindings are visible for the whole lexical scope
+    /// (with TDZ handled as an unresolved/local fact), and `var`/function
+    /// declarations are hoisted.
     pub fn predeclare(&mut self, program: &swc_ecma_ast::Program) {
         let mut visitor = predeclare::PredeclareVisitor { collector: self };
         program.visit_children_with(&mut visitor);
@@ -359,7 +363,7 @@ impl AliasCollector {
         }
         let index = self.scopes.len();
         let parent = self.current_scope();
-        self.scopes.push(AliasScope {
+        self.scopes.push(LexicalScope {
             span,
             depth: self.stack.len(),
             kind,
@@ -424,7 +428,7 @@ impl AliasCollector {
     }
 
     fn invalidate_member_root(&mut self, member: &swc_ecma_ast::MemberExpr, span: Span) {
-        let Some(root) = member_root_ident(member) else {
+        let Some(root) = member_root_identifier(member) else {
             return;
         };
         if !matches!(
@@ -506,7 +510,7 @@ impl AliasCollector {
     }
 }
 
-impl RootedExprContext for AliasCollector {
+impl RootedExprContext for LexicalScopeCollector {
     fn rooted_ident_chain(&self, ident: &swc_ecma_ast::Ident) -> Option<String> {
         match self.visible_binding(ident.sym.as_ref()) {
             Some(
@@ -525,7 +529,7 @@ impl RootedExprContext for AliasCollector {
             return Some("Function".to_string());
         }
         let object = self.rooted_expr_name(&member.obj)?;
-        let property = member_prop_name(&member.prop)?;
+        let property = member_property_name(&member.prop)?;
         Some(format!("{object}.{property}"))
     }
 }
@@ -536,9 +540,9 @@ mod tests {
 
     use super::*;
 
-    fn collect(source: &str) -> AliasCollector {
+    fn collect(source: &str) -> LexicalScopeCollector {
         let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");
-        let mut collector = AliasCollector::new(parsed.program.span());
+        let mut collector = LexicalScopeCollector::new(parsed.program.span());
         collector.predeclare(&parsed.program);
         parsed.program.visit_children_with(&mut collector);
         assert_eq!(
@@ -552,7 +556,7 @@ mod tests {
         collector
     }
 
-    fn scope_fingerprint(collector: &AliasCollector) -> Vec<String> {
+    fn scope_fingerprint(collector: &LexicalScopeCollector) -> Vec<String> {
         collector
             .scopes
             .iter()
@@ -625,7 +629,7 @@ mod tests {
     fn reuses_same_span_same_kind_siblings_by_order() {
         let parsed = crate::parse("value;", "same-span.js").expect("source should parse");
         let span = parsed.program.span();
-        let mut collector = AliasCollector::new(span);
+        let mut collector = LexicalScopeCollector::new(span);
 
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();

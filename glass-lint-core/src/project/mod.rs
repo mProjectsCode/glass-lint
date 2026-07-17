@@ -16,10 +16,10 @@ pub use report::ReportCombineError;
 pub use session::AnalysisSession;
 pub use tables::EvidenceList;
 pub use types::{
-    AnalysisReport, AnalysisReportSummary, Diagnostic, DiagnosticCode, Evidence, FileReport,
-    Finding, ModuleId, OperationCounts, ProjectDiagnostic, ProjectInput, ProjectInputError,
-    ProjectRelativePath, ReportCompletion, ResolutionRequest, ResolutionRequestKey,
-    ResolutionRequestKind, ResolutionResult, ResolvedModule, SourceFile, SourceLocation,
+    AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,
+    DiagnosticCode, Evidence, FileReport, Finding, LinkedModuleTarget, ModuleId, ProjectInput,
+    ProjectInputError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
+    ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceLocation,
     is_internal_module_request,
 };
 

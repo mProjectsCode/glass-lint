@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// properties, aliases, reassignment, and near-name methods are excluded.
 pub fn rule() -> Rule {
     Rule::builder("editor.extension")
-        .label("Registers editor extensions")
+        .description("Registers editor extensions")
         .category("editor")
         .severity(Severity::Info)
         .confidence(Confidence::High)

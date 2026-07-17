@@ -10,7 +10,7 @@ use super::{
     BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
     FactKind, FactPayload, MemberExpr, OptChainBase, ParameterBinding, Pat, PathId, PathSegment,
     Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId, ValueProjection,
-    VisitWith, effective_callee_expr, member_prop_name,
+    VisitWith, effective_callee_expr, member_property_name,
 };
 
 impl FactBuilder<'_> {
@@ -56,7 +56,7 @@ impl FactBuilder<'_> {
         // arguments so all consumers agree on the same invocation shape.
         if let Expr::Member(member) = effective_callee_expr(callee_expr)
             && matches!(
-                member_prop_name(&member.prop).as_deref(),
+                member_property_name(&member.prop).as_deref(),
                 Some("call" | "apply")
             )
         {
@@ -287,7 +287,7 @@ impl FactBuilder<'_> {
                 for property in &object.props {
                     match property {
                         swc_ecma_ast::ObjectPatProp::KeyValue(property) => {
-                            let Some(name) = crate::analysis::syntax::prop_name(&property.key)
+                            let Some(name) = crate::analysis::syntax::property_name(&property.key)
                             else {
                                 continue;
                             };
@@ -352,7 +352,7 @@ impl FactBuilder<'_> {
         span: Span,
         args: &[ExprOrSpread],
     ) {
-        let Some(property) = member_prop_name(&member.prop) else {
+        let Some(property) = member_property_name(&member.prop) else {
             return;
         };
         match property.as_str() {
@@ -517,7 +517,7 @@ impl FactBuilder<'_> {
 
     pub(super) fn resolve_member_callee(&mut self, member: &MemberExpr) -> Option<ResolvedCallee> {
         let resolved = self.resolver.resolve_member(member);
-        let syntactic_chain = self.resolver.member_chain(member);
+        let syntactic_chain = self.resolver.member_expression_chain(member);
         let instance_class = self.instance_class_for_receiver(&member.obj);
         Some(ResolvedCallee {
             value: resolved.id,

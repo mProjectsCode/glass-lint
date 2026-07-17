@@ -11,12 +11,12 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, Lit};
 use super::{
     super::super::syntax::{
         constant::{self, ConstValue},
-        member_prop_name, prop_name,
+        member_property_name, property_name,
     },
-    AliasCollector, BindingProvenance, BoundArgument,
+    BindingProvenance, BoundArgument, LexicalScopeCollector,
 };
 
-impl AliasCollector {
+impl LexicalScopeCollector {
     /// Resolve a module export, namespace member, dynamic import, or require
     /// expression while preserving lexical shadowing checks.
     pub(super) fn module_alias_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
@@ -30,11 +30,11 @@ impl AliasCollector {
                 BindingProvenance::ModuleNamespace { module } => {
                     Some(BindingProvenance::ModuleExport {
                         module,
-                        export: member_prop_name(&member.prop)?,
+                        export: member_property_name(&member.prop)?,
                     })
                 }
                 provenance @ BindingProvenance::ModuleExport { .. }
-                    if member_prop_name(&member.prop).as_deref() == Some("bind") =>
+                    if member_property_name(&member.prop).as_deref() == Some("bind") =>
                 {
                     Some(provenance)
                 }
@@ -58,7 +58,7 @@ impl AliasCollector {
                     let Expr::Member(member) = &**callee else {
                         return None;
                     };
-                    (member_prop_name(&member.prop).as_deref() == Some("bind"))
+                    (member_property_name(&member.prop).as_deref() == Some("bind"))
                         .then(|| self.module_alias_provenance(&member.obj))
                         .flatten()
                 }),
@@ -172,7 +172,7 @@ impl AliasCollector {
         let Expr::Member(member) = &**callee else {
             return None;
         };
-        if member_prop_name(&member.prop).as_deref() != Some("bind") {
+        if member_property_name(&member.prop).as_deref() != Some("bind") {
             return None;
         }
         let target = self.rooted_expr_name(&member.obj)?;
@@ -217,7 +217,7 @@ impl AliasCollector {
                     return None;
                 };
                 if let Expr::Member(member) = &**callee
-                    && member_prop_name(&member.prop).as_deref() == Some("bind")
+                    && member_property_name(&member.prop).as_deref() == Some("bind")
                 {
                     return None;
                 }
@@ -273,7 +273,7 @@ impl AliasCollector {
                 return None;
             };
             let target = self.rooted_expr_name(&property.value)?;
-            values.insert(prop_name(&property.key)?, target.into());
+            values.insert(property_name(&property.key)?, target.into());
         }
         Some(BindingProvenance::StaticObjectValues(values))
     }

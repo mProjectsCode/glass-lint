@@ -1,7 +1,8 @@
 //! Rule-independent indexes built from one semantic model.
 //!
-//! Collection is intentionally separated from `evidence_for`: the AST is
-//! walked once, then each rule selects from deterministic occurrence maps.
+//! Collection is intentionally separated from `evidence_for`: after scope
+//! predeclaration, one fact-building AST traversal feeds deterministic
+//! occurrence maps, then each rule selects from those maps.
 //! Constrained clauses and flow evidence remain per-rule because their
 //! predicates cannot be represented as a shared physical lookup key.
 //!
@@ -16,7 +17,7 @@ use super::{
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
 use crate::api::{
-    classification::{ApiEvidence, ApiMatchKind},
+    classification::{ClassificationEvidence, MatchKind},
     rule::canonical_rooted_chain,
 };
 
@@ -33,7 +34,7 @@ mod query;
 /// The indexes are reusable across rule catalogs; constrained clauses and flow
 /// subplans are evaluated from facts because their predicates are not safe to
 /// collapse into a simple lookup key.
-pub struct MatcherFacts {
+pub struct OccurrenceIndexes {
     // Each map represents a different confidence/provenance level. Do not
     // collapse these into one index: a global spelling, rooted alias, and
     // imported member have intentionally different matching semantics.
@@ -105,7 +106,7 @@ pub(in crate::analysis) enum LinkedModuleIdentity {
 
 pub(in crate::analysis) type ModuleIdentityMap = BTreeMap<ModuleExportKey, LinkedModuleIdentity>;
 
-impl MatcherFacts {
+impl OccurrenceIndexes {
     #[cfg(test)]
     pub(in crate::analysis) fn has_call(&self, name: &str) -> bool {
         self.call_indexes.calls.get(name).is_some()
@@ -219,8 +220,8 @@ impl MatcherFacts {
 }
 
 pub(super) fn push_owned_evidence(
-    evidence: &mut Vec<ApiEvidence>,
-    kind: ApiMatchKind,
+    evidence: &mut Vec<ClassificationEvidence>,
+    kind: MatchKind,
     symbol: String,
     occurrences: Option<Vec<Occurrence>>,
 ) {
@@ -233,13 +234,13 @@ pub(super) fn push_owned_evidence(
     let occurrences: Vec<_> = occurrences
         .iter()
         .map(
-            |occurrence| crate::api::classification::ApiEvidenceOccurrence {
+            |occurrence| crate::api::classification::ClassificationEvidenceOccurrence {
                 span: occurrence.span(),
                 fact: Some(occurrence.event().0),
             },
         )
         .collect();
-    evidence.push(ApiEvidence {
+    evidence.push(ClassificationEvidence {
         kind,
         symbol,
         count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
@@ -255,7 +256,7 @@ mod tests {
     use crate::{
         ByteRange,
         analysis::facts::FactId,
-        api::rule::{ApiMatcher, MemberCallMatcher},
+        api::rule::{MatcherSet, MemberCallMatcher},
     };
 
     fn span(start: u32, end: u32) -> ByteRange {
@@ -282,14 +283,14 @@ mod tests {
 
     #[test]
     fn optimized_member_query_matches_reference_occurrences() {
-        let mut facts = MatcherFacts::default();
-        facts.record(ApiMatchKind::MemberCall, "client.request", span(30, 44));
-        facts.record(ApiMatchKind::MemberCall, "other.request", span(5, 18));
-        facts.record(ApiMatchKind::MemberCall, "client.request", span(10, 24));
+        let mut facts = OccurrenceIndexes::default();
+        facts.record(MatchKind::MemberCall, "client.request", span(30, 44));
+        facts.record(MatchKind::MemberCall, "other.request", span(5, 18));
+        facts.record(MatchKind::MemberCall, "client.request", span(10, 24));
         facts.normalize_occurrences();
 
-        let matcher = ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::member_call(
-            MemberCallMatcher::syntactic_heuristic("client.request"),
+        let matcher = MatcherSet::from_matchers(vec![crate::api::rule::Matcher::from(
+            MemberCallMatcher::heuristic("client.request"),
         )]);
         let compiled = crate::api::compiler::CompiledMatcherPlan::compile(&matcher);
         let evidence = facts.evidence_for(compiled.query());
@@ -330,7 +331,7 @@ mod tests {
         let resolver = Resolver::collect(&parsed.program);
         let stream = build_test_stream(&parsed.program, &resolver);
 
-        let mut index = MatcherFacts::default();
+        let mut index = OccurrenceIndexes::default();
         index.build_from_stream(&stream);
         index.normalize_occurrences();
 

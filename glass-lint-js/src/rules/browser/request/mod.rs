@@ -13,7 +13,7 @@ use glass_lint_core::rules::{
 /// libraries.
 pub fn rule() -> Rule {
     Rule::builder("network.request")
-        .label("Uses browser network request APIs")
+        .description("Uses browser network request APIs")
         .category("browser/network")
         .severity(Severity::Info)
         .confidence(Confidence::High)

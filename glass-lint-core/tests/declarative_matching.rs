@@ -28,7 +28,7 @@ impl Classification {
 /// Build a consistent high-confidence rule for one declarative capability.
 fn rule(id: &str) -> glass_lint_core::rules::Builder {
     Rule::builder(id)
-        .label(id)
+        .description(id)
         .category("test")
         .severity(Severity::Info)
         .confidence(Confidence::High)
@@ -36,7 +36,7 @@ fn rule(id: &str) -> glass_lint_core::rules::Builder {
 
 /// Construct the multi-step flow used by source/configuration/sink tests.
 fn script_insertion_flow() -> Matcher {
-    Matcher::flow(
+    Matcher::from(
         ObjectFlowMatcher::builder("script insertion")
             .source(ObjectSourceMatcher::returned_by(
                 MemberCallMatcher::rooted("document.createElement")
@@ -146,7 +146,7 @@ fn rejects_aliases_after_shadowing_reassignment() {
 #[test]
 fn matches_static_string_arguments_but_rejects_dynamic_strings() {
     let rules = [rule("test.fetch-url")
-        .matcher(CallMatcher::global("fetch").static_string_arg(0))
+        .matcher(CallMatcher::global("fetch").arg_static_string(0))
         .build()
         .unwrap()];
     let result = classify("fetch('/literal'); fetch('/' + dynamic);", &rules);
@@ -156,7 +156,9 @@ fn matches_static_string_arguments_but_rejects_dynamic_strings() {
 #[test]
 fn callable_transforms_use_effective_target_arguments() {
     let rule = [rule("test.callable")
-        .matcher(CallMatcher::global("fetch").arg_string(0, ["/call", "/apply", "/optional"]))
+        .matcher(
+            CallMatcher::global("fetch").arg_static_strings(0, ["/call", "/apply", "/optional"]),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -169,7 +171,9 @@ fn callable_transforms_use_effective_target_arguments() {
 #[test]
 fn global_call_matchers_cover_proven_global_object_callable_forms() {
     let rules = [rule("test.global-callable")
-        .matcher(CallMatcher::global("eval").arg_string(0, ["direct", "alias", "call", "apply"]))
+        .matcher(
+            CallMatcher::global("eval").arg_static_strings(0, ["direct", "alias", "call", "apply"]),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -354,7 +358,7 @@ fn numeric_addition_is_not_a_static_property_string() {
 #[test]
 fn tracks_rooted_expression_arguments_through_aliases() {
     let rules = [rule("test.arg-flow")
-        .matcher(MemberCallMatcher::rooted_chain("app.open").arg_rooted_exprs(0, ["vault.file"]))
+        .matcher(MemberCallMatcher::rooted("app.open").arg_rooted_exprs(0, ["vault.file"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -408,7 +412,7 @@ fn tracks_parameter_aliases_into_arrow_functions() {
 #[test]
 fn matches_optional_chained_calls_with_static_arguments() {
     let rules = [rule("test.optional")
-        .matcher(MemberCallMatcher::rooted_chain("app.commands.execute").arg_string(0, ["open"]))
+        .matcher(MemberCallMatcher::rooted("app.commands.execute").arg_static_strings(0, ["open"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -431,9 +435,7 @@ fn resolves_literal_computed_properties_through_constant_aliases() {
 #[test]
 fn reuses_constant_object_arguments_for_key_matching() {
     let rules = [rule("test.object-arg")
-        .matcher(
-            MemberCallMatcher::rooted_chain("client.request").arg_object_keys(0, ["url", "method"]),
-        )
+        .matcher(MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -446,11 +448,11 @@ fn reuses_constant_object_arguments_for_key_matching() {
 #[test]
 fn rejects_reassigned_static_values() {
     let string_rules = [rule("test.fetch-url")
-        .matcher(CallMatcher::global("fetch").static_string_arg(0))
+        .matcher(CallMatcher::global("fetch").arg_static_string(0))
         .build()
         .unwrap()];
     let object_rules = [rule("test.object-arg")
-        .matcher(MemberCallMatcher::rooted_chain("client.request").arg_object_keys(0, ["url"]))
+        .matcher(MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url"]))
         .build()
         .unwrap()];
 
@@ -475,9 +477,7 @@ fn rejects_reassigned_static_values() {
 #[test]
 fn rejects_static_shapes_after_a_property_write() {
     let rules = [rule("test.object-arg")
-        .matcher(
-            MemberCallMatcher::rooted_chain("client.request").arg_object_keys(0, ["url", "method"]),
-        )
+        .matcher(MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -490,7 +490,7 @@ fn rejects_static_shapes_after_a_property_write() {
 #[test]
 fn projects_const_object_aliases_into_destructured_parameters() {
     let rules = [rule("test.arg-flow")
-        .matcher(MemberCallMatcher::rooted_chain("app.open").arg_rooted_exprs(0, ["vault.file"]))
+        .matcher(MemberCallMatcher::rooted("app.open").arg_rooted_exprs(0, ["vault.file"]))
         .build()
         .unwrap()];
     let result = classify(
@@ -602,7 +602,7 @@ fn flow_kills_object_state_for_compound_writes_updates_and_delete() {
 #[test]
 fn value_flow_supports_member_call_configuration_and_helper_sinks() {
     let rules = [rule("test.flow")
-        .matcher(Matcher::flow(
+        .matcher(Matcher::from(
             ObjectFlowMatcher::builder("script insertion")
                 .source(ObjectSourceMatcher::returned_by(
                     MemberCallMatcher::rooted("document.createElement")
@@ -765,7 +765,7 @@ fn helper_summaries_fail_closed_for_incompatible_invocations() {
 #[test]
 fn value_flow_static_prefix_requires_static_values() {
     let rules = [rule("test.flow")
-        .matcher(Matcher::flow(
+        .matcher(Matcher::from(
             ObjectFlowMatcher::builder("remote element")
                 .source(ObjectSourceMatcher::returned_by(
                     MemberCallMatcher::rooted("document.createElement")
@@ -796,7 +796,7 @@ fn value_flow_static_prefix_requires_static_values() {
 #[test]
 fn flow_can_require_all_requirements() {
     let rules = [rule("test.flow")
-        .matcher(Matcher::flow(
+        .matcher(Matcher::from(
             ObjectFlowMatcher::builder("remote stylesheet")
                 .source(ObjectSourceMatcher::returned_by(
                     MemberCallMatcher::rooted("document.createElement")

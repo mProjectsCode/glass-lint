@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("metadata.cache-read")
-        .label("Reads Obsidian metadata cache")
+        .description("Reads Obsidian metadata cache")
         .category("metadata")
         .severity(Severity::Info)
         .confidence(Confidence::High)

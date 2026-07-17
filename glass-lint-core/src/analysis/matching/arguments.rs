@@ -6,8 +6,8 @@
 //! remain non-matches.
 
 use super::{
-    ApiEvidence, CallArgInfo, FactPayload, FactStream, MatcherFacts, ModuleExportKey,
-    ModuleIdentityMap, Occurrence, SymbolCallProvenance, SymbolMemberProvenance,
+    CallArgInfo, ClassificationEvidence, FactPayload, FactStream, ModuleExportKey,
+    ModuleIdentityMap, Occurrence, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
     canonical_rooted_chain, push_owned_evidence,
 };
 use crate::{
@@ -17,12 +17,12 @@ use crate::{
     },
 };
 
-impl MatcherFacts {
+impl OccurrenceIndexes {
     /// Evaluate selected constrained clauses once over canonical call facts.
     pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay(
         stream: &FactStream,
         clauses: &[(usize, &QueryClause)],
-        evidence: &mut [Vec<ApiEvidence>],
+        evidence: &mut [Vec<ClassificationEvidence>],
         identities: Option<&ModuleIdentityMap>,
         result_identities: Option<
             &std::collections::BTreeMap<super::super::value::ValueId, super::LinkedModuleIdentity>,
@@ -323,7 +323,7 @@ fn identity_module_matches(identity: &IdentityConstraint, module: &str, export: 
 #[cfg(test)]
 mod tests {
     use super::{
-        MatcherFacts, argument_with_overlay, call_provenance_with_overlay,
+        OccurrenceIndexes, argument_with_overlay, call_provenance_with_overlay,
         module_member_with_overlay,
     };
     use crate::{
@@ -336,7 +336,7 @@ mod tests {
             value::{PathId, ValueId},
         },
         api::{
-            classification::ApiMatchKind,
+            classification::MatchKind,
             compiler::{
                 CompiledMatcherPlan,
                 rule::{
@@ -344,7 +344,7 @@ mod tests {
                     QueryClause, QueryConstraint, SubjectConstraint,
                 },
             },
-            rule::{ApiMatcher, ArgumentConstraint, CallMatcher, Matcher, ValueMatcher},
+            rule::{ArgumentConstraint, CallMatcher, Matcher, MatcherSet, ValueMatcher},
         },
     };
 
@@ -375,7 +375,7 @@ mod tests {
             subject,
             constraints: exact_argument("/api"),
             evidence: EvidenceDescriptor {
-                kind: ApiMatchKind::CallArgument,
+                kind: MatchKind::CallArgument,
                 symbol: symbol.into(),
             },
         }
@@ -408,7 +408,7 @@ mod tests {
             "client.open",
         );
         let mut evidence = vec![Vec::new()];
-        MatcherFacts::compute_constrained_evidence_from_stream_with_overlay(
+        OccurrenceIndexes::compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &[(0, &call), (0, &member)],
             &mut evidence,
@@ -460,7 +460,7 @@ mod tests {
             "pkg:Client.send",
         );
         let mut evidence = vec![Vec::new()];
-        MatcherFacts::compute_constrained_evidence_from_stream_with_overlay(
+        OccurrenceIndexes::compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &[(0, &returned), (0, &instance)],
             &mut evidence,
@@ -478,8 +478,9 @@ mod tests {
 
     #[test]
     fn constrained_clause_evidence_is_source_ordered_and_deduplicated() {
-        let declaration = Matcher::call(CallMatcher::heuristic("fetch").arg_string(0, ["/api"]));
-        let matcher = ApiMatcher::from_matchers(vec![declaration.clone(), declaration]);
+        let declaration =
+            Matcher::from(CallMatcher::heuristic("fetch").arg_static_strings(0, ["/api"]));
+        let matcher = MatcherSet::from_matchers(vec![declaration.clone(), declaration]);
         let plan = CompiledMatcherPlan::compile(&matcher);
         let clauses = plan.query().clauses();
         assert_eq!(clauses.len(), 1, "equivalent clauses compile once");
@@ -489,7 +490,7 @@ mod tests {
             &crate::Environment::default(),
         );
         let mut evidence = vec![Vec::new()];
-        MatcherFacts::compute_constrained_evidence_from_stream_with_overlay(
+        OccurrenceIndexes::compute_constrained_evidence_from_stream_with_overlay(
             &stream,
             &[(0, &clauses[0])],
             &mut evidence,

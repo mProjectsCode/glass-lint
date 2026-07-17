@@ -3,14 +3,14 @@
 use std::collections::BTreeMap;
 
 use glass_lint_core::{
-    Finding, ProjectRelativePath, ResolutionRequestKind, ResolutionResult, Severity,
+    Finding, ProjectRelativePath, ResolutionRequestKind, ResolverOutcome, Severity,
 };
 use serde::{Deserialize, Serialize};
 
 pub const ADAPTER_PROTOCOL_VERSION: u32 = 3;
 
 #[derive(Clone, Debug)]
-/// One source fixture and its per-tool expectations.
+/// One source fixture and its per-adapter expectations.
 pub struct Case {
     /// Stable path-derived case identifier.
     pub(crate) id: String,
@@ -24,10 +24,10 @@ pub struct Case {
     pub(crate) filename: String,
     /// Source text, including expectation directives.
     pub(crate) source: String,
-    /// Optional multi-file project input.
+    /// Optional multi-file project file.
     pub(crate) project: Option<ProjectCase>,
     /// Expectations keyed by adapter name.
-    pub(crate) tools: BTreeMap<String, ToolExpectation>,
+    pub(crate) adapters: BTreeMap<String, ToolExpectation>,
 }
 
 impl Case {
@@ -53,7 +53,7 @@ impl Case {
             filename,
             source: source.into(),
             project: None,
-            tools: BTreeMap::new(),
+            adapters: BTreeMap::new(),
         })
     }
 
@@ -78,12 +78,12 @@ impl Case {
         if name.trim().is_empty() {
             return Err("case tool name must not be empty".into());
         }
-        self.tools.insert(name, expectation);
+        self.adapters.insert(name, expectation);
         Ok(self)
     }
 }
 
-/// A multi-file harness input. Paths are project-relative and sources are
+/// A multi-file harness file. Paths are project-relative and sources are
 /// retained in sorted order so virtual and filesystem cases have identical
 /// identities.
 #[derive(Clone, Debug)]
@@ -92,9 +92,11 @@ pub struct ProjectCase {
     pub root: std::path::PathBuf,
     /// Entry paths selected for project analysis.
     pub entries: Vec<String>,
-    /// Authored project files in normalized order.
+    /// Authored project files in normalized order, using the adapter protocol
+    /// model as the canonical harness boundary representation.
     pub files: Vec<AdapterFile>,
-    /// Explicit resolver answers for project requests.
+    /// Explicit resolver answers using the same canonical adapter boundary
+    /// representation sent to external adapters.
     pub resolutions: Vec<AdapterResolution>,
     /// Whether the adapter should load the real filesystem tree.
     pub filesystem: bool,
@@ -130,9 +132,9 @@ pub struct ToolExpectation {
     /// Explicit rule IDs to enable.
     pub(crate) rules: Vec<String>,
     /// Findings that must be present.
-    pub(crate) required: Vec<DiagnosticExpectation>,
+    pub(crate) required: Vec<FindingExpectation>,
     /// Findings that must be absent.
-    pub(crate) forbidden: Vec<DiagnosticExpectation>,
+    pub(crate) forbidden: Vec<FindingExpectation>,
 }
 
 impl ToolExpectation {
@@ -154,8 +156,8 @@ impl ToolExpectation {
     pub fn from_parts(
         config: Option<String>,
         rules: Vec<String>,
-        required: Vec<DiagnosticExpectation>,
-        forbidden: Vec<DiagnosticExpectation>,
+        required: Vec<FindingExpectation>,
+        forbidden: Vec<FindingExpectation>,
     ) -> Result<Self, String> {
         let mut expectation = Self::new(config, rules)?;
         expectation.required = required;
@@ -165,7 +167,7 @@ impl ToolExpectation {
 }
 
 #[derive(Clone, Debug)]
-pub struct DiagnosticExpectation {
+pub struct FindingExpectation {
     /// Optional project-relative finding path.
     pub(crate) path: Option<String>,
     /// Stable rule ID to compare.
@@ -184,7 +186,7 @@ pub struct DiagnosticExpectation {
     pub(crate) message: Option<String>,
 }
 
-impl DiagnosticExpectation {
+impl FindingExpectation {
     /// Construct a required or forbidden diagnostic with a validated rule ID.
     pub fn new(rule_id: impl Into<String>) -> Result<Self, String> {
         let rule_id = rule_id.into();
@@ -330,30 +332,30 @@ pub enum AdapterResolutionResult {
 /// Converts the protocol's validated resolution representation at the core
 /// project-session boundary. Keeping this conversion here prevents adapters
 /// and manifest parsing from maintaining parallel core-facing DTOs.
-impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolutionResult) {
+impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolverOutcome) {
     type Error = String;
 
     fn try_from(resolution: &AdapterResolution) -> Result<Self, Self::Error> {
         let kind = match resolution.kind {
-            AdapterResolutionKind::Import => ResolutionRequestKind::Import,
+            AdapterResolutionKind::Import => ResolutionRequestKind::StaticImport,
             AdapterResolutionKind::DynamicImport => ResolutionRequestKind::DynamicImport,
             AdapterResolutionKind::Require => ResolutionRequestKind::Require,
         };
         let result = match &resolution.result {
-            AdapterResolutionResult::Internal { path } => ResolutionResult::Internal {
+            AdapterResolutionResult::Internal { path } => ResolverOutcome::Internal {
                 path: ProjectRelativePath::new(path).map_err(|error| error.to_string())?,
             },
-            AdapterResolutionResult::External { package } => ResolutionResult::External {
+            AdapterResolutionResult::External { package } => ResolverOutcome::External {
                 package: package.clone(),
             },
             AdapterResolutionResult::Builtin { name } => {
-                ResolutionResult::Builtin { name: name.clone() }
+                ResolverOutcome::Builtin { name: name.clone() }
             }
-            AdapterResolutionResult::Missing => ResolutionResult::Missing,
+            AdapterResolutionResult::Missing => ResolverOutcome::Missing,
             AdapterResolutionResult::OutsideProject { path } => {
-                ResolutionResult::OutsideProject { path: path.clone() }
+                ResolverOutcome::OutsideProject { path: path.clone() }
             }
-            AdapterResolutionResult::Unsupported { reason } => ResolutionResult::Unsupported {
+            AdapterResolutionResult::Unsupported { reason } => ResolverOutcome::Unsupported {
                 reason: reason.clone(),
             },
         };
@@ -388,7 +390,7 @@ pub struct CaseResult {
     /// Original case source for report context.
     pub source: String,
     /// Results keyed by adapter name.
-    pub tools: BTreeMap<String, ToolResult>,
+    pub adapters: BTreeMap<String, ToolResult>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -404,7 +406,7 @@ pub struct ToolResult {
     /// Findings returned by the adapter.
     pub findings: Vec<Finding>,
     /// Expectation mismatches between returned findings and fixture metadata.
-    pub errors: Vec<String>,
+    pub mismatches: Vec<String>,
     /// Failures while starting or executing the adapter, or decoding its
     /// response.
     pub operational_errors: Vec<String>,
@@ -423,7 +425,7 @@ impl SuiteReport {
     pub fn passed(&self) -> bool {
         self.cases
             .iter()
-            .all(|case| case.tools.values().all(|tool| tool.passed))
+            .all(|case| case.adapters.values().all(|adapter| adapter.passed))
     }
 }
 

@@ -19,13 +19,13 @@ impl RuleId {
     }
 
     /// Parse and validate a namespaced rule ID.
-    pub fn parse(value: impl Into<String>) -> Result<Self, crate::RuleCatalogError> {
+    pub fn parse(value: impl Into<String>) -> Result<Self, crate::ProviderCatalogError> {
         let value = value.into();
         let Some((provider, name)) = value.split_once(':') else {
-            return Err(crate::RuleCatalogError::InvalidRuleId(value));
+            return Err(crate::ProviderCatalogError::InvalidRuleId(value));
         };
         if !Self::valid_part(provider, false) || !Self::valid_part(name, true) {
-            return Err(crate::RuleCatalogError::InvalidRuleId(value));
+            return Err(crate::ProviderCatalogError::InvalidRuleId(value));
         }
         Ok(Self(value))
     }

@@ -7,7 +7,7 @@ use super::facts;
 use crate::api::rule::Rule;
 use crate::{
     ByteRange,
-    api::classification::{ApiEvidence, ApiMatchKind},
+    api::classification::{ClassificationEvidence, MatchKind},
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -18,12 +18,12 @@ pub(super) struct EvidenceOccurrence {
     /// Source location, including synthetic locations when no fact exists.
     span: ByteRange,
     /// Semantic match category shown in the public evidence.
-    kind: ApiMatchKind,
+    kind: MatchKind,
     /// Interned `(kind, symbol)` group used to merge equivalent entries.
     symbol_group: usize,
 }
 
-fn evidence_order(item: &EvidenceOccurrence) -> (u32, u32, u32, ApiMatchKind, usize) {
+fn evidence_order(item: &EvidenceOccurrence) -> (u32, u32, u32, MatchKind, usize) {
     (
         item.span.start(),
         item.span.end(),
@@ -41,7 +41,7 @@ pub(super) struct AnnotatedEvidence {
     /// Symbols indexed by the compact group IDs in `occurrences`.
     symbols: Vec<String>,
     /// Related evidence retained for each symbol group.
-    related: BTreeMap<usize, Vec<crate::api::classification::ApiRelatedEvidence>>,
+    related: BTreeMap<usize, Vec<crate::api::classification::RelatedClassificationEvidence>>,
     total_counts: BTreeMap<usize, usize>,
     evidence_truncated: bool,
 }
@@ -49,15 +49,15 @@ pub(super) struct AnnotatedEvidence {
 impl AnnotatedEvidence {
     /// Convert rule-local evidence into sortable occurrences while retaining
     /// the symbol table needed to reconstruct grouped output later.
-    pub(super) fn from_evidence(evidence: Vec<ApiEvidence>, limit: usize) -> Self {
+    pub(super) fn from_evidence(evidence: Vec<ClassificationEvidence>, limit: usize) -> Self {
         let mut symbols = Vec::with_capacity(evidence.len());
-        let mut groups = BTreeMap::<(ApiMatchKind, String), usize>::new();
+        let mut groups = BTreeMap::<(MatchKind, String), usize>::new();
         let mut occurrences = Vec::new();
         let mut related = BTreeMap::new();
         let mut total_counts = BTreeMap::new();
         let mut evidence_truncated = false;
         for evidence in evidence {
-            let ApiEvidence {
+            let ClassificationEvidence {
                 kind,
                 symbol,
                 occurrences: source_occurrences,
@@ -116,9 +116,9 @@ impl AnnotatedEvidence {
     }
 
     /// Sort, bound, deduplicate, and regroup occurrences into public evidence.
-    pub(super) fn into_evidence(self) -> Vec<ApiEvidence> {
+    pub(super) fn into_evidence(self) -> Vec<ClassificationEvidence> {
         let mut grouped =
-            BTreeMap::<(ApiMatchKind, usize), Vec<(Option<facts::FactId>, ByteRange)>>::new();
+            BTreeMap::<(MatchKind, usize), Vec<(Option<facts::FactId>, ByteRange)>>::new();
         for occurrence in &self.occurrences {
             grouped
                 .entry((occurrence.kind, occurrence.symbol_group))
@@ -127,28 +127,30 @@ impl AnnotatedEvidence {
         }
         let mut normalized = grouped
             .into_iter()
-            .map(|((kind, symbol_group), occurrences)| ApiEvidence {
-                kind,
-                symbol: self.symbols[symbol_group].clone(),
-                count: u32::try_from(
-                    self.total_counts
-                        .get(&symbol_group)
-                        .copied()
-                        .unwrap_or(occurrences.len()),
-                )
-                .unwrap_or(u32::MAX),
-                evidence_truncated: self.evidence_truncated,
-                occurrences: occurrences
-                    .iter()
-                    .map(
-                        |(event, span)| crate::api::classification::ApiEvidenceOccurrence {
-                            span: *span,
-                            fact: event.map(|event| event.0),
-                        },
+            .map(
+                |((kind, symbol_group), occurrences)| ClassificationEvidence {
+                    kind,
+                    symbol: self.symbols[symbol_group].clone(),
+                    count: u32::try_from(
+                        self.total_counts
+                            .get(&symbol_group)
+                            .copied()
+                            .unwrap_or(occurrences.len()),
                     )
-                    .collect(),
-                related: self.related.get(&symbol_group).cloned().unwrap_or_default(),
-            })
+                    .unwrap_or(u32::MAX),
+                    evidence_truncated: self.evidence_truncated,
+                    occurrences: occurrences
+                        .iter()
+                        .map(|(event, span)| {
+                            crate::api::classification::ClassificationEvidenceOccurrence {
+                                span: *span,
+                                fact: event.map(|event| event.0),
+                            }
+                        })
+                        .collect(),
+                    related: self.related.get(&symbol_group).cloned().unwrap_or_default(),
+                },
+            )
             .collect::<Vec<_>>();
         normalized.sort_by_key(|item| {
             (
@@ -167,16 +169,16 @@ impl AnnotatedEvidence {
 mod tests {
     use super::*;
 
-    fn evidence(symbol: &str, spans: &[u32]) -> ApiEvidence {
-        ApiEvidence {
-            kind: ApiMatchKind::Call,
+    fn evidence(symbol: &str, spans: &[u32]) -> ClassificationEvidence {
+        ClassificationEvidence {
+            kind: MatchKind::Call,
             symbol: symbol.into(),
             count: u32::try_from(spans.len()).unwrap_or(u32::MAX),
             evidence_truncated: false,
             occurrences: spans
                 .iter()
                 .map(
-                    |position| crate::api::classification::ApiEvidenceOccurrence {
+                    |position| crate::api::classification::ClassificationEvidenceOccurrence {
                         span: ByteRange::new(*position, *position + 1).unwrap(),
                         fact: Some(*position),
                     },

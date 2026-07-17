@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// lexical shadowing. Arguments and other read-like methods are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("vault.read")
-        .label("Reads vault files")
+        .description("Reads vault files")
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)

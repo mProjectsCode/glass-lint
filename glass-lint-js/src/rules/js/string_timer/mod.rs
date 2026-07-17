@@ -8,12 +8,12 @@ use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
 /// and dynamic-value lookalikes are excluded.
 pub fn rule() -> Rule {
     Rule::builder("dynamic-code.string-timer")
-        .label("Runs code from a string timer")
+        .description("Runs code from a string timer")
         .category("language/dynamic-code")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .matcher(CallMatcher::global("setTimeout").static_string_arg(0))
-        .matcher(CallMatcher::global("setInterval").static_string_arg(0))
+        .matcher(CallMatcher::global("setTimeout").arg_static_string(0))
+        .matcher(CallMatcher::global("setInterval").arg_static_string(0))
         .build()
         .unwrap()
 }

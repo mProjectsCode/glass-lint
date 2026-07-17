@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// `obsidian` provenance, while arguments and class bodies are ignored.
 pub fn rule() -> Rule {
     Rule::builder("ui.settings-tab")
-        .label("Registers plugin settings UI")
+        .description("Registers plugin settings UI")
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)

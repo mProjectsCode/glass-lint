@@ -5,7 +5,7 @@
 //! retained as diagnostics or unknown provenance.
 
 use super::super::{
-    BTreeMap, ExportResolution, MAX_SCC_SIZE, ModuleId, ProjectSemanticModel, ResolvedModule,
+    BTreeMap, ExportResolution, LinkedModuleTarget, MAX_SCC_SIZE, ModuleId, ProjectSemanticModel,
 };
 use crate::{
     analysis::{
@@ -94,7 +94,7 @@ impl ProjectSemanticModel {
     fn validate_imported_exports(&mut self) {
         for module in self.modules.values() {
             for request in module.local().interface().requests() {
-                let Ok(range) = module.source().range(request.span()) else {
+                let Ok(range) = module.source_context().range(request.span()) else {
                     continue;
                 };
                 let key = crate::project::ResolutionRequestKey {
@@ -102,7 +102,8 @@ impl ProjectSemanticModel {
                     kind: request.kind(),
                     range,
                 };
-                let Some(ResolvedModule::Internal { id, .. }) = self.resolutions.get(&key) else {
+                let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key)
+                else {
                     continue;
                 };
                 let ModuleRequestRole::Import { bindings } = request.role() else {
@@ -117,12 +118,12 @@ impl ProjectSemanticModel {
                         Some(ExportResolution::Ambiguous) => {
                             self.status.borrow_mut().record(
                                 crate::analysis::status::StatusScope::File(module.path().clone()),
-                                IncompleteReason::AmbiguousModuleInterface {
+                                IncompleteReason::AmbiguousStarExport {
                                     request: imported.to_owned(),
                                 },
                             );
                         }
-                        None => self.diagnostics.push(crate::ProjectDiagnostic {
+                        None => self.diagnostics.push(crate::AnalysisDiagnostic {
                             code: crate::project::types::DiagnosticKind::MissingImportedExport
                                 .into(),
                             message: format!("module does not export `{imported}`"),
@@ -157,14 +158,14 @@ impl ProjectSemanticModel {
                     }
                     continue;
                 };
-                if let ResolvedModule::Internal { id, .. } = resolution {
+                if let LinkedModuleTarget::Internal { id, .. } = resolution {
                     if edge_budget.try_push() {
                         self.graph
                             .insert_edge(module.id(), *id, request.key.clone());
                     } else {
                         self.link_budget.mark_exhausted();
                     }
-                } else if matches!(resolution, ResolvedModule::Missing)
+                } else if matches!(resolution, LinkedModuleTarget::Missing)
                     && is_internal_request(&request.request)
                 {
                     self.status.borrow_mut().record(
@@ -173,7 +174,7 @@ impl ProjectSemanticModel {
                             request: request.request.clone(),
                         },
                     );
-                } else if matches!(resolution, ResolvedModule::OutsideProject { .. }) {
+                } else if matches!(resolution, LinkedModuleTarget::OutsideProject { .. }) {
                     self.status.borrow_mut().record(
                         crate::analysis::status::StatusScope::File(module.path().clone()),
                         IncompleteReason::UnsupportedResolution {
@@ -181,7 +182,7 @@ impl ProjectSemanticModel {
                             kind: crate::analysis::status::ResolutionKind::OutsideProject,
                         },
                     );
-                } else if matches!(resolution, ResolvedModule::Unsupported { .. }) {
+                } else if matches!(resolution, LinkedModuleTarget::Unsupported { .. }) {
                     self.status.borrow_mut().record(
                         crate::analysis::status::StatusScope::File(module.path().clone()),
                         IncompleteReason::UnsupportedResolution {

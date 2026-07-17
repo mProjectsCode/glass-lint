@@ -9,7 +9,7 @@ use glass_lint_core::rules::{CallMatcher, Confidence, ConstructorMatcher, Rule, 
 /// not.
 pub fn rule() -> Rule {
     Rule::builder("dynamic-code.eval")
-        .label("Evaluates dynamic code")
+        .description("Evaluates dynamic code")
         .category("language/dynamic-code")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)

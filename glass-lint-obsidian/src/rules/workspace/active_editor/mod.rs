@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// local lookalikes, and the read value itself are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("workspace.active-editor")
-        .label("Accesses the active editor")
+        .description("Accesses the active editor")
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)

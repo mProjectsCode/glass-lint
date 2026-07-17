@@ -6,8 +6,8 @@
 //! than inheriting whichever request happens to be visited first.
 
 use super::super::{
-    BTreeSet, ExportResolution, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
-    ResolutionRequestKey, ResolvedModule, SymbolCallProvenance, module,
+    BTreeSet, ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId,
+    ProjectSemanticModel, ResolutionRequestKey, SymbolCallProvenance, module,
 };
 use crate::{
     analysis::module::ModuleRequestRole,
@@ -82,7 +82,7 @@ impl ProjectSemanticModel {
                 else {
                     return ExportResolution::Unknown;
                 };
-                let Ok(range) = self.modules[&module].source().range(request.span()) else {
+                let Ok(range) = self.modules[&module].source_context().range(request.span()) else {
                     return ExportResolution::Unknown;
                 };
                 let key = ResolutionRequestKey {
@@ -93,15 +93,15 @@ impl ProjectSemanticModel {
                     range,
                 };
                 match self.resolutions.get(&key) {
-                    Some(ResolvedModule::Internal { id, .. }) => ExportResolution::Qualified {
+                    Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
                         module: *id,
                         export: "*".into(),
                     },
-                    Some(ResolvedModule::External { package }) => ExportResolution::External {
+                    Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
                         module: package.clone(),
                         export: "*".into(),
                     },
-                    Some(ResolvedModule::Builtin { name }) => ExportResolution::External {
+                    Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
                         module: name.clone(),
                         export: "*".into(),
                     },
@@ -157,21 +157,21 @@ impl ProjectSemanticModel {
                     module: authored_module.to_string(),
                     export: authored_export.to_string(),
                 },
-                Some(ResolvedModule::External { package }) => ExportResolution::External {
+                Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
                     module: package.clone(),
                     export: authored_export.to_string(),
                 },
-                Some(ResolvedModule::Builtin { name }) => ExportResolution::External {
+                Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
                     module: name.clone(),
                     export: authored_export.to_string(),
                 },
-                Some(ResolvedModule::Internal { id, .. }) => self
+                Some(LinkedModuleTarget::Internal { id, .. }) => self
                     .lookup_export(*id, authored_export, &mut BTreeSet::new())
                     .unwrap_or(ExportResolution::Unknown),
                 Some(
-                    ResolvedModule::Missing
-                    | ResolvedModule::OutsideProject { .. }
-                    | ResolvedModule::Unsupported { .. },
+                    LinkedModuleTarget::Missing
+                    | LinkedModuleTarget::OutsideProject { .. }
+                    | LinkedModuleTarget::Unsupported { .. },
                 ) => ExportResolution::Unknown,
             };
             if let Some(previous) = &resolved {
@@ -194,7 +194,10 @@ impl ProjectSemanticModel {
         Some(ResolutionRequestKey {
             importer: self.modules[&module].path().clone(),
             kind: request.kind(),
-            range: self.modules[&module].source().range(request.span()).ok()?,
+            range: self.modules[&module]
+                .source_context()
+                .range(request.span())
+                .ok()?,
         })
     }
 
@@ -230,7 +233,7 @@ impl ProjectSemanticModel {
                 saw_unknown = true;
                 continue;
             };
-            let Ok(range) = self.modules[&module].source().range(request.span()) else {
+            let Ok(range) = self.modules[&module].source_context().range(request.span()) else {
                 saw_unknown = true;
                 continue;
             };
@@ -243,19 +246,16 @@ impl ProjectSemanticModel {
             };
             let resolution = self.resolutions.get(&key);
             let candidate_export = match resolution {
-                Some(ResolvedModule::Internal { id, .. }) => {
+                Some(LinkedModuleTarget::Internal { id, .. }) => {
                     self.lookup_export(*id, name, visiting)
                 }
-                Some(ResolvedModule::External { package }) => Some(ExportResolution::External {
+                Some(
+                    LinkedModuleTarget::External { package }
+                    | LinkedModuleTarget::Builtin { name: package },
+                ) => Some(ExportResolution::External {
                     module: package.clone(),
                     export: name.to_string(),
                 }),
-                Some(ResolvedModule::Builtin { name: package }) => {
-                    Some(ExportResolution::External {
-                        module: package.clone(),
-                        export: name.to_string(),
-                    })
-                }
                 _ => None,
             };
             match candidate_export {
@@ -288,7 +288,7 @@ impl ProjectSemanticModel {
         else {
             return ExportResolution::Unknown;
         };
-        let Ok(range) = self.modules[&module].source().range(request.span()) else {
+        let Ok(range) = self.modules[&module].source_context().range(request.span()) else {
             return ExportResolution::Unknown;
         };
         let key = ResolutionRequestKey {
@@ -297,14 +297,14 @@ impl ProjectSemanticModel {
             range,
         };
         match self.resolutions.get(&key) {
-            Some(ResolvedModule::Internal { id, .. }) => self
+            Some(LinkedModuleTarget::Internal { id, .. }) => self
                 .lookup_export(*id, imported, &mut std::collections::BTreeSet::new())
                 .unwrap_or(ExportResolution::Unknown),
-            Some(ResolvedModule::External { package }) => ExportResolution::External {
+            Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
                 module: package.clone(),
                 export: imported.to_string(),
             },
-            Some(ResolvedModule::Builtin { name }) => ExportResolution::External {
+            Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
                 module: name.clone(),
                 export: imported.to_string(),
             },

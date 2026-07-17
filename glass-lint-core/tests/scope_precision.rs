@@ -11,7 +11,7 @@ use glass_lint_core::{
 /// Build a strict rule so scope tests observe only proven global provenance.
 fn rule(id: &str) -> Builder {
     Rule::builder(id)
-        .label(id)
+        .description(id)
         .category("test")
         .severity(Severity::Info)
         .confidence(Confidence::High)

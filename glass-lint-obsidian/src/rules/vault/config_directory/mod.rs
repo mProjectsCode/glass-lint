@@ -9,12 +9,12 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// casing and separators beyond the two configured spellings.
 pub fn rule() -> Rule {
     Rule::builder("vault.config-directory")
-        .label("References .obsidian configuration paths")
+        .description("References .obsidian configuration paths")
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .matcher(Matcher::string_literal(".obsidian/"))
-        .matcher(Matcher::string_literal(".obsidian\\"))
+        .matcher(Matcher::string_contains(".obsidian/"))
+        .matcher(Matcher::string_contains(".obsidian\\"))
         .build()
         .unwrap()
 }

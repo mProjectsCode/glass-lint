@@ -9,7 +9,7 @@
 use super::{
     BindingKey, BindingProvenance, Expr, Ident, IdentValueSeed, MemberExpr, MemberValueSeed,
     ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant, contains,
-    member_prefix_ends, member_root_ident,
+    member_prefix_ends, member_root_identifier,
 };
 
 impl ScopeGraph {
@@ -43,9 +43,9 @@ impl ScopeGraph {
 
     /// Resolve a member expression after applying alias and mutation checks.
     pub(in crate::analysis) fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String> {
-        let syntactic_chain = self.member_chain(member).or_else(|| {
-            let object = crate::analysis::syntax::expr_name(&member.obj)?;
-            let property = self.member_prop_name(member)?;
+        let syntactic_chain = self.member_expression_chain(member).or_else(|| {
+            let object = crate::analysis::syntax::expression_name(&member.obj)?;
+            let property = self.member_property_name(member)?;
             Some(format!("{object}.{property}"))
         })?;
         self.resolve_member_chain(member, &syntactic_chain)
@@ -60,7 +60,7 @@ impl ScopeGraph {
         if self.has_dynamic_lookup_at(member.span) {
             return None;
         }
-        let Some(root) = member_root_ident(member) else {
+        let Some(root) = member_root_identifier(member) else {
             return syntactic_chain
                 .starts_with("this.")
                 .then(|| syntactic_chain.to_string());
@@ -256,14 +256,17 @@ impl ScopeGraph {
     }
 
     /// Extract a statically evaluable member property name.
-    pub(in crate::analysis) fn member_prop_name(&self, member: &MemberExpr) -> Option<String> {
+    pub(in crate::analysis) fn member_property_name(&self, member: &MemberExpr) -> Option<String> {
         constant::property_name(&member.prop, self)
     }
 
     /// Return the syntax-level dotted chain for a member expression.
-    pub(in crate::analysis) fn member_chain(&self, member: &MemberExpr) -> Option<String> {
-        let object = super::syntax::expr_name(&member.obj)?;
-        Some(format!("{object}.{}", self.member_prop_name(member)?))
+    pub(in crate::analysis) fn member_expression_chain(
+        &self,
+        member: &MemberExpr,
+    ) -> Option<String> {
+        let object = super::syntax::expression_name(&member.obj)?;
+        Some(format!("{object}.{}", self.member_property_name(member)?))
     }
 
     /// Return a callable rooted chain for a proven identifier binding.
@@ -318,7 +321,7 @@ impl ScopeGraph {
             return None;
         }
         if let Some((module, prefix)) = self.module_member_for_expr(&member.obj) {
-            let property = self.member_prop_name(member)?;
+            let property = self.member_property_name(member)?;
             return Some(SymbolMemberProvenance::ModuleNamespace {
                 module,
                 member: if prefix.is_empty() {
@@ -328,7 +331,7 @@ impl ScopeGraph {
                 },
             });
         }
-        let root = member_root_ident(member)?;
+        let root = member_root_identifier(member)?;
         let member = chain.strip_prefix(root.sym.as_ref())?.strip_prefix('.')?;
         match self.binding_at(root.sym.as_ref(), root.span) {
             Some(BindingProvenance::ModuleNamespace { module }) => {
@@ -343,7 +346,7 @@ impl ScopeGraph {
 
     /// Produce the immutable resolver seed for a member occurrence.
     pub(in crate::analysis) fn member_value_seed(&self, member: &MemberExpr) -> MemberValueSeed {
-        let syntactic_chain = self.member_chain(member).map(SymbolPath::from);
+        let syntactic_chain = self.member_expression_chain(member).map(SymbolPath::from);
         let rooted_chain = syntactic_chain
             .as_ref()
             .and_then(|chain| self.resolve_member_chain(member, &chain.to_string()))
@@ -381,7 +384,7 @@ impl ScopeGraph {
             },
             Expr::Member(member) => {
                 let (module, prefix) = self.module_member_for_expr(&member.obj)?;
-                let property = self.member_prop_name(member)?;
+                let property = self.member_property_name(member)?;
                 Some((
                     module,
                     if prefix.is_empty() {
@@ -458,7 +461,7 @@ impl ScopeGraph {
         member: &MemberExpr,
     ) -> Option<(String, String)> {
         let source = self.returned_object_source(&member.obj)?;
-        let property = self.member_prop_name(member)?;
+        let property = self.member_property_name(member)?;
         Some((source, property))
     }
 }

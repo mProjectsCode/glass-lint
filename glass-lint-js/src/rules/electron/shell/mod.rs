@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// reads are intentionally outside the rule.
 pub fn rule() -> Rule {
     Rule::builder("electron.shell")
-        .label("Uses Electron shell APIs")
+        .description("Uses Electron shell APIs")
         .category("electron/shell")
         .confidence(Confidence::High)
         .severity(Severity::Warning)

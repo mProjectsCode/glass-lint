@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// dynamic properties and near-name methods are excluded.
 pub fn rule() -> Rule {
     Rule::builder("markdown.postprocessor")
-        .label("Registers markdown postprocessors")
+        .description("Registers markdown postprocessors")
         .category("markdown")
         .severity(Severity::Info)
         .confidence(Confidence::High)

@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// are intentionally not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("vault.move-copy")
-        .label("Moves or copies vault files")
+        .description("Moves or copies vault files")
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)

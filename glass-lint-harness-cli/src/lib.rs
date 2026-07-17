@@ -39,13 +39,15 @@ pub fn run(args: args::Args) -> Result<bool> {
     if compare {
         compare::write_report(&report, &case_timings, suite_start.elapsed())?;
     } else if verify {
-        println!("{}", glass_lint_harness::summary(&report));
+        println!("{}", glass_lint_harness::render_suite_summary(&report));
         if !report.passed() {
-            eprint!("{}", glass_lint_harness::failure_details(&report));
+            eprint!("{}", glass_lint_harness::render_suite_failures(&report));
         }
     } else {
         match format {
-            args::Format::Markdown => print!("{}", glass_lint_harness::markdown(&report)),
+            args::Format::Markdown => {
+                print!("{}", glass_lint_harness::render_suite_markdown(&report));
+            }
             args::Format::Json => println!("{}", serde_json::to_string_pretty(&report)?),
         }
     }

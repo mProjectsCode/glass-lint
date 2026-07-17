@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// not proof that a request or telemetry event occurs.
 pub fn rule() -> Rule {
     Rule::builder("network.telemetry-indicator")
-        .label("References telemetry SDKs or endpoints")
+        .description("References telemetry SDKs or endpoints")
         .category("browser/network")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
@@ -17,8 +17,8 @@ pub fn rule() -> Rule {
         .matcher(Matcher::import("@sentry/node"))
         .matcher(Matcher::import("posthog-js"))
         .matcher(Matcher::import("mixpanel-browser"))
-        .matcher(Matcher::string_literal("sentry.io"))
-        .matcher(Matcher::string_literal("google-analytics.com"))
+        .matcher(Matcher::string_contains("sentry.io"))
+        .matcher(Matcher::string_contains("google-analytics.com"))
         .build()
         .unwrap()
 }

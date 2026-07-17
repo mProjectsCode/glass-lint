@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// simple aliases while reassignment and shadowing remain fail-closed.
 pub fn rule() -> Rule {
     Rule::builder("workspace.open")
-        .label("Opens files through the workspace")
+        .description("Opens files through the workspace")
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)

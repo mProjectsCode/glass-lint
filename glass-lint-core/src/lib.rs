@@ -19,24 +19,24 @@ mod rule_id;
 #[cfg(feature = "telemetry")]
 pub mod telemetry;
 
-pub use api::rule::{Rule, RuleBuildError as BuildError};
+pub use api::rule::{Rule, RuleBuildError};
 pub use config::CoreConfig;
 pub use diagnostic::{
-    ByteRange, InvalidPosition, InvalidSourcePositionRange, InvalidSourceRange, Position,
+    ByteRange, InvalidPosition, InvalidSourceBoundary, Position, ReversedSourcePositionRange,
     RuleMetadata, Severity, SourceLineIndex, SourceRange,
 };
 pub use environment::{Environment, EnvironmentError};
 pub use limits::AnalysisLimits;
 pub use lint::{
-    LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog, RuleCatalogError,
+    LintConfigError, Linter, LinterConfig, ProviderCatalogError, RuleBaseline, RuleCatalog,
     RuleOverride, RuleSelection, RuleState,
 };
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{
-    AnalysisReport, AnalysisReportSummary, AnalysisSession, Diagnostic, DiagnosticCode, Evidence,
-    EvidenceList, FileReport, Finding, OperationCounts, ProjectDiagnostic, ProjectInput,
-    ProjectInputError, ProjectRelativePath, ReportCombineError, ReportCompletion,
-    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile,
+    AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary,
+    AnalysisSession, Diagnostic, DiagnosticCode, Evidence, EvidenceList, FileReport, Finding,
+    ProjectInput, ProjectInputError, ProjectRelativePath, ReportCombineError, ReportCompletion,
+    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile,
     SourceLocation, is_internal_module_request,
 };
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible_text};
@@ -52,7 +52,7 @@ pub mod rules {
         FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, Matcher,
         MemberCallMatcher, MemberReadMatcher, ObjectEventMatcher, ObjectFlowMatcher,
         ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, Rule,
-        RuleBuildError as BuildError, RuleBuilder as Builder, Severity, ValueMatcher,
+        RuleBuildError, RuleBuilder as Builder, Severity, ValueMatcher,
     };
 }
 #[cfg(test)]

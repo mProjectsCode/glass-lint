@@ -25,7 +25,7 @@ pub enum Provider {
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
-pub enum Profile {
+pub enum RuleSelectionProfile {
     /// Only high-confidence rules selected for normal use.
     Recommended,
     #[default]
@@ -45,7 +45,7 @@ pub enum FailOn {
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, ValueEnum)]
 #[serde(rename_all = "lowercase")]
-pub enum Output {
+pub enum OutputFormat {
     /// Human-readable diagnostics and a deterministic summary.
     #[default]
     Pretty,
@@ -71,7 +71,7 @@ pub struct CliConfig {
     pub provider: Provider,
     #[serde(default)]
     /// Rule confidence profile used to select the catalog.
-    pub profile: Profile,
+    pub profile: RuleSelectionProfile,
     #[serde(default)]
     /// Filesystem and project-loading limits, owned by the project boundary.
     pub project: ProjectConfig,
@@ -80,7 +80,7 @@ pub struct CliConfig {
     pub fail_on: FailOn,
     #[serde(default)]
     /// Serialization format for findings and summaries.
-    pub output: Output,
+    pub output: OutputFormat,
     #[serde(default)]
     /// Amount of telemetry emitted while the command runs.
     pub verbosity: Verbosity,
@@ -100,9 +100,9 @@ pub struct CliConfig {
 #[allow(clippy::struct_field_names)]
 pub struct ProjectConfig {
     #[serde(default = "default_max_bytes")]
-    pub max_bytes: u64,
+    pub max_source_bytes: u64,
     #[serde(default = "default_project_bytes")]
-    pub max_project_bytes: u64,
+    pub max_project_source_bytes: u64,
     #[serde(default = "default_visited_entries")]
     pub max_visited_entries: usize,
     #[serde(default = "default_timeout_ms")]
@@ -112,8 +112,8 @@ pub struct ProjectConfig {
 impl Default for ProjectConfig {
     fn default() -> Self {
         Self {
-            max_bytes: default_max_bytes(),
-            max_project_bytes: default_project_bytes(),
+            max_source_bytes: default_max_bytes(),
+            max_project_source_bytes: default_project_bytes(),
             max_visited_entries: default_visited_entries(),
             max_timeout_ms: default_timeout_ms(),
         }
@@ -137,10 +137,10 @@ impl Default for CliConfig {
     fn default() -> Self {
         Self {
             provider: Provider::default(),
-            profile: Profile::default(),
+            profile: RuleSelectionProfile::default(),
             project: ProjectConfig::default(),
             fail_on: FailOn::default(),
-            output: Output::default(),
+            output: OutputFormat::default(),
             verbosity: Verbosity::default(),
             color: default_color(),
             pretty_max_width: default_width(),
@@ -271,16 +271,14 @@ fn validate(config: Config) -> Result<Config> {
 }
 
 impl Config {
-    /// Construct and validate the one project-loading policy used by all CLI
+    /// Construct and validate the project-loading policy used by linting
     /// modes.
     pub fn project_load_options(&self) -> Result<ValidatedProjectLoadOptions> {
         ProjectLoadOptions::builder()
-            .source_bytes(
-                self.cli.project.max_bytes,
-                self.cli.project.max_project_bytes,
-            )
+            .max_source_bytes(self.cli.project.max_source_bytes)
+            .max_project_source_bytes(self.cli.project.max_project_source_bytes)
             .max_visited_entries(self.cli.project.max_visited_entries)
-            .timeout_ms(self.cli.project.max_timeout_ms)
+            .max_timeout_ms(self.cli.project.max_timeout_ms)
             .build()
             .map_err(|error| anyhow::anyhow!(error))
     }
@@ -299,25 +297,26 @@ impl Config {
     }
 }
 
-/// Build the immutable rule metadata selected by the CLI settings.
-pub fn catalog(provider: Provider, profile: Profile) -> RuleCatalog {
+/// Build the complete immutable rule catalog selected by the CLI settings.
+pub fn catalog(provider: Provider, profile: RuleSelectionProfile) -> RuleCatalog {
     base_linter(provider, profile).catalog().clone()
 }
 
-/// Construct the unconfigured catalog for a provider and confidence profile.
+/// Construct the baseline linter for a provider and confidence profile;
+/// selection is applied by `selected_linter`.
 ///
 /// The combined Obsidian catalog shares Obsidian's host environment with its
 /// generic JavaScript rules; the standalone JavaScript catalog uses its own
 /// provider defaults.
-pub fn base_linter(provider: Provider, profile: Profile) -> Linter {
+pub fn base_linter(provider: Provider, profile: RuleSelectionProfile) -> Linter {
     let baseline = match profile {
-        Profile::Recommended => {
+        RuleSelectionProfile::Recommended => {
             RuleBaseline::MinimumConfidence(glass_lint_core::rules::Confidence::High)
         }
-        Profile::Heuristic => RuleBaseline::All,
+        RuleSelectionProfile::Heuristic => RuleBaseline::All,
     };
     let config = match provider {
-        Provider::Obsidian => glass_lint_obsidian::config(),
+        Provider::Obsidian => glass_lint_obsidian::obsidian_config(),
         Provider::Js => glass_lint_js::js_config(),
         Provider::Node => glass_lint_js::node_config(),
         Provider::Electron => glass_lint_js::electron_config(),
@@ -332,10 +331,10 @@ pub fn base_linter(provider: Provider, profile: Profile) -> Linter {
 /// limits are checked against the exact provider environment that will run.
 pub fn selected_linter(config: &Config) -> Result<Linter> {
     let profile_baseline = match config.cli.profile {
-        Profile::Recommended => {
+        RuleSelectionProfile::Recommended => {
             RuleBaseline::MinimumConfidence(glass_lint_core::rules::Confidence::High)
         }
-        Profile::Heuristic => RuleBaseline::All,
+        RuleSelectionProfile::Heuristic => RuleBaseline::All,
     };
     let selection = config.core.selection.overrides().iter().cloned().fold(
         RuleSelection::new(profile_baseline),
@@ -390,7 +389,7 @@ mod tests {
 
     #[test]
     fn obsidian_profile_combines_generic_and_provider_rules() {
-        let linter = base_linter(Provider::Obsidian, Profile::Heuristic);
+        let linter = base_linter(Provider::Obsidian, RuleSelectionProfile::Heuristic);
         let ids = linter.catalog().rule_ids();
 
         assert!(ids.iter().any(|id| id.as_str() == "js:dynamic-code.eval"));
@@ -402,7 +401,7 @@ mod tests {
 
     #[test]
     fn combined_obsidian_profile_uses_the_obsidian_host_environment() {
-        let report = base_linter(Provider::Obsidian, Profile::Heuristic)
+        let report = base_linter(Provider::Obsidian, RuleSelectionProfile::Heuristic)
             .lint_snippet(
                 include_str!("../../tests/e2e/render-executable-code-blocks.js"),
                 "render-executable-code-blocks.js",
@@ -429,7 +428,7 @@ mod tests {
     fn selected_linter_keeps_profile_baseline_before_core_overrides() {
         let mut recommended = Config::default();
         recommended.cli.provider = Provider::Js;
-        recommended.cli.profile = Profile::Recommended;
+        recommended.cli.profile = RuleSelectionProfile::Recommended;
         let recommended = selected_linter(&recommended).unwrap();
         assert!(
             !recommended
@@ -440,7 +439,7 @@ mod tests {
 
         let mut override_config = Config::default();
         override_config.cli.provider = Provider::Js;
-        override_config.cli.profile = Profile::Recommended;
+        override_config.cli.profile = RuleSelectionProfile::Recommended;
         override_config.core.selection = RuleSelection::new(RuleBaseline::All).with_override(
             glass_lint_core::RuleOverride::new(
                 "js:dynamic-code.eval",

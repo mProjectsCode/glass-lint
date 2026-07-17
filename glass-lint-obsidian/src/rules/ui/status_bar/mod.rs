@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// other receivers, dynamic properties, and near-name methods are excluded.
 pub fn rule() -> Rule {
     Rule::builder("ui.status-bar")
-        .label("Registers status bar items")
+        .description("Registers status bar items")
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)

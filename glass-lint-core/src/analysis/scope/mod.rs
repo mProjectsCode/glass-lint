@@ -9,7 +9,7 @@
 //! immutable query indexes. Binding IDs and assignment versions make later
 //! queries position-sensitive without rebuilding the AST.
 
-use collect::AliasCollector;
+use collect::LexicalScopeCollector;
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
@@ -31,7 +31,7 @@ impl ScopeGraph {
         program: &Program,
         environment: &crate::Environment,
     ) -> Self {
-        let mut collector = AliasCollector::new(program.span());
+        let mut collector = LexicalScopeCollector::new(program.span());
         // Build declarations before collecting initializers and uses.  This
         // makes the resolver position-aware without making it traversal-order
         // dependent: an earlier use of a later declaration is local/TDZ, not

@@ -5,12 +5,12 @@
 //! after normalization so catalog order cannot affect the shared model.
 
 use super::{
-    FactPayload, FactStream, MatcherFacts, SymbolCallProvenance, SymbolMemberProvenance,
+    FactPayload, FactStream, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
     canonical_rooted_chain,
     occurrence::{InstanceMemberKey, ModuleExportKey},
 };
 
-impl MatcherFacts {
+impl OccurrenceIndexes {
     /// Sort and deduplicate every occurrence index after fact collection.
     /// Queries rely on this normalization for deterministic output and binary
     /// search; keeping it as one operation prevents a newly added index from
@@ -69,8 +69,14 @@ impl MatcherFacts {
                     .push(value.clone(), fact.id, fact.span);
             }
 
-            FactPayload::Class { name, provenance } => {
-                if !name.is_empty() {
+            FactPayload::Class {
+                name,
+                provenance,
+                role,
+            } => {
+                if matches!(role, super::super::facts::ClassFactRole::Declaration)
+                    && let Some(name) = name
+                {
                     self.constructions
                         .classes
                         .push(name.clone(), fact.id, fact.span);

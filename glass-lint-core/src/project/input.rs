@@ -7,7 +7,7 @@ use std::{
 
 use super::{
     ModuleId, ProjectInput, ProjectInputError, ProjectRelativePath, ResolutionRequestKey,
-    ResolutionResult,
+    ResolverOutcome,
 };
 
 impl ProjectInput {
@@ -149,17 +149,17 @@ pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError>
 }
 
 /// Normalize and validate one typed resolver result.
-pub fn normalize_result(result: &mut ResolutionResult) -> Result<(), ProjectInputError> {
+pub fn normalize_result(result: &mut ResolverOutcome) -> Result<(), ProjectInputError> {
     match result {
-        ResolutionResult::Internal { path } => *path = normalize_relative(path.as_str())?,
-        ResolutionResult::OutsideProject { path } => *path = normalize_outside_target(path)?,
-        ResolutionResult::External { package } if package.trim().is_empty() => {
+        ResolverOutcome::Internal { path } => *path = normalize_relative(path.as_str())?,
+        ResolverOutcome::OutsideProject { path } => *path = normalize_outside_target(path)?,
+        ResolverOutcome::External { package } if package.trim().is_empty() => {
             return Err(ProjectInputError::InvalidTarget(package.clone()));
         }
-        ResolutionResult::Builtin { name } if name.trim().is_empty() => {
+        ResolverOutcome::Builtin { name } if name.trim().is_empty() => {
             return Err(ProjectInputError::InvalidTarget(name.clone()));
         }
-        ResolutionResult::Unsupported { reason } if reason.trim().is_empty() => {
+        ResolverOutcome::Unsupported { reason } if reason.trim().is_empty() => {
             return Err(ProjectInputError::InvalidTarget(reason.clone()));
         }
         _ => {}

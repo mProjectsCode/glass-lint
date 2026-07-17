@@ -5,7 +5,7 @@ use std::time::Duration;
 use glass_lint_core::AnalysisReport;
 use sha2::{Digest, Sha256};
 
-use super::{ProfileFileSummary, ProfileOperationCounts, ProfileRepetitionSummary};
+use super::{ProfileOperationCounts, ProfileRepetitionSummary, ProfileWorkloadSummary};
 
 pub(super) fn all_diagnostic_count(report: &AnalysisReport) -> usize {
     report.diagnostics.len()
@@ -56,7 +56,7 @@ pub(super) fn median_duration(repetitions: &[ProfileRepetitionSummary]) -> Durat
 
 pub(super) fn repetition_from_files(
     duration: Duration,
-    files: &[ProfileFileSummary],
+    files: &[ProfileWorkloadSummary],
 ) -> ProfileRepetitionSummary {
     let mut completion = glass_lint_core::ReportCompletion::Complete;
     let mut operation_counts = ProfileOperationCounts::default();

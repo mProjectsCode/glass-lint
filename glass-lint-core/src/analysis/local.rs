@@ -16,13 +16,13 @@ use super::{facts, flow, module::ModuleInterface, status::AnalysisStatus, syntax
 use crate::project::ModuleId;
 
 #[derive(Clone, Debug)]
-pub struct SourceContext {
+pub struct LocatedSourceContext {
     pub(crate) path: crate::project::ProjectRelativePath,
     pub(crate) text: Arc<str>,
     pub(crate) lines: Arc<crate::SourceLineIndex>,
 }
 
-impl SourceContext {
+impl LocatedSourceContext {
     pub(crate) fn new(source: &crate::SourceFile) -> Self {
         Self {
             path: source.path.clone(),
@@ -34,7 +34,7 @@ impl SourceContext {
     pub(crate) fn range(
         &self,
         span: crate::ByteRange,
-    ) -> Result<crate::SourceRange, crate::InvalidSourceRange> {
+    ) -> Result<crate::SourceRange, crate::InvalidSourceBoundary> {
         self.lines.try_range(&self.text, span)
     }
 }
@@ -42,7 +42,7 @@ impl SourceContext {
 /// Private identity of all inputs that can affect local semantic lowering.
 /// Rule selection is intentionally absent: artifacts are matcher-independent.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ArtifactFingerprint {
+pub struct ArtifactCacheKey {
     source: String,
     language: crate::SourceLanguage,
     normalization_mode: &'static str,
@@ -51,7 +51,7 @@ pub struct ArtifactFingerprint {
     engine_version: &'static str,
 }
 
-impl ArtifactFingerprint {
+impl ArtifactCacheKey {
     pub fn new(
         source: &crate::SourceFile,
         environment: &crate::Environment,
@@ -125,7 +125,7 @@ impl ArtifactFingerprint {
 }
 
 #[derive(Clone)]
-pub struct CachedArtifact {
+pub struct SharedSemanticArtifact {
     pub semantic: Arc<SemanticArtifact>,
 }
 
@@ -134,7 +134,7 @@ pub struct CachedArtifact {
 /// including exhausted ones, are safe to reuse because their status is data.
 #[derive(Default)]
 pub struct ArtifactCache {
-    entries: Vec<(ArtifactFingerprint, CachedArtifact)>,
+    entries: Vec<(ArtifactCacheKey, SharedSemanticArtifact)>,
 }
 
 /// Synchronized runtime-owned cache. A poisoned mutex is recovered so an
@@ -143,7 +143,7 @@ pub struct ArtifactCache {
 pub struct ArtifactCacheHandle(Arc<Mutex<ArtifactCache>>);
 
 impl ArtifactCacheHandle {
-    pub fn get(&self, key: &ArtifactFingerprint) -> Option<CachedArtifact> {
+    pub fn get(&self, key: &ArtifactCacheKey) -> Option<SharedSemanticArtifact> {
         let cache = self
             .0
             .lock()
@@ -151,7 +151,7 @@ impl ArtifactCacheHandle {
         cache.get(key)
     }
 
-    pub fn insert(&self, key: ArtifactFingerprint, artifact: CachedArtifact) -> bool {
+    pub fn insert(&self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
         let mut cache = self
             .0
             .lock()
@@ -168,7 +168,7 @@ impl ArtifactCacheHandle {
 impl ArtifactCache {
     const MAX_ENTRIES: usize = 64;
 
-    pub fn get(&self, key: &ArtifactFingerprint) -> Option<CachedArtifact> {
+    pub fn get(&self, key: &ArtifactCacheKey) -> Option<SharedSemanticArtifact> {
         self.entries
             .iter()
             .find(|(candidate, _)| candidate == key)
@@ -177,7 +177,7 @@ impl ArtifactCache {
 
     /// Insert or replace an artifact, returning whether the FIFO capacity
     /// policy evicted the oldest distinct key.
-    pub fn insert(&mut self, key: ArtifactFingerprint, artifact: CachedArtifact) -> bool {
+    pub fn insert(&mut self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
         if let Some((_, existing)) = self
             .entries
             .iter_mut()
@@ -200,7 +200,7 @@ impl ArtifactCache {
     }
 }
 
-/// The immutable, matcher-independent result of analyzing one source.
+/// The immutable lowered semantic result of analyzing one source.
 #[derive(Debug, Clone)]
 pub struct SemanticArtifact {
     /// Canonical facts, occurrence indexes, and module interface.
@@ -249,19 +249,19 @@ impl SemanticArtifact {
     }
 }
 
-/// Path-specific source context paired with reusable semantic state.
+/// Path-specific report attachment paired with reusable lowered semantic state.
 #[derive(Debug, Clone)]
 pub struct LocalArtifact {
-    source: SourceContext,
+    source: LocatedSourceContext,
     semantic: Arc<SemanticArtifact>,
 }
 
 impl LocalArtifact {
-    pub(crate) fn new(source: SourceContext, semantic: Arc<SemanticArtifact>) -> Self {
+    pub(crate) fn new(source: LocatedSourceContext, semantic: Arc<SemanticArtifact>) -> Self {
         Self { source, semantic }
     }
 
-    pub(crate) fn source(&self) -> &SourceContext {
+    pub(crate) fn source_context(&self) -> &LocatedSourceContext {
         &self.source
     }
 
@@ -286,8 +286,8 @@ impl LocalArtifact {
     }
 }
 
-/// A successfully analyzed source together with the data needed to report
-/// findings in its original file.
+/// A linked project module containing one lowered local artifact and its
+/// report-local source attachment.
 pub struct ProjectModule {
     /// Stable project-local module identity.
     id: ModuleId,
@@ -309,12 +309,12 @@ impl ProjectModule {
 
     /// Return the canonical report/resolution path.
     pub(crate) fn path(&self) -> &crate::project::ProjectRelativePath {
-        &self.local.source().path
+        &self.local.source_context().path
     }
 
     /// Borrow the source map used for location conversion.
-    pub(crate) fn source(&self) -> &SourceContext {
-        self.local.source()
+    pub(crate) fn source_context(&self) -> &LocatedSourceContext {
+        self.local.source_context()
     }
 
     /// Borrow this module's local semantic model.
@@ -327,7 +327,7 @@ impl ProjectModule {
 mod tests {
     use std::sync::Arc;
 
-    use super::{LocalArtifact, SemanticArtifact, SourceContext};
+    use super::{LocalArtifact, LocatedSourceContext, SemanticArtifact};
 
     fn assert_send_sync<T: Send + Sync>() {}
 
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn source_context_reuses_one_line_index() {
         let source = crate::SourceFile::new("main.js", "fetch('/');").unwrap();
-        let context = SourceContext::new(&source);
+        let context = LocatedSourceContext::new(&source);
         let cloned = context.clone();
         assert!(Arc::ptr_eq(&context.lines, &cloned.lines));
         assert_eq!(Arc::strong_count(&context.lines), 2);

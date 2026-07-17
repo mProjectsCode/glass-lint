@@ -12,7 +12,7 @@ use glass_lint_core::rules::{
 /// do not match.
 pub fn rule() -> Rule {
     Rule::builder("dom.remote-resource")
-        .label("Loads remote DOM resources")
+        .description("Loads remote DOM resources")
         .category("browser/dom")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)

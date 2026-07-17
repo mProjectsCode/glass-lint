@@ -23,7 +23,7 @@ impl RuleIndex {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 /// One classified capability emitted by a compiled matcher.
-pub struct ApiCapability {
+pub struct MatchedCapability {
     /// Internal catalog position used to correlate rule selections.
     #[serde(skip)]
     pub rule_index: RuleIndex,
@@ -38,14 +38,14 @@ pub struct ApiCapability {
     /// Confidence assigned by the rule declaration.
     pub confidence: Confidence,
     /// Primary-file evidence for this capability.
-    pub evidence: Vec<ApiEvidence>,
+    pub evidence: Vec<ClassificationEvidence>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 /// Evidence for one matched API occurrence and its related events.
-pub struct ApiEvidence {
+pub struct ClassificationEvidence {
     /// Semantic occurrence kind.
-    pub kind: ApiMatchKind,
+    pub kind: MatchKind,
     /// Canonical matched symbol/chain.
     pub symbol: String,
     /// Number of source events represented by this evidence item.
@@ -55,27 +55,27 @@ pub struct ApiEvidence {
     pub evidence_truncated: bool,
     /// Primary occurrences with their optional canonical fact identity.
     #[serde(skip)]
-    pub occurrences: Vec<ApiEvidenceOccurrence>,
+    pub occurrences: Vec<ClassificationEvidenceOccurrence>,
     /// Related evidence from linked modules or flow projections.
-    pub related: Vec<ApiRelatedEvidence>,
+    pub related: Vec<RelatedClassificationEvidence>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// A source span and the fact that established it, when available.
-pub struct ApiEvidenceOccurrence {
+pub struct ClassificationEvidenceOccurrence {
     pub span: ByteRange,
     pub fact: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 /// Cross-module evidence related to a primary occurrence.
-pub struct ApiRelatedEvidence {
+pub struct RelatedClassificationEvidence {
     /// Stable project module ID containing the related event.
     pub module: u32,
     /// Canonical fact/event ID within that module.
     pub event: u32,
     /// Related occurrence kind.
-    pub kind: ApiMatchKind,
+    pub kind: MatchKind,
     /// Related matched symbol/chain.
     pub symbol: String,
 }
@@ -83,7 +83,7 @@ pub struct ApiRelatedEvidence {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 /// Semantic kind of API occurrence represented in a report.
-pub enum ApiMatchKind {
+pub enum MatchKind {
     /// A callable symbol invocation.
     Call,
     /// Invocation of a member chain.
@@ -93,7 +93,7 @@ pub enum ApiMatchKind {
     /// A module import occurrence.
     Import,
     /// A matched static string occurrence.
-    StringLiteral,
+    StringContains,
     /// A matched class declaration/use.
     Class,
     /// A constructor invocation/use.
@@ -104,19 +104,19 @@ pub enum ApiMatchKind {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 /// Top-level classification result containing capabilities in catalog order.
-pub struct ApiClassificationResult {
+pub struct ClassificationResult {
     /// Classified capabilities selected for this run.
-    pub capabilities: Vec<ApiCapability>,
+    pub capabilities: Vec<MatchedCapability>,
 }
 
-impl ApiClassificationResult {
+impl ClassificationResult {
     /// Borrow the classified capabilities without copying them.
-    pub fn capabilities(&self) -> &[ApiCapability] {
+    pub fn capabilities(&self) -> &[MatchedCapability] {
         &self.capabilities
     }
 }
 
-impl ApiMatchKind {
+impl MatchKind {
     /// Return the stable serialized spelling of this occurrence kind.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -124,7 +124,7 @@ impl ApiMatchKind {
             Self::MemberCall => "member_call",
             Self::MemberRead => "member_read",
             Self::Import => "import",
-            Self::StringLiteral => "string_literal",
+            Self::StringContains => "string_contains",
             Self::Class => "class",
             Self::Constructor => "constructor",
             Self::CallArgument => "call_argument",
@@ -132,7 +132,7 @@ impl ApiMatchKind {
     }
 }
 
-impl ApiCapability {
+impl MatchedCapability {
     /// Borrow the capability label.
     pub fn label(&self) -> &str {
         &self.label
@@ -144,14 +144,14 @@ impl ApiCapability {
     }
 
     /// Borrow primary evidence for this capability.
-    pub fn evidence(&self) -> &[ApiEvidence] {
+    pub fn evidence(&self) -> &[ClassificationEvidence] {
         &self.evidence
     }
 }
 
-impl ApiEvidence {
+impl ClassificationEvidence {
     /// Return the occurrence kind.
-    pub fn kind(&self) -> ApiMatchKind {
+    pub fn kind(&self) -> MatchKind {
         self.kind
     }
 

@@ -7,13 +7,13 @@ use std::{collections::BTreeMap, num::NonZeroUsize};
 struct LocalJob {
     path: super::ProjectRelativePath,
     source: SourceFile,
-    key: ArtifactFingerprint,
+    key: ArtifactCacheKey,
 }
 
 struct LocalJobResult {
     path: super::ProjectRelativePath,
     source: SourceFile,
-    key: ArtifactFingerprint,
+    key: ArtifactCacheKey,
     result: Result<crate::analysis::SemanticArtifact, crate::ParseDiagnostic>,
 }
 
@@ -263,12 +263,13 @@ pub(super) const fn outstanding_job_bound(worker_limit: NonZeroUsize) -> usize {
 
 use super::{
     AnalysisReport, ProjectInput, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
-    ResolutionResult, SourceFile,
+    ResolverOutcome, SourceFile,
     input::{normalize_relative, normalize_resolution_key, normalize_result, normalize_root},
     tables::{ResolutionTable, SourceTable},
 };
 use crate::analysis::{
-    ArtifactCacheHandle, ArtifactFingerprint, CachedArtifact, LoweredSource, SourceContext,
+    ArtifactCacheHandle, ArtifactCacheKey, LocatedSourceContext, LoweredSource,
+    SharedSemanticArtifact,
 };
 
 pub struct AnalysisSession<'a> {
@@ -288,11 +289,11 @@ pub struct AnalysisSession<'a> {
 
 impl<'a> AnalysisSession<'a> {
     #[cfg(test)]
-    fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactFingerprint {
+    fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
         if self.fingerprint_normalization.is_none()
             && self.fingerprint_engine_version == env!("CARGO_PKG_VERSION")
         {
-            return ArtifactFingerprint::new(
+            return ArtifactCacheKey::new(
                 source,
                 self.linter.analysis_environment(),
                 self.linter.analysis_limits(),
@@ -300,7 +301,7 @@ impl<'a> AnalysisSession<'a> {
         }
         self.fingerprint_normalization.map_or_else(
             || {
-                ArtifactFingerprint::for_engine_version(
+                ArtifactCacheKey::for_engine_version(
                     source,
                     self.linter.analysis_environment(),
                     self.linter.analysis_limits(),
@@ -308,7 +309,7 @@ impl<'a> AnalysisSession<'a> {
                 )
             },
             |normalization| {
-                ArtifactFingerprint::for_test_inputs(
+                ArtifactCacheKey::for_test_inputs(
                     source,
                     self.linter.analysis_environment(),
                     self.linter.analysis_limits(),
@@ -320,8 +321,8 @@ impl<'a> AnalysisSession<'a> {
     }
 
     #[cfg(not(test))]
-    fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactFingerprint {
-        ArtifactFingerprint::new(
+    fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
+        ArtifactCacheKey::new(
             source,
             self.linter.analysis_environment(),
             self.linter.analysis_limits(),
@@ -377,7 +378,7 @@ impl<'a> AnalysisSession<'a> {
         let lowered = if let Some(cached) = self.artifact_cache.get(&key) {
             observer.cache_hit();
             LoweredSource {
-                source: SourceContext::new(source),
+                source: LocatedSourceContext::new(source),
                 semantic: (*cached.semantic).clone(),
             }
         } else {
@@ -393,7 +394,7 @@ impl<'a> AnalysisSession<'a> {
             };
             let evicted = self.artifact_cache.insert(
                 key,
-                CachedArtifact {
+                SharedSemanticArtifact {
                     semantic: std::sync::Arc::new(lowered.semantic.clone()),
                 },
             );
@@ -438,10 +439,11 @@ impl<'a> AnalysisSession<'a> {
             lowered.source.clone(),
             std::sync::Arc::new(lowered.semantic),
         );
-        let requests =
-            local
-                .interface()
-                .authored_requests(path, &local.source().lines, &local.source().text);
+        let requests = local.interface().authored_requests(
+            path,
+            &local.source_context().lines,
+            &local.source_context().text,
+        );
         for request in &requests {
             authored_requests.insert(request.key.clone(), request.clone());
         }
@@ -485,7 +487,7 @@ impl<'a> AnalysisSession<'a> {
                 requests.extend(self.record_lowered(
                     &super::ProjectRelativePath::new(path)?,
                     LoweredSource {
-                        source: SourceContext::new(&source),
+                        source: LocatedSourceContext::new(&source),
                         semantic: (*cached.semantic).clone(),
                     },
                 ));
@@ -508,7 +510,7 @@ impl<'a> AnalysisSession<'a> {
                 Ok(artifact) => {
                     let evicted = artifact_cache.insert(
                         result.key,
-                        CachedArtifact {
+                        SharedSemanticArtifact {
                             semantic: std::sync::Arc::new(artifact.clone()),
                         },
                     );
@@ -521,7 +523,7 @@ impl<'a> AnalysisSession<'a> {
                         analyzed,
                         &result.path,
                         LoweredSource {
-                            source: SourceContext::new(&result.source),
+                            source: LocatedSourceContext::new(&result.source),
                             semantic: artifact,
                         },
                     ));
@@ -597,7 +599,7 @@ impl<'a> AnalysisSession<'a> {
     pub fn record_resolution(
         &mut self,
         mut key: ResolutionRequestKey,
-        mut result: ResolutionResult,
+        mut result: ResolverOutcome,
     ) -> Result<(), ProjectInputError> {
         normalize_resolution_key(&mut key)?;
         if !self.authored_requests.contains_key(&key) {

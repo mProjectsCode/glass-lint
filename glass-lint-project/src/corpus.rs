@@ -63,7 +63,7 @@ impl<'a> SourceCorpus<'a> {
                 metadata
             };
             if metadata.is_file() {
-                if supported_path(root, &self.options.extensions) && include(root) {
+                if is_supported_runtime_source(root, &self.options.extensions) && include(root) {
                     paths.insert(root.clone());
                 }
                 continue;
@@ -99,7 +99,7 @@ impl<'a> SourceCorpus<'a> {
                         .unwrap_or_else(|| std::io::Error::other("directory traversal failed")),
                 })?;
                 if entry.file_type().is_file()
-                    && supported_path(entry.path(), &self.options.extensions)
+                    && is_supported_runtime_source(entry.path(), &self.options.extensions)
                     && include(entry.path())
                 {
                     paths.insert(entry.into_path());
@@ -117,7 +117,7 @@ impl<'a> SourceCorpus<'a> {
 
     /// Read one supported source file after enforcing the byte budget.
     pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
-        if !supported_path(path, &self.options.extensions) {
+        if !is_supported_runtime_source(path, &self.options.extensions) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         }
         let file = fs::File::open(path).map_err(|source| ProjectLoadError::Io {
@@ -190,7 +190,7 @@ impl<'a> SourceCorpus<'a> {
     }
 }
 
-pub fn supported_path(path: &Path, extensions: &[String]) -> bool {
+pub fn is_supported_runtime_source(path: &Path, extensions: &[String]) -> bool {
     let name = path.to_string_lossy().to_ascii_lowercase();
     extensions
         .iter()

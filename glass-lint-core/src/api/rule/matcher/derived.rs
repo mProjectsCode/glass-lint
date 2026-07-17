@@ -1,6 +1,6 @@
 //! Constructor, class, and returned/instance member matcher declarations.
 
-use super::CallProvenance;
+use super::SymbolProvenance;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Matcher for a constructor invocation.
@@ -8,28 +8,28 @@ pub struct ConstructorMatcher {
     /// Constructor name/export.
     pub name: String,
     /// Required provenance mode.
-    pub provenance: CallProvenance,
+    pub provenance: SymbolProvenance,
 }
 
 impl ConstructorMatcher {
     pub fn heuristic(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            provenance: CallProvenance::Any,
+            provenance: SymbolProvenance::Any,
         }
     }
 
     pub fn global(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            provenance: CallProvenance::Global,
+            provenance: SymbolProvenance::Global,
         }
     }
 
     pub fn module_export(module: impl Into<String>, export: impl Into<String>) -> Self {
         Self {
             name: export.into(),
-            provenance: CallProvenance::ModuleExport {
+            provenance: SymbolProvenance::ModuleExport {
                 module: module.into(),
             },
         }
@@ -38,16 +38,16 @@ impl ConstructorMatcher {
     #[must_use]
     pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
-            CallProvenance::Any | CallProvenance::Global => self.name.clone(),
-            CallProvenance::ModuleExport { module } => format!("{module}.{}", self.name),
+            SymbolProvenance::Any | SymbolProvenance::Global => self.name.clone(),
+            SymbolProvenance::ModuleExport { module } => format!("{module}.{}", self.name),
         }
     }
 
     pub fn sort_key(&self) -> (&str, &str) {
         match &self.provenance {
-            CallProvenance::Any => ("any", &self.name),
-            CallProvenance::Global => ("global", &self.name),
-            CallProvenance::ModuleExport { module } => (module, &self.name),
+            SymbolProvenance::Any => ("any", &self.name),
+            SymbolProvenance::Global => ("global", &self.name),
+            SymbolProvenance::ModuleExport { module } => (module, &self.name),
         }
     }
 }
@@ -58,21 +58,21 @@ pub struct ClassMatcher {
     /// Class name/export.
     pub name: String,
     /// Required provenance mode.
-    pub provenance: CallProvenance,
+    pub provenance: SymbolProvenance,
 }
 
 impl ClassMatcher {
     pub fn heuristic(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),
-            provenance: CallProvenance::Any,
+            provenance: SymbolProvenance::Any,
         }
     }
 
     pub fn module_export(module: impl Into<String>, export: impl Into<String>) -> Self {
         Self {
             name: export.into(),
-            provenance: CallProvenance::ModuleExport {
+            provenance: SymbolProvenance::ModuleExport {
                 module: module.into(),
             },
         }
@@ -81,16 +81,16 @@ impl ClassMatcher {
     #[must_use]
     pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
-            CallProvenance::Any | CallProvenance::Global => self.name.clone(),
-            CallProvenance::ModuleExport { module } => format!("{module}.{}", self.name),
+            SymbolProvenance::Any | SymbolProvenance::Global => self.name.clone(),
+            SymbolProvenance::ModuleExport { module } => format!("{module}.{}", self.name),
         }
     }
 
     pub fn sort_key(&self) -> (&str, &str) {
         match &self.provenance {
-            CallProvenance::Any => ("any", &self.name),
-            CallProvenance::Global => ("global", &self.name),
-            CallProvenance::ModuleExport { module } => (module, &self.name),
+            SymbolProvenance::Any => ("any", &self.name),
+            SymbolProvenance::Global => ("global", &self.name),
+            SymbolProvenance::ModuleExport { module } => (module, &self.name),
         }
     }
 }

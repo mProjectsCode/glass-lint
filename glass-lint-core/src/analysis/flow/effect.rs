@@ -307,9 +307,9 @@ impl FunctionEffects {
                 FactPayload::Call { .. } => effect.record_call(fact, &mut budget),
                 FactPayload::Control {
                     kind: ControlKind::Return,
-                    value,
+                    return_value,
                     ..
-                } => effect.record_return(*value, &value_provenance, &mut budget),
+                } => effect.record_return(*return_value, &value_provenance, &mut budget),
                 FactPayload::Control { kind, .. }
                     if !matches!(
                         kind,

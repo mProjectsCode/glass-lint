@@ -8,10 +8,10 @@ use std::{
     ops::Index,
 };
 
-use super::{Evidence, ProjectInputError, ResolutionRequestKey, ResolutionResult, SourceFile};
+use super::{Evidence, ProjectInputError, ResolutionRequestKey, ResolverOutcome, SourceFile};
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct EvidenceKey {
+struct ReportEvidenceKey {
     message: String,
     location: Option<(String, crate::SourceRange)>,
 }
@@ -21,7 +21,7 @@ pub struct EvidenceList {
     /// Evidence in the order in which it was first observed.
     items: Vec<Evidence>,
     #[serde(skip)]
-    seen: BTreeSet<EvidenceKey>,
+    seen: BTreeSet<ReportEvidenceKey>,
 }
 
 impl<'de> serde::Deserialize<'de> for EvidenceList {
@@ -41,7 +41,7 @@ impl<'de> serde::Deserialize<'de> for EvidenceList {
 impl EvidenceList {
     /// Add evidence unless an identical typed record is already present.
     pub fn push_unique(&mut self, item: Evidence) {
-        let key = EvidenceKey {
+        let key = ReportEvidenceKey {
             message: item.message.clone(),
             location: item
                 .location
@@ -143,7 +143,7 @@ impl SourceTable {
 }
 
 #[derive(Debug, Default)]
-pub struct ResolutionTable(BTreeMap<ResolutionRequestKey, ResolutionResult>);
+pub struct ResolutionTable(BTreeMap<ResolutionRequestKey, ResolverOutcome>);
 
 impl ResolutionTable {
     /// Insert one resolver answer, rejecting a second answer for the same
@@ -151,7 +151,7 @@ impl ResolutionTable {
     pub fn insert(
         &mut self,
         key: ResolutionRequestKey,
-        result: ResolutionResult,
+        result: ResolverOutcome,
     ) -> Result<(), ProjectInputError> {
         if self.0.contains_key(&key) {
             return Err(ProjectInputError::DuplicateResolution(key));
@@ -161,7 +161,7 @@ impl ResolutionTable {
     }
 
     /// Consume the table in request-key order.
-    pub fn into_values(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolutionResult)> {
+    pub fn into_values(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolverOutcome)> {
         self.0.into_iter()
     }
 }

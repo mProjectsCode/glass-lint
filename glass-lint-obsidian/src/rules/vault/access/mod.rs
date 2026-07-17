@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// argument/value semantics are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("vault.access")
-        .label("Accesses Obsidian vault APIs")
+        .description("Accesses Obsidian vault APIs")
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)

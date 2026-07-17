@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// item arguments are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("ui.menu")
-        .label("Uses Obsidian menus")
+        .description("Uses Obsidian menus")
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

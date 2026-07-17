@@ -7,9 +7,11 @@
 use swc_common::Span;
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
-use super::{super::super::syntax::prop_name, AliasCollector, BindingProvenance, ScopeId};
+use super::{
+    super::super::syntax::property_name, BindingProvenance, LexicalScopeCollector, ScopeId,
+};
 
-impl AliasCollector {
+impl LexicalScopeCollector {
     /// Record aliases introduced by a destructuring declaration.
     ///
     /// This deliberately stops at unsupported pattern forms. A partial
@@ -28,7 +30,7 @@ impl AliasCollector {
                 for prop in &object.props {
                     match prop {
                         ObjectPatProp::KeyValue(key_value) => {
-                            if let Some(property) = prop_name(&key_value.key) {
+                            if let Some(property) = property_name(&key_value.key) {
                                 self.collect_value_aliases(
                                     &key_value.value,
                                     &format!("{target}.{property}"),
@@ -75,7 +77,7 @@ impl AliasCollector {
                 for property in &object.props {
                     match property {
                         ObjectPatProp::KeyValue(key_value) => {
-                            if let Some(name) = prop_name(&key_value.key) {
+                            if let Some(name) = property_name(&key_value.key) {
                                 self.collect_assignment_aliases(
                                     &key_value.value,
                                     &format!("{target}.{name}"),
@@ -120,7 +122,7 @@ impl AliasCollector {
                 for prop in &object.props {
                     match prop {
                         ObjectPatProp::KeyValue(key_value) => {
-                            if let Some(imported) = prop_name(&key_value.key) {
+                            if let Some(imported) = property_name(&key_value.key) {
                                 self.collect_require_export_alias(
                                     &key_value.value,
                                     &module,

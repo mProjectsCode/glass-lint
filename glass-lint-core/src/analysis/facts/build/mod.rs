@@ -34,7 +34,8 @@ use crate::{
         resolution::Resolver,
         scope::{BoundArgument, ScopeId},
         syntax::{
-            SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_prop_name,
+            SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr,
+            member_property_name,
         },
         value::{PathId, PathSegment, ValueId},
     },
@@ -527,7 +528,7 @@ mod tests {
             .collect();
         assert!(!class_facts.is_empty(), "should have class facts");
         if let FactPayload::Class { name, .. } = &class_facts[0].payload {
-            assert_eq!(name, "Foo");
+            assert_eq!(name.as_deref(), Some("Foo"));
         }
     }
 

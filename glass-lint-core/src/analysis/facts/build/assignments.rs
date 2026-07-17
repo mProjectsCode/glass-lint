@@ -8,7 +8,7 @@ use swc_ecma_ast::AssignOp;
 
 use super::{
     AssignExpr, FactBuilder, FactKind, FactPayload, MemberExpr, Pat, Spanned, ValueId, VisitWith,
-    member_prop_name,
+    member_property_name,
 };
 
 impl FactBuilder<'_> {
@@ -80,7 +80,7 @@ impl FactBuilder<'_> {
             FactKind::MemberRead,
             member.span(),
             FactPayload::MemberRead {
-                syntactic_chain: self.resolver.member_chain(member),
+                syntactic_chain: self.resolver.member_expression_chain(member),
                 rooted_chain: resolved_member.rooted_chain.clone(),
                 module_member: resolved_member.module_member.clone(),
                 returned_member: resolved_member.returned_member.clone(),
@@ -96,7 +96,7 @@ impl FactBuilder<'_> {
                 FactPayload::PropertyWrite {
                     target,
                     receiver,
-                    property: member_prop_name(&member.prop),
+                    property: member_property_name(&member.prop),
                     static_value: self.resolver.static_string_expr(&assignment.right),
                 },
             );

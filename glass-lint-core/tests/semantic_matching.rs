@@ -15,7 +15,7 @@ use glass_lint_core::{
 /// Execute one matcher through a fresh strict catalog and return its count.
 fn findings(source: &str, matcher: Matcher) -> usize {
     let rule = Rule::builder("semantic.match")
-        .label("semantic matcher")
+        .description("semantic matcher")
         .category("test")
         .severity(Severity::Info)
         .confidence(Confidence::High)
@@ -134,8 +134,8 @@ fn follows_nested_destructured_rooted_members() {
 fn follows_rooted_members_called_via_sequence_expressions() {
     assert_matches(
         "(0, app.commands.execute)('open');",
-        MemberCallMatcher::rooted_chain("app.commands.execute")
-            .arg_string(0, ["open"])
+        MemberCallMatcher::rooted("app.commands.execute")
+            .arg_static_strings(0, ["open"])
             .into(),
         1,
     );
@@ -145,7 +145,7 @@ fn follows_rooted_members_called_via_sequence_expressions() {
 fn follows_bound_rooted_members_and_their_arguments() {
     assert_matches(
         "const open = app.open.bind(app); open(vault.file);",
-        MemberCallMatcher::rooted_chain("app.open")
+        MemberCallMatcher::rooted("app.open")
             .arg_rooted_exprs(0, ["vault.file"])
             .into(),
         1,
@@ -156,7 +156,7 @@ fn follows_bound_rooted_members_and_their_arguments() {
 fn preserves_bound_rooted_expression_arguments() {
     assert_matches(
         "const open = app.open.bind(app, vault.file); open(actual);",
-        MemberCallMatcher::rooted_chain("app.open")
+        MemberCallMatcher::rooted("app.open")
             .arg_rooted_exprs(0, ["vault.file"])
             .into(),
         1,
@@ -168,21 +168,21 @@ fn prepends_static_bound_arguments_before_call_arguments() {
     assert_matches(
         "const request = fetch.bind(null, '/bound'); request('/actual');",
         CallMatcher::global("fetch")
-            .arg_string(0, ["/bound"])
+            .arg_static_strings(0, ["/bound"])
             .into(),
         1,
     );
     assert_matches(
         "const request = fetch.bind(null, '/bound'); request('/actual');",
         CallMatcher::global("fetch")
-            .arg_string(0, ["/actual"])
+            .arg_static_strings(0, ["/actual"])
             .into(),
         0,
     );
     assert_matches(
         "const send = require('sdk').send.bind(null, '/bound'); send('/actual');",
         CallMatcher::module_export("sdk", "send")
-            .arg_string(0, ["/bound"])
+            .arg_static_strings(0, ["/bound"])
             .into(),
         1,
     );
@@ -192,7 +192,7 @@ fn prepends_static_bound_arguments_before_call_arguments() {
 fn resolves_static_template_literals_without_substitutions() {
     assert_matches(
         "const url = `/remote`; fetch(url);",
-        Matcher::call(glass_lint_core::rules::CallMatcher::global("fetch").static_string_arg(0)),
+        Matcher::from(glass_lint_core::rules::CallMatcher::global("fetch").arg_static_string(0)),
         1,
     );
 }
@@ -201,7 +201,7 @@ fn resolves_static_template_literals_without_substitutions() {
 fn resolves_constant_template_literal_substitutions() {
     assert_matches(
         "const segment = 'remote'; const url = `/${segment}`; fetch(url);",
-        Matcher::call(glass_lint_core::rules::CallMatcher::global("fetch").static_string_arg(0)),
+        Matcher::from(glass_lint_core::rules::CallMatcher::global("fetch").arg_static_string(0)),
         1,
     );
 }
@@ -269,7 +269,7 @@ fn tracks_global_callbacks_through_promise_handlers() {
 fn tracks_rooted_arguments_through_destructured_parameters() {
     assert_matches(
         "function open({ file }) { app.open(file); } open({ file: vault.file });",
-        MemberCallMatcher::rooted_chain("app.open")
+        MemberCallMatcher::rooted("app.open")
             .arg_rooted_exprs(0, ["vault.file"])
             .into(),
         1,
@@ -280,7 +280,7 @@ fn tracks_rooted_arguments_through_destructured_parameters() {
 fn tracks_object_argument_keys_through_const_spreads() {
     assert_matches(
         "const base = { url: '/x' }; const options = { ...base, method: 'GET' }; client.request(options);",
-        MemberCallMatcher::rooted_chain("client.request")
+        MemberCallMatcher::rooted("client.request")
             .arg_object_keys(0, ["url", "method"])
             .into(),
         1,
@@ -291,7 +291,7 @@ fn tracks_object_argument_keys_through_const_spreads() {
 fn tracks_object_argument_keys_through_object_assign() {
     assert_matches(
         "const options = Object.assign({}, { url: '/x', method: 'GET' }); client.request(options);",
-        MemberCallMatcher::rooted_chain("client.request")
+        MemberCallMatcher::rooted("client.request")
             .arg_object_keys(0, ["url", "method"])
             .into(),
         1,
@@ -302,7 +302,7 @@ fn tracks_object_argument_keys_through_object_assign() {
 fn tracks_object_argument_keys_through_member_function_aliases() {
     assert_matches(
         "const request = client.request; request({ url: '/x', method: 'GET' });",
-        MemberCallMatcher::rooted_chain("client.request")
+        MemberCallMatcher::rooted("client.request")
             .arg_object_keys(0, ["url", "method"])
             .into(),
         1,
@@ -311,7 +311,7 @@ fn tracks_object_argument_keys_through_member_function_aliases() {
 
 /// Build the source/configuration/sink flow used by flow-provenance tests.
 fn script_insertion_matcher() -> Matcher {
-    Matcher::flow(
+    Matcher::from(
         ObjectFlowMatcher::builder("script insertion")
             .source(ObjectSourceMatcher::returned_by(
                 MemberCallMatcher::rooted("document.createElement")

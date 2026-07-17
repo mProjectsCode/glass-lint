@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// heuristic Web Crypto chains can match same-shaped local bindings.
 pub fn rule() -> Rule {
     Rule::builder("crypto.operation")
-        .label("Uses cryptographic operations")
+        .description("Uses cryptographic operations")
         .category("language/crypto")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

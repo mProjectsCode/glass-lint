@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// and shadowed `require` bindings are excluded.
 pub fn rule() -> Rule {
     Rule::builder("node.network")
-        .label("Uses Node HTTP modules")
+        .description("Uses Node HTTP modules")
         .category("node/network")
         .severity(Severity::Info)
         .confidence(Confidence::High)

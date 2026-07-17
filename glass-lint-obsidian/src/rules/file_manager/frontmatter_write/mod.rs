@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// or unlisted properties, and the callback's contents are outside the rule.
 pub fn rule() -> Rule {
     Rule::builder("file-manager.frontmatter-write")
-        .label("Updates frontmatter through Obsidian APIs")
+        .description("Updates frontmatter through Obsidian APIs")
         .category("file-manager/frontmatter-write")
         .severity(Severity::Info)
         .confidence(Confidence::High)

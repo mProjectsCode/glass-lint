@@ -12,18 +12,18 @@ mod rules;
 
 #[must_use]
 /// Return metadata for every rule in the `obsidian:` provider catalog.
-pub fn rule_catalog() -> Vec<RuleMetadata> {
-    catalog().metadata()
+pub fn rule_metadata() -> Vec<RuleMetadata> {
+    obsidian_catalog().metadata()
 }
 
 #[must_use]
-pub fn catalog() -> RuleCatalog {
+pub fn obsidian_catalog() -> RuleCatalog {
     RuleCatalog::new("obsidian", catalog::obsidian_api_rules().to_vec())
         .expect("valid Obsidian catalog")
 }
 
 #[must_use]
-pub fn environment() -> Environment {
+pub fn obsidian_environment() -> Environment {
     let mut environment = glass_lint_js::electron_environment();
     environment
         .add_globals([
@@ -43,16 +43,16 @@ pub fn environment() -> Environment {
 
 /// Return the complete core configuration for the Obsidian renderer target.
 #[must_use]
-pub fn config() -> LinterConfig {
+pub fn obsidian_config() -> LinterConfig {
     LinterConfig::new(
         vec![
             glass_lint_js::js_catalog(),
             glass_lint_js::browser_catalog(),
             glass_lint_js::node_catalog(),
             glass_lint_js::electron_catalog(),
-            catalog(),
+            obsidian_catalog(),
         ],
-        environment(),
+        obsidian_environment(),
     )
 }
 
@@ -80,14 +80,14 @@ mod tests {
 
     #[test]
     fn catalog_is_namespaced_and_unique() {
-        let catalog = rule_catalog();
+        let catalog = rule_metadata();
         assert!(!catalog.is_empty());
         assert!(
             catalog
                 .iter()
                 .all(|rule| rule.id.as_str().starts_with("obsidian:"))
         );
-        let environment = environment();
+        let environment = obsidian_environment();
         assert!(environment.global_bindings().any(|name| name == "app"));
         assert!(!environment.global_bindings().any(|name| name == "Modal"));
         assert!(
@@ -112,7 +112,7 @@ mod tests {
         use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
 
         let rule = Rule::builder("test.eval")
-            .label("eval")
+            .description("eval")
             .category("test")
             .severity(Severity::Info)
             .confidence(Confidence::High)
@@ -121,7 +121,7 @@ mod tests {
             .unwrap();
         let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
             vec![RuleCatalog::new("test", vec![rule]).unwrap()],
-            environment(),
+            obsidian_environment(),
         ))
         .unwrap()
         .lint_snippet("activeWindow.eval('x')", "main.js")
@@ -134,7 +134,7 @@ mod tests {
         use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
 
         let rule = Rule::builder("test.request")
-            .label("request")
+            .description("request")
             .category("test")
             .severity(Severity::Info)
             .confidence(Confidence::High)
@@ -143,7 +143,7 @@ mod tests {
             .unwrap();
         let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
             vec![RuleCatalog::new("test", vec![rule]).unwrap()],
-            environment(),
+            obsidian_environment(),
         ))
         .unwrap()
         .lint_snippet(
@@ -162,9 +162,9 @@ mod tests {
                 glass_lint_js::browser_catalog(),
                 glass_lint_js::node_catalog(),
                 glass_lint_js::electron_catalog(),
-                catalog(),
+                obsidian_catalog(),
             ],
-            environment(),
+            obsidian_environment(),
         ))
         .unwrap()
         .lint_snippet(
@@ -190,9 +190,9 @@ mod tests {
                 glass_lint_js::browser_catalog(),
                 glass_lint_js::node_catalog(),
                 glass_lint_js::electron_catalog(),
-                catalog(),
+                obsidian_catalog(),
             ],
-            environment(),
+            obsidian_environment(),
         ))
         .unwrap()
         .lint_snippet(

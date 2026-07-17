@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// particular spawn API, and excludes similar modules and shadowed loaders.
 pub fn rule() -> Rule {
     Rule::builder("node.subprocess")
-        .label("Starts Node subprocesses")
+        .description("Starts Node subprocesses")
         .category("node/process")
         .confidence(Confidence::High)
         .severity(Severity::Warning)

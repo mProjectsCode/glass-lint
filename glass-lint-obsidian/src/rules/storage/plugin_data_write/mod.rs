@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// reassignment; dynamic properties and near-name methods are excluded.
 pub fn rule() -> Rule {
     Rule::builder("storage.plugin-data-write")
-        .label("Writes plugin data")
+        .description("Writes plugin data")
         .category("storage")
         .severity(Severity::Info)
         .confidence(Confidence::High)

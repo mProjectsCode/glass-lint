@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// aliases that are later reassigned do not retain browser provenance.
 pub fn rule() -> Rule {
     Rule::builder("browser.permissions-media")
-        .label("Uses browser media capture")
+        .description("Uses browser media capture")
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)

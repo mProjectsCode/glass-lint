@@ -3,13 +3,13 @@
 use std::path::{Path, PathBuf};
 
 use glass_lint_core::{
-    ProjectRelativePath, ResolutionRequest, ResolutionRequestKind, ResolutionResult,
+    ProjectRelativePath, ResolutionRequest, ResolutionRequestKind, ResolverOutcome,
     is_internal_module_request,
 };
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
 use crate::{
-    discovery::{absolute_path, excluded_path, inside_root, realpath, supported_path},
+    discovery::{absolute_path, excluded_path, inside_root, is_supported_runtime_source, realpath},
     options::{ProjectLoadOptions, ProjectSelection},
 };
 
@@ -35,7 +35,7 @@ impl ProjectResolver {
     }
 
     /// Resolve one request into a provider-neutral, root-classified outcome.
-    pub fn resolve(&self, request: &ResolutionRequest) -> ResolutionResult {
+    pub fn resolve(&self, request: &ResolutionRequest) -> ResolverOutcome {
         let importer = self.root.join(&request.key.importer);
         let directory = importer.parent().unwrap_or(&self.root);
         let resolver = if request.key.kind == ResolutionRequestKind::Require {
@@ -46,43 +46,43 @@ impl ProjectResolver {
         match resolver.resolve(directory, &request.request) {
             Ok(resolution) => self.classify(&request.request, resolution.path()),
             Err(ResolveError::Builtin { resolved, .. }) => {
-                ResolutionResult::Builtin { name: resolved }
+                ResolverOutcome::Builtin { name: resolved }
             }
-            Err(_) if is_internal_module_request(&request.request) => ResolutionResult::Missing,
-            Err(_) => ResolutionResult::External {
+            Err(_) if is_internal_module_request(&request.request) => ResolverOutcome::Missing,
+            Err(_) => ResolverOutcome::External {
                 package: package_name(&request.request),
             },
         }
     }
 
-    fn classify(&self, request: &str, path: &Path) -> ResolutionResult {
+    fn classify(&self, request: &str, path: &Path) -> ResolverOutcome {
         let Ok(path) = realpath(path) else {
-            return ResolutionResult::Missing;
+            return ResolverOutcome::Missing;
         };
         if !inside_root(&self.root, &path) {
             return if is_internal_module_request(request) {
-                ResolutionResult::OutsideProject {
+                ResolverOutcome::OutsideProject {
                     path: path.to_string_lossy().into_owned(),
                 }
             } else {
-                ResolutionResult::External {
+                ResolverOutcome::External {
                     package: package_name(request),
                 }
             };
         }
         if excluded_path(&self.root, &path, &self.options.excluded_directories) {
             return if is_internal_module_request(request) {
-                ResolutionResult::Unsupported {
+                ResolverOutcome::Unsupported {
                     reason: format!("excluded target `{}`", path.display()),
                 }
             } else {
-                ResolutionResult::External {
+                ResolverOutcome::External {
                     package: package_name(request),
                 }
             };
         }
-        if !supported_path(&path, &self.options.extensions) {
-            return ResolutionResult::Unsupported {
+        if !is_supported_runtime_source(&path, &self.options.extensions) {
+            return ResolverOutcome::Unsupported {
                 reason: format!("unsupported target `{}`", path.display()),
             };
         }
@@ -92,11 +92,11 @@ impl ProjectResolver {
             .to_string_lossy()
             .replace('\\', "/");
         let Ok(path) = ProjectRelativePath::new(&relative) else {
-            return ResolutionResult::Unsupported {
+            return ResolverOutcome::Unsupported {
                 reason: format!("invalid normalized target `{relative}`"),
             };
         };
-        ResolutionResult::Internal { path }
+        ResolverOutcome::Internal { path }
     }
 }
 
@@ -124,7 +124,7 @@ fn resolver_options(
         builtin_modules: true,
         ..ResolveOptions::default()
     };
-    if let ProjectSelection::TsConfig(path) = selection {
+    if let ProjectSelection::Tsconfig(path) = selection {
         resolver_options.tsconfig = Some(oxc_resolver::TsconfigDiscovery::Manual(
             oxc_resolver::TsconfigOptions {
                 config_file: absolute_path(path),
@@ -153,7 +153,7 @@ mod tests {
         ResolutionRequest {
             key: ResolutionRequestKey {
                 importer: ProjectRelativePath::new("main.js").unwrap(),
-                kind: ResolutionRequestKind::Import,
+                kind: ResolutionRequestKind::StaticImport,
                 range: SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 2).unwrap())
                     .unwrap(),
             },
@@ -178,7 +178,7 @@ mod tests {
         ] {
             assert_eq!(
                 resolver.resolve(&request(specifier)),
-                ResolutionResult::Builtin {
+                ResolverOutcome::Builtin {
                     name: expected.into()
                 },
                 "specifier: {specifier}"
@@ -197,7 +197,7 @@ mod tests {
 
         assert_eq!(
             resolver.resolve(&request("not-a-node-builtin")),
-            ResolutionResult::External {
+            ResolverOutcome::External {
                 package: "not-a-node-builtin".into()
             }
         );

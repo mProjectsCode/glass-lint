@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// are intentionally not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("vault.delete")
-        .label("Deletes or trashes vault files")
+        .description("Deletes or trashes vault files")
         .category("vault")
         .confidence(Confidence::High)
         .severity(Severity::Warning)

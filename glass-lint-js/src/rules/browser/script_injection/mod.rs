@@ -9,13 +9,13 @@ use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Sever
 /// global; dynamic values and other static tags are excluded.
 pub fn rule() -> Rule {
     Rule::builder("dynamic-code.script-injection")
-        .label("Injects executable script elements")
+        .description("Injects executable script elements")
         .category("browser/dom")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .matcher(Matcher::member_call(
-            MemberCallMatcher::syntactic_heuristic("document.createElement")
-                .arg_string(0, ["script"]),
+        .matcher(Matcher::from(
+            MemberCallMatcher::heuristic("document.createElement")
+                .arg_static_strings(0, ["script"]),
         ))
         .build()
         .unwrap()

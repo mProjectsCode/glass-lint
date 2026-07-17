@@ -3,7 +3,7 @@
 use super::{Linter, ranges::remove_contained_ranges};
 use crate::{
     Evidence, Finding, ProjectRelativePath, SourceLocation,
-    api::classification::{ApiCapability, ApiClassificationResult, ApiEvidence},
+    api::classification::{ClassificationEvidence, ClassificationResult, MatchedCapability},
     diagnostic::{SourceLineIndex, SourceRange},
 };
 
@@ -13,7 +13,7 @@ impl Linter {
     /// this layer and semantic analysis stays provider-neutral.
     pub(super) fn findings_for(
         &self,
-        classification: &ApiClassificationResult,
+        classification: &ClassificationResult,
         lines: &SourceLineIndex,
         source: &str,
         path: &str,
@@ -27,7 +27,7 @@ impl Linter {
 
     fn findings_for_capability(
         &self,
-        capability: &ApiCapability,
+        capability: &MatchedCapability,
         lines: &SourceLineIndex,
         source: &str,
         path: &str,
@@ -89,7 +89,7 @@ impl Linter {
     }
 
     fn report_evidence(
-        evidence: &ApiEvidence,
+        evidence: &ClassificationEvidence,
         span: crate::ByteRange,
         lines: &SourceLineIndex,
         source: &str,

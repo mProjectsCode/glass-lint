@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// and near-name methods are excluded.
 pub fn rule() -> Rule {
     Rule::builder("lifecycle.events")
-        .label("Registers Obsidian lifecycle events")
+        .description("Registers Obsidian lifecycle events")
         .category("lifecycle")
         .severity(Severity::Info)
         .confidence(Confidence::High)

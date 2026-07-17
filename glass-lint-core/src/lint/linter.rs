@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 
 use super::catalog::RuleCatalog;
 use crate::{
-    AnalysisReport, AnalysisSession, Environment, ProjectInput, ProjectInputError, REPORT_VERSION,
-    RuleCatalogError, RuleId,
+    AnalysisReport, AnalysisSession, Environment, ProjectInput, ProjectInputError,
+    ProviderCatalogError, REPORT_VERSION, RuleId,
     analysis::{LocalArtifact, ProjectSemanticModel},
-    api::classification::ApiClassificationResult,
+    api::classification::ClassificationResult,
     project::ModuleId,
 };
 
@@ -261,7 +261,8 @@ pub fn selector_matches(selector: &str, id: &str) -> bool {
     }) && (selector.ends_with('*') || id.ends_with(selector.rsplit('*').next().unwrap_or_default()))
 }
 
-/// Complete, validated input to linter construction.
+/// Caller-supplied input to linter construction. Validation occurs in
+/// [`Linter::new`].
 #[derive(Clone, Debug)]
 pub struct LinterConfig {
     catalogs: Vec<RuleCatalog>,
@@ -339,10 +340,10 @@ impl Linter {
     /// rule selection, and analysis limits.
     pub fn new(config: LinterConfig) -> Result<Self, LintConfigError> {
         let catalog = RuleCatalog::combine(config.catalogs).map_err(|error| match error {
-            RuleCatalogError::InvalidRule(id, _) => {
+            ProviderCatalogError::InvalidRule(id, _) => {
                 LintConfigError::DuplicateRule(RuleId::parse(id).expect("catalog IDs validated"))
             }
-            RuleCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
+            ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
         })?;
         let mut enabled = Vec::new();
         for (index, rule_id) in catalog.rule_ids().iter().enumerate() {
@@ -466,8 +467,8 @@ impl Linter {
     /// Analyze one in-memory source through the canonical project session.
     ///
     /// A snippet is a project containing one source. This convenience method
-    /// returns the same source-free [`AnalysisReport`] shape as [`Self::lint`]
-    /// and [`Self::lint_project`].
+    /// returns the same source-free [`AnalysisReport`] shape as
+    /// [`Self::lint_project`].
     ///
     /// ```
     /// use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
@@ -538,7 +539,7 @@ impl Linter {
     fn populate_project_files(
         &self,
         project: &ProjectSemanticModel,
-        classifications: &BTreeMap<ModuleId, ApiClassificationResult>,
+        classifications: &BTreeMap<ModuleId, ClassificationResult>,
         sources: &BTreeMap<crate::ProjectRelativePath, String>,
         files: &mut BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
     ) {
@@ -574,12 +575,12 @@ impl Linter {
         &self,
         project: &ProjectSemanticModel,
         module: &crate::analysis::ProjectModule,
-        classification: &ApiClassificationResult,
+        classification: &ClassificationResult,
         source: &str,
     ) -> Vec<crate::Finding> {
         self.findings_for(
             classification,
-            &module.source().lines,
+            &module.source_context().lines,
             source,
             module.path(),
         )
@@ -595,7 +596,7 @@ impl Linter {
                         .rule_id(capability.rule_index)
                         .is_some_and(|id| id == &finding_rule_id)
                 })
-                .flat_map(crate::api::classification::ApiCapability::evidence)
+                .flat_map(crate::api::classification::MatchedCapability::evidence)
                 .flat_map(|evidence| &evidence.related)
                 .filter_map(|related| {
                     project
@@ -622,7 +623,7 @@ mod tests {
     };
     fn catalog() -> RuleCatalog {
         let rule = Rule::builder("network.fetch")
-            .label("Uses fetch")
+            .description("Uses fetch")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -673,7 +674,7 @@ mod tests {
     #[test]
     fn findings_only_carry_evidence_for_their_own_location() {
         let rule = Rule::builder("vault.write")
-            .label("Writes vault files")
+            .description("Writes vault files")
             .category("vault")
             .severity(Severity::Info)
             .confidence(Confidence::High)
@@ -715,7 +716,7 @@ mod tests {
     #[test]
     fn collapses_contained_ranges_for_same_rule() {
         let rule = Rule::builder("metadata.read")
-            .label("Reads metadata")
+            .description("Reads metadata")
             .category("metadata")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -783,7 +784,7 @@ mod tests {
     #[test]
     fn ordered_rule_overrides_select_stable_catalog_indexes() {
         let first = Rule::builder("network.first")
-            .label("First")
+            .description("First")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -791,7 +792,7 @@ mod tests {
             .build()
             .unwrap();
         let second = Rule::builder("network.second")
-            .label("Second")
+            .description("Second")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -929,7 +930,7 @@ mod tests {
     #[test]
     fn enabled_rule_order_does_not_affect_findings() {
         let rule_a = Rule::builder("alpha.first")
-            .label("First")
+            .description("First")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -937,7 +938,7 @@ mod tests {
             .build()
             .unwrap();
         let rule_b = Rule::builder("beta.second")
-            .label("Second")
+            .description("Second")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -986,7 +987,7 @@ mod tests {
     #[test]
     fn disabled_catalog_rules_do_not_produce_findings() {
         let rule_a = Rule::builder("alpha.first")
-            .label("First")
+            .description("First")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -994,7 +995,7 @@ mod tests {
             .build()
             .unwrap();
         let rule_b = Rule::builder("beta.second")
-            .label("Second")
+            .description("Second")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -1022,7 +1023,7 @@ mod tests {
     #[test]
     fn combines_provider_rules_with_overlapping_local_ids() {
         let first = Rule::builder("network.request")
-            .label("First provider request")
+            .description("First provider request")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -1030,7 +1031,7 @@ mod tests {
             .build()
             .unwrap();
         let second = Rule::builder("network.request")
-            .label("Second provider request")
+            .description("Second provider request")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -1063,7 +1064,7 @@ mod tests {
     #[test]
     fn combined_linter_preserves_each_input_rule_selection() {
         let enabled_rule = Rule::builder("enabled")
-            .label("Enabled")
+            .description("Enabled")
             .category("test")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -1071,7 +1072,7 @@ mod tests {
             .build()
             .unwrap();
         let disabled_rule = Rule::builder("disabled")
-            .label("Disabled")
+            .description("Disabled")
             .category("test")
             .severity(Severity::Warning)
             .confidence(Confidence::High)

@@ -89,7 +89,7 @@ impl SpanNormalizer {
 }
 
 pub struct LoweredSource {
-    pub(crate) source: super::local::SourceContext,
+    pub(crate) source: super::local::LocatedSourceContext,
     pub(crate) semantic: SemanticArtifact,
 }
 
@@ -111,7 +111,7 @@ pub fn lower_source(
         &coordinates,
     );
     Ok(LoweredSource {
-        source: super::local::SourceContext::new(source),
+        source: super::local::LocatedSourceContext::new(source),
         semantic,
     })
 }

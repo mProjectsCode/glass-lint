@@ -46,7 +46,7 @@ impl<'a> ProjectDiscovery<'a> {
         let mut paths = match selection {
             ProjectSelection::Entry(_) => self.entry_path(selection_path)?,
             ProjectSelection::Directory(_) => self.discover(selection_path)?,
-            ProjectSelection::TsConfig(config) => {
+            ProjectSelection::Tsconfig(config) => {
                 if !selection_path.is_file() {
                     return Err(ProjectLoadError::SelectionNotFile(
                         selection_path.to_path_buf(),
@@ -64,7 +64,7 @@ impl<'a> ProjectDiscovery<'a> {
         if !path.is_file() {
             return Err(ProjectLoadError::SelectionNotFile(path.to_path_buf()));
         }
-        if !supported_path(path, &self.options.extensions) {
+        if !is_supported_runtime_source(path, &self.options.extensions) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         }
         Ok(vec![path.to_path_buf()])
@@ -114,7 +114,8 @@ impl<'a> ProjectDiscovery<'a> {
                     .into_io_error()
                     .unwrap_or_else(|| std::io::Error::other("directory traversal failed")),
             })?;
-            if entry.file_type().is_file() && supported_path(entry.path(), &self.options.extensions)
+            if entry.file_type().is_file()
+                && is_supported_runtime_source(entry.path(), &self.options.extensions)
             {
                 entries.push(entry.into_path());
                 if entries.len() > self.options.max_files {
@@ -148,7 +149,7 @@ impl<'a> ProjectDiscovery<'a> {
             return Ok(());
         }
 
-        let parsed = read_tsconfig_with_extends(&config, fallback_directory, visited)?;
+        let parsed = read_tsconfig_path_extends(&config, fallback_directory, visited)?;
         let base = config.parent().unwrap_or(fallback_directory);
         let includes = patterns(&parsed, "include").unwrap_or_else(|| vec!["**/*"]);
         let mut excludes = patterns(&parsed, "exclude").unwrap_or_default();
@@ -181,7 +182,7 @@ impl<'a> ProjectDiscovery<'a> {
     ) -> Result<(), ProjectLoadError> {
         for file in files.iter().filter_map(Value::as_str) {
             let path = base.join(file);
-            if path.exists() && supported_path(&path, &self.options.extensions) {
+            if path.exists() && is_supported_runtime_source(&path, &self.options.extensions) {
                 selected.insert(realpath(&path)?);
             }
         }
@@ -278,7 +279,7 @@ fn patterns<'a>(config: &'a Value, key: &str) -> Option<Vec<&'a str>> {
 }
 
 /// Materialize inherited options before selecting runtime sources.
-fn read_tsconfig_with_extends(
+fn read_tsconfig_path_extends(
     config: &Path,
     fallback_directory: &Path,
     visited: &mut BTreeSet<PathBuf>,
@@ -300,14 +301,14 @@ fn read_tsconfig_with_extends(
     {
         let parent = realpath(&parent)?;
         if visited.insert(parent.clone()) {
-            effective = read_tsconfig_with_extends(
+            effective = read_tsconfig_path_extends(
                 &parent,
                 parent.parent().unwrap_or(fallback_directory),
                 visited,
             )?;
         }
     }
-    merge_tsconfig_json(&mut effective, parsed);
+    merge_tsconfig_inheritance(&mut effective, parsed);
     Ok(effective)
 }
 
@@ -345,7 +346,7 @@ pub fn excluded_path(root: &Path, path: &Path, excluded: &BTreeSet<String>) -> b
     })
 }
 
-pub use crate::corpus::supported_path;
+pub use crate::corpus::is_supported_runtime_source;
 
 fn tsconfig_pattern_matches(pattern: &str, relative: &str) -> bool {
     let pattern = pattern.replace('\\', "/");
@@ -387,13 +388,13 @@ fn resolve_tsconfig_extends(
     Some(path)
 }
 
-fn merge_tsconfig_json(base: &mut Value, child: Value) {
+fn merge_tsconfig_inheritance(base: &mut Value, child: Value) {
     match (base, child) {
         (Value::Object(base), Value::Object(child)) => {
             for (key, value) in child {
                 if let Some(existing) = base.get_mut(&key) {
                     if key == "compilerOptions" {
-                        merge_tsconfig_json(existing, value);
+                        merge_tsconfig_inheritance(existing, value);
                     } else {
                         *existing = value;
                     }

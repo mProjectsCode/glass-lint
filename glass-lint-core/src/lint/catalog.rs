@@ -13,14 +13,14 @@ use crate::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Catalog construction failure.
-pub enum RuleCatalogError {
+pub enum ProviderCatalogError {
     /// Provider prefix or full rule ID is invalid.
     InvalidRuleId(String),
     /// A rule failed catalog validation, including duplicate identity.
     InvalidRule(String, String),
 }
 
-impl fmt::Display for RuleCatalogError {
+impl fmt::Display for ProviderCatalogError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidRuleId(id) => write!(f, "invalid rule ID `{id}`"),
@@ -29,7 +29,7 @@ impl fmt::Display for RuleCatalogError {
     }
 }
 
-impl Error for RuleCatalogError {}
+impl Error for ProviderCatalogError {}
 
 #[derive(Clone, Debug)]
 /// Provider rules, namespaced IDs, and compiled plans.
@@ -43,13 +43,19 @@ pub struct RuleCatalog {
 
 impl RuleCatalog {
     /// Build a provider catalog from locally named rules.
-    pub fn new(provider: impl Into<String>, rules: Vec<Rule>) -> Result<Self, RuleCatalogError> {
+    pub fn new(
+        provider: impl Into<String>,
+        rules: Vec<Rule>,
+    ) -> Result<Self, ProviderCatalogError> {
         let provider = provider.into();
         RuleId::parse(format!("{provider}:placeholder"))?;
 
         let compiled = CompiledCatalog::try_from_rules(&rules).map_err(|error| match error {
-            crate::api::rule::CatalogError::DuplicateRule(id) => {
-                RuleCatalogError::InvalidRule(format!("{provider}:{id}"), "duplicate rule".into())
+            crate::api::rule::CompiledCatalogError::DuplicateRule(id) => {
+                ProviderCatalogError::InvalidRule(
+                    format!("{provider}:{id}"),
+                    "duplicate rule".into(),
+                )
             }
         })?;
 
@@ -78,7 +84,7 @@ impl RuleCatalog {
     /// overlap between providers because catalog identity is retained by rule
     /// position rather than inferred from the local name.
     /// Combine catalogs while rejecting duplicate fully-qualified IDs.
-    pub fn combine(catalogs: impl IntoIterator<Item = Self>) -> Result<Self, RuleCatalogError> {
+    pub fn combine(catalogs: impl IntoIterator<Item = Self>) -> Result<Self, ProviderCatalogError> {
         let mut rules = Vec::new();
         let mut rule_ids = Vec::new();
         let mut seen = BTreeSet::new();
@@ -86,7 +92,7 @@ impl RuleCatalog {
         for catalog in catalogs {
             for (rule, rule_id) in catalog.rules.into_iter().zip(catalog.rule_ids) {
                 if !seen.insert(rule_id.clone()) {
-                    return Err(RuleCatalogError::InvalidRule(
+                    return Err(ProviderCatalogError::InvalidRule(
                         rule_id.to_string(),
                         "duplicate rule".into(),
                     ));
@@ -119,7 +125,7 @@ impl RuleCatalog {
             .zip(&self.rule_ids)
             .map(|(rule, id)| RuleMetadata {
                 id: id.clone(),
-                description: rule.label().to_string(),
+                description: rule.description().to_string(),
                 default_severity: rule.severity(),
                 messages: BTreeMap::from([(
                     String::from("detected"),
@@ -159,7 +165,7 @@ mod tests {
 
     fn catalog(provider: &str) -> RuleCatalog {
         let rule = Rule::builder("request")
-            .label("Request")
+            .description("Request")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -175,7 +181,7 @@ mod tests {
 
         assert_eq!(
             error,
-            RuleCatalogError::InvalidRule("same:request".into(), "duplicate rule".into())
+            ProviderCatalogError::InvalidRule("same:request".into(), "duplicate rule".into())
         );
     }
 }

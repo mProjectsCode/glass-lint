@@ -7,7 +7,7 @@ fn validation_normalizes_and_sorts_sources_and_edges() {
         sources: vec![source_file("./z.js", ""), source_file("a.js", "")],
         resolutions: vec![(
             key("./z.js"),
-            ResolutionResult::Internal {
+            ResolverOutcome::Internal {
                 path: project_path("./a.js"),
             },
         )],
@@ -26,7 +26,7 @@ fn validation_normalizes_and_sorts_sources_and_edges() {
     assert_eq!(input.resolutions[0].0.importer, "z.js");
     assert_eq!(
         input.resolutions[0].1,
-        ResolutionResult::Internal {
+        ResolverOutcome::Internal {
             path: project_path("a.js")
         }
     );
@@ -50,7 +50,7 @@ fn duplicate_and_foreign_records_are_rejected() {
     let foreign = ProjectInput {
         root: "/project".into(),
         sources: vec![source_file("a.js", "")],
-        resolutions: vec![(key("missing.js"), ResolutionResult::Missing)],
+        resolutions: vec![(key("missing.js"), ResolverOutcome::Missing)],
     }
     .validate();
     assert!(matches!(

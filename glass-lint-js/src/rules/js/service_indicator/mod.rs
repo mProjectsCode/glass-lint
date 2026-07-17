@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// prove network use or reconstruct arbitrary concatenated or dynamic values.
 pub fn rule() -> Rule {
     Rule::builder("network.service-indicator")
-        .label("References service or SDK endpoints")
+        .description("References service or SDK endpoints")
         .category("browser/network")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
@@ -17,9 +17,9 @@ pub fn rule() -> Rule {
         .matcher(Matcher::import("firebase"))
         .matcher(Matcher::import("dropbox"))
         .matcher(Matcher::import("@supabase/supabase-js"))
-        .matcher(Matcher::string_literal("api.openai.com"))
-        .matcher(Matcher::string_literal("amazonaws.com"))
-        .matcher(Matcher::string_literal("supabase.co"))
+        .matcher(Matcher::string_contains("api.openai.com"))
+        .matcher(Matcher::string_contains("amazonaws.com"))
+        .matcher(Matcher::string_contains("supabase.co"))
         .build()
         .unwrap()
 }

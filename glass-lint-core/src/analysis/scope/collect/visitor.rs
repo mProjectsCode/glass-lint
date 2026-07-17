@@ -7,15 +7,16 @@
 use swc_ecma_ast::{CallExpr, Callee, VarDeclarator};
 
 use super::{
-    super::super::syntax::prop_name, AliasCollector, ArrowExpr, AssignExpr, AssignTarget,
-    BindingProvenance, BlockStmt, CatchClause, ClassDecl, Expr, FnDecl, ForInStmt, ForOfStmt,
-    ForStmt, Function, ImportDecl, ImportSpecifier, ObjectPatProp, Pat, PropertyAliasAssignment,
-    RootedPropertyMutation, ScopeId, ScopeKind, SimpleAssignTarget, Spanned, SwitchStmt, VarDecl,
-    VarDeclKind, Visit, VisitWith, WithStmt, function_prototype_builtin, member_chain,
-    member_prop_name, member_root_ident, module_export_name,
+    super::super::syntax::property_name, ArrowExpr, AssignExpr, AssignTarget, BindingProvenance,
+    BlockStmt, CatchClause, ClassDecl, Expr, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function,
+    ImportDecl, ImportSpecifier, LexicalScopeCollector, ObjectPatProp, Pat,
+    PropertyAliasAssignment, RootedPropertyMutation, ScopeId, ScopeKind, SimpleAssignTarget,
+    Spanned, SwitchStmt, VarDecl, VarDeclKind, Visit, VisitWith, WithStmt,
+    function_prototype_builtin, member_expression_chain, member_property_name,
+    member_root_identifier, module_export_name,
 };
 
-impl Visit for AliasCollector {
+impl Visit for LexicalScopeCollector {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         let scope = self.current_scope();
         let module = import.src.value.to_string_lossy().to_string();
@@ -189,13 +190,14 @@ impl Visit for AliasCollector {
                         span: assignment.span,
                         scope: self.current_scope(),
                         receiver,
-                        property: member_prop_name(&member.prop),
+                        property: member_property_name(&member.prop),
                     });
                 }
                 self.invalidate_member_root(member, assignment.span);
-                if let (Some(property), Some(root)) =
-                    (member_chain(member), member_root_ident(member))
-                {
+                if let (Some(property), Some(root)) = (
+                    member_expression_chain(member),
+                    member_root_identifier(member),
+                ) {
                     self.property_assignments.push(PropertyAliasAssignment {
                         span: assignment.span,
                         scope: self.current_scope(),
@@ -354,7 +356,7 @@ impl Visit for AliasCollector {
 }
 
 fn collect_derived_function_pattern(
-    collector: &mut AliasCollector,
+    collector: &mut LexicalScopeCollector,
     pattern: &Pat,
     init: Option<&Expr>,
     scope: ScopeId,
@@ -367,7 +369,7 @@ fn collect_derived_function_pattern(
     }
     for property in &object.props {
         if let ObjectPatProp::KeyValue(property) = property
-            && prop_name(&property.key).as_deref() == Some("constructor")
+            && property_name(&property.key).as_deref() == Some("constructor")
         {
             collector.collect_value_aliases(&property.value, "Function", scope);
         }
@@ -376,7 +378,7 @@ fn collect_derived_function_pattern(
 }
 
 fn register_declared_function(
-    collector: &mut AliasCollector,
+    collector: &mut LexicalScopeCollector,
     scope: ScopeId,
     declarator: &VarDeclarator,
 ) -> bool {
@@ -391,7 +393,7 @@ fn register_declared_function(
 }
 
 fn record_mutable_static_object(
-    collector: &mut AliasCollector,
+    collector: &mut LexicalScopeCollector,
     scope: ScopeId,
     mutable_object: bool,
     declarator: &VarDeclarator,
@@ -403,7 +405,7 @@ fn record_mutable_static_object(
     }
 }
 
-fn visit_initializer(collector: &mut AliasCollector, init: Option<&Expr>) {
+fn visit_initializer(collector: &mut LexicalScopeCollector, init: Option<&Expr>) {
     if let Some(init) = init {
         init.visit_with(collector);
     }

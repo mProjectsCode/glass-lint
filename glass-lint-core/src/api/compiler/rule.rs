@@ -5,9 +5,9 @@
 //! constructed for a source file.
 
 use super::super::{
-    classification::ApiMatchKind,
+    classification::MatchKind,
     rule::{
-        ApiMatcher, ArgumentConstraint, FlowCompletion, FlowCondition, FlowSinkMatcher,
+        ArgumentConstraint, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherSet,
         MemberCallProvenance, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
         ValueMatcher,
     },
@@ -99,7 +99,7 @@ pub enum QueryConstraint {
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub struct EvidenceDescriptor {
-    pub(crate) kind: ApiMatchKind,
+    pub(crate) kind: MatchKind,
     pub(crate) symbol: String,
 }
 
@@ -179,7 +179,7 @@ impl QueryClause {
 }
 
 impl QueryPlan {
-    fn from_matcher(matcher: &ApiMatcher, flows: Vec<CompiledObjectFlow>) -> Self {
+    fn from_matcher(matcher: &MatcherSet, flows: Vec<CompiledObjectFlow>) -> Self {
         let mut clauses = lower_calls(matcher);
         clauses.extend(lower_member_calls(matcher));
         clauses.extend(lower_member_reads(matcher));
@@ -209,7 +209,7 @@ impl QueryPlan {
     }
 }
 
-fn lower_calls(matcher: &ApiMatcher) -> Vec<QueryClause> {
+fn lower_calls(matcher: &MatcherSet) -> Vec<QueryClause> {
     matcher
         .calls
         .iter()
@@ -226,9 +226,9 @@ fn lower_calls(matcher: &ApiMatcher) -> Vec<QueryClause> {
                 .into_boxed_slice(),
             evidence: EvidenceDescriptor {
                 kind: if call.arguments.is_empty() {
-                    ApiMatchKind::Call
+                    MatchKind::Call
                 } else {
-                    ApiMatchKind::CallArgument
+                    MatchKind::CallArgument
                 },
                 symbol: call.evidence_symbol(),
             },
@@ -236,7 +236,7 @@ fn lower_calls(matcher: &ApiMatcher) -> Vec<QueryClause> {
         .collect()
 }
 
-fn lower_member_calls(matcher: &ApiMatcher) -> Vec<QueryClause> {
+fn lower_member_calls(matcher: &MatcherSet) -> Vec<QueryClause> {
     matcher
         .member_calls
         .iter()
@@ -255,9 +255,9 @@ fn lower_member_calls(matcher: &ApiMatcher) -> Vec<QueryClause> {
                 .into_boxed_slice(),
             evidence: EvidenceDescriptor {
                 kind: if member.arguments.is_empty() {
-                    ApiMatchKind::MemberCall
+                    MatchKind::MemberCall
                 } else {
-                    ApiMatchKind::CallArgument
+                    MatchKind::CallArgument
                 },
                 symbol: member.evidence_symbol(),
             },
@@ -265,7 +265,7 @@ fn lower_member_calls(matcher: &ApiMatcher) -> Vec<QueryClause> {
         .collect()
 }
 
-fn lower_member_reads(matcher: &ApiMatcher) -> Vec<QueryClause> {
+fn lower_member_reads(matcher: &MatcherSet) -> Vec<QueryClause> {
     matcher
         .member_reads
         .iter()
@@ -277,29 +277,29 @@ fn lower_member_reads(matcher: &ApiMatcher) -> Vec<QueryClause> {
             subject: SubjectConstraint::Direct,
             constraints: Box::new([]),
             evidence: EvidenceDescriptor {
-                kind: ApiMatchKind::MemberRead,
+                kind: MatchKind::MemberRead,
                 symbol: read.evidence_symbol(),
             },
         })
         .collect()
 }
 
-fn lower_literals(matcher: &ApiMatcher) -> Vec<QueryClause> {
+fn lower_literals(matcher: &MatcherSet) -> Vec<QueryClause> {
     let imports = matcher
         .imports
         .iter()
-        .map(|value| literal_clause(value, EventPredicate::Import, ApiMatchKind::Import));
-    let strings = matcher.string_literals.iter().map(|value| {
+        .map(|value| literal_clause(value, EventPredicate::Import, MatchKind::Import));
+    let strings = matcher.string_contains.iter().map(|value| {
         literal_clause(
             value,
             EventPredicate::StringReference,
-            ApiMatchKind::StringLiteral,
+            MatchKind::StringContains,
         )
     });
     imports.chain(strings).collect()
 }
 
-fn literal_clause(value: &str, event: EventPredicate, kind: ApiMatchKind) -> QueryClause {
+fn literal_clause(value: &str, event: EventPredicate, kind: MatchKind) -> QueryClause {
     QueryClause {
         identity: IdentityConstraint::LiteralString {
             predicate: value.to_owned(),
@@ -314,14 +314,14 @@ fn literal_clause(value: &str, event: EventPredicate, kind: ApiMatchKind) -> Que
     }
 }
 
-fn lower_classes_and_constructors(matcher: &ApiMatcher) -> Vec<QueryClause> {
+fn lower_classes_and_constructors(matcher: &MatcherSet) -> Vec<QueryClause> {
     let classes = matcher.classes.iter().map(|class| QueryClause {
         identity: call_identity(&class.name, &class.provenance),
         event: EventPredicate::ClassReference,
         subject: SubjectConstraint::Direct,
         constraints: Box::new([]),
         evidence: EvidenceDescriptor {
-            kind: ApiMatchKind::Class,
+            kind: MatchKind::Class,
             symbol: class.evidence_symbol(),
         },
     });
@@ -331,14 +331,14 @@ fn lower_classes_and_constructors(matcher: &ApiMatcher) -> Vec<QueryClause> {
         subject: SubjectConstraint::Direct,
         constraints: Box::new([]),
         evidence: EvidenceDescriptor {
-            kind: ApiMatchKind::Constructor,
+            kind: MatchKind::Constructor,
             symbol: constructor.evidence_symbol(),
         },
     });
     classes.chain(constructors).collect()
 }
 
-fn lower_returned_members(matcher: &ApiMatcher) -> Vec<QueryClause> {
+fn lower_returned_members(matcher: &MatcherSet) -> Vec<QueryClause> {
     let calls = matcher.returned_member_calls.iter().map(|returned| {
         returned_member_clause(
             &returned.source,
@@ -346,7 +346,7 @@ fn lower_returned_members(matcher: &ApiMatcher) -> Vec<QueryClause> {
             EventPredicate::MemberCall {
                 member: returned.member.clone(),
             },
-            ApiMatchKind::MemberCall,
+            MatchKind::MemberCall,
         )
     });
     let reads = matcher.returned_member_reads.iter().map(|returned| {
@@ -356,7 +356,7 @@ fn lower_returned_members(matcher: &ApiMatcher) -> Vec<QueryClause> {
             EventPredicate::MemberRead {
                 member: returned.member.clone(),
             },
-            ApiMatchKind::MemberRead,
+            MatchKind::MemberRead,
         )
     });
     calls.chain(reads).collect()
@@ -366,7 +366,7 @@ fn returned_member_clause(
     source: &str,
     member: &str,
     event: EventPredicate,
-    kind: ApiMatchKind,
+    kind: MatchKind,
 ) -> QueryClause {
     QueryClause {
         identity: IdentityConstraint::Rooted {
@@ -386,7 +386,7 @@ fn returned_member_clause(
     }
 }
 
-fn lower_instance_members(matcher: &ApiMatcher) -> Vec<QueryClause> {
+fn lower_instance_members(matcher: &MatcherSet) -> Vec<QueryClause> {
     matcher
         .instance_member_calls
         .iter()
@@ -405,7 +405,7 @@ fn lower_instance_members(matcher: &ApiMatcher) -> Vec<QueryClause> {
                 },
                 constraints: Box::new([]),
                 evidence: EvidenceDescriptor {
-                    kind: ApiMatchKind::MemberCall,
+                    kind: MatchKind::MemberCall,
                     symbol: format!(
                         "{}:{}.{}",
                         instance.module, instance.export, instance.member
@@ -458,18 +458,18 @@ fn member_read_identity(
 
 fn call_identity(
     name: &str,
-    provenance: &super::super::rule::CallProvenance,
+    provenance: &super::super::rule::SymbolProvenance,
 ) -> IdentityConstraint {
     match provenance {
-        super::super::rule::CallProvenance::Any => IdentityConstraint::Any {
+        super::super::rule::SymbolProvenance::Any => IdentityConstraint::Any {
             name: name.into(),
             strength: IdentityStrength::Heuristic,
         },
-        super::super::rule::CallProvenance::Global => IdentityConstraint::Global {
+        super::super::rule::SymbolProvenance::Global => IdentityConstraint::Global {
             name: name.into(),
             strength: IdentityStrength::Strict,
         },
-        super::super::rule::CallProvenance::ModuleExport { module } => {
+        super::super::rule::SymbolProvenance::ModuleExport { module } => {
             IdentityConstraint::ModuleExport {
                 module: module.clone(),
                 export: name.into(),
@@ -480,7 +480,7 @@ fn call_identity(
 
 #[derive(Debug, Clone)]
 /// Borrowed view of compiled rules selected for a classification run.
-pub struct CompiledMatcherCatalog<'a> {
+pub struct CompiledRuleSelection<'a> {
     /// All compiled rules, retained for stable rule indexes.
     pub rules: &'a [CompiledRule],
     /// Sorted selected rule indexes.
@@ -518,8 +518,8 @@ impl CompiledObjectFlow {
                 .any(|member| chain == Some(member.as_str()))
                 && sink.provenance.matches_rooted(rooted)
                 && match &sink.args {
-                    CompiledObjectSinkArgs::Any => true,
-                    CompiledObjectSinkArgs::Indices(indices) => indices.contains(&argument),
+                    CompiledObjectSinkArguments::Any => true,
+                    CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument),
                 }
         })
     }
@@ -632,14 +632,14 @@ impl CompiledObjectRequirement {
 
 #[derive(Debug, Clone)]
 /// Argument-position matching mode for a compiled sink.
-pub enum CompiledObjectSinkArgs {
+pub enum CompiledObjectSinkArguments {
     /// Match every argument position present at the call site.
     Any,
     /// Match only configured argument positions.
     Indices(Vec<usize>),
 }
 
-impl CompiledObjectSinkArgs {
+impl CompiledObjectSinkArguments {
     /// Return only sink argument positions that exist at this call site.
     ///
     /// Keeping the bounds check here makes callers unable to accidentally
@@ -662,7 +662,7 @@ pub struct CompiledObjectSink {
     /// Accepted sink member-call chains.
     pub member_calls: Vec<String>,
     /// Accepted argument-position mode.
-    pub args: CompiledObjectSinkArgs,
+    pub args: CompiledObjectSinkArguments,
     /// Required rooted/module provenance mode.
     pub provenance: MemberCallProvenance,
 }
@@ -672,12 +672,12 @@ impl CompiledObjectSink {
         match sink {
             FlowSinkMatcher::ArgumentOf { call, index } => Self {
                 member_calls: vec![call.chain().to_string()],
-                args: CompiledObjectSinkArgs::Indices(vec![*index]),
+                args: CompiledObjectSinkArguments::Indices(vec![*index]),
                 provenance: call.provenance.clone(),
             },
             FlowSinkMatcher::AnyArgumentOf { call } => Self {
                 member_calls: vec![call.chain().to_string()],
-                args: CompiledObjectSinkArgs::Any,
+                args: CompiledObjectSinkArguments::Any,
                 provenance: call.provenance.clone(),
             },
         }
@@ -686,7 +686,7 @@ impl CompiledObjectSink {
 
 impl CompiledMatcherPlan {
     /// Compile a public API matcher and all of its object flows.
-    pub fn compile(matcher: &ApiMatcher) -> Self {
+    pub fn compile(matcher: &MatcherSet) -> Self {
         let flows: Vec<CompiledObjectFlow> = matcher
             .flows
             .iter()
@@ -703,7 +703,7 @@ impl CompiledMatcherPlan {
     }
 }
 
-impl<'a> CompiledMatcherCatalog<'a> {
+impl<'a> CompiledRuleSelection<'a> {
     /// Create a borrowed catalog view over sorted selected indexes.
     pub fn new(
         rules: &'a [CompiledRule],
@@ -758,7 +758,7 @@ impl CompiledRule {
     /// Compile a rule's declared matcher list into one canonical plan.
     pub fn new(rule: &Rule) -> Self {
         Self {
-            matcher: CompiledMatcherPlan::compile(&ApiMatcher::from_matchers(
+            matcher: CompiledMatcherPlan::compile(&MatcherSet::from_matchers(
                 rule.matchers().to_vec(),
             )),
         }
@@ -772,33 +772,33 @@ mod tests {
         SubjectConstraint,
     };
     use crate::api::{
-        classification::ApiMatchKind,
-        rule::{ApiMatcher, CallMatcher, Matcher, ObjectFlowMatcher},
+        classification::MatchKind,
+        rule::{CallMatcher, Matcher, MatcherSet, ObjectFlowMatcher},
     };
 
     #[test]
     fn argument_matcher_compiles_to_one_query_clause() {
-        let matcher = ApiMatcher::from_matchers(vec![Matcher::call(
-            CallMatcher::global("fetch").arg_string(0, ["/api"]),
+        let matcher = MatcherSet::from_matchers(vec![Matcher::from(
+            CallMatcher::global("fetch").arg_static_strings(0, ["/api"]),
         )]);
         let plan = CompiledMatcherPlan::compile(&matcher);
         let clauses = plan.query().clauses();
         assert_eq!(clauses.len(), 1);
         assert_eq!(clauses[0].constraints.len(), 1);
-        assert_eq!(clauses[0].evidence.kind, ApiMatchKind::CallArgument);
+        assert_eq!(clauses[0].evidence.kind, MatchKind::CallArgument);
     }
 
     #[test]
     fn compiles_every_public_matcher_family_into_one_query() {
-        let matcher = ApiMatcher::from_matchers(vec![
+        let matcher = MatcherSet::from_matchers(vec![
             Matcher::heuristic_call("fetch"),
             Matcher::rooted_member_call("window.open"),
             Matcher::rooted_member_read("window.location"),
             Matcher::import("node:fs"),
-            Matcher::string_literal("https://"),
+            Matcher::string_contains("https://"),
             Matcher::heuristic_class("Worker"),
             Matcher::global_constructor("URL"),
-            Matcher::flow(ObjectFlowMatcher {
+            Matcher::from(ObjectFlowMatcher {
                 symbol: "request".into(),
                 sources: Vec::new(),
                 condition: None,
@@ -817,11 +817,11 @@ mod tests {
 
     #[test]
     fn equivalent_declarations_compile_to_identical_queries() {
-        let first = ApiMatcher::from_matchers(vec![
+        let first = MatcherSet::from_matchers(vec![
             Matcher::global_call("fetch"),
             Matcher::rooted_member_read("location.href"),
         ]);
-        let second = ApiMatcher::from_matchers(vec![
+        let second = MatcherSet::from_matchers(vec![
             Matcher::rooted_member_read("location.href"),
             Matcher::global_call("fetch"),
         ]);
@@ -834,13 +834,13 @@ mod tests {
 
     #[test]
     fn query_plan_compiles_public_families_into_composable_dimensions() {
-        let matcher = ApiMatcher::from_matchers(vec![
+        let matcher = MatcherSet::from_matchers(vec![
             Matcher::global_call("fetch"),
             Matcher::rooted_member_call("window.open"),
             Matcher::returned_member_read("create", "token"),
             Matcher::instance_member_call("pkg", "Client", "send"),
             Matcher::import("node:fs"),
-            Matcher::string_literal("https://"),
+            Matcher::string_contains("https://"),
         ]);
         let plan = CompiledMatcherPlan::compile(&matcher);
         let clauses = plan.query().clauses();
@@ -874,11 +874,11 @@ mod tests {
 
     #[test]
     fn query_plan_normalization_is_idempotent_and_order_independent() {
-        let first = ApiMatcher::from_matchers(vec![
+        let first = MatcherSet::from_matchers(vec![
             Matcher::heuristic_call("fetch"),
             Matcher::rooted_member_read("location.href"),
         ]);
-        let second = ApiMatcher::from_matchers(vec![
+        let second = MatcherSet::from_matchers(vec![
             Matcher::rooted_member_read("location.href"),
             Matcher::heuristic_call("fetch"),
         ]);
@@ -890,8 +890,8 @@ mod tests {
 
     #[test]
     fn query_clause_eq_and_ord_are_consistent() {
-        let matcher = ApiMatcher::from_matchers(vec![
-            Matcher::call(CallMatcher::global("fetch").arg_string(0, ["/api"])),
+        let matcher = MatcherSet::from_matchers(vec![
+            Matcher::from(CallMatcher::global("fetch").arg_static_strings(0, ["/api"])),
             Matcher::global_call("fetch"),
         ]);
         let plan = CompiledMatcherPlan::compile(&matcher);

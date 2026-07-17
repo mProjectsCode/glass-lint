@@ -190,7 +190,7 @@ impl FactBuilder<'_> {
         };
         let request = self.interface.add_request(
             span,
-            ResolutionRequestKind::Import,
+            ResolutionRequestKind::StaticImport,
             source.value.to_string_lossy(),
             ModuleRequestRole::ReExport {
                 bindings: export
@@ -263,7 +263,7 @@ impl FactBuilder<'_> {
         };
         let request = self.interface.add_request(
             span,
-            ResolutionRequestKind::Import,
+            ResolutionRequestKind::StaticImport,
             export.src.value.to_string_lossy(),
             ModuleRequestRole::StarExport,
         );
@@ -350,7 +350,7 @@ impl FactBuilder<'_> {
         else {
             return;
         };
-        let property = crate::analysis::syntax::member_prop_name(&member.prop);
+        let property = crate::analysis::syntax::member_property_name(&member.prop);
         if self.is_commonjs_name(&member.obj, "module") && property.as_deref() == Some("exports") {
             self.record_module_exports_assignment(assignment);
             return;
@@ -363,7 +363,8 @@ impl FactBuilder<'_> {
             return;
         };
         if !self.is_commonjs_name(&parent.obj, "module")
-            || crate::analysis::syntax::member_prop_name(&parent.prop).as_deref() != Some("exports")
+            || crate::analysis::syntax::member_property_name(&parent.prop).as_deref()
+                != Some("exports")
         {
             return;
         }
@@ -396,7 +397,7 @@ impl FactBuilder<'_> {
                 };
                 match &**prop {
                     swc_ecma_ast::Prop::KeyValue(value) => {
-                        let Some(name) = crate::analysis::syntax::prop_name(&value.key) else {
+                        let Some(name) = crate::analysis::syntax::property_name(&value.key) else {
                             continue;
                         };
                         self.add_function_export_if_expr(&name, &value.value);
@@ -406,7 +407,7 @@ impl FactBuilder<'_> {
                         }
                     }
                     swc_ecma_ast::Prop::Method(method) => {
-                        if let Some(name) = crate::analysis::syntax::prop_name(&method.key) {
+                        if let Some(name) = crate::analysis::syntax::property_name(&method.key) {
                             self.add_function_export_if_span(&name, method.function.span());
                         }
                     }
@@ -510,7 +511,7 @@ impl FactBuilder<'_> {
             .map(|prop| match prop {
                 swc_ecma_ast::PropOrSpread::Prop(prop) => match &**prop {
                     swc_ecma_ast::Prop::KeyValue(value) => Some((
-                        crate::analysis::syntax::prop_name(&value.key)?,
+                        crate::analysis::syntax::property_name(&value.key)?,
                         match &*value.value {
                             Expr::Ident(ident) => Some(ident.sym.to_string()),
                             _ => None,
@@ -520,13 +521,13 @@ impl FactBuilder<'_> {
                         Some((assign.key.sym.to_string(), Some(assign.key.sym.to_string())))
                     }
                     swc_ecma_ast::Prop::Getter(getter) => {
-                        Some((crate::analysis::syntax::prop_name(&getter.key)?, None))
+                        Some((crate::analysis::syntax::property_name(&getter.key)?, None))
                     }
                     swc_ecma_ast::Prop::Setter(setter) => {
-                        Some((crate::analysis::syntax::prop_name(&setter.key)?, None))
+                        Some((crate::analysis::syntax::property_name(&setter.key)?, None))
                     }
                     swc_ecma_ast::Prop::Method(method) => {
-                        Some((crate::analysis::syntax::prop_name(&method.key)?, None))
+                        Some((crate::analysis::syntax::property_name(&method.key)?, None))
                     }
                     swc_ecma_ast::Prop::Shorthand(ident) => {
                         Some((ident.sym.to_string(), Some(ident.sym.to_string())))

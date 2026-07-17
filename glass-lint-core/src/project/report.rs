@@ -108,8 +108,8 @@ impl Finding {
 mod tests {
     use super::*;
     use crate::{
-        Diagnostic, Evidence, FileReport, Finding, OperationCounts, Position, ProjectDiagnostic,
-        ProjectRelativePath, RuleCatalog, RuleId, Severity, SourceFile, SourceLocation,
+        AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, Evidence, FileReport, Finding,
+        Position, ProjectRelativePath, RuleCatalog, RuleId, Severity, SourceFile, SourceLocation,
         SourceRange,
         api::rule::{Confidence, Matcher, Rule, Severity as RuleSeverity},
     };
@@ -185,7 +185,7 @@ mod tests {
                 diagnostics: Vec::new(),
             }],
             diagnostics: Vec::new(),
-            operations: OperationCounts::default(),
+            operations: AnalysisOperationCounts::default(),
             completion,
         }
     }
@@ -196,8 +196,8 @@ mod tests {
         let mut partial = report("b.js", ReportCompletion::Partial);
         partial.files[0]
             .diagnostics
-            .push(Diagnostic::project(ProjectDiagnostic {
-                code: crate::project::types::DiagnosticKind::SemanticBudgetExhausted.into(),
+            .push(Diagnostic::project(AnalysisDiagnostic {
+                code: crate::project::types::DiagnosticKind::FactsBudgetExhausted.into(),
                 message: "facts exhausted".into(),
                 location: None,
             }));
@@ -235,8 +235,8 @@ mod tests {
         partial.files = vec![parse_only];
         partial
             .diagnostics
-            .push(Diagnostic::project(ProjectDiagnostic {
-                code: crate::project::types::DiagnosticKind::GraphLinkBudgetExhausted.into(),
+            .push(Diagnostic::project(AnalysisDiagnostic {
+                code: crate::project::types::DiagnosticKind::LinkingBudgetExhausted.into(),
                 message: "linking exhausted".into(),
                 location: None,
             }));
@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn combine_reports_adds_all_operation_counts() {
         let mut first = report("a.js", ReportCompletion::Complete);
-        first.operations = OperationCounts {
+        first.operations = AnalysisOperationCounts {
             files: 1,
             requests: 2,
             edges: 3,
@@ -266,7 +266,7 @@ mod tests {
             evidence: 7,
         };
         let mut second = report("b.js", ReportCompletion::Complete);
-        second.operations = OperationCounts {
+        second.operations = AnalysisOperationCounts {
             files: usize::MAX,
             requests: 20,
             edges: 30,
@@ -278,7 +278,7 @@ mod tests {
         let combined = AnalysisReport::combine([first, second]).unwrap();
         assert_eq!(
             combined.operations,
-            OperationCounts {
+            AnalysisOperationCounts {
                 files: usize::MAX,
                 requests: 22,
                 edges: 33,
@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn direct_qualification_matches_one_file_project_shape() {
         let rule = Rule::builder("network.request")
-            .label("Uses fetch")
+            .description("Uses fetch")
             .category("network")
             .severity(RuleSeverity::Warning)
             .confidence(Confidence::High)
@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn snippet_serializes_as_one_analysis_file_without_source_text() {
         let rule = Rule::builder("network.request")
-            .label("Uses fetch")
+            .description("Uses fetch")
             .category("network")
             .severity(RuleSeverity::Warning)
             .confidence(Confidence::High)

@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// that have been reassigned are excluded.
 pub fn rule() -> Rule {
     Rule::builder("browser.clipboard-write")
-        .label("Writes clipboard data")
+        .description("Writes clipboard data")
         .category("browser/clipboard")
         .severity(Severity::Info)
         .confidence(Confidence::High)

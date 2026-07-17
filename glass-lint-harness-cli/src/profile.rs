@@ -1,7 +1,9 @@
 //! Profiling command adapter and stable human-readable summary output.
 
 use anyhow::Result;
-use glass_lint_harness::{ProfileConfig, ProfileSummary, create_profile_manifest, profile_folder};
+use glass_lint_harness::{
+    ProfileConfig, ProfileSummary, ProfileWorkload, create_profile_manifest, run_profile,
+};
 
 use crate::args::ProfileArgs;
 
@@ -36,7 +38,7 @@ pub fn run(args: ProfileArgs) -> Result<bool> {
     }
     // Translate CLI options once; the harness owns discovery, sampling, and
     // bounded parallel execution semantics.
-    let report = profile_folder(&ProfileConfig {
+    let report = run_profile(&ProfileConfig {
         paths: args.paths,
         include: args.include,
         exclude: args.exclude,
@@ -49,8 +51,13 @@ pub fn run(args: ProfileArgs) -> Result<bool> {
         provider: args.provider.into(),
         mode: args.profile.into(),
         rules: args.rules,
-        project: args.project,
-        admitted_project: args.admitted_project,
+        workload: if args.admitted_project {
+            ProfileWorkload::AdmittedProject
+        } else if args.project {
+            ProfileWorkload::LoaderProject
+        } else {
+            ProfileWorkload::Files
+        },
         manifest: args.manifest,
     })?;
     print_report(&report, args.quiet);
@@ -58,36 +65,39 @@ pub fn run(args: ProfileArgs) -> Result<bool> {
 }
 
 fn print_report(report: &ProfileSummary, quiet: bool) {
-    // Keep per-file detail optional while always printing the aggregate summary
+    // Keep per-input detail optional while always printing the aggregate summary
     // needed by scripts and interactive users.
     if !quiet {
-        for file in &report.file_results {
-            match &file.error {
-                Some(error) => eprintln!("error {}: {}", file.path.display(), error),
+        for input in &report.workload_results {
+            match &input.error {
+                Some(error) => eprintln!("input {}: {}", input.path.display(), error),
                 None => eprintln!(
                     "  {}: {:.1?} ({} finding(s), {} diagnostic(s))",
-                    file.path.display(),
-                    file.elapsed,
-                    file.findings,
-                    file.diagnostics
+                    input.path.display(),
+                    input.measured_elapsed,
+                    input.findings,
+                    input.diagnostics
                 ),
             }
         }
     }
 
     println!(
-        "Profile: {} file(s), {} byte(s), {} run(s), {} finding(s), {} parse/analysis diagnostic(s), {} error(s), setup {:.1?}, lint wall {:.1?}, total {:.1?}",
-        report.files,
+        "Profile: {} input(s), {} byte(s), {} run(s), {} finding(s), {} parse/analysis diagnostic(s), {} error(s), setup {:.1?}, lint wall {:.1?}, total {:.1?}",
+        report.inputs,
         report.bytes,
         report.runs,
         report.findings,
         report.diagnostics,
         report.errors,
-        report.setup_elapsed,
-        report.elapsed,
-        report.total_elapsed
+        report.setup_duration,
+        report.measured_elapsed,
+        report.wall_duration
     );
-    println!("Median measured repetition: {:.1?}", report.median_elapsed);
+    println!(
+        "Median measured repetition: {:.1?}",
+        report.median_repetition_duration
+    );
     if report.workload.verified
         && let Some(digest) = &report.workload.corpus_digest
     {
@@ -134,17 +144,17 @@ fn print_report(report: &ProfileSummary, quiet: bool) {
         report.operation_counts.evidence,
     );
 
-    let mut slowest = report.file_results.iter().collect::<Vec<_>>();
+    let mut slowest = report.workload_results.iter().collect::<Vec<_>>();
     slowest.sort_by(|left, right| {
         right
-            .elapsed
-            .cmp(&left.elapsed)
+            .measured_elapsed
+            .cmp(&left.measured_elapsed)
             .then_with(|| left.path.cmp(&right.path))
     });
     if !slowest.is_empty() {
-        println!("Slowest files:");
-        for file in slowest.into_iter().take(10) {
-            println!("  {:.1?} {}", file.elapsed, file.path.display());
+        println!("Slowest workload inputs:");
+        for input in slowest.into_iter().take(10) {
+            println!("  {:.1?} {}", input.measured_elapsed, input.path.display());
         }
     }
 }

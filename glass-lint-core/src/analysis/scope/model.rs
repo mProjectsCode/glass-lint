@@ -59,7 +59,7 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Host globals and member capabilities used for unshadowed checks.
     environment: crate::Environment,
     /// Lexical scopes in predeclaration order.
-    scopes: Vec<AliasScope>,
+    scopes: Vec<LexicalScope>,
     /// Scope indexes sorted by opening position for position lookup.
     scopes_by_start: Vec<ScopeId>,
     /// Source-ordered assignments grouped by scope and name.
@@ -334,7 +334,7 @@ impl ScopeGraph {
 /// Owned inputs used to assemble a collected [`ScopeGraph`].
 pub(super) struct ScopeGraphParts {
     pub(super) environment: crate::Environment,
-    pub(super) scopes: Vec<AliasScope>,
+    pub(super) scopes: Vec<LexicalScope>,
     pub(super) scopes_by_start: Vec<ScopeId>,
     pub(super) assignments: BTreeMap<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>,
     pub(super) binding_ids: BTreeMap<ScopedName, BindingId>,
@@ -359,7 +359,7 @@ pub(in crate::analysis::scope) struct RootedPropertyMutationFact {
 
 #[derive(Debug, Clone)]
 /// Lexical scope interval, kind, parent, and declaration bindings.
-pub(in crate::analysis) struct AliasScope {
+pub(in crate::analysis) struct LexicalScope {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) depth: usize,
     pub(in crate::analysis::scope) kind: ScopeKind,

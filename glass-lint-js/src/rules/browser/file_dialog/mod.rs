@@ -12,7 +12,7 @@ use glass_lint_core::rules::{
 /// recognized as configuration evidence.
 pub fn rule() -> Rule {
     Rule::builder("browser.file-dialog")
-        .label("Uses browser file input dialogs")
+        .description("Uses browser file input dialogs")
         .category("browser/file-dialog")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

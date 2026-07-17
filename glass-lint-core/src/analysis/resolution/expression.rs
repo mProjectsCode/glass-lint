@@ -276,7 +276,10 @@ impl Resolver {
         }
     }
 
-    pub(in crate::analysis) fn member_chain(&self, member: &MemberExpr) -> Option<String> {
+    pub(in crate::analysis) fn member_expression_chain(
+        &self,
+        member: &MemberExpr,
+    ) -> Option<String> {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };
@@ -284,7 +287,7 @@ impl Resolver {
             .borrow()
             .get(&key)
             .and_then(|value| value.syntactic_chain.clone())
-            .or_else(|| crate::analysis::syntax::member_chain(member))
+            .or_else(|| crate::analysis::syntax::member_expression_chain(member))
     }
 
     pub(in crate::analysis) fn class_provenance(&self, expr: &Expr) -> Option<(String, String)> {

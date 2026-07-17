@@ -12,9 +12,9 @@ use super::super::{
     index::FlowId,
     state::FlowState,
 };
-use crate::api::classification::ApiEvidence;
+use crate::api::classification::ClassificationEvidence;
 
-type EvidenceKey = (usize, usize, ObjectId, super::super::super::facts::FactId);
+type ReportEvidenceKey = (usize, usize, ObjectId, super::super::super::facts::FactId);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Snapshot of aliases, flow states, and reachability at a control boundary.
@@ -112,9 +112,9 @@ impl FlowStateTable {
 /// Per-rule evidence with a bounded deduplication key set.
 pub(super) struct FlowEvidence {
     /// Evidence grouped by selected rule index.
-    items: Vec<Vec<ApiEvidence>>,
+    items: Vec<Vec<ClassificationEvidence>>,
     /// `(rule, flow, object, event)` identities already emitted.
-    emitted: BTreeSet<EvidenceKey>,
+    emitted: BTreeSet<ReportEvidenceKey>,
 }
 
 impl FlowEvidence {
@@ -125,18 +125,18 @@ impl FlowEvidence {
         }
     }
 
-    pub(super) fn try_insert(&mut self, key: EvidenceKey, limit: usize) -> bool {
+    pub(super) fn try_insert(&mut self, key: ReportEvidenceKey, limit: usize) -> bool {
         if !self.emitted.contains(&key) && self.emitted.len() >= limit {
             return false;
         }
         self.emitted.insert(key)
     }
 
-    pub(super) fn record(&mut self, rule_index: usize, evidence: ApiEvidence) {
+    pub(super) fn record(&mut self, rule_index: usize, evidence: ClassificationEvidence) {
         self.items[rule_index].push(evidence);
     }
 
-    pub(super) fn into_items(self) -> Vec<Vec<ApiEvidence>> {
+    pub(super) fn into_items(self) -> Vec<Vec<ClassificationEvidence>> {
         self.items
     }
 }

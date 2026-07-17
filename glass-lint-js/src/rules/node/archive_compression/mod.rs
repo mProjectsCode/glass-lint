@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// infer use from local API names or from similarly named packages.
 pub fn rule() -> Rule {
     Rule::builder("archive.compression")
-        .label("Uses archive or compression libraries")
+        .description("Uses archive or compression libraries")
         .category("node/archive")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

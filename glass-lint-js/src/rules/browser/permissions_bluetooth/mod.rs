@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// reassigned aliases are excluded by rooted provenance tracking.
 pub fn rule() -> Rule {
     Rule::builder("browser.permissions-bluetooth")
-        .label("Uses browser Bluetooth")
+        .description("Uses browser Bluetooth")
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)

@@ -11,7 +11,7 @@ use glass_lint_core::{
     AnalysisReport, AnalysisReportSummary, PrettyFile, PrettyOptions, PrettyReports, RuleMetadata,
 };
 
-use crate::config::{Config, Output};
+use crate::config::{Config, OutputFormat};
 
 /// A linted file keeps its source so pretty rendering never rereads the file.
 #[derive(Clone)]
@@ -49,7 +49,7 @@ pub fn write_project_report(config: &Config, report: &AnalysisReport) -> Result<
 
 /// Write the human-readable input mode before analysis begins.
 pub fn write_mode(config: &Config, mode: &str, path: &Path) -> Result<()> {
-    if matches!(config.cli.output, Output::Pretty) {
+    if matches!(config.cli.output, OutputFormat::Pretty) {
         let mut stdout = io::BufWriter::new(io::stdout().lock());
         writeln!(
             stdout,
@@ -65,7 +65,7 @@ pub fn write_mode(config: &Config, mode: &str, path: &Path) -> Result<()> {
 /// Kept separate from stdout acquisition so output bytes can be tested exactly.
 fn write_rules_to<W: Write>(config: &Config, metadata: &[RuleMetadata], out: &mut W) -> Result<()> {
     let color = color_enabled(config);
-    if matches!(config.cli.output, Output::Json) {
+    if matches!(config.cli.output, OutputFormat::Json) {
         serde_json::to_writer_pretty(&mut *out, metadata)?;
     } else {
         let mut table = Table::new([
@@ -189,8 +189,8 @@ fn write_report_to<W: Write>(config: &Config, files: &[FileOutput], out: &mut W)
     let report = AnalysisReport::combine(files.iter().map(|file| file.report.clone()))?;
     let summary = report.summary();
     match config.cli.output {
-        Output::Json => write_json(&report, out),
-        Output::Pretty => write_pretty(config, files, summary, out),
+        OutputFormat::Json => write_json(&report, out),
+        OutputFormat::Pretty => write_pretty(config, files, summary, out),
     }
 }
 
@@ -225,14 +225,12 @@ fn write_pretty<W: Write>(
 
     let summary_line = format!(
         "{} file(s), {} finding(s), {} parse diagnostic(s), {} analysis diagnostic(s)",
-        summary.files, summary.findings, summary.parse_diagnostics, summary.analysis_diagnostics
+        summary.files, summary.findings, summary.parse_diagnostics, summary.file_diagnostics
     );
     write_summary(
         config,
         &summary_line,
-        summary.findings == 0
-            && summary.parse_diagnostics == 0
-            && summary.analysis_diagnostics == 0,
+        summary.findings == 0 && summary.parse_diagnostics == 0 && summary.file_diagnostics == 0,
         out,
     )
 }
@@ -256,11 +254,11 @@ fn write_project_report_to<W: Write>(
 ) -> Result<()> {
     let summary = report.summary();
     match config.cli.output {
-        Output::Json => {
+        OutputFormat::Json => {
             serde_json::to_writer_pretty(&mut *out, report)?;
             writeln!(out)?;
         }
-        Output::Pretty => write_project_pretty(config, report, summary, out)?,
+        OutputFormat::Pretty => write_project_pretty(config, report, summary, out)?,
     }
     Ok(())
 }
@@ -308,14 +306,14 @@ fn write_project_pretty<W: Write>(
         summary.files,
         summary.findings,
         summary.parse_diagnostics,
-        summary.analysis_diagnostics,
-        summary.project_diagnostics,
+        summary.file_diagnostics,
+        summary.report_diagnostics,
         report.completion
     );
     let clean = summary.findings == 0
         && summary.parse_diagnostics == 0
-        && summary.analysis_diagnostics == 0
-        && summary.project_diagnostics == 0;
+        && summary.file_diagnostics == 0
+        && summary.report_diagnostics == 0;
     let summary_line = format!(
         "{summary_line}, operations: {} request(s), {} edge(s), {} export(s), {} effect projection(s), {} evidence item(s)",
         report.operations.requests,
@@ -356,8 +354,8 @@ fn color_enabled(config: &Config) -> bool {
 #[cfg(test)]
 mod tests {
     use glass_lint_core::{
-        AnalysisLimits, AnalysisReport, Diagnostic, DiagnosticCode, Environment, Linter,
-        ProjectDiagnostic, ReportCompletion, Rule, RuleCatalog, Severity,
+        AnalysisDiagnostic, AnalysisLimits, AnalysisReport, Diagnostic, DiagnosticCode,
+        Environment, Linter, ReportCompletion, Rule, RuleCatalog, Severity,
         rules::{Confidence, Matcher},
     };
 
@@ -365,7 +363,7 @@ mod tests {
 
     fn linter(semantic_operations: usize) -> Linter {
         let rule = Rule::builder("network.fetch")
-            .label("Uses fetch")
+            .description("Uses fetch")
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
@@ -443,7 +441,7 @@ mod tests {
         let mut semantic_partial = linter(1).lint_snippet(semantic_source, "c.js").unwrap();
         semantic_partial
             .diagnostics
-            .push(Diagnostic::Project(ProjectDiagnostic {
+            .push(Diagnostic::Project(AnalysisDiagnostic {
                 code: DiagnosticCode::new("incomplete_project").unwrap(),
                 message: "project scope retained".into(),
                 location: None,
@@ -467,7 +465,7 @@ mod tests {
             vec!["a.js", "b.js", "c.js"]
         );
         assert_eq!(first.summary().parse_diagnostics, 1);
-        assert_eq!(first.summary().analysis_diagnostics, 1);
+        assert_eq!(first.summary().file_diagnostics, 1);
         assert_eq!(first.diagnostics[0].code(), "incomplete_project");
     }
 }

@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// local receivers; other methods and dynamic properties are excluded.
 pub fn rule() -> Rule {
     Rule::builder("markdown.render")
-        .label("Renders markdown")
+        .description("Renders markdown")
         .category("markdown")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

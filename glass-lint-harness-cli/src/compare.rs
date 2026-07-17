@@ -6,7 +6,7 @@
 use std::{collections::BTreeMap, fs, path::Path, time::Duration};
 
 use anyhow::{Context, Result};
-use glass_lint_harness::{CaseTimings, SuiteReport, comparison};
+use glass_lint_harness::{AdapterTimings, SuiteReport, render_adapter_comparison};
 use tracing_subscriber::{
     Layer, layer::SubscriberExt, registry::LookupSpan, util::SubscriberInitExt,
 };
@@ -25,7 +25,7 @@ pub fn begin(path: &Path, adapter_count: usize) {
 
 pub fn write_report(
     report: &SuiteReport,
-    case_timings: &[CaseTimings],
+    case_timings: &[AdapterTimings],
     suite_elapsed: Duration,
 ) -> Result<()> {
     let mut tool_totals: BTreeMap<String, Duration> = BTreeMap::new();
@@ -49,7 +49,7 @@ pub fn write_report(
     let report_dir = Path::new("reports");
     fs::create_dir_all(report_dir).with_context(|| format!("create {}", report_dir.display()))?;
     let report_path = report_dir.join("COMPARISON.md");
-    fs::write(&report_path, comparison(report))
+    fs::write(&report_path, render_adapter_comparison(report))
         .with_context(|| format!("write {}", report_path.display()))?;
     eprintln!("Comparison report written to {}", report_path.display());
     Ok(())

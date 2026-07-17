@@ -8,8 +8,8 @@
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog,
     rules::{
-        BuildError, Builder, CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, Severity,
-        ValueMatcher,
+        Builder, CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, RuleBuildError,
+        Severity, ValueMatcher,
     },
 };
 
@@ -17,7 +17,7 @@ use glass_lint_core::{
 /// path.
 fn rule(id: &str) -> Builder {
     Rule::builder(id)
-        .label(id)
+        .description(id)
         .category("test")
         .severity(Severity::Info)
         .confidence(Confidence::High)
@@ -286,7 +286,7 @@ fn new_semantic_matchers_are_normalized_and_validated() {
         .build();
     assert!(matches!(
         invalid.unwrap_err(),
-        BuildError::InvalidMatcher(_)
+        RuleBuildError::InvalidMatcher(_)
     ));
 }
 
@@ -300,7 +300,7 @@ fn ordinary_member_argument_predicates_reuse_static_values() {
         app.vault.on("unrelated", handler);
         "#,
         rule("test.event")
-            .matcher(MemberCallMatcher::rooted_chain("app.vault.on").arg_value(
+            .matcher(MemberCallMatcher::rooted("app.vault.on").arg(
                 0,
                 ValueMatcher::static_string().equals_any(["delete", "rename"]),
             ))
@@ -439,7 +439,7 @@ fn optional_chained_aliases_preserve_rooted_member_arguments() {
         r#"var c=app.commands;c?.execute?.("open");"#,
         rule("test.optional")
             .matcher(
-                MemberCallMatcher::rooted_chain("app.commands.execute").arg_string(0, ["open"]),
+                MemberCallMatcher::rooted("app.commands.execute").arg_static_strings(0, ["open"]),
             )
             .build()
             .unwrap(),
@@ -464,7 +464,7 @@ fn static_string_arguments_follow_aliases_but_reject_dynamic_strings() {
     assert_count(
         r#"var f=fetch,u="/x";f(u);f("/"+name);"#,
         rule("test.static-string-arg")
-            .matcher(CallMatcher::global("fetch").static_string_arg(0))
+            .matcher(CallMatcher::global("fetch").arg_static_string(0))
             .build()
             .unwrap(),
         1,
@@ -477,8 +477,7 @@ fn static_object_arguments_are_reused_for_key_matching() {
         r#"var o={url:"/x",method:"GET"};client.request(o);"#,
         rule("test.object-arg")
             .matcher(
-                MemberCallMatcher::rooted_chain("client.request")
-                    .arg_object_keys(0, ["url", "method"]),
+                MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]),
             )
             .build()
             .unwrap(),
@@ -492,8 +491,7 @@ fn sequence_object_arguments_are_reused_for_key_matching() {
         r#"var o;(o={url:"/x",method:"GET"},client.request(o));"#,
         rule("test.sequence-object-arg")
             .matcher(
-                MemberCallMatcher::rooted_chain("client.request")
-                    .arg_object_keys(0, ["url", "method"]),
+                MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]),
             )
             .build()
             .unwrap(),
@@ -506,9 +504,7 @@ fn rooted_expression_arguments_follow_one_letter_aliases() {
     assert_count(
         r#"var f=vault.file,o=app;o.open(f);"#,
         rule("test.rooted-arg")
-            .matcher(
-                MemberCallMatcher::rooted_chain("app.open").arg_rooted_exprs(0, ["vault.file"]),
-            )
+            .matcher(MemberCallMatcher::rooted("app.open").arg_rooted_exprs(0, ["vault.file"]))
             .build()
             .unwrap(),
         1,
@@ -521,8 +517,7 @@ fn spread_object_arguments_do_not_satisfy_exact_key_matching() {
         r#"var b={url:"/x"};client.request({...b,method:"GET"});"#,
         rule("test.spread-object-negative")
             .matcher(
-                MemberCallMatcher::rooted_chain("client.request")
-                    .arg_object_keys(0, ["url", "method"]),
+                MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]),
             )
             .build()
             .unwrap(),
@@ -560,8 +555,7 @@ fn helper_argument_objects_flow_to_member_call_key_matching() {
         r#"function n(x){client.request(x)}n({url:"/x",method:"GET"});"#,
         rule("test.helper-object-flow")
             .matcher(
-                MemberCallMatcher::rooted_chain("client.request")
-                    .arg_object_keys(0, ["url", "method"]),
+                MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]),
             )
             .build()
             .unwrap(),

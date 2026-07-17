@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// arguments are intentionally not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("vault.adapter")
-        .label("Uses adapter-level vault filesystem APIs")
+        .description("Uses adapter-level vault filesystem APIs")
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)

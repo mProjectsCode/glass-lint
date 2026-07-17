@@ -132,7 +132,8 @@ impl FactBuilder<'_> {
             FactKind::Declaration,
             class_decl.ident.span(),
             FactPayload::Class {
-                name,
+                name: Some(name),
+                role: super::super::ClassFactRole::Declaration,
                 provenance: provenance.clone(),
             },
         );
@@ -152,7 +153,8 @@ impl FactBuilder<'_> {
                 FactKind::Declaration,
                 ident.span(),
                 FactPayload::Class {
-                    name: ident.sym.to_string(),
+                    name: Some(ident.sym.to_string()),
+                    role: super::super::ClassFactRole::Declaration,
                     provenance: provenance.clone(),
                 },
             );
@@ -169,7 +171,8 @@ impl FactBuilder<'_> {
                 FactKind::Reference,
                 binary.right.span(),
                 FactPayload::Class {
-                    name: String::new(),
+                    name: None,
+                    role: super::super::ClassFactRole::InstanceofOperand,
                     provenance,
                 },
             );

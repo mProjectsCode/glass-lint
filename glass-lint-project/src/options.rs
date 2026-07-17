@@ -19,7 +19,7 @@ const DEFAULT_EXTENSIONS: &[&str] = &[".js", ".cjs", ".mjs", ".ts", ".cts", ".mt
 pub enum ProjectSelection {
     Entry(PathBuf),
     Directory(PathBuf),
-    TsConfig(PathBuf),
+    Tsconfig(PathBuf),
 }
 
 impl ProjectSelection {
@@ -35,18 +35,18 @@ impl ProjectSelection {
 
     /// Select sources through a TypeScript config and its references.
     pub fn tsconfig(path: impl Into<PathBuf>) -> Self {
-        Self::TsConfig(path.into())
+        Self::Tsconfig(path.into())
     }
 
     /// Return the path supplied by this selection variant.
     pub fn path(&self) -> &std::path::Path {
         match self {
-            Self::Entry(path) | Self::Directory(path) | Self::TsConfig(path) => path,
+            Self::Entry(path) | Self::Directory(path) | Self::Tsconfig(path) => path,
         }
     }
 }
 
-/// Validated policy for filesystem project loading.
+/// Caller-supplied policy for filesystem project loading.
 #[derive(Clone, Debug)]
 pub struct ProjectLoadOptions {
     /// Project boundary. If omitted, the selection's directory is used.
@@ -111,9 +111,14 @@ impl ProjectLoadOptionsBuilder {
     }
 
     #[must_use]
-    pub fn source_bytes(mut self, one_file: u64, project: u64) -> Self {
-        self.options.max_source_bytes = one_file;
-        self.options.max_project_source_bytes = project;
+    pub fn max_source_bytes(mut self, value: u64) -> Self {
+        self.options.max_source_bytes = value;
+        self
+    }
+
+    #[must_use]
+    pub fn max_project_source_bytes(mut self, value: u64) -> Self {
+        self.options.max_project_source_bytes = value;
         self
     }
 
@@ -124,7 +129,7 @@ impl ProjectLoadOptionsBuilder {
     }
 
     #[must_use]
-    pub fn timeout_ms(mut self, value: u64) -> Self {
+    pub fn max_timeout_ms(mut self, value: u64) -> Self {
         self.options.max_timeout_ms = value;
         self
     }

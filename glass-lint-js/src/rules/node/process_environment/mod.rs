@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// and dynamic property names are excluded; the values read are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("node.process-environment")
-        .label("Reads Node process environment or platform metadata")
+        .description("Reads Node process environment or platform metadata")
         .category("node/process")
         .severity(Severity::Info)
         .confidence(Confidence::High)

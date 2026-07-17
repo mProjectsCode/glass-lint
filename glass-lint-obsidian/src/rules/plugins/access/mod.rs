@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// static and dynamic plugin keys without guessing the key's value.
 pub fn rule() -> Rule {
     Rule::builder("plugins.access")
-        .label("Accesses other plugins")
+        .description("Accesses other plugins")
         .category("plugins")
         .severity(Severity::Info)
         .confidence(Confidence::High)

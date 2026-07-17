@@ -1,14 +1,14 @@
 use glass_lint_core::{
-    AnalysisLimits, ByteRange, DiagnosticCode, Environment, InvalidPosition,
-    InvalidSourcePositionRange, Linter, Position, ProjectInput, Rule, RuleCatalog, Severity,
-    SourceFile, SourceRange,
+    AnalysisLimits, ByteRange, DiagnosticCode, Environment, InvalidPosition, Linter, Position,
+    ProjectInput, ReversedSourcePositionRange, Rule, RuleCatalog, Severity, SourceFile,
+    SourceRange,
     rules::{CallMatcher, Confidence},
 };
 
 #[test]
 fn supported_public_operations_do_not_require_engine_storage() {
     let rule = Rule::builder("network.fetch")
-        .label("Uses fetch")
+        .description("Uses fetch")
         .category("network")
         .severity(Severity::Info)
         .confidence(Confidence::High)
@@ -92,7 +92,7 @@ fn public_invariant_types_reject_invalid_values_without_panicking() {
     let start = Position::new(2, 3).unwrap();
     let end = Position::new(2, 8).unwrap();
     let reversed = std::panic::catch_unwind(|| SourceRange::new(end.clone(), start.clone()));
-    assert_eq!(reversed.unwrap(), Err(InvalidSourcePositionRange));
+    assert_eq!(reversed.unwrap(), Err(ReversedSourcePositionRange));
     assert!(
         serde_json::from_str::<SourceRange>(
             r#"{"start":{"line":2,"column":8},"end":{"line":2,"column":3}}"#

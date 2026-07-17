@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// packages; shadowed loaders and non-listed modules are excluded.
 pub fn rule() -> Rule {
     Rule::builder("node.filesystem")
-        .label("Uses Node filesystem and path APIs")
+        .description("Uses Node filesystem and path APIs")
         .category("node/filesystem")
         .severity(Severity::Info)
         .confidence(Confidence::High)

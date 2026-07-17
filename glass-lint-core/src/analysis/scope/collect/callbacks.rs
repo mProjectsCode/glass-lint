@@ -7,13 +7,13 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, ObjectPatProp, Pat};
 
 use super::{
     super::{
-        super::syntax::{member_prop_name, prop_name},
+        super::syntax::{member_property_name, property_name},
         BindingProvenance, ScopeId, ScopedName,
     },
-    AliasCollector,
+    LexicalScopeCollector,
 };
 
-impl AliasCollector {
+impl LexicalScopeCollector {
     /// Resolve the proven parameter aliases shared by all compatible calls to
     /// a helper. Conflicting call sites are discarded rather than merged:
     /// retaining an ambiguous alias would leak one caller's provenance into
@@ -113,7 +113,7 @@ impl AliasCollector {
                 for property in &object.props {
                     match property {
                         ObjectPatProp::KeyValue(property) => {
-                            let Some(key) = prop_name(&property.key) else {
+                            let Some(key) = property_name(&property.key) else {
                                 continue;
                             };
                             let Some(target) = values.get(&key) else {
@@ -214,7 +214,7 @@ impl AliasCollector {
             _ => {}
         }
         let Expr::Member(member) = callee else { return };
-        let Some(method) = member_prop_name(&member.prop) else {
+        let Some(method) = member_property_name(&member.prop) else {
             return;
         };
         if method == "forEach" {
@@ -260,7 +260,7 @@ impl AliasCollector {
             return;
         };
         if promise.sym != *"Promise"
-            || member_prop_name(&resolve_member.prop).as_deref() != Some("resolve")
+            || member_property_name(&resolve_member.prop).as_deref() != Some("resolve")
         {
             return;
         }

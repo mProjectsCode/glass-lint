@@ -52,21 +52,13 @@ impl MemberCallMatcher {
         self
     }
 
-    pub fn syntactic_heuristic(chain: impl Into<String>) -> Self {
-        Self::heuristic(chain)
-    }
-
-    pub fn rooted_chain(chain: impl Into<String>) -> Self {
-        Self::rooted(chain)
-    }
-
     #[must_use]
-    pub fn static_string_arg(self, index: usize) -> Self {
+    pub fn arg_static_string(self, index: usize) -> Self {
         self.arg(index, super::ValueMatcher::static_string())
     }
 
     #[must_use]
-    pub fn arg_string<I, S>(self, index: usize, values: I) -> Self
+    pub fn arg_static_strings<I, S>(self, index: usize, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
@@ -75,11 +67,6 @@ impl MemberCallMatcher {
             index,
             super::ValueMatcher::static_string().equals_any(values),
         )
-    }
-
-    #[must_use]
-    pub fn arg_value(self, index: usize, value: impl Into<super::ValueMatcher>) -> Self {
-        self.arg(index, value.into())
     }
 
     #[must_use]

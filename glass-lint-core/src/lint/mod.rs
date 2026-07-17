@@ -9,7 +9,7 @@ mod findings;
 mod linter;
 mod ranges;
 
-pub use catalog::{RuleCatalog, RuleCatalogError};
+pub use catalog::{ProviderCatalogError, RuleCatalog};
 pub use linter::{
     LintConfigError, Linter, LinterConfig, RuleBaseline, RuleOverride, RuleSelection, RuleState,
     selector_matches,

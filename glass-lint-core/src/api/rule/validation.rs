@@ -6,17 +6,17 @@
 //! deterministically.
 
 use super::matcher::{
-    ApiMatcher, ArgumentConstraint, ArgumentMatcher, CallProvenance, FlowCompletion, FlowCondition,
-    FlowSinkMatcher, Matcher, MemberCallMatcher, MemberCallProvenance, MemberReadProvenance,
-    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicate,
-    ValueMatcher, ValueMatcherKind,
+    ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
+    MatcherSet, MemberCallMatcher, MemberCallProvenance, MemberReadProvenance, ObjectEventMatcher,
+    ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicate, SymbolProvenance, ValueMatcher,
+    ValueMatcherKind,
 };
 
 const MAX_ARGUMENT_INDEX: usize = 1 << 20;
 const MAX_EXPRESSION_NODES: usize = 4096;
 
 /// Validate all matcher families in one assembled API matcher.
-pub(super) fn validate(matcher: &ApiMatcher) -> Result<(), String> {
+pub(super) fn validate(matcher: &MatcherSet) -> Result<(), String> {
     for call in &matcher.calls {
         validate_name_at(&call.name, "call name")?;
         call.provenance.validate_at("provenance")?;
@@ -29,7 +29,7 @@ pub(super) fn validate(matcher: &ApiMatcher) -> Result<(), String> {
         validate_chain(&read.chain, "member read chain")?;
         read.provenance.validate_at("module name")?;
     }
-    for value in matcher.imports.iter().chain(&matcher.string_literals) {
+    for value in matcher.imports.iter().chain(&matcher.string_contains) {
         if value.trim().is_empty() {
             return Err("literal matcher value must not be empty".into());
         }
@@ -37,7 +37,7 @@ pub(super) fn validate(matcher: &ApiMatcher) -> Result<(), String> {
     for class in &matcher.classes {
         validate_name_at(&class.name, "class name")?;
         class.provenance.validate_at("provenance")?;
-        if matches!(class.provenance, CallProvenance::Global) {
+        if matches!(class.provenance, SymbolProvenance::Global) {
             return Err("class provenance cannot be global".into());
         }
     }
@@ -302,7 +302,7 @@ fn validate_index_at(index: usize, field: &str) -> Result<(), String> {
         .ok_or_else(|| format!("{field} index {index} exceeds {MAX_ARGUMENT_INDEX}"))
 }
 
-impl CallProvenance {
+impl SymbolProvenance {
     /// Validate module provenance while preserving the caller's error path.
     fn validate_at(&self, path: &str) -> Result<(), String> {
         if let Self::ModuleExport { module } = self {

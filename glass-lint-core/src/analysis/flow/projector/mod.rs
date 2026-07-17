@@ -29,7 +29,7 @@ use super::{
     summary::FunctionSummaries,
 };
 use crate::api::{
-    classification::{ApiEvidence, ApiMatchKind},
+    classification::{ClassificationEvidence, MatchKind},
     compiler::{CompiledObjectFlow, CompiledObjectRequirement},
 };
 
@@ -41,7 +41,7 @@ pub(in crate::analysis) fn collect(
         &CompiledObjectFlow,
     )],
     rule_count: usize,
-) -> Vec<Vec<ApiEvidence>> {
+) -> Vec<Vec<ClassificationEvidence>> {
     collect_with_limits(stream, rules, rule_count, FlowLimits::default())
 }
 
@@ -54,7 +54,7 @@ pub(super) fn collect_with_limits(
     )],
     rule_count: usize,
     limits: FlowLimits,
-) -> Vec<Vec<ApiEvidence>> {
+) -> Vec<Vec<ClassificationEvidence>> {
     // Helpers are summarized before projection so a selected flow rule never
     // changes the canonical fact walk or requires another AST traversal.
     let flow_index = FlowIndex::new(rules);
@@ -320,7 +320,7 @@ mod tests {
         },
     };
 
-    fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<ApiEvidence>> {
+    fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<ClassificationEvidence>> {
         let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
         let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);

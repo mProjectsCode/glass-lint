@@ -11,7 +11,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// unlisted dialog method.
 pub fn rule() -> Rule {
     Rule::builder("electron.dialog")
-        .label("Uses Electron native dialogs")
+        .description("Uses Electron native dialogs")
         .category("electron/dialog")
         .severity(Severity::Info)
         .confidence(Confidence::High)

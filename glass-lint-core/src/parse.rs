@@ -43,8 +43,10 @@ pub enum SourceLanguage {
 }
 
 impl SourceLanguage {
-    /// Selects the parser language for a filename. Unknown names retain the
-    /// historical JavaScript fallback for virtual sources.
+    /// Selects the parser language for a filename. Unknown names use
+    /// JavaScript for virtual sources and paths without a recognized
+    /// extension; callers that know an extensionless source is TypeScript must
+    /// provide the language directly.
     #[must_use]
     pub fn from_filename(filename: &str) -> Self {
         Self::from_extension(Self::extension(filename)).unwrap_or(Self::JavaScript)

@@ -13,7 +13,7 @@ mod rules;
 
 #[must_use]
 /// Return metadata for every rule in the `js:` provider catalog.
-pub fn rule_catalog() -> Vec<RuleMetadata> {
+pub fn rule_metadata() -> Vec<RuleMetadata> {
     [
         js_catalog(),
         browser_catalog(),

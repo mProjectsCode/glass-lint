@@ -106,6 +106,15 @@ pub(in crate::analysis) enum ControlKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Semantic role of a class fact.
+pub(in crate::analysis) enum ClassFactRole {
+    /// Class declaration or named class expression.
+    Declaration,
+    /// Right-hand operand of an `instanceof` expression.
+    InstanceofOperand,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::analysis) enum FunctionBoundary {
     /// Entry marker emitted before the function body.
     Enter,
@@ -275,8 +284,9 @@ pub(in crate::analysis) enum FactPayload {
         kind: ControlKind,
         /// Region identity shared by all markers for one construct.
         region: ControlRegionId,
-        /// Reserved value slot; currently unknown for control events.
-        value: ValueId,
+        /// Returned value identity for `Return`; unknown for branch and loop
+        /// boundary markers.
+        return_value: ValueId,
     },
     /// `new Constructor()`.
     Construction {
@@ -294,8 +304,11 @@ pub(in crate::analysis) enum FactPayload {
     },
     /// Class declaration or expression, or `instanceof` operand.
     Class {
-        /// Authored class name, or empty for an `instanceof` operand marker.
-        name: String,
+        /// Authored class name for declaration facts; absent for an
+        /// `instanceof` operand.
+        name: Option<String>,
+        /// Role represented by this class fact.
+        role: ClassFactRole,
         /// Proven superclass/module identity, if available.
         provenance: Option<(String, String)>,
     },

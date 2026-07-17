@@ -1,7 +1,8 @@
 //! Semantic fact orchestration over one immutable stream.
 //!
-//! This module owns the matcher-independent boundary: the AST is traversed
-//! once to produce facts, occurrence indexes, and a module interface. Matcher
+//! This module owns the matcher-independent boundary: scope predeclaration is
+//! followed by one fact-building AST traversal that produces facts, occurrence
+//! indexes, and a module interface. Matcher
 //! selection is applied only by [`SemanticFacts::project`] after that shared
 //! state has been built.
 
@@ -13,8 +14,8 @@ use super::resolution::Resolver;
 use super::syntax::SymbolCallProvenance;
 #[cfg(test)]
 use super::value::{FunctionId, ValueId};
-use super::{flow::projector as object_flow, matching::MatcherFacts, module::ModuleInterface};
-use crate::api::compiler::CompiledMatcherCatalog;
+use super::{flow::projector as object_flow, matching::OccurrenceIndexes, module::ModuleInterface};
+use crate::api::compiler::CompiledRuleSelection;
 
 pub mod build;
 mod model;
@@ -32,7 +33,7 @@ pub(in crate::analysis) use stream::FactStream;
 /// but indexing and projection fail closed rather than consuming partial facts.
 pub(in crate::analysis) struct SemanticFacts {
     stream: FactStream,
-    index: MatcherFacts,
+    index: OccurrenceIndexes,
     interface: ModuleInterface,
 }
 
@@ -43,7 +44,7 @@ impl SemanticFacts {
         interface: ModuleInterface,
     ) -> Self {
         // Project the fact stream into rule-independent occurrence indexes.
-        let mut index = MatcherFacts::default();
+        let mut index = OccurrenceIndexes::default();
         if stream.is_valid() {
             index.build_from_stream(&stream);
             index.normalize_occurrences();
@@ -66,7 +67,7 @@ impl SemanticFacts {
     }
 
     /// Clone the rule-independent occurrence indexes for local or project use.
-    pub(in crate::analysis) fn cloned_matcher_facts(&self) -> MatcherFacts {
+    pub(in crate::analysis) fn cloned_matcher_facts(&self) -> OccurrenceIndexes {
         self.index.clone()
     }
 
@@ -78,7 +79,7 @@ impl SemanticFacts {
     /// Projects constrained-clause and flow evidence after linking.
     pub(in crate::analysis) fn project(
         &self,
-        matchers: &CompiledMatcherCatalog<'_>,
+        matchers: &CompiledRuleSelection<'_>,
         identities: Option<&super::matching::ModuleIdentityMap>,
         result_identities: Option<
             &std::collections::BTreeMap<
@@ -86,7 +87,7 @@ impl SemanticFacts {
                 super::matching::LinkedModuleIdentity,
             >,
         >,
-    ) -> Vec<Vec<crate::api::classification::ApiEvidence>> {
+    ) -> Vec<Vec<crate::api::classification::ClassificationEvidence>> {
         let constrained_clauses = matchers
             .selected_matchers()
             .flat_map(|(rule_index, matcher)| {
@@ -115,7 +116,7 @@ impl SemanticFacts {
         if !self.stream.is_valid() {
             return projected_evidence;
         }
-        MatcherFacts::compute_constrained_evidence_from_stream_with_overlay(
+        OccurrenceIndexes::compute_constrained_evidence_from_stream_with_overlay(
             &self.stream,
             &constrained_clauses,
             &mut projected_evidence,
@@ -138,7 +139,7 @@ mod tests {
     use super::*;
     use crate::{
         ByteRange,
-        api::{compiler::CompiledMatcherPlan, rule::ApiMatcher},
+        api::{compiler::CompiledMatcherPlan, rule::MatcherSet},
     };
 
     fn test_fact(id: u32, kind: FactKind, span: ByteRange) -> SemanticFact {
@@ -183,7 +184,7 @@ mod tests {
                 FactKind::Control => FactPayload::Control {
                     kind: ControlKind::BranchStart,
                     region: ControlRegionId(0),
-                    value: ValueId::UNKNOWN,
+                    return_value: ValueId::UNKNOWN,
                 },
                 _ => FactPayload::Declaration {
                     target: ValueId::UNKNOWN,
@@ -255,10 +256,10 @@ mod tests {
         let source = "fetch('/api'); document.createElement('script');";
         let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
         let first =
-            ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
+            MatcherSet::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
                 .normalized();
-        let second = ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::member_call(
-            crate::api::rule::MemberCallMatcher::syntactic_heuristic("document.createElement"),
+        let second = MatcherSet::from_matchers(vec![crate::api::rule::Matcher::from(
+            crate::api::rule::MemberCallMatcher::heuristic("document.createElement"),
         )])
         .normalized();
         let first = CompiledMatcherPlan::compile(&first);
@@ -307,7 +308,7 @@ mod tests {
         let mut builder = FactBuilder::new(&resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
         let stream = builder.into_stream();
-        let mut index = MatcherFacts::default();
+        let mut index = OccurrenceIndexes::default();
         index.build_from_stream(&stream);
         index.normalize_occurrences();
 
@@ -352,7 +353,7 @@ mod tests {
         let mut builder = FactBuilder::new(&resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
         let stream = builder.into_stream();
-        let mut index = MatcherFacts::default();
+        let mut index = OccurrenceIndexes::default();
         index.build_from_stream(&stream);
         index.normalize_occurrences();
 

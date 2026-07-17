@@ -9,12 +9,12 @@ use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Sever
 /// excluded.
 pub fn rule() -> Rule {
     Rule::builder("metadata.traversal")
-        .label("Traverses metadata cache maps")
+        .description("Traverses metadata cache maps")
         .category("metadata")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .matcher(Matcher::member_call(
-            MemberCallMatcher::syntactic_heuristic("Object.entries").arg_rooted_exprs(
+        .matcher(Matcher::from(
+            MemberCallMatcher::heuristic("Object.entries").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
@@ -22,8 +22,8 @@ pub fn rule() -> Rule {
                 ],
             ),
         ))
-        .matcher(Matcher::member_call(
-            MemberCallMatcher::syntactic_heuristic("Object.keys").arg_rooted_exprs(
+        .matcher(Matcher::from(
+            MemberCallMatcher::heuristic("Object.keys").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
@@ -31,8 +31,8 @@ pub fn rule() -> Rule {
                 ],
             ),
         ))
-        .matcher(Matcher::member_call(
-            MemberCallMatcher::syntactic_heuristic("Object.values").arg_rooted_exprs(
+        .matcher(Matcher::from(
+            MemberCallMatcher::heuristic("Object.values").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",

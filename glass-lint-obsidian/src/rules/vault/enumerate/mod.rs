@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// and lexical shadowing, but does not analyze arguments or other vault APIs.
 pub fn rule() -> Rule {
     Rule::builder("vault.enumerate")
-        .label("Enumerates vault files")
+        .description("Enumerates vault files")
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)

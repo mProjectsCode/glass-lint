@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// methods or other URL-like constructors are outside this rule.
 pub fn rule() -> Rule {
     Rule::builder("network.url-construction")
-        .label("Constructs or references URLs")
+        .description("Constructs or references URLs")
         .category("language/network")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

@@ -11,30 +11,30 @@ use glass_lint_core::AnalysisReport;
 use crate::types::SuiteReport;
 
 #[must_use]
-pub fn summary(report: &SuiteReport) -> String {
+pub fn render_suite_summary(report: &SuiteReport) -> String {
     let cases = report.cases.len();
     let tool_runs = report
         .cases
         .iter()
-        .flat_map(|case| case.tools.values())
+        .flat_map(|case| case.adapters.values())
         .filter(|tool| !tool.skipped)
         .count();
     let skipped = report
         .cases
         .iter()
-        .flat_map(|case| case.tools.values())
+        .flat_map(|case| case.adapters.values())
         .filter(|tool| tool.skipped)
         .count();
     let failed = report
         .cases
         .iter()
-        .flat_map(|case| case.tools.values())
+        .flat_map(|case| case.adapters.values())
         .filter(|tool| !tool.passed)
         .count();
     let findings = report
         .cases
         .iter()
-        .flat_map(|case| case.tools.values())
+        .flat_map(|case| case.adapters.values())
         .map(|tool| tool.findings.len())
         .sum::<usize>();
     let passed = tool_runs.saturating_sub(failed);
@@ -45,10 +45,10 @@ pub fn summary(report: &SuiteReport) -> String {
 }
 
 #[must_use]
-pub fn failure_details(report: &SuiteReport) -> String {
+pub fn render_suite_failures(report: &SuiteReport) -> String {
     let mut out = String::new();
     for case in &report.cases {
-        for (tool, result) in &case.tools {
+        for (tool, result) in &case.adapters {
             if result.passed {
                 continue;
             }
@@ -56,12 +56,12 @@ pub fn failure_details(report: &SuiteReport) -> String {
                 "\n{} [{}] failed with {} lint error(s), {} operational error(s), and {} finding(s)\n",
                 case.id,
                 tool,
-                result.errors.len(),
+                result.mismatches.len(),
                 result.operational_errors.len(),
                 result.findings.len()
             ));
-            for error in &result.errors {
-                out.push_str(&format!("  lint error: {error}\n"));
+            for mismatch in &result.mismatches {
+                out.push_str(&format!("  finding mismatch: {mismatch}\n"));
             }
             for error in &result.operational_errors {
                 out.push_str(&format!("  operational error: {error}\n"));
@@ -82,12 +82,12 @@ pub fn failure_details(report: &SuiteReport) -> String {
 }
 
 #[must_use]
-pub fn markdown(report: &SuiteReport) -> String {
+pub fn render_suite_markdown(report: &SuiteReport) -> String {
     let mut out = String::from(
         "# Glass Lint conformance report\n\n| Case | Tool | Result | Findings |\n|---|---|---:|---:|\n",
     );
     for case in &report.cases {
-        for (name, result) in &case.tools {
+        for (name, result) in &case.adapters {
             out.push_str(&format!(
                 "| {} | {} {} | {} | {} |\n",
                 case.id,
@@ -107,17 +107,17 @@ pub fn markdown(report: &SuiteReport) -> String {
     for case in report
         .cases
         .iter()
-        .filter(|case| case.tools.values().any(|tool| !tool.passed))
+        .filter(|case| case.adapters.values().any(|tool| !tool.passed))
     {
         out.push_str(&format!(
             "\n## {}\n\n```js\n{}\n```\n",
             case.id, case.source
         ));
-        for (tool, result) in &case.tools {
+        for (tool, result) in &case.adapters {
             if let Some(reason) = &result.skip_reason {
                 out.push_str(&format!("- `{tool}` skipped: {reason}\n"));
             }
-            for error in &result.errors {
+            for error in &result.mismatches {
                 out.push_str(&format!("- `{tool}` lint mismatch: {error}\n"));
             }
             for error in &result.operational_errors {
@@ -129,21 +129,21 @@ pub fn markdown(report: &SuiteReport) -> String {
 }
 
 #[must_use]
-pub fn comparison(report: &SuiteReport) -> String {
+pub fn render_adapter_comparison(report: &SuiteReport) -> String {
     let tool_names: Vec<String> = report
         .cases
         .iter()
-        .flat_map(|case| case.tools.keys())
+        .flat_map(|case| case.adapters.keys())
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .cloned()
         .collect();
 
     let mut out = String::from(
-        "# Glass Lint and ESLint comparison\n\n\
-         This generated report compares findings on the end-to-end fixture suite.\n\
-         The tools have different rule catalogs, so counts are descriptive rather\n\
-         than precision or recall scores. Run `make compare` to regenerate it.\n\n",
+        "# Adapter render_adapter_comparison\n\n\
+         This generated report compares findings from the configured adapters\n\
+         on the loaded suite. Adapter catalogs differ, so counts are descriptive\n\
+         rather than precision or recall scores.\n\n",
     );
 
     out.push_str(&format!(
@@ -160,7 +160,7 @@ pub fn comparison(report: &SuiteReport) -> String {
         let counts: Vec<String> = tool_names
             .iter()
             .map(|name| {
-                case.tools.get(name).map_or_else(
+                case.adapters.get(name).map_or_else(
                     || "-".into(),
                     |r| {
                         if r.skipped {
@@ -182,18 +182,18 @@ pub fn comparison(report: &SuiteReport) -> String {
     }
 
     for case in &report.cases {
-        let has_findings = case
-            .tools
+        let has_details = case
+            .adapters
             .values()
             .any(|r| !r.skipped && (!r.findings.is_empty() || !r.operational_errors.is_empty()));
-        if !has_findings {
+        if !has_details {
             continue;
         }
         out.push_str(&format!(
             "\n## {}\n\n{}\n\n```js\n{}\n```\n",
             case.id, case.description, case.source
         ));
-        for (tool, result) in &case.tools {
+        for (tool, result) in &case.adapters {
             if result.skipped {
                 out.push_str(&format!("\n### {tool} (skipped)\n"));
                 if let Some(reason) = &result.skip_reason {
@@ -230,6 +230,6 @@ pub fn comparison(report: &SuiteReport) -> String {
     out
 }
 
-pub fn report_json(report: &AnalysisReport) -> Result<String> {
+pub fn serialize_analysis_report(report: &AnalysisReport) -> Result<String> {
     Ok(serde_json::to_string_pretty(report)?)
 }

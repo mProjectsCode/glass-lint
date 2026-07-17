@@ -7,7 +7,7 @@ use std::{
 };
 
 use glass_lint_core::{
-    AnalysisReport, Linter, ResolutionRequest, ResolutionRequestKind, ResolutionResult,
+    AnalysisReport, Linter, ResolutionRequest, ResolutionRequestKind, ResolverOutcome,
 };
 
 use crate::{
@@ -26,18 +26,21 @@ pub struct ProjectLoader {
 /// Result of a project load that may contain deterministic partial output.
 #[derive(Debug)]
 pub struct ProjectLoadOutcome {
-    /// Completed or partial report. Timeout outcomes never contain one.
+    /// Completed or partial report. Timeout outcomes are returned as `Err` and
+    /// never contain one.
     pub report: AnalysisReport,
-    /// Deterministic boundary that caused the partial report.
-    pub error: Option<ProjectLoadError>,
+    /// Recoverable boundary error that caused the partial report. Fatal
+    /// errors, including timeout, are returned through the outer `Result`.
+    pub partial_reason: Option<ProjectLoadError>,
     /// Phase timings and deterministic counters for this load.
     pub metrics: ProjectLoadMetrics,
 }
 
-/// Bounded construction counters and phase timings for profiling. The
+/// Bounded construction counters and phase timings for profiling.
 ///
-/// timings intentionally stop at the core boundary; matcher work is included
-/// in `linking_and_matching` because core owns the completed project pass.
+/// Loader-owned discovery, reads, parsing, and resolution are separated from
+/// core-reported linking/matching phases; `total` covers the complete load
+/// operation.
 #[derive(Clone, Debug, Default)]
 pub struct ProjectLoadMetrics {
     /// Time spent selecting and discovering files.
@@ -88,7 +91,7 @@ impl std::ops::AddAssign for ProjectLoadMetrics {
 }
 
 impl ProjectLoader {
-    /// Validate options and construct a reusable filesystem loader.
+    /// Construct a reusable filesystem loader from validated options.
     pub fn new(options: ValidatedProjectLoadOptions) -> Self {
         Self { options }
     }
@@ -123,18 +126,19 @@ impl ProjectLoader {
         let paths = ProjectPaths::from_selection(&self.options, selection, deadline)?;
         metrics.discovery += discovery_start.elapsed();
 
-        let mut build = ProjectBuild::new(linter, &self.options, paths.root, selection, deadline)?;
+        let mut build =
+            ProjectLoadState::new(linter, &self.options, paths.root, selection, deadline)?;
         build.add_initial_paths(paths.initial_paths);
         match build.load_all(metrics) {
             Ok(()) => Ok(ProjectLoadOutcome {
                 report: build.finish(metrics)?,
-                error: None,
+                partial_reason: None,
                 metrics: ProjectLoadMetrics::default(),
             }),
             Err(ProjectLoadError::Timeout) => Err(ProjectLoadError::Timeout),
             Err(error) => Ok(ProjectLoadOutcome {
                 report: build.finish_partial(metrics, &error)?,
-                error: Some(error),
+                partial_reason: Some(error),
                 metrics: ProjectLoadMetrics::default(),
             }),
         }
@@ -206,13 +210,13 @@ impl AdmissionSet {
 }
 
 #[derive(Debug, Default)]
-struct ResolutionCache(BTreeMap<(String, ResolutionRequestKind, String), ResolutionResult>);
+struct ResolutionCache(BTreeMap<(String, ResolutionRequestKind, String), ResolverOutcome>);
 impl ResolutionCache {
-    fn get(&self, key: &(String, ResolutionRequestKind, String)) -> Option<&ResolutionResult> {
+    fn get(&self, key: &(String, ResolutionRequestKind, String)) -> Option<&ResolverOutcome> {
         self.0.get(key)
     }
 
-    fn insert(&mut self, key: (String, ResolutionRequestKind, String), result: ResolutionResult) {
+    fn insert(&mut self, key: (String, ResolutionRequestKind, String), result: ResolverOutcome) {
         self.0.insert(key, result);
     }
 }
@@ -243,7 +247,7 @@ impl LoadCounters {
 
 /// Mutable state for one project construction. Keeping the queue, cache, and
 /// counters together makes the main loading phases explicit and auditable.
-struct ProjectBuild<'a> {
+struct ProjectLoadState<'a> {
     session: glass_lint_core::AnalysisSession<'a>,
     discovery: ProjectDiscovery<'a>,
     resolver: ProjectResolver,
@@ -255,7 +259,7 @@ struct ProjectBuild<'a> {
     deadline: Instant,
 }
 
-impl<'a> ProjectBuild<'a> {
+impl<'a> ProjectLoadState<'a> {
     fn new(
         linter: &'a Linter,
         options: &'a ProjectLoadOptions,
@@ -365,10 +369,10 @@ impl<'a> ProjectBuild<'a> {
 
     fn enqueue_internal_target(
         &mut self,
-        result: &ResolutionResult,
+        result: &ResolverOutcome,
         metrics: &mut ProjectLoadMetrics,
     ) {
-        if let ResolutionResult::Internal { path } = result {
+        if let ResolverOutcome::Internal { path } = result {
             self.counters.record_edge();
             metrics.edges = self.counters.edges;
             let target = self.root.join(path);
@@ -378,7 +382,10 @@ impl<'a> ProjectBuild<'a> {
                     &target,
                     &self.discovery.options().excluded_directories,
                 )
-                && crate::discovery::supported_path(&target, &self.discovery.options().extensions)
+                && crate::discovery::is_supported_runtime_source(
+                    &target,
+                    &self.discovery.options().extensions,
+                )
             {
                 self.queue.push(target);
             }
@@ -419,7 +426,7 @@ impl<'a> ProjectBuild<'a> {
         report
             .diagnostics
             .push(glass_lint_core::Diagnostic::Project(
-                glass_lint_core::ProjectDiagnostic {
+                glass_lint_core::AnalysisDiagnostic {
                     code,
                     message: error.to_string(),
                     location: None,
@@ -439,7 +446,7 @@ fn project_root(
     }
     match selection {
         ProjectSelection::Directory(_) => path.to_path_buf(),
-        ProjectSelection::Entry(_) | ProjectSelection::TsConfig(_) => {
+        ProjectSelection::Entry(_) | ProjectSelection::Tsconfig(_) => {
             path.parent().unwrap_or(path).to_path_buf()
         }
     }

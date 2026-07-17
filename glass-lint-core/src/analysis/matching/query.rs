@@ -1,13 +1,18 @@
 //! Compositional ordinary-clause execution over semantic occurrence indexes.
 
-use super::{ApiEvidence, MatcherFacts, ModuleExportKey, Occurrence, push_owned_evidence};
+use super::{
+    ClassificationEvidence, ModuleExportKey, Occurrence, OccurrenceIndexes, push_owned_evidence,
+};
 use crate::api::compiler::rule::{
     EventPredicate, IdentityConstraint, QueryClause, QueryPlan, SubjectConstraint,
 };
 
-impl MatcherFacts {
+impl OccurrenceIndexes {
     /// Execute every ordinary clause through the shared event indexes.
-    pub(in crate::analysis) fn evidence_for(&self, plan: &QueryPlan) -> Vec<ApiEvidence> {
+    pub(in crate::analysis) fn evidence_for(
+        &self,
+        plan: &QueryPlan,
+    ) -> Vec<ClassificationEvidence> {
         let mut evidence = Vec::new();
         for clause in plan.clauses() {
             if !clause.constraints.is_empty() {
@@ -160,38 +165,38 @@ impl MatcherFacts {
     #[cfg(test)]
     pub(super) fn record(
         &mut self,
-        kind: crate::api::classification::ApiMatchKind,
+        kind: crate::api::classification::MatchKind,
         symbol: impl Into<String>,
         span: crate::ByteRange,
     ) {
         use crate::analysis::facts::FactId;
         let symbol = symbol.into();
         match kind {
-            crate::api::classification::ApiMatchKind::Call => {
+            crate::api::classification::MatchKind::Call => {
                 self.call_indexes.calls.push(symbol, FactId(u32::MAX), span);
             }
-            crate::api::classification::ApiMatchKind::MemberCall => {
+            crate::api::classification::MatchKind::MemberCall => {
                 self.members.calls.push(symbol, FactId(u32::MAX), span);
             }
-            crate::api::classification::ApiMatchKind::MemberRead => {
+            crate::api::classification::MatchKind::MemberRead => {
                 self.members.reads.push(symbol, FactId(u32::MAX), span);
             }
-            crate::api::classification::ApiMatchKind::Import => {
+            crate::api::classification::MatchKind::Import => {
                 self.literals.imports.push(symbol, FactId(u32::MAX), span);
             }
-            crate::api::classification::ApiMatchKind::StringLiteral => {
+            crate::api::classification::MatchKind::StringContains => {
                 self.literals.strings.push(symbol, FactId(u32::MAX), span);
             }
-            crate::api::classification::ApiMatchKind::Class => {
+            crate::api::classification::MatchKind::Class => {
                 self.constructions
                     .classes
                     .push(symbol, FactId(u32::MAX), span);
             }
-            crate::api::classification::ApiMatchKind::Constructor => self
+            crate::api::classification::MatchKind::Constructor => self
                 .constructions
                 .constructors
                 .push(symbol, FactId(u32::MAX), span),
-            crate::api::classification::ApiMatchKind::CallArgument => {}
+            crate::api::classification::MatchKind::CallArgument => {}
         }
     }
 }

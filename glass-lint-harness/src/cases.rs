@@ -17,7 +17,7 @@ use walkdir::WalkDir;
 
 use crate::types::{
     AdapterFile, AdapterResolution, AdapterResolutionKind, AdapterResolutionResult, Case,
-    DiagnosticExpectation, ProjectCase, ToolExpectation,
+    FindingExpectation, ProjectCase, ToolExpectation,
 };
 
 fn language_for_path(path: &Path) -> &'static str {
@@ -303,7 +303,7 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
             resolutions,
             filesystem: metadata.filesystem,
         }),
-        tools,
+        adapters: tools,
     })
 }
 
@@ -348,7 +348,7 @@ fn load_project_tools(
     }
     for file in files {
         let parsed = parse_case(directory, &directory.join(&file.path), file.source.clone())?;
-        for (name, expectation) in parsed.tools {
+        for (name, expectation) in parsed.adapters {
             let entry = tools.entry(name).or_insert_with(|| ToolExpectation {
                 config: None,
                 rules: Vec::new(),
@@ -443,7 +443,7 @@ fn parse_tool_directive(case: &mut Case, rest: &str) -> Result<()> {
     }
     let expectation = ToolExpectation::new(config, rules)
         .map_err(|error| anyhow::anyhow!("@tool {name}: {error}"))?;
-    case.tools.insert(name.into(), expectation);
+    case.adapters.insert(name.into(), expectation);
     Ok(())
 }
 
@@ -452,7 +452,7 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
         .split_once(' ')
         .with_context(|| format!("invalid @expect-error directive `{rest}`"))?;
     let expectation = case
-        .tools
+        .adapters
         .get_mut(tool)
         .with_context(|| format!("@expect-error references unconfigured tool `{tool}`"))?;
     let mut rule_id = None;
@@ -474,7 +474,7 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
             _ => bail!("unknown @expect-error field `{key}`"),
         }
     }
-    let mut diagnostic = DiagnosticExpectation::new(
+    let mut diagnostic = FindingExpectation::new(
         rule_id.with_context(|| format!("@expect-error for {tool} must specify rule="))?,
     )
     .map_err(|error| anyhow::anyhow!(error))?;
@@ -549,7 +549,7 @@ globalThis.setTimeout('run()', 10);
         .unwrap();
         assert_eq!(case.id, "system/timer");
         assert_eq!(case.description, "Dynamic code");
-        assert_eq!(case.tools["glass-lint"].required[0].line, Some(4));
+        assert_eq!(case.adapters["glass-lint"].required[0].line, Some(4));
     }
 
     #[test]
@@ -566,8 +566,8 @@ function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=j
         )
         .unwrap();
 
-        assert_eq!(case.tools["glass-lint"].forbidden.len(), 1);
-        assert_eq!(case.tools["glass-lint"].forbidden[0].line, Some(3));
+        assert_eq!(case.adapters["glass-lint"].forbidden.len(), 1);
+        assert_eq!(case.adapters["glass-lint"].forbidden[0].line, Some(3));
     }
 
     #[test]

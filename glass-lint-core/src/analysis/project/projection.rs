@@ -9,17 +9,17 @@ use std::collections::BTreeMap;
 use super::super::{ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow};
 use crate::{
     analysis::{
-        matching::MatcherFacts,
+        matching::OccurrenceIndexes,
         status::{AnalysisComponent, IncompleteReason},
     },
-    api::{classification::ApiEvidence, compiler::CompiledMatcherCatalog},
+    api::{classification::ClassificationEvidence, compiler::CompiledRuleSelection},
 };
 
 #[derive(Debug)]
 /// Matcher-independent facts and cross-file evidence for one linked project.
 pub struct ProjectMatcherModel<'matchers> {
     /// The immutable catalog used to select and query rules.
-    matchers: CompiledMatcherCatalog<'matchers>,
+    matchers: CompiledRuleSelection<'matchers>,
     /// Per-module local indexes plus projected constrained/flow evidence.
     projections: BTreeMap<ModuleId, ProjectModuleProjection>,
 }
@@ -28,9 +28,9 @@ pub struct ProjectMatcherModel<'matchers> {
 /// Materialized matcher inputs for one project module.
 struct ProjectModuleProjection {
     /// Local occurrences after applying imported/namespace identities.
-    index: MatcherFacts,
+    index: OccurrenceIndexes,
     /// Direct constrained and cross-module flow evidence by rule index.
-    projected: Vec<Vec<ApiEvidence>>,
+    projected: Vec<Vec<ClassificationEvidence>>,
 }
 
 impl ProjectSemanticModel {
@@ -38,7 +38,7 @@ impl ProjectSemanticModel {
     /// any source AST.
     pub fn project<'matchers>(
         &self,
-        matchers: CompiledMatcherCatalog<'matchers>,
+        matchers: CompiledRuleSelection<'matchers>,
     ) -> ProjectMatcherModel<'matchers> {
         let projections: BTreeMap<ModuleId, ProjectModuleProjection> = self
             .modules
@@ -96,7 +96,7 @@ impl ProjectMatcherModel<'_> {
         module: &ProjectModule,
         rule_index: crate::api::classification::RuleIndex,
         evidence_limit: usize,
-    ) -> Vec<ApiEvidence> {
+    ) -> Vec<ClassificationEvidence> {
         if !self.matchers.is_selected(rule_index) {
             return Vec::new();
         }

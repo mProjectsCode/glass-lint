@@ -5,7 +5,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// Detects plugin-manager and returned-plugin load/unload operations.
 pub fn rule() -> Rule {
     Rule::builder("plugins.load-unload")
-        .label("Loads or unloads plugins at runtime")
+        .description("Loads or unloads plugins at runtime")
         .category("plugins")
         .severity(Severity::Warning)
         .confidence(Confidence::High)

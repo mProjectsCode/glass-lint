@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// lookalikes, and call arguments are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("workspace.layout")
-        .label("Reads or writes workspace layout")
+        .description("Reads or writes workspace layout")
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// call arguments are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("workspace.leaf-management")
-        .label("Manages workspace leaves")
+        .description("Manages workspace leaves")
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)

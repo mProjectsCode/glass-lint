@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// dynamic properties, and unlisted flags are excluded.
 pub fn rule() -> Rule {
     Rule::builder("platform.branching")
-        .label("Checks Obsidian platform flags")
+        .description("Checks Obsidian platform flags")
         .category("platform")
         .severity(Severity::Info)
         .confidence(Confidence::High)

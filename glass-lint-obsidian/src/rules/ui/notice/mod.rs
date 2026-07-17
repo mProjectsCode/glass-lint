@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("ui.notice")
-        .label("Uses Obsidian notices")
+        .description("Uses Obsidian notices")
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)

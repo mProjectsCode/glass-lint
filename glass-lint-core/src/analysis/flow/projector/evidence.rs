@@ -7,10 +7,10 @@
 use std::collections::BTreeSet;
 
 use super::{
-    ApiEvidence, ApiMatchKind, CallArgInfo, CompiledObjectFlow, FactId, FlowId, FlowState,
+    CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowId, FlowState, MatchKind,
     ObjectFlowProjector, ObjectId, ValueId,
 };
-use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArgs};
+use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments};
 
 impl ObjectFlowProjector<'_, '_> {
     /// Apply member-call requirements to live object states.
@@ -94,8 +94,8 @@ impl ObjectFlowProjector<'_, '_> {
                     sink.member_calls.iter().any(|member| member == chain)
                         && sink.provenance.matches_rooted(rooted)
                         && match &sink.args {
-                            CompiledObjectSinkArgs::Any => true,
-                            CompiledObjectSinkArgs::Indices(indices) => {
+                            CompiledObjectSinkArguments::Any => true,
+                            CompiledObjectSinkArguments::Indices(indices) => {
                                 indices.contains(&argument_index)
                             }
                         }
@@ -189,15 +189,17 @@ impl ObjectFlowProjector<'_, '_> {
             let anchor = match_fact;
             self.flow_evidence.record(
                 state.flow_id().rule_index().get(),
-                ApiEvidence {
-                    kind: ApiMatchKind::CallArgument,
+                ClassificationEvidence {
+                    kind: MatchKind::CallArgument,
                     symbol: flow.evidence_symbol(),
                     count: 1,
                     evidence_truncated: false,
-                    occurrences: vec![crate::api::classification::ApiEvidenceOccurrence {
-                        span: self.fact_spans.get(&anchor).copied().unwrap_or_default(),
-                        fact: Some(anchor.0),
-                    }],
+                    occurrences: vec![
+                        crate::api::classification::ClassificationEvidenceOccurrence {
+                            span: self.fact_spans.get(&anchor).copied().unwrap_or_default(),
+                            fact: Some(anchor.0),
+                        },
+                    ],
                     related: Vec::new(),
                 },
             );

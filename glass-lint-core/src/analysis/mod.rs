@@ -16,8 +16,8 @@ use std::{
 use project::state::{ExportTable, ModuleGraph};
 
 use crate::project::{
-    ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey, ResolutionResult,
-    ResolvedModule,
+    LinkedModuleTarget, ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey,
+    ResolverOutcome,
 };
 
 mod evidence;
@@ -35,8 +35,8 @@ mod syntax;
 mod value;
 
 pub use local::{
-    ArtifactCacheHandle, ArtifactFingerprint, CachedArtifact, LocalArtifact, ProjectModule,
-    SemanticArtifact, SourceContext,
+    ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, ProjectModule,
+    SemanticArtifact, SharedSemanticArtifact,
 };
 pub use lowering::{LoweredSource, lower_artifact, lower_source};
 use status::AnalysisStatus;
@@ -54,7 +54,7 @@ pub struct ProjectSemanticModel {
     /// Locally analyzed modules keyed by stable module ID.
     modules: BTreeMap<ModuleId, ProjectModule>,
     /// Authored request resolutions keyed by importer/span/kind.
-    resolutions: BTreeMap<ResolutionRequestKey, ResolvedModule>,
+    resolutions: BTreeMap<ResolutionRequestKey, LinkedModuleTarget>,
     /// Fixed-point export identities for linked modules.
     exports: ExportTable,
     /// Internal module graph and strongly connected components.
@@ -62,7 +62,7 @@ pub struct ProjectSemanticModel {
     /// Number of export-linking refinement rounds.
     link_rounds: usize,
     /// Project diagnostics accumulated during linking and budgets.
-    diagnostics: Vec<crate::ProjectDiagnostic>,
+    diagnostics: Vec<crate::AnalysisDiagnostic>,
     status: std::cell::RefCell<AnalysisStatus>,
     /// Budget used by cross-module flow projection.
     flow_budget: crate::budget::BudgetTracker,
@@ -92,7 +92,7 @@ enum ExportResolution {
 
 struct ValidatedLinkInput {
     modules: BTreeMap<ModuleId, ProjectModule>,
-    resolutions: BTreeMap<ResolutionRequestKey, ResolvedModule>,
+    resolutions: BTreeMap<ResolutionRequestKey, LinkedModuleTarget>,
 }
 
 impl ValidatedLinkInput {
@@ -156,21 +156,21 @@ impl ValidatedLinkInput {
 
 fn resolve_record(
     key: ResolutionRequestKey,
-    result: ResolutionResult,
+    result: ResolverOutcome,
     ids: &BTreeMap<crate::ProjectRelativePath, ModuleId>,
-) -> Result<(ResolutionRequestKey, ResolvedModule), ProjectInputError> {
+) -> Result<(ResolutionRequestKey, LinkedModuleTarget), ProjectInputError> {
     let resolved = match result {
-        ResolutionResult::Internal { path } => {
+        ResolverOutcome::Internal { path } => {
             let Some(id) = ids.get(&path).copied() else {
                 return Err(ProjectInputError::InvalidTarget(path.to_string()));
             };
-            ResolvedModule::Internal { id, path }
+            LinkedModuleTarget::Internal { id, path }
         }
-        ResolutionResult::External { package } => ResolvedModule::External { package },
-        ResolutionResult::Builtin { name } => ResolvedModule::Builtin { name },
-        ResolutionResult::Missing => ResolvedModule::Missing,
-        ResolutionResult::OutsideProject { path } => ResolvedModule::OutsideProject { path },
-        ResolutionResult::Unsupported { reason } => ResolvedModule::Unsupported { reason },
+        ResolverOutcome::External { package } => LinkedModuleTarget::External { package },
+        ResolverOutcome::Builtin { name } => LinkedModuleTarget::Builtin { name },
+        ResolverOutcome::Missing => LinkedModuleTarget::Missing,
+        ResolverOutcome::OutsideProject { path } => LinkedModuleTarget::OutsideProject { path },
+        ResolverOutcome::Unsupported { reason } => LinkedModuleTarget::Unsupported { reason },
     };
     Ok((key, resolved))
 }
@@ -178,14 +178,18 @@ fn resolve_record(
 impl ProjectSemanticModel {
     /// Create a project model for one already analyzed source without linking.
     #[cfg(test)]
-    pub fn single(path: impl Into<String>, source: SourceContext, local: LocalArtifact) -> Self {
+    pub fn single(
+        path: impl Into<String>,
+        source: LocatedSourceContext,
+        local: LocalArtifact,
+    ) -> Self {
         Self::single_with_limits(path, source, local, &crate::AnalysisLimits::default())
     }
 
     #[cfg(test)]
     fn single_with_limits(
         _path: impl Into<String>,
-        _source: SourceContext,
+        _source: LocatedSourceContext,
         local: LocalArtifact,
         limits: &crate::AnalysisLimits,
     ) -> Self {
@@ -313,7 +317,7 @@ impl ProjectSemanticModel {
             .facts()
             .stream()
             .fact(crate::analysis::facts::FactId(fact))?;
-        let range = module.source().range(fact.span).ok()?;
+        let range = module.source_context().range(fact.span).ok()?;
         Some(crate::Evidence {
             message: "related semantic path event".into(),
             count: 1,
@@ -361,7 +365,7 @@ impl ProjectSemanticModel {
     }
 
     /// Borrow diagnostics produced during project linking and analysis.
-    pub fn diagnostics(&self) -> &[crate::ProjectDiagnostic] {
+    pub fn diagnostics(&self) -> &[crate::AnalysisDiagnostic] {
         &self.diagnostics
     }
 
@@ -374,9 +378,9 @@ impl ProjectSemanticModel {
     ) -> (
         Vec<(
             crate::project::ProjectRelativePath,
-            crate::ProjectDiagnostic,
+            crate::AnalysisDiagnostic,
         )>,
-        Vec<crate::ProjectDiagnostic>,
+        Vec<crate::AnalysisDiagnostic>,
     ) {
         self.status.borrow().diagnostics()
     }
@@ -406,8 +410,8 @@ impl ProjectSemanticModel {
     }
 
     /// Return deterministic phase and evidence operation counts.
-    pub fn operation_counts(&self, evidence: usize) -> crate::OperationCounts {
-        crate::OperationCounts {
+    pub fn operation_counts(&self, evidence: usize) -> crate::AnalysisOperationCounts {
+        crate::AnalysisOperationCounts {
             files: self.modules.len(),
             requests: self
                 .modules
@@ -426,8 +430,8 @@ impl ProjectSemanticModel {
     pub fn authored_requests(module: &ProjectModule) -> Vec<crate::ResolutionRequest> {
         module.local().interface().authored_requests(
             module.path(),
-            &module.source().lines,
-            &module.source().text,
+            &module.source_context().lines,
+            &module.source_context().text,
         )
     }
 
@@ -437,11 +441,11 @@ impl ProjectSemanticModel {
         rules: &[crate::api::rule::Rule],
         selected: &[crate::api::classification::RuleIndex],
         evidence_limit: usize,
-    ) -> BTreeMap<ModuleId, crate::api::classification::ApiClassificationResult> {
+    ) -> BTreeMap<ModuleId, crate::api::classification::ClassificationResult> {
         let matcher_catalog = self.project(catalog.to_matcher_catalog(selected));
         self.modules()
             .map(|module| {
-                let mut result = crate::api::classification::ApiClassificationResult::default();
+                let mut result = crate::api::classification::ClassificationResult::default();
                 for rule_index in selected {
                     let index = rule_index.get();
                     if rules.get(index).is_none() {
@@ -457,10 +461,10 @@ impl ProjectSemanticModel {
                     }
                     result
                         .capabilities
-                        .push(crate::api::classification::ApiCapability {
+                        .push(crate::api::classification::MatchedCapability {
                             rule_index: *rule_index,
                             id: rule.id().to_string(),
-                            label: rule.label().to_string(),
+                            label: rule.description().to_string(),
                             category: rule.category().clone(),
                             severity: rule.severity(),
                             confidence: rule.confidence(),
@@ -505,8 +509,8 @@ mod tests {
     use crate::{
         Environment,
         api::{
-            compiler::{CompiledMatcherCatalog, CompiledMatcherPlan},
-            rule::ApiMatcher,
+            compiler::{CompiledMatcherPlan, CompiledRuleSelection},
+            rule::MatcherSet,
         },
     };
 
@@ -528,9 +532,9 @@ mod tests {
         .unwrap();
         let project = ProjectSemanticModel::single(
             "projection-invariant.js",
-            local::SourceContext::new(&source),
+            local::LocatedSourceContext::new(&source),
             LocalArtifact::new(
-                local::SourceContext::new(&source),
+                local::LocatedSourceContext::new(&source),
                 std::sync::Arc::new(local),
             ),
         );
@@ -545,7 +549,7 @@ mod tests {
         );
 
         let fetch =
-            ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
+            MatcherSet::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
                 .normalized();
         let fetch_plan = CompiledMatcherPlan::compile(&fetch);
         let selected = [crate::api::classification::RuleIndex::new(0)];
@@ -553,10 +557,10 @@ mod tests {
             matcher: fetch_plan,
         };
         let fetch_rules = [fetch_rule];
-        let _ = project.project(CompiledMatcherCatalog::new(&fetch_rules, &selected));
+        let _ = project.project(CompiledRuleSelection::new(&fetch_rules, &selected));
 
-        let member = ApiMatcher::from_matchers(vec![crate::api::rule::Matcher::member_call(
-            crate::api::rule::MemberCallMatcher::syntactic_heuristic("document.createElement"),
+        let member = MatcherSet::from_matchers(vec![crate::api::rule::Matcher::from(
+            crate::api::rule::MemberCallMatcher::heuristic("document.createElement"),
         )])
         .normalized();
         let member_plan = CompiledMatcherPlan::compile(&member);
@@ -564,7 +568,7 @@ mod tests {
             matcher: member_plan,
         };
         let member_rules = [member_rule];
-        let _ = project.project(CompiledMatcherCatalog::new(&member_rules, &selected));
+        let _ = project.project(CompiledRuleSelection::new(&member_rules, &selected));
 
         let after = format!(
             "{:?}",

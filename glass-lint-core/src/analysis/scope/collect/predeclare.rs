@@ -12,12 +12,12 @@ use swc_ecma_visit::{Visit, VisitWith};
 
 use super::{
     super::{super::syntax::module_export_name, BindingProvenance, ScopeKind},
-    AliasCollector,
+    LexicalScopeCollector,
 };
 
 pub(super) struct PredeclareVisitor<'a> {
     /// Collector whose scope tree and hoisted bindings this pass populates.
-    pub(super) collector: &'a mut AliasCollector,
+    pub(super) collector: &'a mut LexicalScopeCollector,
 }
 
 impl PredeclareVisitor<'_> {

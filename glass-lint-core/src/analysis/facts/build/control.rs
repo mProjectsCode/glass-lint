@@ -26,7 +26,7 @@ impl FactBuilder<'_> {
             FactPayload::Control {
                 kind,
                 region,
-                value: super::ValueId::UNKNOWN,
+                return_value: super::ValueId::UNKNOWN,
             },
         );
     }

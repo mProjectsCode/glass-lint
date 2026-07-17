@@ -40,7 +40,7 @@ fn diagnostics(report: &AnalysisReport) -> Vec<(Option<&str>, &str)> {
         .collect()
 }
 
-fn request_report(result: ResolutionResult) -> AnalysisReport {
+fn request_report(result: ResolverOutcome) -> AnalysisReport {
     let linter = test_linter();
     let mut fixture = ProjectFixture::new(&linter);
     fixture.add_resolved("main.js", "import value from './dep';", [result]);
@@ -56,10 +56,10 @@ fn ambiguous_report() -> AnalysisReport {
         "barrel.js",
         "export * from './a'; export * from './b';",
         [
-            ResolutionResult::Internal {
+            ResolverOutcome::Internal {
                 path: project_path("a.js"),
             },
-            ResolutionResult::Internal {
+            ResolverOutcome::Internal {
                 path: project_path("b.js"),
             },
         ],
@@ -67,7 +67,7 @@ fn ambiguous_report() -> AnalysisReport {
     fixture.add_resolved(
         "main.js",
         "import { value } from './barrel';",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("barrel.js"),
         }],
     );
@@ -97,17 +97,17 @@ fn status_policy_matrix_has_expected_scope_and_completion() {
     dynamic.add_resolved(
         "main.js",
         "import { value } from './dep';",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("dep.js"),
         }],
     );
     dynamic.add("dep.js", "module.exports = { value: 1, ...extra };");
     let dynamic = dynamic.finish();
-    let missing = request_report(ResolutionResult::Missing);
-    let unsupported = request_report(ResolutionResult::Unsupported {
+    let missing = request_report(ResolverOutcome::Missing);
+    let unsupported = request_report(ResolverOutcome::Unsupported {
         reason: "unsupported extension".into(),
     });
-    let outside = request_report(ResolutionResult::OutsideProject {
+    let outside = request_report(ResolverOutcome::OutsideProject {
         path: "/other/dep.js".into(),
     });
     let ambiguous = ambiguous_report();
@@ -153,10 +153,10 @@ fn parse_status_and_structured_diagnostic_stay_consistent() {
 #[test]
 fn external_and_builtin_requests_are_complete() {
     for result in [
-        ResolutionResult::External {
+        ResolverOutcome::External {
             package: "package".into(),
         },
-        ResolutionResult::Builtin {
+        ResolverOutcome::Builtin {
             name: "node:fs".into(),
         },
     ] {
@@ -173,7 +173,7 @@ fn proven_missing_export_is_diagnostic_but_complete() {
     fixture.add_resolved(
         "main.js",
         "import { missing } from './dep';",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("dep.js"),
         }],
     );
@@ -255,7 +255,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
         fixture.add_resolved(
             "main.js",
             "import { value } from './dep';",
-            [ResolutionResult::Internal {
+            [ResolverOutcome::Internal {
                 path: project_path("dep.js"),
             }],
         );
@@ -280,7 +280,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
         fixture.add_resolved(
             "main.js",
             "import { append } from './helper'; const element = document.createElement('script'); append(element);",
-            [ResolutionResult::Internal {
+            [ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             }],
         );
@@ -299,7 +299,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
 #[test]
 fn partial_status_never_emits_unproved_strict_finding() {
     let rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)

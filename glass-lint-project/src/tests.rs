@@ -93,7 +93,7 @@ fn aggregate_source_budget_is_checked_before_second_parse() {
         .load_and_lint(&linter(), &ProjectSelection::directory(&root))
         .unwrap();
     assert!(matches!(
-        outcome.error,
+        outcome.partial_reason,
         Some(ProjectLoadError::ProjectSourceTooLarge { .. })
     ));
     fs::remove_dir_all(root).unwrap();
@@ -116,7 +116,7 @@ fn deterministic_loader_budget_returns_partial_report_and_error() {
         .load_and_lint(&linter(), &ProjectSelection::directory(&root))
         .unwrap();
     assert!(matches!(
-        outcome.error,
+        outcome.partial_reason,
         Some(ProjectLoadError::ProjectSourceTooLarge { .. })
     ));
     assert_eq!(

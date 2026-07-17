@@ -97,13 +97,13 @@ const MAX_DIAGNOSTIC_CODE_LEN: usize = 64;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DiagnosticKind {
     AmbiguousStarExport,
-    EffectSizeBudgetExhausted,
-    FlowLinkBudgetExhausted,
-    GraphLinkBudgetExhausted,
+    EffectsBudgetExhausted,
+    FlowBudgetExhausted,
+    LinkingBudgetExhausted,
     InvalidParserSpan,
     MissingImportedExport,
     OutsideProjectTarget,
-    SemanticBudgetExhausted,
+    FactsBudgetExhausted,
     SourceTooLarge,
     SyntaxDepthExceeded,
     SyntaxError,
@@ -116,13 +116,13 @@ impl DiagnosticKind {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::AmbiguousStarExport => "ambiguous_star_export",
-            Self::EffectSizeBudgetExhausted => "effect_size_budget_exhausted",
-            Self::FlowLinkBudgetExhausted => "flow_link_budget_exhausted",
-            Self::GraphLinkBudgetExhausted => "graph_link_budget_exhausted",
+            Self::EffectsBudgetExhausted => "effect_size_budget_exhausted",
+            Self::FlowBudgetExhausted => "flow_link_budget_exhausted",
+            Self::LinkingBudgetExhausted => "graph_link_budget_exhausted",
             Self::InvalidParserSpan => "invalid_parser_span",
             Self::MissingImportedExport => "missing_imported_export",
             Self::OutsideProjectTarget => "outside_project_target",
-            Self::SemanticBudgetExhausted => "semantic_budget_exhausted",
+            Self::FactsBudgetExhausted => "semantic_budget_exhausted",
             Self::SourceTooLarge => "source_too_large",
             Self::SyntaxDepthExceeded => "syntax_depth_exceeded",
             Self::SyntaxError => "syntax_error",
@@ -209,7 +209,7 @@ pub struct SourceFile {
 )]
 pub enum ResolutionRequestKind {
     /// A static ES module import.
-    Import,
+    StaticImport,
     /// A dynamic `import()` request.
     DynamicImport,
     /// A CommonJS `require()` request.
@@ -235,7 +235,7 @@ pub struct ResolutionRequest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub enum ResolutionResult {
+pub enum ResolverOutcome {
     /// Resolve to another authored project source.
     Internal { path: ProjectRelativePath },
     /// Resolve to a package outside the authored project.
@@ -271,7 +271,7 @@ impl ModuleId {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
-pub enum ResolvedModule {
+pub enum LinkedModuleTarget {
     /// An authored module, identified by its stable project ID and path.
     Internal {
         id: ModuleId,
@@ -362,7 +362,7 @@ pub enum ReportCompletion {
 }
 /// A project-level diagnostic not owned by one finding.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct ProjectDiagnostic {
+pub struct AnalysisDiagnostic {
     /// Stable diagnostic code.
     pub code: DiagnosticCode,
     /// Human-readable diagnostic message.
@@ -384,7 +384,7 @@ pub enum Diagnostic {
         diagnostic: crate::ParseDiagnostic,
     },
     /// A project-wide semantic, linking, or resource diagnostic.
-    Project(ProjectDiagnostic),
+    Project(AnalysisDiagnostic),
 }
 
 impl Diagnostic {
@@ -392,7 +392,7 @@ impl Diagnostic {
         Self::Parse { path, diagnostic }
     }
 
-    pub(crate) fn project(diagnostic: ProjectDiagnostic) -> Self {
+    pub(crate) fn project(diagnostic: AnalysisDiagnostic) -> Self {
         Self::Project(diagnostic)
     }
 
@@ -440,10 +440,11 @@ impl Diagnostic {
         }
     }
 }
-/// Complete deterministic output of one project analysis.
+/// Deterministic output of one analysis, which may be complete or partial.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct AnalysisReport {
-    /// Version of the serialized project-report contract.
+    /// Version of the serialized analysis-report contract shared by project
+    /// and snippet entry points.
     pub schema_version: u32,
     /// Tool version that produced the report.
     pub tool_version: String,
@@ -452,7 +453,7 @@ pub struct AnalysisReport {
     /// Diagnostics that are not owned by a single file.
     pub diagnostics: Vec<Diagnostic>,
     /// Bounded operation counters collected during analysis.
-    pub operations: OperationCounts,
+    pub operations: AnalysisOperationCounts,
     /// Partial reports are diagnostic output and must fail the CLI run.
     pub completion: ReportCompletion,
 }
@@ -467,9 +468,9 @@ pub struct AnalysisReportSummary {
     /// Number of file-owned parse diagnostics.
     pub parse_diagnostics: usize,
     /// Number of file-owned semantic/status diagnostics.
-    pub analysis_diagnostics: usize,
+    pub file_diagnostics: usize,
     /// Number of project-level diagnostics.
-    pub project_diagnostics: usize,
+    pub report_diagnostics: usize,
 }
 
 impl AnalysisReport {
@@ -484,13 +485,13 @@ impl AnalysisReport {
                 .flat_map(|file| file.diagnostics.iter())
                 .filter(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
                 .count(),
-            analysis_diagnostics: self
+            file_diagnostics: self
                 .files
                 .iter()
                 .flat_map(|file| file.diagnostics.iter())
                 .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
                 .count(),
-            project_diagnostics: self
+            report_diagnostics: self
                 .diagnostics
                 .iter()
                 .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
@@ -498,9 +499,10 @@ impl AnalysisReport {
         }
     }
 }
-/// Bounded counters describing work performed while linking the project.
+/// Bounded counters for end-to-end analysis, including admission, linking,
+/// matcher evaluation, and evidence emission.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct OperationCounts {
+pub struct AnalysisOperationCounts {
     /// Number of sources analyzed.
     pub files: usize,
     /// Number of authored resolution requests.
@@ -517,7 +519,7 @@ pub struct OperationCounts {
     pub evidence: usize,
 }
 
-impl std::ops::AddAssign for OperationCounts {
+impl std::ops::AddAssign for AnalysisOperationCounts {
     fn add_assign(&mut self, rhs: Self) {
         self.files = self.files.saturating_add(rhs.files);
         self.requests = self.requests.saturating_add(rhs.requests);
@@ -538,7 +540,7 @@ pub struct ProjectInput {
     /// Authored source files to parse and analyze.
     pub sources: Vec<SourceFile>,
     /// Explicit resolver answers keyed by request location and kind.
-    pub resolutions: Vec<(ResolutionRequestKey, ResolutionResult)>,
+    pub resolutions: Vec<(ResolutionRequestKey, ResolverOutcome)>,
 }
 
 /// Validation failures for project inputs and explicit resolver answers.
@@ -607,13 +609,13 @@ mod tests {
     fn diagnostic_kind_table_contains_only_canonical_codes() {
         let kinds = [
             DiagnosticKind::AmbiguousStarExport,
-            DiagnosticKind::EffectSizeBudgetExhausted,
-            DiagnosticKind::FlowLinkBudgetExhausted,
-            DiagnosticKind::GraphLinkBudgetExhausted,
+            DiagnosticKind::EffectsBudgetExhausted,
+            DiagnosticKind::FlowBudgetExhausted,
+            DiagnosticKind::LinkingBudgetExhausted,
             DiagnosticKind::InvalidParserSpan,
             DiagnosticKind::MissingImportedExport,
             DiagnosticKind::OutsideProjectTarget,
-            DiagnosticKind::SemanticBudgetExhausted,
+            DiagnosticKind::FactsBudgetExhausted,
             DiagnosticKind::SourceTooLarge,
             DiagnosticKind::SyntaxDepthExceeded,
             DiagnosticKind::SyntaxError,

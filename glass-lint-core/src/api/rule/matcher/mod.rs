@@ -1,7 +1,7 @@
 //! Declarative matcher vocabulary for calls, members, values, and object flow.
 //!
 //! Matchers distinguish heuristic spelling from rooted/global/module
-//! provenance. Builder APIs are ergonomic, while [`ApiMatcher::validate`] and
+//! provenance. Builder APIs are ergonomic, while [`MatcherSet::validate`] and
 //! normalization enforce the precision and boundedness contract.
 
 mod call;
@@ -16,7 +16,7 @@ pub use member::*;
 
 #[derive(Debug, Clone, Default)]
 /// Collection of matcher families before validation and normalization.
-pub struct ApiMatcher {
+pub struct MatcherSet {
     /// Direct callable matchers.
     pub calls: Vec<CallMatcher>,
     /// Member-call matchers.
@@ -26,7 +26,7 @@ pub struct ApiMatcher {
     /// Imported module specifier matchers.
     pub imports: Vec<String>,
     /// Static literal matchers.
-    pub string_literals: Vec<String>,
+    pub string_contains: Vec<String>,
     /// Class matchers.
     pub classes: Vec<ClassMatcher>,
     /// Constructor matchers.
@@ -53,7 +53,7 @@ pub enum Matcher {
     /// Module import matcher.
     Import(String),
     /// Static string matcher.
-    StringLiteral(String),
+    StringContains(String),
     /// Class matcher.
     Class(ClassMatcher),
     /// Constructor matcher.
@@ -69,11 +69,6 @@ pub enum Matcher {
 }
 
 impl Matcher {
-    #[must_use]
-    pub fn call(value: CallMatcher) -> Self {
-        value.into()
-    }
-
     pub fn global_call(name: impl Into<String>) -> Self {
         CallMatcher::global(name).into()
     }
@@ -86,11 +81,6 @@ impl Matcher {
         CallMatcher::module_export(module, export).into()
     }
 
-    #[must_use]
-    pub fn member_call(value: MemberCallMatcher) -> Self {
-        value.into()
-    }
-
     pub fn heuristic_member_call(chain: impl Into<String>) -> Self {
         MemberCallMatcher::heuristic(chain).into()
     }
@@ -101,11 +91,6 @@ impl Matcher {
 
     pub fn module_member_call(module: impl Into<String>, member: impl Into<String>) -> Self {
         MemberCallMatcher::module_member(module, member).into()
-    }
-
-    #[must_use]
-    pub fn member_read(value: MemberReadMatcher) -> Self {
-        value.into()
     }
 
     pub fn heuristic_member_read(chain: impl Into<String>) -> Self {
@@ -124,13 +109,8 @@ impl Matcher {
         Self::Import(module.into())
     }
 
-    pub fn string_literal(value: impl Into<String>) -> Self {
-        Self::StringLiteral(value.into())
-    }
-
-    #[must_use]
-    pub fn class(value: ClassMatcher) -> Self {
-        value.into()
+    pub fn string_contains(value: impl Into<String>) -> Self {
+        Self::StringContains(value.into())
     }
 
     pub fn heuristic_class(name: impl Into<String>) -> Self {
@@ -139,11 +119,6 @@ impl Matcher {
 
     pub fn module_class(module: impl Into<String>, export: impl Into<String>) -> Self {
         ClassMatcher::module_export(module, export).into()
-    }
-
-    #[must_use]
-    pub fn constructor(value: ConstructorMatcher) -> Self {
-        value.into()
     }
 
     pub fn heuristic_constructor(name: impl Into<String>) -> Self {
@@ -156,10 +131,6 @@ impl Matcher {
 
     pub fn module_constructor(module: impl Into<String>, export: impl Into<String>) -> Self {
         ConstructorMatcher::module_export(module, export).into()
-    }
-
-    pub fn flow(value: impl Into<Self>) -> Self {
-        value.into()
     }
 
     pub fn returned_member_call(source: impl Into<String>, member: impl Into<String>) -> Self {
@@ -235,7 +206,7 @@ impl From<InstanceMemberCallMatcher> for Matcher {
     }
 }
 
-impl ApiMatcher {
+impl MatcherSet {
     /// Assemble a matcher collection from typed declarations.
     pub fn from_matchers(matchers: Vec<Matcher>) -> Self {
         let mut api_matcher = Self::default();
@@ -253,7 +224,11 @@ impl ApiMatcher {
             .chain(self.member_calls.into_iter().map(Matcher::MemberCall))
             .chain(self.member_reads.into_iter().map(Matcher::MemberRead))
             .chain(self.imports.into_iter().map(Matcher::Import))
-            .chain(self.string_literals.into_iter().map(Matcher::StringLiteral))
+            .chain(
+                self.string_contains
+                    .into_iter()
+                    .map(Matcher::StringContains),
+            )
             .chain(self.classes.into_iter().map(Matcher::Class))
             .chain(self.constructors.into_iter().map(Matcher::Constructor))
             .chain(self.flows.into_iter().map(Matcher::ObjectFlow))
@@ -282,7 +257,7 @@ impl ApiMatcher {
             Matcher::MemberCall(value) => self.member_calls.push(value),
             Matcher::MemberRead(value) => self.member_reads.push(value),
             Matcher::Import(value) => self.imports.push(value),
-            Matcher::StringLiteral(value) => self.string_literals.push(value),
+            Matcher::StringContains(value) => self.string_contains.push(value),
             Matcher::Class(value) => self.classes.push(value),
             Matcher::Constructor(value) => self.constructors.push(value),
             Matcher::ObjectFlow(value) => self.flows.push(value),
@@ -303,7 +278,7 @@ impl ApiMatcher {
             && self.member_calls.is_empty()
             && self.member_reads.is_empty()
             && self.imports.is_empty()
-            && self.string_literals.is_empty()
+            && self.string_contains.is_empty()
             && self.classes.is_empty()
             && self.constructors.is_empty()
             && self.flows.is_empty()

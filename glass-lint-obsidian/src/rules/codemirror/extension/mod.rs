@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// and shadowed `require` loaders are excluded by module provenance.
 pub fn rule() -> Rule {
     Rule::builder("codemirror.extension")
-        .label("Uses CodeMirror extension primitives")
+        .description("Uses CodeMirror extension primitives")
         .category("codemirror")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

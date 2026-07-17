@@ -10,7 +10,7 @@ pub enum RuleBuildError {
     /// Rule ID failed the canonical naming policy.
     InvalidId(String),
     /// Human-readable label was not supplied.
-    MissingLabel,
+    MissingDescription,
     /// Category was not supplied.
     MissingCategory,
     /// Severity was not supplied.
@@ -29,7 +29,7 @@ pub enum RuleBuildError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Catalog-level rule identity failure.
-pub enum CatalogError {
+pub enum CompiledCatalogError {
     /// Two rules declared the same stable ID.
     DuplicateRule(String),
 }
@@ -39,7 +39,7 @@ impl fmt::Display for RuleBuildError {
         match self {
             Self::MissingId => formatter.write_str("rule ID is required"),
             Self::InvalidId(value) => write!(formatter, "invalid rule ID `{value}`"),
-            Self::MissingLabel => formatter.write_str("rule label is required"),
+            Self::MissingDescription => formatter.write_str("rule label is required"),
             Self::MissingCategory => formatter.write_str("rule category is required"),
             Self::MissingSeverity => formatter.write_str("rule severity is required"),
             Self::MissingConfidence => formatter.write_str("rule confidence is required"),
@@ -55,7 +55,7 @@ impl fmt::Display for RuleBuildError {
 
 impl Error for RuleBuildError {}
 
-impl fmt::Display for CatalogError {
+impl fmt::Display for CompiledCatalogError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DuplicateRule(id) => write!(formatter, "duplicate rule `{id}`"),
@@ -63,4 +63,4 @@ impl fmt::Display for CatalogError {
     }
 }
 
-impl Error for CatalogError {}
+impl Error for CompiledCatalogError {}

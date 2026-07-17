@@ -10,14 +10,14 @@ mod normalization;
 mod taxonomy;
 pub mod validation;
 
-pub use error::{CatalogError, RuleBuildError};
+pub use error::{CompiledCatalogError, RuleBuildError};
 pub use matcher::{
-    ApiMatcher, ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
-    ConstructorMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher,
-    Matcher, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+    ArgumentConstraint, ArgumentMatcher, CallMatcher, ClassMatcher, ConstructorMatcher,
+    FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, Matcher, MatcherSet,
+    MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher,
-    ReturnedMemberReadMatcher, StaticStringPredicate, ValueMatcher, ValueMatcherKind,
-    canonical_rooted_chain,
+    ReturnedMemberReadMatcher, StaticStringPredicate, SymbolProvenance, ValueMatcher,
+    ValueMatcherKind, canonical_rooted_chain,
 };
 pub use taxonomy::{Category, Confidence};
 
@@ -26,10 +26,11 @@ pub use crate::Severity;
 #[derive(Debug, Clone)]
 /// Validated provider rule with canonical matcher declarations.
 pub struct Rule {
-    /// Namespaced stable rule ID.
+    /// Provider-local stable rule name. [`RuleCatalog`] adds the provider
+    /// namespace when constructing the public rule ID.
     id: String,
-    /// Human-readable rule label.
-    label: String,
+    /// Human-readable rule description.
+    description: String,
     /// Provider-defined category.
     category: Category,
     /// Report severity.
@@ -46,11 +47,11 @@ impl Rule {
     /// construction. The limit remains finite to keep reports bounded.
     pub const EVIDENCE_LIMIT: usize = 16;
 
-    /// Start a builder for one stable rule ID.
+    /// Start a builder for one provider-local stable rule name.
     pub fn builder(id: impl Into<String>) -> RuleBuilder {
         RuleBuilder {
             id: id.into(),
-            label: None,
+            description: None,
             category: None,
             severity: None,
             confidence: None,
@@ -60,15 +61,15 @@ impl Rule {
     }
 
     #[must_use]
-    /// Borrow the stable rule ID.
+    /// Borrow the provider-local stable rule name.
     pub fn id(&self) -> &str {
         &self.id
     }
 
     #[must_use]
-    /// Borrow the human-readable label.
-    pub fn label(&self) -> &str {
-        &self.label
+    /// Borrow the human-readable description.
+    pub fn description(&self) -> &str {
+        &self.description
     }
 
     #[must_use]
@@ -100,7 +101,7 @@ impl Rule {
 /// Fluent rule builder whose `build` method validates all invariants.
 pub struct RuleBuilder {
     id: String,
-    label: Option<String>,
+    description: Option<String>,
     category: Option<Category>,
     severity: Option<Severity>,
     confidence: Option<Confidence>,
@@ -117,12 +118,12 @@ impl RuleBuilder {
     }
 
     #[must_use]
-    /// Set the human-readable label.
-    pub fn label(mut self, label: impl Into<String>) -> Self {
-        if self.label.is_some() {
-            self.duplicate_field = Some("label");
+    /// Set the human-readable description.
+    pub fn description(mut self, description: impl Into<String>) -> Self {
+        if self.description.is_some() {
+            self.duplicate_field = Some("description");
         }
-        self.label = Some(label.into());
+        self.description = Some(description.into());
         self
     }
 
@@ -161,7 +162,7 @@ impl RuleBuilder {
         if let Some(field) = self.duplicate_field {
             return Err(RuleBuildError::DuplicateField(field));
         }
-        let label = required_string(self.label, RuleBuildError::MissingLabel)?;
+        let description = required_string(self.description, RuleBuildError::MissingDescription)?;
         let category = self.category.ok_or(RuleBuildError::MissingCategory)?;
         let severity = self.severity.ok_or(RuleBuildError::MissingSeverity)?;
         let confidence = self.confidence.ok_or(RuleBuildError::MissingConfidence)?;
@@ -184,7 +185,7 @@ impl RuleBuilder {
                 .map_err(RuleBuildError::InvalidMatcher)?;
         }
 
-        let candidate = matcher::ApiMatcher::from_matchers(self.matchers);
+        let candidate = matcher::MatcherSet::from_matchers(self.matchers);
         candidate
             .validate()
             .map_err(RuleBuildError::InvalidMatcher)?;
@@ -196,7 +197,7 @@ impl RuleBuilder {
 
         Ok(Rule {
             id,
-            label,
+            description,
             category,
             severity,
             confidence,
@@ -223,7 +224,7 @@ mod tests {
 
     fn build(id: &str, category: &str) -> Result<Rule, RuleBuildError> {
         Rule::builder(id)
-            .label("rule")
+            .description("rule")
             .category(category)
             .severity(Severity::Info)
             .confidence(Confidence::High)
@@ -262,8 +263,10 @@ mod tests {
     fn rejects_duplicate_required_metadata() {
         let cases = [
             (
-                "label",
-                Rule::builder("network.fetch").label("one").label("two"),
+                "description",
+                Rule::builder("network.fetch")
+                    .description("one")
+                    .description("two"),
             ),
             (
                 "category",
@@ -295,7 +298,7 @@ mod tests {
     #[test]
     fn rejects_invalid_matcher_shapes_at_the_builder_boundary() {
         let error = Rule::builder("network.fetch")
-            .label("rule")
+            .description("rule")
             .category("network")
             .severity(Severity::Info)
             .confidence(Confidence::High)
@@ -313,13 +316,13 @@ mod tests {
         assert!(error.contains("condition"));
 
         let error = Rule::builder("class.invalid-global")
-            .label("rule")
+            .description("rule")
             .category("classes")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .matcher(Matcher::class(ClassMatcher {
+            .matcher(Matcher::from(ClassMatcher {
                 name: "Client".into(),
-                provenance: CallProvenance::Global,
+                provenance: SymbolProvenance::Global,
             }))
             .build()
             .unwrap_err();

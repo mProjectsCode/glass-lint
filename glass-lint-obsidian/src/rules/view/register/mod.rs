@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// receivers, dynamic properties, and near-name methods are excluded.
 pub fn rule() -> Rule {
     Rule::builder("view.register")
-        .label("Registers Obsidian views")
+        .description("Registers Obsidian views")
         .category("view")
         .severity(Severity::Info)
         .confidence(Confidence::High)

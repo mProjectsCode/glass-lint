@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// properties and dynamic property names are not.
 pub fn rule() -> Rule {
     Rule::builder("browser.environment")
-        .label("Reads browser environment data")
+        .description("Reads browser environment data")
         .category("browser/environment")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

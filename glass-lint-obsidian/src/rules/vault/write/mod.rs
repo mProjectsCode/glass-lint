@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// call arguments are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("vault.write")
-        .label("Writes vault files")
+        .description("Writes vault files")
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)

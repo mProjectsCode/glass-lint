@@ -16,21 +16,21 @@ pub struct ByteRange {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct InvalidByteRange;
+pub struct ReversedByteRange;
 
-impl std::fmt::Display for InvalidByteRange {
+impl std::fmt::Display for ReversedByteRange {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("byte range start exceeds end")
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum InvalidSourceRange {
+pub enum InvalidSourceBoundary {
     OutOfBounds,
     NotCharacterBoundary,
 }
 
-impl std::fmt::Display for InvalidSourceRange {
+impl std::fmt::Display for InvalidSourceBoundary {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
             Self::OutOfBounds => "byte range is outside the source",
@@ -39,7 +39,7 @@ impl std::fmt::Display for InvalidSourceRange {
     }
 }
 
-impl std::error::Error for InvalidSourceRange {}
+impl std::error::Error for InvalidSourceBoundary {}
 
 impl<'de> Deserialize<'de> for ByteRange {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -58,11 +58,11 @@ impl<'de> Deserialize<'de> for ByteRange {
 
 impl ByteRange {
     /// Construct a range, rejecting reversed offsets.
-    pub const fn new(start: u32, end: u32) -> Result<Self, InvalidByteRange> {
+    pub const fn new(start: u32, end: u32) -> Result<Self, ReversedByteRange> {
         if start <= end {
             Ok(Self { start, end })
         } else {
-            Err(InvalidByteRange)
+            Err(ReversedByteRange)
         }
     }
 
@@ -147,15 +147,15 @@ impl std::fmt::Display for InvalidPosition {
 impl std::error::Error for InvalidPosition {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InvalidSourcePositionRange;
+pub struct ReversedSourcePositionRange;
 
-impl std::fmt::Display for InvalidSourcePositionRange {
+impl std::fmt::Display for ReversedSourcePositionRange {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str("source range start exceeds end")
     }
 }
 
-impl std::error::Error for InvalidSourcePositionRange {}
+impl std::error::Error for ReversedSourcePositionRange {}
 
 /// One-based Unicode display position in a source file.
 ///
@@ -274,14 +274,14 @@ impl SourceLineIndex {
         &self,
         source: &str,
         range: ByteRange,
-    ) -> Result<SourceRange, InvalidSourceRange> {
-        let start = usize::try_from(range.start).map_err(|_| InvalidSourceRange::OutOfBounds)?;
-        let end = usize::try_from(range.end).map_err(|_| InvalidSourceRange::OutOfBounds)?;
+    ) -> Result<SourceRange, InvalidSourceBoundary> {
+        let start = usize::try_from(range.start).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
+        let end = usize::try_from(range.end).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
         if source.len() != self.source_len || end > source.len() {
-            return Err(InvalidSourceRange::OutOfBounds);
+            return Err(InvalidSourceBoundary::OutOfBounds);
         }
         if !source.is_char_boundary(start) || !source.is_char_boundary(end) {
-            return Err(InvalidSourceRange::NotCharacterBoundary);
+            return Err(InvalidSourceBoundary::NotCharacterBoundary);
         }
         Ok(self.range(source, start, end - start))
     }
@@ -303,11 +303,11 @@ pub struct SourceRange {
 }
 
 impl SourceRange {
-    pub fn new(start: Position, end: Position) -> Result<Self, InvalidSourcePositionRange> {
+    pub fn new(start: Position, end: Position) -> Result<Self, ReversedSourcePositionRange> {
         if start <= end {
             Ok(Self { start, end })
         } else {
-            Err(InvalidSourcePositionRange)
+            Err(ReversedSourcePositionRange)
         }
     }
 
@@ -356,7 +356,7 @@ pub struct RuleMetadata {
 
 #[cfg(test)]
 mod tests {
-    use super::{ByteRange, InvalidSourceRange, SourceLineIndex};
+    use super::{ByteRange, InvalidSourceBoundary, SourceLineIndex};
 
     #[test]
     fn byte_ranges_reject_reversed_offsets_and_preserve_boundaries() {
@@ -395,11 +395,11 @@ mod tests {
         assert_eq!((range.end.line, range.end.column), (2, 3));
         assert_eq!(
             index.try_range(source, ByteRange::new(2, 3).unwrap()),
-            Err(InvalidSourceRange::NotCharacterBoundary)
+            Err(InvalidSourceBoundary::NotCharacterBoundary)
         );
         assert_eq!(
             index.try_range(source, ByteRange::new(0, 99).unwrap()),
-            Err(InvalidSourceRange::OutOfBounds)
+            Err(InvalidSourceBoundary::OutOfBounds)
         );
     }
 
@@ -433,7 +433,7 @@ mod tests {
                 source,
                 ByteRange::new(1, u32::try_from(source.len()).unwrap().saturating_add(1)).unwrap(),
             ),
-            Err(InvalidSourceRange::OutOfBounds)
+            Err(InvalidSourceBoundary::OutOfBounds)
         );
     }
 }

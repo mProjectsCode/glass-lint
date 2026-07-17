@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// globals, and reassigned aliases are outside this rule's scope.
 pub fn rule() -> Rule {
     Rule::builder("browser.persistent-storage")
-        .label("Uses persistent browser storage")
+        .description("Uses persistent browser storage")
         .category("browser/storage")
         .severity(Severity::Info)
         .confidence(Confidence::High)

@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// aliases, and does not analyze the cached value itself.
 pub fn rule() -> Rule {
     Rule::builder("metadata.frontmatter-read")
-        .label("Reads cached frontmatter")
+        .description("Reads cached frontmatter")
         .category("metadata")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

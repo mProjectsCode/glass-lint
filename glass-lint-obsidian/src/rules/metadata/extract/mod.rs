@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// arbitrary `getFileCache(...)` return values.
 pub fn rule() -> Rule {
     Rule::builder("metadata.extract")
-        .label("Extracts tags, links, embeds, blocks, or headings")
+        .description("Extracts tags, links, embeds, blocks, or headings")
         .category("metadata")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

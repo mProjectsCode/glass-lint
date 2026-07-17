@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::{
-    ExportResolution, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel, ResolvedModule,
+    ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
 };
 use crate::analysis::{
     matching::LinkedModuleIdentity,
@@ -160,7 +160,7 @@ impl ProjectSemanticModel {
             let Some(key) = self.request_key(module, request) else {
                 continue;
             };
-            if let Some(ResolvedModule::Internal { id, .. }) = self.resolutions.get(&key) {
+            if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key) {
                 names.extend(self.exported_names(*id, visiting));
             }
         }
@@ -178,15 +178,15 @@ impl ProjectSemanticModel {
                 module: request.specifier().to_owned(),
                 export: "*".into(),
             },
-            Some(ResolvedModule::External { package }) => ExportResolution::External {
+            Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
                 module: package.clone(),
                 export: "*".into(),
             },
-            Some(ResolvedModule::Builtin { name }) => ExportResolution::External {
+            Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
                 module: name.clone(),
                 export: "*".into(),
             },
-            Some(ResolvedModule::Internal { id, .. }) => ExportResolution::Qualified {
+            Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
                 module: *id,
                 export: "*".into(),
             },

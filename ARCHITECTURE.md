@@ -8,16 +8,16 @@ filesystem and policy layers, and thin command-line front ends.
 Arrows point from a crate to its workspace dependency:
 
 ```text
-glass-lint-cli ─────────┬──> glass-lint-project ──> glass-lint-core
-                       ├──> glass-lint-js ────────> glass-lint-core
-                       ├──> glass-lint-obsidian ──> glass-lint-js ──> glass-lint-core
-                       └──────────────────────────> glass-lint-core
+glass-lint-cli ─────────┬──> glass-lint-project ───> glass-lint-core
+                        ├──> glass-lint-js ────────> glass-lint-core
+                        ├──> glass-lint-obsidian ──> glass-lint-js ──> glass-lint-core
+                        └──────────────────────────> glass-lint-core
 
 glass-lint-harness-cli ─┬──> glass-lint-harness ──┬──> glass-lint-project
-                       │                          ├──> glass-lint-js
-                       │                          ├──> glass-lint-obsidian
-                       │                          └──> glass-lint-core
-                       └──────────────────────────> glass-lint-core
+                        │                         ├──> glass-lint-js
+                        │                         ├──> glass-lint-obsidian
+                        │                         └──> glass-lint-core
+                        └────────────────────────────> glass-lint-core
 ```
 
 Provider dependencies follow real host-extension relationships and remain

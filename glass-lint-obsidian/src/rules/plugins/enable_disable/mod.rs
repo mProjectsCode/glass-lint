@@ -6,7 +6,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// state.
 pub fn rule() -> Rule {
     Rule::builder("plugins.enable-disable")
-        .label("Enables or disables other plugins")
+        .description("Enables or disables other plugins")
         .category("plugins")
         .severity(Severity::Warning)
         .confidence(Confidence::High)

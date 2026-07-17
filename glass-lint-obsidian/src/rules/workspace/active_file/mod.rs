@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// local lookalikes, and call arguments are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("workspace.active-file")
-        .label("Accesses the active file")
+        .description("Accesses the active file")
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)

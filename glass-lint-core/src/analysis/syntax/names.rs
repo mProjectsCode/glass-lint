@@ -11,16 +11,16 @@ use swc_ecma_ast::{
 };
 
 /// Find the lexical root identifier of a member/optional-chain expression.
-pub fn member_root_ident(member: &MemberExpr) -> Option<&Ident> {
+pub fn member_root_identifier(member: &MemberExpr) -> Option<&Ident> {
     expr_root_ident(&member.obj)
 }
 
 fn expr_root_ident(expr: &Expr) -> Option<&Ident> {
     match expr {
         Expr::Ident(ident) => Some(ident),
-        Expr::Member(parent) => member_root_ident(parent),
+        Expr::Member(parent) => member_root_identifier(parent),
         Expr::OptChain(chain) => match &*chain.base {
-            OptChainBase::Member(member) => member_root_ident(member),
+            OptChainBase::Member(member) => member_root_identifier(member),
             OptChainBase::Call(call) => expr_root_ident(&call.callee),
         },
         Expr::Paren(paren) => expr_root_ident(&paren.expr),
@@ -79,7 +79,7 @@ pub fn module_export_name(name: &ModuleExportName) -> String {
 }
 
 /// Return a statically known object-literal property name.
-pub fn prop_name(name: &swc_ecma_ast::PropName) -> Option<String> {
+pub fn property_name(name: &swc_ecma_ast::PropName) -> Option<String> {
     match name {
         swc_ecma_ast::PropName::Ident(ident) => Some(ident.sym.to_string()),
         swc_ecma_ast::PropName::Str(value) => Some(value.value.to_string_lossy().to_string()),
@@ -96,39 +96,39 @@ pub fn prop_name(name: &swc_ecma_ast::PropName) -> Option<String> {
 }
 
 /// Render supported rooted expression shapes as a dotted syntax chain.
-pub fn expr_name(expr: &Expr) -> Option<String> {
+pub fn expression_name(expr: &Expr) -> Option<String> {
     match expr {
         Expr::Ident(ident) => Some(ident.sym.to_string()),
-        Expr::Member(member) => member_chain(member),
+        Expr::Member(member) => member_expression_chain(member),
         Expr::Call(call) => {
             let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
                 return None;
             };
-            expr_name(callee)
+            expression_name(callee)
         }
         Expr::This(_) => Some("this".to_string()),
         Expr::OptChain(chain) => match &*chain.base {
-            OptChainBase::Member(member) => member_chain(member),
-            OptChainBase::Call(call) => expr_name(&call.callee),
+            OptChainBase::Member(member) => member_expression_chain(member),
+            OptChainBase::Call(call) => expression_name(&call.callee),
         },
-        Expr::Paren(paren) => expr_name(&paren.expr),
-        Expr::TsAs(expr) => expr_name(&expr.expr),
-        Expr::TsNonNull(expr) => expr_name(&expr.expr),
-        Expr::TsSatisfies(expr) => expr_name(&expr.expr),
-        Expr::TsTypeAssertion(expr) => expr_name(&expr.expr),
+        Expr::Paren(paren) => expression_name(&paren.expr),
+        Expr::TsAs(expr) => expression_name(&expr.expr),
+        Expr::TsNonNull(expr) => expression_name(&expr.expr),
+        Expr::TsSatisfies(expr) => expression_name(&expr.expr),
+        Expr::TsTypeAssertion(expr) => expression_name(&expr.expr),
         _ => None,
     }
 }
 
 /// Render a member expression as `object.property` when both parts are static.
-pub fn member_chain(member: &MemberExpr) -> Option<String> {
+pub fn member_expression_chain(member: &MemberExpr) -> Option<String> {
     let mut properties = Vec::new();
     let mut expression = &member.obj;
-    properties.push(member_prop_name(&member.prop)?);
+    properties.push(member_property_name(&member.prop)?);
     loop {
         match &**expression {
             Expr::Member(parent) => {
-                properties.push(member_prop_name(&parent.prop)?);
+                properties.push(member_property_name(&parent.prop)?);
                 expression = &parent.obj;
             }
             Expr::Ident(ident) => {
@@ -166,7 +166,7 @@ pub fn member_chain(member: &MemberExpr) -> Option<String> {
 }
 
 /// Return a statically known member property name, including private names.
-pub fn member_prop_name(prop: &MemberProp) -> Option<String> {
+pub fn member_property_name(prop: &MemberProp) -> Option<String> {
     match prop {
         MemberProp::Ident(ident) => Some(ident.sym.to_string()),
         MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
@@ -176,7 +176,7 @@ pub fn member_prop_name(prop: &MemberProp) -> Option<String> {
 
 /// Recognize a supported `Function`-like `.constructor` member shape.
 pub fn is_function_constructor_member(member: &MemberExpr) -> bool {
-    member_prop_name(&member.prop).as_deref() == Some("constructor")
+    member_property_name(&member.prop).as_deref() == Some("constructor")
         && is_function_like_expr(&member.obj)
 }
 
@@ -191,7 +191,7 @@ pub fn function_prototype_builtin(expr: &Expr) -> Option<&'static str> {
     let Expr::Member(member) = &**callee else {
         return None;
     };
-    let builtin = match member_chain(member)?.as_str() {
+    let builtin = match member_expression_chain(member)?.as_str() {
         "Object.getPrototypeOf" => "Object",
         "Reflect.getPrototypeOf" => "Reflect",
         _ => return None,

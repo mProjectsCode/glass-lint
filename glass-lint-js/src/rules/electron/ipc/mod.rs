@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// reads are outside this call-only rule.
 pub fn rule() -> Rule {
     Rule::builder("electron.ipc")
-        .label("Uses Electron IPC APIs")
+        .description("Uses Electron IPC APIs")
         .category("electron/ipc")
         .severity(Severity::Info)
         .confidence(Confidence::High)

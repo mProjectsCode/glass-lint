@@ -37,7 +37,7 @@ pub enum ProjectLoadError {
     /// The cooperative total project timeout expired.
     Timeout,
     /// Core rejected normalized project input.
-    Core(ProjectInputError),
+    InvalidProjectInput(ProjectInputError),
 }
 
 impl fmt::Display for ProjectLoadError {
@@ -74,7 +74,7 @@ impl fmt::Display for ProjectLoadError {
                 write!(f, "project source bytes exceeded ({bytes} > {limit})")
             }
             Self::Timeout => write!(f, "project lint timeout exceeded"),
-            Self::Core(error) => write!(f, "core project error: {error}"),
+            Self::InvalidProjectInput(error) => write!(f, "core project error: {error}"),
         }
     }
 }
@@ -83,7 +83,7 @@ impl std::error::Error for ProjectLoadError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io { source, .. } => Some(source),
-            Self::Core(error) => Some(error),
+            Self::InvalidProjectInput(error) => Some(error),
             _ => None,
         }
     }
@@ -91,6 +91,6 @@ impl std::error::Error for ProjectLoadError {
 
 impl From<ProjectInputError> for ProjectLoadError {
     fn from(error: ProjectInputError) -> Self {
-        Self::Core(error)
+        Self::InvalidProjectInput(error)
     }
 }

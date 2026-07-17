@@ -5,7 +5,7 @@
 
 use super::{
     BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegment, ValueId,
-    ValueProjection, member_prop_name,
+    ValueProjection, member_property_name,
 };
 
 impl FactBuilder<'_> {
@@ -43,7 +43,7 @@ impl FactBuilder<'_> {
         match expr {
             Expr::Member(member) => {
                 let (base, path) = self.expression_projection(&member.obj);
-                let Some(property) = member_prop_name(&member.prop) else {
+                let Some(property) = member_property_name(&member.prop) else {
                     return (ValueId::UNKNOWN, PathId::EMPTY);
                 };
                 let path = if let Ok(index) = property.parse::<usize>() {
@@ -86,7 +86,7 @@ impl FactBuilder<'_> {
                     let swc_ecma_ast::Prop::KeyValue(property) = &**property else {
                         continue;
                     };
-                    let Some(name) = crate::analysis::syntax::prop_name(&property.key) else {
+                    let Some(name) = crate::analysis::syntax::property_name(&property.key) else {
                         continue;
                     };
                     let path = self.append_path(path, PathSegment::Property(name));

@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// arguments and class bodies are ignored.
 pub fn rule() -> Rule {
     Rule::builder("ui.modal")
-        .label("Uses Obsidian modal UI")
+        .description("Uses Obsidian modal UI")
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)

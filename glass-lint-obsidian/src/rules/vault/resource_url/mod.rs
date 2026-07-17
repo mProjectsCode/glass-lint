@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// other URL schemes are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("vault.resource-url")
-        .label("Accesses attachment resource paths")
+        .description("Accesses attachment resource paths")
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
@@ -18,7 +18,7 @@ pub fn rule() -> Rule {
         .matcher(Matcher::rooted_member_call(
             "app.vault.adapter.getResourcePath",
         ))
-        .matcher(Matcher::string_literal("obsidian://"))
+        .matcher(Matcher::string_contains("obsidian://"))
         .build()
         .unwrap()
 }

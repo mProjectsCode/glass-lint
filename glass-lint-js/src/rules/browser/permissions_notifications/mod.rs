@@ -7,7 +7,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// another function are excluded.
 pub fn rule() -> Rule {
     Rule::builder("browser.permissions-notifications")
-        .label("Requests browser notifications")
+        .description("Requests browser notifications")
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)

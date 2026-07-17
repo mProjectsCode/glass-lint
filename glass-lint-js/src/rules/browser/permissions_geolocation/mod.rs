@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// tracking.
 pub fn rule() -> Rule {
     Rule::builder("browser.permissions-geolocation")
-        .label("Uses browser geolocation")
+        .description("Uses browser geolocation")
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)

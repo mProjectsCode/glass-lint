@@ -12,7 +12,7 @@ use glass_lint_core::{
 /// Build the minimal TypeScript-capable linter used by every fixture.
 fn linter() -> Linter {
     let rule = Rule::builder("network.fetch")
-        .label("Uses fetch")
+        .description("Uses fetch")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)

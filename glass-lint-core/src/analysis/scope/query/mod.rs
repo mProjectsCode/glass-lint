@@ -16,7 +16,7 @@ use crate::analysis::{
     syntax::{
         self, SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self, ConstValue, EvalState, Lookup},
-        member_root_ident,
+        member_root_identifier,
     },
     value::{BindingKey, BindingRoot, BindingVersion, FunctionId, SymbolPath},
 };

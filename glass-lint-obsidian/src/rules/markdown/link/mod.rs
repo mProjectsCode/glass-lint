@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// aliases are excluded; arguments and later helper behavior are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("markdown.link")
-        .label("Uses markdown link helpers")
+        .description("Uses markdown link helpers")
         .category("markdown")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)

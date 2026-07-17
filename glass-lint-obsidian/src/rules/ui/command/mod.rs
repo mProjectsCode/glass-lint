@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 /// reassignment; other receivers and dynamic properties are excluded.
 pub fn rule() -> Rule {
     Rule::builder("ui.command")
-        .label("Registers commands")
+        .description("Registers commands")
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)

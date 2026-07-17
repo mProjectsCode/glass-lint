@@ -9,7 +9,7 @@ use glass_lint_core::rules::{CallMatcher, Confidence, Matcher, Rule, Severity};
 /// excluded; request arguments are not analyzed.
 pub fn rule() -> Rule {
     Rule::builder("network.request")
-        .label("Uses Obsidian request APIs")
+        .description("Uses Obsidian request APIs")
         .category("network")
         .severity(Severity::Info)
         .confidence(Confidence::High)

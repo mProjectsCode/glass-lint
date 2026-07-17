@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::project::{ProjectDiagnostic, ProjectRelativePath, types::DiagnosticKind};
+use crate::project::{AnalysisDiagnostic, ProjectRelativePath, types::DiagnosticKind};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub(in crate::analysis) enum AnalysisComponent {
@@ -51,7 +51,7 @@ pub(in crate::analysis) enum IncompleteReason {
     MissingInternalResolution {
         request: String,
     },
-    AmbiguousModuleInterface {
+    AmbiguousStarExport {
         request: String,
     },
 }
@@ -102,8 +102,8 @@ impl AnalysisStatus {
     pub(in crate::analysis) fn diagnostics(
         &self,
     ) -> (
-        Vec<(ProjectRelativePath, ProjectDiagnostic)>,
-        Vec<ProjectDiagnostic>,
+        Vec<(ProjectRelativePath, AnalysisDiagnostic)>,
+        Vec<AnalysisDiagnostic>,
     ) {
         let mut files = Vec::new();
         let mut project = Vec::new();
@@ -128,7 +128,7 @@ impl AnalysisStatus {
 }
 
 impl IncompleteReason {
-    fn diagnostic(&self, scope: &StatusScope) -> ProjectDiagnostic {
+    fn diagnostic(&self, scope: &StatusScope) -> AnalysisDiagnostic {
         let (code, message) = match self {
             Self::InvalidParserSpan => (
                 DiagnosticKind::InvalidParserSpan,
@@ -155,19 +155,19 @@ impl IncompleteReason {
             } => {
                 let (code, text) = match component {
                     AnalysisComponent::Facts => (
-                        DiagnosticKind::SemanticBudgetExhausted,
+                        DiagnosticKind::FactsBudgetExhausted,
                         "semantic analysis exceeded its bounded fact budget",
                     ),
                     AnalysisComponent::Effects => (
-                        DiagnosticKind::EffectSizeBudgetExhausted,
+                        DiagnosticKind::EffectsBudgetExhausted,
                         "function-effect extraction exceeded its bounded budget",
                     ),
                     AnalysisComponent::Flow => (
-                        DiagnosticKind::FlowLinkBudgetExhausted,
+                        DiagnosticKind::FlowBudgetExhausted,
                         "qualified function-effect projection exceeded its bounded budget",
                     ),
                     AnalysisComponent::Linking => (
-                        DiagnosticKind::GraphLinkBudgetExhausted,
+                        DiagnosticKind::LinkingBudgetExhausted,
                         "module linking exceeded its bounded budget",
                     ),
                 };
@@ -197,7 +197,7 @@ impl IncompleteReason {
                 DiagnosticKind::UnresolvedInternalRequest,
                 format!("internal module request `{request}` has no resolution"),
             ),
-            Self::AmbiguousModuleInterface { request } => (
+            Self::AmbiguousStarExport { request } => (
                 DiagnosticKind::AmbiguousStarExport,
                 format!("module interface for `{request}` is ambiguous"),
             ),
@@ -205,7 +205,7 @@ impl IncompleteReason {
         let location = match scope {
             StatusScope::File(_) | StatusScope::Project => None,
         };
-        ProjectDiagnostic {
+        AnalysisDiagnostic {
             code: code.into(),
             message,
             location,

@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn linked_internal_aliases_preserve_external_and_global_call_identity() {
     let external_rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -11,7 +11,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         .build()
         .unwrap();
     let global_rule = Rule::builder("network.fetch")
-        .label("Uses fetch")
+        .description("Uses fetch")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -42,7 +42,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
     session
         .record_resolution(
             helper[0].key.clone(),
-            ResolutionResult::External {
+            ResolverOutcome::External {
                 package: "web".into(),
             },
         )
@@ -50,7 +50,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
     session
         .record_resolution(
             main[0].key.clone(),
-            ResolutionResult::Internal {
+            ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },
         )
@@ -81,7 +81,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
     global
         .record_resolution(
             main[0].key.clone(),
-            ResolutionResult::Internal {
+            ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },
         )
@@ -110,7 +110,7 @@ fn project_flow_crosses_an_exported_helper_boundary() {
     project.add_resolved(
         "main.js",
         "import { append } from './helper'; const element = document.createElement('script'); append(element);",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
@@ -135,14 +135,14 @@ fn project_flow_preserves_requirements_through_a_helper_chain() {
     project.add_resolved(
         "helper.js",
         "import { finish } from './sink'; export function append(element) { element.src = url; finish(element); }",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("sink.js"),
         }],
     );
     project.add_resolved(
         "main.js",
         "import { append } from './helper'; const element = document.createElement('script'); append(element);",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
@@ -161,7 +161,7 @@ fn project_flow_follows_a_returned_parameter() {
     project.add_resolved(
         "main.js",
         "import { identity } from './helper'; const element = document.createElement('script'); const returned = identity(element); returned.src = url; document.head.appendChild(returned);",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
@@ -185,7 +185,7 @@ fn project_flow_fails_closed_for_unsupported_helper_control_flow() {
     project.add_resolved(
         "main.js",
         "import { append } from './helper'; const element = document.createElement('script'); append(element);",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
@@ -196,7 +196,7 @@ fn project_flow_fails_closed_for_unsupported_helper_control_flow() {
 #[test]
 fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
     let rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -225,7 +225,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
     session
         .record_resolution(
             helper[0].key.clone(),
-            ResolutionResult::External {
+            ResolverOutcome::External {
                 package: "web".into(),
             },
         )
@@ -233,7 +233,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
     session
         .record_resolution(
             main[0].key.clone(),
-            ResolutionResult::Internal {
+            ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },
         )
@@ -263,7 +263,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
     missing
         .record_resolution(
             main[0].key.clone(),
-            ResolutionResult::Internal {
+            ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },
         )
@@ -284,7 +284,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
 #[test]
 fn unresolved_internal_imports_do_not_become_external_provenance() {
     let rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -319,7 +319,7 @@ fn unresolved_internal_imports_do_not_become_external_provenance() {
 #[test]
 fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
     let rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -336,14 +336,14 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
     project.add_resolved(
         "helper.js",
         "const { request } = require('web'); exports.send = request;",
-        [ResolutionResult::External {
+        [ResolverOutcome::External {
             package: "web".into(),
         }],
     );
     project.add_resolved(
         "main.js",
         "const { send } = require('./helper'); send();",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
@@ -360,7 +360,7 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
 #[test]
 fn namespace_imports_follow_star_reexports() {
     let rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -377,21 +377,21 @@ fn namespace_imports_follow_star_reexports() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export { request };",
-        [ResolutionResult::External {
+        [ResolverOutcome::External {
             package: "web".into(),
         }],
     );
     project.add_resolved(
         "barrel.js",
         "export * from './helper';",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
     project.add_resolved(
         "main.js",
         "import * as api from './barrel'; api.request();",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("barrel.js"),
         }],
     );
@@ -408,7 +408,7 @@ fn namespace_imports_follow_star_reexports() {
 #[test]
 fn static_dynamic_imports_follow_namespace_exports() {
     let rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -424,14 +424,14 @@ fn static_dynamic_imports_follow_namespace_exports() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export { request };",
-        [ResolutionResult::External {
+        [ResolverOutcome::External {
             package: "web".into(),
         }],
     );
     project.add_resolved(
         "main.js",
         "async function run() { const api = await import('./helper'); api.request(); }",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
@@ -451,7 +451,7 @@ fn static_dynamic_imports_follow_namespace_exports() {
 #[test]
 fn anonymous_commonjs_functions_remain_callable_across_modules() {
     let rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -467,14 +467,14 @@ fn anonymous_commonjs_functions_remain_callable_across_modules() {
     project.add_resolved(
         "helper.js",
         "const { request } = require('web'); exports.send = () => request();",
-        [ResolutionResult::External {
+        [ResolverOutcome::External {
             package: "web".into(),
         }],
     );
     project.add_resolved(
         "main.js",
         "const { send } = require('./helper'); send();",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
@@ -494,12 +494,12 @@ fn anonymous_commonjs_functions_remain_callable_across_modules() {
 #[test]
 fn returned_callable_provenance_crosses_an_exported_function() {
     let rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::call(
-            CallMatcher::module_export("web", "request").static_string_arg(0),
+        .matcher(Matcher::from(
+            CallMatcher::module_export("web", "request").arg_static_string(0),
         ))
         .build()
         .unwrap();
@@ -512,14 +512,14 @@ fn returned_callable_provenance_crosses_an_exported_function() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export function get() { return request; }",
-        [ResolutionResult::External {
+        [ResolverOutcome::External {
             package: "web".into(),
         }],
     );
     project.add_resolved(
         "main.js",
         "import { get } from './helper'; get()('/remote');",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
@@ -539,12 +539,12 @@ fn returned_callable_provenance_crosses_an_exported_function() {
 #[test]
 fn linked_external_call_arguments_are_projected_after_reexports() {
     let rule = Rule::builder("network.request")
-        .label("Uses request")
+        .description("Uses request")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::call(
-            CallMatcher::module_export("web", "request").static_string_arg(0),
+        .matcher(Matcher::from(
+            CallMatcher::module_export("web", "request").arg_static_string(0),
         ))
         .build()
         .unwrap();
@@ -558,14 +558,14 @@ fn linked_external_call_arguments_are_projected_after_reexports() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export { request as send };",
-        [ResolutionResult::External {
+        [ResolverOutcome::External {
             package: "web".into(),
         }],
     );
     project.add_resolved(
         "main.js",
         "import { send } from './helper'; send('/remote');",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("helper.js"),
         }],
     );
@@ -625,8 +625,8 @@ fn session_returns_static_import_dynamic_import_require_and_reexport_requests() 
             .map(|request| request.key.kind)
             .collect::<Vec<_>>(),
         vec![
-            ResolutionRequestKind::Import,
-            ResolutionRequestKind::Import,
+            ResolutionRequestKind::StaticImport,
+            ResolutionRequestKind::StaticImport,
             ResolutionRequestKind::Require,
             ResolutionRequestKind::DynamicImport,
         ]
@@ -645,7 +645,7 @@ fn session_rejects_resolution_for_an_unauthored_request() {
     session
         .add_source(source_file("main.js", "fetch('/remote');"))
         .unwrap();
-    let error = session.record_resolution(key("main.js"), ResolutionResult::Missing);
+    let error = session.record_resolution(key("main.js"), ResolverOutcome::Missing);
     assert!(matches!(error, Err(ProjectInputError::UnknownRequest(_))));
 }
 
@@ -684,14 +684,14 @@ fn linker_accepts_named_reexports_and_reports_missing_exports() {
     project.add_resolved(
         "barrel.js",
         "export { value } from './dep';",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("dep.js"),
         }],
     );
     project.add_resolved(
         "main.js",
         "import { value } from './barrel';",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("barrel.js"),
         }],
     );
@@ -706,7 +706,7 @@ fn linker_accepts_named_reexports_and_reports_missing_exports() {
     missing.add_resolved(
         "main.js",
         "import { nope } from './dep';",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("dep.js"),
         }],
     );
@@ -729,10 +729,10 @@ fn linker_reports_ambiguous_multiple_star_exports() {
         "barrel.js",
         "export * from './a'; export * from './b';",
         [
-            ResolutionResult::Internal {
+            ResolverOutcome::Internal {
                 path: project_path("a.js"),
             },
-            ResolutionResult::Internal {
+            ResolverOutcome::Internal {
                 path: project_path("b.js"),
             },
         ],
@@ -740,7 +740,7 @@ fn linker_reports_ambiguous_multiple_star_exports() {
     project.add_resolved(
         "main.js",
         "import { value } from './barrel';",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("barrel.js"),
         }],
     );
@@ -762,7 +762,7 @@ fn outside_project_targets_accept_normalized_absolute_paths() {
     project.add_resolved(
         "main.js",
         "import value from './outside';",
-        [ResolutionResult::OutsideProject {
+        [ResolverOutcome::OutsideProject {
             path: "/other/./dependency.js".into(),
         }],
     );
@@ -780,7 +780,7 @@ fn dynamic_commonjs_export_shapes_are_reported_and_fail_closed() {
     project.add_resolved(
         "main.js",
         "import { value } from './dependency';",
-        [ResolutionResult::Internal {
+        [ResolverOutcome::Internal {
             path: project_path("dependency.js"),
         }],
     );

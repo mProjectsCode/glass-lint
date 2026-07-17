@@ -50,7 +50,7 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
     let (mode, mode_path) = match &selection {
         ProjectSelection::Entry(path) => ("single file", path.as_path()),
         ProjectSelection::Directory(path) => ("folder", path.as_path()),
-        ProjectSelection::TsConfig(path) => ("tsconfig", path.as_path()),
+        ProjectSelection::Tsconfig(path) => ("tsconfig", path.as_path()),
     };
     crate::output::write_mode(config, mode, mode_path)?;
     let options = config.project_load_options()?;
@@ -59,7 +59,7 @@ fn lint_project(config: &Config, linter: &Linter, path: &std::path::Path) -> Res
         .load_and_lint(linter, &selection)
         .with_context(|| format!("analyze project at {}", path.display()))?;
     let report = outcome.report;
-    let failed = outcome.error.is_some() || config.report_fails(&report);
+    let failed = outcome.partial_reason.is_some() || config.report_fails(&report);
     crate::output::write_project_report(config, &report)?;
     tracing::info!(target: "glass_lint::cli", files = report.files.len(), "project command completed");
     Ok(failed)
@@ -137,7 +137,7 @@ mod tests {
         fs::write(&tsconfig, "{}").unwrap();
         assert_eq!(
             project_selection(&root),
-            ProjectSelection::TsConfig(tsconfig)
+            ProjectSelection::Tsconfig(tsconfig)
         );
 
         fs::remove_dir_all(root).unwrap();

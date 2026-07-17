@@ -445,7 +445,7 @@ fn test_linter() -> crate::Linter {
 
 fn test_linter_with_environment(environment: crate::Environment) -> crate::Linter {
     let rule = Rule::builder("network.fetch")
-        .label("Uses fetch")
+        .description("Uses fetch")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -463,7 +463,7 @@ fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
     let mut environment = crate::Environment::default();
     environment.add_global("fetch").unwrap();
     let rule = Rule::builder("network.fetch")
-        .label("Uses fetch")
+        .description("Uses fetch")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -487,7 +487,7 @@ fn test_linter_with_selection(
     let mut environment = crate::Environment::default();
     environment.add_global("fetch").unwrap();
     let rule = Rule::builder("network.fetch")
-        .label("Uses fetch")
+        .description("Uses fetch")
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -507,7 +507,7 @@ fn test_linter_with_selection(
 
 fn flow_linter() -> crate::Linter {
     let rule = Rule::builder("flow.append")
-        .label("Appends a configured script")
+        .description("Appends a configured script")
         .category("flow")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
@@ -544,7 +544,7 @@ fn flow_linter() -> crate::Linter {
 fn key(importer: &str) -> ResolutionRequestKey {
     ResolutionRequestKey {
         importer: ProjectRelativePath::new(importer).unwrap(),
-        kind: ResolutionRequestKind::Import,
+        kind: ResolutionRequestKind::StaticImport,
         range: SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 8).unwrap())
             .unwrap(),
     }
@@ -569,7 +569,7 @@ impl<'a> ProjectFixture<'a> {
         &mut self,
         path: &str,
         source: &str,
-        resolutions: impl IntoIterator<Item = ResolutionResult>,
+        resolutions: impl IntoIterator<Item = ResolverOutcome>,
     ) {
         let requests = self.session.add_source(source_file(path, source)).unwrap();
         for (request, resolution) in requests.into_iter().zip(resolutions) {

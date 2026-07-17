@@ -25,7 +25,7 @@ use glass_lint_core::{
 use glass_lint_project::{ProjectLoadOptions, ProjectLoadOutcome, ProjectLoader, ProjectSelection};
 
 use crate::{
-    builtins::{self, BuiltInProfile},
+    builtins::{self, BuiltinProfile},
     profile_manifest::verify_profile_manifest,
 };
 
@@ -40,7 +40,7 @@ use metrics::{
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Provider set included in a profile.
-pub enum ProfileProvider {
+pub enum ProfileCatalogProvider {
     Js,
     Obsidian,
     Both,
@@ -48,13 +48,13 @@ pub enum ProfileProvider {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Rule precision profile used during measurement.
-pub enum ProfileMode {
+pub enum RuleSelectionProfile {
     Recommended,
     Heuristic,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProfileWorkloadMode {
+pub enum ProfileWorkload {
     Files,
     LoaderProject,
     AdmittedProject,
@@ -62,13 +62,13 @@ pub enum ProfileWorkloadMode {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProfileWorkloadIdentity {
-    pub mode: ProfileWorkloadMode,
+    pub mode: ProfileWorkload,
     pub corpus_digest: Option<String>,
     pub verified: bool,
 }
 
 #[derive(Clone, Debug)]
-/// Validated-by-`profile_folder` controls for one profile run.
+/// Validated-by-`run_profile` controls for one profile run.
 pub struct ProfileConfig {
     /// Files or directories to discover.
     pub paths: Vec<PathBuf>,
@@ -81,18 +81,18 @@ pub struct ProfileConfig {
     pub repeat: usize,
     pub continue_on_error: bool,
     pub workers: usize,
-    pub provider: ProfileProvider,
-    pub mode: ProfileMode,
+    pub provider: ProfileCatalogProvider,
+    pub mode: RuleSelectionProfile,
     pub rules: Vec<String>,
-    pub project: bool,
-    pub admitted_project: bool,
+    /// Unit and execution path measured by this run.
+    pub workload: ProfileWorkload,
     /// Optional immutable selection manifest shared by profiling modes.
     pub manifest: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
-pub struct ProfileFileSummary {
-    /// Discovered file path.
+pub struct ProfileWorkloadSummary {
+    /// Workload input path (a source file or project root).
     pub path: PathBuf,
     /// UTF-8 source byte count.
     pub bytes: u64,
@@ -100,8 +100,8 @@ pub struct ProfileFileSummary {
     pub findings: usize,
     /// Parse/analysis diagnostics across measured repetitions.
     pub diagnostics: usize,
-    /// Time spent in lint calls, excluding corpus discovery and file reads.
-    pub elapsed: Duration,
+    /// Measured time for this workload input.
+    pub measured_elapsed: Duration,
     pub completion: ReportCompletion,
     pub run_completions: Vec<ReportCompletion>,
     pub operation_counts: ProfileOperationCounts,
@@ -111,10 +111,10 @@ pub struct ProfileFileSummary {
 
 #[derive(Clone, Debug)]
 pub struct ProfileSummary {
-    /// Workload kind is part of the comparison contract.
+    /// Workload kind is part of the profiling comparison contract.
     pub workload: ProfileWorkloadIdentity,
-    /// Number of discovered files.
-    pub files: usize,
+    /// Number of workload inputs (files in file mode, roots in project modes).
+    pub inputs: usize,
     /// Total bytes in prepared files.
     pub bytes: u64,
     /// Total measured findings.
@@ -125,18 +125,19 @@ pub struct ProfileSummary {
     pub errors: usize,
     /// Number of successful measured file runs.
     pub runs: usize,
-    /// Discovery, verification, file reads, decoding, and linter construction;
+    /// Discovery, verification, reads, decoding, and linter construction;
     /// excludes warm-up and measured analysis.
-    pub setup_elapsed: Duration,
-    /// Wall time for the measured linting phase.
-    pub elapsed: Duration,
+    pub setup_duration: Duration,
+    /// Wall time for the measured workload phase.
+    pub measured_elapsed: Duration,
     /// End-to-end wall time including setup, warm-up, and measured analysis.
-    pub total_elapsed: Duration,
+    pub wall_duration: Duration,
     /// One correctness/timing record for each measured repetition.
     pub repetitions: Vec<ProfileRepetitionSummary>,
     /// Median measured repetition duration.
-    pub median_elapsed: Duration,
-    pub file_results: Vec<ProfileFileSummary>,
+    pub median_repetition_duration: Duration,
+    /// One result per workload input.
+    pub workload_results: Vec<ProfileWorkloadSummary>,
     pub phase_timings: ProfilePhaseTimings,
     pub operation_counts: ProfileOperationCounts,
 }
@@ -153,7 +154,8 @@ pub struct ProfileRepetitionSummary {
     pub evidence_order_digest: String,
 }
 
-/// Reject a performance comparison when deterministic correctness differs.
+/// Reject a performance render_adapter_comparison when deterministic
+/// correctness differs.
 pub fn ensure_profile_correctness_match(
     left: &ProfileSummary,
     right: &ProfileSummary,
@@ -275,10 +277,7 @@ impl std::ops::AddAssign for ProfileOperationCounts {
 }
 
 impl ProfileOperationCounts {
-    fn from_project(
-        report: &glass_lint_core::AnalysisReport,
-        _metrics: &glass_lint_project::ProjectLoadMetrics,
-    ) -> Self {
+    fn from_project(report: &glass_lint_core::AnalysisReport) -> Self {
         Self {
             files: report.operations.files,
             requests: report.operations.requests,
@@ -378,7 +377,7 @@ fn project_run_outcome(
         diagnostics: all_diagnostic_count(report),
         bytes: metrics.bytes,
         phases: ProfilePhaseTimings::from_project_metrics(metrics),
-        counts: ProfileOperationCounts::from_project(report, metrics),
+        counts: ProfileOperationCounts::from_project(report),
         completion: report.completion,
         evidence_order_digest: evidence_order_digest(report),
     }
@@ -398,7 +397,7 @@ struct PreparedFile {
 /// them feed this accumulator so totals and error semantics cannot drift.
 #[derive(Default)]
 struct ProfileTotals {
-    file_results: Vec<ProfileFileSummary>,
+    workload_results: Vec<ProfileWorkloadSummary>,
     files: usize,
     bytes: u64,
     findings: usize,
@@ -408,7 +407,7 @@ struct ProfileTotals {
 }
 
 impl ProfileTotals {
-    fn record(&mut self, result: ProfileFileSummary, successful_runs: usize) {
+    fn record(&mut self, result: ProfileWorkloadSummary, successful_runs: usize) {
         self.files = self.files.saturating_add(1);
         self.bytes = self.bytes.saturating_add(result.bytes);
         self.findings = self.findings.saturating_add(result.findings);
@@ -417,7 +416,7 @@ impl ProfileTotals {
             .errors
             .saturating_add(usize::from(result.error.is_some()));
         self.runs = self.runs.saturating_add(successful_runs);
-        self.file_results.push(result);
+        self.workload_results.push(result);
     }
 }
 
@@ -431,19 +430,18 @@ fn profile_project_parts(
     (
         outcome.report,
         outcome.metrics,
-        outcome.error.map(|error| format!("{error:#}")),
+        outcome.partial_reason.map(|error| format!("{error:#}")),
     )
 }
 
-pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
+pub fn run_profile(config: &ProfileConfig) -> Result<ProfileSummary> {
     // Validate before discovery so invalid runs cannot partially consume a
     // corpus or report misleading timing totals.
     validate_config(config)?;
-    if config.project {
-        return profile_projects(config);
-    }
-    if config.admitted_project {
-        return profile_admitted_projects(config);
+    match config.workload {
+        ProfileWorkload::LoaderProject => return profile_projects(config),
+        ProfileWorkload::AdmittedProject => return profile_admitted_projects(config),
+        ProfileWorkload::Files => {}
     }
     let total_start = Instant::now();
     let setup_start = Instant::now();
@@ -453,17 +451,17 @@ pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
     // Keep discovery, metadata, and UTF-8 decoding outside the measured
     // workload. This also leaves Samply with a memory-resident corpus.
     let mut prepared = Vec::with_capacity(paths.len());
-    let mut file_results = Vec::new();
+    let mut workload_results = Vec::new();
     for path in &paths {
         match prepare_file(path) {
             Ok(file) => prepared.push(file),
             Err(error) => {
-                let result = ProfileFileSummary {
+                let result = ProfileWorkloadSummary {
                     path: path.clone(),
                     bytes: 0,
                     findings: 0,
                     diagnostics: 0,
-                    elapsed: Duration::ZERO,
+                    measured_elapsed: Duration::ZERO,
                     completion: ReportCompletion::Partial,
                     run_completions: Vec::new(),
                     operation_counts: ProfileOperationCounts::default(),
@@ -477,11 +475,11 @@ pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
                         result.error.as_deref().unwrap_or("file preparation failed")
                     );
                 }
-                file_results.push(result);
+                workload_results.push(result);
             }
         }
     }
-    let setup_elapsed = setup_start.elapsed();
+    let setup_duration = setup_start.elapsed();
 
     let prepared = Arc::new(prepared);
     let measured_start = Instant::now();
@@ -491,11 +489,12 @@ pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
         config.warm_up,
         config.repeat,
         || {
-            let _ = run_profile(&prepared, &linters, config.workers, 0, 0);
+            let _ = execute_file_profile(&prepared, &linters, config.workers, 0, 0);
             Ok(())
         },
         || {
-            let (results, duration) = run_profile(&prepared, &linters, config.workers, 0, 1);
+            let (results, duration) =
+                execute_file_profile(&prepared, &linters, config.workers, 0, 1);
             let repetition = repetition_from_files(duration, &results);
             measured_results_by_run.push(results);
             Ok(repetition)
@@ -504,35 +503,35 @@ pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
     measured_results.extend(measured_results_by_run.into_iter().flatten());
     let lint_elapsed = measured_start.elapsed();
 
-    file_results.extend(aggregate_file_results(measured_results));
-    file_results.sort_by(|left, right| left.path.cmp(&right.path));
+    workload_results.extend(aggregate_workload_results(measured_results));
+    workload_results.sort_by(|left, right| left.path.cmp(&right.path));
 
     let mut totals = ProfileTotals::default();
-    for result in file_results {
+    for result in workload_results {
         totals.record(result, config.repeat);
     }
     let operation_counts = sum_operation_counts(&measured.repetitions);
 
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {
-            mode: ProfileWorkloadMode::Files,
+            mode: ProfileWorkload::Files,
             verified: manifest_digest.is_some(),
             corpus_digest: manifest_digest,
         },
-        files: totals.files,
+        inputs: totals.files,
         bytes: totals.bytes,
         findings: totals.findings,
         diagnostics: totals.diagnostics,
         errors: totals.errors,
         runs: totals.runs,
-        setup_elapsed,
-        elapsed: lint_elapsed,
-        total_elapsed: total_start.elapsed(),
-        median_elapsed: median_duration(&measured.repetitions),
+        setup_duration,
+        measured_elapsed: lint_elapsed,
+        wall_duration: total_start.elapsed(),
+        median_repetition_duration: median_duration(&measured.repetitions),
         repetitions: measured.repetitions,
-        file_results: totals.file_results,
+        workload_results: totals.workload_results,
         phase_timings: ProfilePhaseTimings {
-            discovery: setup_elapsed,
+            discovery: setup_duration,
             matching: lint_elapsed,
             total: total_start.elapsed(),
             ..ProfilePhaseTimings::default()
@@ -640,12 +639,12 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
             }
         }
         totals.record(
-            ProfileFileSummary {
+            ProfileWorkloadSummary {
                 path: path.clone(),
                 bytes: project_bytes,
                 findings: project_findings,
                 diagnostics: project_diagnostics,
-                elapsed: started.elapsed(),
+                measured_elapsed: started.elapsed(),
                 completion: project_completion,
                 run_completions: project_run_completions,
                 operation_counts: project_counts,
@@ -658,25 +657,25 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     phases.total = total_start.elapsed();
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {
-            mode: ProfileWorkloadMode::LoaderProject,
+            mode: ProfileWorkload::LoaderProject,
             verified: manifest_digest.is_some(),
             corpus_digest: manifest_digest,
         },
-        files: totals.files,
+        inputs: totals.files,
         bytes: totals.bytes,
         findings: totals.findings,
         diagnostics: totals.diagnostics,
         errors: totals.errors,
         runs: totals.runs,
-        setup_elapsed: phases.discovery + phases.reads,
-        elapsed: phases.parse_and_local_analysis
+        setup_duration: phases.discovery + phases.reads,
+        measured_elapsed: phases.parse_and_local_analysis
             + phases.resolution
             + phases.linking
             + phases.matching,
-        total_elapsed: phases.total,
-        median_elapsed: median_duration(&measured.repetitions),
+        wall_duration: phases.total,
+        median_repetition_duration: median_duration(&measured.repetitions),
         repetitions: measured.repetitions,
-        file_results: totals.file_results,
+        workload_results: totals.workload_results,
         phase_timings: phases,
         operation_counts: counts,
     })
@@ -696,7 +695,7 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         .map(|path| prepare_file(path))
         .collect::<Result<Vec<_>>>()?;
     let linters = build_linters(config.provider, config.mode, &config.rules)?;
-    let setup_elapsed = total_start.elapsed();
+    let setup_duration = total_start.elapsed();
     let mut findings = 0;
     let mut diagnostics = 0;
     let bytes = prepared.iter().map(|file| file.bytes).sum::<u64>();
@@ -754,25 +753,25 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     }
     let operation_counts = sum_operation_counts(&measured.repetitions);
     let elapsed = measured_start.elapsed();
-    let median_elapsed = median_duration(&measured.repetitions);
+    let median_repetition_duration = median_duration(&measured.repetitions);
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {
-            mode: ProfileWorkloadMode::AdmittedProject,
+            mode: ProfileWorkload::AdmittedProject,
             verified: manifest_digest.is_some(),
             corpus_digest: manifest_digest,
         },
-        files: prepared.len(),
+        inputs: prepared.len(),
         bytes,
         findings,
         diagnostics,
         errors: 0,
         runs: config.repeat.saturating_mul(linters.len()),
-        setup_elapsed,
-        elapsed,
-        total_elapsed: total_start.elapsed(),
+        setup_duration,
+        measured_elapsed: elapsed,
+        wall_duration: total_start.elapsed(),
         repetitions: measured.repetitions,
-        median_elapsed,
-        file_results: Vec::new(),
+        median_repetition_duration,
+        workload_results: Vec::new(),
         phase_timings: ProfilePhaseTimings {
             parse_and_local_analysis: elapsed,
             total: total_start.elapsed(),
@@ -854,24 +853,21 @@ fn validate_config(config: &ProfileConfig) -> Result<()> {
     if config.sample == Some(0) {
         bail!("--sample must be at least 1");
     }
-    if config.project && config.admitted_project {
-        bail!("--project and --admitted-project are mutually exclusive");
-    }
-    if config.admitted_project && config.paths.len() != 1 {
+    if matches!(config.workload, ProfileWorkload::AdmittedProject) && config.paths.len() != 1 {
         bail!("--admitted-project requires exactly one --path root");
     }
     if config.manifest.is_some() && config.paths.len() != 1 {
         bail!("--manifest requires exactly one --path root");
     }
-    if config.admitted_project && !config.paths[0].is_dir() {
+    if matches!(config.workload, ProfileWorkload::AdmittedProject) && !config.paths[0].is_dir() {
         bail!("--admitted-project root must be a directory");
     }
     Ok(())
 }
 
 fn build_linters(
-    provider: ProfileProvider,
-    mode: ProfileMode,
+    provider: ProfileCatalogProvider,
+    mode: RuleSelectionProfile,
     rules: &[String],
 ) -> Result<Vec<ProfileLinter>> {
     let parsed = rules
@@ -879,9 +875,9 @@ fn build_linters(
         .map(|rule| RuleId::parse(rule.clone()).map_err(anyhow::Error::msg))
         .collect::<Result<Vec<_>>>()?;
     let providers = match provider {
-        ProfileProvider::Js => vec!["js"],
-        ProfileProvider::Obsidian => vec!["obsidian"],
-        ProfileProvider::Both => vec!["js", "obsidian"],
+        ProfileCatalogProvider::Js => vec!["js"],
+        ProfileCatalogProvider::Obsidian => vec!["obsidian"],
+        ProfileCatalogProvider::Both => vec!["js", "obsidian"],
     };
     let mut linters = Vec::new();
     for prefix in providers {
@@ -895,8 +891,8 @@ fn build_linters(
         }
         let provider = builtins::provider(prefix)?;
         let profile = match mode {
-            ProfileMode::Recommended => BuiltInProfile::Recommended,
-            ProfileMode::Heuristic => BuiltInProfile::Heuristic,
+            RuleSelectionProfile::Recommended => BuiltinProfile::Recommended,
+            RuleSelectionProfile::Heuristic => BuiltinProfile::Heuristic,
         };
         let linter = builtins::linter(provider, profile);
         let linter = if rules.is_empty() {
@@ -939,7 +935,7 @@ fn profile_file(
     linters: &[ProfileLinter],
     warm_up: usize,
     repeat: usize,
-) -> ProfileFileSummary {
+) -> ProfileWorkloadSummary {
     let mut findings = 0;
     let mut diagnostics = 0;
     let mut elapsed = Duration::ZERO;
@@ -975,12 +971,12 @@ fn profile_file(
             }
         }
     }
-    ProfileFileSummary {
+    ProfileWorkloadSummary {
         path: file.path.clone(),
         bytes: file.bytes,
         findings,
         diagnostics,
-        elapsed,
+        measured_elapsed: elapsed,
         completion,
         run_completions,
         operation_counts,
@@ -989,26 +985,29 @@ fn profile_file(
     }
 }
 
-fn aggregate_file_results(results: Vec<ProfileFileSummary>) -> Vec<ProfileFileSummary> {
-    let mut aggregated = BTreeMap::<PathBuf, ProfileFileSummary>::new();
+fn aggregate_workload_results(results: Vec<ProfileWorkloadSummary>) -> Vec<ProfileWorkloadSummary> {
+    let mut aggregated = BTreeMap::<PathBuf, ProfileWorkloadSummary>::new();
     for result in results {
-        let entry = aggregated
-            .entry(result.path.clone())
-            .or_insert_with(|| ProfileFileSummary {
-                path: result.path.clone(),
-                bytes: result.bytes,
-                findings: 0,
-                diagnostics: 0,
-                elapsed: Duration::ZERO,
-                completion: ReportCompletion::Complete,
-                run_completions: Vec::new(),
-                operation_counts: ProfileOperationCounts::default(),
-                evidence_order_digest: String::new(),
-                error: None,
-            });
+        let entry =
+            aggregated
+                .entry(result.path.clone())
+                .or_insert_with(|| ProfileWorkloadSummary {
+                    path: result.path.clone(),
+                    bytes: result.bytes,
+                    findings: 0,
+                    diagnostics: 0,
+                    measured_elapsed: Duration::ZERO,
+                    completion: ReportCompletion::Complete,
+                    run_completions: Vec::new(),
+                    operation_counts: ProfileOperationCounts::default(),
+                    evidence_order_digest: String::new(),
+                    error: None,
+                });
         entry.findings = entry.findings.saturating_add(result.findings);
         entry.diagnostics = entry.diagnostics.saturating_add(result.diagnostics);
-        entry.elapsed = entry.elapsed.saturating_add(result.elapsed);
+        entry.measured_elapsed = entry
+            .measured_elapsed
+            .saturating_add(result.measured_elapsed);
         if result.completion == ReportCompletion::Partial {
             entry.completion = ReportCompletion::Partial;
         }
@@ -1022,13 +1021,13 @@ fn aggregate_file_results(results: Vec<ProfileFileSummary>) -> Vec<ProfileFileSu
     aggregated.into_values().collect()
 }
 
-fn run_profile(
+fn execute_file_profile(
     prepared: &Arc<Vec<PreparedFile>>,
     linters: &Arc<Vec<ProfileLinter>>,
     workers: usize,
     warm_up: usize,
     repeat: usize,
-) -> (Vec<ProfileFileSummary>, Duration) {
+) -> (Vec<ProfileWorkloadSummary>, Duration) {
     let warm_up_next = Arc::new(AtomicUsize::new(0));
     let measured_next = Arc::new(AtomicUsize::new(0));
     let results = Arc::new(Mutex::new(Vec::with_capacity(prepared.len())));
@@ -1096,11 +1095,10 @@ mod tests {
             repeat: 1,
             continue_on_error: false,
             workers: 1,
-            provider: ProfileProvider::Js,
-            mode: ProfileMode::Recommended,
+            provider: ProfileCatalogProvider::Js,
+            mode: RuleSelectionProfile::Recommended,
             rules: vec![],
-            project: false,
-            admitted_project: false,
+            workload: ProfileWorkload::Files,
             manifest: None,
         }
     }
@@ -1136,8 +1134,8 @@ mod tests {
     #[test]
     fn empty_folder_is_a_valid_profile_corpus() {
         let root = temp_root();
-        let result = profile_folder(&config(&root)).unwrap();
-        assert_eq!(result.files, 0);
+        let result = run_profile(&config(&root)).unwrap();
+        assert_eq!(result.inputs, 0);
         assert_eq!(result.runs, 0);
     }
 
@@ -1145,8 +1143,8 @@ mod tests {
     fn malformed_files_are_counted_as_parse_diagnostics() {
         let root = temp_root();
         fs::write(root.join("broken.js"), "function (").unwrap();
-        let result = profile_folder(&config(&root)).unwrap();
-        assert_eq!(result.files, 1);
+        let result = run_profile(&config(&root)).unwrap();
+        assert_eq!(result.inputs, 1);
         assert_eq!(result.diagnostics, 1);
         assert_eq!(result.errors, 0);
     }
@@ -1192,7 +1190,7 @@ mod tests {
 
     fn admitted_config(root: &Path, workers: usize) -> ProfileConfig {
         ProfileConfig {
-            admitted_project: true,
+            workload: ProfileWorkload::AdmittedProject,
             workers,
             warm_up: 1,
             repeat: 1,
@@ -1228,13 +1226,13 @@ mod tests {
         let root = temp_root();
         fs::write(root.join("broken.js"), "function (").unwrap();
         fs::write(root.join("request.js"), "import './missing.js';").unwrap();
-        let result = profile_folder(&admitted_config(&root, 1)).unwrap();
+        let result = run_profile(&admitted_config(&root, 1)).unwrap();
         assert_eq!(result.repetitions.len(), 1);
         assert_eq!(result.diagnostics, result.repetitions[0].diagnostics);
         assert!(result.diagnostics >= 2);
         assert_eq!(result.repetitions[0].completion, ReportCompletion::Partial);
-        assert!(result.elapsed >= result.repetitions[0].duration);
-        assert!(result.total_elapsed >= result.setup_elapsed + result.elapsed);
+        assert!(result.measured_elapsed >= result.repetitions[0].duration);
+        assert!(result.wall_duration >= result.setup_duration + result.measured_elapsed);
     }
 
     #[test]
@@ -1242,7 +1240,7 @@ mod tests {
         let root = temp_root();
         fs::write(root.join("a.js"), "export const value = 1; fetch('/');").unwrap();
         fs::write(root.join("b.js"), "import { value } from './a.js'; value;").unwrap();
-        let result = profile_folder(&admitted_config(&root, 1)).unwrap();
+        let result = run_profile(&admitted_config(&root, 1)).unwrap();
         assert_eq!(
             result.operation_counts,
             result.repetitions[0].operation_counts
@@ -1272,8 +1270,8 @@ mod tests {
         first.manifest = Some(manifest.clone());
         let mut second = admitted_config(&root, 2);
         second.manifest = Some(manifest);
-        let one = profile_folder(&first).unwrap();
-        let two = profile_folder(&second).unwrap();
+        let one = run_profile(&first).unwrap();
+        let two = run_profile(&second).unwrap();
         assert_eq!(one.findings, two.findings);
         assert_eq!(one.diagnostics, two.diagnostics);
         assert_eq!(one.operation_counts, two.operation_counts);
@@ -1307,11 +1305,11 @@ mod tests {
         crate::create_profile_manifest(&root, &[], &[], None, 1, "fixture", &manifest).unwrap();
         let mut first = config(&root);
         first.manifest = Some(manifest.clone());
-        let one = profile_folder(&first).unwrap();
+        let one = run_profile(&first).unwrap();
         let mut parallel = config(&root);
         parallel.workers = 4;
         parallel.manifest = Some(manifest);
-        let parallel = profile_folder(&parallel).unwrap();
+        let parallel = run_profile(&parallel).unwrap();
         ensure_profile_correctness_match(&one, &parallel).unwrap();
     }
 
@@ -1323,13 +1321,13 @@ mod tests {
         crate::create_profile_manifest(&root, &[], &[], None, 1, "fixture", &manifest).unwrap();
 
         let mut one = config(&root);
-        one.project = true;
+        one.workload = ProfileWorkload::LoaderProject;
         one.manifest = Some(manifest);
         let mut parallel = one.clone();
         parallel.workers = 2;
 
-        let one = profile_folder(&one).unwrap();
-        let parallel = profile_folder(&parallel).unwrap();
+        let one = run_profile(&one).unwrap();
+        let parallel = run_profile(&parallel).unwrap();
         assert!(one.workload.verified);
         assert_eq!(one.repetitions.len(), 1);
         assert!(!one.repetitions[0].run_completions.is_empty());
@@ -1345,27 +1343,23 @@ mod tests {
             .unwrap();
         let mut normal_config = config(&root);
         normal_config.manifest = Some(manifest_path.clone());
-        let normal = profile_folder(&normal_config).unwrap();
+        let normal = run_profile(&normal_config).unwrap();
         let mut admitted_config = admitted_config(&root, 1);
         admitted_config.manifest = Some(manifest_path);
-        let admitted = profile_folder(&admitted_config).unwrap();
+        let admitted = run_profile(&admitted_config).unwrap();
         assert_eq!(
             normal.workload.corpus_digest,
             admitted.workload.corpus_digest
         );
         assert_eq!(normal.bytes, admitted.bytes);
-        assert_eq!(normal.files, admitted.files);
+        assert_eq!(normal.inputs, admitted.inputs);
     }
 
     #[test]
-    fn project_profile_modes_are_mutually_exclusive() {
+    fn workload_mode_is_explicit() {
         let root = temp_root();
-        let mut invalid = admitted_config(&root, 1);
-        invalid.project = true;
-        assert_eq!(
-            profile_folder(&invalid).unwrap_err().to_string(),
-            "--project and --admitted-project are mutually exclusive"
-        );
+        let config = admitted_config(&root, 1);
+        assert_eq!(config.workload, ProfileWorkload::AdmittedProject);
     }
 
     #[test]
@@ -1375,13 +1369,13 @@ mod tests {
         let mut multiple = admitted_config(&root, 1);
         multiple.paths.push(outside.to_path_buf());
         assert_eq!(
-            profile_folder(&multiple).unwrap_err().to_string(),
+            run_profile(&multiple).unwrap_err().to_string(),
             "--admitted-project requires exactly one --path root"
         );
         let mut file_root = admitted_config(&root.join("outside.js"), 1);
         fs::write(&file_root.paths[0], "").unwrap();
         assert_eq!(
-            profile_folder(&file_root).unwrap_err().to_string(),
+            run_profile(&file_root).unwrap_err().to_string(),
             "--admitted-project root must be a directory"
         );
         file_root.paths.clear();

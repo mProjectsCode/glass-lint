@@ -1,10 +1,10 @@
 //! Rule catalog construction and duplicate-ID validation.
 
 use super::{
-    super::rule::{CatalogError, Rule},
+    super::rule::{CompiledCatalogError, Rule},
     CompiledRule,
 };
-use crate::api::compiler::CompiledMatcherCatalog;
+use crate::api::compiler::CompiledRuleSelection;
 
 #[derive(Debug, Clone)]
 /// Compiled rules in deterministic declaration order.
@@ -15,11 +15,11 @@ pub struct CompiledCatalog {
 
 impl CompiledCatalog {
     /// Compile rules after rejecting duplicate stable IDs.
-    pub fn try_from_rules(rules: &[Rule]) -> Result<Self, CatalogError> {
+    pub fn try_from_rules(rules: &[Rule]) -> Result<Self, CompiledCatalogError> {
         let mut ids = std::collections::BTreeSet::new();
         for rule in rules {
             if !ids.insert(rule.id().to_string()) {
-                return Err(CatalogError::DuplicateRule(rule.id().to_string()));
+                return Err(CompiledCatalogError::DuplicateRule(rule.id().to_string()));
             }
         }
         Ok(Self {
@@ -38,7 +38,7 @@ impl CompiledCatalog {
     pub fn to_matcher_catalog<'a>(
         &'a self,
         selected: &'a [crate::api::classification::RuleIndex],
-    ) -> CompiledMatcherCatalog<'a> {
-        CompiledMatcherCatalog::new(&self.rules, selected)
+    ) -> CompiledRuleSelection<'a> {
+        CompiledRuleSelection::new(&self.rules, selected)
     }
 }

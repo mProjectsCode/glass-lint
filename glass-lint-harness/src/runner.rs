@@ -1,4 +1,4 @@
-//! Case execution and expectation comparison.
+//! Case execution and expectation render_adapter_comparison.
 //!
 //! The runner records one result per case/tool, treating skipped tools as
 //! explicit successful non-runs and preserving adapter timing by name.
@@ -16,16 +16,16 @@ use tracing::info;
 use crate::{
     adapters::Adapter,
     cases::load_cases,
-    types::{CaseResult, DiagnosticExpectation, SuiteReport, ToolExpectation, ToolResult},
+    types::{CaseResult, FindingExpectation, SuiteReport, ToolExpectation, ToolResult},
 };
 
-pub type CaseTimings = BTreeMap<String, Duration>;
+pub type AdapterTimings = BTreeMap<String, Duration>;
 
 /// Execute every configured adapter against every discovered case.
 pub fn run_suite(
     root: &Path,
     adapters: &[Box<dyn Adapter>],
-) -> Result<(SuiteReport, Vec<CaseTimings>)> {
+) -> Result<(SuiteReport, Vec<AdapterTimings>)> {
     let cases = load_cases(root)?;
     let mut results = Vec::new();
     let mut all_timings = Vec::new();
@@ -37,7 +37,7 @@ pub fn run_suite(
             let version = adapter
                 .version()
                 .unwrap_or_else(|error| format!("unknown ({error})"));
-            let Some(expectation) = case.tools.get(adapter.name()) else {
+            let Some(expectation) = case.adapters.get(adapter.name()) else {
                 timings.insert(adapter.name().into(), tool_start.elapsed());
                 tools.insert(
                     adapter.name().into(),
@@ -47,7 +47,7 @@ pub fn run_suite(
                         skip_reason: Some("tool not configured for this case".into()),
                         passed: true,
                         findings: vec![],
-                        errors: vec![],
+                        mismatches: vec![],
                         operational_errors: vec![],
                     },
                 );
@@ -64,7 +64,7 @@ pub fn run_suite(
                         skip_reason: Some(reason),
                         passed: true,
                         findings: vec![],
-                        errors: vec![],
+                        mismatches: vec![],
                         operational_errors: vec![],
                     },
                 );
@@ -87,7 +87,7 @@ pub fn run_suite(
                     skip_reason: None,
                     passed: errors.is_empty() && operational_errors.is_empty(),
                     findings,
-                    errors,
+                    mismatches: errors,
                     operational_errors,
                 },
             );
@@ -104,7 +104,7 @@ pub fn run_suite(
             id: case.id.clone(),
             description: case.description.clone(),
             source: case.source.clone(),
-            tools,
+            adapters: tools,
         });
     }
     Ok((
@@ -116,7 +116,7 @@ pub fn run_suite(
     ))
 }
 
-impl DiagnosticExpectation {
+impl FindingExpectation {
     fn matches(&self, finding: &Finding) -> bool {
         finding.rule_id.as_str() == self.rule_id
             && self
@@ -221,7 +221,7 @@ mod tests {
         let expected = ToolExpectation {
             config: None,
             rules: vec![],
-            required: vec![DiagnosticExpectation {
+            required: vec![FindingExpectation {
                 path: None,
                 rule_id: "test:a.b".into(),
                 message_id: None,
@@ -253,7 +253,7 @@ mod tests {
             config: None,
             rules: vec![],
             required: vec![],
-            forbidden: vec![DiagnosticExpectation {
+            forbidden: vec![FindingExpectation {
                 path: None,
                 rule_id: "test:a.b".into(),
                 message_id: None,

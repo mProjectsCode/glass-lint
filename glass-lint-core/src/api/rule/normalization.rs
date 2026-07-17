@@ -9,14 +9,14 @@
 //! making compiled catalogs deterministic.
 
 use super::matcher::{
-    ApiMatcher, ArgumentConstraint, ArgumentMatcher, CallMatcher, CallProvenance, ClassMatcher,
-    ConstructorMatcher, InstanceMemberCallMatcher, MemberCallMatcher, MemberCallProvenance,
-    MemberReadProvenance, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, ValueMatcher,
-    ValueMatcherKind, canonical_rooted_chain, normalize_flows, normalize_member_chain,
-    normalize_strings,
+    ArgumentConstraint, ArgumentMatcher, CallMatcher, ClassMatcher, ConstructorMatcher,
+    InstanceMemberCallMatcher, MatcherSet, MemberCallMatcher, MemberCallProvenance,
+    MemberReadProvenance, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, SymbolProvenance,
+    ValueMatcher, ValueMatcherKind, canonical_rooted_chain, normalize_flows,
+    normalize_member_chain, normalize_strings,
 };
 
-impl ApiMatcher {
+impl MatcherSet {
     /// Consume a matcher and return its canonical deterministic representation.
     pub(super) fn normalize(mut self) -> Self {
         normalize_arguments(&mut self);
@@ -26,8 +26,8 @@ impl ApiMatcher {
         self.calls.retain(|call| {
             !call.name.is_empty()
                 && match &call.provenance {
-                    CallProvenance::Any | CallProvenance::Global => true,
-                    CallProvenance::ModuleExport { module } => !module.is_empty(),
+                    SymbolProvenance::Any | SymbolProvenance::Global => true,
+                    SymbolProvenance::ModuleExport { module } => !module.is_empty(),
                 }
         });
         self.calls
@@ -68,7 +68,7 @@ impl ApiMatcher {
             .sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
         self.member_reads.dedup();
         normalize_strings(&mut self.imports);
-        normalize_strings(&mut self.string_literals);
+        normalize_strings(&mut self.string_contains);
         ClassMatcher::normalize_all(&mut self.classes);
         ConstructorMatcher::normalize_all(&mut self.constructors);
         normalize_flows(&mut self.flows);
@@ -79,7 +79,7 @@ impl ApiMatcher {
     }
 }
 
-pub(super) fn normalize_arguments(matcher: &mut ApiMatcher) {
+pub(super) fn normalize_arguments(matcher: &mut MatcherSet) {
     for call in &mut matcher.calls {
         ArgumentConstraint::normalize_all(&mut call.arguments);
     }
@@ -182,7 +182,7 @@ impl InstanceMemberCallMatcher {
     }
 }
 
-impl CallProvenance {
+impl SymbolProvenance {
     pub fn normalize(&mut self) {
         if let Self::ModuleExport { module } = self {
             *module = module.trim().to_string();

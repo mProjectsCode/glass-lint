@@ -15,7 +15,8 @@ use super::{
     FactBuilder, FactKind, FactPayload, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, Ident,
     IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase, OptChainExpr, Spanned, Str, SwitchStmt,
     SymbolCallProvenance, SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr,
-    ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr, member_prop_name,
+    ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr,
+    member_property_name,
 };
 use crate::{
     analysis::module::{ImportedBinding, ModuleRequestRole},
@@ -43,7 +44,7 @@ impl Visit for FactBuilder<'_> {
         // A member expression is a read role at this node; its object and
         // property children are visited separately for their own references.
         let resolved = self.resolver.resolve_member(member);
-        let syntactic_chain = self.resolver.member_chain(member);
+        let syntactic_chain = self.resolver.member_expression_chain(member);
         self.emit(
             FactKind::MemberRead,
             member.span(),
@@ -147,7 +148,7 @@ impl Visit for FactBuilder<'_> {
                 };
                 if let Some(member) = optional_member
                     && matches!(
-                        member_prop_name(&member.prop).as_deref(),
+                        member_property_name(&member.prop).as_deref(),
                         Some("call" | "apply")
                     )
                 {
@@ -165,7 +166,7 @@ impl Visit for FactBuilder<'_> {
             }
             OptChainBase::Member(member) => {
                 let resolved = self.resolver.resolve_member(member);
-                let syntactic_chain = self.resolver.member_chain(member);
+                let syntactic_chain = self.resolver.member_expression_chain(member);
                 self.emit(
                     FactKind::MemberRead,
                     member.span(),
@@ -283,7 +284,7 @@ impl Visit for FactBuilder<'_> {
         };
         self.interface.add_request(
             span,
-            ResolutionRequestKind::Import,
+            ResolutionRequestKind::StaticImport,
             module.clone(),
             ModuleRequestRole::Import { bindings },
         );
@@ -421,7 +422,7 @@ impl Visit for FactBuilder<'_> {
             FactPayload::Control {
                 kind: ControlKind::Return,
                 region: super::ControlRegionId(0),
-                value,
+                return_value: value,
             },
         );
     }
