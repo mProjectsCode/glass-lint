@@ -1,6 +1,6 @@
 //! Compositional ordinary-clause execution over semantic occurrence indexes.
 
-use super::{ApiEvidence, MatcherFacts, Occurrence, push_owned_evidence};
+use super::{ApiEvidence, MatcherFacts, ModuleExportKey, Occurrence, push_owned_evidence};
 use crate::api::compiler::rule::{
     EventPredicate, IdentityConstraint, QueryClause, QueryPlan, SubjectConstraint,
 };
@@ -28,54 +28,60 @@ impl MatcherFacts {
         evidence
     }
 
-    #[allow(clippy::too_many_lines)]
     fn occurrences_for_clause(&self, clause: &QueryClause) -> Option<Vec<Occurrence>> {
         if !matches!(clause.subject, SubjectConstraint::Direct) {
-            return match (&clause.event, &clause.subject) {
-                (EventPredicate::MemberCall { member }, SubjectConstraint::ReturnedFrom { .. }) => {
-                    self.members
-                        .returned_calls
-                        .iter()
-                        .filter(|((source, found), _)| {
-                            root_or_descendant_matches(&clause.identity, source) && found == member
-                        })
-                        .flat_map(|(_, values)| values.iter().copied())
-                        .collect::<Vec<_>>()
-                        .pipe_some()
-                }
-                (EventPredicate::MemberRead { member }, SubjectConstraint::ReturnedFrom { .. }) => {
-                    self.members
-                        .returned_reads
-                        .iter()
-                        .filter(|((source, found), _)| {
-                            root_or_descendant_matches(&clause.identity, source) && found == member
-                        })
-                        .flat_map(|(_, values)| values.iter().copied())
-                        .collect::<Vec<_>>()
-                        .pipe_some()
-                }
-                (EventPredicate::MemberCall { member }, SubjectConstraint::InstanceOf { .. }) => {
-                    self.members
-                        .instance_calls
-                        .iter()
-                        .filter(|((module, export, found), _)| match &clause.identity {
-                            IdentityConstraint::ModuleExport {
-                                module: expected_module,
-                                export: expected_export,
-                            } => {
-                                module == expected_module
-                                    && export == expected_export
-                                    && found == member
-                            }
-                            _ => false,
-                        })
-                        .flat_map(|(_, values)| values.iter().copied())
-                        .collect::<Vec<_>>()
-                        .pipe_some()
-                }
-                _ => None,
-            };
+            return self.occurrences_for_subject(clause);
         }
+        self.occurrences_for_event(clause)
+    }
+
+    fn occurrences_for_subject(&self, clause: &QueryClause) -> Option<Vec<Occurrence>> {
+        match (&clause.event, &clause.subject) {
+            (EventPredicate::MemberCall { member }, SubjectConstraint::ReturnedFrom { .. }) => self
+                .members
+                .returned_calls
+                .iter()
+                .filter(|(key, _)| {
+                    root_or_descendant_matches(&clause.identity, key.module())
+                        && key.export() == member
+                })
+                .flat_map(|(_, values)| values.iter().copied())
+                .collect::<Vec<_>>()
+                .pipe_some(),
+            (EventPredicate::MemberRead { member }, SubjectConstraint::ReturnedFrom { .. }) => self
+                .members
+                .returned_reads
+                .iter()
+                .filter(|(key, _)| {
+                    root_or_descendant_matches(&clause.identity, key.module())
+                        && key.export() == member
+                })
+                .flat_map(|(_, values)| values.iter().copied())
+                .collect::<Vec<_>>()
+                .pipe_some(),
+            (EventPredicate::MemberCall { member }, SubjectConstraint::InstanceOf { .. }) => self
+                .members
+                .instance_calls
+                .iter()
+                .filter(|(key, _)| match &clause.identity {
+                    IdentityConstraint::ModuleExport {
+                        module: expected_module,
+                        export: expected_export,
+                    } => {
+                        key.identity().module() == expected_module
+                            && key.identity().export() == expected_export
+                            && key.member() == member
+                    }
+                    _ => false,
+                })
+                .flat_map(|(_, values)| values.iter().copied())
+                .collect::<Vec<_>>()
+                .pipe_some(),
+            _ => None,
+        }
+    }
+
+    fn occurrences_for_event(&self, clause: &QueryClause) -> Option<Vec<Occurrence>> {
         match &clause.event {
             EventPredicate::Call => match &clause.identity {
                 IdentityConstraint::Any { name, .. } => self.call_indexes.calls.get(name).cloned(),
@@ -85,7 +91,7 @@ impl MatcherFacts {
                 IdentityConstraint::ModuleExport { module, export } => self
                     .call_indexes
                     .module_calls
-                    .get(&(module.clone(), export.clone()))
+                    .get(&ModuleExportKey::new(module, export))
                     .cloned(),
                 _ => None,
             },
@@ -95,7 +101,7 @@ impl MatcherFacts {
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_calls
-                    .get(&(module.clone(), member.clone()))
+                    .get(&ModuleExportKey::new(module, member))
                     .cloned(),
                 _ => None,
             },
@@ -105,7 +111,7 @@ impl MatcherFacts {
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_reads
-                    .get(&(module.clone(), member.clone()))
+                    .get(&ModuleExportKey::new(module, member))
                     .cloned(),
                 _ => None,
             },
@@ -116,7 +122,7 @@ impl MatcherFacts {
                 IdentityConstraint::ModuleExport { module, export } => self
                     .constructions
                     .module_classes
-                    .get(&(module.clone(), export.clone()))
+                    .get(&ModuleExportKey::new(module, export))
                     .cloned(),
                 _ => None,
             },
@@ -127,7 +133,7 @@ impl MatcherFacts {
                 IdentityConstraint::ModuleExport { module, export } => self
                     .constructions
                     .module_constructors
-                    .get(&(module.clone(), export.clone()))
+                    .get(&ModuleExportKey::new(module, export))
                     .cloned(),
                 _ => None,
             },

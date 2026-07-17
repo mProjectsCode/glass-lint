@@ -30,3 +30,6 @@ pub use types::{
     AdapterResolutionKind, AdapterResolutionResult, AdapterResponse, AdapterRun, Case, CaseResult,
     DiagnosticExpectation, ProjectCase, SuiteReport, ToolExpectation, ToolResult,
 };
+
+#[cfg(test)]
+mod test_support;

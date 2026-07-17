@@ -39,7 +39,7 @@ pub use project::{
     ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolutionResult, SourceFile,
     SourceLocation, is_internal_module_request,
 };
-pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
+pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible_text};
 pub use rule_id::RuleId;
 
 pub const REPORT_VERSION: u32 = 5;

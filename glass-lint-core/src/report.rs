@@ -217,7 +217,8 @@ fn display_width_str(text: &str) -> usize {
     measure_text_width(text)
 }
 
-fn visible_text(value: &str) -> String {
+/// Escape control characters before placing text in terminal-oriented output.
+pub fn visible_text(value: &str) -> String {
     value
         .chars()
         .map(|ch| match ch {

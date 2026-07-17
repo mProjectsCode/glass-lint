@@ -41,6 +41,7 @@ swc_ecma_visit = "25.0.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter", "registry"] }
 oxc_resolver = "=11.22.0"
+tempfile = "3.20"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

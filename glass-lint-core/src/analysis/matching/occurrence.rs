@@ -40,9 +40,15 @@ impl Occurrence {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 /// Ordered occurrence buckets keyed by a typed semantic identity.
 pub(in crate::analysis) struct OccurrenceIndex<K: Ord>(BTreeMap<K, Vec<Occurrence>>);
+
+impl<K: Ord> Default for OccurrenceIndex<K> {
+    fn default() -> Self {
+        Self(BTreeMap::new())
+    }
+}
 
 impl<K: Ord> OccurrenceIndex<K> {
     /// Append an already constructed occurrence before normalization.
@@ -114,4 +120,60 @@ impl<K: Ord> DerefMut for OccurrenceIndex<K> {
 }
 
 pub(in crate::analysis) type Occurrences = OccurrenceIndex<String>;
-pub(in crate::analysis) type ModuleOccurrences = OccurrenceIndex<(String, String)>;
+
+/// Stable key for a module request and one exported member.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub(in crate::analysis) struct ModuleExportKey {
+    module: String,
+    export: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub(in crate::analysis) struct InstanceMemberKey {
+    identity: ModuleExportKey,
+    member: String,
+}
+
+impl InstanceMemberKey {
+    pub(in crate::analysis) fn new(
+        module: impl Into<String>,
+        export: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Self {
+        Self {
+            identity: ModuleExportKey::new(module, export),
+            member: member.into(),
+        }
+    }
+
+    pub(in crate::analysis) fn identity(&self) -> &ModuleExportKey {
+        &self.identity
+    }
+
+    pub(in crate::analysis) fn member(&self) -> &str {
+        &self.member
+    }
+}
+
+impl ModuleExportKey {
+    pub(in crate::analysis) fn new(module: impl Into<String>, export: impl Into<String>) -> Self {
+        Self {
+            module: module.into(),
+            export: export.into(),
+        }
+    }
+
+    pub(in crate::analysis) fn module(&self) -> &str {
+        &self.module
+    }
+
+    pub(in crate::analysis) fn export(&self) -> &str {
+        &self.export
+    }
+
+    pub(in crate::analysis) fn wildcard(module: impl Into<String>) -> Self {
+        Self::new(module, "*")
+    }
+}
+
+pub(in crate::analysis) type ModuleOccurrences = OccurrenceIndex<ModuleExportKey>;

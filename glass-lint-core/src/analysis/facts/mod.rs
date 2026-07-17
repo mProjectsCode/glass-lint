@@ -79,9 +79,7 @@ impl SemanticFacts {
     pub(in crate::analysis) fn project(
         &self,
         matchers: &CompiledMatcherCatalog<'_>,
-        identities: Option<
-            &std::collections::BTreeMap<(String, String), super::matching::LinkedModuleIdentity>,
-        >,
+        identities: Option<&super::matching::ModuleIdentityMap>,
         result_identities: Option<
             &std::collections::BTreeMap<
                 super::value::ValueId,

@@ -253,18 +253,10 @@ fn digest_bytes(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
     use super::*;
 
-    fn temp_root(label: &str) -> PathBuf {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("glass-lint-manifest-{label}-{suffix}"));
-        fs::create_dir_all(&root).unwrap();
-        root
+    fn temp_root(_label: &str) -> crate::test_support::TempDir {
+        crate::test_support::TempDir::new()
     }
 
     fn create(root: &Path, output: &Path) -> ProfileManifest {
@@ -282,7 +274,6 @@ mod tests {
         assert_eq!(verified.paths, vec![root.join("a.js"), root.join("b.ts")]);
         assert_eq!(verified.total_bytes, manifest.total_bytes());
         assert_eq!(verified.digest, manifest.digest());
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -315,7 +306,6 @@ mod tests {
                 .to_string()
                 .contains("selected paths differ")
         );
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -349,8 +339,6 @@ mod tests {
                     .to_string()
                     .contains("escapes root")
             );
-            fs::remove_dir_all(outside).unwrap();
         }
-        fs::remove_dir_all(root).unwrap();
     }
 }

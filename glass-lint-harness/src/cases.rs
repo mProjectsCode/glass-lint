@@ -594,19 +594,14 @@ function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=j
 
     #[test]
     fn rejects_a_language_that_conflicts_with_the_fixture_extension() {
-        let root = std::env::temp_dir().join(format!(
-            "glass-lint-harness-language-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&root).unwrap();
+        let root = crate::test_support::TempDir::new();
         std::fs::write(
-            root.join("conflict.ts"),
+            root.path().join("conflict.ts"),
             "// @case language javascript\n// @tool glass-lint rules=js:network.request\nfetch('/remote');\n",
         )
         .unwrap();
 
-        let error = load_cases(&root).unwrap_err().to_string();
+        let error = load_cases(root.path()).unwrap_err().to_string();
         assert!(error.contains("conflicts with its fixture extension"));
-        std::fs::remove_dir_all(root).unwrap();
     }
 }

@@ -78,8 +78,10 @@ impl Visit for AliasCollector {
                 (&declarator.name, declarator.init.as_deref())
                 && let Some(function_scope) = self.function_scope_for_name(target.sym.as_ref())
             {
-                self.function_aliases
-                    .insert((scope, alias.id.sym.to_string()), function_scope);
+                self.function_aliases.insert(
+                    super::super::ScopedName::new(scope, alias.id.sym.as_ref()),
+                    function_scope,
+                );
             }
             let init = declarator.init.as_deref();
             let module_alias = declarator
@@ -109,21 +111,8 @@ impl Visit for AliasCollector {
                 .as_deref()
                 .and_then(|init| self.bound_callable_provenance(init));
             self.insert_pat_locals(scope, &declarator.name);
-            let derived_function_pattern = if let (Pat::Object(object), Some(init)) =
-                (&declarator.name, init)
-                && function_prototype_builtin(init).is_some_and(|name| self.is_unbound(name))
-            {
-                for property in &object.props {
-                    if let ObjectPatProp::KeyValue(property) = property
-                        && prop_name(&property.key).as_deref() == Some("constructor")
-                    {
-                        self.collect_value_aliases(&property.value, "Function", scope);
-                    }
-                }
-                true
-            } else {
-                false
-            };
+            let derived_function_pattern =
+                collect_derived_function_pattern(self, &declarator.name, init, scope);
             if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, bound_alias.as_ref())
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance.clone());
@@ -364,6 +353,28 @@ impl Visit for AliasCollector {
     }
 }
 
+fn collect_derived_function_pattern(
+    collector: &mut AliasCollector,
+    pattern: &Pat,
+    init: Option<&Expr>,
+    scope: ScopeId,
+) -> bool {
+    let (Pat::Object(object), Some(init)) = (pattern, init) else {
+        return false;
+    };
+    if !function_prototype_builtin(init).is_some_and(|name| collector.is_unbound(name)) {
+        return false;
+    }
+    for property in &object.props {
+        if let ObjectPatProp::KeyValue(property) = property
+            && prop_name(&property.key).as_deref() == Some("constructor")
+        {
+            collector.collect_value_aliases(&property.value, "Function", scope);
+        }
+    }
+    true
+}
+
 fn register_declared_function(
     collector: &mut AliasCollector,
     scope: ScopeId,
@@ -388,7 +399,7 @@ fn record_mutable_static_object(
     if mutable_object && let Pat::Ident(ident) = &declarator.name {
         collector
             .mutable_static_objects
-            .insert((scope, ident.id.sym.to_string()));
+            .insert(super::super::ScopedName::new(scope, ident.id.sym.as_ref()));
     }
 }
 

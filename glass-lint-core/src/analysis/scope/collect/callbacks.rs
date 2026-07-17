@@ -8,7 +8,7 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, ObjectPatProp, Pat};
 use super::{
     super::{
         super::syntax::{member_prop_name, prop_name},
-        BindingProvenance, ScopeId,
+        BindingProvenance, ScopeId, ScopedName,
     },
     AliasCollector,
 };
@@ -18,8 +18,8 @@ impl AliasCollector {
     /// a helper. Conflicting call sites are discarded rather than merged:
     /// retaining an ambiguous alias would leak one caller's provenance into
     /// another.
-    pub fn parameter_aliases(&self) -> BTreeMap<(ScopeId, String), BindingProvenance> {
-        let mut aliases = BTreeMap::<(ScopeId, String), Option<BindingProvenance>>::new();
+    pub fn parameter_aliases(&self) -> BTreeMap<ScopedName, BindingProvenance> {
+        let mut aliases = BTreeMap::<ScopedName, Option<BindingProvenance>>::new();
         for (caller_scope, callee, arguments) in &self.calls {
             let Some((scope, parameters)) = self.function_for_call(*caller_scope, callee) else {
                 continue;
@@ -34,7 +34,7 @@ impl AliasCollector {
                 for name in Self::parameter_binding_names(parameter) {
                     let target = projected.get(&name).cloned();
                     let entry = aliases
-                        .entry((*scope, name))
+                        .entry(ScopedName::new(*scope, name))
                         .or_insert_with(|| target.clone());
                     if *entry != target {
                         *entry = None;
@@ -44,7 +44,7 @@ impl AliasCollector {
             if arguments.len() != parameters.len() {
                 for parameter in parameters {
                     for name in Self::parameter_binding_names(parameter) {
-                        aliases.insert((*scope, name), None);
+                        aliases.insert(ScopedName::new(*scope, name), None);
                     }
                 }
             }

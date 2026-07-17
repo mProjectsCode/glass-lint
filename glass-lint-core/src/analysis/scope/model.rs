@@ -17,6 +17,30 @@ use super::super::{
 /// Stable identity of a lexical scope within one analyzed module.
 pub(in crate::analysis) struct ScopeId(usize);
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A name resolved within one lexical scope.
+pub(in crate::analysis) struct ScopedName {
+    scope: ScopeId,
+    name: String,
+}
+
+impl ScopedName {
+    pub(in crate::analysis) fn new(scope: ScopeId, name: impl Into<String>) -> Self {
+        Self {
+            scope,
+            name: name.into(),
+        }
+    }
+
+    pub(in crate::analysis) fn scope(&self) -> ScopeId {
+        self.scope
+    }
+
+    pub(in crate::analysis) fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 impl ScopeId {
     pub(in crate::analysis) fn index(self) -> usize {
         self.0
@@ -41,13 +65,13 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Source-ordered assignments grouped by scope and name.
     assignments: BTreeMap<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>,
     /// Stable binding IDs keyed by lexical scope and name.
-    binding_ids: BTreeMap<(ScopeId, String), BindingId>,
+    binding_ids: BTreeMap<ScopedName, BindingId>,
     /// Stable function IDs keyed by function scope.
     function_ids: BTreeMap<ScopeId, FunctionId>,
     /// Direct function declarations visible from a scope.
-    function_bindings: BTreeMap<(ScopeId, String), FunctionId>,
+    function_bindings: BTreeMap<ScopedName, FunctionId>,
     /// Aliases to locally declared functions.
-    function_aliases: BTreeMap<(ScopeId, String), FunctionId>,
+    function_aliases: BTreeMap<ScopedName, FunctionId>,
     /// Property writes indexed by versioned receiver and path.
     property_assignments: BTreeMap<(BindingKey, Vec<String>), Vec<PropertyAliasFact>>,
     /// Rooted writes that invalidate member identities.
@@ -59,7 +83,7 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Dynamic-evaluation spans grouped by scope for indexed queries.
     dynamic_evals_by_scope: BTreeMap<ScopeId, Vec<ScopeEffect>>,
     /// Static objects whose `var` binding may be mutated.
-    mutable_static_objects: std::collections::BTreeSet<(ScopeId, String)>,
+    mutable_static_objects: std::collections::BTreeSet<ScopedName>,
 }
 
 impl ScopeGraph {
@@ -154,7 +178,7 @@ impl ScopeGraph {
     }
 
     pub(super) fn binding_id_at(&self, scope: ScopeId, name: &str) -> Option<BindingId> {
-        self.binding_ids.get(&(scope, name.to_string())).copied()
+        self.binding_ids.get(&ScopedName::new(scope, name)).copied()
     }
 
     pub(super) fn parameter_alias_for(
@@ -217,13 +241,13 @@ impl ScopeGraph {
 
     pub(super) fn function_binding(&self, scope: ScopeId, name: &str) -> Option<FunctionId> {
         self.function_bindings
-            .get(&(scope, name.to_string()))
+            .get(&ScopedName::new(scope, name))
             .copied()
     }
 
     pub(super) fn function_alias(&self, scope: ScopeId, name: &str) -> Option<FunctionId> {
         self.function_aliases
-            .get(&(scope, name.to_string()))
+            .get(&ScopedName::new(scope, name))
             .copied()
     }
 
@@ -270,7 +294,7 @@ impl ScopeGraph {
 
     pub(super) fn is_mutable_static_object(&self, scope: ScopeId, name: &str) -> bool {
         self.mutable_static_objects
-            .contains(&(scope, name.to_string()))
+            .contains(&ScopedName::new(scope, name))
     }
 
     pub(super) fn has_eval_after(&self, scope: ScopeId, span: Span) -> bool {
@@ -313,12 +337,12 @@ pub(super) struct ScopeGraphParts {
     pub(super) scopes: Vec<AliasScope>,
     pub(super) scopes_by_start: Vec<ScopeId>,
     pub(super) assignments: BTreeMap<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>,
-    pub(super) binding_ids: BTreeMap<(ScopeId, String), BindingId>,
+    pub(super) binding_ids: BTreeMap<ScopedName, BindingId>,
     pub(super) function_ids: BTreeMap<ScopeId, FunctionId>,
-    pub(super) function_bindings: BTreeMap<(ScopeId, String), FunctionId>,
-    pub(super) function_aliases: BTreeMap<(ScopeId, String), FunctionId>,
+    pub(super) function_bindings: BTreeMap<ScopedName, FunctionId>,
+    pub(super) function_aliases: BTreeMap<ScopedName, FunctionId>,
     pub(super) parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
-    pub(super) mutable_static_objects: std::collections::BTreeSet<(ScopeId, String)>,
+    pub(super) mutable_static_objects: std::collections::BTreeSet<ScopedName>,
 }
 
 fn span_contains(outer: Span, inner: Span) -> bool {

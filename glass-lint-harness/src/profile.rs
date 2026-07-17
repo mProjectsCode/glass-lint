@@ -318,6 +318,35 @@ struct PreparedFile {
     source: String,
 }
 
+/// Shared accounting for measured file/project outputs.
+///
+/// Profiling modes differ only in how they produce a file summary; all of
+/// them feed this accumulator so totals and error semantics cannot drift.
+#[derive(Default)]
+struct ProfileTotals {
+    file_results: Vec<ProfileFileSummary>,
+    files: usize,
+    bytes: u64,
+    findings: usize,
+    diagnostics: usize,
+    errors: usize,
+    runs: usize,
+}
+
+impl ProfileTotals {
+    fn record(&mut self, result: ProfileFileSummary, successful_runs: usize) {
+        self.files = self.files.saturating_add(1);
+        self.bytes = self.bytes.saturating_add(result.bytes);
+        self.findings = self.findings.saturating_add(result.findings);
+        self.diagnostics = self.diagnostics.saturating_add(result.diagnostics);
+        self.errors = self
+            .errors
+            .saturating_add(usize::from(result.error.is_some()));
+        self.runs = self.runs.saturating_add(successful_runs);
+        self.file_results.push(result);
+    }
+}
+
 fn profile_project_parts(
     outcome: ProjectLoadOutcome,
 ) -> (
@@ -400,32 +429,25 @@ pub fn profile_folder(config: &ProfileConfig) -> Result<ProfileSummary> {
     file_results.extend(aggregate_file_results(measured_results));
     file_results.sort_by(|left, right| left.path.cmp(&right.path));
 
-    let errors = file_results
-        .iter()
-        .filter(|result| result.error.is_some())
-        .count();
-    let bytes = file_results.iter().map(|result| result.bytes).sum();
-    let findings = file_results.iter().map(|result| result.findings).sum();
-    let diagnostics = file_results.iter().map(|result| result.diagnostics).sum();
-    let successful_files = file_results
-        .iter()
-        .filter(|result| result.error.is_none())
-        .count();
+    let mut totals = ProfileTotals::default();
+    for result in file_results {
+        totals.record(result, config.repeat);
+    }
 
     Ok(ProfileSummary {
-        files: paths.len(),
-        bytes,
-        findings,
-        diagnostics,
-        errors,
-        runs: successful_files * config.repeat,
+        files: totals.files,
+        bytes: totals.bytes,
+        findings: totals.findings,
+        diagnostics: totals.diagnostics,
+        errors: totals.errors,
+        runs: totals.runs,
         setup_elapsed,
         elapsed: lint_elapsed,
         total_elapsed: total_start.elapsed(),
         median_elapsed: median_duration(&measured.repetitions),
         repetitions: measured.repetitions,
         manifest_digest,
-        file_results,
+        file_results: totals.file_results,
         phase_timings: ProfilePhaseTimings {
             discovery: setup_elapsed,
             matching: lint_elapsed,
@@ -440,15 +462,9 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     let total_start = Instant::now();
     let linters = build_linters(config.provider, config.mode, &config.rules)?;
     let loader = ProjectLoader::new(ProjectLoadOptions::default())?;
-    let mut file_results = Vec::new();
+    let mut totals = ProfileTotals::default();
     let mut phases = ProfilePhaseTimings::default();
     let mut counts = ProfileOperationCounts::default();
-    let mut findings = 0;
-    let mut diagnostics = 0;
-    let mut errors = 0;
-    let mut bytes: u64 = 0;
-    let mut runs = 0;
-    let mut files: usize = 0;
 
     for path in &config.paths {
         let selection = if path.is_dir() {
@@ -462,6 +478,7 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         let mut project_files = 0;
         let mut project_bytes = 0;
         let mut project_error = None;
+        let mut successful_runs = 0_usize;
         let mut project_completion = ReportCompletion::Complete;
         let mut project_counts = ProfileOperationCounts::default();
         let mut project_evidence_digests = Vec::new();
@@ -472,6 +489,7 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
                         let (report, metrics, error) = profile_project_parts(outcome);
                         project_error = error.or(project_error);
                         if iteration >= config.warm_up {
+                            successful_runs = successful_runs.saturating_add(1);
                             let outcome = project_run_outcome(&report, &metrics);
                             project_findings += outcome.findings;
                             project_diagnostics += outcome.diagnostics;
@@ -484,7 +502,6 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
                             project_evidence_digests.push(outcome.evidence_order_digest);
                             phases += outcome.phases;
                             counts += outcome.counts;
-                            runs += 1;
                         }
                     }
                     Err(error) => {
@@ -496,34 +513,30 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
                 }
             }
         }
-        if project_error.is_some() {
-            errors += 1;
-        }
-        findings += project_findings;
-        diagnostics += project_diagnostics;
-        bytes = bytes.saturating_add(project_bytes);
-        files = files.saturating_add(project_files);
-        file_results.push(ProfileFileSummary {
-            path: path.clone(),
-            bytes: project_bytes,
-            findings: project_findings,
-            diagnostics: project_diagnostics,
-            elapsed: started.elapsed(),
-            completion: project_completion,
-            run_completions: Vec::new(),
-            operation_counts: project_counts,
-            evidence_order_digest: combined_digest(&project_evidence_digests),
-            error: project_error,
-        });
+        totals.record(
+            ProfileFileSummary {
+                path: path.clone(),
+                bytes: project_bytes,
+                findings: project_findings,
+                diagnostics: project_diagnostics,
+                elapsed: started.elapsed(),
+                completion: project_completion,
+                run_completions: Vec::new(),
+                operation_counts: project_counts,
+                evidence_order_digest: combined_digest(&project_evidence_digests),
+                error: project_error,
+            },
+            successful_runs,
+        );
     }
     phases.total = total_start.elapsed();
     Ok(ProfileSummary {
-        files,
-        bytes,
-        findings,
-        diagnostics,
-        errors,
-        runs,
+        files: totals.files,
+        bytes: totals.bytes,
+        findings: totals.findings,
+        diagnostics: totals.diagnostics,
+        errors: totals.errors,
+        runs: totals.runs,
         setup_elapsed: phases.discovery + phases.reads,
         elapsed: phases.parse_and_local_analysis
             + phases.resolution
@@ -533,7 +546,7 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         repetitions: Vec::new(),
         median_elapsed: Duration::ZERO,
         manifest_digest: None,
-        file_results,
+        file_results: totals.file_results,
         phase_timings: phases,
         operation_counts: counts,
     })
@@ -939,21 +952,12 @@ fn run_profile(
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        fs,
-        time::{SystemTime, UNIX_EPOCH},
-    };
+    use std::fs;
 
     use super::*;
 
-    fn temp_root() -> PathBuf {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let root = std::env::temp_dir().join(format!("glass-lint-profile-{suffix}"));
-        fs::create_dir_all(&root).unwrap();
-        root
+    fn temp_root() -> crate::test_support::TempDir {
+        crate::test_support::TempDir::new()
     }
 
     fn config(root: &Path) -> ProfileConfig {
@@ -984,13 +988,12 @@ mod tests {
         fs::write(root.join("nested/a.js"), "").unwrap();
         fs::write(root.join("nested/no.txt"), "").unwrap();
         let paths = discover_profile_files(
-            &[root.clone(), root.join("nested")],
+            &[root.to_owned(), root.join("nested")],
             &["**/a.js".into()],
             &[],
         )
         .unwrap();
         assert_eq!(paths, vec![root.join("nested/a.js")]);
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -999,10 +1002,10 @@ mod tests {
         for filename in ["a.js", "b.cjs", "c.mjs", "d.ts", "e.cts", "f.mts", "g.d.ts"] {
             fs::write(root.join(filename), "").unwrap();
         }
-        let paths = discover_profile_files(std::slice::from_ref(&root), &[], &[]).unwrap();
+        let paths =
+            discover_profile_files(std::slice::from_ref(&root.to_path_buf()), &[], &[]).unwrap();
         assert_eq!(paths.len(), 6);
         assert!(!paths.iter().any(|path| path.ends_with("g.d.ts")));
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1011,7 +1014,6 @@ mod tests {
         let result = profile_folder(&config(&root)).unwrap();
         assert_eq!(result.files, 0);
         assert_eq!(result.runs, 0);
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1022,7 +1024,6 @@ mod tests {
         assert_eq!(result.files, 1);
         assert_eq!(result.diagnostics, 1);
         assert_eq!(result.errors, 0);
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1109,7 +1110,6 @@ mod tests {
         assert_eq!(result.repetitions[0].completion, ReportCompletion::Partial);
         assert!(result.elapsed >= result.repetitions[0].duration);
         assert!(result.total_elapsed >= result.setup_elapsed + result.elapsed);
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1133,7 +1133,6 @@ mod tests {
             result.operation_counts.scc_rounds,
             result.repetitions[0].operation_counts.scc_rounds
         );
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1161,7 +1160,6 @@ mod tests {
                 .to_string(),
             "profile correctness differs at repetition 1"
         );
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1179,7 +1177,6 @@ mod tests {
         parallel.workers = 4;
         let parallel = profile_folder(&parallel).unwrap();
         ensure_profile_correctness_match(&one, &parallel).unwrap();
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1198,7 +1195,6 @@ mod tests {
         assert_eq!(normal.manifest_digest, admitted.manifest_digest);
         assert_eq!(normal.bytes, admitted.bytes);
         assert_eq!(normal.files, admitted.files);
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1210,7 +1206,6 @@ mod tests {
             profile_folder(&invalid).unwrap_err().to_string(),
             "--project and --admitted-project are mutually exclusive"
         );
-        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -1218,7 +1213,7 @@ mod tests {
         let root = temp_root();
         let outside = temp_root();
         let mut multiple = admitted_config(&root, 1);
-        multiple.paths.push(outside.clone());
+        multiple.paths.push(outside.to_path_buf());
         assert_eq!(
             profile_folder(&multiple).unwrap_err().to_string(),
             "--admitted-project requires exactly one --path root"
@@ -1230,8 +1225,6 @@ mod tests {
             "--admitted-project root must be a directory"
         );
         file_root.paths.clear();
-        fs::remove_dir_all(root).unwrap();
-        fs::remove_dir_all(outside).unwrap();
     }
 
     #[cfg(unix)]
@@ -1240,8 +1233,8 @@ mod tests {
         let root = temp_root();
         fs::write(root.join("real.js"), "").unwrap();
         std::os::unix::fs::symlink(".", root.join("link")).unwrap();
-        let paths = discover_profile_files(std::slice::from_ref(&root), &[], &[]).unwrap();
+        let paths =
+            discover_profile_files(std::slice::from_ref(&root.to_path_buf()), &[], &[]).unwrap();
         assert_eq!(paths, vec![root.join("real.js")]);
-        fs::remove_dir_all(root).unwrap();
     }
 }

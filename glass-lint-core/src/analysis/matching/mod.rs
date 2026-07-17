@@ -9,6 +9,8 @@
 //! mistaken for rooted or module-identified identities. All shared indexes
 //! are normalized before queries run.
 
+use std::collections::BTreeMap;
+
 use super::{
     facts::{CallArgInfo, FactPayload, FactStream},
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
@@ -19,7 +21,8 @@ use crate::api::{
 };
 
 mod occurrence;
-use occurrence::{ModuleOccurrences, Occurrence, OccurrenceIndex, Occurrences};
+pub(in crate::analysis) use occurrence::ModuleExportKey;
+use occurrence::{InstanceMemberKey, ModuleOccurrences, Occurrence, OccurrenceIndex, Occurrences};
 mod arguments;
 mod build;
 mod query;
@@ -61,9 +64,9 @@ pub(super) struct MemberIndexes {
     reads: Occurrences,
     rooted_reads: Occurrences,
     module_reads: ModuleOccurrences,
-    returned_calls: OccurrenceIndex<(String, String)>,
-    returned_reads: OccurrenceIndex<(String, String)>,
-    instance_calls: OccurrenceIndex<(String, String, String)>,
+    returned_calls: OccurrenceIndex<ModuleExportKey>,
+    returned_reads: OccurrenceIndex<ModuleExportKey>,
+    instance_calls: OccurrenceIndex<InstanceMemberKey>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -100,6 +103,8 @@ pub(in crate::analysis) enum LinkedModuleIdentity {
     Unknown,
 }
 
+pub(in crate::analysis) type ModuleIdentityMap = BTreeMap<ModuleExportKey, LinkedModuleIdentity>;
+
 impl MatcherFacts {
     #[cfg(test)]
     pub(in crate::analysis) fn has_call(&self, name: &str) -> bool {
@@ -125,7 +130,7 @@ impl MatcherFacts {
     pub(in crate::analysis) fn has_module_class(&self, module: &str, name: &str) -> bool {
         self.constructions
             .module_classes
-            .get(&(module.to_string(), name.to_string()))
+            .get(&ModuleExportKey::new(module, name))
             .is_some()
     }
 
@@ -146,26 +151,25 @@ impl MatcherFacts {
             || !self.members.module_calls.is_empty()
     }
 
-    pub(in crate::analysis) fn apply_module_overlay(
-        &mut self,
-        identities: &std::collections::BTreeMap<(String, String), LinkedModuleIdentity>,
-    ) {
-        let remap = |key: &(String, String)| {
+    pub(in crate::analysis) fn apply_module_overlay(&mut self, identities: &ModuleIdentityMap) {
+        let remap = |key: &ModuleExportKey| {
             let identity = identities.get(key).cloned().or_else(|| {
                 identities
-                    .get(&(key.0.clone(), "*".into()))
+                    .get(&ModuleExportKey::wildcard(key.module()))
                     .map(|identity| match identity {
                         LinkedModuleIdentity::External { module, .. } => {
                             LinkedModuleIdentity::External {
                                 module: module.clone(),
-                                export: key.1.clone(),
+                                export: key.export().to_owned(),
                             }
                         }
                         other => other.clone(),
                     })
             });
             match identity {
-                Some(LinkedModuleIdentity::External { module, export }) => Some((module, export)),
+                Some(LinkedModuleIdentity::External { module, export }) => {
+                    Some(ModuleExportKey::new(module, export))
+                }
                 Some(
                     LinkedModuleIdentity::Global { .. }
                     | LinkedModuleIdentity::Qualified { .. }
@@ -372,7 +376,7 @@ mod tests {
             index
                 .call_indexes
                 .module_calls
-                .get(&("mod".to_string(), "foo".to_string()))
+                .get(&ModuleExportKey::new("mod", "foo"))
                 .is_some(),
             "should have foo as module call from 'mod'"
         );

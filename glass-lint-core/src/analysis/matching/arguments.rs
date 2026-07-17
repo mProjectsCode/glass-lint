@@ -6,8 +6,9 @@
 //! remain non-matches.
 
 use super::{
-    ApiEvidence, CallArgInfo, FactPayload, FactStream, MatcherFacts, Occurrence,
-    SymbolCallProvenance, SymbolMemberProvenance, canonical_rooted_chain, push_owned_evidence,
+    ApiEvidence, CallArgInfo, FactPayload, FactStream, MatcherFacts, ModuleExportKey,
+    ModuleIdentityMap, Occurrence, SymbolCallProvenance, SymbolMemberProvenance,
+    canonical_rooted_chain, push_owned_evidence,
 };
 use crate::{
     analysis::syntax::UnknownReason,
@@ -22,9 +23,7 @@ impl MatcherFacts {
         stream: &FactStream,
         clauses: &[(usize, &QueryClause)],
         evidence: &mut [Vec<ApiEvidence>],
-        identities: Option<
-            &std::collections::BTreeMap<(String, String), super::LinkedModuleIdentity>,
-        >,
+        identities: Option<&ModuleIdentityMap>,
         result_identities: Option<
             &std::collections::BTreeMap<super::super::value::ValueId, super::LinkedModuleIdentity>,
         >,
@@ -94,7 +93,7 @@ impl MatcherFacts {
 
 fn argument_with_overlay(
     argument: &CallArgInfo,
-    identities: Option<&std::collections::BTreeMap<(String, String), super::LinkedModuleIdentity>>,
+    identities: Option<&ModuleIdentityMap>,
     result_identities: Option<
         &std::collections::BTreeMap<super::super::value::ValueId, super::LinkedModuleIdentity>,
     >,
@@ -107,7 +106,7 @@ fn argument_with_overlay(
     }
     if let Some(identities) = identities
         && let SymbolCallProvenance::ModuleExport { module, export } = &argument.provenance
-        && let Some(identity) = identities.get(&(module.clone(), export.clone()))
+        && let Some(identity) = identities.get(&ModuleExportKey::new(module, export))
     {
         apply_identity_to_argument(&mut argument, identity);
     }
@@ -128,7 +127,7 @@ fn apply_identity_to_argument(argument: &mut CallArgInfo, identity: &super::Link
 
 fn call_provenance_with_overlay(
     provenance: &SymbolCallProvenance,
-    identities: Option<&std::collections::BTreeMap<(String, String), super::LinkedModuleIdentity>>,
+    identities: Option<&ModuleIdentityMap>,
     result_identities: Option<
         &std::collections::BTreeMap<super::super::value::ValueId, super::LinkedModuleIdentity>,
     >,
@@ -153,8 +152,8 @@ fn call_provenance_with_overlay(
     let SymbolCallProvenance::ModuleExport { module, export } = provenance else {
         return provenance.clone();
     };
-    let exact_identity = identities.get(&(module.clone(), export.clone()));
-    let identity = exact_identity.or_else(|| identities.get(&(module.clone(), "*".into())));
+    let exact_identity = identities.get(&ModuleExportKey::new(module, export));
+    let identity = exact_identity.or_else(|| identities.get(&ModuleExportKey::wildcard(module)));
     match identity {
         Some(super::LinkedModuleIdentity::External {
             module: linked_module,
@@ -177,7 +176,7 @@ fn call_provenance_with_overlay(
 
 fn module_member_with_overlay(
     provenance: Option<&SymbolMemberProvenance>,
-    identities: Option<&std::collections::BTreeMap<(String, String), super::LinkedModuleIdentity>>,
+    identities: Option<&ModuleIdentityMap>,
 ) -> Option<SymbolMemberProvenance> {
     let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = provenance else {
         return provenance.cloned();
@@ -186,8 +185,8 @@ fn module_member_with_overlay(
         return provenance.cloned();
     };
     let identity = identities
-        .get(&(module.clone(), member.clone()))
-        .or_else(|| identities.get(&(module.clone(), "*".into())));
+        .get(&ModuleExportKey::new(module, member))
+        .or_else(|| identities.get(&ModuleExportKey::wildcard(module)));
     match identity {
         Some(super::LinkedModuleIdentity::External { module, .. }) => {
             Some(SymbolMemberProvenance::ModuleNamespace {
@@ -323,8 +322,6 @@ fn identity_module_matches(identity: &IdentityConstraint, module: &str, export: 
 }
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
     use super::{
         MatcherFacts, argument_with_overlay, call_provenance_with_overlay,
         module_member_with_overlay,
@@ -524,9 +521,9 @@ mod tests {
 
     #[test]
     fn evidence_overlay_preserves_unknown_and_ambiguous_boundaries() {
-        let mut identities = BTreeMap::new();
+        let mut identities = super::ModuleIdentityMap::new();
         identities.insert(
-            ("api".into(), "request".into()),
+            super::ModuleExportKey::new("api", "request"),
             LinkedModuleIdentity::Global {
                 name: "fetch".into(),
             },
@@ -553,7 +550,7 @@ mod tests {
         );
 
         identities.insert(
-            ("api".into(), "request".into()),
+            super::ModuleExportKey::new("api", "request"),
             LinkedModuleIdentity::Unknown,
         );
         assert_eq!(
@@ -564,9 +561,9 @@ mod tests {
 
     #[test]
     fn argument_and_member_overlays_cover_all_linked_identity_outcomes() {
-        let mut identities = BTreeMap::new();
+        let mut identities = super::ModuleIdentityMap::new();
         identities.insert(
-            ("api".into(), "request".into()),
+            super::ModuleExportKey::new("api", "request"),
             LinkedModuleIdentity::StaticString {
                 value: "https://example.test".into(),
             },
@@ -595,7 +592,7 @@ mod tests {
             member: "request".into(),
         });
         identities.insert(
-            ("api".into(), "request".into()),
+            super::ModuleExportKey::new("api", "request"),
             LinkedModuleIdentity::External {
                 module: "platform".into(),
                 export: "request".into(),
@@ -605,7 +602,7 @@ mod tests {
             module_member_with_overlay(Some(&member.clone().unwrap()), Some(&identities)).is_some()
         );
         identities.insert(
-            ("api".into(), "request".into()),
+            super::ModuleExportKey::new("api", "request"),
             LinkedModuleIdentity::Unknown,
         );
         assert!(module_member_with_overlay(member.as_ref(), Some(&identities)).is_none());

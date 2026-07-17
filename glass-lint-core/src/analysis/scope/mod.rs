@@ -71,7 +71,7 @@ impl ScopeGraph {
         for (scope, lexical_scope) in collector.scopes.iter().enumerate() {
             let scope = ScopeId::from(scope);
             for name in lexical_scope.bindings.keys() {
-                binding_ids.insert((scope, name.clone()), BindingId(next_binding_id));
+                binding_ids.insert(ScopedName::new(scope, name), BindingId(next_binding_id));
                 next_binding_id = next_binding_id.saturating_add(1);
             }
         }
@@ -91,26 +91,26 @@ impl ScopeGraph {
                 function_ids
                     .get(function_scope)
                     .copied()
-                    .map(|function| ((*scope, name.clone()), function))
+                    .map(|function| (ScopedName::new(*scope, name), function))
             })
             .collect();
         let function_aliases = collector
             .function_aliases
             .into_iter()
-            .filter_map(|((scope, name), function_scope)| {
+            .filter_map(|(key, function_scope)| {
                 function_ids
                     .get(&function_scope)
                     .copied()
-                    .map(|function| ((scope, name), function))
+                    .map(|function| (key, function))
             })
             .collect();
         let parameter_aliases = parameter_aliases_by_scope
             .into_iter()
-            .filter_map(|((scope, name), provenance)| {
+            .filter_map(|(key, provenance)| {
                 function_ids
-                    .get(&scope)
+                    .get(&key.scope())
                     .copied()
-                    .map(|function| ((function, name), provenance))
+                    .map(|function| ((function, key.name().to_owned()), provenance))
             })
             .collect();
         let collected_property_assignments = collector.property_assignments;

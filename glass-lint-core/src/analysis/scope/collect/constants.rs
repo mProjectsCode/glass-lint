@@ -43,7 +43,7 @@ impl Lookup for AliasCollector {
                 .visible_binding_scope(ident.sym.as_ref())
                 .is_some_and(|scope| {
                     self.mutable_static_objects
-                        .contains(&(scope, ident.sym.to_string()))
+                        .contains(&super::super::ScopedName::new(scope, ident.sym.as_ref()))
                 })
         {
             return ConstValue::Unknown;

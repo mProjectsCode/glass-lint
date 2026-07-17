@@ -7,6 +7,7 @@
 use super::{
     FactPayload, FactStream, MatcherFacts, SymbolCallProvenance, SymbolMemberProvenance,
     canonical_rooted_chain,
+    occurrence::{InstanceMemberKey, ModuleExportKey},
 };
 
 impl MatcherFacts {
@@ -76,7 +77,7 @@ impl MatcherFacts {
                 }
                 if let Some((module, export)) = provenance {
                     self.constructions.module_classes.push(
-                        (module.clone(), export.clone()),
+                        ModuleExportKey::new(module, export),
                         fact.id,
                         fact.span,
                     );
@@ -120,12 +121,12 @@ impl MatcherFacts {
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
                 self.call_indexes.module_calls.push(
-                    (module.clone(), export.clone()),
+                    ModuleExportKey::new(module, export),
                     fact.id,
                     *callee_span,
                 );
                 self.members.module_calls.push(
-                    (module.clone(), export.clone()),
+                    ModuleExportKey::new(module, export),
                     fact.id,
                     *callee_span,
                 );
@@ -163,17 +164,19 @@ impl MatcherFacts {
             );
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
-            self.call_indexes
-                .module_calls
-                .push((module.clone(), member.clone()), fact.id, span);
+            self.call_indexes.module_calls.push(
+                ModuleExportKey::new(module, member),
+                fact.id,
+                span,
+            );
             self.members
                 .module_calls
-                .push((module.clone(), member.clone()), fact.id, span);
+                .push(ModuleExportKey::new(module, member), fact.id, span);
         }
         if let Some((source, member)) = returned_member {
             self.members
                 .returned_calls
-                .push((source.clone(), member.clone()), fact.id, span);
+                .push(ModuleExportKey::new(source, member), fact.id, span);
         }
         if let Some((module, export)) = instance_class
             && let Some(member_name) = syntactic_chain
@@ -181,7 +184,7 @@ impl MatcherFacts {
                 .and_then(|chain| chain.rsplit('.').next())
         {
             self.members.instance_calls.push(
-                (module.clone(), export.clone(), member_name.to_string()),
+                InstanceMemberKey::new(module, export, member_name),
                 fact.id,
                 span,
             );
@@ -245,17 +248,21 @@ impl MatcherFacts {
             );
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
-            self.members
-                .module_reads
-                .push((module.clone(), member.clone()), fact.id, fact.span);
+            self.members.module_reads.push(
+                ModuleExportKey::new(module, member),
+                fact.id,
+                fact.span,
+            );
             self.constructions
                 .classes
                 .push(member.clone(), fact.id, fact.span);
         }
         if let Some((source, member)) = returned_member {
-            self.members
-                .returned_reads
-                .push((source.clone(), member.clone()), fact.id, fact.span);
+            self.members.returned_reads.push(
+                ModuleExportKey::new(source, member),
+                fact.id,
+                fact.span,
+            );
         }
     }
 
@@ -282,7 +289,7 @@ impl MatcherFacts {
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
                 self.constructions.module_constructors.push(
-                    (module.clone(), export.clone()),
+                    ModuleExportKey::new(module, export),
                     fact.id,
                     *callee_span,
                 );

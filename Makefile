@@ -1,7 +1,7 @@
 .PHONY: all build check clippy fmt fmt-check test test-e2e test-projects test-rules profile ci clean
 
 CARGO ?= cargo
-HARNESS ?= $(CARGO) run -p glass-lint-harness-cli --bin glass-lint-harness --
+HARNESS ?= $(CARGO) run -p glass-lint-harness-cli --bin glass-lint-harness --quiet --
 HARNESS_SUITE ?= tests/e2e
 SAMPLY ?= samply
 PROFILE_PATH ?= tests/e2e

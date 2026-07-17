@@ -116,30 +116,26 @@ pub fn run_suite(
     ))
 }
 
-fn matches(finding: &Finding, expected: &DiagnosticExpectation) -> bool {
-    finding.rule_id.as_str() == expected.rule_id
-        && expected
-            .message_id
-            .as_ref()
-            .is_none_or(|id| &finding.message_id == id)
-        && expected
-            .severity
-            .is_none_or(|severity| finding.severity == severity)
-        && expected
-            .line
-            .is_none_or(|line| finding.location.range.start().line() == line)
-        && expected
-            .column
-            .is_none_or(|column| finding.location.range.start().column() == column)
-        && expected
-            .message
-            .as_ref()
-            .is_none_or(|message| &finding.message == message)
-}
-
 impl DiagnosticExpectation {
     fn matches(&self, finding: &Finding) -> bool {
-        matches(finding, self)
+        finding.rule_id.as_str() == self.rule_id
+            && self
+                .message_id
+                .as_ref()
+                .is_none_or(|id| &finding.message_id == id)
+            && self
+                .severity
+                .is_none_or(|severity| finding.severity == severity)
+            && self
+                .line
+                .is_none_or(|line| finding.location.range.start().line() == line)
+            && self
+                .column
+                .is_none_or(|column| finding.location.range.start().column() == column)
+            && self
+                .message
+                .as_ref()
+                .is_none_or(|message| &finding.message == message)
             && self
                 .path
                 .as_ref()

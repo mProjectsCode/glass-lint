@@ -81,7 +81,7 @@ pub fn write_mode(config: &Config, mode: &str, path: &Path) -> Result<()> {
             stdout,
             "mode: {} ({})",
             mode,
-            visible_text(&path.display().to_string())
+            glass_lint_core::visible_text(&path.display().to_string())
         )?;
         stdout.flush()?;
     }
@@ -332,8 +332,8 @@ fn write_project_pretty<W: Write>(
                 out,
                 "diagnostic [{}] {} ({}:{}:{})",
                 diagnostic.code(),
-                visible_text(diagnostic.message()),
-                visible_text(location.0.as_str()),
+                glass_lint_core::visible_text(diagnostic.message()),
+                glass_lint_core::visible_text(location.0.as_str()),
                 location.1.start().line(),
                 location.1.start().column()
             )?;
@@ -342,7 +342,7 @@ fn write_project_pretty<W: Write>(
                 out,
                 "diagnostic [{}] {}",
                 diagnostic.code(),
-                visible_text(diagnostic.message())
+                glass_lint_core::visible_text(diagnostic.message())
             )?;
         }
     }
@@ -394,20 +394,6 @@ fn write_summary<W: Write>(
 
 fn color_enabled(config: &Config) -> bool {
     config.cli.color && console::colors_enabled()
-}
-
-/// Keep human output terminal-safe without changing the JSON contract.
-fn visible_text(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| match ch {
-            '\n' => "\\n".to_owned(),
-            '\r' => "\\r".to_owned(),
-            '\t' => "\\t".to_owned(),
-            ch if ch.is_control() => format!("\\u{{{:04x}}}", ch as u32),
-            ch => ch.to_string(),
-        })
-        .collect()
 }
 
 #[cfg(test)]

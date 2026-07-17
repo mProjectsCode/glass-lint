@@ -77,7 +77,7 @@ impl ProjectSemanticModel {
     pub(super) fn module_identities(
         &self,
         module: ModuleId,
-    ) -> BTreeMap<(String, String), LinkedModuleIdentity> {
+    ) -> super::super::matching::ModuleIdentityMap {
         let mut identities = BTreeMap::new();
         let Some(project_module) = self.modules.get(&module) else {
             return identities;
@@ -95,7 +95,7 @@ impl ProjectSemanticModel {
                 };
                 let identity = self.resolve_imported_identity(module, request.specifier(), export);
                 identities.insert(
-                    (request.specifier().to_owned(), export.to_owned()),
+                    super::super::matching::ModuleExportKey::new(request.specifier(), export),
                     identity.into(),
                 );
             }
@@ -118,12 +118,18 @@ impl ProjectSemanticModel {
                         if let Some(resolved) =
                             self.lookup_export(target, &export, &mut BTreeSet::new())
                         {
-                            identities.insert((prefix.clone(), export), resolved.into());
+                            identities.insert(
+                                super::super::matching::ModuleExportKey::new(&prefix, export),
+                                resolved.into(),
+                            );
                         }
                     }
                 }
                 other => {
-                    identities.insert((prefix, "*".into()), other.into());
+                    identities.insert(
+                        super::super::matching::ModuleExportKey::wildcard(prefix),
+                        other.into(),
+                    );
                 }
             }
         }

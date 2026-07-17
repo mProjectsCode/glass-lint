@@ -24,6 +24,7 @@ use super::{
         value::BindingVersion,
     },
     AliasAssignment, AliasScope, BindingProvenance, BoundArgument, ScopeEffect, ScopeId, ScopeKind,
+    ScopedName,
     query::rooted::{RootedExprContext, rooted_expr_chain_with},
 };
 
@@ -58,13 +59,13 @@ pub(super) struct AliasCollector {
     /// Function scopes and their parameter patterns by visible name.
     pub(super) function_scopes: BTreeMap<(ScopeId, String), (ScopeId, Vec<Pat>)>,
     /// Aliases that point to a locally declared helper function.
-    pub(super) function_aliases: BTreeMap<(ScopeId, String), ScopeId>,
+    pub(super) function_aliases: BTreeMap<ScopedName, ScopeId>,
     /// Calls retained for the later, scope-aware helper parameter pass.
     calls: Vec<(ScopeId, String, Vec<Option<BindingProvenance>>)>,
     /// Proven callback arguments installed when an inline function is entered.
     inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
     /// `var`-bound objects whose mutation prevents constant projection.
-    pub(super) mutable_static_objects: BTreeSet<(ScopeId, String)>,
+    pub(super) mutable_static_objects: BTreeSet<ScopedName>,
     reuse_scopes: bool,
     predeclared_scope_order: Vec<usize>,
     next_predeclared_scope: usize,
