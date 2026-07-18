@@ -19,6 +19,20 @@ pub fn rule() -> Rule {
             "shell.openExternal",
         ))
         .matcher(Matcher::module_member_call("electron", "shell.openPath"))
+        .matcher(Matcher::module_member_call(
+            "electron",
+            "shell.showItemInFolder",
+        ))
+        .matcher(Matcher::module_member_call("electron", "shell.trashItem"))
+        .matcher(Matcher::module_member_call("electron", "shell.beep"))
+        .matcher(Matcher::module_member_call(
+            "electron",
+            "shell.readShortcutLink",
+        ))
+        .matcher(Matcher::module_member_call(
+            "electron",
+            "shell.writeShortcutLink",
+        ))
         .build()
         .unwrap()
 }

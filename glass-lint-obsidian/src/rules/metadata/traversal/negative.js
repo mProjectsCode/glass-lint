@@ -19,3 +19,15 @@ function dynamicProperty(property) {
 
 // @expect-no-error glass-lint rule=obsidian:metadata.traversal message_id=detected
 Object.values(app.metadataCache.otherLinks);
+// @expect-no-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+Object.getOwnPropertyNames(app.metadataCache.otherLinks);
+// @expect-no-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+Reflect.ownKeys(localLinks);
+// @expect-no-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+Object.getOwnPropertyDescriptors(app.metadataCache.otherLinks);
+
+function localGlobal(global) {
+    // @expect-no-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+    global.Object.keys(app.metadataCache.resolvedLinks);
+}
+localGlobal({ Object: { keys() {} } });

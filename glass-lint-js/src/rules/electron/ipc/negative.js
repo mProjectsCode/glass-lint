@@ -4,12 +4,21 @@
 const electron = { ipcRenderer: { send() {} } };
 // @expect-no-error glass-lint rule=electron:electron.ipc message_id=detected
 electron.ipcRenderer.send("local");
+// @expect-no-error glass-lint rule=electron:electron.ipc message_id=detected
+electron.ipcRenderer.off("local", handler);
+// A local webContents-shaped object is not Electron.
+// @expect-no-error glass-lint rule=electron:electron.ipc message_id=detected
+electron.webContents.send("local", payload);
+// @expect-no-error glass-lint rule=electron:electron.ipc message_id=detected
+electron.webContents.removeAllListeners("local");
 
 // Reassignment drops module provenance from an alias.
 let reassigned = require("electron");
 reassigned = {};
 // @expect-no-error glass-lint rule=electron:electron.ipc message_id=detected
 reassigned.ipcRenderer.invoke("reassigned");
+// @expect-no-error glass-lint rule=electron:electron.ipc message_id=detected
+reassigned.webContents.send("reassigned", payload);
 
 // Shadowing require prevents a local object from becoming a module alias.
 function shadowed(require) {
@@ -27,3 +36,8 @@ require("electron").ipcRenderer.send("inline");
 function localLookalike() { return null; }
 // @expect-no-error glass-lint rule=electron:electron.ipc message_id=detected
 localLookalike();
+
+// Unlisted or local frame-shaped methods do not establish Electron IPC.
+const localFrame = { send() {} };
+// @expect-no-error glass-lint rule=electron:electron.ipc message_id=detected
+localFrame.send("local");

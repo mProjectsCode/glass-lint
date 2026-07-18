@@ -12,7 +12,7 @@ shadowed({ vault: { getFiles() {} } });
 // @expect-no-error glass-lint rule=obsidian:vault.enumerate message_id=detected
 app.vault[method]();
 // @expect-no-error glass-lint rule=obsidian:vault.enumerate message_id=detected
-app.vault.getAbstractFileByPath(path);
+app.vault.getUnlistedFileByPath(path);
 
 let vault = app.vault;
 // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected

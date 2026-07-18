@@ -12,4 +12,15 @@ aliasedInput.type = "file";
 // The flow emits when the file type is configured; opening it is not required.
 // @expect-error glass-lint rule=browser:browser.file-dialog message_id=detected
 const fileInput = document.createElement("input"); fileInput.type = "file";
+// @expect-error glass-lint rule=browser:browser.file-dialog message_id=detected
+window.showOpenFilePicker();
+// @expect-error glass-lint rule=browser:browser.file-dialog message_id=detected
+window.showSaveFilePicker();
+// @expect-error glass-lint rule=browser:browser.file-dialog message_id=detected
+globalThis.showOpenFilePicker();
+// @expect-error-after glass-lint rule=browser:browser.file-dialog message_id=detected
+
+// Static setAttribute configuration is equivalent to a direct type write.
+const attributeInput = document.createElement("input");
+attributeInput.setAttribute("type", "file");
 // @expect-error-after glass-lint rule=browser:browser.file-dialog message_id=detected

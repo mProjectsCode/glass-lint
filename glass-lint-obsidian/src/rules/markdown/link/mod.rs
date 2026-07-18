@@ -15,6 +15,21 @@ pub fn rule() -> Rule {
         .matcher(Matcher::module_member_call("obsidian", "parseLinktext"))
         .matcher(Matcher::module_member_call("obsidian", "normalizePath"))
         .matcher(Matcher::module_member_call("obsidian", "getLinkpath"))
+        .matcher(Matcher::module_member_call("obsidian", "fileToLinktext"))
+        .matcher(Matcher::module_member_call(
+            "obsidian",
+            "generateMarkdownLink",
+        ))
+        .matcher(Matcher::module_member_call("obsidian", "resolveSubpath"))
+        .matcher(Matcher::module_member_call("obsidian", "parseSubpath"))
+        .matcher(Matcher::module_member_call(
+            "obsidian",
+            "parseFrontMatterAliases",
+        ))
+        .matcher(Matcher::module_member_call(
+            "obsidian",
+            "parseFrontMatterTags",
+        ))
         .build()
         .unwrap()
 }

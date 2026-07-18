@@ -13,6 +13,8 @@ this.registerInterval(setInterval(() => {}, 1000));
 // Static computed names are canonicalized by the heuristic matcher.
 // @expect-error glass-lint rule=obsidian:lifecycle.events message_id=detected
 this['registerEvent'](eventRef);
+// @expect-error glass-lint rule=obsidian:lifecycle.events message_id=detected
+this.registerObsidianProtocolHandler("protocol", handler);
 
 // Receiver provenance is intentionally not established.
 function unrelatedReceiver() {

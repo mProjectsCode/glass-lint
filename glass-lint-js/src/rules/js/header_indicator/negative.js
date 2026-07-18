@@ -1,10 +1,8 @@
 // @case description negative fixture for js:network.header-indicator
 // @tool glass-lint rules=js:network.header-indicator
-// Unconfigured names and casing are not marker matches.
+// Unconfigured names are not marker matches.
 // @expect-no-error glass-lint rule=js:network.header-indicator message_id=detected
 const ordinaryHeader = "Content-Type";
-// @expect-no-error glass-lint rule=js:network.header-indicator message_id=detected
-const differentCase = "authorization";
 
 // A computed or concatenated value is not reconstructed by this literal rule.
 const prefix = "Auth";

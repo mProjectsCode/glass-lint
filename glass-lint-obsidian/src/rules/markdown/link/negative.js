@@ -29,4 +29,9 @@ getPath(link);
 const localObsidian = { parseLinktext() {} };
 // @expect-no-error glass-lint rule=obsidian:markdown.link message_id=detected
 localObsidian.parseLinktext(text);
+
+// Similar frontmatter helpers from another package are not Obsidian exports.
+import { parseFrontMatterTags as localTags } from 'markdown-utils';
+// @expect-no-error glass-lint rule=obsidian:markdown.link message_id=detected
+localTags(frontmatter);
 unusedMarkdownView;

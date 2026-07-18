@@ -2,9 +2,10 @@
 
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
-/// Detects rooted calls to the six configured vault enumeration methods:
+/// Detects rooted calls to the configured vault lookup and enumeration methods:
 /// `getFiles`, `getMarkdownFiles`, `getAllLoadedFiles`, `getAllFolders`,
-/// `getFolderByPath`, and `getRoot`. The matcher follows `this.app`, direct
+/// `getFolderByPath`, `getFileByPath`, `getAbstractFileByPath`,
+/// `recurseChildren`, and `getRoot`. The matcher follows `this.app`, direct
 /// receiver aliases, static computed properties, source-ordered reassignment,
 /// and lexical shadowing, but does not analyze arguments or other vault APIs.
 pub fn rule() -> Rule {
@@ -18,6 +19,11 @@ pub fn rule() -> Rule {
         .matcher(Matcher::rooted_member_call("app.vault.getAllLoadedFiles"))
         .matcher(Matcher::rooted_member_call("app.vault.getAllFolders"))
         .matcher(Matcher::rooted_member_call("app.vault.getFolderByPath"))
+        .matcher(Matcher::rooted_member_call("app.vault.getFileByPath"))
+        .matcher(Matcher::rooted_member_call(
+            "app.vault.getAbstractFileByPath",
+        ))
+        .matcher(Matcher::rooted_member_call("app.vault.recurseChildren"))
         .matcher(Matcher::rooted_member_call("app.vault.getRoot"))
         .build()
         .unwrap()

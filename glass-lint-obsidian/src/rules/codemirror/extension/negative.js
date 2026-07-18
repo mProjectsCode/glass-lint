@@ -3,6 +3,10 @@
 // Similar package names do not have CodeMirror module provenance.
 // @expect-no-error glass-lint rule=obsidian:codemirror.extension message_id=detected
 import otherEditor from '@codemirror/view-wrapper';
+// @expect-no-error glass-lint rule=obsidian:codemirror.extension message_id=detected
+import languageLike from '@codemirror/lang-markdown-helper';
+// @expect-no-error glass-lint rule=obsidian:codemirror.extension message_id=detected
+import lezerLike from '@lezer/javascript-helper';
 
 // @expect-no-error glass-lint rule=obsidian:codemirror.extension message_id=detected
 import unrelatedEditor from 'other-editor-package';

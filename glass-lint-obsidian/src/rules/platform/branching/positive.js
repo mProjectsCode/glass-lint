@@ -25,3 +25,15 @@ if (obsidian.Platform["isMobile"]) console.log("mobile");
 const namespaceAlias = obsidian;
 // @expect-error glass-lint rule=obsidian:platform.branching message_id=detected
 namespaceAlias.Platform.isDesktop;
+// @expect-error glass-lint rule=obsidian:platform.branching message_id=detected
+obsidian.Platform.isDesktopApp;
+// @expect-error glass-lint rule=obsidian:platform.branching message_id=detected
+obsidian.Platform.isMobileApp;
+// @expect-error glass-lint rule=obsidian:platform.branching message_id=detected
+obsidian.Platform.isPhone;
+// @expect-error glass-lint rule=obsidian:platform.branching message_id=detected
+obsidian.Platform.isTablet;
+// @expect-error glass-lint rule=obsidian:platform.branching message_id=detected
+obsidian.Platform.isSafari;
+// @expect-error glass-lint rule=obsidian:platform.branching message_id=detected
+obsidian.Platform.resourcePathPrefix;

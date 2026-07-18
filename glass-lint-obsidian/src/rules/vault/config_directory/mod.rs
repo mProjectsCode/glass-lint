@@ -15,6 +15,7 @@ pub fn rule() -> Rule {
         .confidence(Confidence::Medium)
         .matcher(Matcher::string_contains(".obsidian/"))
         .matcher(Matcher::string_contains(".obsidian\\"))
+        .matcher(Matcher::rooted_member_read("app.vault.configDir"))
         .build()
         .unwrap()
 }

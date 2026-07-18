@@ -19,6 +19,14 @@ pub fn rule() -> Rule {
             "app.metadataCache.getFileCache",
             "frontmatter",
         ))
+        .matcher(Matcher::module_member_call(
+            "obsidian",
+            "parseFrontMatterAliases",
+        ))
+        .matcher(Matcher::module_member_call(
+            "obsidian",
+            "parseFrontMatterTags",
+        ))
         .build()
         .unwrap()
 }

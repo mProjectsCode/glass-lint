@@ -3,6 +3,8 @@
 //! Category modules own their policies; this assembly point fixes category
 //! order so metadata, profiles, and findings remain deterministic.
 
+mod bases;
+mod cli;
 mod codemirror;
 mod editor;
 mod file_manager;
@@ -36,6 +38,8 @@ pub fn all() -> Vec<Rule> {
         codemirror::rules(),
         storage::rules(),
         lifecycle::rules(),
+        bases::rules(),
+        cli::rules(),
         platform::rules(),
         plugins::rules(),
     ]

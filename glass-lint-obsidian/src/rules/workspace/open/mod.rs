@@ -22,6 +22,22 @@ pub fn rule() -> Rule {
             "app.workspace.getLeaf",
             "openFile",
         ))
+        .matcher(Matcher::returned_member_call(
+            "app.workspace.getLeafById",
+            "openFile",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "app.workspace.getLeftLeaf",
+            "openFile",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "app.workspace.getRightLeaf",
+            "openFile",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "app.workspace.ensureSideLeaf",
+            "openFile",
+        ))
         .build()
         .unwrap()
 }

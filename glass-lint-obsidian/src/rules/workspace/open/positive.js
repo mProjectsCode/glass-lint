@@ -20,3 +20,11 @@ const workspace = app.workspace;
 workspace.openLinkText("alias", source);
 // @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
 workspace.getLeaf.openFile(otherFile);
+// @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
+app.workspace.getLeafById("leaf").openFile(file);
+// @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
+app.workspace.getLeftLeaf(leaf).openFile(file);
+// @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
+app.workspace.getRightLeaf(leaf).openFile(file);
+// @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
+app.workspace.ensureSideLeaf("left").openFile(file);

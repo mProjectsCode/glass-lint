@@ -2,7 +2,8 @@
 // @tool glass-lint config=heuristic
 // @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=browser:network.request count=1 line=any
-// @expect-error glass-lint rule=js:network.url-construction count=1 line=any
+// The base literal and the URL constructor are both intentional URL findings.
+// @expect-error glass-lint rule=js:network.url-construction count=2 line=any
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:ui.status-bar count=1 line=any
 

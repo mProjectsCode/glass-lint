@@ -11,3 +11,21 @@ let readClipboard = globalThis.navigator.clipboard.readText;
 readClipboard = () => {};
 // @expect-no-error glass-lint rule=browser:browser.clipboard-read message_id=detected
 readClipboard();
+
+function localDocument(document) {
+    // @expect-no-error glass-lint rule=browser:browser.clipboard-read message_id=detected
+    document.execCommand("paste");
+}
+localDocument({ execCommand() {} });
+
+function localWindow(window) {
+    // @expect-no-error glass-lint rule=browser:browser.clipboard-read message_id=detected
+    window.document.execCommand("paste");
+}
+localWindow({ document: { execCommand() {} } });
+
+function localWindowNavigator(window) {
+    // @expect-no-error glass-lint rule=browser:browser.clipboard-read message_id=detected
+    window.navigator.clipboard.readText();
+}
+localWindowNavigator({ navigator: { clipboard: { readText() {} } } });

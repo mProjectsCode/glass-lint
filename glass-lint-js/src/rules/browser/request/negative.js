@@ -50,6 +50,12 @@ function localNavigatorCase() {
 }
 localNavigatorCase();
 
+function localWindowNavigator(window) {
+  // @expect-no-error glass-lint rule=browser:network.request message_id=detected
+  window.navigator.sendBeacon("local", "{}");
+}
+localWindowNavigator({ navigator: { sendBeacon() {} } });
+
 // A nested scope still sees the unshadowed browser global.
 function networkCall() {
   // @expect-error glass-lint rule=browser:network.request message_id=detected

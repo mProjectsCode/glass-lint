@@ -11,3 +11,5 @@ const prefixed = "/vault/.obsidian/plugins/example/data.json";
 const windows = "C:\\vault\\.obsidian\\plugins\\example";
 // @expect-error glass-lint rule=obsidian:vault.config-directory message_id=detected
 const staticTemplate = `.obsidian/plugins/${pluginId}`;
+// @expect-error glass-lint rule=obsidian:vault.config-directory message_id=detected
+app.vault.configDir;

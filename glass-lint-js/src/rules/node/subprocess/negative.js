@@ -5,6 +5,12 @@
 import localChildProcess from "not-child_process";
 // @expect-no-error glass-lint rule=node:node.subprocess message_id=detected
 import childProcessLike from "child_process-extra";
+// @expect-no-error glass-lint rule=node:node.subprocess message_id=detected
+import execaLike from "execa-extra";
+// @expect-no-error glass-lint rule=node:node.subprocess message_id=detected
+import spawnLike from "cross-spawn-extra";
+// @expect-no-error glass-lint rule=node:node.subprocess message_id=detected
+import localSpawn from "concurrently-helper";
 
 // @expect-no-error glass-lint rule=node:node.subprocess message_id=detected
 localChildProcess;

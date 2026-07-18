@@ -1,0 +1,101 @@
+//! Browser File System Access API rule definition.
+
+use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+
+/// Detects rooted directory-picker entry points and operations on directory
+/// handles returned by them. Nested file handles and arbitrary object wrappers
+/// remain outside this bounded rule.
+pub fn rule() -> Rule {
+    Rule::builder("browser.filesystem")
+        .description("Uses browser file-system access")
+        .category("browser/filesystem")
+        .severity(Severity::Warning)
+        .confidence(Confidence::High)
+        .matcher(Matcher::rooted_member_call("window.showDirectoryPicker"))
+        .matcher(Matcher::rooted_member_call("self.showDirectoryPicker"))
+        .matcher(Matcher::rooted_member_call(
+            "globalThis.showDirectoryPicker",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "getFileHandle",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "getDirectoryHandle",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "removeEntry",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "resolve",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "queryPermission",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "requestPermission",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "entries",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "keys",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "values",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "window.showDirectoryPicker",
+            "isSameEntry",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "getFileHandle",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "getDirectoryHandle",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "removeEntry",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "resolve",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "queryPermission",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "requestPermission",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "entries",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "keys",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "values",
+        ))
+        .matcher(Matcher::returned_member_call(
+            "self.showDirectoryPicker",
+            "isSameEntry",
+        ))
+        .build()
+        .unwrap()
+}

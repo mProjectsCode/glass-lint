@@ -1,7 +1,7 @@
 //! Browser file-input flow rule definition.
 
 use glass_lint_core::rules::{
-    Confidence, FlowCompletion, FlowCondition, MemberCallMatcher, ObjectEventMatcher,
+    Confidence, FlowCompletion, FlowCondition, Matcher, MemberCallMatcher, ObjectEventMatcher,
     ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
 };
 
@@ -22,14 +22,24 @@ pub fn rule() -> Rule {
                     MemberCallMatcher::rooted("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("input")),
                 ))
-                .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
-                    "type",
-                    ValueMatcher::static_string().equals("file"),
-                )))
+                .configured_by(FlowCondition::any_of([
+                    ObjectEventMatcher::property_write(
+                        "type",
+                        ValueMatcher::static_string().equals("file"),
+                    ),
+                    ObjectEventMatcher::member_call("setAttribute")
+                        .arg(0, ValueMatcher::static_string().equals("type"))
+                        .arg(1, ValueMatcher::static_string().equals("file"))
+                        .build(),
+                ]))
                 .complete_at(FlowCompletion::configuration())
                 .build()
                 .unwrap(),
         )
+        .matcher(Matcher::rooted_member_call("window.showOpenFilePicker"))
+        .matcher(Matcher::rooted_member_call("window.showSaveFilePicker"))
+        .matcher(Matcher::rooted_member_call("globalThis.showOpenFilePicker"))
+        .matcher(Matcher::rooted_member_call("globalThis.showSaveFilePicker"))
         .build()
         .unwrap()
 }

@@ -1,10 +1,12 @@
 // @case description negative fixture for js:network.private-address
 // @tool glass-lint rules=js:network.private-address
-// Public addresses and unconfigured private ranges are ignored.
+// Public addresses and out-of-range 172.* values are ignored.
 // @expect-no-error glass-lint rule=js:network.private-address message_id=detected
 const publicAddress = "https://example.com";
 // @expect-no-error glass-lint rule=js:network.private-address message_id=detected
-const unlistedRange = "http://172.20.1.4";
+const unlistedRange = "http://172.32.1.4";
+// @expect-no-error glass-lint rule=js:network.private-address message_id=detected
+const other172Range = "http://172.40.32.4";
 // @expect-no-error glass-lint rule=js:network.private-address message_id=detected
 const missingPrefix = "192.168.1.2";
 

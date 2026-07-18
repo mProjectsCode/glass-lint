@@ -1,0 +1,9 @@
+//! Obsidian Bases integration rule catalog.
+
+mod register;
+
+use glass_lint_core::rules::Rule;
+
+pub fn rules() -> Vec<Rule> {
+    vec![register::rule()]
+}

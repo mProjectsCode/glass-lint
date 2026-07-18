@@ -5,6 +5,12 @@
 import localFs from "not-fs";
 // @expect-no-error glass-lint rule=node:node.filesystem message_id=detected
 import pathLike from "node:path-browserify";
+// @expect-no-error glass-lint rule=node:node.filesystem message_id=detected
+import extraLike from "fs-extra-tools";
+// @expect-no-error glass-lint rule=node:node.filesystem message_id=detected
+import memoryLike from "memfs-helper";
+// @expect-no-error glass-lint rule=node:node.filesystem message_id=detected
+import helper from "rimraf-helper";
 
 // @expect-no-error glass-lint rule=node:node.filesystem message_id=detected
 localFs;

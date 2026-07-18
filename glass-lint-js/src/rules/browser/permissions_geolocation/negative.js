@@ -11,3 +11,9 @@ let geolocation = globalThis.navigator.geolocation;
 geolocation = { getCurrentPosition() {} };
 // @expect-no-error glass-lint rule=browser:browser.permissions-geolocation message_id=detected
 geolocation.getCurrentPosition(() => {});
+
+function localWindow(window) {
+    // @expect-no-error glass-lint rule=browser:browser.permissions-geolocation message_id=detected
+    window.navigator.geolocation.getCurrentPosition(() => {});
+}
+localWindow({ navigator: { geolocation: { getCurrentPosition() {} } } });

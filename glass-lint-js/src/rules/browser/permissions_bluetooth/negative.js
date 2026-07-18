@@ -11,3 +11,13 @@ let bluetooth = globalThis.navigator.bluetooth;
 bluetooth = { requestDevice() {} };
 // @expect-no-error glass-lint rule=browser:browser.permissions-bluetooth message_id=detected
 bluetooth.requestDevice({});
+
+// Dynamic properties cannot establish the requested permission API.
+// @expect-no-error glass-lint rule=browser:browser.permissions-bluetooth message_id=detected
+navigator.bluetooth[method]({});
+
+function localWindow(window) {
+    // @expect-no-error glass-lint rule=browser:browser.permissions-bluetooth message_id=detected
+    window.navigator.bluetooth.requestDevice({});
+}
+localWindow({ navigator: { bluetooth: { requestDevice() {} } } });

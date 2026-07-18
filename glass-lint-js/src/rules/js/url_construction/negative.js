@@ -6,6 +6,10 @@ function localConstructors(URL, URLSearchParams) {
     new URL("local");
     // @expect-no-error glass-lint rule=js:network.url-construction message_id=detected
     new URLSearchParams("local=1");
+    // @expect-no-error glass-lint rule=js:network.url-construction message_id=detected
+    URL.parse("local");
+    // @expect-no-error glass-lint rule=js:network.url-construction message_id=detected
+    URL.canParse("local");
 }
 localConstructors(() => {}, () => {});
 
@@ -20,5 +24,10 @@ new reassignedURL("local");
 function URLPattern() {}
 // @expect-no-error glass-lint rule=js:network.url-construction message_id=detected
 new URLPattern();
+// URL-like prose without a scheme delimiter is not a literal URL marker.
 // @expect-no-error glass-lint rule=js:network.url-construction message_id=detected
-const urlText = "https://example.com";
+const urlText = "https endpoint";
+// @expect-no-error glass-lint rule=js:network.url-construction message_id=detected
+URL.createObjectURL = localCreateObjectURL;
+// @expect-no-error glass-lint rule=js:network.url-construction message_id=detected
+URL.createObjectURL(blob);

@@ -13,6 +13,8 @@ self.fetch.apply(null, fetchArgs);
 const beacon = navigator;
 // @expect-error glass-lint rule=browser:network.request message_id=detected
 beacon.sendBeacon("https://example.com", "{}");
+// @expect-error glass-lint rule=browser:network.request message_id=detected
+window.navigator.sendBeacon("https://window-beacon.example", payload);
 
 // Global and rooted aliases retain provenance.
 const request = fetch;

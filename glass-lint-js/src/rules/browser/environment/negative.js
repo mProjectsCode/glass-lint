@@ -3,7 +3,25 @@
 // @expect-no-error glass-lint rule=browser:browser.environment message_id=detected
 // Unlisted environment properties are ignored.
 // @expect-no-error glass-lint rule=browser:browser.environment message_id=detected
-screen.colorDepth;
+screen.orientation;
+function localEnvironment(navigator) {
+    // @expect-no-error glass-lint rule=browser:browser.environment message_id=detected
+    navigator.languages;
+    // @expect-no-error glass-lint rule=browser:browser.environment message_id=detected
+    navigator.connection.effectiveType;
+}
+
+function localWindow(window) {
+    // @expect-no-error glass-lint rule=browser:browser.environment message_id=detected
+    window.screen.width;
+    // @expect-no-error glass-lint rule=browser:browser.environment message_id=detected
+    window.navigator.userAgent;
+}
+
+function localSelf(self) {
+    // @expect-no-error glass-lint rule=browser:browser.environment message_id=detected
+    self.navigator.language;
+}
 
 // Dynamic property names are outside this direct-chain heuristic.
 function read(navigator, property) {

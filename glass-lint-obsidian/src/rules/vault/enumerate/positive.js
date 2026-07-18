@@ -13,6 +13,12 @@ app.vault.getAllFolders();
 app.vault.getFolderByPath(path);
 // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
 app.vault.getRoot();
+// @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
+app.vault.getFileByPath(path);
+// @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
+app.vault.getAbstractFileByPath(path);
+// @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected
+app.vault.recurseChildren(folder, callback);
 
 const vault = app.vault;
 // @expect-error glass-lint rule=obsidian:vault.enumerate message_id=detected

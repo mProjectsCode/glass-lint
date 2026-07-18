@@ -2,8 +2,8 @@
 
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
-/// Detects reads of the seven exact `obsidian.Platform` flags configured by
-/// this rule. Module namespace aliases, optional chains, and static computed
+/// Detects reads of the configured `obsidian.Platform` flags and resource path
+/// prefix. Module namespace aliases, optional chains, and static computed
 /// properties retain module provenance; local lookalikes, shadowed namespaces,
 /// dynamic properties, and unlisted flags are excluded.
 pub fn rule() -> Rule {
@@ -25,6 +25,21 @@ pub fn rule() -> Rule {
         .matcher(Matcher::module_member_read("obsidian", "Platform.isMacOS"))
         .matcher(Matcher::module_member_read("obsidian", "Platform.isWin"))
         .matcher(Matcher::module_member_read("obsidian", "Platform.isLinux"))
+        .matcher(Matcher::module_member_read(
+            "obsidian",
+            "Platform.isDesktopApp",
+        ))
+        .matcher(Matcher::module_member_read(
+            "obsidian",
+            "Platform.isMobileApp",
+        ))
+        .matcher(Matcher::module_member_read("obsidian", "Platform.isPhone"))
+        .matcher(Matcher::module_member_read("obsidian", "Platform.isTablet"))
+        .matcher(Matcher::module_member_read("obsidian", "Platform.isSafari"))
+        .matcher(Matcher::module_member_read(
+            "obsidian",
+            "Platform.resourcePathPrefix",
+        ))
         .build()
         .unwrap()
 }

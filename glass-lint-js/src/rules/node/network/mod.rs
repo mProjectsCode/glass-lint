@@ -2,8 +2,8 @@
 
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
-/// Detects static ESM or unshadowed CommonJS loads of the exact Node `http`,
-/// `https`, `node:http`, and `node:https` modules. It reports the module load
+/// Detects static ESM or unshadowed CommonJS loads of the configured Node
+/// network modules and exact client packages. It reports the module load
 /// itself, not later API use, and relies on module provenance so similar names
 /// and shadowed `require` bindings are excluded.
 pub fn rule() -> Rule {
@@ -16,6 +16,41 @@ pub fn rule() -> Rule {
         .matcher(Matcher::import("https"))
         .matcher(Matcher::import("node:http"))
         .matcher(Matcher::import("node:https"))
+        .matcher(Matcher::import("http2"))
+        .matcher(Matcher::import("node:http2"))
+        .matcher(Matcher::import("net"))
+        .matcher(Matcher::import("node:net"))
+        .matcher(Matcher::import("tls"))
+        .matcher(Matcher::import("node:tls"))
+        .matcher(Matcher::import("dgram"))
+        .matcher(Matcher::import("node:dgram"))
+        .matcher(Matcher::import("dns"))
+        .matcher(Matcher::import("node:dns"))
+        .matcher(Matcher::import("dns/promises"))
+        .matcher(Matcher::import("node:dns/promises"))
+        .matcher(Matcher::import("undici"))
+        .matcher(Matcher::import("axios"))
+        .matcher(Matcher::import("node-fetch"))
+        .matcher(Matcher::import("got"))
+        .matcher(Matcher::import("superagent"))
+        .matcher(Matcher::import("ws"))
+        .matcher(Matcher::import("cross-fetch"))
+        .matcher(Matcher::import("ky"))
+        .matcher(Matcher::import("graphql-request"))
+        .matcher(Matcher::import("request"))
+        .matcher(Matcher::import("needle"))
+        .matcher(Matcher::import("@grpc/grpc-js"))
+        .matcher(Matcher::import("@apollo/client"))
+        .matcher(Matcher::import("graphql"))
+        .matcher(Matcher::import("@elastic/elasticsearch"))
+        .matcher(Matcher::import("fetch-retry"))
+        .matcher(Matcher::import("fetch-blob"))
+        .matcher(Matcher::import("form-data"))
+        .matcher(Matcher::import("http-proxy"))
+        .matcher(Matcher::import("http-proxy-agent"))
+        .matcher(Matcher::import("https-proxy-agent"))
+        .matcher(Matcher::import("socks-proxy-agent"))
+        .matcher(Matcher::import("@whatwg-node/fetch"))
         .build()
         .unwrap()
 }

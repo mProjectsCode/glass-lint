@@ -23,6 +23,30 @@ pub fn rule() -> Rule {
             "electron",
             "dialog.showSaveDialog",
         ))
+        .matcher(Matcher::module_member_call(
+            "electron",
+            "dialog.showOpenDialogSync",
+        ))
+        .matcher(Matcher::module_member_call(
+            "electron",
+            "dialog.showSaveDialogSync",
+        ))
+        .matcher(Matcher::module_member_call(
+            "electron",
+            "dialog.showMessageBox",
+        ))
+        .matcher(Matcher::module_member_call(
+            "electron",
+            "dialog.showMessageBoxSync",
+        ))
+        .matcher(Matcher::module_member_call(
+            "electron",
+            "dialog.showErrorBox",
+        ))
+        .matcher(Matcher::module_member_call(
+            "electron",
+            "dialog.showCertificateTrustDialog",
+        ))
         .build()
         .unwrap()
 }

@@ -20,3 +20,8 @@ app.metadataCache.getFileCache.frontmatter;
 // Static computed properties retain the rooted chain.
 // @expect-error glass-lint rule=obsidian:metadata.frontmatter-read message_id=detected
 app['metadataCache']['getFileCache']['frontmatter'];
+import { parseFrontMatterAliases, parseFrontMatterTags } from "obsidian";
+// @expect-error glass-lint rule=obsidian:metadata.frontmatter-read message_id=detected
+parseFrontMatterAliases(frontmatter);
+// @expect-error glass-lint rule=obsidian:metadata.frontmatter-read message_id=detected
+parseFrontMatterTags(frontmatter);

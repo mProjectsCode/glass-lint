@@ -7,11 +7,14 @@ mod clipboard_read;
 mod clipboard_write;
 mod environment;
 mod file_dialog;
+mod filesystem;
 mod global_input_hook;
 mod permissions_bluetooth;
 mod permissions_geolocation;
+mod permissions_hardware;
 mod permissions_media;
 mod permissions_notifications;
+mod permissions_query;
 mod persistent_storage;
 mod remote_resource;
 mod request;
@@ -27,12 +30,15 @@ pub fn rules() -> Vec<Rule> {
         clipboard_write::rule(),
         persistent_storage::rule(),
         permissions_geolocation::rule(),
+        permissions_hardware::rule(),
         permissions_media::rule(),
         permissions_bluetooth::rule(),
         permissions_notifications::rule(),
+        permissions_query::rule(),
         environment::rule(),
         global_input_hook::rule(),
         file_dialog::rule(),
+        filesystem::rule(),
         request::rule(),
         remote_resource::rule(),
         script_injection::rule(),

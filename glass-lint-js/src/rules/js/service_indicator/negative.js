@@ -5,10 +5,14 @@
 import unrelatedOpenAI from "openai-client";
 // @expect-no-error glass-lint rule=js:network.service-indicator message_id=detected
 import localService from "@supabase/supabase";
+// @expect-no-error glass-lint rule=js:network.service-indicator message_id=detected
+import unrelatedSdk from "@aws-sdk/client-dynamodb-helper";
 
 // Unconfigured domains and ordinary prose are ignored.
 // @expect-no-error glass-lint rule=js:network.service-indicator message_id=detected
 const ordinaryDomain = "example.net";
+// @expect-no-error glass-lint rule=js:network.service-indicator message_id=detected
+const unrelatedEndpoint = "https://api.sendgrid.example";
 // @expect-no-error glass-lint rule=js:network.service-indicator message_id=detected
 const unrelatedProvider = "mastodon posthog headers";
 

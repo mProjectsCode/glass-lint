@@ -7,6 +7,16 @@ import * as electron from "electron";
 electron.shell.openExternal("https://example.com");
 // @expect-error glass-lint rule=electron:electron.shell message_id=detected
 electron.shell.openPath("/tmp/second");
+// @expect-error glass-lint rule=electron:electron.shell message_id=detected
+electron.shell.showItemInFolder("/tmp/item");
+// @expect-error glass-lint rule=electron:electron.shell message_id=detected
+electron.shell.trashItem("/tmp/trash");
+// @expect-error glass-lint rule=electron:electron.shell message_id=detected
+electron.shell.beep();
+// @expect-error glass-lint rule=electron:electron.shell message_id=detected
+electron.shell.readShortcutLink("/tmp/link");
+// @expect-error glass-lint rule=electron:electron.shell message_id=detected
+electron.shell.writeShortcutLink("/tmp/link", "create", details);
 
 // Namespace aliases retain module provenance.
 const electronAlias = electron;

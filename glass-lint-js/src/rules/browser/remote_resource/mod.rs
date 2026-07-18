@@ -22,6 +22,25 @@ pub fn rule() -> Rule {
             "src",
         ))
         .matcher(remote_element_flow("remote image element", "img", "src"))
+        .matcher(remote_element_flow("remote link element", "link", "href"))
+        .matcher(remote_element_flow(
+            "remote iframe element",
+            "iframe",
+            "src",
+        ))
+        .matcher(remote_element_flow("remote audio element", "audio", "src"))
+        .matcher(remote_element_flow("remote video element", "video", "src"))
+        .matcher(remote_element_flow(
+            "remote source element",
+            "source",
+            "src",
+        ))
+        .matcher(remote_element_flow(
+            "remote object element",
+            "object",
+            "data",
+        ))
+        .matcher(remote_element_flow("remote embed element", "embed", "src"))
         .build()
         .unwrap()
 }

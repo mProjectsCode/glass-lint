@@ -3,6 +3,7 @@
 // @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:network.request count=1 line=any
+// @expect-error glass-lint rule=js:network.url-construction count=1 line=any
 
 import { Plugin, requestUrl } from "obsidian";
 

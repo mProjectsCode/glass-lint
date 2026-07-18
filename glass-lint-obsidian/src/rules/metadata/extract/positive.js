@@ -33,3 +33,22 @@ extractCache.embeds;
 // Static computed properties remain rooted.
 // @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
 app.metadataCache.getFileCache['sections'];
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+app.metadataCache.getFileCache.listItems;
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+app.metadataCache.getFileCache.footnotes;
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+app.metadataCache.getFileCache.footnoteRefs;
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+app.metadataCache.getFileCache.referenceLinks;
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+app.metadataCache.getFileCache.frontmatterLinks;
+// Frontmatter itself and its derived aliases/tags are cached metadata too.
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+app.metadataCache.getFileCache.frontmatter;
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+app.metadataCache.getFileCache.frontmatterAliases;
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+app.metadataCache.getFileCache.frontmatterTags;
+// @expect-error glass-lint rule=obsidian:metadata.extract message_id=detected
+app.metadataCache.getFileCache.frontmatterPosition;

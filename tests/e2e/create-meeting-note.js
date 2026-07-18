@@ -3,7 +3,9 @@
 // @tool eslint-obsidianmd config=recommended
 // @expect-error glass-lint rule=obsidian:ui.command count=1 line=any
 // @expect-error glass-lint rule=obsidian:vault.access count=4 line=any
+// @expect-error glass-lint rule=obsidian:vault.enumerate count=2 line=any
 // @expect-error glass-lint rule=obsidian:vault.write count=2 line=any
+// @expect-error glass-lint rule=obsidian:workspace.leaf-management count=2 line=any
 // @expect-error glass-lint rule=obsidian:workspace.open count=2 line=any
 
 import { Plugin } from "obsidian";

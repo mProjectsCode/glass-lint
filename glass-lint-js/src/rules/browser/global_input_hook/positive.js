@@ -7,14 +7,31 @@ document.addEventListener("keydown", ()=>{});
 window.addEventListener("keyup", () => {});
 // @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
 document.addEventListener("paste", () => {});
+// @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+document.addEventListener("pointerdown", () => {});
+// @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+window.addEventListener("touchstart", () => {});
+// @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+globalThis.addEventListener("input", () => {});
+// The worker/global-object spelling retains the same rooted provenance.
+// @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+self.addEventListener("paste", () => {});
+// @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+document.body.addEventListener("drop", () => {});
+
+// Direct handler properties are also global input hooks.
+// @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+document.onkeydown = () => {};
+// @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+window.onpaste = () => {};
 
 // Resolved static constants are accepted as event names.
 const eventName = "copy";
 // @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
 document.addEventListener(eventName, () => {});
 
-// Deliberate heuristic gap: a shadowed local receiver is also reported.
+// Rooted listener calls reject shadowed local receivers.
 function install(document) {
-    // @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+    // @expect-no-error glass-lint rule=browser:browser.global-input-hook message_id=detected
     document.addEventListener("cut", () => {});
 }

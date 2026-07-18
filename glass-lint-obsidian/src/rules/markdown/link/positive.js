@@ -16,3 +16,24 @@ obsidian.getLinkpath(link);
 const { parseLinktext: parseCommonJs } = require('obsidian');
 // @expect-error glass-lint rule=obsidian:markdown.link message_id=detected
 parseCommonJs(otherText);
+import {
+  fileToLinktext,
+  generateMarkdownLink,
+  resolveSubpath,
+  parseSubpath,
+  parseFrontMatterAliases,
+  parseFrontMatterTags,
+} from "obsidian";
+// @expect-error glass-lint rule=obsidian:markdown.link message_id=detected
+fileToLinktext(file, sourcePath);
+// @expect-error glass-lint rule=obsidian:markdown.link message_id=detected
+generateMarkdownLink(file, sourcePath);
+// @expect-error glass-lint rule=obsidian:markdown.link message_id=detected
+resolveSubpath(path);
+// @expect-error glass-lint rule=obsidian:markdown.link message_id=detected
+parseSubpath(path);
+// Frontmatter helpers are part of the same exact module export set.
+// @expect-error glass-lint rule=obsidian:markdown.link message_id=detected
+parseFrontMatterAliases(frontmatter);
+// @expect-error glass-lint rule=obsidian:markdown.link message_id=detected
+parseFrontMatterTags(frontmatter);

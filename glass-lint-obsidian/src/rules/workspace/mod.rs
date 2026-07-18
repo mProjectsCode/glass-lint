@@ -5,6 +5,7 @@
 
 mod active_editor;
 mod active_file;
+mod events;
 mod layout;
 mod leaf_management;
 mod open;
@@ -14,6 +15,7 @@ pub fn rules() -> Vec<Rule> {
     // operations for a stable catalog order.
     vec![
         active_file::rule(),
+        events::rule(),
         active_editor::rule(),
         open::rule(),
         leaf_management::rule(),

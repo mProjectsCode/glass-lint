@@ -10,13 +10,19 @@ function shadowed(app) {
 }
 shadowed({ vault: { on() {} } });
 // @expect-no-error glass-lint rule=obsidian:vault.events message_id=detected
-app.vault[eventMethod]("changed", handler);
+app.vault[eventMethod]("modify", handler);
 // @expect-no-error glass-lint rule=obsidian:vault.events message_id=detected
 app.vault.off("changed", handler);
 
 let vault = app.vault;
 // @expect-error glass-lint rule=obsidian:vault.events message_id=detected
-vault.on("changed", handler);
+vault.on("delete", handler);
 vault = localVault;
 // @expect-no-error glass-lint rule=obsidian:vault.events message_id=detected
-vault.on("changed", handler);
+vault.on("delete", handler);
+
+// These names are not public Vault events.
+// @expect-no-error glass-lint rule=obsidian:vault.events message_id=detected
+app.vault.on("changed", handler);
+// @expect-no-error glass-lint rule=obsidian:vault.events message_id=detected
+app.vault.on("created", handler);

@@ -11,10 +11,12 @@ const computedInput = document.createElement("input");
 computedInput["type"] = "file";
 // @expect-error-after glass-lint rule=browser:browser.file-dialog message_id=detected
 
-// setAttribute is intentionally not configuration evidence.
-const attributeInput = document.createElement("input");
+// Dynamic attribute values and local lookalikes are not configuration evidence.
+const dynamicAttributeInput = document.createElement("input");
+dynamicAttributeInput.setAttribute("type", kind);
+const localAttributeInput = { setAttribute() {} };
 // @expect-no-error glass-lint rule=browser:browser.file-dialog message_id=detected
-attributeInput.setAttribute("type", "file");
+localAttributeInput.setAttribute("type", "file");
 
 // Reassigning the variable clears its previously tracked source state.
 let replacedInput = document.createElement("input");

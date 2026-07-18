@@ -10,6 +10,22 @@ Object.values(app.metadataCache.resolvedLinks);
 Object.keys(app.metadataCache.unresolvedLinks);
 // @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
 Object.entries(app.metadataCache.resolvedLinks);
+// @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+Object.getOwnPropertyNames(app.metadataCache.resolvedLinks);
+// @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+Object.getOwnPropertySymbols(app.metadataCache.unresolvedLinks);
+// Descriptor and Reflect enumeration preserve the same rooted-map contract.
+// @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+Object.getOwnPropertyDescriptors(app.metadataCache.resolvedLinks);
+// @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+Reflect.ownKeys(app.metadataCache.unresolvedLinks);
+// Configured Node/Electron global-object spellings are identity-safe too.
+// @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+global.Object.keys(app.metadataCache.resolvedLinks);
+// @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+global.Reflect.ownKeys(app.metadataCache.unresolvedLinks);
+// @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+globalThis.Object.keys(app.metadataCache.resolvedLinks);
 
 const unresolved = app.metadataCache.unresolvedLinks;
 // @expect-error glass-lint rule=obsidian:metadata.traversal message_id=detected

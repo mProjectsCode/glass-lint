@@ -10,7 +10,6 @@ mod notice;
 mod ribbon;
 mod settings_tab;
 mod status_bar;
-mod suggest;
 use glass_lint_core::rules::Rule;
 pub fn rules() -> Vec<Rule> {
     // Registration, status, modal, and notice rules precede the broader menu
@@ -23,6 +22,5 @@ pub fn rules() -> Vec<Rule> {
         notice::rule(),
         menu::rule(),
         settings_tab::rule(),
-        suggest::rule(),
     ]
 }

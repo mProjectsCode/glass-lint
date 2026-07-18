@@ -18,7 +18,10 @@ pub fn for_rule(id: &str) -> &'static [&'static str] {
         "browser.permissions-geolocation"
         | "browser.permissions-media"
         | "browser.permissions-bluetooth"
-        | "browser.permissions-notifications" => &["disclosure.permission_sensitive_browser_api"],
+        | "browser.permissions-notifications"
+        | "browser.permissions-hardware"
+        | "browser.permissions-query"
+        | "browser.filesystem" => &["disclosure.permission_sensitive_browser_api"],
         "dynamic-code.eval" | "dynamic-code.string-timer" | "dynamic-code.script-injection" => {
             &["disclosure.dynamic_code_or_remote_code"]
         }

@@ -7,6 +7,18 @@ import * as electron from "electron";
 electron.dialog.showOpenDialog({ properties: ["openFile"] });
 // @expect-error glass-lint rule=electron:electron.dialog message_id=detected
 electron.dialog.showSaveDialog({});
+// @expect-error glass-lint rule=electron:electron.dialog message_id=detected
+electron.dialog.showOpenDialogSync({});
+// @expect-error glass-lint rule=electron:electron.dialog message_id=detected
+electron.dialog.showSaveDialogSync({});
+// @expect-error glass-lint rule=electron:electron.dialog message_id=detected
+electron.dialog.showMessageBox({});
+// @expect-error glass-lint rule=electron:electron.dialog message_id=detected
+electron.dialog.showMessageBoxSync({});
+// @expect-error glass-lint rule=electron:electron.dialog message_id=detected
+electron.dialog.showErrorBox("title", "content");
+// @expect-error glass-lint rule=electron:electron.dialog message_id=detected
+electron.dialog.showCertificateTrustDialog({});
 
 // A direct namespace alias retains module provenance.
 const electronAlias = electron;

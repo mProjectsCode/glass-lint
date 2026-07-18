@@ -20,7 +20,29 @@ reassigned();
 
 // Unlisted and dynamic properties are outside the exact rooted matchers.
 // @expect-no-error glass-lint rule=node:node.process-environment message_id=detected
-process.version;
+process.versionSnapshot;
+// @expect-no-error glass-lint rule=node:node.process-environment message_id=detected
+process.memoryUsageSnapshot;
 const property = getPropertyName();
 // @expect-no-error glass-lint rule=node:node.process-environment message_id=detected
 process[property];
+// @expect-no-error glass-lint rule=node:node.process-environment message_id=detected
+process.debugPortSnapshot;
+// @expect-no-error glass-lint rule=node:node.process-environment message_id=detected
+process.getBuiltinModules("fs");
+
+function localGlobal(global) {
+    // @expect-no-error glass-lint rule=node:node.process-environment message_id=detected
+    global.process.env.LOCAL;
+    // @expect-no-error glass-lint rule=node:node.process-environment message_id=detected
+    global.process.cwd();
+}
+localGlobal({ process: { env: {}, cwd() {} } });
+
+function localGlobalThis(globalThis) {
+    // @expect-no-error glass-lint rule=node:node.process-environment message_id=detected
+    globalThis.process.env.LOCAL;
+    // @expect-no-error glass-lint rule=node:node.process-environment message_id=detected
+    globalThis.process.cwd();
+}
+localGlobalThis({ process: { env: {}, cwd() {} } });

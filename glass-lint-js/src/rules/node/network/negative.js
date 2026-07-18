@@ -4,7 +4,13 @@
 // @expect-no-error glass-lint rule=node:node.network message_id=detected
 import localHttp from "not-http";
 // @expect-no-error glass-lint rule=node:node.network message_id=detected
-import http2Like from "http2";
+import http2Like from "http2-extra";
+// @expect-no-error glass-lint rule=node:node.network message_id=detected
+import wsLike from "ws-extra";
+// @expect-no-error glass-lint rule=node:node.network message_id=detected
+import dnsLike from "dns/promises-extra";
+// @expect-no-error glass-lint rule=node:node.network message_id=detected
+import localApollo from "@apollo/client-helper";
 
 // @expect-no-error glass-lint rule=node:node.network message_id=detected
 localHttp;

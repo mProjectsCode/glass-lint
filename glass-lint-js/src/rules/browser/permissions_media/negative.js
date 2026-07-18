@@ -10,3 +10,9 @@ let media = globalThis.navigator.mediaDevices;
 media = { getUserMedia() {} };
 // @expect-no-error glass-lint rule=browser:browser.permissions-media message_id=detected
 media.getUserMedia({ video: true });
+
+function localWindow(window) {
+    // @expect-no-error glass-lint rule=browser:browser.permissions-media message_id=detected
+    window.navigator.mediaDevices.getUserMedia({ audio: true });
+}
+localWindow({ navigator: { mediaDevices: { getUserMedia() {} } } });
