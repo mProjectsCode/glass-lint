@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{collections::BTreeMap, num::NonZeroUsize};
+use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc};
 
 struct LocalJob {
     path: super::ProjectRelativePath,
@@ -14,7 +14,7 @@ struct LocalJobResult {
     path: super::ProjectRelativePath,
     source: SourceFile,
     key: ArtifactCacheKey,
-    result: Result<crate::analysis::SemanticArtifact, crate::ParseDiagnostic>,
+    result: Result<Arc<crate::analysis::SemanticArtifact>, crate::ParseDiagnostic>,
 }
 
 trait LocalJobExecutor {
@@ -185,7 +185,8 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
                                     observer.parse_attempted();
                                     observer.lower_attempted();
                                     let result =
-                                        crate::analysis::lower_artifact(linter, &job.source);
+                                        crate::analysis::lower_artifact(linter, &job.source)
+                                            .map(Arc::new);
                                     observer.finished();
                                     result
                                 },
@@ -241,7 +242,7 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
             observer.started();
             observer.parse_attempted();
             observer.lower_attempted();
-            let result = crate::analysis::lower_artifact(linter, &job.source);
+            let result = crate::analysis::lower_artifact(linter, &job.source).map(Arc::new);
             observer.finished();
             release(LocalJobResult {
                 path: job.path,
@@ -379,7 +380,7 @@ impl<'a> AnalysisSession<'a> {
             observer.cache_hit();
             LoweredSource {
                 source: LocatedSourceContext::new(source),
-                semantic: (*cached.semantic).clone(),
+                semantic: Arc::clone(&cached.semantic),
             }
         } else {
             observer.cache_miss();
@@ -395,7 +396,7 @@ impl<'a> AnalysisSession<'a> {
             let evicted = self.artifact_cache.insert(
                 key,
                 SharedSemanticArtifact {
-                    semantic: std::sync::Arc::new(lowered.semantic.clone()),
+                    semantic: Arc::clone(&lowered.semantic),
                 },
             );
             observer.cache_inserted();
@@ -435,10 +436,7 @@ impl<'a> AnalysisSession<'a> {
         path: &super::ProjectRelativePath,
         lowered: LoweredSource,
     ) -> Vec<ResolutionRequest> {
-        let local = crate::analysis::LocalArtifact::new(
-            lowered.source.clone(),
-            std::sync::Arc::new(lowered.semantic),
-        );
+        let local = crate::analysis::LocalArtifact::new(lowered.source.clone(), lowered.semantic);
         let requests = local.interface().authored_requests(
             path,
             &local.source_context().lines,
@@ -488,7 +486,7 @@ impl<'a> AnalysisSession<'a> {
                     &super::ProjectRelativePath::new(path)?,
                     LoweredSource {
                         source: LocatedSourceContext::new(&source),
-                        semantic: (*cached.semantic).clone(),
+                        semantic: Arc::clone(&cached.semantic),
                     },
                 ));
             } else {
@@ -511,7 +509,7 @@ impl<'a> AnalysisSession<'a> {
                     let evicted = artifact_cache.insert(
                         result.key,
                         SharedSemanticArtifact {
-                            semantic: std::sync::Arc::new(artifact.clone()),
+                            semantic: Arc::clone(&artifact),
                         },
                     );
                     observer.cache_inserted();

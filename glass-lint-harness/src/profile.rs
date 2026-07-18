@@ -330,7 +330,7 @@ impl MeasuredRepetitionAccumulator {
         W: FnMut() -> Result<()>,
         R: FnMut() -> Result<ProfileRepetitionSummary>,
     {
-        if warm_up > 0 {
+        for _ in 0..warm_up {
             warm_up_run()?;
         }
         let mut measured = Self {
@@ -349,7 +349,6 @@ impl MeasuredRepetitionAccumulator {
         self.repetitions.push(repetition);
     }
 
-    #[cfg(test)]
     fn total_duration(&self) -> Duration {
         self.repetitions
             .iter()
@@ -482,14 +481,13 @@ pub fn run_profile(config: &ProfileConfig) -> Result<ProfileSummary> {
     let setup_duration = setup_start.elapsed();
 
     let prepared = Arc::new(prepared);
-    let measured_start = Instant::now();
     let mut measured_results = Vec::new();
     let mut measured_results_by_run = Vec::new();
     let measured = MeasuredRepetitionAccumulator::measure(
         config.warm_up,
         config.repeat,
         || {
-            let _ = execute_file_profile(&prepared, &linters, config.workers, 0, 0);
+            let _ = execute_file_profile(&prepared, &linters, config.workers, 1, 0);
             Ok(())
         },
         || {
@@ -501,7 +499,7 @@ pub fn run_profile(config: &ProfileConfig) -> Result<ProfileSummary> {
         },
     )?;
     measured_results.extend(measured_results_by_run.into_iter().flatten());
-    let lint_elapsed = measured_start.elapsed();
+    let lint_elapsed = measured.total_duration();
 
     workload_results.extend(aggregate_workload_results(measured_results));
     workload_results.sort_by(|left, right| left.path.cmp(&right.path));
@@ -704,7 +702,6 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     {
         bail!("verified manifest bytes changed during profile preparation");
     }
-    let measured_start = Instant::now();
     let measured = MeasuredRepetitionAccumulator::measure(
         config.warm_up,
         config.repeat,
@@ -752,7 +749,7 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         diagnostics += repetition.diagnostics;
     }
     let operation_counts = sum_operation_counts(&measured.repetitions);
-    let elapsed = measured_start.elapsed();
+    let elapsed = measured.total_duration();
     let median_repetition_duration = median_duration(&measured.repetitions);
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {
@@ -1076,7 +1073,7 @@ fn execute_file_profile(
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
+    use std::{cell::Cell, fs};
 
     use super::*;
 
@@ -1219,6 +1216,37 @@ mod tests {
             median_duration(&measured.repetitions),
             Duration::from_millis(3)
         );
+    }
+
+    #[test]
+    fn repetition_accumulator_executes_every_requested_warmup() {
+        let warmups = Cell::new(0);
+        let measured = Cell::new(0);
+        let result = MeasuredRepetitionAccumulator::measure(
+            3,
+            2,
+            || {
+                warmups.set(warmups.get() + 1);
+                Ok(())
+            },
+            || {
+                measured.set(measured.get() + 1);
+                Ok(ProfileRepetitionSummary {
+                    duration: Duration::ZERO,
+                    findings: 0,
+                    diagnostics: 0,
+                    completion: ReportCompletion::Complete,
+                    run_completions: Vec::new(),
+                    operation_counts: ProfileOperationCounts::default(),
+                    evidence_order_digest: String::new(),
+                })
+            },
+        )
+        .unwrap();
+
+        assert_eq!(warmups.get(), 3);
+        assert_eq!(measured.get(), 2);
+        assert_eq!(result.repetitions.len(), 2);
     }
 
     #[test]

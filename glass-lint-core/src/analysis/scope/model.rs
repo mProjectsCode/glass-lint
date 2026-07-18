@@ -4,7 +4,7 @@
 //! module. Assignment versions and source spans remain part of the query
 //! contract so aliases cannot cross a reassignment or lexical boundary.
 
-use std::collections::BTreeMap;
+use std::{cell::Cell, collections::BTreeMap};
 
 use swc_common::{BytePos, Span};
 
@@ -62,6 +62,9 @@ pub(in crate::analysis) struct ScopeGraph {
     scopes: Vec<LexicalScope>,
     /// Scope indexes sorted by opening position for position lookup.
     scopes_by_start: Vec<ScopeId>,
+    /// Exact-span memo for the repeated resolver queries made while visiting
+    /// one AST node.
+    last_scope_query: Cell<Option<(Span, ScopeId)>>,
     /// Source-ordered assignments grouped by scope and name.
     assignments: BTreeMap<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>,
     /// Stable binding IDs keyed by lexical scope and name.
@@ -213,6 +216,7 @@ impl ScopeGraph {
             environment: parts.environment,
             scopes: parts.scopes,
             scopes_by_start: parts.scopes_by_start,
+            last_scope_query: Cell::new(None),
             assignments: parts.assignments,
             binding_ids: parts.binding_ids,
             function_ids: parts.function_ids,
@@ -312,6 +316,17 @@ impl ScopeGraph {
 
     /// Find the innermost lexical scope containing a source span.
     pub(in crate::analysis) fn scope_at(&self, span: Span) -> ScopeId {
+        if let Some((cached_span, scope)) = self.last_scope_query.get()
+            && cached_span == span
+        {
+            return scope;
+        }
+        let scope = self.find_scope_at(span);
+        self.last_scope_query.set(Some((span, scope)));
+        scope
+    }
+
+    fn find_scope_at(&self, span: Span) -> ScopeId {
         let position = self
             .scopes_by_start
             .partition_point(|index| self.scopes[index.index()].span.lo <= span.lo);

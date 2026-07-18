@@ -62,6 +62,19 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct ScopeIdentCollector {
+        values: Vec<Ident>,
+    }
+
+    impl Visit for ScopeIdentCollector {
+        fn visit_ident(&mut self, ident: &Ident) {
+            if matches!(ident.sym.as_ref(), "program_value" | "block_value") {
+                self.values.push(ident.clone());
+            }
+        }
+    }
+
     #[test]
     fn binding_keys_change_at_assignment_versions() {
         let parsed = crate::parse(
@@ -81,5 +94,47 @@ mod tests {
         assert!(keys.iter().all(Option::is_some));
         assert_ne!(keys[0], keys[1]);
         assert_eq!(keys[1], keys[2]);
+    }
+
+    #[test]
+    fn repeated_scope_queries_preserve_nested_and_cross_scope_results() {
+        let parsed = crate::parse(
+            r"
+                let program_value = 0;
+                {
+                    let block_value = program_value;
+                    function nested() { return block_value; }
+                }
+                program_value;
+            ",
+            "nested-scopes.js",
+        )
+        .expect("source should parse");
+        let graph = ScopeGraph::collect(&parsed.program);
+        let mut collector = ScopeIdentCollector::default();
+        parsed.program.visit_with(&mut collector);
+
+        let program_uses = collector
+            .values
+            .iter()
+            .filter(|ident| ident.sym == *"program_value")
+            .collect::<Vec<_>>();
+        let block_use = collector
+            .values
+            .iter()
+            .find(|ident| ident.sym == *"block_value" && ident.span.lo > program_uses[1].span.lo)
+            .expect("nested block use should exist");
+
+        let program_scope = graph.scope_at(program_uses[0].span);
+        let block_scope = graph.scope_at(program_uses[1].span);
+        let function_scope = graph.scope_at(block_use.span);
+        assert_eq!(graph.scope_at(block_use.span), function_scope);
+        assert_eq!(graph.scope_kind(program_scope), Some(ScopeKind::Program));
+        assert_eq!(graph.scope_parent(block_scope), Some(program_scope));
+        assert_ne!(function_scope, block_scope);
+
+        let cross_scope_span = swc_common::Span::new(block_use.span.lo, program_uses[2].span.hi);
+        assert_eq!(graph.scope_at(cross_scope_span), program_scope);
+        assert_eq!(graph.scope_at(cross_scope_span), program_scope);
     }
 }

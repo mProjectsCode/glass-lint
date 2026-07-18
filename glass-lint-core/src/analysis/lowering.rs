@@ -3,7 +3,7 @@
 //! Parser and AST details stop here. Downstream project analysis receives an
 //! immutable local artifact and its source map, never a parsed program.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
@@ -90,7 +90,7 @@ impl SpanNormalizer {
 
 pub struct LoweredSource {
     pub(crate) source: super::local::LocatedSourceContext,
-    pub(crate) semantic: SemanticArtifact,
+    pub(crate) semantic: Arc<SemanticArtifact>,
 }
 
 pub fn lower_source(
@@ -112,7 +112,7 @@ pub fn lower_source(
     );
     Ok(LoweredSource {
         source: super::local::LocatedSourceContext::new(source),
-        semantic,
+        semantic: Arc::new(semantic),
     })
 }
 

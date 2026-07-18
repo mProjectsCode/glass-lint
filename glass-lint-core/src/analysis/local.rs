@@ -201,7 +201,7 @@ impl ArtifactCache {
 }
 
 /// The immutable lowered semantic result of analyzing one source.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SemanticArtifact {
     /// Canonical facts, occurrence indexes, and module interface.
     facts: SemanticFacts,
