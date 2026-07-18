@@ -19,7 +19,6 @@ pub fn rule() -> Rule {
         .confidence(Confidence::High)
         .matcher(CallMatcher::global("fetch"))
         .matcher(MemberCallMatcher::rooted("navigator.sendBeacon"))
-        .matcher(MemberCallMatcher::rooted("window.navigator.sendBeacon"))
         .matcher(ConstructorMatcher::global("XMLHttpRequest"))
         .matcher(ConstructorMatcher::global("WebSocket"))
         .matcher(ConstructorMatcher::global("EventSource"))

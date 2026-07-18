@@ -15,7 +15,7 @@ function unrelatedReceiver() {
 }
 
 this.addRibbonIcon = replacement;
-// @expect-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected
 this.addRibbonIcon("reassigned", "reassigned", handler);
   }
 }

@@ -19,7 +19,7 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .matcher(Matcher::from(
-            MemberCallMatcher::heuristic("Object.entries").arg_rooted_exprs(
+            MemberCallMatcher::rooted("Object.entries").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
@@ -28,7 +28,7 @@ pub fn rule() -> Rule {
             ),
         ))
         .matcher(Matcher::from(
-            MemberCallMatcher::heuristic("Object.keys").arg_rooted_exprs(
+            MemberCallMatcher::rooted("Object.keys").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
@@ -37,7 +37,7 @@ pub fn rule() -> Rule {
             ),
         ))
         .matcher(Matcher::from(
-            MemberCallMatcher::heuristic("Object.values").arg_rooted_exprs(
+            MemberCallMatcher::rooted("Object.values").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
@@ -46,7 +46,7 @@ pub fn rule() -> Rule {
             ),
         ))
         .matcher(Matcher::from(
-            MemberCallMatcher::heuristic("Object.getOwnPropertyNames").arg_rooted_exprs(
+            MemberCallMatcher::rooted("Object.getOwnPropertyNames").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
@@ -55,7 +55,7 @@ pub fn rule() -> Rule {
             ),
         ))
         .matcher(Matcher::from(
-            MemberCallMatcher::heuristic("Object.getOwnPropertySymbols").arg_rooted_exprs(
+            MemberCallMatcher::rooted("Object.getOwnPropertySymbols").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
@@ -64,7 +64,7 @@ pub fn rule() -> Rule {
             ),
         ))
         .matcher(Matcher::from(
-            MemberCallMatcher::heuristic("Object.getOwnPropertyDescriptors").arg_rooted_exprs(
+            MemberCallMatcher::rooted("Object.getOwnPropertyDescriptors").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",
@@ -73,7 +73,7 @@ pub fn rule() -> Rule {
             ),
         ))
         .matcher(Matcher::from(
-            MemberCallMatcher::heuristic("Reflect.ownKeys").arg_rooted_exprs(
+            MemberCallMatcher::rooted("Reflect.ownKeys").arg_rooted_exprs(
                 0,
                 [
                     "app.metadataCache.resolvedLinks",

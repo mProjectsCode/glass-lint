@@ -136,6 +136,8 @@ pub(in crate::analysis) struct CallArgInfo {
     pub(in crate::analysis) static_string: Option<String>,
     /// Statically known keys of a finite object argument.
     pub(in crate::analysis) object_keys: Option<Vec<String>>,
+    /// Statically known direct object-property string values.
+    pub(in crate::analysis) property_strings: Vec<(String, String)>,
     /// Proven rooted member chain for this argument.
     pub(in crate::analysis) rooted_chain: Option<String>,
     /// Values reachable from this argument through a statically known object

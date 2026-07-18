@@ -34,6 +34,11 @@ pub(super) fn validate(matcher: &MatcherSet) -> Result<(), String> {
             return Err("literal matcher value must not be empty".into());
         }
     }
+    for pattern in &matcher.package_imports {
+        if pattern.as_str().trim().is_empty() || !pattern.is_package() {
+            return Err("package import matcher must be a package pattern".into());
+        }
+    }
     for class in &matcher.classes {
         validate_name_at(&class.name, "class name")?;
         class.provenance.validate_at("provenance")?;
@@ -54,7 +59,9 @@ pub(super) fn validate(matcher: &MatcherSet) -> Result<(), String> {
         validate_name_at(&returned.member, "returned-member name")?;
     }
     for instance in &matcher.instance_member_calls {
-        validate_name_at(&instance.module, "instance module")?;
+        if instance.module_pattern.is_none() {
+            validate_name_at(&instance.module, "instance module")?;
+        }
         validate_name_at(&instance.export, "instance export")?;
         validate_name_at(&instance.member, "instance member")?;
     }
@@ -266,6 +273,10 @@ impl ArgumentConstraint {
                     validate_chain_at(chain, &chain_path)?;
                 }
                 Ok(())
+            }
+            ArgumentMatcher::ObjectPropertyValue { property, value } => {
+                validate_name_at(property, &format!("{path}.property"))?;
+                value.validate_at(&format!("{path}.value"))
             }
         }
     }

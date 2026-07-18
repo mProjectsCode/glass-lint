@@ -3,6 +3,11 @@
 // @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
 otherMenu.addItem(item);
 
+function localMenu(menu) {
+    // @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
+    menu.addItem(item);
+}
+
 // @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
 const addItem = menu.addItem;
 addItem(item);

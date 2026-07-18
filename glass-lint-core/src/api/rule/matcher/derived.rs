@@ -35,11 +35,24 @@ impl ConstructorMatcher {
         }
     }
 
+    pub fn package_export(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            name: export.into(),
+            provenance: SymbolProvenance::PackageModuleExport {
+                module: super::super::ModuleSpecifierPattern::package(module)?,
+            },
+        })
+    }
+
     #[must_use]
     pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             SymbolProvenance::Any | SymbolProvenance::Global => self.name.clone(),
             SymbolProvenance::ModuleExport { module } => format!("{module}.{}", self.name),
+            SymbolProvenance::PackageModuleExport { module } => format!("{module}.{}", self.name),
         }
     }
 
@@ -48,6 +61,7 @@ impl ConstructorMatcher {
             SymbolProvenance::Any => ("any", &self.name),
             SymbolProvenance::Global => ("global", &self.name),
             SymbolProvenance::ModuleExport { module } => (module, &self.name),
+            SymbolProvenance::PackageModuleExport { module } => (module.as_str(), &self.name),
         }
     }
 }
@@ -78,11 +92,24 @@ impl ClassMatcher {
         }
     }
 
+    pub fn package_export(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            name: export.into(),
+            provenance: SymbolProvenance::PackageModuleExport {
+                module: super::super::ModuleSpecifierPattern::package(module)?,
+            },
+        })
+    }
+
     #[must_use]
     pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             SymbolProvenance::Any | SymbolProvenance::Global => self.name.clone(),
             SymbolProvenance::ModuleExport { module } => format!("{module}.{}", self.name),
+            SymbolProvenance::PackageModuleExport { module } => format!("{module}.{}", self.name),
         }
     }
 
@@ -91,6 +118,7 @@ impl ClassMatcher {
             SymbolProvenance::Any => ("any", &self.name),
             SymbolProvenance::Global => ("global", &self.name),
             SymbolProvenance::ModuleExport { module } => (module, &self.name),
+            SymbolProvenance::PackageModuleExport { module } => (module.as_str(), &self.name),
         }
     }
 }
@@ -118,6 +146,8 @@ pub struct ReturnedMemberReadMatcher {
 pub struct InstanceMemberCallMatcher {
     /// Exporting module specifier.
     pub module: String,
+    /// Optional boundary-aware package pattern for the exporting module.
+    pub module_pattern: Option<super::super::ModuleSpecifierPattern>,
     /// Exported constructor/factory name.
     pub export: String,
     /// Instance member name.

@@ -56,6 +56,10 @@ impl ArgumentMatcher {
                     expected.iter().any(|candidate| candidate == chain)
                 })
             }
+            Self::ObjectPropertyValue { property, value } => argument
+                .property_strings
+                .iter()
+                .any(|(found, string)| found == property && value.matches_flow_value(Some(string))),
         }
     }
 }

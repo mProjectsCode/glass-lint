@@ -6,8 +6,8 @@ class TestPlugin extends Plugin {
 // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
 plugin.saveData(data);
 
-// @expect-no-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
 const save = this.saveData;
+// @expect-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
 save(data);
 // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
 this[dynamicProperty](data);

@@ -1,6 +1,6 @@
 //! Header-marker indicator rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{CallMatcher, Confidence, Matcher, Rule, Severity};
 
 /// Detects string literals containing the configured `Authorization` and
 /// `User-Agent` marker substrings. This is an opt-in heuristic indicator: it
@@ -13,6 +13,22 @@ pub fn rule() -> Rule {
         .category("browser/network")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
+        // Sink-associated coverage proves header names in request option
+        // objects; literal matchers below intentionally retain this rule's
+        // source-wide heuristic policy.
+        .matcher(CallMatcher::global("fetch").arg_object_keys(
+            1,
+            [
+                "User-Agent",
+                "user-agent",
+                "Authorization",
+                "authorization",
+                "Cookie",
+                "cookie",
+                "X-API-Key",
+                "x-api-key",
+            ],
+        ))
         .matcher(Matcher::string_contains("User-Agent"))
         .matcher(Matcher::string_contains("user-agent"))
         .matcher(Matcher::string_contains("USER-AGENT"))

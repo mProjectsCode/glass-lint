@@ -1,5 +1,7 @@
 // @case description positive fixture for js:network.telemetry-indicator
 // @tool glass-lint rules=js:network.telemetry-indicator
+// @expect-error glass-lint rule=js:network.telemetry-indicator message_id=detected
+import "@sentry/browser/profiling";
 // Every configured telemetry SDK module is an exact module-provenance match.
 // @expect-error glass-lint rule=js:network.telemetry-indicator message_id=detected
 import sentryBrowser from "@sentry/browser";

@@ -7,7 +7,7 @@ class TestPlugin extends Plugin {
 plugin.addStatusBarItem();
 
 const addStatusBarItem = this.addStatusBarItem;
-// @expect-no-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+// @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
 addStatusBarItem();
 
 // @expect-no-error glass-lint rule=obsidian:ui.status-bar message_id=detected

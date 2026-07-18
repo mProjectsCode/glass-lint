@@ -54,11 +54,16 @@ impl FactBuilder<'_> {
         source: ValueId,
     ) {
         assignment.right.visit_with(self);
+        let target = self.resolver.resolve_ident(&ident.id).id;
+        self.instance_callables.remove(&target);
+        if let Some(callable) = self.instance_callable_for_expr(&assignment.right) {
+            self.instance_callables.insert(target, callable);
+        }
         self.emit(
             FactKind::Assignment,
             assignment.span(),
             FactPayload::Assignment {
-                target: self.resolver.resolve_ident(&ident.id).id,
+                target,
                 source,
                 receiver: None,
             },

@@ -116,6 +116,11 @@ pub enum ArgumentMatcher {
     ObjectKeys(Vec<String>),
     /// Require rooted expression identities from the argument object.
     RootedExpressions(Vec<String>),
+    /// Require a proven static string in a named direct object property.
+    ObjectPropertyValue {
+        property: String,
+        value: ValueMatcher,
+    },
 }
 
 impl ArgumentMatcher {
@@ -133,6 +138,13 @@ impl ArgumentMatcher {
         S: Into<String>,
     {
         Self::RootedExpressions(chains.into_iter().map(Into::into).collect())
+    }
+
+    pub fn object_property_value(property: impl Into<String>, value: ValueMatcher) -> Self {
+        Self::ObjectPropertyValue {
+            property: property.into(),
+            value,
+        }
     }
 }
 

@@ -14,6 +14,8 @@ mod interface;
 mod state;
 mod visitor;
 
+use std::collections::BTreeMap;
+
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, BinExpr, BinaryOp, CallExpr, Callee, ClassDecl, ClassExpr, CondExpr,
@@ -57,6 +59,8 @@ pub struct FactBuilder<'a> {
     traversal: state::TraversalState,
     /// Call results are retained for effective-call and value-flow projections.
     call_results: call_results::CallResultTable,
+    /// Proven callable members extracted from the current module instance.
+    instance_callables: BTreeMap<ValueId, (String, String, String)>,
     /// Module requests and export slots collected during the same canonical
     /// walk as the semantic facts.
     interface: ModuleInterface,
@@ -75,6 +79,7 @@ impl<'a> FactBuilder<'a> {
             max_facts: max_facts.min(super::MAX_FACTS),
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
+            instance_callables: BTreeMap::new(),
             interface: ModuleInterface::default(),
         }
     }

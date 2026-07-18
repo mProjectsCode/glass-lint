@@ -15,7 +15,7 @@ function unrelatedReceiver() {
 }
 
 this.addStatusBarItem = replacement;
-// @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.status-bar message_id=detected
 this.addStatusBarItem();
   }
 }

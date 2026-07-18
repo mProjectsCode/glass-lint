@@ -216,6 +216,10 @@ impl Resolver {
     pub(in crate::analysis) fn value_arena_exhausted(&self) -> bool {
         self.values.borrow().exhausted()
     }
+
+    pub(in crate::analysis) fn instance_member_available(&self, member: &MemberExpr) -> bool {
+        self.scopes.instance_member_available_at(member)
+    }
 }
 
 #[cfg(test)]

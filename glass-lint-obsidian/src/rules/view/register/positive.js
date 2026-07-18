@@ -19,7 +19,7 @@ function unrelatedReceiver() {
 
 // Syntactic matching also does not track reassignment of the same member.
 this.registerView = replacement;
-// @expect-error glass-lint rule=obsidian:view.register message_id=detected
+// @expect-no-error glass-lint rule=obsidian:view.register message_id=detected
 this.registerView("reassigned", view);
   }
 }

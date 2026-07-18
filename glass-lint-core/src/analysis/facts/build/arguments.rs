@@ -29,11 +29,33 @@ impl FactBuilder<'_> {
             base_path,
             static_string: self.resolver.static_string_expr(expr),
             object_keys: self.resolver.object_keys_expr(expr),
+            property_strings: self.static_property_strings(expr),
             rooted_chain: self.resolver.rooted_expr_chain(expr),
             projections,
             spread: false,
             provenance,
         }
+    }
+
+    fn static_property_strings(&self, expr: &Expr) -> Vec<(String, String)> {
+        let Expr::Object(object) = expr else {
+            return Vec::new();
+        };
+        object
+            .props
+            .iter()
+            .filter_map(|property| {
+                let swc_ecma_ast::PropOrSpread::Prop(property) = property else {
+                    return None;
+                };
+                let swc_ecma_ast::Prop::KeyValue(property) = &**property else {
+                    return None;
+                };
+                let name = crate::analysis::syntax::property_name(&property.key)?;
+                let value = self.resolver.static_string_expr(&property.value)?;
+                Some((name, value))
+            })
+            .collect()
     }
 
     /// Return the value identity and static property path represented by an
@@ -123,6 +145,7 @@ impl FactBuilder<'_> {
                 base_path: PathId::EMPTY,
                 static_string: Some(value.clone()),
                 object_keys: None,
+                property_strings: Vec::new(),
                 rooted_chain: None,
                 projections: vec![ValueProjection {
                     path: PathId::EMPTY,
@@ -137,6 +160,7 @@ impl FactBuilder<'_> {
                 base_path: PathId::EMPTY,
                 static_string: None,
                 object_keys: None,
+                property_strings: Vec::new(),
                 rooted_chain: Some(chain.to_string()),
                 projections: vec![ValueProjection {
                     path: PathId::EMPTY,

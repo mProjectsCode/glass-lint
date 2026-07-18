@@ -7,13 +7,14 @@ import * as obsidianApi from "obsidian";
 // @expect-error glass-lint rule=obsidian:markdown.render message_id=detected
 obsidianApi.MarkdownRenderer.render(app, text, el, '', ctx);
 
-// @expect-error glass-lint rule=obsidian:markdown.render message_id=detected
+// Unproven bare receivers are intentionally excluded.
+// @expect-no-error glass-lint rule=obsidian:markdown.render message_id=detected
 MarkdownRenderer.render(app,text,el,'',ctx);
-// @expect-error glass-lint rule=obsidian:markdown.render message_id=detected
+// @expect-no-error glass-lint rule=obsidian:markdown.render message_id=detected
 MarkdownRenderer['render'](app, text, el, '', ctx);
 
-// The second configured chain is syntactic too.
-// @expect-error glass-lint rule=obsidian:markdown.render message_id=detected
+// An unproven namespace-shaped global is intentionally excluded.
+// @expect-no-error glass-lint rule=obsidian:markdown.render message_id=detected
 obsidian.MarkdownRenderer.render(app, text, el, '', ctx);
-// @expect-error glass-lint rule=obsidian:markdown.render message_id=detected
+// @expect-no-error glass-lint rule=obsidian:markdown.render message_id=detected
 obsidian.MarkdownRenderer['render'](app, text, el, '', ctx);

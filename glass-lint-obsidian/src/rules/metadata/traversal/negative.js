@@ -31,3 +31,8 @@ function localGlobal(global) {
     global.Object.keys(app.metadataCache.resolvedLinks);
 }
 localGlobal({ Object: { keys() {} } });
+
+function localObject(Object) {
+    // @expect-no-error glass-lint rule=obsidian:metadata.traversal message_id=detected
+    Object.keys(app.metadataCache.resolvedLinks);
+}

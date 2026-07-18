@@ -7,7 +7,7 @@ class TestPlugin extends Plugin {
 plugin.registerEvent(handler);
 
 const register = this.registerEvent;
-// @expect-no-error glass-lint rule=obsidian:lifecycle.events message_id=detected
+// @expect-error glass-lint rule=obsidian:lifecycle.events message_id=detected
 register(handler);
 
 // @expect-no-error glass-lint rule=obsidian:lifecycle.events message_id=detected

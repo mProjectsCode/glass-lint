@@ -14,9 +14,9 @@ function unrelatedReceiver() {
     this.loadData();
 }
 
-// Reassignment is not analyzed; the later syntactic call still matches.
+// Reassignment invalidates the member identity.
 this.loadData = replacement;
-// @expect-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
+// @expect-no-error glass-lint rule=obsidian:storage.plugin-data-read message_id=detected
 this.loadData();
   }
 }

@@ -2,6 +2,8 @@
 // @tool glass-lint rules=browser:browser.environment
 // @expect-error glass-lint rule=browser:browser.environment message_id=detected
 navigator.userAgent;
+// @expect-error glass-lint rule=browser:browser.environment message_id=detected
+globalThis.navigator.userAgent;
 // Window and worker-qualified navigator paths retain browser identity.
 // @expect-error glass-lint rule=browser:browser.environment message_id=detected
 window.navigator.userAgent;

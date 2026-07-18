@@ -1,6 +1,7 @@
 //! Callable matcher declarations and provenance modes.
 
 use super::{ArgumentConstraint, ArgumentMatcher, ValueMatcher};
+use crate::api::rule::ModuleSpecifierPattern;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Matcher for a callable symbol and optional argument predicates.
@@ -32,6 +33,18 @@ impl CallMatcher {
                 module: module.into(),
             },
         )
+    }
+
+    pub fn package_export(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, String> {
+        Ok(Self::new(
+            export,
+            SymbolProvenance::PackageModuleExport {
+                module: ModuleSpecifierPattern::package(module)?,
+            },
+        ))
     }
 
     fn new(name: impl Into<String>, provenance: SymbolProvenance) -> Self {
@@ -68,11 +81,43 @@ impl CallMatcher {
         self.arg(index, ValueMatcher::static_string().equals_any(values))
     }
 
+    #[must_use]
+    pub fn arg_static_string_contains<I, S>(self, index: usize, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.arg(index, ValueMatcher::static_string().contains_any(values))
+    }
+
+    #[must_use]
+    pub fn arg_object_property_value(
+        self,
+        index: usize,
+        property: impl Into<String>,
+        value: ValueMatcher,
+    ) -> Self {
+        self.arg(
+            index,
+            ArgumentMatcher::object_property_value(property, value),
+        )
+    }
+
+    #[must_use]
+    pub fn arg_object_keys<I, S>(self, index: usize, keys: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.arg(index, ArgumentMatcher::object_keys(keys))
+    }
+
     /// Return the display/evidence symbol for this matcher.
     pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             SymbolProvenance::Any | SymbolProvenance::Global => self.name.clone(),
             SymbolProvenance::ModuleExport { module } => format!("{module}.{}", self.name),
+            SymbolProvenance::PackageModuleExport { module } => format!("{module}.{}", self.name),
         }
     }
 
@@ -82,6 +127,7 @@ impl CallMatcher {
             SymbolProvenance::Any => ("any", &self.name),
             SymbolProvenance::Global => ("global", &self.name),
             SymbolProvenance::ModuleExport { module } => (module, &self.name),
+            SymbolProvenance::PackageModuleExport { module } => (module.as_str(), &self.name),
         }
     }
 }
@@ -94,5 +140,10 @@ pub enum SymbolProvenance {
     /// Require a configured unshadowed global.
     Global,
     /// Require an export from the configured module.
-    ModuleExport { module: String },
+    ModuleExport {
+        module: String,
+    },
+    PackageModuleExport {
+        module: ModuleSpecifierPattern,
+    },
 }

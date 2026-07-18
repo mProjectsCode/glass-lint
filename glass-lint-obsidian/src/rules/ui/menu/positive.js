@@ -10,12 +10,13 @@ class TestMenu extends Menu {
     }
 }
 
-// @expect-error glass-lint rule=obsidian:ui.menu message_id=detected
+// Unproven bare receivers are intentionally excluded.
+// @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
 menu.addItem(item);
-// @expect-error glass-lint rule=obsidian:ui.menu message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
 menu['addItem'](secondItem);
 
-// Receiver provenance and reassignment are intentionally not analyzed.
+// Unproven receiver provenance and reassignment are excluded.
 menu.addItem = replacement;
-// @expect-error glass-lint rule=obsidian:ui.menu message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.menu message_id=detected
 menu.addItem(itemAfterReassignment);

@@ -162,6 +162,10 @@ impl ScopeGraph {
         self.environment.is_global_member(root, member)
     }
 
+    pub(in crate::analysis) fn global_objects(&self) -> impl Iterator<Item = &str> {
+        self.environment.global_objects()
+    }
+
     /// Find the latest assignment at or before a source position.
     pub(super) fn assignment_at(
         &self,

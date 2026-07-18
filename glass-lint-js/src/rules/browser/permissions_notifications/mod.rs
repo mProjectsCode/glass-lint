@@ -16,12 +16,6 @@ pub fn rule() -> Rule {
             "Notification.requestPermission",
         ))
         .matcher(Matcher::rooted_member_call(
-            "window.Notification.requestPermission",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "globalThis.Notification.requestPermission",
-        ))
-        .matcher(Matcher::rooted_member_call(
             "self.registration.showNotification",
         ))
         .matcher(Matcher::global_constructor("Notification"))

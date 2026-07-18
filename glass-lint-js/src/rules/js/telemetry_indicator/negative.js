@@ -1,5 +1,7 @@
 // @case description negative fixture for js:network.telemetry-indicator
 // @tool glass-lint rules=js:network.telemetry-indicator
+// @expect-no-error glass-lint rule=js:network.telemetry-indicator message_id=detected
+import "@sentry/browser-extra";
 // Similar module names do not establish telemetry-module provenance.
 // @expect-no-error glass-lint rule=js:network.telemetry-indicator message_id=detected
 import unrelatedSentry from "@sentry/core";

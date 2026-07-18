@@ -99,6 +99,7 @@ impl FactBuilder<'_> {
                                 base_path: PathId::EMPTY,
                                 static_string: None,
                                 object_keys: None,
+                                property_strings: Vec::new(),
                                 rooted_chain: None,
                                 projections: vec![ValueProjection {
                                     path: PathId::EMPTY,
@@ -429,6 +430,7 @@ impl FactBuilder<'_> {
                             base_path: PathId::EMPTY,
                             static_string: Some(v),
                             object_keys: None,
+                            property_strings: Vec::new(),
                             rooted_chain: None,
                             projections: vec![ValueProjection {
                                 path: PathId::EMPTY,
@@ -458,18 +460,22 @@ impl FactBuilder<'_> {
         match effective {
             Expr::Ident(ident) => {
                 let resolved = self.resolver.resolve_ident(ident);
+                let extracted = self.extracted_instance_callable(resolved.id);
+                let instance_class = extracted
+                    .as_ref()
+                    .map(|(module, export, _member)| (module.clone(), export.clone()));
                 Some(ResolvedCallee {
                     value: resolved.id,
                     receiver: None,
                     callee_span: self.byte_range(ident.span)?,
                     callee_name: Some(ident.sym.to_string()),
                     call_provenance: resolved.call.clone(),
-                    syntactic_chain: None,
+                    syntactic_chain: extracted.map(|(_, _, member)| member),
                     rooted_chain: resolved.rooted_chain.clone(),
                     module_member: resolved.module_member.clone(),
                     returned_member: resolved.returned_member.clone(),
                     bound_arguments: resolved.bound_arguments,
-                    instance_class: None,
+                    instance_class,
                     target_function: self.resolver.function_id_for_expr(effective),
                 })
             }
@@ -518,7 +524,11 @@ impl FactBuilder<'_> {
     pub(super) fn resolve_member_callee(&mut self, member: &MemberExpr) -> Option<ResolvedCallee> {
         let resolved = self.resolver.resolve_member(member);
         let syntactic_chain = self.resolver.member_expression_chain(member);
-        let instance_class = self.instance_class_for_receiver(&member.obj);
+        let instance_class = self
+            .resolver
+            .instance_member_available(member)
+            .then(|| self.instance_class_for_receiver(&member.obj))
+            .flatten();
         Some(ResolvedCallee {
             value: resolved.id,
             receiver: Some(self.resolver.resolve_expr(&member.obj).id),
@@ -548,6 +558,47 @@ impl FactBuilder<'_> {
                 .as_deref()
                 .is_some_and(|chain| chain == "this");
         if is_this { self.current_class() } else { None }
+    }
+
+    /// Resolve an extracted callable member from the current module instance.
+    pub(super) fn instance_callable_for_expr(
+        &self,
+        expr: &Expr,
+    ) -> Option<(String, String, String)> {
+        match expr {
+            Expr::Ident(ident) => {
+                self.extracted_instance_callable(self.resolver.resolve_ident(ident).id)
+            }
+            Expr::Member(member) => {
+                if !self.resolver.instance_member_available(member) {
+                    return None;
+                }
+                let (module, export) = self.instance_class_for_receiver(&member.obj)?;
+                let member = member_property_name(&member.prop)?;
+                Some((module, export, member))
+            }
+            Expr::Call(call) => {
+                let Callee::Expr(callee) = &call.callee else {
+                    return None;
+                };
+                let Expr::Member(bind) = &**callee else {
+                    return None;
+                };
+                (member_property_name(&bind.prop).as_deref() == Some("bind"))
+                    .then(|| call.args.first())
+                    .flatten()
+                    .filter(|argument| matches!(&*argument.expr, Expr::This(_)))
+                    .and_then(|_| self.instance_callable_for_expr(&bind.obj))
+            }
+            _ => None,
+        }
+    }
+
+    pub(super) fn extracted_instance_callable(
+        &self,
+        value: ValueId,
+    ) -> Option<(String, String, String)> {
+        self.instance_callables.get(&value).cloned()
     }
 
     /// Visit callee children without triggering a MemberRead fact for the

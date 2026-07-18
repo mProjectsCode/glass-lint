@@ -32,6 +32,9 @@ semantic model.
 - `analysis/project` links module identities and cross-file effects.
 - `api/rule` validates declarative rule definitions.
 - `api/compiler` compiles catalogs into immutable matcher plans.
+- `api/rule` exposes validated package-boundary module patterns and bounded
+  sink-associated static-string predicates; exact module identities remain
+  distinct from package-root patterns.
 - `lint` selects rules and constructs findings.
 - `project` exposes owned inputs, typed resolutions, sessions, and reports.
 

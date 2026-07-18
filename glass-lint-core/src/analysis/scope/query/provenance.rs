@@ -85,11 +85,10 @@ impl ScopeGraph {
                     .is_some_and(|scope| contains(scope, member.span))
             }) {
                 let target = assignment.target.as_ref()?;
-                return Some(
-                    target
-                        .append_chain(&syntactic_chain[prefix_end..])
-                        .to_string(),
-                );
+                let resolved = target
+                    .append_chain(&syntactic_chain[prefix_end..])
+                    .to_string();
+                return Some(resolved);
             }
         }
         let suffix = syntactic_chain.strip_prefix(root.sym.as_ref())?;
@@ -125,9 +124,82 @@ impl ScopeGraph {
                 | BindingProvenance::StaticObjectKeys(_)
                 | BindingProvenance::StaticObjectValues(_),
             ) => None,
-            None if self.is_global(root.sym.as_ref()) => Some(syntactic_chain.to_string()),
+            None if self.is_global(root.sym.as_ref()) => {
+                self.rooted_chain_available_at(syntactic_chain, member.span)
+            }
             None => None,
         }
+    }
+
+    /// Return the canonical identity for a rooted member expression.
+    ///
+    /// A configured global-object alias contributes no semantic path segment:
+    /// `window.navigator.sendBeacon` and `navigator.sendBeacon` are the same
+    /// identity when `window.navigator` is an allowed promotion. The original
+    /// chain remains available to fact locations and evidence; this method is
+    /// only used for the identity stored in semantic facts.
+    fn rooted_chain_available_at(&self, chain: &str, span: Span) -> Option<String> {
+        let mut segments = chain.split('.');
+        let root = segments.next()?;
+        let first = segments.next()?;
+
+        let promoted = self.is_global_member(root, first);
+        if self.is_global(root)
+            && self
+                .global_objects()
+                .filter(|alias| self.is_global_member(alias, root))
+                .any(|alias| self.rooted_property_was_mutated_at(alias, Some(root), span))
+        {
+            return None;
+        }
+        if !promoted {
+            return Some(chain.to_string());
+        }
+        if self.rooted_chain_mutated_at(chain, span) {
+            return None;
+        }
+
+        let promoted = segments.collect::<Vec<_>>();
+        let canonical = std::iter::once(first)
+            .chain(promoted)
+            .collect::<Vec<_>>()
+            .join(".");
+        if self.rooted_chain_mutated_at(&canonical, span) {
+            return None;
+        }
+        (!canonical.is_empty()).then_some(canonical)
+    }
+
+    /// Check writes through both a canonical root and any global-object alias.
+    /// A write to an earlier segment invalidates every deeper rooted path.
+    fn rooted_chain_mutated_at(&self, chain: &str, span: Span) -> bool {
+        let segments = chain.split('.').collect::<Vec<_>>();
+        if segments.len() < 2 {
+            return false;
+        }
+
+        // A write through a configured realm alias changes the same promoted
+        // first segment as a write through the bare global binding.
+        if self
+            .global_objects()
+            .filter(|root| self.is_global_member(root, segments[0]))
+            .any(|root| self.rooted_property_was_mutated_at(root, Some(segments[0]), span))
+        {
+            return true;
+        }
+
+        (1..segments.len()).any(|end| {
+            let receiver = segments[..end].join(".");
+            let property = segments[end];
+            self.rooted_property_was_mutated_at(&receiver, Some(property), span)
+        })
+    }
+
+    pub(in crate::analysis) fn instance_member_available_at(&self, member: &MemberExpr) -> bool {
+        let Some(property) = self.member_property_name(member) else {
+            return false;
+        };
+        !self.rooted_property_was_mutated_at("this", Some(&property), member.span)
     }
 
     /// Whether a path starts at an allowed stable root.

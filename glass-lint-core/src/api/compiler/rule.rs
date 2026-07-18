@@ -57,8 +57,15 @@ pub enum IdentityConstraint {
         module: String,
         export: String,
     },
+    PackageModuleExport {
+        module: crate::api::rule::ModuleSpecifierPattern,
+        export: String,
+    },
     ModuleNamespace {
         module: String,
+    },
+    PackageModuleNamespace {
+        module: crate::api::rule::ModuleSpecifierPattern,
     },
     Rooted {
         path: String,
@@ -67,6 +74,9 @@ pub enum IdentityConstraint {
     /// matching; unlike identities, it is not an API symbol.
     LiteralString {
         predicate: String,
+    },
+    PackageSpecifier {
+        pattern: crate::api::rule::ModuleSpecifierPattern,
     },
 }
 
@@ -118,21 +128,26 @@ impl QueryClause {
             (
                 IdentityConstraint::Any { .. }
                     | IdentityConstraint::Global { .. }
-                    | IdentityConstraint::ModuleExport { .. },
+                    | IdentityConstraint::ModuleExport { .. }
+                    | IdentityConstraint::PackageModuleExport { .. },
                 EventPredicate::Call | EventPredicate::Construct,
                 SubjectConstraint::Direct,
             ) | (
                 IdentityConstraint::Any { .. }
                     | IdentityConstraint::Rooted { .. }
-                    | IdentityConstraint::ModuleNamespace { .. },
+                    | IdentityConstraint::ModuleNamespace { .. }
+                    | IdentityConstraint::PackageModuleNamespace { .. },
                 EventPredicate::MemberCall { .. } | EventPredicate::MemberRead { .. },
                 SubjectConstraint::Direct,
             ) | (
-                IdentityConstraint::Any { .. } | IdentityConstraint::ModuleExport { .. },
+                IdentityConstraint::Any { .. }
+                    | IdentityConstraint::ModuleExport { .. }
+                    | IdentityConstraint::PackageModuleExport { .. },
                 EventPredicate::ClassReference,
                 SubjectConstraint::Direct,
             ) | (
-                IdentityConstraint::LiteralString { .. },
+                IdentityConstraint::LiteralString { .. }
+                    | IdentityConstraint::PackageSpecifier { .. },
                 EventPredicate::Import | EventPredicate::StringReference,
                 SubjectConstraint::Direct,
             ) | (
@@ -140,7 +155,8 @@ impl QueryClause {
                 EventPredicate::MemberCall { .. } | EventPredicate::MemberRead { .. },
                 SubjectConstraint::ReturnedFrom { .. },
             ) | (
-                IdentityConstraint::ModuleExport { .. },
+                IdentityConstraint::ModuleExport { .. }
+                    | IdentityConstraint::PackageModuleExport { .. },
                 EventPredicate::MemberCall { .. },
                 SubjectConstraint::InstanceOf { .. },
             )
@@ -289,6 +305,18 @@ fn lower_literals(matcher: &MatcherSet) -> Vec<QueryClause> {
         .imports
         .iter()
         .map(|value| literal_clause(value, EventPredicate::Import, MatchKind::Import));
+    let packages = matcher.package_imports.iter().map(|pattern| QueryClause {
+        identity: IdentityConstraint::PackageSpecifier {
+            pattern: pattern.clone(),
+        },
+        event: EventPredicate::Import,
+        subject: SubjectConstraint::Direct,
+        constraints: Box::new([]),
+        evidence: EvidenceDescriptor {
+            kind: MatchKind::Import,
+            symbol: pattern.to_string(),
+        },
+    });
     let strings = matcher.string_contains.iter().map(|value| {
         literal_clause(
             value,
@@ -296,7 +324,7 @@ fn lower_literals(matcher: &MatcherSet) -> Vec<QueryClause> {
             MatchKind::StringContains,
         )
     });
-    imports.chain(strings).collect()
+    imports.chain(packages).chain(strings).collect()
 }
 
 fn literal_clause(value: &str, event: EventPredicate, kind: MatchKind) -> QueryClause {
@@ -391,10 +419,16 @@ fn lower_instance_members(matcher: &MatcherSet) -> Vec<QueryClause> {
         .instance_member_calls
         .iter()
         .map(|instance| {
-            let constructor = IdentityConstraint::ModuleExport {
-                module: instance.module.clone(),
-                export: instance.export.clone(),
-            };
+            let constructor = instance.module_pattern.clone().map_or_else(
+                || IdentityConstraint::ModuleExport {
+                    module: instance.module.clone(),
+                    export: instance.export.clone(),
+                },
+                |module| IdentityConstraint::PackageModuleExport {
+                    module,
+                    export: instance.export.clone(),
+                },
+            );
             QueryClause {
                 identity: constructor.clone(),
                 event: EventPredicate::MemberCall {
@@ -433,6 +467,11 @@ fn member_identity(
                 module: module.clone(),
             }
         }
+        super::super::rule::MemberCallProvenance::PackageModuleNamespace { module } => {
+            IdentityConstraint::PackageModuleNamespace {
+                module: module.clone(),
+            }
+        }
     }
 }
 
@@ -450,6 +489,11 @@ fn member_read_identity(
         },
         super::super::rule::MemberReadProvenance::ModuleNamespace { module } => {
             IdentityConstraint::ModuleNamespace {
+                module: module.clone(),
+            }
+        }
+        super::super::rule::MemberReadProvenance::PackageModuleNamespace { module } => {
+            IdentityConstraint::PackageModuleNamespace {
                 module: module.clone(),
             }
         }
@@ -471,6 +515,12 @@ fn call_identity(
         },
         super::super::rule::SymbolProvenance::ModuleExport { module } => {
             IdentityConstraint::ModuleExport {
+                module: module.clone(),
+                export: name.into(),
+            }
+        }
+        super::super::rule::SymbolProvenance::PackageModuleExport { module } => {
+            IdentityConstraint::PackageModuleExport {
                 module: module.clone(),
                 export: name.into(),
             }

@@ -26,7 +26,9 @@ impl MatcherSet {
         self.calls.retain(|call| {
             !call.name.is_empty()
                 && match &call.provenance {
-                    SymbolProvenance::Any | SymbolProvenance::Global => true,
+                    SymbolProvenance::Any
+                    | SymbolProvenance::Global
+                    | SymbolProvenance::PackageModuleExport { .. } => true,
                     SymbolProvenance::ModuleExport { module } => !module.is_empty(),
                 }
         });
@@ -40,7 +42,9 @@ impl MatcherSet {
         self.member_calls.retain(|call| {
             !call.chain.is_empty()
                 && match &call.provenance {
-                    MemberCallProvenance::Any | MemberCallProvenance::Rooted => true,
+                    MemberCallProvenance::Any
+                    | MemberCallProvenance::Rooted
+                    | MemberCallProvenance::PackageModuleNamespace { .. } => true,
                     MemberCallProvenance::ModuleNamespace { module } => !module.is_empty(),
                 }
         });
@@ -60,7 +64,9 @@ impl MatcherSet {
         self.member_reads.retain(|read| {
             !read.chain.is_empty()
                 && match &read.provenance {
-                    MemberReadProvenance::Any | MemberReadProvenance::Rooted => true,
+                    MemberReadProvenance::Any
+                    | MemberReadProvenance::Rooted
+                    | MemberReadProvenance::PackageModuleNamespace { .. } => true,
                     MemberReadProvenance::ModuleNamespace { module } => !module.is_empty(),
                 }
         });
@@ -68,6 +74,8 @@ impl MatcherSet {
             .sort_by(|left, right| left.sort_key().cmp(&right.sort_key()));
         self.member_reads.dedup();
         normalize_strings(&mut self.imports);
+        self.package_imports.sort();
+        self.package_imports.dedup();
         normalize_strings(&mut self.string_contains);
         ClassMatcher::normalize_all(&mut self.classes);
         ConstructorMatcher::normalize_all(&mut self.constructors);
@@ -232,6 +240,10 @@ impl ArgumentMatcher {
         match self {
             Self::Value(value) => value.normalize(),
             Self::ObjectKeys(keys) | Self::RootedExpressions(keys) => normalize_strings(keys),
+            Self::ObjectPropertyValue { property, value } => {
+                *property = property.trim().to_string();
+                value.normalize();
+            }
         }
     }
 }

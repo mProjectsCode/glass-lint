@@ -7,7 +7,7 @@ class TestPlugin extends Plugin {
 plugin.registerMarkdownCodeBlockProcessor('x', handler);
 
 const register = this.registerMarkdownCodeBlockProcessor;
-// @expect-no-error glass-lint rule=obsidian:markdown.code-block-processor message_id=detected
+// @expect-error glass-lint rule=obsidian:markdown.code-block-processor message_id=detected
 register('x', handler);
 
 // @expect-no-error glass-lint rule=obsidian:markdown.code-block-processor message_id=detected

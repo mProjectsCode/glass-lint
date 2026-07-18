@@ -15,6 +15,9 @@ const beacon = navigator;
 beacon.sendBeacon("https://example.com", "{}");
 // @expect-error glass-lint rule=browser:network.request message_id=detected
 window.navigator.sendBeacon("https://window-beacon.example", payload);
+// The canonical rooted declaration also covers the standard global-object alias.
+// @expect-error glass-lint rule=browser:network.request message_id=detected
+globalThis.navigator.sendBeacon("https://global-beacon.example", payload);
 
 // Global and rooted aliases retain provenance.
 const request = fetch;

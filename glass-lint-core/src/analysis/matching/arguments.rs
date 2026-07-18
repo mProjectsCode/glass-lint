@@ -226,9 +226,18 @@ fn matches_call_clause(
                 export: found_export
             } if found_module == module && found_export == export
         ),
+        IdentityConstraint::PackageModuleExport { module, export } => matches!(
+            call_provenance,
+            SymbolCallProvenance::ModuleExport {
+                module: found_module,
+                export: found_export
+            } if module.matches(found_module) && found_export == export
+        ),
         IdentityConstraint::ModuleNamespace { .. }
+        | IdentityConstraint::PackageModuleNamespace { .. }
         | IdentityConstraint::Rooted { .. }
-        | IdentityConstraint::LiteralString { .. } => false,
+        | IdentityConstraint::LiteralString { .. }
+        | IdentityConstraint::PackageSpecifier { .. } => false,
     };
     identity_matches && constraints_match(&clause.constraints, args)
 }
@@ -281,6 +290,15 @@ fn matches_member_clause(
                 member: found_member
             }) if found_module == module && found_member == member
         ),
+        (IdentityConstraint::PackageModuleNamespace { module }, SubjectConstraint::Direct) => {
+            matches!(
+                module_member,
+                Some(SymbolMemberProvenance::ModuleNamespace {
+                    module: found_module,
+                    member: found_member
+                }) if module.matches(found_module) && found_member == member
+            )
+        }
         (IdentityConstraint::Rooted { path }, SubjectConstraint::ReturnedFrom { .. }) => {
             returned_member
                 .as_ref()
@@ -294,6 +312,20 @@ fn matches_member_clause(
                 .as_ref()
                 .is_some_and(|(found_module, found_export)| {
                     found_module == module && found_export == export
+                })
+                && syntactic_chain
+                    .as_deref()
+                    .and_then(|chain| chain.rsplit('.').next())
+                    == Some(member.as_str())
+        }
+        (
+            IdentityConstraint::PackageModuleExport { module, export },
+            SubjectConstraint::InstanceOf { .. },
+        ) => {
+            instance_class
+                .as_ref()
+                .is_some_and(|(found_module, found_export)| {
+                    module.matches(found_module) && found_export == export
                 })
                 && syntactic_chain
                     .as_deref()
@@ -319,6 +351,7 @@ fn exact_root_matches(identity: &IdentityConstraint, source: &str) -> bool {
 
 fn identity_module_matches(identity: &IdentityConstraint, module: &str, export: &str) -> bool {
     matches!(identity, IdentityConstraint::ModuleExport { module: expected_module, export: expected_export } if expected_module == module && expected_export == export)
+        || matches!(identity, IdentityConstraint::PackageModuleExport { module: expected_module, export: expected_export } if expected_module.matches(module) && expected_export == export)
 }
 #[cfg(test)]
 mod tests {
@@ -575,6 +608,7 @@ mod tests {
             base_path: PathId::EMPTY,
             static_string: None,
             object_keys: None,
+            property_strings: Vec::new(),
             rooted_chain: None,
             projections: Vec::new(),
             spread: false,

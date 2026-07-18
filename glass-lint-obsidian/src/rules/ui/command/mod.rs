@@ -2,10 +2,10 @@
 
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
-/// Detects the syntactic `this.addCommand()` registration call, including a
-/// statically computed `addCommand` property. The instance matcher requires a
-/// proven Obsidian `Plugin` receiver and does not follow aliases, shadowing, or
-/// reassignment; other receivers and dynamic properties are excluded.
+/// Detects `this.addCommand()` registrations, including static computed
+/// properties and bounded extracted aliases. The instance matcher requires a
+/// proven Obsidian `Plugin` receiver; shadowing, reassignment, and dynamic
+/// properties are excluded.
 pub fn rule() -> Rule {
     Rule::builder("ui.command")
         .description("Registers commands")

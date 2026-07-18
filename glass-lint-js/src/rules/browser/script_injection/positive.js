@@ -1,15 +1,17 @@
 // @case description positive fixture for browser:dynamic-code.script-injection
 // @tool glass-lint rules=browser:dynamic-code.script-injection
-// @expect-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
+// @expect-no-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
 document.createElement("script");
-// @expect-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
+// @expect-no-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
 window.document.createElement("script");
-// @expect-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
+// @expect-no-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
 globalThis.document.createElement("script");
-// Insertion and content configuration are not necessary for this creation rule.
-// @expect-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
+// Configuration and insertion complete the executable object flow.
+// @expect-no-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
 const inlineScript = document.createElement("script");
-inlineScript.textContent = generatedCode;
+inlineScript.src = "https://example.test/app.js";
+// @expect-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
+document.head.appendChild(inlineScript);
 
 // Static HTML sinks with executable markers are also classified.
 // @expect-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected

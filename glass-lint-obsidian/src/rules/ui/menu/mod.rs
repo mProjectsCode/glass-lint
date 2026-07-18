@@ -2,18 +2,14 @@
 
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
-/// Detects the syntactic `menu.addItem()` call and proven `obsidian.Menu`
-/// instances. The heuristic form does not prove that `menu` is an Obsidian
-/// menu and does not follow aliases, shadowing, or reassignment; static
-/// computed names resolve, while other receivers, dynamic properties, and
-/// near-name methods do not. Menu item arguments are not analyzed.
+/// Detects proven `obsidian.Menu` instance calls. Unproven callback parameters,
+/// aliases, and same-shaped local receivers are excluded.
 pub fn rule() -> Rule {
     Rule::builder("ui.menu")
         .description("Uses Obsidian menus")
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .matcher(Matcher::heuristic_member_call("menu.addItem"))
         .matcher(Matcher::instance_member_call("obsidian", "Menu", "addItem"))
         .build()
         .unwrap()

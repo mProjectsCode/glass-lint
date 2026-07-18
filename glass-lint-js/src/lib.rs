@@ -127,6 +127,7 @@ pub fn browser_environment() -> Environment {
             "indexedDB",
             "localStorage",
             "navigator",
+            "screen",
             "sessionStorage",
         ])
         .expect("valid browser globals");
@@ -144,6 +145,7 @@ pub fn node_environment() -> Environment {
     environment
         .add_globals([
             "Buffer",
+            "crypto",
             "module",
             "process",
             "require",
@@ -163,6 +165,7 @@ pub fn electron_environment() -> Environment {
     environment
         .add_globals([
             "Buffer",
+            "crypto",
             "module",
             "process",
             "require",
@@ -228,5 +231,49 @@ mod tests {
                 .iter()
                 .any(|finding| finding.rule_id.as_str() == "browser:network.request")
         );
+    }
+
+    #[test]
+    fn node_web_crypto_global_is_rooted() {
+        let linter = glass_lint_core::Linter::new(node_config()).unwrap();
+        let report = linter
+            .lint_snippet("crypto.subtle.digest('SHA-256', bytes)", "main.js")
+            .unwrap();
+        assert!(
+            report.files[0]
+                .findings
+                .iter()
+                .any(|finding| finding.rule_id.as_str() == "node:crypto.operation")
+        );
+    }
+
+    #[test]
+    fn node_web_crypto_global_survives_catalog_imports() {
+        let linter = glass_lint_core::Linter::new(node_config()).unwrap();
+        let report = linter
+            .lint_snippet(
+                "import c from 'node:crypto'; import * as cryptoPromises from 'crypto/promises'; import * as nodeCryptoPromises from 'node:crypto/promises'; import coreCrypto from 'crypto'; import cryptoJs from 'crypto-js'; crypto.subtle.digest('SHA-256', bytes);",
+                "main.js",
+            )
+            .unwrap();
+        assert!(
+            report.files[0]
+                .findings
+                .iter()
+                .any(|finding| { finding.rule_id.as_str() == "node:crypto.operation" })
+        );
+    }
+
+    #[test]
+    fn node_crypto_fixture_uses_rooted_web_crypto() {
+        let linter = glass_lint_core::Linter::new(node_config()).unwrap();
+        let source = include_str!("rules/node/crypto_operation/positive.js");
+        let report = linter.lint_snippet(source, "positive.js").unwrap();
+        let count = report.files[0]
+            .findings
+            .iter()
+            .filter(|finding| finding.rule_id.as_str() == "node:crypto.operation")
+            .count();
+        assert!(count >= 29, "expected rooted calls in fixture, got {count}");
     }
 }

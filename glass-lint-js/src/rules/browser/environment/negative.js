@@ -11,6 +11,11 @@ function localEnvironment(navigator) {
     navigator.connection.effectiveType;
 }
 
+function localScreen(screen) {
+    // @expect-no-error glass-lint rule=browser:browser.environment message_id=detected
+    screen.width;
+}
+
 function localWindow(window) {
     // @expect-no-error glass-lint rule=browser:browser.environment message_id=detected
     window.screen.width;

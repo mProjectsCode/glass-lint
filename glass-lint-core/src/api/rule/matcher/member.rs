@@ -1,6 +1,7 @@
 //! Member-call and member-read matcher declarations.
 
 use super::{ArgumentConstraint, ArgumentMatcher};
+use crate::api::rule::ModuleSpecifierPattern;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Matcher for a member call with optional argument predicates.
@@ -32,6 +33,18 @@ impl MemberCallMatcher {
                 module: module.into(),
             },
         )
+    }
+
+    pub fn package_member(
+        module: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Result<Self, String> {
+        Ok(Self::new(
+            member,
+            MemberCallProvenance::PackageModuleNamespace {
+                module: ModuleSpecifierPattern::package(module)?,
+            },
+        ))
     }
 
     fn new(chain: impl Into<String>, provenance: MemberCallProvenance) -> Self {
@@ -70,12 +83,37 @@ impl MemberCallMatcher {
     }
 
     #[must_use]
+    pub fn arg_static_string_contains<I, S>(self, index: usize, values: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.arg(
+            index,
+            super::ValueMatcher::static_string().contains_any(values),
+        )
+    }
+
+    #[must_use]
     pub fn arg_object_keys<I, S>(self, index: usize, keys: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
         self.arg(index, super::ArgumentMatcher::object_keys(keys))
+    }
+
+    #[must_use]
+    pub fn arg_object_property_value(
+        self,
+        index: usize,
+        property: impl Into<String>,
+        value: super::ValueMatcher,
+    ) -> Self {
+        self.arg(
+            index,
+            super::ArgumentMatcher::object_property_value(property, value),
+        )
     }
 
     #[must_use]
@@ -92,6 +130,9 @@ impl MemberCallMatcher {
         match &self.provenance {
             MemberCallProvenance::Any | MemberCallProvenance::Rooted => self.chain.clone(),
             MemberCallProvenance::ModuleNamespace { module } => format!("{module}.{}", self.chain),
+            MemberCallProvenance::PackageModuleNamespace { module } => {
+                format!("{module}.{}", self.chain)
+            }
         }
     }
 
@@ -101,6 +142,9 @@ impl MemberCallMatcher {
             MemberCallProvenance::Any => ("any", &self.chain),
             MemberCallProvenance::Rooted => ("rooted", &self.chain),
             MemberCallProvenance::ModuleNamespace { module } => (module, &self.chain),
+            MemberCallProvenance::PackageModuleNamespace { module } => {
+                (module.as_str(), &self.chain)
+            }
         }
     }
 
@@ -123,7 +167,12 @@ pub enum MemberCallProvenance {
     /// Require a rooted identity.
     Rooted,
     /// Require a member of an imported module namespace.
-    ModuleNamespace { module: String },
+    ModuleNamespace {
+        module: String,
+    },
+    PackageModuleNamespace {
+        module: ModuleSpecifierPattern,
+    },
 }
 
 impl MemberCallProvenance {
@@ -132,7 +181,7 @@ impl MemberCallProvenance {
         match self {
             Self::Any => true,
             Self::Rooted => rooted,
-            Self::ModuleNamespace { .. } => false,
+            Self::ModuleNamespace { .. } | Self::PackageModuleNamespace { .. } => false,
         }
     }
 }
@@ -173,11 +222,26 @@ impl MemberReadMatcher {
         }
     }
 
+    pub fn package_member(
+        module: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Result<Self, String> {
+        Ok(Self {
+            chain: member.into(),
+            provenance: MemberReadProvenance::PackageModuleNamespace {
+                module: ModuleSpecifierPattern::package(module)?,
+            },
+        })
+    }
+
     /// Return the display/evidence symbol for this matcher.
     pub fn evidence_symbol(&self) -> String {
         match &self.provenance {
             MemberReadProvenance::Any | MemberReadProvenance::Rooted => self.chain.clone(),
             MemberReadProvenance::ModuleNamespace { module } => format!("{module}.{}", self.chain),
+            MemberReadProvenance::PackageModuleNamespace { module } => {
+                format!("{module}.{}", self.chain)
+            }
         }
     }
 
@@ -187,6 +251,9 @@ impl MemberReadMatcher {
             MemberReadProvenance::Any => ("any", &self.chain),
             MemberReadProvenance::Rooted => ("rooted", &self.chain),
             MemberReadProvenance::ModuleNamespace { module } => (module, &self.chain),
+            MemberReadProvenance::PackageModuleNamespace { module } => {
+                (module.as_str(), &self.chain)
+            }
         }
     }
 }
@@ -199,5 +266,10 @@ pub enum MemberReadProvenance {
     /// Require a rooted identity.
     Rooted,
     /// Require a member of an imported module namespace.
-    ModuleNamespace { module: String },
+    ModuleNamespace {
+        module: String,
+    },
+    PackageModuleNamespace {
+        module: ModuleSpecifierPattern,
+    },
 }

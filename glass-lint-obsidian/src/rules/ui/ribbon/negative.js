@@ -7,7 +7,7 @@ class TestPlugin extends Plugin {
 plugin.addRibbonIcon("other");
 
 const addRibbonIcon = this.addRibbonIcon;
-// @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+// @expect-error glass-lint rule=obsidian:ui.ribbon message_id=detected
 addRibbonIcon("alias");
 
 // @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected

@@ -7,7 +7,7 @@ class TestPlugin extends Plugin {
         // @expect-no-error glass-lint rule=obsidian:cli.register message_id=detected
         this[method]("command", handler);
         const register = this.registerCliHandler;
-        // @expect-no-error glass-lint rule=obsidian:cli.register message_id=detected
+        // @expect-error glass-lint rule=obsidian:cli.register message_id=detected
         register("command", handler);
     }
 }

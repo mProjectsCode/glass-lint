@@ -1,5 +1,7 @@
 // @case description positive fixture for js:network.service-indicator
 // @tool glass-lint rules=js:network.service-indicator
+// @expect-error glass-lint rule=js:network.service-indicator message_id=detected
+import "openai/helpers";
 // Every configured service SDK module is an exact module-provenance match.
 // @expect-error glass-lint rule=js:network.service-indicator message_id=detected
 import openai from "openai";

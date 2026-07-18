@@ -79,6 +79,16 @@ impl Visit for FactBuilder<'_> {
         if !Self::is_simple_pattern(&declarator.name) {
             source = ValueId::UNKNOWN;
         }
+        if Self::is_simple_pattern(&declarator.name)
+            && let Some(init) = &declarator.init
+            && let Some(callable) = self.instance_callable_for_expr(init)
+        {
+            let mut targets = Vec::new();
+            self.pattern_values(&declarator.name, &mut targets);
+            for target in targets {
+                self.instance_callables.insert(target, callable.clone());
+            }
+        }
         for target in targets {
             self.emit(
                 FactKind::Declaration,

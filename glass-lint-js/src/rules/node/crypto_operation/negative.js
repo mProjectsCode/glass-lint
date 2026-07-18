@@ -14,6 +14,11 @@ unrelatedCrypto;
 // Unlisted Web Crypto methods are outside the heuristic matcher.
 crypto.subtle.randomOperation("value");
 
+function localCrypto(crypto) {
+    // @expect-no-error glass-lint rule=node:crypto.operation message_id=detected
+    crypto.subtle.digest("SHA-256", bytes);
+}
+
 // A shadowed CommonJS loader is not treated as a module import.
 const require = () => unrelatedCrypto;
 require("crypto");

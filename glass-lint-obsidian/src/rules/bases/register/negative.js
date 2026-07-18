@@ -7,7 +7,7 @@ class TestPlugin extends Plugin {
         // @expect-no-error glass-lint rule=obsidian:bases.register message_id=detected
         this[method]("view", factory);
         const register = this.registerBasesView;
-        // @expect-no-error glass-lint rule=obsidian:bases.register message_id=detected
+        // @expect-error glass-lint rule=obsidian:bases.register message_id=detected
         register("view", factory);
     }
 }

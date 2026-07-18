@@ -7,7 +7,7 @@ class TestPlugin extends Plugin {
 plugin.registerMarkdownPostProcessor(handler);
 
 const register = this.registerMarkdownPostProcessor;
-// @expect-no-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected
+// @expect-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected
 register(handler);
 
 // @expect-no-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected

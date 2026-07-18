@@ -8,11 +8,12 @@ mod call;
 mod derived;
 pub mod flow;
 mod member;
-
 pub use call::*;
 pub use derived::*;
 pub use flow::*;
 pub use member::*;
+
+use super::ModuleSpecifierPattern;
 
 #[derive(Debug, Clone, Default)]
 /// Collection of matcher families before validation and normalization.
@@ -25,6 +26,8 @@ pub struct MatcherSet {
     pub member_reads: Vec<MemberReadMatcher>,
     /// Imported module specifier matchers.
     pub imports: Vec<String>,
+    /// Boundary-aware package-root module patterns.
+    pub package_imports: Vec<ModuleSpecifierPattern>,
     /// Static literal matchers.
     pub string_contains: Vec<String>,
     /// Class matchers.
@@ -52,6 +55,8 @@ pub enum Matcher {
     MemberRead(MemberReadMatcher),
     /// Module import matcher.
     Import(String),
+    /// Package-root module matcher.
+    PackageImport(ModuleSpecifierPattern),
     /// Static string matcher.
     StringContains(String),
     /// Class matcher.
@@ -81,6 +86,13 @@ impl Matcher {
         CallMatcher::module_export(module, export).into()
     }
 
+    pub fn package_call(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, String> {
+        CallMatcher::package_export(module, export).map(Into::into)
+    }
+
     pub fn heuristic_member_call(chain: impl Into<String>) -> Self {
         MemberCallMatcher::heuristic(chain).into()
     }
@@ -91,6 +103,13 @@ impl Matcher {
 
     pub fn module_member_call(module: impl Into<String>, member: impl Into<String>) -> Self {
         MemberCallMatcher::module_member(module, member).into()
+    }
+
+    pub fn package_member_call(
+        module: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Result<Self, String> {
+        MemberCallMatcher::package_member(module, member).map(Into::into)
     }
 
     pub fn heuristic_member_read(chain: impl Into<String>) -> Self {
@@ -105,8 +124,19 @@ impl Matcher {
         MemberReadMatcher::module_member(module, member).into()
     }
 
+    pub fn package_member_read(
+        module: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Result<Self, String> {
+        MemberReadMatcher::package_member(module, member).map(Into::into)
+    }
+
     pub fn import(module: impl Into<String>) -> Self {
         Self::Import(module.into())
+    }
+
+    pub fn package_import(module: impl Into<String>) -> Result<Self, String> {
+        ModuleSpecifierPattern::package(module).map(Self::PackageImport)
     }
 
     pub fn string_contains(value: impl Into<String>) -> Self {
@@ -121,6 +151,13 @@ impl Matcher {
         ClassMatcher::module_export(module, export).into()
     }
 
+    pub fn package_class(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, String> {
+        ClassMatcher::package_export(module, export).map(Into::into)
+    }
+
     pub fn heuristic_constructor(name: impl Into<String>) -> Self {
         ConstructorMatcher::heuristic(name).into()
     }
@@ -131,6 +168,13 @@ impl Matcher {
 
     pub fn module_constructor(module: impl Into<String>, export: impl Into<String>) -> Self {
         ConstructorMatcher::module_export(module, export).into()
+    }
+
+    pub fn package_constructor(
+        module: impl Into<String>,
+        export: impl Into<String>,
+    ) -> Result<Self, String> {
+        ConstructorMatcher::package_export(module, export).map(Into::into)
     }
 
     pub fn returned_member_call(source: impl Into<String>, member: impl Into<String>) -> Self {
@@ -154,9 +198,25 @@ impl Matcher {
     ) -> Self {
         Self::InstanceMemberCall(InstanceMemberCallMatcher {
             module: module.into(),
+            module_pattern: None,
             export: export.into(),
             member: member.into(),
         })
+    }
+
+    pub fn package_instance_member_call(
+        module: impl Into<String>,
+        export: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Result<Self, String> {
+        let module = module.into();
+        let pattern = ModuleSpecifierPattern::package(module.clone())?;
+        Ok(Self::InstanceMemberCall(InstanceMemberCallMatcher {
+            module,
+            module_pattern: Some(pattern),
+            export: export.into(),
+            member: member.into(),
+        }))
     }
 }
 
@@ -224,6 +284,7 @@ impl MatcherSet {
             .chain(self.member_calls.into_iter().map(Matcher::MemberCall))
             .chain(self.member_reads.into_iter().map(Matcher::MemberRead))
             .chain(self.imports.into_iter().map(Matcher::Import))
+            .chain(self.package_imports.into_iter().map(Matcher::PackageImport))
             .chain(
                 self.string_contains
                     .into_iter()
@@ -257,6 +318,7 @@ impl MatcherSet {
             Matcher::MemberCall(value) => self.member_calls.push(value),
             Matcher::MemberRead(value) => self.member_reads.push(value),
             Matcher::Import(value) => self.imports.push(value),
+            Matcher::PackageImport(value) => self.package_imports.push(value),
             Matcher::StringContains(value) => self.string_contains.push(value),
             Matcher::Class(value) => self.classes.push(value),
             Matcher::Constructor(value) => self.constructors.push(value),
@@ -278,6 +340,7 @@ impl MatcherSet {
             && self.member_calls.is_empty()
             && self.member_reads.is_empty()
             && self.imports.is_empty()
+            && self.package_imports.is_empty()
             && self.string_contains.is_empty()
             && self.classes.is_empty()
             && self.constructors.is_empty()

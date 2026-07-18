@@ -14,9 +14,9 @@ function unrelatedReceiver() {
     this.saveData(data);
 }
 
-// Reassignment is not analyzed; the later syntactic call still matches.
+// Reassignment invalidates the member identity.
 this.saveData = replacement;
-// @expect-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
+// @expect-no-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
 this.saveData(data);
   }
 }

@@ -7,7 +7,7 @@ class TestPlugin extends Plugin {
 plugin.registerEditorSuggest(s);
 
 const register = this.registerEditorSuggest;
-// @expect-no-error glass-lint rule=obsidian:editor.suggest message_id=detected
+// @expect-error glass-lint rule=obsidian:editor.suggest message_id=detected
 register(s);
 
 // @expect-no-error glass-lint rule=obsidian:editor.suggest message_id=detected

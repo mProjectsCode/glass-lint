@@ -10,7 +10,7 @@ plugin.registerView("other", view);
 
 const register = this.registerView;
 // Aliases are intentionally not followed by this heuristic.
-// @expect-no-error glass-lint rule=obsidian:view.register message_id=detected
+// @expect-error glass-lint rule=obsidian:view.register message_id=detected
 register("alias", view);
 
 // @expect-no-error glass-lint rule=obsidian:view.register message_id=detected

@@ -13,6 +13,11 @@ function localWindow(window) {
     // @expect-no-error glass-lint rule=browser:browser.global-input-hook message_id=detected
     window.addEventListener("keydown", () => {});
 }
+
+function localDocument(document) {
+    // @expect-no-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+    document.onkeydown;
+}
 localWindow({ addEventListener() {} });
 
 function localSelf(self) {

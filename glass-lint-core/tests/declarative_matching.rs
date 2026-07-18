@@ -57,8 +57,16 @@ fn script_insertion_flow() -> Matcher {
 
 /// Lint one source with exactly the supplied rules and record matched IDs.
 fn classify(source: &str, rules: &[Rule]) -> Classification {
+    classify_with_environment(source, rules, test_environment())
+}
+
+fn classify_with_environment(
+    source: &str,
+    rules: &[Rule],
+    environment: Environment,
+) -> Classification {
     let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
-    let report = Linter::new(LinterConfig::new(vec![catalog], test_environment()))
+    let report = Linter::new(LinterConfig::new(vec![catalog], environment))
         .unwrap()
         .lint_snippet(source, "matcher.js")
         .unwrap();
@@ -77,13 +85,229 @@ fn test_environment() -> Environment {
     let mut environment = Environment::default();
     environment
         .add_globals([
-            "app", "client", "document", "fetch", "host", "require", "vault",
+            "app",
+            "client",
+            "document",
+            "fetch",
+            "host",
+            "navigator",
+            "require",
+            "vault",
         ])
         .unwrap();
     for object in ["window", "self", "global"] {
         environment.add_global_object(object).unwrap();
     }
     environment
+}
+
+#[test]
+fn canonicalizes_configured_global_object_aliases_for_rooted_members() {
+    let rules = [
+        rule("test.navigator-call")
+            .matcher(Matcher::rooted_member_call("navigator.sendBeacon"))
+            .build()
+            .unwrap(),
+        rule("test.navigator-read")
+            .matcher(Matcher::rooted_member_read("navigator.userAgent"))
+            .build()
+            .unwrap(),
+    ];
+    let result = classify(
+        "navigator.sendBeacon('/bare'); globalThis.navigator.sendBeacon('/global');\n\
+         window.navigator.sendBeacon('/window'); self.navigator.sendBeacon('/self');\n\
+         globalThis.navigator.userAgent;",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 5);
+}
+
+#[test]
+fn rooted_configured_global_member_calls_match_direct_globals() {
+    let mut environment = test_environment();
+    environment.add_global("crypto").unwrap();
+    let catalog = RuleCatalog::new(
+        "test",
+        vec![
+            rule("crypto")
+                .matcher(Matcher::rooted_member_call("crypto.subtle.digest"))
+                .build()
+                .unwrap(),
+        ],
+    )
+    .unwrap();
+    let report = Linter::new(LinterConfig::new(vec![catalog], environment))
+        .unwrap()
+        .lint_snippet("crypto.subtle.digest('SHA-256', bytes);", "matcher.js")
+        .unwrap();
+    assert_eq!(report.files[0].findings.len(), 1);
+}
+
+#[test]
+fn rooted_global_member_survives_unrelated_crypto_imports() {
+    let mut environment = test_environment();
+    environment.add_global("crypto").unwrap();
+    let rules = [rule("crypto")
+        .matcher(Matcher::rooted_member_call("crypto.subtle.digest"))
+        .build()
+        .unwrap()];
+    let result = classify_with_environment(
+        "import c from 'node:crypto'; crypto.subtle.digest('SHA-256', bytes);",
+        &rules,
+        environment,
+    );
+    assert_eq!(result.finding_count, 1);
+}
+
+#[test]
+fn rooted_member_read_matches_direct_read() {
+    let rules = [rule("document")
+        .matcher(Matcher::rooted_member_read("document.onkeydown"))
+        .build()
+        .unwrap()];
+    assert_eq!(classify("document.onkeydown;", &rules).finding_count, 1);
+}
+
+#[test]
+fn rooted_global_object_aliases_respect_restricted_members_and_mutations() {
+    let mut environment = Environment::default();
+    environment.add_global("navigator").unwrap();
+    environment
+        .add_global_object_with_members("foreignWindow", ["fetch"])
+        .unwrap();
+    let rules = [
+        rule("test.navigator")
+            .matcher(Matcher::rooted_member_call("navigator.sendBeacon"))
+            .build()
+            .unwrap(),
+        rule("test.fetch")
+            .matcher(Matcher::rooted_member_call("fetch"))
+            .build()
+            .unwrap(),
+    ];
+    let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
+    let report = Linter::new(LinterConfig::new(vec![catalog], environment))
+        .unwrap()
+        .lint_snippet(
+            "foreignWindow.navigator.sendBeacon('/no');\n\
+             globalThis.navigator.sendBeacon('/yes');\n\
+             navigator.sendBeacon = local; navigator.sendBeacon('/no');\n\
+             globalThis.navigator.sendBeacon('/no');\n\
+             foreignWindow.fetch('/yes');",
+            "matcher.js",
+        )
+        .unwrap();
+    assert_eq!(report.files[0].findings.len(), 2);
+    assert_eq!(
+        report.files[0]
+            .findings
+            .iter()
+            .map(|finding| finding.rule_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["test:test.navigator", "test:test.fetch"]
+    );
+}
+
+#[test]
+fn rooted_global_object_alias_mutations_invalidate_the_canonical_root() {
+    let mut environment = Environment::default();
+    environment.add_global("navigator").unwrap();
+    let rules = [rule("test.navigator")
+        .matcher(Matcher::rooted_member_call("navigator.sendBeacon"))
+        .build()
+        .unwrap()];
+    let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
+    let report = Linter::new(LinterConfig::new(vec![catalog], environment))
+        .unwrap()
+        .lint_snippet(
+            "globalThis.navigator = replacement;\n\
+             navigator.sendBeacon('/bare');\n\
+             window.navigator = replacement;\n\
+             globalThis.navigator.sendBeacon('/alias');",
+            "matcher.js",
+        )
+        .unwrap();
+    assert!(report.files[0].findings.is_empty());
+}
+
+#[test]
+fn extracted_instance_callables_follow_aliases_and_bind_but_not_reassignment() {
+    let rules = [rule("instance")
+        .matcher(Matcher::instance_member_call(
+            "obsidian",
+            "Plugin",
+            "addCommand",
+        ))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import { Plugin } from 'obsidian';\n\
+         class TestPlugin extends Plugin {\n\
+           run() {\n\
+             const add = this.addCommand; add({});\n\
+             add.call(this, {}); add.apply(this, [{}]);\n\
+             const bound = this.addCommand.bind(this); bound({});\n\
+             this.addCommand = replacement; this.addCommand({});\n\
+           }\n\
+         }",
+        &rules,
+    );
+    assert_capability_count(&result, "instance", 4);
+}
+
+#[test]
+fn package_import_patterns_match_subpaths_without_lookalikes() {
+    let rules = [rule("package")
+        .matcher(Matcher::package_import("@scope/pkg").unwrap())
+        .matcher(Matcher::package_import("openai").unwrap())
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import root from '@scope/pkg';\n\
+         import subpath from '@scope/pkg/client';\n\
+         import lookalike from '@scope/pkg-extra';\n\
+         import root from 'openai';\n\
+         import subpath from 'openai/helpers';\n\
+         import lookalike from 'openai-extra';",
+        &rules,
+    );
+    assert_capability_count(&result, "package", 4);
+}
+
+#[test]
+fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
+    let rules = [rule("package-provenance")
+        .matcher(Matcher::package_call("sdk", "send").unwrap())
+        .matcher(Matcher::package_member_call("sdk", "client.request").unwrap())
+        .matcher(Matcher::package_member_read("sdk", "version").unwrap())
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import { send } from 'sdk/client';\n\
+         import * as client from 'sdk/client';\n\
+         send(); client.client.request(); client.version;\n\
+         import { send as fake } from 'sdk-extra'; fake();",
+        &rules,
+    );
+    assert_capability_count(&result, "package-provenance", 3);
+}
+
+#[test]
+fn associates_static_option_properties_with_their_call_sink() {
+    let rules = [rule("string-use")
+        .matcher(CallMatcher::global("fetch").arg_object_property_value(
+            1,
+            "url",
+            ValueMatcher::static_string().contains_any(["localhost"]),
+        ))
+        .build()
+        .unwrap()];
+    let result = classify(
+        "fetch('/remote', { url: 'http://localhost:3000' });\n\
+         fetch('/remote', { url: getUrl() });",
+        &rules,
+    );
+    assert_capability_count(&result, "string-use", 1);
 }
 
 /// Require both the named capability and the exact total finding count.
@@ -425,7 +649,7 @@ fn matches_optional_chained_calls_with_static_arguments() {
 #[test]
 fn resolves_literal_computed_properties_through_constant_aliases() {
     let rules = [rule("test.computed")
-        .matcher(Matcher::rooted_member_call("window.fetch"))
+        .matcher(Matcher::rooted_member_call("fetch"))
         .build()
         .unwrap()];
     let result = classify("const method = 'fetch'; window[method]('/remote');", &rules);

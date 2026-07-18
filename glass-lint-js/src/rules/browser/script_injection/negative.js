@@ -11,13 +11,13 @@ document.write("<div>safe</div>");
 const markup = getMarkup();
 // @expect-no-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
 document.writeln(markup);
-// Constant concatenation is folded and therefore matches.
-// @expect-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
+// Constant concatenation is folded, but creation alone is not executable flow.
+// @expect-no-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
 document.createElement("scr" + "ipt");
 
 // Aliasing createElement is followed and matches.
 const create = document.createElement;
-// @expect-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
+// @expect-no-error glass-lint rule=browser:dynamic-code.script-injection message_id=detected
 create("script");
 
 function localDocument(document) {

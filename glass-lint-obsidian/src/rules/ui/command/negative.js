@@ -6,8 +6,9 @@ class TestPlugin extends Plugin {
 // @expect-no-error glass-lint rule=obsidian:ui.command message_id=detected
 plugin.addCommand(command);
 
-// @expect-no-error glass-lint rule=obsidian:ui.command message_id=detected
+// Proven member extraction is supported; this is an expected finding.
 const add = this.addCommand;
+// @expect-error glass-lint rule=obsidian:ui.command message_id=detected
 add(command);
 // @expect-no-error glass-lint rule=obsidian:ui.command message_id=detected
 this[dynamicProperty](command);

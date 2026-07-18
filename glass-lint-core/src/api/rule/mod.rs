@@ -6,6 +6,7 @@
 
 mod error;
 pub mod matcher;
+mod module;
 mod normalization;
 mod taxonomy;
 pub mod validation;
@@ -19,6 +20,7 @@ pub use matcher::{
     ReturnedMemberReadMatcher, StaticStringPredicate, SymbolProvenance, ValueMatcher,
     ValueMatcherKind, canonical_rooted_chain,
 };
+pub use module::ModuleSpecifierPattern;
 pub use taxonomy::{Category, Confidence};
 
 pub use crate::Severity;

@@ -9,7 +9,7 @@ plugin.registerEditorExtension(ext);
 
 // Aliases are intentionally not followed by this heuristic.
 const register = this.registerEditorExtension;
-// @expect-no-error glass-lint rule=obsidian:editor.extension message_id=detected
+// @expect-error glass-lint rule=obsidian:editor.extension message_id=detected
 register(ext);
 
 const method = 'registerEditorExtension';

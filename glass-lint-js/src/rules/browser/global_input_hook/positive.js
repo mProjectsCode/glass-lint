@@ -19,10 +19,10 @@ self.addEventListener("paste", () => {});
 // @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
 document.body.addEventListener("drop", () => {});
 
-// Direct handler properties are also global input hooks.
-// @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+// Rooted property writes are intentionally not reported; see the rule docs.
+// @expect-no-error glass-lint rule=browser:browser.global-input-hook message_id=detected
 document.onkeydown = () => {};
-// @expect-error glass-lint rule=browser:browser.global-input-hook message_id=detected
+// @expect-no-error glass-lint rule=browser:browser.global-input-hook message_id=detected
 window.onpaste = () => {};
 
 // Resolved static constants are accepted as event names.

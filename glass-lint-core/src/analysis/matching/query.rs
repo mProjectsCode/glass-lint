@@ -77,6 +77,11 @@ impl OccurrenceIndexes {
                             && key.identity().export() == expected_export
                             && key.member() == member
                     }
+                    IdentityConstraint::PackageModuleExport { module, export } => {
+                        module.matches(key.identity().module())
+                            && key.identity().export() == export
+                            && key.member() == member
+                    }
                     _ => false,
                 })
                 .flat_map(|(_, values)| values.iter().copied())
@@ -86,6 +91,7 @@ impl OccurrenceIndexes {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn occurrences_for_event(&self, clause: &QueryClause) -> Option<Vec<Occurrence>> {
         match &clause.event {
             EventPredicate::Call => match &clause.identity {
@@ -98,26 +104,66 @@ impl OccurrenceIndexes {
                     .module_calls
                     .get(&ModuleExportKey::new(module, export))
                     .cloned(),
+                IdentityConstraint::PackageModuleExport { module, export } => self
+                    .call_indexes
+                    .module_calls
+                    .iter()
+                    .filter(|(key, _)| module.matches(key.module()) && key.export() == export)
+                    .flat_map(|(_, values)| values.iter().copied())
+                    .collect::<Vec<_>>()
+                    .pipe_some(),
                 _ => None,
             },
             EventPredicate::MemberCall { member } => match &clause.identity {
                 IdentityConstraint::Any { .. } => self.members.calls.get(member).cloned(),
+                IdentityConstraint::Rooted { path } if path != "navigator" => self
+                    .members
+                    .rooted_calls
+                    .iter()
+                    .filter(|(key, _)| rooted_alias_matches(path, key))
+                    .flat_map(|(_, values)| values.iter().copied())
+                    .collect::<Vec<_>>()
+                    .pipe_some(),
                 IdentityConstraint::Rooted { path } => self.members.rooted_calls.get(path).cloned(),
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_calls
                     .get(&ModuleExportKey::new(module, member))
                     .cloned(),
+                IdentityConstraint::PackageModuleNamespace { module } => self
+                    .members
+                    .module_calls
+                    .iter()
+                    .filter(|(key, _)| module.matches(key.module()) && key.export() == member)
+                    .flat_map(|(_, values)| values.iter().copied())
+                    .collect::<Vec<_>>()
+                    .pipe_some(),
                 _ => None,
             },
             EventPredicate::MemberRead { member } => match &clause.identity {
                 IdentityConstraint::Any { .. } => self.members.reads.get(member).cloned(),
+                IdentityConstraint::Rooted { path } if path != "navigator" => self
+                    .members
+                    .rooted_reads
+                    .iter()
+                    .filter(|(key, _)| rooted_alias_matches(path, key))
+                    .flat_map(|(_, values)| values.iter().copied())
+                    .collect::<Vec<_>>()
+                    .pipe_some(),
                 IdentityConstraint::Rooted { path } => self.members.rooted_reads.get(path).cloned(),
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_reads
                     .get(&ModuleExportKey::new(module, member))
                     .cloned(),
+                IdentityConstraint::PackageModuleNamespace { module } => self
+                    .members
+                    .module_reads
+                    .iter()
+                    .filter(|(key, _)| module.matches(key.module()) && key.export() == member)
+                    .flat_map(|(_, values)| values.iter().copied())
+                    .collect::<Vec<_>>()
+                    .pipe_some(),
                 _ => None,
             },
             EventPredicate::ClassReference => match &clause.identity {
@@ -129,6 +175,14 @@ impl OccurrenceIndexes {
                     .module_classes
                     .get(&ModuleExportKey::new(module, export))
                     .cloned(),
+                IdentityConstraint::PackageModuleExport { module, export } => self
+                    .constructions
+                    .module_classes
+                    .iter()
+                    .filter(|(key, _)| module.matches(key.module()) && key.export() == export)
+                    .flat_map(|(_, values)| values.iter().copied())
+                    .collect::<Vec<_>>()
+                    .pipe_some(),
                 _ => None,
             },
             EventPredicate::Construct => match &clause.identity {
@@ -140,12 +194,28 @@ impl OccurrenceIndexes {
                     .module_constructors
                     .get(&ModuleExportKey::new(module, export))
                     .cloned(),
+                IdentityConstraint::PackageModuleExport { module, export } => self
+                    .constructions
+                    .module_constructors
+                    .iter()
+                    .filter(|(key, _)| module.matches(key.module()) && key.export() == export)
+                    .flat_map(|(_, values)| values.iter().copied())
+                    .collect::<Vec<_>>()
+                    .pipe_some(),
                 _ => None,
             },
             EventPredicate::Import => match &clause.identity {
                 IdentityConstraint::LiteralString { predicate } => {
                     self.literals.imports.get(predicate).cloned()
                 }
+                IdentityConstraint::PackageSpecifier { pattern } => self
+                    .literals
+                    .imports
+                    .iter()
+                    .filter(|(specifier, _)| pattern.matches(specifier))
+                    .flat_map(|(_, occurrences)| occurrences.iter().copied())
+                    .collect::<Vec<_>>()
+                    .pipe_some(),
                 _ => None,
             },
             EventPredicate::StringReference => match &clause.identity {
@@ -199,6 +269,20 @@ impl OccurrenceIndexes {
             crate::api::classification::MatchKind::CallArgument => {}
         }
     }
+}
+
+fn rooted_alias_matches(expected: &str, found: &str) -> bool {
+    let expected = expected
+        .strip_prefix("window.")
+        .or_else(|| expected.strip_prefix("self."))
+        .or_else(|| expected.strip_prefix("globalThis."))
+        .unwrap_or(expected);
+    found == expected
+        || ["window.", "self.", "globalThis."].iter().any(|prefix| {
+            found
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest == expected)
+        })
 }
 
 fn root_or_descendant_matches(identity: &IdentityConstraint, source: &str) -> bool {

@@ -24,8 +24,9 @@ const INPUT_EVENTS: [&str; 16] = [
 /// Detects rooted `document`, `window`, `self`, `globalThis`, and
 /// `document.body` event-listener registrations for the listed keyboard,
 /// clipboard, pointer, touch, drag/drop, and input events. The direct
-/// `on*` property paths remain heuristic; event names must resolve to one of
-/// the configured static strings.
+/// `on*` property paths require rooted identity; property writes are retained
+/// for invalidation but are not reported because the declarative vocabulary
+/// has no rooted property-write occurrence.
 pub fn rule() -> Rule {
     Rule::builder("browser.global-input-hook")
         .description("Registers global input handlers")
@@ -51,18 +52,18 @@ pub fn rule() -> Rule {
         .matcher(Matcher::from(
             MemberCallMatcher::rooted("self.addEventListener").arg_static_strings(0, INPUT_EVENTS),
         ))
-        .matcher(Matcher::heuristic_member_read("document.onkeydown"))
-        .matcher(Matcher::heuristic_member_read("document.onkeyup"))
-        .matcher(Matcher::heuristic_member_read("document.onkeypress"))
-        .matcher(Matcher::heuristic_member_read("document.onpaste"))
-        .matcher(Matcher::heuristic_member_read("document.oncopy"))
-        .matcher(Matcher::heuristic_member_read("document.oncut"))
-        .matcher(Matcher::heuristic_member_read("window.onkeydown"))
-        .matcher(Matcher::heuristic_member_read("window.onkeyup"))
-        .matcher(Matcher::heuristic_member_read("window.onkeypress"))
-        .matcher(Matcher::heuristic_member_read("window.onpaste"))
-        .matcher(Matcher::heuristic_member_read("window.oncopy"))
-        .matcher(Matcher::heuristic_member_read("window.oncut"))
+        .matcher(Matcher::rooted_member_read("document.onkeydown"))
+        .matcher(Matcher::rooted_member_read("document.onkeyup"))
+        .matcher(Matcher::rooted_member_read("document.onkeypress"))
+        .matcher(Matcher::rooted_member_read("document.onpaste"))
+        .matcher(Matcher::rooted_member_read("document.oncopy"))
+        .matcher(Matcher::rooted_member_read("document.oncut"))
+        .matcher(Matcher::rooted_member_read("window.onkeydown"))
+        .matcher(Matcher::rooted_member_read("window.onkeyup"))
+        .matcher(Matcher::rooted_member_read("window.onkeypress"))
+        .matcher(Matcher::rooted_member_read("window.onpaste"))
+        .matcher(Matcher::rooted_member_read("window.oncopy"))
+        .matcher(Matcher::rooted_member_read("window.oncut"))
         .build()
         .unwrap()
 }

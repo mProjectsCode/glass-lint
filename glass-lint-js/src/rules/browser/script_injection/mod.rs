@@ -1,14 +1,13 @@
 //! Browser executable-script-injection rule definition.
 
 use glass_lint_core::rules::{
-    Confidence, Matcher, MemberCallMatcher, Rule, Severity, ValueMatcher,
+    Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher, MemberCallMatcher,
+    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
 };
 
-/// Detects `document.createElement` calls whose tag argument resolves to
-/// `script`, including constant string concatenation and aliases of
-/// `createElement`. It reports creation itself, without requiring insertion or
-/// executable content. Rooted document identity rejects local lookalikes;
-/// dynamic values and other static tags are excluded.
+/// Detects rooted script elements whose executable content is configured and
+/// then inserted into the document. Unused or disconnected elements fail
+/// closed; direct document HTML sinks are checked separately.
 pub fn rule() -> Rule {
     Rule::builder("dynamic-code.script-injection")
         .description("Injects executable script elements")
@@ -16,15 +15,31 @@ pub fn rule() -> Rule {
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
         .matcher(Matcher::from(
-            MemberCallMatcher::rooted("document.createElement").arg_static_strings(0, ["script"]),
-        ))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("window.document.createElement")
-                .arg_static_strings(0, ["script"]),
-        ))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("globalThis.document.createElement")
-                .arg_static_strings(0, ["script"]),
+            ObjectFlowMatcher::builder("script-element")
+                .source(ObjectSourceMatcher::returned_by(
+                    MemberCallMatcher::rooted("document.createElement")
+                        .arg_static_strings(0, ["script"]),
+                ))
+                .configured_by(FlowCondition::any_of([
+                    ObjectEventMatcher::property_write("src", ValueMatcher::static_string()),
+                    ObjectEventMatcher::property_write("text", ValueMatcher::static_string()),
+                    ObjectEventMatcher::property_write(
+                        "textContent",
+                        ValueMatcher::static_string(),
+                    ),
+                ]))
+                .complete_at(FlowCompletion::any_sink([
+                    FlowSinkMatcher::argument_of(
+                        MemberCallMatcher::rooted("document.head.appendChild"),
+                        0,
+                    ),
+                    FlowSinkMatcher::argument_of(
+                        MemberCallMatcher::rooted("document.body.appendChild"),
+                        0,
+                    ),
+                ]))
+                .build()
+                .unwrap(),
         ))
         .matcher(Matcher::from(
             MemberCallMatcher::rooted("document.write").arg(
