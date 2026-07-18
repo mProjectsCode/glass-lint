@@ -153,6 +153,8 @@ pub struct ModuleInterface {
     locals: BTreeSet<String>,
     unknown_exports: bool,
     function_exports: BTreeMap<String, FunctionId>,
+    // TODO: why is this limited to strings? Should this not be extended to arbitrary static
+    // values?
     static_strings: BTreeMap<String, String>,
 }
 

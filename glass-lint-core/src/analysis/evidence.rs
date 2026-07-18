@@ -2,19 +2,19 @@
 
 use std::collections::{BTreeMap, btree_map::Entry};
 
-use super::facts;
 #[cfg(test)]
 use crate::api::rule::Rule;
 use crate::{
     ByteRange,
-    api::classification::{ClassificationEvidence, MatchKind},
+    analysis::facts::FactId,
+    api::classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},
 };
 
 #[derive(Debug, PartialEq, Eq)]
 /// One rule match retained until evidence is bounded and regrouped.
 pub(super) struct EvidenceOccurrence {
     /// Fact identity used as the primary deterministic ordering key.
-    event: Option<facts::FactId>,
+    event: Option<FactId>,
     /// Source location, including synthetic locations when no fact exists.
     span: ByteRange,
     /// Semantic match category shown in the public evidence.
@@ -41,7 +41,7 @@ pub(super) struct AnnotatedEvidence {
     /// Symbols indexed by the compact group IDs in `occurrences`.
     symbols: Vec<String>,
     /// Related evidence retained for each symbol group.
-    related: BTreeMap<usize, Vec<crate::api::classification::RelatedClassificationEvidence>>,
+    related: BTreeMap<usize, Vec<RelatedClassificationEvidence>>,
     total_counts: BTreeMap<usize, usize>,
     evidence_truncated: bool,
 }
@@ -83,7 +83,7 @@ impl AnnotatedEvidence {
                 .filter(|occurrence| !occurrence.span.is_empty())
             {
                 let occurrence = EvidenceOccurrence {
-                    event: occurrence.fact.map(facts::FactId),
+                    event: occurrence.fact.map(FactId),
                     span: occurrence.span,
                     kind,
                     symbol_group,
@@ -117,8 +117,7 @@ impl AnnotatedEvidence {
 
     /// Sort, bound, deduplicate, and regroup occurrences into public evidence.
     pub(super) fn into_evidence(self) -> Vec<ClassificationEvidence> {
-        let mut grouped =
-            BTreeMap::<(MatchKind, usize), Vec<(Option<facts::FactId>, ByteRange)>>::new();
+        let mut grouped = BTreeMap::<(MatchKind, usize), Vec<(Option<FactId>, ByteRange)>>::new();
         for occurrence in &self.occurrences {
             grouped
                 .entry((occurrence.kind, occurrence.symbol_group))

@@ -8,11 +8,11 @@
 
 use super::{
     BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
-    FactKind, FactPayload, MemberExpr, OptChainBase, ParameterBinding, Pat, PathId, PathSegment,
-    Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId, ValueProjection,
-    VisitWith, effective_callee_expr, member_property_name,
+    FactKind, FactPayload, InstanceCallable, MemberExpr, OptChainBase, ParameterBinding, Pat,
+    PathId, PathSegment, Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId,
+    ValueProjection, VisitWith, effective_callee_expr, member_property_name,
 };
-use crate::analysis::SymbolPath;
+use crate::analysis::{SymbolPath, value::FunctionId};
 
 impl FactBuilder<'_> {
     /// Record a direct, imported, optional, or callable-wrapper invocation in
@@ -462,16 +462,14 @@ impl FactBuilder<'_> {
             Expr::Ident(ident) => {
                 let resolved = self.resolver.resolve_ident(ident);
                 let extracted = self.extracted_instance_callable(resolved.id);
-                let instance_class = extracted
-                    .as_ref()
-                    .map(|(module, export, _member)| (module.clone(), export.clone()));
+                let instance_class = extracted.as_ref().map(InstanceCallable::class_identity);
                 Some(ResolvedCallee {
                     value: resolved.id,
                     receiver: None,
                     callee_span: self.byte_range(ident.span)?,
                     callee_name: Some(ident.sym.to_string()),
                     call_provenance: resolved.call.clone(),
-                    syntactic_chain: extracted.map(|(_, _, member)| member.into()),
+                    syntactic_chain: extracted.map(|callable| callable.member().clone()),
                     rooted_chain: resolved.rooted_chain.clone(),
                     module_member: resolved.module_member.clone(),
                     returned_member: resolved.returned_member.clone(),
@@ -562,10 +560,7 @@ impl FactBuilder<'_> {
     }
 
     /// Resolve an extracted callable member from the current module instance.
-    pub(super) fn instance_callable_for_expr(
-        &self,
-        expr: &Expr,
-    ) -> Option<(String, String, String)> {
+    pub(super) fn instance_callable_for_expr(&self, expr: &Expr) -> Option<InstanceCallable> {
         match expr {
             Expr::Ident(ident) => {
                 self.extracted_instance_callable(self.resolver.resolve_ident(ident).id)
@@ -576,7 +571,7 @@ impl FactBuilder<'_> {
                 }
                 let (module, export) = self.instance_class_for_receiver(&member.obj)?;
                 let member = member_property_name(&member.prop)?;
-                Some((module, export, member))
+                Some(InstanceCallable::new(module, export, member.into()))
             }
             Expr::Call(call) => {
                 let Callee::Expr(callee) = &call.callee else {
@@ -595,10 +590,7 @@ impl FactBuilder<'_> {
         }
     }
 
-    pub(super) fn extracted_instance_callable(
-        &self,
-        value: ValueId,
-    ) -> Option<(String, String, String)> {
+    pub(super) fn extracted_instance_callable(&self, value: ValueId) -> Option<InstanceCallable> {
         self.instance_callables.get(&value).cloned()
     }
 
@@ -651,11 +643,8 @@ pub(super) struct ResolvedCallee {
     syntactic_chain: Option<SymbolPath>,
     rooted_chain: Option<SymbolPath>,
     module_member: Option<SymbolMemberProvenance>,
-    returned_member: Option<(
-        super::super::super::value::SymbolPath,
-        super::super::super::value::SymbolPath,
-    )>,
+    returned_member: Option<(SymbolPath, SymbolPath)>,
     bound_arguments: Option<Vec<Option<BoundArgument>>>,
     instance_class: Option<(String, String)>,
-    target_function: Option<crate::analysis::value::FunctionId>,
+    target_function: Option<FunctionId>,
 }

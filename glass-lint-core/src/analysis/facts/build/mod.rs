@@ -32,6 +32,7 @@ use super::{
 use crate::{
     ByteRange,
     analysis::{
+        SymbolPath,
         module::ModuleInterface,
         resolution::Resolver,
         scope::{BoundArgument, ScopeId},
@@ -42,6 +43,36 @@ use crate::{
         value::{PathId, PathSegment, ValueId},
     },
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+/// A callable member extracted from a proven module-backed instance.
+pub(super) struct InstanceCallable {
+    module: String,
+    export: String,
+    member: SymbolPath,
+}
+
+impl InstanceCallable {
+    pub(super) fn new(
+        module: impl Into<String>,
+        export: impl Into<String>,
+        member: SymbolPath,
+    ) -> Self {
+        Self {
+            module: module.into(),
+            export: export.into(),
+            member,
+        }
+    }
+
+    pub(super) fn class_identity(&self) -> (String, String) {
+        (self.module.clone(), self.export.clone())
+    }
+
+    pub(super) fn member(&self) -> &SymbolPath {
+        &self.member
+    }
+}
 
 /// The single authoritative semantic fact builder. After the lexical scope
 /// prepass, this visitor walks the AST exactly once and emits an immutable
@@ -60,11 +91,12 @@ pub struct FactBuilder<'a> {
     /// Call results are retained for effective-call and value-flow projections.
     call_results: call_results::CallResultTable,
     /// Proven callable members extracted from the current module instance.
-    instance_callables: BTreeMap<ValueId, (String, String, String)>,
+    instance_callables: BTreeMap<ValueId, InstanceCallable>,
     /// Module requests and export slots collected during the same canonical
     /// walk as the semantic facts.
     interface: ModuleInterface,
 }
+
 impl<'a> FactBuilder<'a> {
     #[cfg(test)]
     pub(super) fn new(resolver: &'a Resolver) -> Self {

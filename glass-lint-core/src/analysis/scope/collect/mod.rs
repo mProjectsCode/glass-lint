@@ -229,6 +229,7 @@ impl LexicalScopeCollector {
                     .map(|function| ((function, key.name().to_owned()), provenance))
             })
             .collect();
+        
         let property_assignments = self.property_assignments;
         let rooted_mutations = self.rooted_property_mutations;
         let dynamic_evals = self.dynamic_evals;

@@ -21,7 +21,7 @@ use std::{
 use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
 
 use super::{
-    lowering::ParserSpanKey,
+    lowering::{ParserSpanKey, SpanNormalizer},
     scope::ScopeGraph,
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance,
@@ -80,11 +80,12 @@ enum ResolutionKey {
     Member { range: ParserSpanKey },
 }
 
+// TODO: why is this so refcell-heavy? Can we remedy this?
 #[derive(Debug)]
 pub(super) struct Resolver {
     /// Scope/provenance seeds from the lexical collection pass.
     scopes: ScopeGraph,
-    coordinates: super::lowering::SpanNormalizer,
+    coordinates: SpanNormalizer,
     /// Interned abstract values and binding identities.
     values: RefCell<ValueTable>,
     /// Fresh object values reused by checked source range.
@@ -99,7 +100,7 @@ impl Default for Resolver {
     fn default() -> Self {
         Self {
             scopes: ScopeGraph::default(),
-            coordinates: crate::analysis::lowering::SpanNormalizer::default(),
+            coordinates: SpanNormalizer::default(),
             values: RefCell::new(ValueTable::default()),
             fresh_values: RefCell::new(BTreeMap::new()),
             resolved_values: RefCell::new(BTreeMap::new()),
@@ -165,17 +166,13 @@ impl Resolver {
         environment
             .add_global_object("window")
             .expect("test global object is valid");
-        Self::collect_with_environment(
-            program,
-            &environment,
-            super::lowering::SpanNormalizer::for_program(program),
-        )
+        Self::collect_with_environment(program, &environment, SpanNormalizer::for_program(program))
     }
 
     pub(in crate::analysis) fn collect_with_environment(
         program: &Program,
         environment: &crate::Environment,
-        coordinates: super::lowering::SpanNormalizer,
+        coordinates: SpanNormalizer,
     ) -> Self {
         let scopes = ScopeGraph::collect_with_environment(program, environment);
         Self {
@@ -221,6 +218,11 @@ impl Resolver {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        cell::RefCell,
+        collections::{BTreeMap, BTreeSet},
+    };
+
     use super::{Resolver, SymbolCallProvenance, ValueId, ValueTable};
     use crate::analysis::{
         syntax::{BudgetComponent, UnknownReason},
@@ -243,10 +245,10 @@ mod tests {
         let resolver = Resolver {
             scopes: super::ScopeGraph::default(),
             coordinates: crate::analysis::lowering::SpanNormalizer::default(),
-            values: std::cell::RefCell::new(values),
-            fresh_values: std::cell::RefCell::new(std::collections::BTreeMap::new()),
-            resolved_values: std::cell::RefCell::new(std::collections::BTreeMap::new()),
-            resolving: std::cell::RefCell::new(std::collections::BTreeSet::new()),
+            values: RefCell::new(values),
+            fresh_values: RefCell::new(BTreeMap::new()),
+            resolved_values: RefCell::new(BTreeMap::new()),
+            resolving: RefCell::new(BTreeSet::new()),
         };
         assert_eq!(
             resolver.call_provenance_for_value(ValueId::UNKNOWN),

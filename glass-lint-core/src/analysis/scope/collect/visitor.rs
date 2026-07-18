@@ -114,6 +114,8 @@ impl Visit for LexicalScopeCollector {
             self.insert_pat_locals(scope, &declarator.name);
             let derived_function_pattern =
                 collect_derived_function_pattern(self, &declarator.name, init, scope);
+
+            // TODO: this is a bit of a mess.
             if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, bound_alias.as_ref())
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance.clone());
