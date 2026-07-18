@@ -26,7 +26,7 @@ use super::{
             member_expression_chain, member_property_name, member_root_identifier,
             module_export_name,
         },
-        value::{BindingId, BindingVersion, FunctionId},
+        value::{BindingId, BindingVersion, FunctionId, SymbolPath},
     },
     AliasAssignment, BindingProvenance, BoundArgument, LexicalScope, ScopeEffect, ScopeId,
     ScopeKind, ScopedName,
@@ -83,9 +83,9 @@ pub(super) struct LexicalScopeCollector {
 pub(super) struct PropertyAliasAssignment {
     pub(super) span: Span,
     pub(super) scope: ScopeId,
-    pub(super) property: String,
+    pub(super) property: SymbolPath,
     pub(super) receiver: swc_ecma_ast::Ident,
-    pub(super) target: Option<String>,
+    pub(super) target: Option<SymbolPath>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,7 +93,7 @@ pub(super) struct PropertyAliasAssignment {
 pub(super) struct RootedPropertyMutation {
     pub(super) span: Span,
     pub(super) scope: ScopeId,
-    pub(super) receiver: String,
+    pub(super) receiver: SymbolPath,
     pub(super) property: Option<String>,
 }
 
@@ -423,7 +423,7 @@ impl LexicalScopeCollector {
         self.visible_binding(name).is_none()
     }
 
-    fn rooted_expr_name(&self, expr: &Expr) -> Option<String> {
+    fn rooted_expr_name(&self, expr: &Expr) -> Option<SymbolPath> {
         rooted_expr_chain_with(self, expr)
     }
 
@@ -511,26 +511,26 @@ impl LexicalScopeCollector {
 }
 
 impl RootedExprContext for LexicalScopeCollector {
-    fn rooted_ident_chain(&self, ident: &swc_ecma_ast::Ident) -> Option<String> {
+    fn rooted_ident_chain(&self, ident: &swc_ecma_ast::Ident) -> Option<SymbolPath> {
         match self.visible_binding(ident.sym.as_ref()) {
             Some(
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. },
-            ) => Some(target.to_string()),
+            ) => Some(target.clone()),
             Some(_) => None,
-            None => Some(ident.sym.to_string()),
+            None => Some(ident.sym.as_ref().into()),
         }
     }
 
-    fn rooted_member_chain(&self, member: &swc_ecma_ast::MemberExpr) -> Option<String> {
+    fn rooted_member_chain(&self, member: &swc_ecma_ast::MemberExpr) -> Option<SymbolPath> {
         if is_function_constructor_member(member)
             && function_prototype_builtin(&member.obj).is_none_or(|name| self.is_unbound(name))
         {
-            return Some("Function".to_string());
+            return Some("Function".into());
         }
         let object = self.rooted_expr_name(&member.obj)?;
         let property = member_property_name(&member.prop)?;
-        Some(format!("{object}.{property}"))
+        Some(object.append_chain(&property))
     }
 }
 

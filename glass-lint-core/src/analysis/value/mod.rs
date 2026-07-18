@@ -9,8 +9,9 @@ mod identity;
 mod path;
 
 pub(in crate::analysis) use arena::{CallableValue, MAX_VALUES, ObjectId, Value, ValueTable};
+pub use identity::SymbolPath;
 pub(in crate::analysis) use identity::{
-    BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, SymbolPath, ValueId,
+    BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, ValueId,
 };
 pub(in crate::analysis) use path::{PathId, PathInterner, PathSegment};
 

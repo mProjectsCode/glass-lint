@@ -10,14 +10,17 @@ use super::{
     CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowId, FlowState, MatchKind,
     ObjectFlowProjector, ObjectId, ValueId,
 };
-use crate::api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments};
+use crate::{
+    analysis::SymbolPath,
+    api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments},
+};
 
 impl ObjectFlowProjector<'_, '_> {
     /// Apply member-call requirements to live object states.
     pub(super) fn record_configuration(
         &mut self,
         receiver: Option<ValueId>,
-        chain: &str,
+        chain: &SymbolPath,
         args: &[CallArgInfo],
         event: FactId,
     ) {
@@ -51,7 +54,7 @@ impl ObjectFlowProjector<'_, '_> {
                         member,
                         arguments: matchers,
                     } = requirement
-                        && (member == chain || chain.rsplit('.').next() == Some(member.as_str()))
+                        && (member == chain || chain.last_segment() == member.last_segment())
                         && matchers.iter().all(|matcher| {
                             args.get(matcher.index)
                                 .is_some_and(|arg| matcher.matcher.matches(arg))
@@ -68,7 +71,7 @@ impl ObjectFlowProjector<'_, '_> {
     /// Check sink arguments against live states and emit completed flows.
     pub(super) fn record_sinks(
         &mut self,
-        chain: &str,
+        chain: &SymbolPath,
         args: &[CallArgInfo],
         sink_fact: FactId,
         rooted: bool,

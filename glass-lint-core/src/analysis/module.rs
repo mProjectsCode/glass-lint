@@ -19,6 +19,12 @@ use crate::{
     },
 };
 
+pub const DEFAULT_EXPORT: &str = "default";
+pub const NAMESPACE_EXPORT: &str = "*";
+pub const COMMONJS_MODULE: &str = "module";
+pub const COMMONJS_EXPORTS: &str = "exports";
+pub const COMMONJS_REQUIRE: &str = "require";
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Why a module request exists and which runtime bindings it introduces.
 pub enum ModuleRequestRole {

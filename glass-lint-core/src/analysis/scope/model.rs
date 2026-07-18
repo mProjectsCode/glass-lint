@@ -78,7 +78,7 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Property writes indexed by versioned receiver and path.
     property_assignments: BTreeMap<(BindingKey, Vec<String>), Vec<PropertyAliasFact>>,
     /// Rooted writes that invalidate member identities.
-    rooted_property_mutations: BTreeMap<String, Vec<RootedPropertyMutationFact>>,
+    rooted_property_mutations: BTreeMap<SymbolPath, Vec<RootedPropertyMutationFact>>,
     /// Proven parameter identities shared by compatible call sites.
     parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
     /// Dynamic-evaluation sites that invalidate later lexical assumptions.
@@ -108,16 +108,16 @@ impl ScopeGraph {
                     receiver_key,
                     assignment
                         .property
-                        .strip_prefix(assignment.receiver.sym.as_ref())
-                        .and_then(|path| path.strip_prefix('.'))
-                        .map(|path| path.split('.').map(str::to_string).collect::<Vec<_>>())
-                        .unwrap_or_default(),
+                        .segments()
+                        .get(1..)
+                        .unwrap_or_default()
+                        .to_vec(),
                 ))
                 .or_default()
                 .push(PropertyAliasFact {
                     span: assignment.span,
                     scope: assignment.scope,
-                    target: assignment.target.map(std::convert::Into::into),
+                    target: assignment.target,
                 });
         }
         for assignments in self.property_assignments.values_mut() {
@@ -296,7 +296,10 @@ impl ScopeGraph {
         self.property_assignments.get(key).map(Vec::as_slice)
     }
 
-    pub(super) fn rooted_mutations(&self, root: &str) -> Option<&[RootedPropertyMutationFact]> {
+    pub(super) fn rooted_mutations(
+        &self,
+        root: &SymbolPath,
+    ) -> Option<&[RootedPropertyMutationFact]> {
         self.rooted_property_mutations.get(root).map(Vec::as_slice)
     }
 
@@ -482,7 +485,7 @@ pub(in crate::analysis) struct MemberValueSeed {
     /// Imported namespace/member provenance, when known.
     pub(in crate::analysis) module_member: Option<SymbolMemberProvenance>,
     /// Returned-object source and member name, when tracked.
-    pub(in crate::analysis) returned_member: Option<(SymbolPath, String)>,
+    pub(in crate::analysis) returned_member: Option<(SymbolPath, SymbolPath)>,
 }
 
 #[derive(Debug, Clone)]

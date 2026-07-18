@@ -52,8 +52,8 @@ impl ArgumentMatcher {
             }),
             Self::RootedExpressions(expected) => {
                 argument.rooted_chain.as_ref().is_some_and(|chain| {
-                    let chain = crate::api::rule::canonical_rooted_chain(chain);
-                    expected.iter().any(|candidate| candidate == chain)
+                    let chain = chain.without_this_prefix();
+                    expected.iter().any(|candidate| chain.eq_chain(candidate))
                 })
             }
             Self::ObjectPropertyValue { property, value } => argument

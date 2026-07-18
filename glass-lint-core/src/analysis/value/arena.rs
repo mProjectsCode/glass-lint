@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use super::{BindingKey, ValueId};
+use super::{BindingKey, SymbolPath, ValueId};
 
 pub(in crate::analysis) const MAX_VALUES: usize = 65_536;
 const MAX_OBJECTS: u32 = 65_536;
@@ -22,7 +22,7 @@ pub(in crate::analysis) enum Value {
     /// A local or ambiguous value.
     Local,
     /// A statically rooted member path.
-    RootedMember { root: String, path: Vec<String> },
+    RootedMember { path: SymbolPath },
     /// A module namespace identity.
     ModuleNamespace(String),
     /// A named export identity.

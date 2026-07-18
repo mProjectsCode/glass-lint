@@ -12,6 +12,7 @@ use super::super::{
         ValueMatcher,
     },
 };
+use crate::analysis::SymbolPath;
 
 /// Canonical matcher representation consumed by analysis.  Public matcher
 /// declarations are compiled once while a catalog is built and never enter
@@ -68,7 +69,7 @@ pub enum IdentityConstraint {
         module: crate::api::rule::ModuleSpecifierPattern,
     },
     Rooted {
-        path: String,
+        path: SymbolPath,
     },
     /// Free-form substring predicate retained intentionally for literal
     /// matching; unlike identities, it is not an API symbol.
@@ -80,12 +81,27 @@ pub enum IdentityConstraint {
     },
 }
 
+impl IdentityConstraint {
+    pub(crate) fn root_or_descendant_matches(&self, source: &SymbolPath) -> bool {
+        matches!(self, Self::Rooted { path } if source.is_equal_or_descendant_of(path))
+    }
+
+    pub(crate) fn exact_root_matches(&self, source: &SymbolPath) -> bool {
+        matches!(self, Self::Rooted { path } if path == source)
+    }
+
+    pub(crate) fn identity_module_matches(&self, module: &str, export: &str) -> bool {
+        matches!(self, Self::ModuleExport { module: expected_module, export: expected_export } if expected_module == module && expected_export == export)
+            || matches!(self, Self::PackageModuleExport { module: expected_module, export: expected_export } if expected_module.matches(module) && expected_export == export)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum EventPredicate {
     Call,
     Construct,
-    MemberCall { member: String },
-    MemberRead { member: String },
+    MemberCall { member: SymbolPath },
+    MemberRead { member: SymbolPath },
     ClassReference,
     Import,
     StringReference,
@@ -169,7 +185,7 @@ impl QueryClause {
                 (
                     IdentityConstraint::Any { name, .. },
                     EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member },
-                ) => name == member,
+                ) => member.eq_chain(name),
                 (
                     IdentityConstraint::Rooted { path },
                     EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member },
@@ -259,7 +275,7 @@ fn lower_member_calls(matcher: &MatcherSet) -> Vec<QueryClause> {
         .map(|member| QueryClause {
             identity: member_identity(&member.chain, &member.provenance),
             event: EventPredicate::MemberCall {
-                member: member.chain.clone(),
+                member: SymbolPath::from(member.chain.as_str()),
             },
             subject: SubjectConstraint::Direct,
             constraints: member
@@ -288,7 +304,7 @@ fn lower_member_reads(matcher: &MatcherSet) -> Vec<QueryClause> {
         .map(|read| QueryClause {
             identity: member_read_identity(&read.chain, &read.provenance),
             event: EventPredicate::MemberRead {
-                member: read.chain.clone(),
+                member: SymbolPath::from(read.chain.as_str()),
             },
             subject: SubjectConstraint::Direct,
             constraints: Box::new([]),
@@ -372,7 +388,7 @@ fn lower_returned_members(matcher: &MatcherSet) -> Vec<QueryClause> {
             &returned.source,
             &returned.member,
             EventPredicate::MemberCall {
-                member: returned.member.clone(),
+                member: returned.member.clone().into(),
             },
             MatchKind::MemberCall,
         )
@@ -382,7 +398,7 @@ fn lower_returned_members(matcher: &MatcherSet) -> Vec<QueryClause> {
             &returned.source,
             &returned.member,
             EventPredicate::MemberRead {
-                member: returned.member.clone(),
+                member: returned.member.clone().into(),
             },
             MatchKind::MemberRead,
         )
@@ -398,12 +414,12 @@ fn returned_member_clause(
 ) -> QueryClause {
     QueryClause {
         identity: IdentityConstraint::Rooted {
-            path: source.to_owned(),
+            path: SymbolPath::from(source),
         },
         event,
         subject: SubjectConstraint::ReturnedFrom {
             producer: Box::new(IdentityConstraint::Rooted {
-                path: source.to_owned(),
+                path: SymbolPath::from(source),
             }),
         },
         constraints: Box::new([]),
@@ -432,7 +448,7 @@ fn lower_instance_members(matcher: &MatcherSet) -> Vec<QueryClause> {
             QueryClause {
                 identity: constructor.clone(),
                 event: EventPredicate::MemberCall {
-                    member: instance.member.clone(),
+                    member: SymbolPath::from(instance.member.as_str()),
                 },
                 subject: SubjectConstraint::InstanceOf {
                     constructor: Box::new(constructor),
@@ -460,7 +476,7 @@ fn member_identity(
             strength: IdentityStrength::Heuristic,
         },
         super::super::rule::MemberCallProvenance::Rooted => IdentityConstraint::Rooted {
-            path: chain.to_owned(),
+            path: SymbolPath::from(chain),
         },
         super::super::rule::MemberCallProvenance::ModuleNamespace { module } => {
             IdentityConstraint::ModuleNamespace {
@@ -485,7 +501,7 @@ fn member_read_identity(
             strength: IdentityStrength::Heuristic,
         },
         super::super::rule::MemberReadProvenance::Rooted => IdentityConstraint::Rooted {
-            path: chain.to_owned(),
+            path: SymbolPath::from(chain),
         },
         super::super::rule::MemberReadProvenance::ModuleNamespace { module } => {
             IdentityConstraint::ModuleNamespace {
@@ -561,11 +577,9 @@ impl CompiledObjectFlow {
     }
 
     /// Test a sink chain, provenance mode, and argument position.
-    pub fn sink_matches(&self, chain: Option<&str>, rooted: bool, argument: usize) -> bool {
+    pub fn sink_matches(&self, chain: Option<&SymbolPath>, rooted: bool, argument: usize) -> bool {
         self.sinks.iter().any(|sink| {
-            sink.member_calls
-                .iter()
-                .any(|member| chain == Some(member.as_str()))
+            sink.member_calls.iter().any(|member| chain == Some(member))
                 && sink.provenance.matches_rooted(rooted)
                 && match &sink.args {
                     CompiledObjectSinkArguments::Any => true,
@@ -629,7 +643,7 @@ impl CompiledObjectFlow {
 /// Compiled member-call source constraint.
 pub struct CompiledObjectSource {
     /// Required member-call chain.
-    pub member_call: String,
+    pub member_call: SymbolPath,
     /// Argument constraints on the source call.
     pub arguments: Vec<ArgumentConstraint>,
     /// Required rooted/module provenance mode.
@@ -639,7 +653,7 @@ pub struct CompiledObjectSource {
 impl CompiledObjectSource {
     fn from_matcher(source: &ObjectSourceMatcher) -> Self {
         Self {
-            member_call: source.call.chain().to_string(),
+            member_call: SymbolPath::from(source.call.chain()),
             arguments: source.call.arguments().to_vec(),
             provenance: source.call.provenance.clone(),
         }
@@ -659,7 +673,7 @@ pub enum CompiledObjectRequirement {
     /// Required member call and argument constraints.
     MemberCall {
         /// Required member-call name.
-        member: String,
+        member: SymbolPath,
         /// Argument constraints for the call.
         arguments: Vec<ArgumentConstraint>,
     },
@@ -673,7 +687,7 @@ impl CompiledObjectRequirement {
                 value: value.clone(),
             },
             ObjectEventMatcher::MemberCall { member, arguments } => Self::MemberCall {
-                member: member.clone(),
+                member: SymbolPath::from(member.as_str()),
                 arguments: arguments.clone(),
             },
         }
@@ -710,7 +724,7 @@ impl CompiledObjectSinkArguments {
 /// Compiled terminal sink pattern for object flow.
 pub struct CompiledObjectSink {
     /// Accepted sink member-call chains.
-    pub member_calls: Vec<String>,
+    pub member_calls: Vec<SymbolPath>,
     /// Accepted argument-position mode.
     pub args: CompiledObjectSinkArguments,
     /// Required rooted/module provenance mode.
@@ -721,12 +735,12 @@ impl CompiledObjectSink {
     fn from_matcher(sink: &FlowSinkMatcher) -> Self {
         match sink {
             FlowSinkMatcher::ArgumentOf { call, index } => Self {
-                member_calls: vec![call.chain().to_string()],
+                member_calls: vec![SymbolPath::from(call.chain())],
                 args: CompiledObjectSinkArguments::Indices(vec![*index]),
                 provenance: call.provenance.clone(),
             },
             FlowSinkMatcher::AnyArgumentOf { call } => Self {
-                member_calls: vec![call.chain().to_string()],
+                member_calls: vec![SymbolPath::from(call.chain())],
                 args: CompiledObjectSinkArguments::Any,
                 provenance: call.provenance.clone(),
             },
@@ -821,9 +835,12 @@ mod tests {
         CompiledMatcherPlan, EventPredicate, IdentityConstraint, IdentityStrength,
         SubjectConstraint,
     };
-    use crate::api::{
-        classification::MatchKind,
-        rule::{CallMatcher, Matcher, MatcherSet, ObjectFlowMatcher},
+    use crate::{
+        analysis::SymbolPath,
+        api::{
+            classification::MatchKind,
+            rule::{CallMatcher, Matcher, MatcherSet, ObjectFlowMatcher},
+        },
     };
 
     #[test]
@@ -900,15 +917,15 @@ mod tests {
         )));
         assert!(clauses.iter().any(|clause| matches!(
             (&clause.identity, &clause.event),
-            (IdentityConstraint::Rooted { path }, EventPredicate::MemberCall { member }) if path == "window.open" && member == "window.open"
+            (IdentityConstraint::Rooted { path }, EventPredicate::MemberCall { member }) if *path == SymbolPath::from("window.open") && member.eq_chain("window.open")
         )));
         assert!(clauses.iter().any(|clause| matches!(
             (&clause.subject, &clause.event),
-            (SubjectConstraint::ReturnedFrom { .. }, EventPredicate::MemberRead { member }) if member == "token"
+            (SubjectConstraint::ReturnedFrom { .. }, EventPredicate::MemberRead { member }) if member.eq_chain("token")
         )));
         assert!(clauses.iter().any(|clause| matches!(
             (&clause.subject, &clause.event),
-            (SubjectConstraint::InstanceOf { .. }, EventPredicate::MemberCall { member }) if member == "send"
+            (SubjectConstraint::InstanceOf { .. }, EventPredicate::MemberCall { member }) if member.eq_chain("send")
         )));
         assert!(
             clauses

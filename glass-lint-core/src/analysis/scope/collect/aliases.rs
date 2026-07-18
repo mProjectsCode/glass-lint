@@ -10,6 +10,7 @@ use swc_ecma_ast::{ObjectPatProp, Pat};
 use super::{
     super::super::syntax::property_name, BindingProvenance, LexicalScopeCollector, ScopeId,
 };
+use crate::analysis::SymbolPath;
 
 impl LexicalScopeCollector {
     /// Record aliases introduced by a destructuring declaration.
@@ -17,13 +18,13 @@ impl LexicalScopeCollector {
     /// This deliberately stops at unsupported pattern forms. A partial
     /// projection would make a later use look more precise than the source
     /// warrants, so callers should leave the binding unresolved instead.
-    pub(super) fn collect_value_aliases(&mut self, pat: &Pat, target: &str, scope: ScopeId) {
+    pub(super) fn collect_value_aliases(&mut self, pat: &Pat, target: &SymbolPath, scope: ScopeId) {
         match pat {
             Pat::Ident(ident) => self.insert(
                 scope,
                 ident.id.sym.to_string(),
                 BindingProvenance::ValueAlias {
-                    target: target.to_string().into(),
+                    target: target.clone(),
                 },
             ),
             Pat::Object(object) => {
@@ -33,7 +34,7 @@ impl LexicalScopeCollector {
                             if let Some(property) = property_name(&key_value.key) {
                                 self.collect_value_aliases(
                                     &key_value.value,
-                                    &format!("{target}.{property}"),
+                                    &target.append_chain(&property),
                                     scope,
                                 );
                             }
@@ -44,7 +45,7 @@ impl LexicalScopeCollector {
                                 scope,
                                 property.clone(),
                                 BindingProvenance::ValueAlias {
-                                    target: format!("{target}.{property}").into(),
+                                    target: target.append_chain(&property),
                                 },
                             );
                         }
@@ -60,7 +61,7 @@ impl LexicalScopeCollector {
     pub(super) fn collect_assignment_aliases(
         &mut self,
         pat: &Pat,
-        target: &str,
+        target: &super::super::super::value::SymbolPath,
         span: Span,
         scope: ScopeId,
     ) {
@@ -70,7 +71,7 @@ impl LexicalScopeCollector {
                 scope,
                 ident.id.sym.to_string(),
                 BindingProvenance::ValueAlias {
-                    target: target.to_string().into(),
+                    target: target.clone(),
                 },
             ),
             Pat::Object(object) => {
@@ -80,7 +81,7 @@ impl LexicalScopeCollector {
                             if let Some(name) = property_name(&key_value.key) {
                                 self.collect_assignment_aliases(
                                     &key_value.value,
-                                    &format!("{target}.{name}"),
+                                    &target.append_chain(&name),
                                     span,
                                     scope,
                                 );
@@ -93,7 +94,7 @@ impl LexicalScopeCollector {
                                 scope,
                                 name.clone(),
                                 BindingProvenance::ValueAlias {
-                                    target: format!("{target}.{name}").into(),
+                                    target: target.append_chain(&name),
                                 },
                             );
                         }
@@ -172,12 +173,4 @@ impl LexicalScopeCollector {
 
 pub(in crate::analysis::scope) fn contains(outer: Span, inner: Span) -> bool {
     outer.lo <= inner.lo && outer.hi >= inner.hi
-}
-
-pub(in crate::analysis::scope) fn member_prefix_ends(
-    chain: &str,
-) -> impl Iterator<Item = usize> + '_ {
-    // Visit the complete chain first, then progressively shorter prefixes so a
-    // direct write to `a.b.c` takes precedence over an older `a.b` write.
-    std::iter::once(chain.len()).chain(chain.rmatch_indices('.').map(|(index, _)| index))
 }

@@ -18,7 +18,7 @@ pub use matcher::{
     MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher,
     ReturnedMemberReadMatcher, StaticStringPredicate, SymbolProvenance, ValueMatcher,
-    ValueMatcherKind, canonical_rooted_chain,
+    ValueMatcherKind,
 };
 pub use module::ModuleSpecifierPattern;
 pub use taxonomy::{Category, Confidence};
@@ -180,11 +180,6 @@ impl RuleBuilder {
             return Err(RuleBuildError::InvalidCategory(
                 category.as_str().to_string(),
             ));
-        }
-
-        for (index, matcher) in self.matchers.iter().enumerate() {
-            validation::validate_matcher_at(matcher, index)
-                .map_err(RuleBuildError::InvalidMatcher)?;
         }
 
         let candidate = matcher::MatcherSet::from_matchers(self.matchers);

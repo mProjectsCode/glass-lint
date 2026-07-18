@@ -34,6 +34,12 @@ mod status;
 mod syntax;
 mod value;
 
+pub use value::SymbolPath;
+
+pub fn canonical_symbol_path(value: &str) -> String {
+    self::value::SymbolPath::from_chain(value).to_string()
+}
+
 pub use local::{
     ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, ProjectModule,
     SemanticArtifact, SharedSemanticArtifact,

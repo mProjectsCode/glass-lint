@@ -14,7 +14,7 @@ use super::{
     super::{
         facts::{CallArgInfo, ControlKind, FactPayload, FactStream, ParameterBinding},
         syntax::SymbolCallProvenance,
-        value::{FunctionId, PathId, ValueId},
+        value::{FunctionId, PathId, SymbolPath, ValueId},
     },
     table::FunctionTable,
 };
@@ -48,7 +48,7 @@ pub(in crate::analysis) struct EffectCall {
     /// Fact identity of the call event.
     event: super::super::facts::FactId,
     /// Callable chain used for source matching.
-    chain: Option<String>,
+    chain: Option<SymbolPath>,
     /// Whether the chain was rooted by strict provenance.
     rooted: bool,
     /// Qualified function target when one is proven.
@@ -82,7 +82,7 @@ pub(in crate::analysis) enum EffectUse {
         /// Fact identity of the call.
         event: super::super::facts::FactId,
         /// Callable chain used for sink matching.
-        chain: Option<String>,
+        chain: Option<SymbolPath>,
         /// Whether the callable chain has strict rooted provenance.
         rooted: bool,
         /// Argument identity passed to the call.
@@ -92,7 +92,7 @@ pub(in crate::analysis) enum EffectUse {
         /// Fact identity of the member call.
         event: super::super::facts::FactId,
         /// Member chain used for sink matching.
-        chain: Option<String>,
+        chain: Option<SymbolPath>,
         /// Receiver parameter consumed by the member call.
         receiver: ParameterRef,
         /// Pre-computed arguments at the member call.
@@ -167,8 +167,8 @@ impl EffectCall {
         self.event
     }
 
-    pub(in crate::analysis) fn chain(&self) -> Option<&str> {
-        self.chain.as_deref()
+    pub(in crate::analysis) fn chain(&self) -> Option<&SymbolPath> {
+        self.chain.as_ref()
     }
 
     pub(in crate::analysis) fn is_rooted(&self) -> bool {
@@ -200,7 +200,7 @@ impl EffectCall {
         flow: &crate::api::compiler::CompiledObjectFlow,
     ) -> bool {
         flow.sources.iter().any(|source| {
-            self.chain() == Some(source.member_call.as_str())
+            self.chain() == Some(&source.member_call)
                 && source.provenance.matches_rooted(self.is_rooted())
                 && source.arguments.iter().all(|matcher| {
                     self.call_arguments()

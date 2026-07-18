@@ -2,7 +2,7 @@
 
 use super::super::{
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
-    value::{FunctionId, PathId, ValueId},
+    value::{FunctionId, PathId, SymbolPath, ValueId},
 };
 use crate::ByteRange;
 
@@ -139,7 +139,7 @@ pub(in crate::analysis) struct CallArgInfo {
     /// Statically known direct object-property string values.
     pub(in crate::analysis) property_strings: Vec<(String, String)>,
     /// Proven rooted member chain for this argument.
-    pub(in crate::analysis) rooted_chain: Option<String>,
+    pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
     /// Values reachable from this argument through a statically known object
     /// or array shape. The root is included with an empty path.
     pub(in crate::analysis) projections: Vec<ValueProjection>,
@@ -180,7 +180,7 @@ pub(in crate::analysis) struct ParameterBinding {
 pub(in crate::analysis) struct CallUnwrap {
     /// The chain spelling of the target being called (e.g. `"fetch"` or
     /// `"mod.fn"`).
-    pub(in crate::analysis) chain: String,
+    pub(in crate::analysis) chain: SymbolPath,
     /// Effective arguments after removing the receiver and options/array
     /// wrapper.
     pub(in crate::analysis) effective_args: Vec<CallArgInfo>,
@@ -204,13 +204,13 @@ pub(in crate::analysis) enum FactPayload {
     /// Member expression read.
     MemberRead {
         /// Original member spelling when statically recoverable.
-        syntactic_chain: Option<String>,
+        syntactic_chain: Option<SymbolPath>,
         /// Proven rooted chain used by strict member matchers.
-        rooted_chain: Option<String>,
+        rooted_chain: Option<SymbolPath>,
         /// Proven module namespace member, if applicable.
         module_member: Option<SymbolMemberProvenance>,
         /// Member returned by a previously resolved call, if applicable.
-        returned_member: Option<(String, String)>,
+        returned_member: Option<(SymbolPath, SymbolPath)>,
     },
     /// Variable declaration.
     Declaration {
@@ -254,13 +254,13 @@ pub(in crate::analysis) enum FactPayload {
         /// Resolver-backed callable provenance.
         call_provenance: SymbolCallProvenance,
         /// Member chain as written at the call site.
-        syntactic_chain: Option<String>,
+        syntactic_chain: Option<SymbolPath>,
         /// Proven rooted member chain, if available.
-        rooted_chain: Option<String>,
+        rooted_chain: Option<SymbolPath>,
         /// Proven module member target, if available.
         module_member: Option<SymbolMemberProvenance>,
         /// Proven member returned by an earlier call, if available.
-        returned_member: Option<(String, String)>,
+        returned_member: Option<(SymbolPath, SymbolPath)>,
         /// Proven superclass identity for an instance method call.
         instance_class: Option<(String, String)>,
         /// Lexical function identity when the callee resolves to one.

@@ -10,7 +10,7 @@ use std::{
 };
 
 use super::super::facts::FactId;
-use crate::ByteRange;
+use crate::{ByteRange, analysis::SymbolPath};
 
 /// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different
@@ -117,6 +117,26 @@ pub(in crate::analysis) struct ModuleExportKey {
 pub(in crate::analysis) struct InstanceMemberKey {
     identity: ModuleExportKey,
     member: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub(in crate::analysis) struct ReturnedMemberKey {
+    source: SymbolPath,
+    member: SymbolPath,
+}
+
+impl ReturnedMemberKey {
+    pub(in crate::analysis) fn new(source: SymbolPath, member: SymbolPath) -> Self {
+        Self { source, member }
+    }
+
+    pub(in crate::analysis) fn source(&self) -> &SymbolPath {
+        &self.source
+    }
+
+    pub(in crate::analysis) fn member(&self) -> &SymbolPath {
+        &self.member
+    }
 }
 
 impl InstanceMemberKey {

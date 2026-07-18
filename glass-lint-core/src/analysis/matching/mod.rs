@@ -16,14 +16,17 @@ use super::{
     facts::{CallArgInfo, FactPayload, FactStream},
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
-use crate::api::{
-    classification::{ClassificationEvidence, MatchKind},
-    rule::canonical_rooted_chain,
+use crate::{
+    analysis::SymbolPath,
+    api::classification::{ClassificationEvidence, MatchKind},
 };
 
 mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
-use occurrence::{InstanceMemberKey, ModuleOccurrences, Occurrence, OccurrenceIndex, Occurrences};
+use occurrence::{
+    InstanceMemberKey, ModuleOccurrences, Occurrence, OccurrenceIndex, Occurrences,
+    ReturnedMemberKey,
+};
 mod arguments;
 mod build;
 mod query;
@@ -59,14 +62,14 @@ pub(super) struct CallIndexes {
 #[derive(Clone, Debug, Default)]
 /// Member call/read occurrences partitioned by rooted and module identity.
 pub(super) struct MemberIndexes {
-    calls: Occurrences,
-    rooted_calls: Occurrences,
+    calls: OccurrenceIndex<SymbolPath>,
+    rooted_calls: OccurrenceIndex<SymbolPath>,
     module_calls: ModuleOccurrences,
-    reads: Occurrences,
-    rooted_reads: Occurrences,
+    reads: OccurrenceIndex<SymbolPath>,
+    rooted_reads: OccurrenceIndex<SymbolPath>,
     module_reads: ModuleOccurrences,
-    returned_calls: OccurrenceIndex<ModuleExportKey>,
-    returned_reads: OccurrenceIndex<ModuleExportKey>,
+    returned_calls: OccurrenceIndex<ReturnedMemberKey>,
+    returned_reads: OccurrenceIndex<ReturnedMemberKey>,
     instance_calls: OccurrenceIndex<InstanceMemberKey>,
 }
 
@@ -142,7 +145,7 @@ impl OccurrenceIndexes {
 
     #[cfg(test)]
     pub(in crate::analysis) fn has_member_call(&self, chain: &str) -> bool {
-        self.members.calls.get(chain).is_some()
+        self.members.calls.get(&SymbolPath::from(chain)).is_some()
     }
 
     #[cfg(test)]
@@ -298,7 +301,7 @@ mod tests {
             .members
             .calls
             .iter()
-            .filter(|(symbol, _)| *symbol == "client.request")
+            .filter(|(symbol, _)| **symbol == SymbolPath::from_chain("client.request"))
             .flat_map(|(_, occurrences)| occurrences.iter().map(Occurrence::span))
             .collect::<Vec<_>>();
         assert_eq!(evidence.len(), 1);

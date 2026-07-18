@@ -7,25 +7,26 @@
 use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase};
 
 use super::super::{BindingProvenance, ScopeGraph};
+use crate::analysis::SymbolPath;
 
 pub(in crate::analysis) trait RootedExprContext {
     /// Resolve an identifier to a rooted chain at its use position.
-    fn rooted_ident_chain(&self, ident: &Ident) -> Option<String>;
+    fn rooted_ident_chain(&self, ident: &Ident) -> Option<SymbolPath>;
     /// Resolve a statically named member to a rooted chain.
-    fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String>;
+    fn rooted_member_chain(&self, member: &MemberExpr) -> Option<SymbolPath>;
 }
 
 impl RootedExprContext for ScopeGraph {
-    fn rooted_ident_chain(&self, ident: &Ident) -> Option<String> {
+    fn rooted_ident_chain(&self, ident: &Ident) -> Option<SymbolPath> {
         if self.has_dynamic_lookup_at(ident.span) {
             return None;
         }
         match self.binding_at(ident.sym.as_ref(), ident.span) {
-            None if self.is_global(ident.sym.as_ref()) => Some(ident.sym.to_string()),
+            None if self.is_global(ident.sym.as_ref()) => Some(ident.sym.as_ref().into()),
             Some(
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. },
-            ) => Some(target.to_string()),
+            ) => Some(target.clone()),
             Some(
                 BindingProvenance::BoundModuleCallable { .. }
                 | BindingProvenance::Local
@@ -38,11 +39,11 @@ impl RootedExprContext for ScopeGraph {
                 | BindingProvenance::StaticObjectValues(_),
             )
             | None => None,
-            Some(BindingProvenance::ReturnedObject { source }) => Some(source.to_string()),
+            Some(BindingProvenance::ReturnedObject { source }) => Some(source.clone()),
         }
     }
 
-    fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String> {
+    fn rooted_member_chain(&self, member: &MemberExpr) -> Option<SymbolPath> {
         Self::rooted_member_chain(self, member)
     }
 }
@@ -50,9 +51,9 @@ impl RootedExprContext for ScopeGraph {
 pub(in crate::analysis) fn rooted_expr_chain_with(
     context: &impl RootedExprContext,
     expr: &Expr,
-) -> Option<String> {
+) -> Option<SymbolPath> {
     match expr {
-        Expr::This(_) => Some("this".to_string()),
+        Expr::This(_) => Some("this".into()),
         Expr::Ident(ident) => context.rooted_ident_chain(ident),
         Expr::Member(member) => context.rooted_member_chain(member),
         Expr::Call(call) => {
@@ -72,7 +73,7 @@ pub(in crate::analysis) fn rooted_expr_chain_with(
 
 impl ScopeGraph {
     /// Resolve a supported expression shape to a rooted symbol path.
-    pub(in crate::analysis) fn rooted_expr_chain(&self, expr: &Expr) -> Option<String> {
+    pub(in crate::analysis) fn rooted_expr_chain(&self, expr: &Expr) -> Option<SymbolPath> {
         rooted_expr_chain_with(self, expr)
     }
 }

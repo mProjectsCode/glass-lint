@@ -175,14 +175,59 @@ pub enum RuleState {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct RuleOverride {
-    selector: String,
+    #[serde(deserialize_with = "deserialize_selector")]
+    selector: RuleSelector,
     enabled: bool,
+}
+
+/// Parsed rule selector. The wildcard language is intentionally tiny: `*`
+/// matches any sequence of characters, while all other characters are
+/// literal. Keeping the parsed shape here prevents validation and execution
+/// from maintaining separate interpretations of the same selector.
+#[derive(Clone, Debug, serde::Serialize, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct RuleSelector(String);
+
+fn deserialize_selector<'de, D>(deserializer: D) -> Result<RuleSelector, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+    RuleSelector::parse(value).map_err(serde::de::Error::custom)
+}
+
+impl RuleSelector {
+    fn parse(selector: String) -> Result<Self, LintConfigError> {
+        if selector.is_empty()
+            || selector
+                .chars()
+                .any(|c| c == '?' || c == '[' || c == ']' || c == '{' || c == '}')
+        {
+            return Err(LintConfigError::InvalidSelector(selector));
+        }
+        RuleId::parse(selector.replace('*', "placeholder"))
+            .map_err(|_| LintConfigError::InvalidSelector(selector.clone()))?;
+        Ok(Self(selector))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn matches(&self, id: &str) -> bool {
+        self.0.split('*').enumerate().all(|(index, part)| {
+            if index == 0 {
+                id.starts_with(part)
+            } else {
+                id.contains(part)
+            }
+        }) && (self.0.ends_with('*') || id.ends_with(self.0.rsplit('*').next().unwrap_or_default()))
+    }
 }
 
 impl RuleOverride {
     pub fn new(selector: impl Into<String>, state: RuleState) -> Result<Self, LintConfigError> {
-        let selector = selector.into();
-        validate_selector(&selector)?;
+        let selector = RuleSelector::parse(selector.into())?;
         Ok(Self {
             selector,
             enabled: state == RuleState::Enabled,
@@ -190,7 +235,7 @@ impl RuleOverride {
     }
 
     pub fn selector(&self) -> &str {
-        &self.selector
+        self.selector.as_str()
     }
 
     pub fn state(&self) -> RuleState {
@@ -238,27 +283,30 @@ impl RuleSelection {
     }
 }
 
-fn validate_selector(selector: &str) -> Result<(), LintConfigError> {
-    if selector.is_empty()
-        || selector
-            .chars()
-            .any(|c| c == '?' || c == '[' || c == ']' || c == '{' || c == '}')
-    {
-        return Err(LintConfigError::InvalidSelector(selector.into()));
-    }
-    RuleId::parse(selector.replace('*', "placeholder"))
-        .map_err(|_| LintConfigError::InvalidSelector(selector.into()))?;
-    Ok(())
-}
-
-pub fn selector_matches(selector: &str, id: &str) -> bool {
-    selector.split('*').enumerate().all(|(i, part)| {
-        if i == 0 {
-            id.starts_with(part)
-        } else {
-            id.contains(part)
+pub fn validate_selection(
+    selection: &RuleSelection,
+    catalog: &RuleCatalog,
+) -> Result<(), LintConfigError> {
+    for override_ in selection.overrides() {
+        if catalog
+            .rule_ids()
+            .iter()
+            .any(|id| override_.selector.matches(id.as_str()))
+        {
+            continue;
         }
-    }) && (selector.ends_with('*') || id.ends_with(selector.rsplit('*').next().unwrap_or_default()))
+        if !override_.selector.as_str().contains('*') {
+            return Err(LintConfigError::UnknownRule(
+                RuleId::parse(override_.selector.as_str().to_owned()).map_err(|_| {
+                    LintConfigError::InvalidSelector(override_.selector.as_str().into())
+                })?,
+            ));
+        }
+        return Err(LintConfigError::InvalidSelector(
+            override_.selector.as_str().into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Caller-supplied input to linter construction. Validation occurs in
@@ -345,6 +393,7 @@ impl Linter {
             }
             ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
         })?;
+        validate_selection(&config.selection, &catalog)?;
         let mut enabled = Vec::new();
         for (index, rule_id) in catalog.rule_ids().iter().enumerate() {
             let baseline = match config.selection.baseline {
@@ -356,30 +405,12 @@ impl Linter {
             };
             let mut state = baseline;
             for override_ in &config.selection.overrides {
-                if selector_matches(override_.selector(), rule_id.as_str()) {
+                if override_.selector.matches(rule_id.as_str()) {
                     state = override_.state() == RuleState::Enabled;
                 }
             }
             if state {
                 enabled.push(crate::api::classification::RuleIndex::new(index));
-            }
-        }
-        for override_ in &config.selection.overrides {
-            if !catalog
-                .rule_ids()
-                .iter()
-                .any(|id| selector_matches(override_.selector(), id.as_str()))
-            {
-                if !override_.selector().contains('*') {
-                    return Err(LintConfigError::UnknownRule(
-                        RuleId::parse(override_.selector()).map_err(|_| {
-                            LintConfigError::InvalidSelector(override_.selector().into())
-                        })?,
-                    ));
-                }
-                return Err(LintConfigError::InvalidSelector(
-                    override_.selector().into(),
-                ));
             }
         }
         config

@@ -5,6 +5,7 @@ use super::{
     SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,
 };
 use crate::analysis::{
+    SymbolPath,
     scope::ScopeId,
     syntax::{BudgetComponent, UnknownReason},
 };
@@ -29,10 +30,10 @@ impl Resolver {
             return Self::unknown_with_reason(UnknownReason::Cycle);
         }
         let seed = self.scopes.ident_value_seed(ident);
-        let rooted_chain = seed.rooted_chain.map(|chain| chain.to_string());
+        let rooted_chain = seed.rooted_chain;
         let id = match seed.constant {
             ConstValue::Unknown => {
-                self.intern_call_value(&seed.call, rooted_chain.as_deref(), seed.binding)
+                self.intern_call_value(&seed.call, rooted_chain.as_ref(), seed.binding)
             }
             value => self.intern_const_value(value, seed.binding),
         };
@@ -49,7 +50,7 @@ impl Resolver {
                 observed: None,
             })
         } else {
-            self.call_provenance_at(id, rooted_chain.as_deref(), ident.span)
+            self.call_provenance_at(id, rooted_chain.as_ref(), ident.span)
         };
         let module_member = match &call {
             SymbolCallProvenance::ModuleExport { module, export } => {
@@ -121,10 +122,10 @@ impl Resolver {
             return Self::unknown_with_reason(UnknownReason::Cycle);
         }
         let seed = self.scopes.member_value_seed(member);
-        let syntactic = seed.syntactic_chain.map(|chain| chain.to_string());
+        let syntactic = seed.syntactic_chain;
         // Prefer the alias-expanded path. Falling back to a rooted member keeps
         // direct global/`this` access available when no local alias is present.
-        let rooted_chain = seed.rooted_chain.map(|chain| chain.to_string());
+        let rooted_chain = seed.rooted_chain;
         let module_member = seed.module_member;
         let scoped_call = match &module_member {
             Some(SymbolMemberProvenance::ModuleNamespace { module, member }) => {
@@ -135,7 +136,7 @@ impl Resolver {
             }
             None => SymbolCallProvenance::Local,
         };
-        let id = self.intern_call_value(&scoped_call, rooted_chain.as_deref(), seed.binding);
+        let id = self.intern_call_value(&scoped_call, rooted_chain.as_ref(), seed.binding);
         let call = if id == ValueId::UNKNOWN && self.value_arena_exhausted() {
             SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
                 component: BudgetComponent::Values,
@@ -143,7 +144,7 @@ impl Resolver {
                 observed: None,
             })
         } else {
-            self.call_provenance_at(id, rooted_chain.as_deref(), member.span)
+            self.call_provenance_at(id, rooted_chain.as_ref(), member.span)
         };
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
             self.values
@@ -155,9 +156,7 @@ impl Resolver {
             rooted_chain,
             call,
             module_member,
-            returned_member: seed
-                .returned_member
-                .map(|(source, member)| (source.to_string(), member)),
+            returned_member: seed.returned_member,
             bound_arguments: None,
             syntactic_chain: syntactic,
         };
@@ -246,12 +245,14 @@ impl Resolver {
         Some(keys)
     }
 
-    pub(in crate::analysis) fn rooted_expr_chain(&self, expr: &Expr) -> Option<String> {
+    pub(in crate::analysis) fn rooted_expr_chain(&self, expr: &Expr) -> Option<SymbolPath> {
         match expr {
-            Expr::Ident(ident) => self
-                .resolve_ident(ident)
-                .rooted_chain
-                .or_else(|| ident.span.is_dummy().then(|| ident.sym.to_string())),
+            Expr::Ident(ident) => self.resolve_ident(ident).rooted_chain.or_else(|| {
+                ident
+                    .span
+                    .is_dummy()
+                    .then(|| SymbolPath::from(ident.sym.as_ref()))
+            }),
             Expr::Member(member) => self.resolve_member(member).rooted_chain,
             Expr::Call(call) => match &call.callee {
                 Callee::Expr(callee) => self.rooted_expr_chain(callee),
@@ -279,7 +280,7 @@ impl Resolver {
     pub(in crate::analysis) fn member_expression_chain(
         &self,
         member: &MemberExpr,
-    ) -> Option<String> {
+    ) -> Option<SymbolPath> {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };

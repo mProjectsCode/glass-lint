@@ -244,7 +244,7 @@ impl FunctionSummaries {
                 else {
                     continue;
                 };
-                let Some(chain) = rooted_chain.as_deref().or(syntactic_chain.as_deref()) else {
+                let Some(chain) = rooted_chain.as_ref().or(syntactic_chain.as_ref()) else {
                     continue;
                 };
                 for flow_id in flow_index.sink_ids(chain).into_iter().flatten() {

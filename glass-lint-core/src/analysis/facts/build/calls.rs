@@ -12,6 +12,7 @@ use super::{
     Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId, ValueProjection,
     VisitWith, effective_callee_expr, member_property_name,
 };
+use crate::analysis::SymbolPath;
 
 impl FactBuilder<'_> {
     /// Record a direct, imported, optional, or callable-wrapper invocation in
@@ -470,7 +471,7 @@ impl FactBuilder<'_> {
                     callee_span: self.byte_range(ident.span)?,
                     callee_name: Some(ident.sym.to_string()),
                     call_provenance: resolved.call.clone(),
-                    syntactic_chain: extracted.map(|(_, _, member)| member),
+                    syntactic_chain: extracted.map(|(_, _, member)| member.into()),
                     rooted_chain: resolved.rooted_chain.clone(),
                     module_member: resolved.module_member.clone(),
                     returned_member: resolved.returned_member.clone(),
@@ -555,8 +556,8 @@ impl FactBuilder<'_> {
                 .resolver
                 .resolve_expr(receiver)
                 .rooted_chain
-                .as_deref()
-                .is_some_and(|chain| chain == "this");
+                .as_ref()
+                .is_some_and(|chain| chain.eq_chain("this"));
         if is_this { self.current_class() } else { None }
     }
 
@@ -647,10 +648,13 @@ pub(super) struct ResolvedCallee {
     callee_span: crate::ByteRange,
     callee_name: Option<String>,
     call_provenance: SymbolCallProvenance,
-    syntactic_chain: Option<String>,
-    rooted_chain: Option<String>,
+    syntactic_chain: Option<SymbolPath>,
+    rooted_chain: Option<SymbolPath>,
     module_member: Option<SymbolMemberProvenance>,
-    returned_member: Option<(String, String)>,
+    returned_member: Option<(
+        super::super::super::value::SymbolPath,
+        super::super::super::value::SymbolPath,
+    )>,
     bound_arguments: Option<Vec<Option<BoundArgument>>>,
     instance_class: Option<(String, String)>,
     target_function: Option<crate::analysis::value::FunctionId>,

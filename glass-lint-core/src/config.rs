@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AnalysisLimits, RuleCatalog, RuleId,
+    AnalysisLimits, RuleCatalog,
     lint::{LintConfigError, RuleSelection},
 };
 
@@ -25,23 +25,6 @@ impl CoreConfig {
         self.limits
             .validate()
             .map_err(LintConfigError::InvalidLimits)?;
-        for override_ in self.selection.overrides() {
-            if !catalog
-                .rule_ids()
-                .iter()
-                .any(|id| crate::lint::selector_matches(override_.selector(), id.as_str()))
-            {
-                if !override_.selector().contains('*') {
-                    let rule = RuleId::parse(override_.selector().to_owned()).map_err(|_| {
-                        LintConfigError::InvalidSelector(override_.selector().to_owned())
-                    })?;
-                    return Err(LintConfigError::UnknownRule(rule));
-                }
-                return Err(LintConfigError::InvalidSelector(
-                    override_.selector().to_owned(),
-                ));
-            }
-        }
-        Ok(())
+        crate::lint::validate_selection(&self.selection, catalog)
     }
 }

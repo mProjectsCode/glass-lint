@@ -422,12 +422,7 @@ pub fn normalize_strings(values: &mut Vec<String>) {
 }
 
 pub fn normalize_member_chain(value: &str) -> String {
-    value
-        .split('.')
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join(".")
+    crate::analysis::canonical_symbol_path(value)
 }
 
 pub fn canonical_rooted_chain(value: &str) -> &str {

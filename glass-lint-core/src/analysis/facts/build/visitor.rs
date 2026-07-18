@@ -205,23 +205,26 @@ impl Visit for FactBuilder<'_> {
                     Some(
                         resolved
                             .rooted_chain
-                            .unwrap_or_else(|| ident.sym.to_string()),
+                            .map_or_else(|| ident.sym.to_string(), |chain| chain.to_string()),
                     ),
                     p,
                 )
             }
             Expr::Member(member) => {
                 let member_resolved = self.resolver.resolve_member(member);
-                let global_name = member_resolved.rooted_chain.as_deref().and_then(|chain| {
-                    chain
-                        .strip_prefix("globalThis.")
-                        .filter(|_| {
-                            matches!(
-                                self.resolver.resolve_expr(&member.obj).call,
-                                SymbolCallProvenance::Global { ref name } if name == "globalThis"
-                            )
-                        })
-                        .or_else(|| (chain == "Function").then_some(chain))
+                let global_name = member_resolved.rooted_chain.as_ref().and_then(|chain| {
+                    if chain.eq_chain("globalThis.URL")
+                        && matches!(
+                            self.resolver.resolve_expr(&member.obj).call,
+                            SymbolCallProvenance::Global { ref name } if name == "globalThis"
+                        )
+                    {
+                        Some("URL")
+                    } else if chain.eq_chain("Function") {
+                        Some("Function")
+                    } else {
+                        None
+                    }
                 });
                 if let Some(name) = global_name {
                     let name = name.to_string();

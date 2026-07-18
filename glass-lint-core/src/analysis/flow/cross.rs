@@ -25,6 +25,25 @@ use crate::{
 };
 
 const MAX_CONTEXTS: usize = 65_536;
+const MAX_SOURCE_REFINEMENT_ROUNDS: usize = 64;
+const MAX_RELATED_EVIDENCE: usize = 8;
+
+#[derive(Clone, Copy)]
+enum EvidenceRole {
+    Source,
+    Requirement,
+    Sink,
+}
+
+impl EvidenceRole {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Source => "flow source",
+            Self::Requirement => "flow requirement",
+            Self::Sink => "flow sink",
+        }
+    }
+}
 
 #[derive(Debug, Default)]
 /// Global work budget for qualified flow propagation.
@@ -81,7 +100,7 @@ impl SourceBudget {
         // Source identities are refined to a fixed point, with a hard round
         // limit that reports exhaustion rather than guessing a partial state.
         self.rounds = self.rounds.saturating_add(1);
-        self.rounds <= 64
+        self.rounds <= MAX_SOURCE_REFINEMENT_ROUNDS
     }
 
     fn stabilized(&mut self) {
@@ -446,13 +465,13 @@ impl UsageProjector<'_> {
     fn apply_receiver(
         &mut self,
         event: FactId,
-        chain: Option<&String>,
+        chain: Option<&crate::analysis::SymbolPath>,
         call_arguments: &[crate::analysis::facts::CallArgInfo],
     ) {
         let mut next = self.state.clone();
         for (index, requirement) in self.flow.requirements.iter().enumerate() {
             if let CompiledObjectRequirement::MemberCall { member, arguments } = requirement
-                && chain_matches(chain.map(String::as_str), member)
+                && chain_matches(chain, member)
                 && arguments.iter().all(|matcher| {
                     call_arguments
                         .get(matcher.index)
@@ -475,13 +494,11 @@ impl UsageProjector<'_> {
     fn apply_argument(
         &mut self,
         event: FactId,
-        chain: Option<&String>,
+        chain: Option<&crate::analysis::SymbolPath>,
         rooted: bool,
         argument: usize,
     ) {
-        if self
-            .flow
-            .sink_matches(chain.map(String::as_str), rooted, argument)
+        if self.flow.sink_matches(chain, rooted, argument)
             && self.flow.requirements_ready(self.state.requirements.len())
             && self.context.crossed
         {
@@ -706,8 +723,11 @@ fn usage_matches_context(
     }
 }
 
-fn chain_matches(chain: Option<&str>, member: &str) -> bool {
-    chain.is_some_and(|chain| chain == member || chain.rsplit('.').next() == Some(member))
+fn chain_matches(
+    chain: Option<&crate::analysis::SymbolPath>,
+    member: &crate::analysis::SymbolPath,
+) -> bool {
+    chain.is_some_and(|chain| chain == member || chain.last_segment() == member.last_segment())
 }
 
 fn emit(
@@ -757,31 +777,30 @@ fn related_evidence(
     sink_module: ModuleId,
     sink_event: FactId,
 ) -> Vec<RelatedClassificationEvidence> {
-    let mut related = vec![RelatedClassificationEvidence {
-        module: state.source.module.get(),
-        event: state.source.fact.0,
-        kind: MatchKind::CallArgument,
-        symbol: "flow source".into(),
-    }];
+    let mut related = vec![related_event(&state.source, EvidenceRole::Source)];
     related.extend(
         state
             .requirements
             .values()
-            .map(|event| RelatedClassificationEvidence {
-                module: event.module.get(),
-                event: event.fact.0,
-                kind: MatchKind::CallArgument,
-                symbol: "flow requirement".into(),
-            }),
+            .map(|event| related_event(event, EvidenceRole::Requirement)),
     );
     related.push(RelatedClassificationEvidence {
         module: sink_module.get(),
         event: sink_event.0,
         kind: MatchKind::CallArgument,
-        symbol: "flow sink".into(),
+        symbol: EvidenceRole::Sink.label().into(),
     });
     let mut seen = BTreeSet::new();
     related.retain(|item| seen.insert((item.module, item.event, item.kind, item.symbol.clone())));
-    related.truncate(8);
+    related.truncate(MAX_RELATED_EVIDENCE);
     related
+}
+
+fn related_event(event: &QualifiedEvent, role: EvidenceRole) -> RelatedClassificationEvidence {
+    RelatedClassificationEvidence {
+        module: event.module.get(),
+        event: event.fact.0,
+        kind: MatchKind::CallArgument,
+        symbol: role.label().into(),
+    }
 }

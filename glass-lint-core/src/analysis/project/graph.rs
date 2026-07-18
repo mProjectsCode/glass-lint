@@ -94,13 +94,8 @@ impl ProjectSemanticModel {
     fn validate_imported_exports(&mut self) {
         for module in self.modules.values() {
             for request in module.local().interface().requests() {
-                let Ok(range) = module.source_context().range(request.span()) else {
+                let Some(key) = self.request_key(module.id(), request) else {
                     continue;
-                };
-                let key = crate::project::ResolutionRequestKey {
-                    importer: module.path().clone(),
-                    kind: request.kind(),
-                    range,
                 };
                 let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key)
                 else {

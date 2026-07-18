@@ -155,9 +155,7 @@ impl LexicalScopeCollector {
             .or_else(|| self.const_provenance(expr))
             .or_else(|| {
                 self.rooted_expr_name(expr)
-                    .map(|target| BindingProvenance::ValueAlias {
-                        target: target.into(),
-                    })
+                    .map(|target| BindingProvenance::ValueAlias { target })
             })
     }
 
@@ -190,7 +188,7 @@ impl LexicalScopeCollector {
                     })
                     .or_else(|| {
                         self.rooted_expr_name(&argument.expr)
-                            .map(|value| BoundArgument::RootedExpression(value.into()))
+                            .map(BoundArgument::RootedExpression)
                     })
             })
             .collect();
@@ -203,7 +201,7 @@ impl LexicalScopeCollector {
                 })
             }
             _ => Some(BindingProvenance::BoundCallable {
-                target: target.into(),
+                target,
                 bound_arguments,
             }),
         }
@@ -222,11 +220,7 @@ impl LexicalScopeCollector {
                     return None;
                 }
                 let source = self.rooted_expr_name(callee)?;
-                source
-                    .contains('.')
-                    .then_some(BindingProvenance::ReturnedObject {
-                        source: source.into(),
-                    })
+                (!source.is_root()).then_some(BindingProvenance::ReturnedObject { source })
             }
             Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
                 BindingProvenance::ReturnedObject { source } => {
@@ -246,9 +240,7 @@ impl LexicalScopeCollector {
                     });
                 }
                 self.rooted_expr_name(expr)
-                    .map(|source| BindingProvenance::ReturnedObject {
-                        source: source.into(),
-                    })
+                    .map(|source| BindingProvenance::ReturnedObject { source })
             }
             Expr::Paren(paren) => self.returned_object_provenance(&paren.expr),
             Expr::Seq(sequence) => sequence
@@ -273,7 +265,7 @@ impl LexicalScopeCollector {
                 return None;
             };
             let target = self.rooted_expr_name(&property.value)?;
-            values.insert(property_name(&property.key)?, target.into());
+            values.insert(property_name(&property.key)?, target);
         }
         Some(BindingProvenance::StaticObjectValues(values))
     }

@@ -6,7 +6,7 @@
 //! deterministically.
 
 use super::matcher::{
-    ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
+    ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
     MatcherSet, MemberCallMatcher, MemberCallProvenance, MemberReadProvenance, ObjectEventMatcher,
     ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicate, SymbolProvenance, ValueMatcher,
     ValueMatcherKind,
@@ -67,27 +67,6 @@ pub(super) fn validate(matcher: &MatcherSet) -> Result<(), String> {
     }
     for flow in &matcher.flows {
         validate_object_flow(flow, "flow")?;
-    }
-    Ok(())
-}
-
-/// Validate one matcher while preserving its catalog position in errors.
-pub fn validate_matcher_at(matcher: &Matcher, index: usize) -> Result<(), String> {
-    if let Matcher::ObjectFlow(flow) = matcher {
-        let path = format!("matcher[{index}].flow");
-        validate_name_at(&flow.symbol, &format!("{path}.symbol"))?;
-        if flow.sources.is_empty() {
-            return Err(format!("{path}.source: at least one source is required"));
-        }
-        for source in &flow.sources {
-            source.validate_at(&format!("{path}.source"))?;
-        }
-        if let Some(condition) = &flow.condition {
-            condition.validate_at(&format!("{path}.condition"))?;
-        }
-        if let Some(completion) = &flow.completion {
-            completion.validate_at(&format!("{path}.completion"))?;
-        }
     }
     Ok(())
 }

@@ -27,7 +27,7 @@ use super::{
         SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
     },
-    value::{BindingKey, MAX_VALUES, Value, ValueId, ValueTable},
+    value::{BindingKey, MAX_VALUES, SymbolPath, Value, ValueId, ValueTable},
 };
 
 #[derive(Debug, Clone)]
@@ -36,18 +36,18 @@ pub(super) struct ResolvedValue {
     /// resolver cannot describe precisely enough to match.
     pub(super) id: ValueId,
     /// Canonical rooted spelling, when the value can be followed safely.
-    pub(super) rooted_chain: Option<String>,
+    pub(super) rooted_chain: Option<SymbolPath>,
     /// Callable provenance used by global and module-export call matchers.
     pub(super) call: SymbolCallProvenance,
     /// Namespace provenance for member matchers, retained independently from
     /// `call` because a namespace member can also be read without being called.
     pub(super) module_member: Option<SymbolMemberProvenance>,
     /// Provenance for a member read from a function or constructor result.
-    pub(super) returned_member: Option<(String, String)>,
+    pub(super) returned_member: Option<(SymbolPath, SymbolPath)>,
     /// Arguments captured by a modeled callable value such as `bind`.
     pub(super) bound_arguments: Option<Vec<Option<super::scope::BoundArgument>>>,
     /// The source spelling before aliases are expanded.
-    pub(super) syntactic_chain: Option<String>,
+    pub(super) syntactic_chain: Option<SymbolPath>,
 }
 
 impl ResolvedValue {
@@ -148,12 +148,9 @@ impl Resolver {
     /// Convert a canonical member chain into the arena's structured value.
     /// Keeping this conversion beside `Resolver` ensures callers do not need
     /// to know how rooted values are represented internally.
-    pub(super) fn rooted_value(chain: &str) -> Value {
-        let mut segments = chain.split('.');
-        let root = segments.next().unwrap_or_default().to_string();
+    pub(super) fn rooted_value(chain: &SymbolPath) -> Value {
         Value::RootedMember {
-            root,
-            path: segments.map(str::to_string).collect(),
+            path: chain.clone(),
         }
     }
 

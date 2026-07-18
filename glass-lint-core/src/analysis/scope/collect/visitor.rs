@@ -94,10 +94,10 @@ impl Visit for LexicalScopeCollector {
                 .as_deref()
                 .and_then(|init| self.rooted_expr_name(init));
             let function_constructor_alias = value_alias
-                .as_deref()
-                .filter(|target| *target == "Function")
+                .as_ref()
+                .filter(|target| target.eq_chain("Function"))
                 .map(|target| BindingProvenance::ValueAlias {
-                    target: target.to_string().into(),
+                    target: target.clone(),
                 });
             let returned_alias = declarator
                 .init
@@ -135,9 +135,7 @@ impl Visit for LexicalScopeCollector {
                 (&declarator.name, function_constructor_alias)
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
-            } else if value_alias
-                .as_deref()
-                .is_none_or(|target| target.contains('.'))
+            } else if value_alias.as_ref().is_none_or(|target| !target.is_root())
                 && let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, returned_alias)
             {
                 self.insert(scope, ident.id.sym.to_string(), provenance);
@@ -151,10 +149,10 @@ impl Visit for LexicalScopeCollector {
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
         let rooted_alias = self.rooted_expr_name(&assignment.right);
         let function_constructor_alias = rooted_alias
-            .as_deref()
-            .filter(|target| *target == "Function")
+            .as_ref()
+            .filter(|target| target.eq_chain("Function"))
             .map(|target| BindingProvenance::ValueAlias {
-                target: target.to_string().into(),
+                target: target.clone(),
             });
         let provenance = self
             .bound_callable_provenance(&assignment.right)
@@ -162,11 +160,7 @@ impl Visit for LexicalScopeCollector {
             .or(function_constructor_alias)
             .or_else(|| self.returned_object_provenance(&assignment.right))
             .or_else(|| self.const_provenance(&assignment.right))
-            .or_else(|| {
-                rooted_alias.map(|target| BindingProvenance::ValueAlias {
-                    target: target.into(),
-                })
-            })
+            .or_else(|| rooted_alias.map(|target| BindingProvenance::ValueAlias { target }))
             .unwrap_or(BindingProvenance::Local);
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
@@ -371,7 +365,7 @@ fn collect_derived_function_pattern(
         if let ObjectPatProp::KeyValue(property) = property
             && property_name(&property.key).as_deref() == Some("constructor")
         {
-            collector.collect_value_aliases(&property.value, "Function", scope);
+            collector.collect_value_aliases(&property.value, &"Function".into(), scope);
         }
     }
     true

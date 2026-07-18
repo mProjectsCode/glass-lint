@@ -10,6 +10,8 @@ use swc_ecma_ast::{
     Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp, OptChainBase, Pat,
 };
 
+use crate::analysis::SymbolPath;
+
 /// Find the lexical root identifier of a member/optional-chain expression.
 pub fn member_root_identifier(member: &MemberExpr) -> Option<&Ident> {
     expr_root_ident(&member.obj)
@@ -96,9 +98,9 @@ pub fn property_name(name: &swc_ecma_ast::PropName) -> Option<String> {
 }
 
 /// Render supported rooted expression shapes as a dotted syntax chain.
-pub fn expression_name(expr: &Expr) -> Option<String> {
+pub fn expression_name(expr: &Expr) -> Option<SymbolPath> {
     match expr {
-        Expr::Ident(ident) => Some(ident.sym.to_string()),
+        Expr::Ident(ident) => Some(SymbolPath::from(ident.sym.as_ref())),
         Expr::Member(member) => member_expression_chain(member),
         Expr::Call(call) => {
             let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
@@ -106,7 +108,7 @@ pub fn expression_name(expr: &Expr) -> Option<String> {
             };
             expression_name(callee)
         }
-        Expr::This(_) => Some("this".to_string()),
+        Expr::This(_) => Some(SymbolPath::from("this")),
         Expr::OptChain(chain) => match &*chain.base {
             OptChainBase::Member(member) => member_expression_chain(member),
             OptChainBase::Call(call) => expression_name(&call.callee),
@@ -121,10 +123,11 @@ pub fn expression_name(expr: &Expr) -> Option<String> {
 }
 
 /// Render a member expression as `object.property` when both parts are static.
-pub fn member_expression_chain(member: &MemberExpr) -> Option<String> {
+pub fn member_expression_chain(member: &MemberExpr) -> Option<SymbolPath> {
     let mut properties = Vec::new();
     let mut expression = &member.obj;
     properties.push(member_property_name(&member.prop)?);
+
     loop {
         match &**expression {
             Expr::Member(parent) => {
@@ -133,21 +136,15 @@ pub fn member_expression_chain(member: &MemberExpr) -> Option<String> {
             }
             Expr::Ident(ident) => {
                 properties.reverse();
-                let mut result = ident.sym.to_string();
-                for property in properties {
-                    result.push('.');
-                    result.push_str(&property);
-                }
-                return Some(result);
+                let mut segments = vec![ident.sym.to_string()];
+                segments.extend(properties);
+                return Some(SymbolPath::from_segments(segments));
             }
             Expr::This(_) => {
                 properties.reverse();
-                let mut result = String::from("this");
-                for property in properties {
-                    result.push('.');
-                    result.push_str(&property);
-                }
-                return Some(result);
+                let mut segments = vec![String::from("this")];
+                segments.extend(properties);
+                return Some(SymbolPath::from_segments(segments));
             }
             Expr::Call(call) => {
                 let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
@@ -191,10 +188,13 @@ pub fn function_prototype_builtin(expr: &Expr) -> Option<&'static str> {
     let Expr::Member(member) = &**callee else {
         return None;
     };
-    let builtin = match member_expression_chain(member)?.as_str() {
-        "Object.getPrototypeOf" => "Object",
-        "Reflect.getPrototypeOf" => "Reflect",
-        _ => return None,
+    let chain = member_expression_chain(member)?;
+    let builtin = if chain == SymbolPath::from("Object.getPrototypeOf") {
+        "Object"
+    } else if chain == SymbolPath::from("Reflect.getPrototypeOf") {
+        "Reflect"
+    } else {
+        return None;
     };
     (call.args.len() == 1 && is_function_like_expr(&call.args[0].expr)).then_some(builtin)
 }

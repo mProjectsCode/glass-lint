@@ -5,11 +5,12 @@
 //! later sinks cannot inherit stale state.
 
 use super::{CallArgInfo, FactId, FactPayload, FlowState, ObjectFlowProjector, ObjectId, ValueId};
+use crate::analysis::SymbolPath;
 
 #[derive(Debug, Clone)]
 pub(super) struct SourceCall {
     /// Rooted or syntactic chain selected as the matcher lookup key.
-    chain: String,
+    chain: SymbolPath,
     /// Effective arguments after any call/apply wrapper has been removed.
     args: Vec<CallArgInfo>,
     /// Original fact used for deterministic evidence anchoring.
@@ -38,8 +39,8 @@ impl SourceCall {
         };
         Self::from_parts(
             fact.id,
-            rooted_chain.as_deref(),
-            syntactic_chain.as_deref(),
+            rooted_chain.as_ref(),
+            syntactic_chain.as_ref(),
             callee_name.as_deref(),
             args,
             unwrap.as_deref(),
@@ -49,8 +50,8 @@ impl SourceCall {
     /// Build a source-call view from explicit canonical call components.
     pub(super) fn from_parts(
         fact_id: FactId,
-        rooted_chain: Option<&str>,
-        syntactic_chain: Option<&str>,
+        rooted_chain: Option<&SymbolPath>,
+        syntactic_chain: Option<&SymbolPath>,
         callee_name: Option<&str>,
         args: &[CallArgInfo],
         unwrap: Option<&crate::analysis::facts::CallUnwrap>,
@@ -60,8 +61,8 @@ impl SourceCall {
                 (
                     rooted_chain
                         .or(syntactic_chain)
-                        .or(callee_name)
-                        .map(str::to_owned),
+                        .cloned()
+                        .or_else(|| callee_name.map(SymbolPath::from)),
                     args.to_vec(),
                 )
             },
@@ -75,7 +76,7 @@ impl SourceCall {
         })
     }
 
-    pub(super) fn chain(&self) -> &str {
+    pub(super) fn chain(&self) -> &SymbolPath {
         &self.chain
     }
 
@@ -131,7 +132,7 @@ impl ObjectFlowProjector<'_, '_> {
     /// relationship without duplicating the source event.
     fn match_source(
         &mut self,
-        chain: &str,
+        chain: &SymbolPath,
         args: &[CallArgInfo],
         source_fact: FactId,
         rooted: bool,
@@ -143,7 +144,7 @@ impl ObjectFlowProjector<'_, '_> {
             .filter(|id| {
                 self.flow_index.get(*id).is_some_and(|flow| {
                     flow.sources.iter().any(|source| {
-                        source.member_call == chain
+                        source.member_call == *chain
                             && source.provenance.matches_rooted(rooted)
                             && source.arguments.iter().all(|matcher| {
                                 args.get(matcher.index)

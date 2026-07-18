@@ -14,7 +14,10 @@ use swc_ecma_visit::VisitWith;
 
 use super::FactBuilder;
 use crate::{
-    analysis::module::{ModuleExport, ModuleRequestRole, ReExportBinding},
+    analysis::module::{
+        COMMONJS_EXPORTS, COMMONJS_MODULE, COMMONJS_REQUIRE, DEFAULT_EXPORT, ModuleExport,
+        ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,
+    },
     project::ResolutionRequestKind,
 };
 
@@ -114,7 +117,10 @@ impl FactBuilder<'_> {
                 let Expr::Ident(ident) = &**callee else {
                     return;
                 };
-                if !self.resolver.is_unshadowed_commonjs_name(ident, "require") {
+                if !self
+                    .resolver
+                    .is_unshadowed_commonjs_name(ident, COMMONJS_REQUIRE)
+                {
                     return;
                 }
                 if call.args.len() != 1 {
@@ -209,12 +215,12 @@ impl FactBuilder<'_> {
                             false,
                         ),
                         ExportSpecifier::Namespace(namespace) => ReExportBinding::new(
-                            "*".into(),
+                            NAMESPACE_EXPORT.into(),
                             crate::analysis::syntax::module_export_name(&namespace.name),
                             true,
                         ),
                         ExportSpecifier::Default(default) => ReExportBinding::new(
-                            "default".into(),
+                            DEFAULT_EXPORT.into(),
                             default.exported.sym.to_string(),
                             false,
                         ),
@@ -351,20 +357,22 @@ impl FactBuilder<'_> {
             return;
         };
         let property = crate::analysis::syntax::member_property_name(&member.prop);
-        if self.is_commonjs_name(&member.obj, "module") && property.as_deref() == Some("exports") {
+        if self.is_commonjs_name(&member.obj, COMMONJS_MODULE)
+            && property.as_deref() == Some(COMMONJS_EXPORTS)
+        {
             self.record_module_exports_assignment(assignment);
             return;
         }
-        if self.is_commonjs_name(&member.obj, "exports") {
+        if self.is_commonjs_name(&member.obj, COMMONJS_EXPORTS) {
             self.record_exports_assignment(assignment, property);
             return;
         }
         let Expr::Member(parent) = &*member.obj else {
             return;
         };
-        if !self.is_commonjs_name(&parent.obj, "module")
+        if !self.is_commonjs_name(&parent.obj, COMMONJS_MODULE)
             || crate::analysis::syntax::member_property_name(&parent.prop).as_deref()
-                != Some("exports")
+                != Some(COMMONJS_EXPORTS)
         {
             return;
         }

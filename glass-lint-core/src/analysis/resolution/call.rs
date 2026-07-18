@@ -17,7 +17,7 @@ impl Resolver {
     pub(super) fn call_provenance_at(
         &self,
         id: ValueId,
-        rooted: Option<&str>,
+        rooted: Option<&crate::analysis::SymbolPath>,
         span: swc_common::Span,
     ) -> SymbolCallProvenance {
         let provenance = self.call_provenance_for_value(id);
@@ -31,7 +31,9 @@ impl Resolver {
         }
         rooted
             .and_then(|chain| self.scopes.global_callable_member_at(chain, span))
-            .map_or(provenance, |name| SymbolCallProvenance::Global { name })
+            .map_or(provenance, |name| SymbolCallProvenance::Global {
+                name: name.to_string(),
+            })
     }
 
     /// Return a literal module name for an unshadowed global `require` call.
@@ -125,7 +127,7 @@ impl Resolver {
     pub(in crate::analysis) fn intern_call_value(
         &self,
         call: &SymbolCallProvenance,
-        rooted: Option<&str>,
+        rooted: Option<&crate::analysis::SymbolPath>,
         binding: Option<crate::analysis::value::BindingKey>,
     ) -> ValueId {
         let value = match call {
@@ -172,10 +174,15 @@ impl Resolver {
                 SymbolCallProvenance::ModuleExport { module, export }
             }
             Value::Callable(callable) => self.call_provenance_for_value(callable.target()),
-            Value::RootedMember { root, path }
-                if path.is_empty() && self.scopes.is_configured_global(&root) =>
+            Value::RootedMember { path }
+                if path.is_root()
+                    && path
+                        .first_segment()
+                        .is_some_and(|root| self.scopes.is_configured_global(root)) =>
             {
-                SymbolCallProvenance::Global { name: root }
+                SymbolCallProvenance::Global {
+                    name: path.first_segment().expect("root checked").to_owned(),
+                }
             }
             Value::Unknown => SymbolCallProvenance::Unknown(UnknownReason::Unsupported),
             _ => SymbolCallProvenance::Unknown(UnknownReason::Unresolved),

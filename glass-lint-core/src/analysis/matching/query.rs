@@ -47,8 +47,8 @@ impl OccurrenceIndexes {
                 .returned_calls
                 .iter()
                 .filter(|(key, _)| {
-                    root_or_descendant_matches(&clause.identity, key.module())
-                        && key.export() == member
+                    clause.identity.root_or_descendant_matches(key.source())
+                        && member == key.member()
                 })
                 .flat_map(|(_, values)| values.iter().copied())
                 .collect::<Vec<_>>()
@@ -58,8 +58,8 @@ impl OccurrenceIndexes {
                 .returned_reads
                 .iter()
                 .filter(|(key, _)| {
-                    root_or_descendant_matches(&clause.identity, key.module())
-                        && key.export() == member
+                    clause.identity.root_or_descendant_matches(key.source())
+                        && member == key.member()
                 })
                 .flat_map(|(_, values)| values.iter().copied())
                 .collect::<Vec<_>>()
@@ -75,12 +75,12 @@ impl OccurrenceIndexes {
                     } => {
                         key.identity().module() == expected_module
                             && key.identity().export() == expected_export
-                            && key.member() == member
+                            && member.eq_chain(key.member())
                     }
                     IdentityConstraint::PackageModuleExport { module, export } => {
                         module.matches(key.identity().module())
                             && key.identity().export() == export
-                            && key.member() == member
+                            && member.eq_chain(key.member())
                     }
                     _ => false,
                 })
@@ -116,25 +116,26 @@ impl OccurrenceIndexes {
             },
             EventPredicate::MemberCall { member } => match &clause.identity {
                 IdentityConstraint::Any { .. } => self.members.calls.get(member).cloned(),
-                IdentityConstraint::Rooted { path } if path != "navigator" => self
+                IdentityConstraint::Rooted { path } => self
                     .members
                     .rooted_calls
                     .iter()
-                    .filter(|(key, _)| rooted_alias_matches(path, key))
+                    .filter(|(key, _)| path.matches_global_object_alias(key))
                     .flat_map(|(_, values)| values.iter().copied())
                     .collect::<Vec<_>>()
                     .pipe_some(),
-                IdentityConstraint::Rooted { path } => self.members.rooted_calls.get(path).cloned(),
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_calls
-                    .get(&ModuleExportKey::new(module, member))
+                    .get(&ModuleExportKey::new(module, member.to_string()))
                     .cloned(),
                 IdentityConstraint::PackageModuleNamespace { module } => self
                     .members
                     .module_calls
                     .iter()
-                    .filter(|(key, _)| module.matches(key.module()) && key.export() == member)
+                    .filter(|(key, _)| {
+                        module.matches(key.module()) && member.eq_chain(key.export())
+                    })
                     .flat_map(|(_, values)| values.iter().copied())
                     .collect::<Vec<_>>()
                     .pipe_some(),
@@ -142,25 +143,26 @@ impl OccurrenceIndexes {
             },
             EventPredicate::MemberRead { member } => match &clause.identity {
                 IdentityConstraint::Any { .. } => self.members.reads.get(member).cloned(),
-                IdentityConstraint::Rooted { path } if path != "navigator" => self
+                IdentityConstraint::Rooted { path } => self
                     .members
                     .rooted_reads
                     .iter()
-                    .filter(|(key, _)| rooted_alias_matches(path, key))
+                    .filter(|(key, _)| path.matches_global_object_alias(key))
                     .flat_map(|(_, values)| values.iter().copied())
                     .collect::<Vec<_>>()
                     .pipe_some(),
-                IdentityConstraint::Rooted { path } => self.members.rooted_reads.get(path).cloned(),
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_reads
-                    .get(&ModuleExportKey::new(module, member))
+                    .get(&ModuleExportKey::new(module, member.to_string()))
                     .cloned(),
                 IdentityConstraint::PackageModuleNamespace { module } => self
                     .members
                     .module_reads
                     .iter()
-                    .filter(|(key, _)| module.matches(key.module()) && key.export() == member)
+                    .filter(|(key, _)| {
+                        module.matches(key.module()) && member.eq_chain(key.export())
+                    })
                     .flat_map(|(_, values)| values.iter().copied())
                     .collect::<Vec<_>>()
                     .pipe_some(),
@@ -246,10 +248,14 @@ impl OccurrenceIndexes {
                 self.call_indexes.calls.push(symbol, FactId(u32::MAX), span);
             }
             crate::api::classification::MatchKind::MemberCall => {
-                self.members.calls.push(symbol, FactId(u32::MAX), span);
+                self.members
+                    .calls
+                    .push(symbol.into(), FactId(u32::MAX), span);
             }
             crate::api::classification::MatchKind::MemberRead => {
-                self.members.reads.push(symbol, FactId(u32::MAX), span);
+                self.members
+                    .reads
+                    .push(symbol.into(), FactId(u32::MAX), span);
             }
             crate::api::classification::MatchKind::Import => {
                 self.literals.imports.push(symbol, FactId(u32::MAX), span);
@@ -269,24 +275,6 @@ impl OccurrenceIndexes {
             crate::api::classification::MatchKind::CallArgument => {}
         }
     }
-}
-
-fn rooted_alias_matches(expected: &str, found: &str) -> bool {
-    let expected = expected
-        .strip_prefix("window.")
-        .or_else(|| expected.strip_prefix("self."))
-        .or_else(|| expected.strip_prefix("globalThis."))
-        .unwrap_or(expected);
-    found == expected
-        || ["window.", "self.", "globalThis."].iter().any(|prefix| {
-            found
-                .strip_prefix(prefix)
-                .is_some_and(|rest| rest == expected)
-        })
-}
-
-fn root_or_descendant_matches(identity: &IdentityConstraint, source: &str) -> bool {
-    matches!(identity, IdentityConstraint::Rooted { path } if source == path || source.starts_with(&format!("{path}.")))
 }
 
 trait PipeSome: Sized {

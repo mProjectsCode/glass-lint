@@ -9,7 +9,7 @@
 use super::{
     BindingKey, BindingProvenance, Expr, Ident, IdentValueSeed, MemberExpr, MemberValueSeed,
     ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant, contains,
-    member_prefix_ends, member_root_identifier,
+    member_root_identifier,
 };
 
 impl ScopeGraph {
@@ -19,34 +19,36 @@ impl ScopeGraph {
     /// while deeper host paths remain ordinary rooted members.
     pub(in crate::analysis) fn global_callable_member_at(
         &self,
-        chain: &str,
+        chain: &SymbolPath,
         span: Span,
-    ) -> Option<String> {
-        let (root, member) = chain.split_once('.')?;
-        if member.contains('.')
-            || !self.is_global_member(root, member)
-            || !self.unshadowed_global_at(root, span)
-        {
+    ) -> Option<SymbolPath> {
+        let [root, member] = chain.segments() else {
+            return None;
+        };
+        if !self.is_global_member(root, member) || !self.unshadowed_global_at(root, span) {
             return None;
         }
 
         let receiver = self.binding_key_for_name(root, span)?;
-        if self.property_was_written_at(&receiver, &[member.to_string()], span) {
+        if self.property_was_written_at(&receiver, std::slice::from_ref(member), span) {
             return None;
         }
-        if self.rooted_property_was_mutated_at(root, Some(member), span) {
+        if self.rooted_property_was_mutated_at(&root.as_str().into(), Some(member), span) {
             return None;
         }
 
-        Some(member.to_string())
+        Some(member.as_str().into())
     }
 
     /// Resolve a member expression after applying alias and mutation checks.
-    pub(in crate::analysis) fn rooted_member_chain(&self, member: &MemberExpr) -> Option<String> {
+    pub(in crate::analysis) fn rooted_member_chain(
+        &self,
+        member: &MemberExpr,
+    ) -> Option<SymbolPath> {
         let syntactic_chain = self.member_expression_chain(member).or_else(|| {
             let object = crate::analysis::syntax::expression_name(&member.obj)?;
             let property = self.member_property_name(member)?;
-            Some(format!("{object}.{property}"))
+            Some(object.append_chain(&property))
         })?;
         self.resolve_member_chain(member, &syntactic_chain)
     }
@@ -55,26 +57,19 @@ impl ScopeGraph {
     pub fn resolve_member_chain(
         &self,
         member: &MemberExpr,
-        syntactic_chain: &str,
-    ) -> Option<String> {
+        syntactic_chain: &SymbolPath,
+    ) -> Option<SymbolPath> {
         if self.has_dynamic_lookup_at(member.span) {
             return None;
         }
         let Some(root) = member_root_identifier(member) else {
-            return syntactic_chain
-                .starts_with("this.")
-                .then(|| syntactic_chain.to_string());
+            return (syntactic_chain.first_segment() == Some("this"))
+                .then(|| syntactic_chain.clone());
         };
         let receiver_key = self.binding_key_for_name(root.sym.as_ref(), root.span)?;
-        for prefix_end in member_prefix_ends(syntactic_chain) {
-            let property = &syntactic_chain[..prefix_end];
-            let Some(path) = property
-                .strip_prefix(root.sym.as_ref())
-                .and_then(|path| path.strip_prefix('.'))
-                .map(|path| path.split('.').map(str::to_string).collect::<Vec<_>>())
-            else {
-                continue;
-            };
+        let segments = syntactic_chain.segments();
+        for prefix_end in (2..=segments.len()).rev() {
+            let path = segments[1..prefix_end].to_vec();
             let Some(assignments) = self.property_aliases(&(receiver_key.clone(), path)) else {
                 continue;
             };
@@ -85,28 +80,26 @@ impl ScopeGraph {
                     .is_some_and(|scope| contains(scope, member.span))
             }) {
                 let target = assignment.target.as_ref()?;
-                let resolved = target
-                    .append_chain(&syntactic_chain[prefix_end..])
-                    .to_string();
-                return Some(resolved);
+                let suffix = SymbolPath::from_segments(segments[prefix_end..].to_vec());
+                return Some(target.append_path(&suffix));
             }
         }
-        let suffix = syntactic_chain.strip_prefix(root.sym.as_ref())?;
+        let suffix = SymbolPath::from_segments(segments[1..].to_vec());
         match self.binding_at(root.sym.as_ref(), root.span) {
             Some(BindingProvenance::ValueAlias { target })
                 if self.rooted_path_available(target) =>
             {
-                Some(target.append_chain(suffix).to_string())
+                Some(target.append_path(&suffix))
             }
             Some(BindingProvenance::BoundCallable { target, .. })
                 if self.rooted_path_available(target) =>
             {
-                Some(target.append_chain(suffix).to_string())
+                Some(target.append_path(&suffix))
             }
             Some(BindingProvenance::ReturnedObject { source })
                 if self.rooted_path_available(source) =>
             {
-                Some(source.append_chain(suffix).to_string())
+                Some(source.append_path(&suffix))
             }
             Some(
                 BindingProvenance::ValueAlias { .. }
@@ -138,42 +131,43 @@ impl ScopeGraph {
     /// identity when `window.navigator` is an allowed promotion. The original
     /// chain remains available to fact locations and evidence; this method is
     /// only used for the identity stored in semantic facts.
-    fn rooted_chain_available_at(&self, chain: &str, span: Span) -> Option<String> {
-        let mut segments = chain.split('.');
-        let root = segments.next()?;
-        let first = segments.next()?;
+    fn rooted_chain_available_at(&self, chain: &SymbolPath, span: Span) -> Option<SymbolPath> {
+        let segments = chain.segments();
+        let [root, first, rest @ ..] = segments else {
+            return None;
+        };
 
         let promoted = self.is_global_member(root, first);
         if self.is_global(root)
             && self
                 .global_objects()
                 .filter(|alias| self.is_global_member(alias, root))
-                .any(|alias| self.rooted_property_was_mutated_at(alias, Some(root), span))
+                .any(|alias| self.rooted_property_was_mutated_at(&alias.into(), Some(root), span))
         {
             return None;
         }
         if !promoted {
-            return Some(chain.to_string());
+            return Some(chain.clone());
         }
         if self.rooted_chain_mutated_at(chain, span) {
             return None;
         }
 
-        let promoted = segments.collect::<Vec<_>>();
-        let canonical = std::iter::once(first)
-            .chain(promoted)
-            .collect::<Vec<_>>()
-            .join(".");
+        let canonical = SymbolPath::from_segments(
+            std::iter::once(first.clone())
+                .chain(rest.iter().cloned())
+                .collect(),
+        );
         if self.rooted_chain_mutated_at(&canonical, span) {
             return None;
         }
-        (!canonical.is_empty()).then_some(canonical)
+        Some(canonical)
     }
 
     /// Check writes through both a canonical root and any global-object alias.
     /// A write to an earlier segment invalidates every deeper rooted path.
-    fn rooted_chain_mutated_at(&self, chain: &str, span: Span) -> bool {
-        let segments = chain.split('.').collect::<Vec<_>>();
+    fn rooted_chain_mutated_at(&self, chain: &SymbolPath, span: Span) -> bool {
+        let segments = chain.segments();
         if segments.len() < 2 {
             return false;
         }
@@ -182,16 +176,18 @@ impl ScopeGraph {
         // first segment as a write through the bare global binding.
         if self
             .global_objects()
-            .filter(|root| self.is_global_member(root, segments[0]))
-            .any(|root| self.rooted_property_was_mutated_at(root, Some(segments[0]), span))
+            .filter(|root| self.is_global_member(root, &segments[0]))
+            .any(|root| {
+                self.rooted_property_was_mutated_at(&(*root).into(), Some(&segments[0]), span)
+            })
         {
             return true;
         }
 
         (1..segments.len()).any(|end| {
-            let receiver = segments[..end].join(".");
-            let property = segments[end];
-            self.rooted_property_was_mutated_at(&receiver, Some(property), span)
+            let receiver = SymbolPath::from_segments(segments[..end].to_vec());
+            let property = &segments[end];
+            self.rooted_property_was_mutated_at(&receiver, Some(property.as_str()), span)
         })
     }
 
@@ -199,14 +195,15 @@ impl ScopeGraph {
         let Some(property) = self.member_property_name(member) else {
             return false;
         };
-        !self.rooted_property_was_mutated_at("this", Some(&property), member.span)
+        !self.rooted_property_was_mutated_at(&"this".into(), Some(&property), member.span)
     }
 
     /// Whether a path starts at an allowed stable root.
     fn rooted_path_available(&self, path: &SymbolPath) -> bool {
-        let value = path.to_string();
-        let root = value.split('.').next().unwrap_or_default();
-        root == "this" || self.is_global(root)
+        path.first_segment() == Some("this")
+            || path
+                .first_segment()
+                .is_some_and(|root| self.is_global(root))
     }
 
     /// Whether a receiver path was assigned before this use in its scope.
@@ -225,7 +222,7 @@ impl ScopeGraph {
     /// Whether a rooted global/member property was invalidated before use.
     fn rooted_property_was_mutated_at(
         &self,
-        root: &str,
+        root: &SymbolPath,
         property: Option<&str>,
         span: Span,
     ) -> bool {
@@ -320,7 +317,7 @@ impl ScopeGraph {
         let expr = Expr::Ident(ident.clone());
         IdentValueSeed {
             call: self.call_provenance(ident.sym.as_ref(), ident.span),
-            rooted_chain: self.callable_member_chain(ident).map(Into::into),
+            rooted_chain: self.callable_member_chain(ident),
             binding: self.binding_key_for_expr(&expr),
             constant: self.constant_value(&expr),
             bound_arguments: self.bound_arguments(ident),
@@ -336,13 +333,13 @@ impl ScopeGraph {
     pub(in crate::analysis) fn member_expression_chain(
         &self,
         member: &MemberExpr,
-    ) -> Option<String> {
+    ) -> Option<SymbolPath> {
         let object = super::syntax::expression_name(&member.obj)?;
-        Some(format!("{object}.{}", self.member_property_name(member)?))
+        Some(object.append_chain(&self.member_property_name(member)?))
     }
 
     /// Return a callable rooted chain for a proven identifier binding.
-    pub(in crate::analysis) fn callable_member_chain(&self, ident: &Ident) -> Option<String> {
+    pub(in crate::analysis) fn callable_member_chain(&self, ident: &Ident) -> Option<SymbolPath> {
         if self.has_dynamic_lookup_at(ident.span) {
             return None;
         }
@@ -350,16 +347,16 @@ impl ScopeGraph {
             BindingProvenance::ValueAlias { target } if self.rooted_path_available(target) => Some(
                 target
                     .without_bind_suffix()
-                    .map_or_else(|| target.to_string(), |root| root.to_string()),
+                    .unwrap_or_else(|| target.clone()),
             ),
             BindingProvenance::BoundCallable { target, .. }
                 if self.rooted_path_available(target) =>
             {
-                Some(target.to_string())
+                Some(target.clone())
             }
             BindingProvenance::BoundModuleCallable { .. } => None,
             BindingProvenance::ReturnedObject { source } if self.rooted_path_available(source) => {
-                Some(source.to_string())
+                Some(source.clone())
             }
             _ => None,
         }
@@ -418,18 +415,15 @@ impl ScopeGraph {
 
     /// Produce the immutable resolver seed for a member occurrence.
     pub(in crate::analysis) fn member_value_seed(&self, member: &MemberExpr) -> MemberValueSeed {
-        let syntactic_chain = self.member_expression_chain(member).map(SymbolPath::from);
+        let syntactic_chain = self.member_expression_chain(member);
         let rooted_chain = syntactic_chain
             .as_ref()
-            .and_then(|chain| self.resolve_member_chain(member, &chain.to_string()))
-            .or_else(|| self.rooted_member_chain(member))
-            .map(SymbolPath::from);
+            .and_then(|chain| self.resolve_member_chain(member, chain))
+            .or_else(|| self.rooted_member_chain(member));
         let module_member = syntactic_chain
             .as_ref()
             .and_then(|chain| self.member_call_provenance_for_chain(member, &chain.to_string()));
-        let returned_member = self
-            .returned_member(member)
-            .map(|(source, member)| (SymbolPath::from(source), member));
+        let returned_member = self.returned_member(member);
         MemberValueSeed {
             syntactic_chain,
             rooted_chain,
@@ -499,17 +493,17 @@ impl ScopeGraph {
     /// Rooted member objects are retained as bounded provenance so callers can
     /// follow plugin instances obtained from a keyed collection without
     /// treating arbitrary `.load()`/`.unload()` spellings as APIs.
-    pub(in crate::analysis) fn returned_object_source(&self, expr: &Expr) -> Option<String> {
+    pub(in crate::analysis) fn returned_object_source(&self, expr: &Expr) -> Option<SymbolPath> {
         match expr {
             Expr::Call(call) => {
                 let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
                     return None;
                 };
                 let source = self.rooted_expr_chain(callee)?;
-                source.contains('.').then_some(source)
+                (!source.is_root()).then_some(source)
             }
             Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
-                BindingProvenance::ReturnedObject { source } => Some(source.to_string()),
+                BindingProvenance::ReturnedObject { source } => Some(source.clone()),
                 _ => None,
             },
             Expr::Member(member) => {
@@ -531,9 +525,9 @@ impl ScopeGraph {
     pub(in crate::analysis) fn returned_member(
         &self,
         member: &MemberExpr,
-    ) -> Option<(String, String)> {
+    ) -> Option<(SymbolPath, SymbolPath)> {
         let source = self.returned_object_source(&member.obj)?;
         let property = self.member_property_name(member)?;
-        Some((source, property))
+        Some((source, property.into()))
     }
 }

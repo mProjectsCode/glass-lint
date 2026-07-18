@@ -7,6 +7,7 @@ use super::{
     BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegment, ValueId,
     ValueProjection, member_property_name,
 };
+use crate::analysis::SymbolPath;
 
 impl FactBuilder<'_> {
     /// Resolve one argument into the scalar, rooted, and statically addressable
@@ -161,7 +162,7 @@ impl FactBuilder<'_> {
                 static_string: None,
                 object_keys: None,
                 property_strings: Vec::new(),
-                rooted_chain: Some(chain.to_string()),
+                rooted_chain: Some(chain.clone()),
                 projections: vec![ValueProjection {
                     path: PathId::EMPTY,
                     value: ValueId::UNKNOWN,
@@ -191,7 +192,7 @@ impl FactBuilder<'_> {
 
     /// Resolve the rooted identity of a call target without treating a raw
     /// local name as stronger provenance than the resolver can prove.
-    pub(super) fn resolve_target_chain(&self, target: &Expr) -> Option<String> {
+    pub(super) fn resolve_target_chain(&self, target: &Expr) -> Option<SymbolPath> {
         use crate::analysis::syntax::effective_callee_expr;
         let effective = effective_callee_expr(target);
         match effective {
@@ -199,7 +200,7 @@ impl FactBuilder<'_> {
                 .resolver
                 .resolve_ident(ident)
                 .rooted_chain
-                .or_else(|| Some(ident.sym.to_string())),
+                .or_else(|| Some(SymbolPath::from(ident.sym.as_ref()))),
             Expr::Member(member) => self.resolver.resolve_member(member).rooted_chain,
             _ => self.resolver.rooted_expr_chain(effective),
         }

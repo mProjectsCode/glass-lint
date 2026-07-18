@@ -10,8 +10,8 @@ use super::super::{
     ProjectSemanticModel, ResolutionRequestKey, SymbolCallProvenance, module,
 };
 use crate::{
-    analysis::module::ModuleRequestRole,
-    project::{ProjectRelativePath, is_internal_module_request as is_internal_request},
+    analysis::module::{DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
+    project::is_internal_module_request as is_internal_request,
 };
 
 impl ProjectSemanticModel {
@@ -82,28 +82,21 @@ impl ProjectSemanticModel {
                 else {
                     return ExportResolution::Unknown;
                 };
-                let Ok(range) = self.modules[&module].source_context().range(request.span()) else {
+                let Some(key) = self.request_key(module, request) else {
                     return ExportResolution::Unknown;
-                };
-                let key = ResolutionRequestKey {
-                    importer: ProjectRelativePath::from_normalized(
-                        self.modules[&module].path().to_string(),
-                    ),
-                    kind: request.kind(),
-                    range,
                 };
                 match self.resolutions.get(&key) {
                     Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
                         module: *id,
-                        export: "*".into(),
+                        export: NAMESPACE_EXPORT.into(),
                     },
                     Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
                         module: package.clone(),
-                        export: "*".into(),
+                        export: NAMESPACE_EXPORT.into(),
                     },
                     Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
                         module: name.clone(),
-                        export: "*".into(),
+                        export: NAMESPACE_EXPORT.into(),
                     },
                     _ => ExportResolution::Unknown,
                 }
@@ -218,7 +211,7 @@ impl ProjectSemanticModel {
             return Some(resolved);
         }
         // ECMAScript `export *` intentionally does not forward `default`.
-        if name == "default" {
+        if name == DEFAULT_EXPORT {
             visiting.remove(&visit_key);
             return None;
         }
@@ -233,16 +226,9 @@ impl ProjectSemanticModel {
                 saw_unknown = true;
                 continue;
             };
-            let Ok(range) = self.modules[&module].source_context().range(request.span()) else {
+            let Some(key) = self.request_key(module, request) else {
                 saw_unknown = true;
                 continue;
-            };
-            let key = ResolutionRequestKey {
-                importer: ProjectRelativePath::from_normalized(
-                    self.modules[&module].path().to_string(),
-                ),
-                kind: request.kind(),
-                range,
             };
             let resolution = self.resolutions.get(&key);
             let candidate_export = match resolution {
@@ -288,13 +274,8 @@ impl ProjectSemanticModel {
         else {
             return ExportResolution::Unknown;
         };
-        let Ok(range) = self.modules[&module].source_context().range(request.span()) else {
+        let Some(key) = self.request_key(module, request) else {
             return ExportResolution::Unknown;
-        };
-        let key = ResolutionRequestKey {
-            importer: self.modules[&module].path().clone(),
-            kind: request.kind(),
-            range,
         };
         match self.resolutions.get(&key) {
             Some(LinkedModuleTarget::Internal { id, .. }) => self

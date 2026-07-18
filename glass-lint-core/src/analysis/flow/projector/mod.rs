@@ -213,8 +213,8 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         };
         if let Some(source) = SourceCall::from_parts(
             fact.id,
-            rooted_chain.as_deref(),
-            syntactic_chain.as_deref(),
+            rooted_chain.as_ref(),
+            syntactic_chain.as_ref(),
             callee_name.as_deref(),
             args,
             unwrap.as_deref(),
@@ -550,7 +550,7 @@ mod tests {
                 FactPayload::Call {
                     syntactic_chain: Some(chain),
                     ..
-                } if chain == "document.head.appendChild" => Some(fact.span),
+                } if chain.eq_chain("document.head.appendChild") => Some(fact.span),
                 _ => None,
             })
             .expect("sink call should be present");

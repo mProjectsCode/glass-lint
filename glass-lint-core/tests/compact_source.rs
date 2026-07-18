@@ -350,6 +350,21 @@ fn literal_computed_member_chains_are_rooted() {
 }
 
 #[test]
+fn this_rooted_literal_computed_member_chains_are_rooted() {
+    assert_count(
+        r#"class PluginChild extends Plugin { onload() { this.app.vault["on"]("modify", handler); } }"#,
+        rule("test.this-literal-computed")
+            .matcher(
+                MemberCallMatcher::rooted("app.vault.on")
+                    .arg(0, ValueMatcher::static_string().equals("modify")),
+            )
+            .build()
+            .unwrap(),
+        1,
+    );
+}
+
+#[test]
 fn concatenated_static_property_names_are_rooted() {
     assert_count(
         r#"window["fet"+"ch"]("/x");"#,

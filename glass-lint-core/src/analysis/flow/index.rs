@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::api::compiler::CompiledObjectFlow;
+use crate::{analysis::SymbolPath, api::compiler::CompiledObjectFlow};
 
 const MAX_FLOW_OBJECTS: u32 = 65_536;
 const MAX_FLOW_STATES: usize = 262_144;
@@ -78,8 +78,8 @@ impl FlowId {
 /// Rule-facing source/sink lookup buckets for selected flow matchers.
 pub(super) struct FlowIndex<'rules> {
     flows: BTreeMap<FlowId, &'rules CompiledObjectFlow>,
-    sources: BTreeMap<String, Vec<FlowId>>,
-    sinks: BTreeMap<String, Vec<FlowId>>,
+    sources: BTreeMap<SymbolPath, Vec<FlowId>>,
+    sinks: BTreeMap<SymbolPath, Vec<FlowId>>,
 }
 
 impl<'rules> FlowIndex<'rules> {
@@ -116,26 +116,23 @@ impl<'rules> FlowIndex<'rules> {
         self.flows.get(&id).copied()
     }
 
-    pub(super) fn source_ids(&self, member_call: &str) -> Option<&[FlowId]> {
+    pub(super) fn source_ids(&self, member_call: &SymbolPath) -> Option<&[FlowId]> {
         self.sources.get(member_call).map(Vec::as_slice)
     }
 
-    pub(super) fn sink_ids(&self, member_call: &str) -> Option<&[FlowId]> {
+    pub(super) fn sink_ids(&self, member_call: &SymbolPath) -> Option<&[FlowId]> {
         self.sinks.get(member_call).map(Vec::as_slice)
     }
 
-    fn add_source(&mut self, member_call: &str, id: FlowId) {
+    fn add_source(&mut self, member_call: &SymbolPath, id: FlowId) {
         self.sources
-            .entry(member_call.to_string())
+            .entry(member_call.clone())
             .or_default()
             .push(id);
     }
 
-    fn add_sink(&mut self, member_call: &str, id: FlowId) {
-        self.sinks
-            .entry(member_call.to_string())
-            .or_default()
-            .push(id);
+    fn add_sink(&mut self, member_call: &SymbolPath, id: FlowId) {
+        self.sinks.entry(member_call.clone()).or_default().push(id);
     }
 
     /// Normalize lookup buckets once after construction. Query code can then

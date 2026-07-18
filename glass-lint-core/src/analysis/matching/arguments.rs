@@ -8,10 +8,10 @@
 use super::{
     CallArgInfo, ClassificationEvidence, FactPayload, FactStream, ModuleExportKey,
     ModuleIdentityMap, Occurrence, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
-    canonical_rooted_chain, push_owned_evidence,
+    push_owned_evidence,
 };
 use crate::{
-    analysis::syntax::UnknownReason,
+    analysis::{SymbolPath, syntax::UnknownReason},
     api::compiler::rule::{
         EventPredicate, IdentityConstraint, QueryClause, QueryConstraint, SubjectConstraint,
     },
@@ -51,16 +51,17 @@ impl OccurrenceIndexes {
                     .iter()
                     .map(|argument| argument_with_overlay(argument, identities, result_identities))
                     .collect::<Vec<_>>();
-                let (effective_args, effective_name) = unwrap
+                let (effective_args, effective_name, effective_chain) = unwrap
                     .as_ref()
-                    .map_or((&linked_args, callee_name.as_deref()), |unwrapped| {
-                        (&unwrapped.effective_args, Some(unwrapped.chain.as_str()))
+                    .map_or((&linked_args, callee_name.as_deref(), None), |unwrapped| {
+                        (&unwrapped.effective_args, None, Some(&unwrapped.chain))
                     });
                 for (rule_index, clause) in clauses {
                     let matches = match clause.event {
                         EventPredicate::Call => matches_call_clause(
                             clause,
                             effective_name,
+                            effective_chain,
                             &linked_call_provenance,
                             effective_args,
                         ),
@@ -207,6 +208,7 @@ fn module_member_with_overlay(
 fn matches_call_clause(
     clause: &QueryClause,
     callee_name: Option<&str>,
+    callee_chain: Option<&crate::analysis::SymbolPath>,
     call_provenance: &SymbolCallProvenance,
     args: &[CallArgInfo],
 ) -> bool {
@@ -214,7 +216,10 @@ fn matches_call_clause(
         return false;
     }
     let identity_matches = match &clause.identity {
-        IdentityConstraint::Any { name, .. } => callee_name == Some(name.as_str()),
+        IdentityConstraint::Any { name, .. } => {
+            callee_name == Some(name.as_str())
+                || callee_chain.is_some_and(|chain| chain.eq_chain(name))
+        }
         IdentityConstraint::Global { name, .. } => matches!(
             call_provenance,
             SymbolCallProvenance::Global { name: found } if found == name
@@ -265,30 +270,34 @@ fn matches_member_clause(
         SubjectConstraint::Direct => true,
         SubjectConstraint::ReturnedFrom { producer } => returned_member
             .as_ref()
-            .is_some_and(|(source, found)| found == member && exact_root_matches(producer, source)),
+            .is_some_and(|(source, found)| found == member && producer.exact_root_matches(source)),
         SubjectConstraint::InstanceOf { constructor } => instance_class
             .as_ref()
-            .is_some_and(|(module, export)| identity_module_matches(constructor, module, export)),
+            .is_some_and(|(module, export)| constructor.identity_module_matches(module, export)),
     };
     if !subject_matches {
         return false;
     }
     let identity_matches = match (&clause.identity, &clause.subject) {
         (IdentityConstraint::Any { name, .. }, SubjectConstraint::Direct) => {
-            name == member
-                && (syntactic_chain.as_deref() == Some(name.as_str())
-                    || rooted_chain.as_deref() == Some(name.as_str()))
+            member.eq_chain(name)
+                && (syntactic_chain
+                    .as_ref()
+                    .is_some_and(|chain| chain == member)
+                    || rooted_chain.as_ref().is_some_and(|chain| chain == member))
         }
-        (IdentityConstraint::Rooted { path }, SubjectConstraint::Direct) => rooted_chain
-            .as_deref()
-            .map(canonical_rooted_chain)
-            .is_some_and(|chain| chain == path && path == member),
+        (IdentityConstraint::Rooted { path }, SubjectConstraint::Direct) => {
+            rooted_chain.as_ref().is_some_and(|chain| {
+                let canonical = chain.without_this_prefix();
+                canonical == *path && canonical == *member
+            })
+        }
         (IdentityConstraint::ModuleNamespace { module }, SubjectConstraint::Direct) => matches!(
             module_member,
             Some(SymbolMemberProvenance::ModuleNamespace {
                 module: found_module,
                 member: found_member
-            }) if found_module == module && found_member == member
+            }) if found_module == module && member.eq_chain(found_member)
         ),
         (IdentityConstraint::PackageModuleNamespace { module }, SubjectConstraint::Direct) => {
             matches!(
@@ -296,7 +305,7 @@ fn matches_member_clause(
                 Some(SymbolMemberProvenance::ModuleNamespace {
                     module: found_module,
                     member: found_member
-                }) if module.matches(found_module) && found_member == member
+                }) if module.matches(found_module) && member.eq_chain(found_member)
             )
         }
         (IdentityConstraint::Rooted { path }, SubjectConstraint::ReturnedFrom { .. }) => {
@@ -313,10 +322,8 @@ fn matches_member_clause(
                 .is_some_and(|(found_module, found_export)| {
                     found_module == module && found_export == export
                 })
-                && syntactic_chain
-                    .as_deref()
-                    .and_then(|chain| chain.rsplit('.').next())
-                    == Some(member.as_str())
+                && syntactic_chain.as_ref().and_then(SymbolPath::last_segment)
+                    == member.last_segment()
         }
         (
             IdentityConstraint::PackageModuleExport { module, export },
@@ -327,10 +334,8 @@ fn matches_member_clause(
                 .is_some_and(|(found_module, found_export)| {
                     module.matches(found_module) && found_export == export
                 })
-                && syntactic_chain
-                    .as_deref()
-                    .and_then(|chain| chain.rsplit('.').next())
-                    == Some(member.as_str())
+                && syntactic_chain.as_ref().and_then(SymbolPath::last_segment)
+                    == member.last_segment()
         }
         _ => false,
     };
@@ -345,14 +350,6 @@ fn constraints_match(constraints: &[QueryConstraint], args: &[CallArgInfo]) -> b
     })
 }
 
-fn exact_root_matches(identity: &IdentityConstraint, source: &str) -> bool {
-    matches!(identity, IdentityConstraint::Rooted { path } if path == source)
-}
-
-fn identity_module_matches(identity: &IdentityConstraint, module: &str, export: &str) -> bool {
-    matches!(identity, IdentityConstraint::ModuleExport { module: expected_module, export: expected_export } if expected_module == module && expected_export == export)
-        || matches!(identity, IdentityConstraint::PackageModuleExport { module: expected_module, export: expected_export } if expected_module.matches(module) && expected_export == export)
-}
 #[cfg(test)]
 mod tests {
     use super::{

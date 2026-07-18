@@ -29,15 +29,46 @@ pub(in crate::analysis) struct FunctionId(pub(in crate::analysis) u32);
 
 /// Canonical member path represented as individual segments rather than a
 /// formatted string, so identity and display concerns stay separate.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(in crate::analysis) struct SymbolPath(Vec<String>);
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SymbolPath(Vec<String>);
 
 impl SymbolPath {
+    pub(in crate::analysis) fn from_segments(segments: Vec<String>) -> Self {
+        Self(segments)
+    }
+
+    pub(in crate::analysis) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub(in crate::analysis) fn last_segment(&self) -> Option<&str> {
+        self.0.last().map(String::as_str)
+    }
+
+    pub(in crate::analysis) fn first_segment(&self) -> Option<&str> {
+        self.0.first().map(String::as_str)
+    }
+
+    pub(in crate::analysis) fn segments(&self) -> &[String] {
+        &self.0
+    }
+
+    pub(in crate::analysis) fn append_path(&self, suffix: &Self) -> Self {
+        let mut path = self.0.clone();
+        path.extend(suffix.0.iter().cloned());
+        Self(path)
+    }
+
+    pub(crate) fn eq_chain(&self, chain: &str) -> bool {
+        self.0.iter().map(String::as_str).eq(chain.split('.'))
+    }
+
     /// Parse a dotted chain into canonical non-empty path segments.
-    pub(in crate::analysis) fn from_chain(chain: &str) -> Self {
+    pub fn from_chain(chain: &str) -> Self {
         Self(
             chain
                 .split('.')
+                .map(str::trim)
                 .filter(|segment| !segment.is_empty())
                 .map(str::to_string)
                 .collect(),
@@ -69,6 +100,33 @@ impl SymbolPath {
                 .map(str::to_string),
         );
         Self(path)
+    }
+
+    /// Compare rooted paths while treating standard realm-object spellings
+    /// as the same semantic root. This keeps alias policy in the path type
+    /// instead of scattering dotted-string prefix logic across matchers.
+    pub(in crate::analysis) fn matches_global_object_alias(&self, found: &Self) -> bool {
+        let canonical = |path: &Self| {
+            path.0
+                .first()
+                .filter(|root| matches!(root.as_str(), "window" | "self" | "globalThis"))
+                .map_or_else(|| path.clone(), |_| Self(path.0[1..].to_vec()))
+        };
+        canonical(self) == canonical(found)
+    }
+
+    /// Remove the syntax-only `this.` prefix from a rooted path.
+    pub(in crate::analysis) fn without_this_prefix(&self) -> Self {
+        if self.0.first().is_some_and(|segment| segment == "this") {
+            Self(self.0[1..].to_vec())
+        } else {
+            self.clone()
+        }
+    }
+
+    /// Return whether this path is equal to or below another path.
+    pub(crate) fn is_equal_or_descendant_of(&self, root: &Self) -> bool {
+        self.0.starts_with(&root.0)
     }
 }
 

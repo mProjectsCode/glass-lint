@@ -6,9 +6,9 @@
 
 use super::{
     FactPayload, FactStream, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
-    canonical_rooted_chain,
-    occurrence::{InstanceMemberKey, ModuleExportKey},
+    occurrence::{InstanceMemberKey, ModuleExportKey, ReturnedMemberKey},
 };
+use crate::analysis::SymbolPath;
 
 impl OccurrenceIndexes {
     /// Sort and deduplicate every occurrence index after fact collection.
@@ -163,11 +163,9 @@ impl OccurrenceIndexes {
             self.members.calls.push(chain.clone(), fact.id, span);
         }
         if let Some(chain) = rooted_chain {
-            self.members.rooted_calls.push(
-                canonical_rooted_chain(chain).to_string(),
-                fact.id,
-                span,
-            );
+            self.members
+                .rooted_calls
+                .push(chain.without_this_prefix(), fact.id, span);
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
             self.call_indexes.module_calls.push(
@@ -180,14 +178,14 @@ impl OccurrenceIndexes {
                 .push(ModuleExportKey::new(module, member), fact.id, span);
         }
         if let Some((source, member)) = returned_member {
-            self.members
-                .returned_calls
-                .push(ModuleExportKey::new(source, member), fact.id, span);
+            self.members.returned_calls.push(
+                ReturnedMemberKey::new(source.clone(), member.clone()),
+                fact.id,
+                span,
+            );
         }
         if let Some((module, export)) = instance_class
-            && let Some(member_name) = syntactic_chain
-                .as_ref()
-                .and_then(|chain| chain.rsplit('.').next())
+            && let Some(member_name) = syntactic_chain.as_ref().and_then(SymbolPath::last_segment)
         {
             self.members.instance_calls.push(
                 InstanceMemberKey::new(module, export, member_name),
@@ -208,8 +206,8 @@ impl OccurrenceIndexes {
             return;
         };
         if rooted_chain
-            .as_deref()
-            .is_some_and(|chain| chain == "Function")
+            .as_ref()
+            .is_some_and(|chain| chain.eq_chain("Function"))
         {
             self.call_indexes
                 .global_calls
@@ -225,7 +223,7 @@ impl OccurrenceIndexes {
                 .calls
                 .push(unwrap.chain.clone(), fact.id, *callee_span);
             self.members.rooted_calls.push(
-                canonical_rooted_chain(&unwrap.chain).to_string(),
+                unwrap.chain.without_this_prefix(),
                 fact.id,
                 *callee_span,
             );
@@ -247,11 +245,9 @@ impl OccurrenceIndexes {
             self.members.reads.push(chain.clone(), fact.id, fact.span);
         }
         if let Some(chain) = rooted_chain {
-            self.members.rooted_reads.push(
-                canonical_rooted_chain(chain).to_string(),
-                fact.id,
-                fact.span,
-            );
+            self.members
+                .rooted_reads
+                .push(chain.without_this_prefix(), fact.id, fact.span);
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
             self.members.module_reads.push(
@@ -265,7 +261,7 @@ impl OccurrenceIndexes {
         }
         if let Some((source, member)) = returned_member {
             self.members.returned_reads.push(
-                ModuleExportKey::new(source, member),
+                ReturnedMemberKey::new(source.clone(), member.clone()),
                 fact.id,
                 fact.span,
             );

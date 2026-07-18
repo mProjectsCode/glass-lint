@@ -12,7 +12,7 @@ use super::{
     ScopeKind,
 };
 use crate::analysis::{
-    scope::collect::aliases::{contains, member_prefix_ends},
+    scope::collect::aliases::contains,
     syntax::{
         self, SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self, ConstValue, EvalState, Lookup},
