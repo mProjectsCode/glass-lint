@@ -8,6 +8,7 @@
 //! role, such as an import source or a call callee; otherwise the same syntax
 //! would produce duplicate facts and distort deterministic evidence order.
 
+use smol_str::ToSmolStr;
 use swc_ecma_ast::ExportDefaultExpr;
 
 use super::{
@@ -198,38 +199,38 @@ impl Visit for FactBuilder<'_> {
 
         // Resolve callee name and provenance for member expression callees
         // like `new globalThis.URL(...)` or `new mod.Foo(...)`.
-        let (callee_name, provenance) = match &*new_expr.callee {
-            Expr::Ident(ident) => {
-                let p = resolved.call;
-                (
-                    Some(
-                        resolved
-                            .rooted_chain
-                            .map_or_else(|| ident.sym.to_string(), |chain| chain.to_string()),
-                    ),
-                    p,
-                )
-            }
-            Expr::Member(member) => {
-                let member_resolved = self.resolver.resolve_member(member);
-                if let Some(SymbolMemberProvenance::ModuleNamespace {
-                    module,
-                    member: member_name,
-                }) = member_resolved.module_member
-                {
+        let (callee_name, provenance) =
+            match &*new_expr.callee {
+                Expr::Ident(ident) => {
+                    let p = resolved.call;
                     (
-                        Some(member_name.clone()),
-                        SymbolCallProvenance::ModuleExport {
-                            module,
-                            export: member_name,
-                        },
+                        Some(resolved.rooted_chain.map_or_else(
+                            || ident.sym.to_smolstr(),
+                            |chain| chain.to_string().into(),
+                        )),
+                        p,
                     )
-                } else {
-                    (None, resolved.call)
                 }
-            }
-            _ => (None, resolved.call),
-        };
+                Expr::Member(member) => {
+                    let member_resolved = self.resolver.resolve_member(member);
+                    if let Some(SymbolMemberProvenance::ModuleNamespace {
+                        module,
+                        member: member_name,
+                    }) = member_resolved.module_member
+                    {
+                        (
+                            Some(member_name.clone()),
+                            SymbolCallProvenance::ModuleExport {
+                                module,
+                                export: member_name,
+                            },
+                        )
+                    } else {
+                        (None, resolved.call)
+                    }
+                }
+                _ => (None, resolved.call),
+            };
 
         new_expr.visit_children_with(self);
         let Some(callee_span) = self.byte_range(callee_span) else {
@@ -258,19 +259,19 @@ impl Visit for FactBuilder<'_> {
             .map(|specifier| match specifier {
                 swc_ecma_ast::ImportSpecifier::Named(named) => ImportedBinding::new(
                     Some(named.imported.as_ref().map_or_else(
-                        || named.local.sym.to_string(),
-                        crate::analysis::syntax::module_export_name,
+                        || named.local.sym.to_smolstr(),
+                        |name| crate::analysis::syntax::module_export_name(name).to_smolstr(),
                     )),
-                    named.local.sym.to_string(),
+                    named.local.sym.to_smolstr(),
                     false,
                 ),
                 swc_ecma_ast::ImportSpecifier::Default(default) => ImportedBinding::new(
                     Some("default".into()),
-                    default.local.sym.to_string(),
+                    default.local.sym.to_smolstr(),
                     false,
                 ),
                 swc_ecma_ast::ImportSpecifier::Namespace(namespace) => {
-                    ImportedBinding::new(None, namespace.local.sym.to_string(), true)
+                    ImportedBinding::new(None, namespace.local.sym.to_smolstr(), true)
                 }
             })
             .collect();

@@ -3,6 +3,8 @@
 //! Projections preserve both the whole argument and statically addressable
 //! descendants; dynamic keys are intentionally represented as unknown.
 
+use smol_str::SmolStr;
+
 use super::{
     BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegment, ValueId,
     ValueProjection, member_property_name,
@@ -38,7 +40,7 @@ impl FactBuilder<'_> {
         }
     }
 
-    fn static_property_strings(&self, expr: &Expr) -> Vec<(String, String)> {
+    fn static_property_strings(&self, expr: &Expr) -> Vec<(SmolStr, String)> {
         let Expr::Object(object) = expr else {
             return Vec::new();
         };

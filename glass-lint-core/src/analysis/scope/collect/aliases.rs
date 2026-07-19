@@ -4,6 +4,7 @@
 //! static provenance. Rest elements and dynamic property forms intentionally
 //! stop the projection rather than guessing about the remaining value.
 
+use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Span;
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
@@ -69,7 +70,7 @@ impl LexicalScopeCollector {
             Pat::Ident(ident) => self.record_assignment(
                 span,
                 scope,
-                ident.id.sym.to_string(),
+                ident.id.sym.to_smolstr(),
                 BindingProvenance::ValueAlias {
                     target: target.clone(),
                 },
@@ -88,7 +89,7 @@ impl LexicalScopeCollector {
                             }
                         }
                         ObjectPatProp::Assign(assign) => {
-                            let name = assign.key.sym.to_string();
+                            let name = assign.key.sym.to_smolstr();
                             self.record_assignment(
                                 span,
                                 scope,
@@ -110,12 +111,12 @@ impl LexicalScopeCollector {
     }
 
     /// Record CommonJS namespace and named-export aliases from a `require`.
-    pub(super) fn collect_require_aliases(&mut self, pat: &Pat, module: String, scope: ScopeId) {
+    pub(super) fn collect_require_aliases(&mut self, pat: &Pat, module: SmolStr, scope: ScopeId) {
         match pat {
             Pat::Ident(ident) => {
                 self.insert(
                     scope,
-                    ident.id.sym.to_string(),
+                    ident.id.sym.to_smolstr(),
                     BindingProvenance::ModuleNamespace { module },
                 );
             }
@@ -133,12 +134,12 @@ impl LexicalScopeCollector {
                             }
                         }
                         ObjectPatProp::Assign(assign) => {
-                            let local = assign.key.sym.to_string();
+                            let local = assign.key.sym.to_smolstr();
                             self.insert(
                                 scope,
                                 local.clone(),
                                 BindingProvenance::ModuleExport {
-                                    module: module.clone(),
+                                    module: module.as_str().into(),
                                     export: local,
                                 },
                             );
@@ -161,10 +162,10 @@ impl LexicalScopeCollector {
         if let Pat::Ident(local) = pat {
             self.insert(
                 scope,
-                local.id.sym.to_string(),
+                local.id.sym.to_smolstr(),
                 BindingProvenance::ModuleExport {
-                    module: module.to_string(),
-                    export: export.to_string(),
+                    module: module.into(),
+                    export: export.into(),
                 },
             );
         }

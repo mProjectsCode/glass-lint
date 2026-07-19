@@ -57,7 +57,7 @@ impl OccurrenceIndexes {
             FactPayload::Import { module } => {
                 self.literals
                     .imports
-                    .push(module.clone(), fact.id, fact.span);
+                    .push(module.clone().into(), fact.id, fact.span);
             }
 
             FactPayload::Reference {
@@ -66,7 +66,7 @@ impl OccurrenceIndexes {
             } => {
                 self.literals
                     .strings
-                    .push(value.clone(), fact.id, fact.span);
+                    .push(value.clone().into(), fact.id, fact.span);
             }
 
             FactPayload::Class {
@@ -83,7 +83,7 @@ impl OccurrenceIndexes {
                 }
                 if let Some((module, export)) = provenance {
                     self.constructions.module_classes.push(
-                        ModuleExportKey::new(module, export),
+                        ModuleExportKey::new(module.clone(), export.clone()),
                         fact.id,
                         fact.span,
                     );
@@ -127,12 +127,12 @@ impl OccurrenceIndexes {
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
                 self.call_indexes.module_calls.push(
-                    ModuleExportKey::new(module, export),
+                    ModuleExportKey::new(module.clone(), export.clone()),
                     fact.id,
                     *callee_span,
                 );
                 self.members.module_calls.push(
-                    ModuleExportKey::new(module, export),
+                    ModuleExportKey::new(module.clone(), export.clone()),
                     fact.id,
                     *callee_span,
                 );
@@ -169,13 +169,15 @@ impl OccurrenceIndexes {
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
             self.call_indexes.module_calls.push(
-                ModuleExportKey::new(module, member),
+                ModuleExportKey::new(module.clone(), member.clone()),
                 fact.id,
                 span,
             );
-            self.members
-                .module_calls
-                .push(ModuleExportKey::new(module, member), fact.id, span);
+            self.members.module_calls.push(
+                ModuleExportKey::new(module.clone(), member.clone()),
+                fact.id,
+                span,
+            );
         }
         if let Some((source, member)) = returned_member {
             self.members.returned_calls.push(
@@ -188,7 +190,7 @@ impl OccurrenceIndexes {
             && let Some(member_name) = syntactic_chain.as_ref().and_then(SymbolPath::last_segment)
         {
             self.members.instance_calls.push(
-                InstanceMemberKey::new(module, export, member_name),
+                InstanceMemberKey::new(module.clone(), export.clone(), member_name),
                 fact.id,
                 span,
             );
@@ -205,17 +207,6 @@ impl OccurrenceIndexes {
         else {
             return;
         };
-        // if rooted_chain
-        //     .as_ref()
-        //     .is_some_and(|chain| chain.eq_chain("Function"))
-        // {
-        //     self.call_indexes
-        //         .global_calls
-        //         .push("Function".to_string(), fact.id, *callee_span);
-        //     self.call_indexes
-        //         .calls
-        //         .push("Function".to_string(), fact.id, *callee_span);
-        // }
         if let Some(unwrap) = unwrap
             && !unwrap.chain.is_empty()
         {
@@ -251,7 +242,7 @@ impl OccurrenceIndexes {
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
             self.members.module_reads.push(
-                ModuleExportKey::new(module, member),
+                ModuleExportKey::new(module.clone(), member.clone()),
                 fact.id,
                 fact.span,
             );
@@ -291,7 +282,7 @@ impl OccurrenceIndexes {
             }
             SymbolCallProvenance::ModuleExport { module, export } => {
                 self.constructions.module_constructors.push(
-                    ModuleExportKey::new(module, export),
+                    ModuleExportKey::new(module.clone(), export.clone()),
                     fact.id,
                     *callee_span,
                 );

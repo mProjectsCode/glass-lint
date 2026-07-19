@@ -5,6 +5,8 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::SmolStr;
+
 use super::super::{ExportResolution, ModuleId};
 use crate::project::ResolutionRequestKey;
 
@@ -76,28 +78,30 @@ impl ModuleGraph {
 
 #[derive(Debug, Default)]
 /// Qualified export identities indexed by module and export name.
-pub(in crate::analysis) struct ExportTable(BTreeMap<(ModuleId, String), ExportResolution>);
+pub(in crate::analysis) struct ExportTable(BTreeMap<(ModuleId, SmolStr), ExportResolution>);
 impl ExportTable {
     /// Look up the current fixed-point value for one export.
     pub(in crate::analysis) fn resolve(
         &self,
         module: ModuleId,
-        export: &str,
+        export: SmolStr,
     ) -> Option<&ExportResolution> {
-        self.0.get(&(module, export.to_owned()))
+        self.0.get(&(module, export))
     }
 
     /// Store a changed export identity and report whether it changed.
     pub(in crate::analysis) fn set_monotone(
         &mut self,
         module: ModuleId,
-        export: String,
+        export: SmolStr,
         value: ExportResolution,
     ) -> bool {
-        if self.0.get(&(module, export.clone())) == Some(&value) {
+        let key = (module, export);
+
+        if self.0.get(&key) == Some(&value) {
             return false;
         }
-        self.0.insert((module, export), value);
+        self.0.insert(key, value);
         true
     }
 

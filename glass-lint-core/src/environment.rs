@@ -2,6 +2,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use smol_str::SmolStr;
+
 /// The globals and current- or foreign-realm global objects available to
 /// analyzed code.
 ///
@@ -202,7 +204,7 @@ impl Environment {
         )
     }
 
-    pub(crate) fn global_object_paths_match(&self, left: &[String], right: &[String]) -> bool {
+    pub(crate) fn global_object_paths_match(&self, left: &[SmolStr], right: &[SmolStr]) -> bool {
         if left == right {
             return true;
         }

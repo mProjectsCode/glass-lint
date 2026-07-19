@@ -12,6 +12,8 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::SmolStr;
+
 use super::{
     facts::{CallArgInfo, FactPayload, FactStream},
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
@@ -97,11 +99,11 @@ pub(super) struct LiteralIndexes {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::analysis) enum LinkedModuleIdentity {
     /// Identity resolved to an external module export.
-    External { module: String, export: String },
+    External { module: SmolStr, export: SmolStr },
     /// Identity resolved to a configured global callable.
-    Global { name: String },
+    Global { name: SmolStr },
     /// Qualified internal identity not exposed to external matcher queries.
-    Qualified { module: u32, export: String },
+    Qualified { module: u32, export: SmolStr },
     /// Static string value available to argument predicates.
     StaticString { value: String },
     /// Resolution was ambiguous or unsupported.
@@ -167,7 +169,7 @@ impl OccurrenceIndexes {
         let remap = |key: &ModuleExportKey| {
             let identity = identities.get(key).cloned().or_else(|| {
                 identities
-                    .get(&ModuleExportKey::wildcard(key.module()))
+                    .get(&ModuleExportKey::wildcard(key.module().clone()))
                     .map(|identity| match identity {
                         LinkedModuleIdentity::External { module, .. } => {
                             LinkedModuleIdentity::External {
@@ -276,7 +278,7 @@ mod tests {
 
     #[test]
     fn typed_occurrence_index_is_sorted_and_deduplicated() {
-        let mut index = OccurrenceIndex::<String>::default();
+        let mut index = OccurrenceIndex::<SmolStr>::default();
         index.push("fetch".into(), FactId(2), span(20, 26));
         index.push("fetch".into(), FactId(1), span(5, 11));
         index.push("fetch".into(), FactId(1), span(5, 11));

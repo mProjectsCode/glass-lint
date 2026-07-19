@@ -5,6 +5,8 @@
 //! different resolver answers; conflicting candidates become unknown rather
 //! than inheriting whichever request happens to be visited first.
 
+use smol_str::{SmolStr, ToSmolStr};
+
 use super::super::{
     BTreeSet, ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId,
     ProjectSemanticModel, ResolutionRequestKey, SymbolCallProvenance, module,
@@ -20,7 +22,7 @@ impl ProjectSemanticModel {
     pub(in crate::analysis) fn resolve_export(
         &self,
         module: ModuleId,
-        export_name: &str,
+        export_name: &SmolStr,
         export: &module::ModuleExport,
     ) -> ExportResolution {
         match export {
@@ -53,7 +55,7 @@ impl ProjectSemanticModel {
                         .map_or_else(
                             || ExportResolution::Qualified {
                                 module,
-                                export: name.clone(),
+                                export: name.to_smolstr(),
                             },
                             |value| ExportResolution::StaticString {
                                 value: value.clone(),
@@ -65,7 +67,7 @@ impl ProjectSemanticModel {
                 self.static_export_string(module, export_name).map_or_else(
                     || ExportResolution::Qualified {
                         module,
-                        export: export_name.to_owned(),
+                        export: export_name.to_smolstr(),
                     },
                     |value| ExportResolution::StaticString { value },
                 )
@@ -91,11 +93,11 @@ impl ProjectSemanticModel {
                         export: NAMESPACE_EXPORT.into(),
                     },
                     Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                        module: package.clone(),
+                        module: package.to_smolstr(),
                         export: NAMESPACE_EXPORT.into(),
                     },
                     Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                        module: name.clone(),
+                        module: name.to_smolstr(),
                         export: NAMESPACE_EXPORT.into(),
                     },
                     _ => ExportResolution::Unknown,
@@ -109,8 +111,8 @@ impl ProjectSemanticModel {
     pub(in crate::analysis) fn resolve_imported_identity(
         &self,
         importer: ModuleId,
-        authored_module: &str,
-        authored_export: &str,
+        authored_module: &SmolStr,
+        authored_export: &SmolStr,
     ) -> ExportResolution {
         let requests = self
             .modules
@@ -129,8 +131,8 @@ impl ProjectSemanticModel {
             // A bare package with no resolver answer is intentionally opaque
             // external provenance. This preserves isolated-file behavior.
             return ExportResolution::External {
-                module: authored_module.to_string(),
-                export: authored_export.to_string(),
+                module: authored_module.clone(),
+                export: authored_export.clone(),
             };
         }
 
@@ -147,16 +149,16 @@ impl ProjectSemanticModel {
             let candidate = match self.resolutions.get(&key) {
                 None if is_internal_request(authored_module) => ExportResolution::Unknown,
                 None => ExportResolution::External {
-                    module: authored_module.to_string(),
-                    export: authored_export.to_string(),
+                    module: authored_module.clone(),
+                    export: authored_export.clone(),
                 },
                 Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                    module: package.clone(),
-                    export: authored_export.to_string(),
+                    module: package.to_smolstr(),
+                    export: authored_export.clone(),
                 },
                 Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                    module: name.clone(),
-                    export: authored_export.to_string(),
+                    module: name.to_smolstr(),
+                    export: authored_export.clone(),
                 },
                 Some(LinkedModuleTarget::Internal { id, .. }) => self
                     .lookup_export(*id, authored_export, &mut BTreeSet::new())
@@ -198,14 +200,15 @@ impl ProjectSemanticModel {
     pub(in crate::analysis) fn lookup_export(
         &self,
         module: ModuleId,
-        name: &str,
-        visiting: &mut std::collections::BTreeSet<(ModuleId, String)>,
+        name: &SmolStr,
+        visiting: &mut std::collections::BTreeSet<(ModuleId, SmolStr)>,
     ) -> Option<ExportResolution> {
-        let visit_key = (module, name.to_string());
+        let visit_key = (module, name.clone());
+
         if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(visit_key.clone()) {
             return None;
         }
-        if let Some(resolved) = self.exports.resolve(module, name) {
+        if let Some(resolved) = self.exports.resolve(module, name.clone()) {
             let resolved = resolved.clone();
             visiting.remove(&visit_key);
             return Some(resolved);
@@ -239,8 +242,8 @@ impl ProjectSemanticModel {
                     LinkedModuleTarget::External { package }
                     | LinkedModuleTarget::Builtin { name: package },
                 ) => Some(ExportResolution::External {
-                    module: package.clone(),
-                    export: name.to_string(),
+                    module: package.to_smolstr(),
+                    export: name.clone(),
                 }),
                 _ => None,
             };
@@ -265,7 +268,7 @@ impl ProjectSemanticModel {
         &self,
         module: ModuleId,
         request_index: module::ModuleRequestId,
-        imported: &str,
+        imported: &SmolStr,
     ) -> ExportResolution {
         let Some(request) = self
             .modules
@@ -282,12 +285,12 @@ impl ProjectSemanticModel {
                 .lookup_export(*id, imported, &mut std::collections::BTreeSet::new())
                 .unwrap_or(ExportResolution::Unknown),
             Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                module: package.clone(),
-                export: imported.to_string(),
+                module: package.to_smolstr(),
+                export: imported.to_smolstr(),
             },
             Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                module: name.clone(),
-                export: imported.to_string(),
+                module: name.to_smolstr(),
+                export: imported.to_smolstr(),
             },
             _ => ExportResolution::Unknown,
         }

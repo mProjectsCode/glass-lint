@@ -6,6 +6,7 @@
 
 use std::{cell::Cell, collections::BTreeMap};
 
+use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{BytePos, Span};
 
 use super::super::{
@@ -21,11 +22,11 @@ pub(in crate::analysis) struct ScopeId(usize);
 /// A name resolved within one lexical scope.
 pub(in crate::analysis) struct ScopedName {
     scope: ScopeId,
-    name: String,
+    name: SmolStr,
 }
 
 impl ScopedName {
-    pub(in crate::analysis) fn new(scope: ScopeId, name: impl Into<String>) -> Self {
+    pub(in crate::analysis) fn new(scope: ScopeId, name: impl Into<SmolStr>) -> Self {
         Self {
             scope,
             name: name.into(),
@@ -36,7 +37,7 @@ impl ScopedName {
         self.scope
     }
 
-    pub(in crate::analysis) fn name(&self) -> &str {
+    pub(in crate::analysis) fn name(&self) -> &SmolStr {
         &self.name
     }
 }
@@ -66,7 +67,7 @@ pub(in crate::analysis) struct ScopeGraph {
     /// one AST node.
     last_scope_query: Cell<Option<(Span, ScopeId)>>,
     /// Source-ordered assignments grouped by scope and name.
-    assignments: BTreeMap<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>,
+    assignments: BTreeMap<ScopeId, BTreeMap<SmolStr, Vec<AliasAssignment>>>,
     /// Stable binding IDs keyed by lexical scope and name.
     binding_ids: BTreeMap<ScopedName, BindingId>,
     /// Stable function IDs keyed by function scope.
@@ -76,11 +77,11 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Aliases to locally declared functions.
     function_aliases: BTreeMap<ScopedName, FunctionId>,
     /// Property writes indexed by versioned receiver and path.
-    property_assignments: BTreeMap<(BindingKey, Vec<String>), Vec<PropertyAliasFact>>,
+    property_assignments: BTreeMap<(BindingKey, SymbolPath), Vec<PropertyAliasFact>>,
     /// Rooted writes that invalidate member identities.
     rooted_property_mutations: BTreeMap<SymbolPath, Vec<RootedPropertyMutationFact>>,
     /// Proven parameter identities shared by compatible call sites.
-    parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
+    parameter_aliases: BTreeMap<(FunctionId, SmolStr), BindingProvenance>,
     /// Dynamic-evaluation sites that invalidate later lexical assumptions.
     dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
     /// Dynamic-evaluation spans grouped by scope for indexed queries.
@@ -108,10 +109,8 @@ impl ScopeGraph {
                     receiver_key,
                     assignment
                         .property
-                        .segments()
-                        .get(1..)
-                        .unwrap_or_default()
-                        .to_vec(),
+                        .without_first_segment()
+                        .unwrap_or_default(),
                 ))
                 .or_default()
                 .push(PropertyAliasFact {
@@ -195,7 +194,7 @@ impl ScopeGraph {
     ) -> Option<&BindingProvenance> {
         self.function_ids
             .get(&scope)
-            .and_then(|function| self.parameter_aliases.get(&(*function, name.to_string())))
+            .and_then(|function| self.parameter_aliases.get(&(*function, name.to_smolstr())))
     }
 
     pub(in crate::analysis) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
@@ -291,7 +290,7 @@ impl ScopeGraph {
 
     pub(super) fn property_aliases(
         &self,
-        key: &(BindingKey, Vec<String>),
+        key: &(BindingKey, SymbolPath),
     ) -> Option<&[PropertyAliasFact]> {
         self.property_assignments.get(key).map(Vec::as_slice)
     }
@@ -358,12 +357,12 @@ pub(super) struct ScopeGraphParts {
     pub(super) environment: crate::Environment,
     pub(super) scopes: Vec<LexicalScope>,
     pub(super) scopes_by_start: Vec<ScopeId>,
-    pub(super) assignments: BTreeMap<ScopeId, BTreeMap<String, Vec<AliasAssignment>>>,
+    pub(super) assignments: BTreeMap<ScopeId, BTreeMap<SmolStr, Vec<AliasAssignment>>>,
     pub(super) binding_ids: BTreeMap<ScopedName, BindingId>,
     pub(super) function_ids: BTreeMap<ScopeId, FunctionId>,
     pub(super) function_bindings: BTreeMap<ScopedName, FunctionId>,
     pub(super) function_aliases: BTreeMap<ScopedName, FunctionId>,
-    pub(super) parameter_aliases: BTreeMap<(FunctionId, String), BindingProvenance>,
+    pub(super) parameter_aliases: BTreeMap<(FunctionId, SmolStr), BindingProvenance>,
     pub(super) mutable_static_objects: std::collections::BTreeSet<ScopedName>,
 }
 
@@ -376,7 +375,7 @@ fn span_contains(outer: Span, inner: Span) -> bool {
 pub(in crate::analysis::scope) struct RootedPropertyMutationFact {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) scope: ScopeId,
-    pub(in crate::analysis::scope) property: Option<String>,
+    pub(in crate::analysis::scope) property: Option<SmolStr>,
 }
 
 #[derive(Debug, Clone)]
@@ -386,7 +385,7 @@ pub(in crate::analysis) struct LexicalScope {
     pub(in crate::analysis::scope) depth: usize,
     pub(in crate::analysis::scope) kind: ScopeKind,
     pub(in crate::analysis::scope) parent: Option<ScopeId>,
-    pub(in crate::analysis::scope) bindings: BTreeMap<String, BindingProvenance>,
+    pub(in crate::analysis::scope) bindings: BTreeMap<SmolStr, BindingProvenance>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -425,25 +424,25 @@ pub(in crate::analysis) enum BindingProvenance {
         bound_arguments: Vec<Option<BoundArgument>>,
     },
     BoundModuleCallable {
-        module: String,
-        export: String,
+        module: SmolStr,
+        export: SmolStr,
         bound_arguments: Vec<Option<BoundArgument>>,
     },
     ReturnedObject {
         source: SymbolPath,
     },
     ModuleExport {
-        module: String,
-        export: String,
+        module: SmolStr,
+        export: SmolStr,
     },
     ModuleNamespace {
-        module: String,
+        module: SmolStr,
     },
     StaticString(String),
     StaticNumber(usize),
     StaticStringArray(Vec<String>),
-    StaticObjectKeys(Vec<String>),
-    StaticObjectValues(BTreeMap<String, SymbolPath>),
+    StaticObjectKeys(Vec<SmolStr>),
+    StaticObjectValues(BTreeMap<SmolStr, SymbolPath>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -493,7 +492,7 @@ pub(in crate::analysis) struct MemberValueSeed {
 pub(in crate::analysis) struct AliasAssignment {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) scope: ScopeId,
-    pub(in crate::analysis::scope) name: String,
+    pub(in crate::analysis::scope) name: SmolStr,
     pub(in crate::analysis::scope) version: BindingVersion,
     pub(in crate::analysis::scope) provenance: BindingProvenance,
 }

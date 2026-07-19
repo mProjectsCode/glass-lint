@@ -6,6 +6,7 @@
 
 use std::collections::BTreeSet;
 
+use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{
     Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp, OptChainBase, Pat,
 };
@@ -43,10 +44,10 @@ pub fn effective_callee_expr(expr: &Expr) -> &Expr {
 }
 
 /// Collect all names introduced by a binding pattern deterministically.
-pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<String>) {
+pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<SmolStr>) {
     match pat {
         Pat::Ident(ident) => {
-            bindings.insert(ident.id.sym.to_string());
+            bindings.insert(ident.id.sym.to_smolstr());
         }
         Pat::Array(array) => {
             for elem in array.elems.iter().flatten() {
@@ -61,7 +62,7 @@ pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<String>) {
                         collect_pat_bindings(&key_value.value, bindings);
                     }
                     ObjectPatProp::Assign(assign) => {
-                        bindings.insert(assign.key.sym.to_string());
+                        bindings.insert(assign.key.sym.to_smolstr());
                     }
                     ObjectPatProp::Rest(rest) => collect_pat_bindings(&rest.arg, bindings),
                 }
@@ -73,22 +74,22 @@ pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<String>) {
 }
 
 /// Normalize an identifier or string export name to its authored spelling.
-pub fn module_export_name(name: &ModuleExportName) -> String {
+pub fn module_export_name(name: &ModuleExportName) -> SmolStr {
     match name {
-        ModuleExportName::Ident(ident) => ident.sym.to_string(),
-        ModuleExportName::Str(value) => value.value.to_string_lossy().to_string(),
+        ModuleExportName::Ident(ident) => ident.sym.to_smolstr(),
+        ModuleExportName::Str(value) => value.value.to_string_lossy().to_smolstr(),
     }
 }
 
 /// Return a statically known object-literal property name.
-pub fn property_name(name: &swc_ecma_ast::PropName) -> Option<String> {
+pub fn property_name(name: &swc_ecma_ast::PropName) -> Option<SmolStr> {
     match name {
-        swc_ecma_ast::PropName::Ident(ident) => Some(ident.sym.to_string()),
-        swc_ecma_ast::PropName::Str(value) => Some(value.value.to_string_lossy().to_string()),
-        swc_ecma_ast::PropName::Num(number) => Some(number.value.to_string()),
+        swc_ecma_ast::PropName::Ident(ident) => Some(ident.sym.to_smolstr()),
+        swc_ecma_ast::PropName::Str(value) => Some(value.value.to_string_lossy().to_smolstr()),
+        swc_ecma_ast::PropName::Num(number) => Some(number.value.to_smolstr()),
         swc_ecma_ast::PropName::Computed(computed) => {
             if let Expr::Lit(Lit::Str(value)) = &*computed.expr {
-                Some(value.value.to_string_lossy().to_string())
+                Some(value.value.to_string_lossy().to_smolstr())
             } else {
                 None
             }
@@ -136,13 +137,13 @@ pub fn member_expression_chain(member: &MemberExpr) -> Option<SymbolPath> {
             }
             Expr::Ident(ident) => {
                 properties.reverse();
-                let mut segments = vec![ident.sym.to_string()];
+                let mut segments = vec![ident.sym.to_smolstr()];
                 segments.extend(properties);
                 return Some(SymbolPath::from_segments(segments));
             }
             Expr::This(_) => {
                 properties.reverse();
-                let mut segments = vec![String::from("this")];
+                let mut segments = vec![SmolStr::from("this")];
                 segments.extend(properties);
                 return Some(SymbolPath::from_segments(segments));
             }
@@ -163,11 +164,11 @@ pub fn member_expression_chain(member: &MemberExpr) -> Option<SymbolPath> {
 }
 
 /// Return a statically known member property name, including private names.
-pub fn member_property_name(prop: &MemberProp) -> Option<String> {
+pub fn member_property_name(prop: &MemberProp) -> Option<SmolStr> {
     match prop {
-        MemberProp::Ident(ident) => Some(ident.sym.to_string()),
-        MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
-        MemberProp::Computed(computed) => static_property_name(&computed.expr),
+        MemberProp::Ident(ident) => Some(ident.sym.to_smolstr()),
+        MemberProp::PrivateName(name) => Some(format!("#{}", name.name).into()),
+        MemberProp::Computed(computed) => static_property_name(&computed.expr).map(SmolStr::new),
     }
 }
 
@@ -208,6 +209,6 @@ fn is_function_like_expr(expr: &Expr) -> bool {
     }
 }
 
-fn static_property_name(expr: &Expr) -> Option<String> {
+fn static_property_name(expr: &Expr) -> Option<SmolStr> {
     super::constant::evaluate(expr, &super::constant::NoLookup).property_key()
 }

@@ -107,7 +107,8 @@ fn argument_with_overlay(
     }
     if let Some(identities) = identities
         && let SymbolCallProvenance::ModuleExport { module, export } = &argument.provenance
-        && let Some(identity) = identities.get(&ModuleExportKey::new(module, export))
+        && let Some(identity) =
+            identities.get(&ModuleExportKey::new(module.clone(), export.clone()))
     {
         apply_identity_to_argument(&mut argument, identity);
     }
@@ -153,8 +154,9 @@ fn call_provenance_with_overlay(
     let SymbolCallProvenance::ModuleExport { module, export } = provenance else {
         return provenance.clone();
     };
-    let exact_identity = identities.get(&ModuleExportKey::new(module, export));
-    let identity = exact_identity.or_else(|| identities.get(&ModuleExportKey::wildcard(module)));
+    let exact_identity = identities.get(&ModuleExportKey::new(module.clone(), export.clone()));
+    let identity =
+        exact_identity.or_else(|| identities.get(&ModuleExportKey::wildcard(module.clone())));
     match identity {
         Some(super::LinkedModuleIdentity::External {
             module: linked_module,
@@ -186,8 +188,8 @@ fn module_member_with_overlay(
         return provenance.cloned();
     };
     let identity = identities
-        .get(&ModuleExportKey::new(module, member))
-        .or_else(|| identities.get(&ModuleExportKey::wildcard(module)));
+        .get(&ModuleExportKey::new(module.clone(), member.clone()))
+        .or_else(|| identities.get(&ModuleExportKey::wildcard(module.clone())));
     match identity {
         Some(super::LinkedModuleIdentity::External { module, .. }) => {
             Some(SymbolMemberProvenance::ModuleNamespace {

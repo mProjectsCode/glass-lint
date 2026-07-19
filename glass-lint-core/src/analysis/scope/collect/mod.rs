@@ -11,6 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use history::AssignmentHistory;
+use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{BytePos, Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CatchClause, ClassDecl, Expr, FnDecl,
@@ -28,10 +29,11 @@ use super::{
         },
         value::{BindingId, BindingVersion, FunctionId, SymbolPath},
     },
-    AliasAssignment, BindingProvenance, BoundArgument, LexicalScope, ScopeEffect, ScopeId,
-    ScopeKind, ScopedName,
+    AliasAssignment, BindingProvenance, BoundArgument, LexicalScope, ScopeEffect, ScopeGraph,
+    ScopeId, ScopeKind, ScopedName,
     query::rooted::{RootedExprContext, rooted_expr_chain_with},
 };
+use crate::Environment;
 
 pub(super) mod aliases;
 mod callbacks;
@@ -68,7 +70,7 @@ pub(super) struct LexicalScopeCollector {
     /// Calls retained for the later, scope-aware helper parameter pass.
     calls: Vec<(ScopeId, String, Vec<Option<BindingProvenance>>)>,
     /// Proven callback arguments installed when an inline function is entered.
-    inline_parameters: BTreeMap<BytePos, BTreeMap<String, BindingProvenance>>,
+    inline_parameters: BTreeMap<BytePos, BTreeMap<SmolStr, BindingProvenance>>,
     /// `var`-bound objects whose mutation prevents constant projection.
     pub(super) mutable_static_objects: BTreeSet<ScopedName>,
     reuse_scopes: bool,
@@ -94,7 +96,7 @@ pub(super) struct RootedPropertyMutation {
     pub(super) span: Span,
     pub(super) scope: ScopeId,
     pub(super) receiver: SymbolPath,
-    pub(super) property: Option<String>,
+    pub(super) property: Option<SmolStr>,
 }
 
 impl LexicalScopeCollector {
@@ -148,18 +150,17 @@ impl LexicalScopeCollector {
     /// ID allocation, normalization, and post-collection property indexing
     /// belong to this transition so callers cannot observe a partially built
     /// graph or pass the collector's storage around independently.
-    pub(super) fn freeze(self, environment: &crate::Environment) -> super::ScopeGraph {
+    pub(super) fn freeze(self, environment: &Environment) -> ScopeGraph {
         let parameter_aliases_by_scope = self.parameter_aliases();
         let mut scopes_by_start = (0..self.scopes.len())
-            .map(super::ScopeId::from)
+            .map(ScopeId::from)
             .collect::<Vec<_>>();
         scopes_by_start.sort_by_key(|index| {
             let scope = &self.scopes[index.index()];
             (scope.span.lo, scope.depth)
         });
 
-        let mut assignments =
-            BTreeMap::<super::ScopeId, BTreeMap<String, Vec<super::AliasAssignment>>>::new();
+        let mut assignments = BTreeMap::<ScopeId, BTreeMap<SmolStr, Vec<AliasAssignment>>>::new();
         for assignment in self.assignments {
             assignments
                 .entry(assignment.scope)
@@ -177,10 +178,10 @@ impl LexicalScopeCollector {
         let mut binding_ids = BTreeMap::new();
         let mut next_binding_id = 0u32;
         for (scope, lexical_scope) in self.scopes.iter().enumerate() {
-            let scope = super::ScopeId::from(scope);
+            let scope = ScopeId::from(scope);
             for name in lexical_scope.bindings.keys() {
                 binding_ids.insert(
-                    super::ScopedName::new(scope, name),
+                    super::ScopedName::new(scope, name.clone()),
                     BindingId(next_binding_id),
                 );
                 next_binding_id = next_binding_id.saturating_add(1);
@@ -190,7 +191,7 @@ impl LexicalScopeCollector {
         let mut function_ids = BTreeMap::new();
         let mut next_function_id = 0u32;
         for (scope, lexical_scope) in self.scopes.iter().enumerate() {
-            let scope = super::ScopeId::from(scope);
+            let scope = ScopeId::from(scope);
             if matches!(
                 lexical_scope.kind,
                 super::ScopeKind::Program | super::ScopeKind::Function
@@ -226,14 +227,14 @@ impl LexicalScopeCollector {
                 function_ids
                     .get(&key.scope())
                     .copied()
-                    .map(|function| ((function, key.name().to_owned()), provenance))
+                    .map(|function| ((function, key.name().clone()), provenance))
             })
             .collect();
 
         let property_assignments = self.property_assignments;
         let rooted_mutations = self.rooted_property_mutations;
         let dynamic_evals = self.dynamic_evals;
-        let mut graph = super::ScopeGraph::from_parts(super::ScopeGraphParts {
+        let mut graph = ScopeGraph::from_parts(super::ScopeGraphParts {
             environment: environment.clone(),
             scopes: self.scopes,
             scopes_by_start,
@@ -292,7 +293,7 @@ impl LexicalScopeCollector {
     pub fn insert(
         &mut self,
         scope: ScopeId,
-        name: impl Into<String>,
+        name: impl Into<SmolStr>,
         provenance: BindingProvenance,
     ) {
         self.scopes[scope.index()]
@@ -300,7 +301,7 @@ impl LexicalScopeCollector {
             .insert(name.into(), provenance);
     }
 
-    fn insert_local(&mut self, scope: ScopeId, name: impl Into<String>) {
+    fn insert_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {
         self.insert(scope, name, BindingProvenance::Local);
     }
 
@@ -309,7 +310,7 @@ impl LexicalScopeCollector {
         &mut self,
         span: Span,
         scope: ScopeId,
-        name: String,
+        name: SmolStr,
         provenance: BindingProvenance,
     ) {
         let version = BindingVersion(
@@ -452,7 +453,7 @@ impl LexicalScopeCollector {
         self.record_assignment(
             span,
             ScopeId::from(*scope),
-            root.sym.to_string(),
+            root.sym.to_smolstr(),
             BindingProvenance::Local,
         );
     }

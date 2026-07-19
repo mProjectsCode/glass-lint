@@ -1,5 +1,9 @@
 //! Compositional ordinary-clause execution over semantic occurrence indexes.
 
+#[cfg(test)]
+use smol_str::SmolStr;
+use smol_str::ToSmolStr;
+
 use super::{
     ClassificationEvidence, ModuleExportKey, Occurrence, OccurrenceIndexes, push_owned_evidence,
 };
@@ -92,7 +96,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::ModuleExport { module, export } => self
                     .call_indexes
                     .module_calls
-                    .get(&ModuleExportKey::new(module, export))
+                    .get(&ModuleExportKey::new(module.clone(), export.clone()))
                     .cloned(),
                 IdentityConstraint::PackageModuleExport { module, export } => self
                     .call_indexes
@@ -109,7 +113,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_calls
-                    .get(&ModuleExportKey::new(module, member.to_string()))
+                    .get(&ModuleExportKey::new(module.clone(), member.to_string()))
                     .cloned(),
                 IdentityConstraint::PackageModuleNamespace { module } => self
                     .members
@@ -126,7 +130,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_reads
-                    .get(&ModuleExportKey::new(module, member.to_string()))
+                    .get(&ModuleExportKey::new(module.clone(), member.to_string()))
                     .cloned(),
                 IdentityConstraint::PackageModuleNamespace { module } => self
                     .members
@@ -141,7 +145,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::ModuleExport { module, export } => self
                     .constructions
                     .module_classes
-                    .get(&ModuleExportKey::new(module, export))
+                    .get(&ModuleExportKey::new(module.clone(), export.clone()))
                     .cloned(),
                 IdentityConstraint::PackageModuleExport { module, export } => self
                     .constructions
@@ -156,7 +160,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::ModuleExport { module, export } => self
                     .constructions
                     .module_constructors
-                    .get(&ModuleExportKey::new(module, export))
+                    .get(&ModuleExportKey::new(module.clone(), export.clone()))
                     .cloned(),
                 IdentityConstraint::PackageModuleExport { module, export } => self
                     .constructions
@@ -166,7 +170,7 @@ impl OccurrenceIndexes {
             },
             EventPredicate::Import => match &clause.identity {
                 IdentityConstraint::LiteralString { predicate } => {
-                    self.literals.imports.get(predicate).cloned()
+                    self.literals.imports.get(&predicate.to_smolstr()).cloned()
                 }
                 IdentityConstraint::PackageSpecifier { pattern } => self
                     .literals
@@ -188,7 +192,7 @@ impl OccurrenceIndexes {
     pub(super) fn record(
         &mut self,
         kind: crate::api::classification::MatchKind,
-        symbol: impl Into<String>,
+        symbol: impl Into<SmolStr>,
         span: crate::ByteRange,
     ) {
         use crate::analysis::facts::FactId;

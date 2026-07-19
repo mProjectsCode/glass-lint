@@ -197,6 +197,7 @@ pub fn lower_program(
             },
         );
     }
+
     SemanticArtifact::from_lowering(facts, export_origins, effects, status)
 }
 

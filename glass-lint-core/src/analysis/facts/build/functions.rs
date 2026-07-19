@@ -4,6 +4,7 @@
 //! callable body. This lets local and project flow transfer values through
 //! supported wrappers without treating nested functions as one scope.
 
+use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Spanned;
 use swc_ecma_ast::ClassMethod;
 
@@ -14,7 +15,7 @@ use super::{
 
 impl FactBuilder<'_> {
     /// Return the proven class provenance for the current non-static method.
-    pub(super) fn current_class(&self) -> Option<(String, String)> {
+    pub(super) fn current_class(&self) -> Option<(SmolStr, SmolStr)> {
         self.traversal.current_class()
     }
 
@@ -121,8 +122,8 @@ impl FactBuilder<'_> {
     }
 
     pub(super) fn record_class_decl(&mut self, class_decl: &ClassDecl) {
-        self.record_local(class_decl.ident.sym.to_string());
-        let name = class_decl.ident.sym.to_string();
+        self.record_local(class_decl.ident.sym.to_smolstr());
+        let name = class_decl.ident.sym.to_smolstr();
         let provenance = class_decl
             .class
             .super_class
@@ -153,7 +154,7 @@ impl FactBuilder<'_> {
                 FactKind::Declaration,
                 ident.span(),
                 FactPayload::Class {
-                    name: Some(ident.sym.to_string()),
+                    name: Some(ident.sym.to_smolstr()),
                     role: super::super::ClassFactRole::Declaration,
                     provenance: provenance.clone(),
                 },

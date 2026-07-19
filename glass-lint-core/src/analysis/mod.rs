@@ -14,6 +14,7 @@ use std::{
 };
 
 use project::state::{ExportTable, ModuleGraph};
+use smol_str::SmolStr;
 
 use crate::project::{
     LinkedModuleTarget, ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey,
@@ -83,13 +84,13 @@ pub struct ProjectSemanticModel {
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ExportResolution {
     /// Identity resolved to an external module export.
-    External { module: String, export: String },
+    External { module: SmolStr, export: SmolStr },
     /// Identity resolved to a configured global.
-    Global { name: String },
+    Global { name: SmolStr },
     /// Identity resolved to a static string.
     StaticString { value: String },
     /// Identity qualified to another project module.
-    Qualified { module: ModuleId, export: String },
+    Qualified { module: ModuleId, export: SmolStr },
     /// Identity could not be established.
     Unknown,
     /// Multiple linked paths proved incompatible identities.

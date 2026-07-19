@@ -1,5 +1,7 @@
 //! Position-sensitive identifier, member, and expression resolution.
 
+use smol_str::SmolStr;
+
 use super::{
     Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
     SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,
@@ -240,7 +242,7 @@ impl Resolver {
         }
     }
 
-    pub(in crate::analysis) fn object_keys_expr(&self, expr: &Expr) -> Option<Vec<String>> {
+    pub(in crate::analysis) fn object_keys_expr(&self, expr: &Expr) -> Option<Vec<SmolStr>> {
         let keys = syntax_constant::evaluate(expr, self).object_keys()?;
         let mut state = self.state.borrow_mut();
         let unknown = ValueId::UNKNOWN;
@@ -297,7 +299,7 @@ impl Resolver {
             .or_else(|| crate::analysis::syntax::member_expression_chain(member))
     }
 
-    pub(in crate::analysis) fn class_provenance(&self, expr: &Expr) -> Option<(String, String)> {
+    pub(in crate::analysis) fn class_provenance(&self, expr: &Expr) -> Option<(SmolStr, SmolStr)> {
         match self.resolve_expr(expr).call {
             SymbolCallProvenance::ModuleExport { module, export } => Some((module, export)),
             _ => None,

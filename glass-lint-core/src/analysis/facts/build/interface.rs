@@ -5,6 +5,7 @@
 //! shapes are linked; dynamic or conflicting shapes are marked unknown so
 //! cross-file analysis fails closed.
 
+use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     CallExpr, Callee, DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr,
@@ -14,9 +15,12 @@ use swc_ecma_visit::VisitWith;
 
 use super::FactBuilder;
 use crate::{
-    analysis::module::{
-        COMMONJS_EXPORTS, COMMONJS_MODULE, COMMONJS_REQUIRE, DEFAULT_EXPORT, ModuleExport,
-        ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,
+    analysis::{
+        module::{
+            COMMONJS_EXPORTS, COMMONJS_MODULE, COMMONJS_REQUIRE, DEFAULT_EXPORT, ModuleExport,
+            ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,
+        },
+        syntax::{collect_pat_bindings, module_export_name, property_name},
     },
     project::ResolutionRequestKind,
 };
@@ -38,8 +42,8 @@ impl FactBuilder<'_> {
                 self.record_local(class.ident.sym.to_string());
                 self.interface.add_export(
                     class.ident.sym.to_string(),
-                    crate::analysis::module::ModuleExport::Local {
-                        name: class.ident.sym.to_string(),
+                    ModuleExport::Local {
+                        name: class.ident.sym.to_smolstr(),
                     },
                 );
             }
@@ -54,8 +58,8 @@ impl FactBuilder<'_> {
                 }
                 self.interface.add_export(
                     function.ident.sym.to_string(),
-                    crate::analysis::module::ModuleExport::Local {
-                        name: function.ident.sym.to_string(),
+                    ModuleExport::Local {
+                        name: function.ident.sym.to_smolstr(),
                     },
                 );
             }
@@ -63,7 +67,7 @@ impl FactBuilder<'_> {
                 for declarator in &variable.decls {
                     self.record_pattern_locals(&declarator.name);
                     let mut names = std::collections::BTreeSet::new();
-                    crate::analysis::syntax::collect_pat_bindings(&declarator.name, &mut names);
+                    collect_pat_bindings(&declarator.name, &mut names);
                     for name in names {
                         if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
                             && let Some(id) = self
@@ -72,10 +76,8 @@ impl FactBuilder<'_> {
                         {
                             self.interface.add_function_export(name.clone(), id);
                         }
-                        self.interface.add_export(
-                            name.clone(),
-                            crate::analysis::module::ModuleExport::Local { name },
-                        );
+                        self.interface
+                            .add_export(name.clone(), ModuleExport::Local { name });
                         if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
                             && let Some(value) = self
                                 .resolver
@@ -162,11 +164,11 @@ impl FactBuilder<'_> {
             if let ExportSpecifier::Named(named) = specifier
                 && !named.is_type_only
             {
-                let original = crate::analysis::syntax::module_export_name(&named.orig);
-                let exported = named.exported.as_ref().map_or_else(
-                    || original.clone(),
-                    crate::analysis::syntax::module_export_name,
-                );
+                let original = module_export_name(&named.orig);
+                let exported = named
+                    .exported
+                    .as_ref()
+                    .map_or_else(|| original.clone(), module_export_name);
                 if let swc_ecma_ast::ModuleExportName::Ident(ident) = &named.orig
                     && let Some(id) = self
                         .resolver
@@ -207,21 +209,21 @@ impl FactBuilder<'_> {
                     })
                     .map(|specifier| match specifier {
                         ExportSpecifier::Named(named) => ReExportBinding::new(
-                            crate::analysis::syntax::module_export_name(&named.orig),
+                            module_export_name(&named.orig),
                             named.exported.as_ref().map_or_else(
-                                || crate::analysis::syntax::module_export_name(&named.orig),
-                                crate::analysis::syntax::module_export_name,
+                                || module_export_name(&named.orig),
+                                module_export_name,
                             ),
                             false,
                         ),
                         ExportSpecifier::Namespace(namespace) => ReExportBinding::new(
                             NAMESPACE_EXPORT.into(),
-                            crate::analysis::syntax::module_export_name(&namespace.name),
+                            module_export_name(&namespace.name),
                             true,
                         ),
                         ExportSpecifier::Default(default) => ReExportBinding::new(
                             DEFAULT_EXPORT.into(),
-                            default.exported.sym.to_string(),
+                            default.exported.sym.to_smolstr(),
                             false,
                         ),
                     })
@@ -231,11 +233,11 @@ impl FactBuilder<'_> {
         for specifier in specifiers {
             match specifier {
                 ExportSpecifier::Named(named) => {
-                    let original = crate::analysis::syntax::module_export_name(&named.orig);
-                    let exported = named.exported.as_ref().map_or_else(
-                        || original.clone(),
-                        crate::analysis::syntax::module_export_name,
-                    );
+                    let original = module_export_name(&named.orig);
+                    let exported = named
+                        .exported
+                        .as_ref()
+                        .map_or_else(|| original.clone(), module_export_name);
                     self.interface.add_export(
                         exported,
                         ModuleExport::ReExport {
@@ -245,7 +247,7 @@ impl FactBuilder<'_> {
                     );
                 }
                 ExportSpecifier::Namespace(namespace) => self.interface.add_export(
-                    crate::analysis::syntax::module_export_name(&namespace.name),
+                    module_export_name(&namespace.name),
                     ModuleExport::Namespace { request },
                 ),
                 ExportSpecifier::Default(default) => self.interface.add_export(
@@ -288,7 +290,7 @@ impl FactBuilder<'_> {
             self.interface.add_export(
                 "default",
                 ModuleExport::Local {
-                    name: ident.sym.to_string(),
+                    name: ident.sym.to_smolstr(),
                 },
             );
         } else {
@@ -316,7 +318,7 @@ impl FactBuilder<'_> {
                     self.interface.add_export(
                         "default",
                         ModuleExport::Local {
-                            name: ident.sym.to_string(),
+                            name: ident.sym.to_smolstr(),
                         },
                     );
                 } else {
@@ -332,7 +334,7 @@ impl FactBuilder<'_> {
                     self.interface.add_export(
                         "default",
                         ModuleExport::Local {
-                            name: ident.sym.to_string(),
+                            name: ident.sym.to_smolstr(),
                         },
                     );
                 } else {
@@ -397,15 +399,14 @@ impl FactBuilder<'_> {
                 self.interface.mark_unknown_exports();
                 return;
             };
-            self.interface
-                .add_export("default", crate::analysis::module::ModuleExport::Value);
+            self.interface.add_export("default", ModuleExport::Value);
             for prop in &object.props {
                 let swc_ecma_ast::PropOrSpread::Prop(prop) = prop else {
                     continue;
                 };
                 match &**prop {
                     swc_ecma_ast::Prop::KeyValue(value) => {
-                        let Some(name) = crate::analysis::syntax::property_name(&value.key) else {
+                        let Some(name) = property_name(&value.key) else {
                             continue;
                         };
                         self.add_function_export_if_expr(&name, &value.value);
@@ -415,7 +416,7 @@ impl FactBuilder<'_> {
                         }
                     }
                     swc_ecma_ast::Prop::Method(method) => {
-                        if let Some(name) = crate::analysis::syntax::property_name(&method.key) {
+                        if let Some(name) = property_name(&method.key) {
                             self.add_function_export_if_span(&name, method.function.span());
                         }
                     }
@@ -428,24 +429,21 @@ impl FactBuilder<'_> {
                 }
                 self.interface.add_export(
                     name,
-                    local.map_or(crate::analysis::module::ModuleExport::Value, |name| {
-                        crate::analysis::module::ModuleExport::Local { name }
-                    }),
+                    local.map_or(ModuleExport::Value, |name| ModuleExport::Local { name }),
                 );
             }
         } else {
             if let Some(id) = self.resolver.function_id_for_span(assignment.right.span()) {
                 self.interface.add_function_export("default", id);
             }
-            self.interface
-                .add_export("default", crate::analysis::module::ModuleExport::Value);
+            self.interface.add_export("default", ModuleExport::Value);
         }
     }
 
     fn record_exports_assignment(
         &mut self,
         assignment: &swc_ecma_ast::AssignExpr,
-        property: Option<String>,
+        property: Option<SmolStr>,
     ) {
         let Some(property) = property else {
             self.interface.mark_unknown_exports();
@@ -454,17 +452,17 @@ impl FactBuilder<'_> {
         let export = match &*assignment.right {
             Expr::Ident(ident) => {
                 self.add_function_export_if_name(&property, ident.sym.as_ref(), assignment.span());
-                crate::analysis::module::ModuleExport::Local {
-                    name: ident.sym.to_string(),
+                ModuleExport::Local {
+                    name: ident.sym.to_smolstr(),
                 }
             }
             expr => {
                 self.add_function_export_if_expr(&property, expr);
                 if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = expr {
                     self.interface
-                        .add_static_string(&property, value.value.to_string_lossy());
+                        .add_static_string(property.clone(), value.value.to_string_lossy());
                 }
-                crate::analysis::module::ModuleExport::Value
+                ModuleExport::Value
             }
         };
         self.interface.add_export(property, export);
@@ -473,22 +471,22 @@ impl FactBuilder<'_> {
     fn record_named_module_export(
         &mut self,
         assignment: &swc_ecma_ast::AssignExpr,
-        property: String,
+        property: SmolStr,
     ) {
         let export = match &*assignment.right {
             Expr::Ident(ident) => {
                 self.add_function_export_if_name(&property, ident.sym.as_ref(), assignment.span());
-                crate::analysis::module::ModuleExport::Local {
-                    name: ident.sym.to_string(),
+                ModuleExport::Local {
+                    name: ident.sym.to_smolstr(),
                 }
             }
             expr => {
                 self.add_function_export_if_expr(&property, expr);
                 if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = expr {
                     self.interface
-                        .add_static_string(&property, value.value.to_string_lossy());
+                        .add_static_string(property.clone(), value.value.to_string_lossy());
                 }
-                crate::analysis::module::ModuleExport::Value
+                ModuleExport::Value
             }
         };
         self.interface.add_export(property, export);
@@ -512,33 +510,28 @@ impl FactBuilder<'_> {
 
     fn commonjs_object_export_entries(
         object: &swc_ecma_ast::ObjectLit,
-    ) -> Option<Vec<(String, Option<String>)>> {
+    ) -> Option<Vec<(SmolStr, Option<SmolStr>)>> {
         object
             .props
             .iter()
             .map(|prop| match prop {
                 swc_ecma_ast::PropOrSpread::Prop(prop) => match &**prop {
                     swc_ecma_ast::Prop::KeyValue(value) => Some((
-                        crate::analysis::syntax::property_name(&value.key)?,
+                        property_name(&value.key)?,
                         match &*value.value {
-                            Expr::Ident(ident) => Some(ident.sym.to_string()),
+                            Expr::Ident(ident) => Some(ident.sym.to_smolstr()),
                             _ => None,
                         },
                     )),
-                    swc_ecma_ast::Prop::Assign(assign) => {
-                        Some((assign.key.sym.to_string(), Some(assign.key.sym.to_string())))
-                    }
-                    swc_ecma_ast::Prop::Getter(getter) => {
-                        Some((crate::analysis::syntax::property_name(&getter.key)?, None))
-                    }
-                    swc_ecma_ast::Prop::Setter(setter) => {
-                        Some((crate::analysis::syntax::property_name(&setter.key)?, None))
-                    }
-                    swc_ecma_ast::Prop::Method(method) => {
-                        Some((crate::analysis::syntax::property_name(&method.key)?, None))
-                    }
+                    swc_ecma_ast::Prop::Assign(assign) => Some((
+                        assign.key.sym.to_smolstr(),
+                        Some(assign.key.sym.to_smolstr()),
+                    )),
+                    swc_ecma_ast::Prop::Getter(getter) => Some((property_name(&getter.key)?, None)),
+                    swc_ecma_ast::Prop::Setter(setter) => Some((property_name(&setter.key)?, None)),
+                    swc_ecma_ast::Prop::Method(method) => Some((property_name(&method.key)?, None)),
                     swc_ecma_ast::Prop::Shorthand(ident) => {
-                        Some((ident.sym.to_string(), Some(ident.sym.to_string())))
+                        Some((ident.sym.to_smolstr(), Some(ident.sym.to_smolstr())))
                     }
                 },
                 swc_ecma_ast::PropOrSpread::Spread(_) => None,

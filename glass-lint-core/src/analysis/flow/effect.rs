@@ -10,6 +10,8 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::SmolStr;
+
 use super::{
     super::{
         facts::{CallArgInfo, ControlKind, FactPayload, FactStream, ParameterBinding},
@@ -74,7 +76,7 @@ pub(in crate::analysis) enum EffectUse {
         /// Receiver/value identity observed at the write.
         value: ValueId,
         /// Static property name, if proven.
-        property: Option<String>,
+        property: Option<SmolStr>,
         /// Static string assigned to the property, if proven.
         static_value: Option<String>,
     },
@@ -392,7 +394,7 @@ impl FunctionEffect {
         &mut self,
         event: super::super::facts::FactId,
         receiver: ValueId,
-        property: Option<&String>,
+        property: Option<&SmolStr>,
         static_value: Option<&String>,
         budget: &mut Budget,
     ) {

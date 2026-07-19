@@ -4,6 +4,7 @@
 //! use-position facts that survive lexical shadowing, reassignment, and
 //! unsupported dynamic forms.
 
+use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{CallExpr, Callee, VarDeclarator};
 
 use super::{
@@ -24,7 +25,7 @@ enum DeclarationClassification {
     },
     Require {
         pattern: Pat,
-        module: String,
+        module: SmolStr,
     },
     ValueAlias {
         pattern: Pat,
@@ -89,11 +90,11 @@ fn classify_declaration(
 impl Visit for LexicalScopeCollector {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         let scope = self.current_scope();
-        let module = import.src.value.to_string_lossy().to_string();
+        let module = import.src.value.to_string_lossy().to_smolstr();
         for specifier in &import.specifiers {
             match specifier {
                 ImportSpecifier::Named(named) => {
-                    let local = named.local.sym.to_string();
+                    let local = named.local.sym.to_smolstr();
                     let export = named
                         .imported
                         .as_ref()
@@ -225,7 +226,7 @@ impl Visit for LexicalScopeCollector {
                     self.record_assignment(
                         assignment.span,
                         scope,
-                        ident.id.sym.to_string(),
+                        ident.id.sym.to_smolstr(),
                         provenance,
                     );
                 }

@@ -6,15 +6,17 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::SmolStr;
+
 use super::super::{BindingProvenance, ScopeId};
 
 #[derive(Debug, Default)]
 /// Most recent assignment provenance for each scope-local binding.
-pub(super) struct AssignmentHistory(BTreeMap<ScopeId, BTreeMap<String, BindingProvenance>>);
+pub(super) struct AssignmentHistory(BTreeMap<ScopeId, BTreeMap<SmolStr, BindingProvenance>>);
 
 impl AssignmentHistory {
     /// Replace the latest assignment for one scope/name pair.
-    pub(super) fn record(&mut self, scope: ScopeId, name: String, provenance: BindingProvenance) {
+    pub(super) fn record(&mut self, scope: ScopeId, name: SmolStr, provenance: BindingProvenance) {
         self.0.entry(scope).or_default().insert(name, provenance);
     }
 

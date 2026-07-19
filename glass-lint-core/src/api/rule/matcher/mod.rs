@@ -12,6 +12,7 @@ pub use call::*;
 pub use derived::*;
 pub use flow::*;
 pub use member::*;
+use smol_str::ToSmolStr;
 
 use super::ModuleSpecifierPattern;
 
@@ -456,7 +457,7 @@ impl ObjectEventMatcher {
     fn normalize(&mut self) {
         match self {
             Self::PropertyWrite { property, value } => {
-                *property = property.trim().to_string();
+                *property = property.trim().to_smolstr();
                 value.normalize();
             }
             Self::MemberCall { member, arguments } => {

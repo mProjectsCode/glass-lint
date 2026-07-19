@@ -6,6 +6,8 @@
 
 #![allow(clippy::match_same_arms)]
 
+use smol_str::{SmolStr, ToSmolStr};
+
 use super::{
     BindingKey, BindingProvenance, Expr, Ident, IdentValueSeed, MemberExpr, MemberValueSeed,
     ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant, contains,
@@ -30,7 +32,7 @@ impl ScopeGraph {
         }
 
         let receiver = self.binding_key_for_name(root, span)?;
-        if self.property_was_written_at(&receiver, std::slice::from_ref(member), span) {
+        if self.property_was_written_at(&receiver, SymbolPath::from_chain(member), span) {
             return None;
         }
         if self.rooted_property_was_mutated_at(&root.as_str().into(), Some(member), span) {
@@ -62,19 +64,26 @@ impl ScopeGraph {
         if self.has_dynamic_lookup_at(member.span) {
             return None;
         }
+
         let Some(root) = member_root_identifier(member) else {
             return (syntactic_chain.first_segment() == Some("this"))
                 .then(|| syntactic_chain.clone());
         };
+
         let receiver_key = self.binding_key_for_name(root.sym.as_ref(), root.span)?;
         let segments = syntactic_chain.segments();
+
         for prefix_end in (2..=segments.len()).rev() {
             let path = segments[1..prefix_end].to_vec();
-            let Some(assignments) = self.property_aliases(&(receiver_key.clone(), path)) else {
+            let Some(assignments) =
+                self.property_aliases(&(receiver_key.clone(), SymbolPath::from_segments(path)))
+            else {
                 continue;
             };
+
             let prior_count =
                 assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
+
             if let Some(assignment) = assignments[..prior_count].iter().rev().find(|assignment| {
                 self.scope_span(assignment.scope)
                     .is_some_and(|scope| contains(scope, member.span))
@@ -84,6 +93,7 @@ impl ScopeGraph {
                 return Some(target.append_path(&suffix));
             }
         }
+
         let suffix = SymbolPath::from_segments(segments[1..].to_vec());
         match self.binding_at(root.sym.as_ref(), root.span) {
             Some(BindingProvenance::ValueAlias { target })
@@ -207,8 +217,8 @@ impl ScopeGraph {
     }
 
     /// Whether a receiver path was assigned before this use in its scope.
-    fn property_was_written_at(&self, receiver: &BindingKey, path: &[String], span: Span) -> bool {
-        self.property_aliases(&(receiver.clone(), path.to_vec()))
+    fn property_was_written_at(&self, receiver: &BindingKey, path: SymbolPath, span: Span) -> bool {
+        self.property_aliases(&(receiver.clone(), path))
             .is_some_and(|assignments| {
                 assignments.iter().any(|assignment| {
                     assignment.span.lo <= span.lo
@@ -262,7 +272,7 @@ impl ScopeGraph {
                 if target.is_root() && self.is_global(&target.to_string()) =>
             {
                 SymbolCallProvenance::Global {
-                    name: target.to_string(),
+                    name: target.to_smolstr(),
                 }
             }
             Some(BindingProvenance::ValueAlias { target })
@@ -273,7 +283,7 @@ impl ScopeGraph {
                 SymbolCallProvenance::Global {
                     name: target
                         .without_bind_suffix()
-                        .map_or_else(|| target.to_string(), |root| root.to_string()),
+                        .map_or_else(|| target.to_smolstr(), |root| root.to_smolstr()),
                 }
             }
             Some(BindingProvenance::ValueAlias { target }) => self
@@ -283,7 +293,7 @@ impl ScopeGraph {
                 if target.is_root() && self.is_global(&target.to_string()) =>
             {
                 SymbolCallProvenance::Global {
-                    name: target.to_string(),
+                    name: target.to_smolstr(),
                 }
             }
             Some(BindingProvenance::BoundCallable { target, .. }) => self
@@ -306,7 +316,7 @@ impl ScopeGraph {
                 | BindingProvenance::StaticObjectValues(_),
             ) => SymbolCallProvenance::Local,
             None if self.is_global(name) => SymbolCallProvenance::Global {
-                name: name.to_string(),
+                name: name.to_smolstr(),
             },
             None => SymbolCallProvenance::Local,
         }
@@ -325,7 +335,7 @@ impl ScopeGraph {
     }
 
     /// Extract a statically evaluable member property name.
-    pub(in crate::analysis) fn member_property_name(&self, member: &MemberExpr) -> Option<String> {
+    pub(in crate::analysis) fn member_property_name(&self, member: &MemberExpr) -> Option<SmolStr> {
         constant::property_name(&member.prop, self)
     }
 
@@ -373,7 +383,7 @@ impl ScopeGraph {
             BindingProvenance::ModuleNamespace { module } => {
                 Some(SymbolCallProvenance::ModuleExport {
                     module: module.clone(),
-                    export: export.to_string(),
+                    export: export.to_smolstr(),
                 })
             }
             _ => None,
@@ -396,7 +406,7 @@ impl ScopeGraph {
                 member: if prefix.is_empty() {
                     property
                 } else {
-                    format!("{prefix}.{property}")
+                    format!("{prefix}.{property}").to_smolstr()
                 },
             });
         }
@@ -406,7 +416,7 @@ impl ScopeGraph {
             Some(BindingProvenance::ModuleNamespace { module }) => {
                 Some(SymbolMemberProvenance::ModuleNamespace {
                     module: module.clone(),
-                    member: member.to_string(),
+                    member: member.to_smolstr(),
                 })
             }
             _ => None,
@@ -437,14 +447,14 @@ impl ScopeGraph {
     pub(in crate::analysis) fn module_member_for_expr(
         &self,
         expr: &Expr,
-    ) -> Option<(String, String)> {
+    ) -> Option<(SmolStr, SmolStr)> {
         match expr {
             Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
                 BindingProvenance::ModuleExport { module, export } => {
                     Some((module.clone(), export.clone()))
                 }
                 BindingProvenance::ModuleNamespace { module } => {
-                    Some((module.clone(), String::new()))
+                    Some((module.clone(), SmolStr::new("")))
                 }
                 _ => None,
             },
@@ -456,7 +466,7 @@ impl ScopeGraph {
                     if prefix.is_empty() {
                         property
                     } else {
-                        format!("{prefix}.{property}")
+                        format!("{prefix}.{property}").to_smolstr()
                     },
                 ))
             }
@@ -478,7 +488,10 @@ impl ScopeGraph {
                 let Expr::Lit(swc_ecma_ast::Lit::Str(module)) = &*argument.expr else {
                     return None;
                 };
-                Some((module.value.to_string_lossy().to_string(), String::new()))
+                Some((
+                    module.value.to_string_lossy().to_smolstr(),
+                    SmolStr::new(""),
+                ))
             }
             Expr::Paren(paren) => self.module_member_for_expr(&paren.expr),
             Expr::Seq(sequence) => sequence

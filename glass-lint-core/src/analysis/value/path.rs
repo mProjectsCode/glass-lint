@@ -9,6 +9,8 @@
 
 use std::collections::HashMap;
 
+use smol_str::SmolStr;
+
 const MAX_PATH_NODES: usize = 1 << 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -35,7 +37,7 @@ impl PathId {
 /// One static property or numeric index path segment.
 pub(in crate::analysis) enum PathSegment {
     /// Named property access.
-    Property(String),
+    Property(SmolStr),
     /// Array/index access kept distinct from a property named by digits.
     Index(u32),
 }

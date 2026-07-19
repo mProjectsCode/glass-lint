@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{CallExpr, Callee, Expr, Lit};
 
 use super::{
@@ -49,7 +50,7 @@ impl LexicalScopeCollector {
                             call.args.first().map(|argument| &*argument.expr)
                     {
                         return Some(BindingProvenance::ModuleNamespace {
-                            module: specifier.value.to_string_lossy().to_string(),
+                            module: specifier.value.to_string_lossy().to_smolstr(),
                         });
                     }
                     let Callee::Expr(callee) = &call.callee else {
@@ -73,7 +74,7 @@ impl LexicalScopeCollector {
     }
 
     /// Resolve literal CommonJS/interop-loader module names only.
-    fn require_module_name(&self, call: &CallExpr) -> Option<String> {
+    fn require_module_name(&self, call: &CallExpr) -> Option<SmolStr> {
         self.direct_require_module_name(call).or_else(|| {
             let Callee::Expr(callee) = &call.callee else {
                 return None;
@@ -90,7 +91,7 @@ impl LexicalScopeCollector {
     }
 
     /// Find a literal module name through supported wrapper expression shapes.
-    pub(super) fn require_module_expr_name(&self, expr: &Expr) -> Option<String> {
+    pub(super) fn require_module_expr_name(&self, expr: &Expr) -> Option<SmolStr> {
         match expr {
             Expr::Call(call) => self.require_module_name(call),
             Expr::Member(member) => self.require_module_expr_name(&member.obj),
@@ -104,7 +105,7 @@ impl LexicalScopeCollector {
     }
 
     /// Recognize an unshadowed direct `require("literal")` call.
-    fn direct_require_module_name(&self, call: &CallExpr) -> Option<String> {
+    fn direct_require_module_name(&self, call: &CallExpr) -> Option<SmolStr> {
         let Callee::Expr(callee) = &call.callee else {
             return None;
         };
@@ -115,7 +116,7 @@ impl LexicalScopeCollector {
             return None;
         }
         call.args.first().and_then(|arg| match &*arg.expr {
-            Expr::Lit(Lit::Str(value)) => Some(value.value.to_string_lossy().to_string()),
+            Expr::Lit(Lit::Str(value)) => Some(value.value.to_string_lossy().to_smolstr()),
             _ => None,
         })
     }

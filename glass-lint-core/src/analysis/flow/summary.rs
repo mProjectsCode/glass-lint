@@ -10,6 +10,8 @@
 //! a projected sink. Recursive propagation stops at a fixed point or its
 //! explicit round bound.
 
+use smol_str::SmolStr;
+
 use super::{
     super::{
         facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
@@ -95,7 +97,7 @@ pub(super) struct PropertyWriteProjection {
     event: FactId,
     target: ValueId,
     receiver: Option<ValueId>,
-    property: Option<String>,
+    property: Option<SmolStr>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -385,7 +387,7 @@ impl FunctionSummary {
         event: FactId,
         target: ValueId,
         receiver: Option<ValueId>,
-        property: Option<String>,
+        property: Option<SmolStr>,
         reassigned: bool,
     ) {
         if reassigned {

@@ -6,8 +6,11 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use smol_str::{SmolStr, ToSmolStr};
+
 use super::super::{
     ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
+    matching::ModuleExportKey,
 };
 use crate::analysis::{
     matching::LinkedModuleIdentity,
@@ -95,7 +98,7 @@ impl ProjectSemanticModel {
                 };
                 let identity = self.resolve_imported_identity(module, request.specifier(), export);
                 identities.insert(
-                    super::super::matching::ModuleExportKey::new(request.specifier(), export),
+                    ModuleExportKey::new(request.specifier().clone(), export.clone()),
                     identity.into(),
                 );
             }
@@ -119,17 +122,14 @@ impl ProjectSemanticModel {
                             self.lookup_export(target, &export, &mut BTreeSet::new())
                         {
                             identities.insert(
-                                super::super::matching::ModuleExportKey::new(&prefix, export),
+                                ModuleExportKey::new(prefix.clone(), export),
                                 resolved.into(),
                             );
                         }
                     }
                 }
                 other => {
-                    identities.insert(
-                        super::super::matching::ModuleExportKey::wildcard(prefix),
-                        other.into(),
-                    );
+                    identities.insert(ModuleExportKey::wildcard(prefix), other.into());
                 }
             }
         }
@@ -141,7 +141,7 @@ impl ProjectSemanticModel {
         &self,
         module: ModuleId,
         visiting: &mut BTreeSet<ModuleId>,
-    ) -> BTreeSet<String> {
+    ) -> BTreeSet<SmolStr> {
         if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(module) {
             return BTreeSet::new();
         }
@@ -175,15 +175,15 @@ impl ProjectSemanticModel {
         };
         match self.resolutions.get(&key) {
             None => ExportResolution::External {
-                module: request.specifier().to_owned(),
+                module: request.specifier().clone(),
                 export: "*".into(),
             },
             Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                module: package.clone(),
+                module: package.to_smolstr(),
                 export: "*".into(),
             },
             Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                module: name.clone(),
+                module: name.to_smolstr(),
                 export: "*".into(),
             },
             Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {

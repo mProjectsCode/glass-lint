@@ -16,6 +16,7 @@ mod visitor;
 
 use std::collections::BTreeMap;
 
+use smol_str::SmolStr;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, BinExpr, BinaryOp, CallExpr, Callee, ClassDecl, ClassExpr, CondExpr,
@@ -47,15 +48,15 @@ use crate::{
 #[derive(Clone, Debug, PartialEq, Eq)]
 /// A callable member extracted from a proven module-backed instance.
 pub(super) struct InstanceCallable {
-    module: String,
-    export: String,
+    module: SmolStr,
+    export: SmolStr,
     member: SymbolPath,
 }
 
 impl InstanceCallable {
     pub(super) fn new(
-        module: impl Into<String>,
-        export: impl Into<String>,
+        module: impl Into<SmolStr>,
+        export: impl Into<SmolStr>,
         member: SymbolPath,
     ) -> Self {
         Self {
@@ -65,7 +66,7 @@ impl InstanceCallable {
         }
     }
 
-    pub(super) fn class_identity(&self) -> (String, String) {
+    pub(super) fn class_identity(&self) -> (SmolStr, SmolStr) {
         (self.module.clone(), self.export.clone())
     }
 
@@ -194,7 +195,7 @@ impl<'a> FactBuilder<'a> {
         (self.stream, self.interface)
     }
 
-    pub(super) fn record_local(&mut self, name: impl Into<String>) {
+    pub(super) fn record_local(&mut self, name: impl Into<SmolStr>) {
         self.interface.add_local(name);
     }
 

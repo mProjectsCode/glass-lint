@@ -11,6 +11,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use smol_str::SmolStr;
+
 use crate::{
     ByteRange,
     analysis::value::FunctionId,
@@ -44,9 +46,9 @@ pub enum ModuleRequestRole {
 /// One import binding with optional imported name and namespace semantics.
 pub struct ImportedBinding {
     /// Exported name, or `None` for namespace imports.
-    imported: Option<String>,
+    imported: Option<SmolStr>,
     /// Local binding introduced in the importer.
-    local: String,
+    local: SmolStr,
     /// Whether the binding represents the complete namespace.
     namespace: bool,
 }
@@ -55,9 +57,9 @@ pub struct ImportedBinding {
 /// One named/default/namespace binding exposed through a re-export.
 pub struct ReExportBinding {
     /// Name read from the source module.
-    imported: String,
+    imported: SmolStr,
     /// Name exposed by the current module.
-    exported: String,
+    exported: SmolStr,
     /// Whether the exported binding is a namespace.
     namespace: bool,
 }
@@ -70,14 +72,14 @@ pub struct ModuleRequest {
     /// Resolver classification requested by the syntax.
     kind: ResolutionRequestKind,
     /// Literal module specifier as authored.
-    specifier: String,
+    specifier: SmolStr,
     /// Import/export role associated with the request.
     role: ModuleRequestRole,
 }
 
 impl ImportedBinding {
     /// Construct an imported binding with optional namespace semantics.
-    pub fn new(imported: Option<String>, local: String, namespace: bool) -> Self {
+    pub fn new(imported: Option<SmolStr>, local: SmolStr, namespace: bool) -> Self {
         Self {
             imported,
             local,
@@ -86,8 +88,8 @@ impl ImportedBinding {
     }
 
     /// Return the source export name, if one was specified.
-    pub fn imported(&self) -> Option<&str> {
-        self.imported.as_deref()
+    pub fn imported(&self) -> Option<&SmolStr> {
+        self.imported.as_ref()
     }
 
     /// Whether this binding refers to the whole module namespace.
@@ -98,7 +100,7 @@ impl ImportedBinding {
 
 impl ReExportBinding {
     /// Construct a re-export binding.
-    pub fn new(imported: String, exported: String, namespace: bool) -> Self {
+    pub fn new(imported: SmolStr, exported: SmolStr, namespace: bool) -> Self {
         Self {
             imported,
             exported,
@@ -119,7 +121,7 @@ impl ModuleRequest {
     }
 
     /// Return the authored module specifier.
-    pub fn specifier(&self) -> &str {
+    pub fn specifier(&self) -> &SmolStr {
         &self.specifier
     }
 
@@ -133,13 +135,13 @@ impl ModuleRequest {
 /// Export shape recorded by the local module pass.
 pub enum ModuleExport {
     /// Export aliases a local binding.
-    Local { name: String },
+    Local { name: SmolStr },
     /// Export exists but is represented by a non-callable value identity.
     Value,
     /// Export is forwarded through a specific request.
     ReExport {
         request: ModuleRequestId,
-        imported: String,
+        imported: SmolStr,
     },
     /// Export exposes a namespace from a request.
     Namespace { request: ModuleRequestId },
@@ -151,14 +153,14 @@ pub enum ModuleExport {
 /// Matcher-independent imports, exports, locals, and static exported values.
 pub struct ModuleInterface {
     requests: Vec<ModuleRequest>,
-    exports: BTreeMap<String, ModuleExport>,
+    exports: BTreeMap<SmolStr, ModuleExport>,
     star_exports: Vec<ModuleRequestId>,
-    locals: BTreeSet<String>,
+    locals: BTreeSet<SmolStr>,
     unknown_exports: bool,
-    function_exports: BTreeMap<String, FunctionId>,
+    function_exports: BTreeMap<SmolStr, FunctionId>,
     // TODO: why is this limited to strings? Should this not be extended to arbitrary static
     // values?
-    static_strings: BTreeMap<String, String>,
+    static_strings: BTreeMap<SmolStr, String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -173,7 +175,7 @@ impl ModuleRequestId {
 
 impl ModuleInterface {
     /// Record a local binding name for module-boundary checks.
-    pub fn add_local(&mut self, name: impl Into<String>) {
+    pub fn add_local(&mut self, name: impl Into<SmolStr>) {
         self.locals.insert(name.into());
     }
 
@@ -182,7 +184,7 @@ impl ModuleInterface {
         &mut self,
         span: ByteRange,
         kind: ResolutionRequestKind,
-        specifier: impl Into<String>,
+        specifier: impl Into<SmolStr>,
         role: ModuleRequestRole,
     ) -> ModuleRequestId {
         let index = ModuleRequestId(self.requests.len());
@@ -196,7 +198,7 @@ impl ModuleInterface {
     }
 
     /// Add an export, marking conflicting declarations as unknown.
-    pub fn add_export(&mut self, name: impl Into<String>, export: ModuleExport) {
+    pub fn add_export(&mut self, name: impl Into<SmolStr>, export: ModuleExport) {
         if self.unknown_exports {
             return;
         }
@@ -214,7 +216,7 @@ impl ModuleInterface {
 
     pub(in crate::analysis) fn add_function_export(
         &mut self,
-        name: impl Into<String>,
+        name: impl Into<SmolStr>,
         function: FunctionId,
     ) {
         let name = name.into();
@@ -230,7 +232,7 @@ impl ModuleInterface {
     }
 
     /// Record a statically exported string value.
-    pub fn add_static_string(&mut self, name: impl Into<String>, value: impl Into<String>) {
+    pub fn add_static_string(&mut self, name: impl Into<SmolStr>, value: impl Into<String>) {
         self.static_strings.insert(name.into(), value.into());
     }
 
@@ -269,7 +271,7 @@ impl ModuleInterface {
     }
 
     /// Iterate named exports in deterministic key order.
-    pub fn exports(&self) -> impl Iterator<Item = (&String, &ModuleExport)> {
+    pub fn exports(&self) -> impl Iterator<Item = (&SmolStr, &ModuleExport)> {
         self.exports.iter()
     }
 
@@ -309,7 +311,7 @@ impl ModuleInterface {
                         kind: request.kind(),
                         range: lines.try_range(source, request.span()).ok()?,
                     },
-                    request: request.specifier().to_owned(),
+                    request: request.specifier().to_string(),
                 })
             })
             .collect()

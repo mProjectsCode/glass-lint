@@ -6,6 +6,8 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use smol_str::SmolStr;
+
 use super::{
     effect::{EffectUse, FunctionEffect},
     index::FlowId,
@@ -458,7 +460,7 @@ impl UsageProjector<'_> {
     fn apply_property(
         &mut self,
         event: FactId,
-        property: Option<&String>,
+        property: Option<&SmolStr>,
         static_value: Option<&String>,
     ) {
         let mut next = self.state.clone();

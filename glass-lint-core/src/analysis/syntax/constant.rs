@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Spanned;
 use swc_ecma_ast::{
     BinExpr, Expr, Ident, Lit, MemberExpr, MemberProp, ObjectLit, Prop, PropName, PropOrSpread,
@@ -39,7 +40,7 @@ pub(in crate::analysis) enum ConstValue {
     /// A bounded array whose elements may themselves be unknown.
     Array(Vec<Self>),
     /// A bounded static object shape keyed in deterministic order.
-    Object(BTreeMap<String, Self>),
+    Object(BTreeMap<SmolStr, Self>),
 }
 
 impl ConstValue {
@@ -63,16 +64,16 @@ impl ConstValue {
     }
 
     /// Convert string/integer constants into static property keys.
-    pub(in crate::analysis) fn property_key(&self) -> Option<String> {
+    pub(in crate::analysis) fn property_key(&self) -> Option<SmolStr> {
         match self {
-            Self::String(value) => Some(value.clone()),
-            Self::NonNegativeInteger(value) => Some(value.to_string()),
+            Self::String(value) => Some(value.to_smolstr()),
+            Self::NonNegativeInteger(value) => Some(value.to_smolstr()),
             _ => None,
         }
     }
 
     /// Return deterministic keys when this is a static object.
-    pub(in crate::analysis) fn object_keys(&self) -> Option<Vec<String>> {
+    pub(in crate::analysis) fn object_keys(&self) -> Option<Vec<SmolStr>> {
         match self {
             Self::Object(values) => Some(values.keys().cloned().collect()),
             _ => None,
@@ -127,7 +128,7 @@ pub(in crate::analysis) fn evaluate(expr: &Expr, lookup: &impl Lookup) -> ConstV
 pub(in crate::analysis) fn property_name(
     prop: &MemberProp,
     lookup: &impl Lookup,
-) -> Option<String> {
+) -> Option<SmolStr> {
     let mut state = EvalState::default();
     property_name_with_state(prop, lookup, &mut state)
 }
@@ -137,7 +138,7 @@ pub(in crate::analysis) fn property_name_with_state(
     prop: &MemberProp,
     lookup: &impl Lookup,
     state: &mut EvalState,
-) -> Option<String> {
+) -> Option<SmolStr> {
     state.member_property_name(prop, lookup)
 }
 
@@ -273,7 +274,7 @@ impl EvalState {
                 PropOrSpread::Prop(property) => {
                     let (key, value) = match &**property {
                         Prop::Shorthand(ident) => (
-                            ident.sym.to_string(),
+                            ident.sym.to_smolstr(),
                             self.evaluate(&Expr::Ident(ident.clone()), lookup),
                         ),
                         Prop::KeyValue(property) => {
@@ -349,24 +350,24 @@ impl EvalState {
     /// Resolve a property name using the same bounded evaluator state as its
     /// surrounding expression. Computed keys therefore consume depth, node,
     /// and lookup budget instead of silently starting a second evaluation.
-    fn property_name(&mut self, prop: &PropName, lookup: &impl Lookup) -> Option<String> {
+    fn property_name(&mut self, prop: &PropName, lookup: &impl Lookup) -> Option<SmolStr> {
         match prop {
-            PropName::Ident(ident) => Some(ident.sym.to_string()),
+            PropName::Ident(ident) => Some(ident.sym.to_smolstr()),
             PropName::Str(value) => {
                 ConstValue::bounded_string(value.value.to_string_lossy().to_string()).property_key()
             }
             PropName::Num(value) => {
-                non_negative_integer(value.value).map(|value| value.to_string())
+                non_negative_integer(value.value).map(|value| value.to_smolstr())
             }
             PropName::BigInt(_) => None,
             PropName::Computed(computed) => self.evaluate(&computed.expr, lookup).property_key(),
         }
     }
 
-    fn member_property_name(&mut self, prop: &MemberProp, lookup: &impl Lookup) -> Option<String> {
+    fn member_property_name(&mut self, prop: &MemberProp, lookup: &impl Lookup) -> Option<SmolStr> {
         match prop {
-            MemberProp::Ident(ident) => Some(ident.sym.to_string()),
-            MemberProp::PrivateName(name) => Some(format!("#{}", name.name)),
+            MemberProp::Ident(ident) => Some(ident.sym.to_smolstr()),
+            MemberProp::PrivateName(name) => Some(format!("#{}", name.name).to_smolstr()),
             MemberProp::Computed(computed) => self.evaluate(&computed.expr, lookup).property_key(),
         }
     }

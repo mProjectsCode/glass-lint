@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Span;
 use swc_ecma_ast::{CallExpr, Callee, Expr, ObjectPatProp, Pat};
 
@@ -58,7 +59,7 @@ impl LexicalScopeCollector {
     /// Return every binding introduced by a parameter pattern in stable order.
     /// Destructuring can bind the same name through several syntactic paths;
     /// sorting and deduplicating keeps the call projection deterministic.
-    fn parameter_binding_names(pattern: &Pat) -> Vec<String> {
+    fn parameter_binding_names(pattern: &Pat) -> Vec<SmolStr> {
         let mut names = Vec::new();
         Self::collect_parameter_binding_names(pattern, &mut names);
         names.sort();
@@ -66,9 +67,9 @@ impl LexicalScopeCollector {
         names
     }
 
-    fn collect_parameter_binding_names(pattern: &Pat, names: &mut Vec<String>) {
+    fn collect_parameter_binding_names(pattern: &Pat, names: &mut Vec<SmolStr>) {
         match pattern {
-            Pat::Ident(ident) => names.push(ident.id.sym.to_string()),
+            Pat::Ident(ident) => names.push(ident.id.sym.to_smolstr()),
             Pat::Assign(assign) => Self::collect_parameter_binding_names(&assign.left, names),
             Pat::Object(object) => {
                 for property in &object.props {
@@ -76,7 +77,9 @@ impl LexicalScopeCollector {
                         ObjectPatProp::KeyValue(property) => {
                             Self::collect_parameter_binding_names(&property.value, names);
                         }
-                        ObjectPatProp::Assign(property) => names.push(property.key.sym.to_string()),
+                        ObjectPatProp::Assign(property) => {
+                            names.push(property.key.sym.to_smolstr());
+                        }
                         ObjectPatProp::Rest(property) => {
                             Self::collect_parameter_binding_names(&property.arg, names);
                         }
@@ -99,11 +102,11 @@ impl LexicalScopeCollector {
     pub(super) fn project_parameter_pattern(
         pattern: &Pat,
         value: &BindingProvenance,
-        output: &mut BTreeMap<String, BindingProvenance>,
+        output: &mut BTreeMap<SmolStr, BindingProvenance>,
     ) {
         match pattern {
             Pat::Ident(ident) => {
-                output.insert(ident.id.sym.to_string(), value.clone());
+                output.insert(ident.id.sym.to_smolstr(), value.clone());
             }
             Pat::Assign(assign) => Self::project_parameter_pattern(&assign.left, value, output),
             Pat::Object(object) => {
@@ -130,7 +133,7 @@ impl LexicalScopeCollector {
                         ObjectPatProp::Assign(property) => {
                             if let Some(target) = values.get(property.key.sym.as_ref()) {
                                 output.insert(
-                                    property.key.sym.to_string(),
+                                    property.key.sym.to_smolstr(),
                                     BindingProvenance::ValueAlias {
                                         target: target.clone(),
                                     },

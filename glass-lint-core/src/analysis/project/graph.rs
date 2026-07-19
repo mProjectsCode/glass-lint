@@ -50,13 +50,13 @@ impl ProjectSemanticModel {
             for module in self.modules.values() {
                 for (name, export) in module.local().interface().exports() {
                     let resolved = self.resolve_export(module.id(), name, export);
-                    if self.exports.resolve(module.id(), name).is_none()
+                    if self.exports.resolve(module.id(), name.clone()).is_none()
                         && self.exports.len() >= self.link_limit()
                     {
                         self.link_budget.mark_exhausted();
                         continue;
                     }
-                    if self.exports.resolve(module.id(), name) != Some(&resolved) {
+                    if self.exports.resolve(module.id(), name.clone()) != Some(&resolved) {
                         self.exports
                             .set_monotone(module.id(), name.clone(), resolved);
                         changed = true;
@@ -114,7 +114,7 @@ impl ProjectSemanticModel {
                             self.status.borrow_mut().record(
                                 crate::analysis::status::StatusScope::File(module.path().clone()),
                                 IncompleteReason::AmbiguousStarExport {
-                                    request: imported.to_owned(),
+                                    request: imported.to_string(),
                                 },
                             );
                         }

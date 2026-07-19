@@ -6,6 +6,8 @@
 //! A call result is interned by source span so all roles for the same call
 //! —the call fact, an assignment, and a later flow query—share one identity.
 
+use smol_str::{SmolStr, ToSmolStr};
+
 use super::{
     BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
     FactKind, FactPayload, InstanceCallable, MemberExpr, OptChainBase, ParameterBinding, Pat,
@@ -306,7 +308,7 @@ impl FactBuilder<'_> {
                         swc_ecma_ast::ObjectPatProp::Assign(property) => {
                             let path = self.append_path(
                                 path,
-                                PathSegment::Property(property.key.sym.to_string()),
+                                PathSegment::Property(property.key.sym.to_smolstr()),
                             );
                             output.push(ParameterBinding {
                                 parameter_index,
@@ -467,7 +469,7 @@ impl FactBuilder<'_> {
                     value: resolved.id,
                     receiver: None,
                     callee_span: self.byte_range(ident.span)?,
-                    callee_name: Some(ident.sym.to_string()),
+                    callee_name: Some(ident.sym.to_smolstr()),
                     call_provenance: resolved.call.clone(),
                     syntactic_chain: extracted.map(|callable| callable.member().clone()),
                     rooted_chain: resolved.rooted_chain.clone(),
@@ -544,7 +546,10 @@ impl FactBuilder<'_> {
         })
     }
 
-    pub(super) fn instance_class_for_receiver(&self, receiver: &Expr) -> Option<(String, String)> {
+    pub(super) fn instance_class_for_receiver(
+        &self,
+        receiver: &Expr,
+    ) -> Option<(SmolStr, SmolStr)> {
         if self.traversal.in_static_method() || self.traversal.in_function() {
             return None;
         }
@@ -638,13 +643,13 @@ pub(super) struct ResolvedCallee {
     value: ValueId,
     receiver: Option<ValueId>,
     callee_span: crate::ByteRange,
-    callee_name: Option<String>,
+    callee_name: Option<SmolStr>,
     call_provenance: SymbolCallProvenance,
     syntactic_chain: Option<SymbolPath>,
     rooted_chain: Option<SymbolPath>,
     module_member: Option<SymbolMemberProvenance>,
     returned_member: Option<(SymbolPath, SymbolPath)>,
     bound_arguments: Option<Vec<Option<BoundArgument>>>,
-    instance_class: Option<(String, String)>,
+    instance_class: Option<(SmolStr, SmolStr)>,
     target_function: Option<FunctionId>,
 }

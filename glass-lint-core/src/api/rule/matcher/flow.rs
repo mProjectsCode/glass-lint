@@ -4,6 +4,8 @@
 //! lifecycle. They become immutable predicates over semantic facts after
 //! validation and compilation.
 
+use smol_str::SmolStr;
+
 use super::MemberCallMatcher;
 
 /// A context-independent predicate over an argument value.
@@ -181,7 +183,7 @@ impl ObjectSourceMatcher {
 pub enum ObjectEventMatcher {
     PropertyWrite {
         /// Written property name.
-        property: String,
+        property: SmolStr,
         /// Required value predicate.
         value: ValueMatcher,
     },
@@ -194,7 +196,7 @@ pub enum ObjectEventMatcher {
 }
 
 impl ObjectEventMatcher {
-    pub fn property_write(property: impl Into<String>, value: ValueMatcher) -> Self {
+    pub fn property_write(property: impl Into<SmolStr>, value: ValueMatcher) -> Self {
         Self::PropertyWrite {
             property: property.into(),
             value,

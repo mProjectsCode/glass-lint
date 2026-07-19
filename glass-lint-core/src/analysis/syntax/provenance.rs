@@ -4,6 +4,8 @@
 //! identity is distinct from resolution that failed, was unsupported, or was
 //! ambiguous.
 
+use smol_str::SmolStr;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// Why a semantic identity could not be proven.
 pub(in crate::analysis) enum UnknownReason {
@@ -51,11 +53,12 @@ impl<T> Knowledge<T> {
 /// Provenance of a callable symbol at a use position.
 pub(in crate::analysis) enum SymbolCallProvenance {
     /// A configured, unshadowed global callable.
-    Global { name: String },
+    /// TODO: Candidate for SybolPath?
+    Global { name: SmolStr },
     /// A callable proven to be local to the current artifact.
     Local,
     /// A callable exported by a named module.
-    ModuleExport { module: String, export: String },
+    ModuleExport { module: SmolStr, export: SmolStr },
     /// A resolution that did not produce a proven identity.
     Unknown(UnknownReason),
     /// Multiple incompatible identities were possible.
@@ -77,7 +80,8 @@ impl SymbolCallProvenance {
 /// Provenance of a member access rooted in a module namespace.
 pub(in crate::analysis) enum SymbolMemberProvenance {
     /// A statically named member of an imported namespace.
-    ModuleNamespace { module: String, member: String },
+    /// TODO: Consider using SymbolPath here for member
+    ModuleNamespace { module: SmolStr, member: SmolStr },
 }
 
 #[cfg(test)]

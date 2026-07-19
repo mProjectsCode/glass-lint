@@ -6,6 +6,8 @@
 
 use std::fmt;
 
+use smol_str::SmolStr;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Canonical ID for an abstract value in one analysis arena.
 pub(in crate::analysis) struct ValueId(pub(in crate::analysis) u32);
@@ -30,10 +32,10 @@ pub(in crate::analysis) struct FunctionId(pub(in crate::analysis) u32);
 /// Canonical member path represented as individual segments rather than a
 /// formatted string, so identity and display concerns stay separate.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SymbolPath(Vec<String>);
+pub struct SymbolPath(Vec<SmolStr>);
 
 impl SymbolPath {
-    pub(in crate::analysis) fn from_segments(segments: Vec<String>) -> Self {
+    pub(in crate::analysis) fn from_segments(segments: Vec<SmolStr>) -> Self {
         Self(segments)
     }
 
@@ -42,14 +44,25 @@ impl SymbolPath {
     }
 
     pub(in crate::analysis) fn last_segment(&self) -> Option<&str> {
-        self.0.last().map(String::as_str)
+        self.0.last().map(SmolStr::as_str)
     }
 
     pub(in crate::analysis) fn first_segment(&self) -> Option<&str> {
-        self.0.first().map(String::as_str)
+        self.0.first().map(SmolStr::as_str)
     }
 
-    pub(in crate::analysis) fn segments(&self) -> &[String] {
+    pub(in crate::analysis) fn without_last_segment(&self) -> Option<Self> {
+        self.0
+            .last()
+            .is_some()
+            .then(|| Self(self.0[..self.0.len().saturating_sub(1)].to_vec()))
+    }
+
+    pub(in crate::analysis) fn without_first_segment(&self) -> Option<Self> {
+        (!self.0.is_empty()).then(|| Self(self.0[1..].to_vec()))
+    }
+
+    pub(in crate::analysis) fn segments(&self) -> &[SmolStr] {
         &self.0
     }
 
@@ -60,7 +73,7 @@ impl SymbolPath {
     }
 
     pub(crate) fn eq_chain(&self, chain: &str) -> bool {
-        self.0.iter().map(String::as_str).eq(chain.split('.'))
+        self.0.iter().map(SmolStr::as_str).eq(chain.split('.'))
     }
 
     /// Parse a dotted chain into canonical non-empty path segments.
@@ -70,7 +83,7 @@ impl SymbolPath {
                 .split('.')
                 .map(str::trim)
                 .filter(|segment| !segment.is_empty())
-                .map(str::to_string)
+                .map(SmolStr::new)
                 .collect(),
         )
     }
@@ -85,7 +98,8 @@ impl SymbolPath {
         self.0
             .last()
             .is_some_and(|segment| segment == "bind")
-            .then(|| Self(self.0[..self.0.len().saturating_sub(1)].to_vec()))
+            .then(|| self.without_last_segment())
+            .flatten()
     }
 
     /// Append a dotted suffix without retaining an extra separator segment.
@@ -97,7 +111,7 @@ impl SymbolPath {
                 .unwrap_or(suffix)
                 .split('.')
                 .filter(|segment| !segment.is_empty())
-                .map(str::to_string),
+                .map(SmolStr::new),
         );
         Self(path)
     }
@@ -132,6 +146,11 @@ impl From<String> for SymbolPath {
         Self::from_chain(&value)
     }
 }
+impl From<SmolStr> for SymbolPath {
+    fn from(value: SmolStr) -> Self {
+        Self::from_chain(&value)
+    }
+}
 impl From<&str> for SymbolPath {
     fn from(value: &str) -> Self {
         Self::from_chain(value)
@@ -163,7 +182,8 @@ pub(in crate::analysis) struct BindingKey {
     /// Stable root identity.
     root: BindingRoot,
     /// Static member path from the root.
-    path: Vec<String>,
+    /// TODO: SymbolPath applicable here?
+    path: Vec<SmolStr>,
 }
 
 impl BindingKey {
@@ -176,7 +196,7 @@ impl BindingKey {
     }
 
     /// Extend the key with one static member segment.
-    pub(in crate::analysis) fn append_segment(&mut self, segment: String) {
+    pub(in crate::analysis) fn append_segment(&mut self, segment: SmolStr) {
         self.path.push(segment);
     }
 }

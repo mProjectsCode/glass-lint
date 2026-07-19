@@ -7,6 +7,8 @@
 
 use std::collections::HashMap;
 
+use smol_str::SmolStr;
+
 use super::{BindingKey, SymbolPath, ValueId};
 
 pub(in crate::analysis) const MAX_VALUES: usize = 65_536;
@@ -18,15 +20,15 @@ pub(in crate::analysis) enum Value {
     /// No supported identity was proven.
     Unknown,
     /// A configured global root.
-    Global(String),
+    Global(SmolStr),
     /// A local or ambiguous value.
     Local,
     /// A statically rooted member path.
     RootedMember { path: SymbolPath },
     /// A module namespace identity.
-    ModuleNamespace(String),
+    ModuleNamespace(SmolStr),
     /// A named export identity.
-    ModuleExport { module: String, export: String },
+    ModuleExport { module: SmolStr, export: SmolStr },
     /// A bounded static string value.
     StaticString(String),
     /// A bounded non-negative static number.
@@ -34,7 +36,7 @@ pub(in crate::analysis) enum Value {
     /// An interned array of value identities.
     StaticArray(Vec<ValueId>),
     /// An interned object shape of named value identities.
-    StaticObject(Vec<(String, ValueId)>),
+    StaticObject(Vec<(SmolStr, ValueId)>),
     /// A callable target with receiver and bound arguments.
     Callable(CallableValue),
     /// An allocated object identity.

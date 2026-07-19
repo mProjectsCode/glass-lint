@@ -10,10 +10,11 @@ use std::{
 };
 
 use facts::SemanticFacts;
+use smol_str::SmolStr;
 use syntax::SymbolCallProvenance;
 
-use super::{facts, flow, module::ModuleInterface, status::AnalysisStatus, syntax};
-use crate::project::ModuleId;
+use super::{facts, module::ModuleInterface, status::AnalysisStatus, syntax};
+use crate::{analysis::flow::effect::FunctionEffects, project::ModuleId};
 
 #[derive(Clone, Debug)]
 pub struct LocatedSourceContext {
@@ -206,17 +207,17 @@ pub struct SemanticArtifact {
     /// Canonical facts, occurrence indexes, and module interface.
     facts: SemanticFacts,
     /// Proven origins for locally named exports.
-    export_origins: BTreeMap<String, SymbolCallProvenance>,
+    export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
     /// Matcher-independent function effects for project flow.
-    effects: flow::effect::FunctionEffects,
+    effects: FunctionEffects,
     status: AnalysisStatus,
 }
 
 impl SemanticArtifact {
     pub(in crate::analysis) fn from_lowering(
         facts: SemanticFacts,
-        export_origins: BTreeMap<String, SymbolCallProvenance>,
-        effects: flow::effect::FunctionEffects,
+        export_origins: BTreeMap<SmolStr, SymbolCallProvenance>,
+        effects: FunctionEffects,
         status: AnalysisStatus,
     ) -> Self {
         Self {
@@ -236,7 +237,7 @@ impl SemanticArtifact {
         &self.facts
     }
 
-    pub(in crate::analysis) fn effects(&self) -> &flow::effect::FunctionEffects {
+    pub(in crate::analysis) fn effects(&self) -> &FunctionEffects {
         &self.effects
     }
 
@@ -273,7 +274,7 @@ impl LocalArtifact {
         self.semantic.facts()
     }
 
-    pub(in crate::analysis) fn effects(&self) -> &flow::effect::FunctionEffects {
+    pub(in crate::analysis) fn effects(&self) -> &FunctionEffects {
         self.semantic.effects()
     }
 

@@ -4,6 +4,8 @@
 //! Selection only filters catalog indexes; it never changes the semantic facts
 //! constructed for a source file.
 
+use smol_str::{SmolStr, ToSmolStr};
+
 use super::super::{
     classification::MatchKind,
     rule::{
@@ -47,23 +49,23 @@ pub(crate) enum IdentityStrength {
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub(crate) enum IdentityConstraint {
     Any {
-        name: String,
+        name: SmolStr,
         strength: IdentityStrength,
     },
     Global {
-        name: String,
+        name: SmolStr,
         strength: IdentityStrength,
     },
     ModuleExport {
-        module: String,
-        export: String,
+        module: SmolStr,
+        export: SmolStr,
     },
     PackageModuleExport {
         module: crate::api::rule::ModuleSpecifierPattern,
-        export: String,
+        export: SmolStr,
     },
     ModuleNamespace {
-        module: String,
+        module: SmolStr,
     },
     PackageModuleNamespace {
         module: crate::api::rule::ModuleSpecifierPattern,
@@ -475,12 +477,12 @@ fn lower_instance_members(
         .map(|instance| {
             let constructor = instance.module_pattern.clone().map_or_else(
                 || IdentityConstraint::ModuleExport {
-                    module: instance.module.clone(),
-                    export: instance.export.clone(),
+                    module: instance.module.to_smolstr(),
+                    export: instance.export.to_smolstr(),
                 },
                 |module| IdentityConstraint::PackageModuleExport {
                     module,
-                    export: instance.export.clone(),
+                    export: instance.export.to_smolstr(),
                 },
             );
             QueryClause {
@@ -510,7 +512,7 @@ fn member_identity(
 ) -> IdentityConstraint {
     match provenance {
         super::super::rule::MemberCallProvenance::Any => IdentityConstraint::Any {
-            name: chain.to_owned(),
+            name: chain.to_smolstr(),
             strength: IdentityStrength::Heuristic,
         },
         super::super::rule::MemberCallProvenance::Rooted => IdentityConstraint::Rooted {
@@ -518,7 +520,7 @@ fn member_identity(
         },
         super::super::rule::MemberCallProvenance::ModuleNamespace { module } => {
             IdentityConstraint::ModuleNamespace {
-                module: module.clone(),
+                module: module.to_smolstr(),
             }
         }
         super::super::rule::MemberCallProvenance::PackageModuleNamespace { module } => {
@@ -535,7 +537,7 @@ fn member_read_identity(
 ) -> IdentityConstraint {
     match provenance {
         super::super::rule::MemberReadProvenance::Any => IdentityConstraint::Any {
-            name: chain.to_owned(),
+            name: chain.to_smolstr(),
             strength: IdentityStrength::Heuristic,
         },
         super::super::rule::MemberReadProvenance::Rooted => IdentityConstraint::Rooted {
@@ -543,7 +545,7 @@ fn member_read_identity(
         },
         super::super::rule::MemberReadProvenance::ModuleNamespace { module } => {
             IdentityConstraint::ModuleNamespace {
-                module: module.clone(),
+                module: module.to_smolstr(),
             }
         }
         super::super::rule::MemberReadProvenance::PackageModuleNamespace { module } => {
@@ -569,7 +571,7 @@ fn call_identity(
         },
         super::super::rule::SymbolProvenance::ModuleExport { module } => {
             IdentityConstraint::ModuleExport {
-                module: module.clone(),
+                module: module.to_smolstr(),
                 export: name.into(),
             }
         }
@@ -704,7 +706,7 @@ pub(crate) enum CompiledObjectRequirement {
     /// Required property write and value constraint.
     PropertyWrite {
         /// Written property name.
-        property: String,
+        property: SmolStr,
         /// Required value matcher.
         value: ValueMatcher,
     },

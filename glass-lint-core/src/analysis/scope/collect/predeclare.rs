@@ -3,6 +3,7 @@
 //! This pass runs before provenance collection so lexical and hoisted names
 //! are known at every source position, including uses before declarations.
 
+use smol_str::ToSmolStr;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, BlockStmt, CatchClause, ClassDecl, ClassExpr, FnDecl, ForInStmt, ForOfStmt, ForStmt,
@@ -24,11 +25,11 @@ impl PredeclareVisitor<'_> {
     /// Insert import bindings before ordinary source-order traversal.
     fn insert_import(&mut self, import: &ImportDecl) {
         let scope = self.collector.current_scope();
-        let module = import.src.value.to_string_lossy().to_string();
+        let module = import.src.value.to_string_lossy().to_smolstr();
         for specifier in &import.specifiers {
             match specifier {
                 ImportSpecifier::Named(named) => {
-                    let local = named.local.sym.to_string();
+                    let local = named.local.sym.to_smolstr();
                     let export = named
                         .imported
                         .as_ref()
@@ -44,14 +45,14 @@ impl PredeclareVisitor<'_> {
                 }
                 ImportSpecifier::Namespace(namespace) => self.collector.insert(
                     scope,
-                    namespace.local.sym.to_string(),
+                    namespace.local.sym.to_smolstr(),
                     BindingProvenance::ModuleNamespace {
                         module: module.clone(),
                     },
                 ),
                 ImportSpecifier::Default(default) => self.collector.insert(
                     scope,
-                    default.local.sym.to_string(),
+                    default.local.sym.to_smolstr(),
                     BindingProvenance::ModuleNamespace {
                         module: module.clone(),
                     },

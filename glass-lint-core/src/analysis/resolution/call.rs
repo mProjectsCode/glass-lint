@@ -4,6 +4,8 @@
 //! and modeled `.bind()` calls preserve callable identity, and CommonJS
 //! recognition requires an unshadowed global `require` binding.
 
+use smol_str::ToSmolStr;
+
 use super::{
     CallExpr, Callee, Expr, Lit, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
 };
@@ -32,7 +34,7 @@ impl Resolver {
         rooted
             .and_then(|chain| self.scopes.global_callable_member_at(chain, span))
             .map_or(provenance, |name| SymbolCallProvenance::Global {
-                name: name.to_string(),
+                name: name.to_smolstr(),
             })
     }
 
@@ -77,7 +79,7 @@ impl Resolver {
             let module = specifier.value.to_string_lossy().to_string();
             let id = self.intern_call_value(
                 &SymbolCallProvenance::ModuleExport {
-                    module,
+                    module: module.into(),
                     export: "*".into(),
                 },
                 None,
@@ -185,7 +187,7 @@ impl Resolver {
                         .is_some_and(|root| self.scopes.is_configured_global(root)) =>
             {
                 SymbolCallProvenance::Global {
-                    name: path.first_segment().expect("root checked").to_owned(),
+                    name: path.first_segment().expect("root checked").to_smolstr(),
                 }
             }
             Value::Unknown => SymbolCallProvenance::Unknown(UnknownReason::Unsupported),

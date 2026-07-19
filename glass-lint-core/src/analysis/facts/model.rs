@@ -1,5 +1,7 @@
 //! Rule-independent semantic fact identities and payloads.
 
+use smol_str::SmolStr;
+
 use super::super::{
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
     value::{FunctionId, PathId, SymbolPath, ValueId},
@@ -135,9 +137,9 @@ pub(in crate::analysis) struct CallArgInfo {
     /// Statically evaluated string value, when available.
     pub(in crate::analysis) static_string: Option<String>,
     /// Statically known keys of a finite object argument.
-    pub(in crate::analysis) object_keys: Option<Vec<String>>,
+    pub(in crate::analysis) object_keys: Option<Vec<SmolStr>>,
     /// Statically known direct object-property string values.
-    pub(in crate::analysis) property_strings: Vec<(String, String)>,
+    pub(in crate::analysis) property_strings: Vec<(SmolStr, String)>,
     /// Proven rooted member chain for this argument.
     pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
     /// Values reachable from this argument through a statically known object
@@ -235,7 +237,7 @@ pub(in crate::analysis) enum FactPayload {
         /// Object identity receiving the property write.
         receiver: ValueId,
         /// Statically known property name, if the key is not dynamic.
-        property: Option<String>,
+        property: Option<SmolStr>,
         /// Statically evaluated string assigned to the property.
         static_value: Option<String>,
     },
@@ -250,7 +252,7 @@ pub(in crate::analysis) enum FactPayload {
         /// range.
         callee_span: ByteRange,
         /// Direct callee name when syntax supplies one.
-        callee_name: Option<String>,
+        callee_name: Option<SmolStr>,
         /// Resolver-backed callable provenance.
         call_provenance: SymbolCallProvenance,
         /// Member chain as written at the call site.
@@ -262,7 +264,7 @@ pub(in crate::analysis) enum FactPayload {
         /// Proven member returned by an earlier call, if available.
         returned_member: Option<(SymbolPath, SymbolPath)>,
         /// Proven superclass identity for an instance method call.
-        instance_class: Option<(String, String)>,
+        instance_class: Option<(SmolStr, SmolStr)>,
         /// Lexical function identity when the callee resolves to one.
         target_function: Option<FunctionId>,
         /// Pre-computed argument evaluation for predicates.
@@ -295,7 +297,7 @@ pub(in crate::analysis) enum FactPayload {
         /// Byte range of the constructor expression.
         callee_span: ByteRange,
         /// Constructor name when strict provenance permits one.
-        callee_name: Option<String>,
+        callee_name: Option<SmolStr>,
         /// Resolver-backed constructor provenance.
         provenance: SymbolCallProvenance,
     },
@@ -308,11 +310,11 @@ pub(in crate::analysis) enum FactPayload {
     Class {
         /// Authored class name for declaration facts; absent for an
         /// `instanceof` operand.
-        name: Option<String>,
+        name: Option<SmolStr>,
         /// Role represented by this class fact.
         role: ClassFactRole,
         /// Proven superclass/module identity, if available.
-        provenance: Option<(String, String)>,
+        provenance: Option<(SmolStr, SmolStr)>,
     },
 }
 

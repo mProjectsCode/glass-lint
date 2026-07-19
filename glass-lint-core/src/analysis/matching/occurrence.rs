@@ -6,6 +6,8 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::SmolStr;
+
 use super::super::facts::FactId;
 use crate::{ByteRange, analysis::SymbolPath};
 
@@ -122,19 +124,19 @@ impl<K: Ord + Clone> OccurrenceIndex<K> {
     }
 }
 
-pub(in crate::analysis) type Occurrences = OccurrenceIndex<String>;
+pub(in crate::analysis) type Occurrences = OccurrenceIndex<SmolStr>;
 
 /// Stable key for a module request and one exported member.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub(in crate::analysis) struct ModuleExportKey {
-    module: String,
-    export: String,
+    module: SmolStr,
+    export: SmolStr,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub(in crate::analysis) struct InstanceMemberKey {
     identity: ModuleExportKey,
-    member: String,
+    member: SmolStr,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -159,9 +161,9 @@ impl ReturnedMemberKey {
 
 impl InstanceMemberKey {
     pub(in crate::analysis) fn new(
-        module: impl Into<String>,
-        export: impl Into<String>,
-        member: impl Into<String>,
+        module: impl Into<SmolStr>,
+        export: impl Into<SmolStr>,
+        member: impl Into<SmolStr>,
     ) -> Self {
         Self {
             identity: ModuleExportKey::new(module, export),
@@ -173,28 +175,28 @@ impl InstanceMemberKey {
         &self.identity
     }
 
-    pub(in crate::analysis) fn member(&self) -> &str {
+    pub(in crate::analysis) fn member(&self) -> &SmolStr {
         &self.member
     }
 }
 
 impl ModuleExportKey {
-    pub(in crate::analysis) fn new(module: impl Into<String>, export: impl Into<String>) -> Self {
+    pub(in crate::analysis) fn new(module: impl Into<SmolStr>, export: impl Into<SmolStr>) -> Self {
         Self {
             module: module.into(),
             export: export.into(),
         }
     }
 
-    pub(in crate::analysis) fn module(&self) -> &str {
+    pub(in crate::analysis) fn module(&self) -> &SmolStr {
         &self.module
     }
 
-    pub(in crate::analysis) fn export(&self) -> &str {
+    pub(in crate::analysis) fn export(&self) -> &SmolStr {
         &self.export
     }
 
-    pub(in crate::analysis) fn wildcard(module: impl Into<String>) -> Self {
+    pub(in crate::analysis) fn wildcard(module: impl Into<SmolStr>) -> Self {
         Self::new(module, "*")
     }
 }
