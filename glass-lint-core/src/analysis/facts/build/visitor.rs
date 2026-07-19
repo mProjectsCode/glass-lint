@@ -212,24 +212,7 @@ impl Visit for FactBuilder<'_> {
             }
             Expr::Member(member) => {
                 let member_resolved = self.resolver.resolve_member(member);
-                let global_name = member_resolved.rooted_chain.as_ref().and_then(|chain| {
-                    if chain.eq_chain("globalThis.URL")
-                        && matches!(
-                            self.resolver.resolve_expr(&member.obj).call,
-                            SymbolCallProvenance::Global { ref name } if name == "globalThis"
-                        )
-                    {
-                        Some("URL")
-                    } else if chain.eq_chain("Function") {
-                        Some("Function")
-                    } else {
-                        None
-                    }
-                });
-                if let Some(name) = global_name {
-                    let name = name.to_string();
-                    (Some(name.clone()), SymbolCallProvenance::Global { name })
-                } else if let Some(SymbolMemberProvenance::ModuleNamespace {
+                if let Some(SymbolMemberProvenance::ModuleNamespace {
                     module,
                     member: member_name,
                 }) = member_resolved.module_member

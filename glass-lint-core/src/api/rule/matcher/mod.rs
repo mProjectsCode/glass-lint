@@ -44,6 +44,74 @@ pub struct MatcherSet {
     pub instance_member_calls: Vec<InstanceMemberCallMatcher>,
 }
 
+/// Exhaustive view of matcher families. Keeping this dispatch in the owning
+/// type makes adding a family a compile-time edit at one canonical list.
+pub(crate) enum MatcherFamily<'a> {
+    Calls(&'a [CallMatcher]),
+    MemberCalls(&'a [MemberCallMatcher]),
+    MemberReads(&'a [MemberReadMatcher]),
+    Imports(&'a [String]),
+    PackageImports(&'a [ModuleSpecifierPattern]),
+    StringContains(&'a [String]),
+    Classes(&'a [ClassMatcher]),
+    Constructors(&'a [ConstructorMatcher]),
+    Flows(&'a [ObjectFlowMatcher]),
+    ReturnedMemberCalls(&'a [ReturnedMemberCallMatcher]),
+    ReturnedMemberReads(&'a [ReturnedMemberReadMatcher]),
+    InstanceMemberCalls(&'a [InstanceMemberCallMatcher]),
+}
+
+pub(crate) enum MatcherFamilyMut<'a> {
+    Calls(&'a mut Vec<CallMatcher>),
+    MemberCalls(&'a mut Vec<MemberCallMatcher>),
+    MemberReads(&'a mut Vec<MemberReadMatcher>),
+    Imports(&'a mut Vec<String>),
+    PackageImports(&'a mut Vec<ModuleSpecifierPattern>),
+    StringContains(&'a mut Vec<String>),
+    Classes(&'a mut Vec<ClassMatcher>),
+    Constructors(&'a mut Vec<ConstructorMatcher>),
+    Flows(&'a mut Vec<ObjectFlowMatcher>),
+    ReturnedMemberCalls(&'a mut Vec<ReturnedMemberCallMatcher>),
+    ReturnedMemberReads(&'a mut Vec<ReturnedMemberReadMatcher>),
+    InstanceMemberCalls(&'a mut Vec<InstanceMemberCallMatcher>),
+}
+
+impl MatcherSet {
+    pub(crate) fn families(&self) -> [MatcherFamily<'_>; 12] {
+        [
+            MatcherFamily::Calls(&self.calls),
+            MatcherFamily::MemberCalls(&self.member_calls),
+            MatcherFamily::MemberReads(&self.member_reads),
+            MatcherFamily::Imports(&self.imports),
+            MatcherFamily::PackageImports(&self.package_imports),
+            MatcherFamily::StringContains(&self.string_contains),
+            MatcherFamily::Classes(&self.classes),
+            MatcherFamily::Constructors(&self.constructors),
+            MatcherFamily::Flows(&self.flows),
+            MatcherFamily::ReturnedMemberCalls(&self.returned_member_calls),
+            MatcherFamily::ReturnedMemberReads(&self.returned_member_reads),
+            MatcherFamily::InstanceMemberCalls(&self.instance_member_calls),
+        ]
+    }
+
+    pub(crate) fn families_mut(&mut self) -> [MatcherFamilyMut<'_>; 12] {
+        [
+            MatcherFamilyMut::Calls(&mut self.calls),
+            MatcherFamilyMut::MemberCalls(&mut self.member_calls),
+            MatcherFamilyMut::MemberReads(&mut self.member_reads),
+            MatcherFamilyMut::Imports(&mut self.imports),
+            MatcherFamilyMut::PackageImports(&mut self.package_imports),
+            MatcherFamilyMut::StringContains(&mut self.string_contains),
+            MatcherFamilyMut::Classes(&mut self.classes),
+            MatcherFamilyMut::Constructors(&mut self.constructors),
+            MatcherFamilyMut::Flows(&mut self.flows),
+            MatcherFamilyMut::ReturnedMemberCalls(&mut self.returned_member_calls),
+            MatcherFamilyMut::ReturnedMemberReads(&mut self.returned_member_reads),
+            MatcherFamilyMut::InstanceMemberCalls(&mut self.instance_member_calls),
+        ]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One typed matcher declaration in a rule.
 pub enum Matcher {

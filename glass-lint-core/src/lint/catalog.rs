@@ -148,7 +148,7 @@ impl RuleCatalog {
     }
 
     /// Borrow compiled matcher plans.
-    pub fn compiled(&self) -> &CompiledCatalog {
+    pub(crate) fn compiled(&self) -> &CompiledCatalog {
         &self.compiled
     }
 

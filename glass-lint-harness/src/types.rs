@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 
 use glass_lint_core::{
-    Finding, ProjectRelativePath, ResolutionRequestKind, ResolverOutcome, Severity,
+    Finding, ProjectRelativePath, ResolutionRequestKind, ResolverOutcome, RuleId, Severity,
 };
 use serde::{Deserialize, Serialize};
 
@@ -88,37 +88,35 @@ impl Case {
 /// identities.
 #[derive(Clone, Debug)]
 pub struct ProjectCase {
-    /// Root namespace for project-relative paths.
-    pub root: std::path::PathBuf,
-    /// Entry paths selected for project analysis.
-    pub entries: Vec<String>,
-    /// Authored project files in normalized order, using the adapter protocol
-    /// model as the canonical harness boundary representation.
-    pub files: Vec<AdapterFile>,
-    /// Explicit resolver answers using the same canonical adapter boundary
-    /// representation sent to external adapters.
-    pub resolutions: Vec<AdapterResolution>,
+    /// Canonical adapter-boundary project contract.
+    pub(crate) protocol: AdapterProject,
     /// Whether the adapter should load the real filesystem tree.
     pub filesystem: bool,
 }
 
+impl ProjectCase {
+    pub(crate) fn root(&self) -> std::path::PathBuf {
+        self.protocol.root.clone().into()
+    }
+
+    pub(crate) fn files(&self) -> &[AdapterFile] {
+        &self.protocol.files
+    }
+
+    pub(crate) fn resolutions(&self) -> &[AdapterResolution] {
+        &self.protocol.resolutions
+    }
+}
+
 impl From<&ProjectCase> for AdapterProject {
     fn from(project: &ProjectCase) -> Self {
-        Self {
-            root: project.root.to_string_lossy().into_owned(),
-            entries: project.entries.clone(),
-            files: project.files.clone(),
-            resolutions: project.resolutions.clone(),
-        }
+        project.protocol.clone()
     }
 }
 impl From<AdapterProject> for ProjectCase {
     fn from(project: AdapterProject) -> Self {
         Self {
-            root: project.root.into(),
-            entries: project.entries,
-            files: project.files,
-            resolutions: project.resolutions,
+            protocol: project,
             filesystem: false,
         }
     }
@@ -127,29 +125,61 @@ impl From<AdapterProject> for ProjectCase {
 #[derive(Clone, Debug)]
 /// Expectations for one adapter on one case.
 pub struct ToolExpectation {
-    /// Named adapter configuration, if any.
-    pub(crate) config: Option<String>,
-    /// Explicit rule IDs to enable.
-    pub(crate) rules: Vec<String>,
+    /// The mutually exclusive adapter selector.
+    selector: ToolSelector,
     /// Findings that must be present.
-    pub(crate) required: Vec<FindingExpectation>,
+    required: Vec<FindingExpectation>,
     /// Findings that must be absent.
-    pub(crate) forbidden: Vec<FindingExpectation>,
+    forbidden: Vec<FindingExpectation>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ToolSelector {
+    /// Named adapter configuration.
+    Config(String),
+    /// Explicit, non-empty rule IDs to enable.
+    Rules(Vec<String>),
 }
 
 impl ToolExpectation {
     /// Construct an expectation after validating its mutually exclusive rule
     /// and config selectors.
     pub fn new(config: Option<String>, rules: Vec<String>) -> Result<Self, String> {
-        if config.is_some() != rules.is_empty() {
-            return Err("tool expectation must specify exactly one of config or rules".into());
-        }
+        let selector = match (config, rules) {
+            (Some(config), rules) if !config.trim().is_empty() && rules.is_empty() => {
+                ToolSelector::Config(config)
+            }
+            (None, rules) if !rules.is_empty() => ToolSelector::Rules(rules),
+            _ => return Err("tool expectation must specify exactly one of config or rules".into()),
+        };
         Ok(Self {
-            config,
-            rules,
+            selector,
             required: Vec::new(),
             forbidden: Vec::new(),
         })
+    }
+
+    pub(crate) fn config(&self) -> Option<&str> {
+        match &self.selector {
+            ToolSelector::Config(config) => Some(config),
+            ToolSelector::Rules(_) => None,
+        }
+    }
+
+    pub(crate) fn rules(&self) -> &[String] {
+        match &self.selector {
+            ToolSelector::Config(_) => &[],
+            ToolSelector::Rules(rules) => rules,
+        }
+    }
+
+    pub(crate) fn merge_from(&mut self, other: Self) -> Result<(), String> {
+        if self.selector != other.selector {
+            return Err("tool expectation selectors disagree across project files".into());
+        }
+        self.required.extend(other.required);
+        self.forbidden.extend(other.forbidden);
+        Ok(())
     }
 
     /// Construct an expectation with its complete diagnostic lists checked.
@@ -164,20 +194,65 @@ impl ToolExpectation {
         expectation.forbidden = forbidden;
         Ok(expectation)
     }
+
+    pub(crate) fn from_selector(
+        selector: ToolSelector,
+        required: Vec<FindingExpectation>,
+        forbidden: Vec<FindingExpectation>,
+    ) -> Result<Self, String> {
+        let valid = match &selector {
+            ToolSelector::Config(config) => !config.trim().is_empty(),
+            ToolSelector::Rules(rules) => !rules.is_empty(),
+        };
+        if !valid {
+            return Err("tool expectation selector is invalid".into());
+        }
+        Ok(Self {
+            selector,
+            required,
+            forbidden,
+        })
+    }
+
+    pub(crate) fn required(&self) -> &[FindingExpectation] {
+        &self.required
+    }
+
+    pub(crate) fn forbidden(&self) -> &[FindingExpectation] {
+        &self.forbidden
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        ToolSelector,
+        Vec<FindingExpectation>,
+        Vec<FindingExpectation>,
+    ) {
+        (self.selector, self.required, self.forbidden)
+    }
+
+    pub(crate) fn add_required(&mut self, finding: FindingExpectation) {
+        self.required.push(finding);
+    }
+
+    pub(crate) fn add_forbidden(&mut self, finding: FindingExpectation) {
+        self.forbidden.push(finding);
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct FindingExpectation {
     /// Optional project-relative finding path.
-    pub(crate) path: Option<String>,
+    pub(crate) path: Option<ProjectRelativePath>,
     /// Stable rule ID to compare.
-    pub(crate) rule_id: String,
+    pub(crate) rule_id: RuleId,
     /// Optional message ID constraint.
     pub(crate) message_id: Option<String>,
     /// Optional severity constraint.
     pub(crate) severity: Option<Severity>,
     /// Exact expected count when specified.
-    pub(crate) count: Option<usize>,
+    pub(crate) count: ExpectedCount,
     /// Optional one-based source line.
     pub(crate) line: Option<u32>,
     /// Optional one-based source column.
@@ -186,29 +261,34 @@ pub struct FindingExpectation {
     pub(crate) message: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExpectedCount {
+    /// Require exactly this many matching findings.
+    Exactly(usize),
+    /// Require at least one matching finding.
+    AtLeastOne,
+}
+
 impl FindingExpectation {
     /// Construct a required or forbidden diagnostic with a validated rule ID.
     pub fn new(rule_id: impl Into<String>) -> Result<Self, String> {
-        let rule_id = rule_id.into();
-        if rule_id.trim().is_empty() {
-            return Err("diagnostic expectation rule ID must not be empty".into());
-        }
+        let rule_id = RuleId::parse(rule_id.into())
+            .map_err(|_| "diagnostic expectation rule ID is invalid".to_owned())?;
         Ok(Self {
             path: None,
             rule_id,
             message_id: None,
             severity: None,
-            count: Some(1),
+            count: ExpectedCount::Exactly(1),
             line: None,
             column: None,
             message: None,
         })
     }
 
-    #[must_use]
-    pub fn with_path(mut self, path: impl Into<String>) -> Self {
-        self.path = Some(path.into());
-        self
+    pub fn with_path(mut self, path: impl Into<String>) -> Result<Self, String> {
+        self.path = Some(ProjectRelativePath::new(path.into()).map_err(|error| error.to_string())?);
+        Ok(self)
     }
 
     #[must_use]
@@ -224,7 +304,7 @@ impl FindingExpectation {
     }
 
     #[must_use]
-    pub fn with_count(mut self, count: Option<usize>) -> Self {
+    pub fn with_count(mut self, count: ExpectedCount) -> Self {
         self.count = count;
         self
     }

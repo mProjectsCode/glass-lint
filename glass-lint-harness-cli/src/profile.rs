@@ -1,8 +1,11 @@
 //! Profiling command adapter and stable human-readable summary output.
 
+use std::num::NonZeroUsize;
+
 use anyhow::Result;
 use glass_lint_harness::{
-    ProfileConfig, ProfileSummary, ProfileWorkload, create_profile_manifest, run_profile,
+    ProfileConfig, ProfileCorpusIdentity, ProfileSummary, ProfileWorkload, create_profile_manifest,
+    run_profile,
 };
 
 use crate::args::ProfileArgs;
@@ -38,28 +41,33 @@ pub fn run(args: ProfileArgs) -> Result<bool> {
     }
     // Translate CLI options once; the harness owns discovery, sampling, and
     // bounded parallel execution semantics.
-    let report = run_profile(&ProfileConfig {
-        paths: args.paths,
-        include: args.include,
-        exclude: args.exclude,
-        sample: args.sample,
-        seed: args.seed,
-        warm_up: args.warm_up,
-        repeat: args.repeat,
-        continue_on_error: args.continue_on_error,
-        workers: args.workers,
-        provider: args.provider.into(),
-        mode: args.profile.into(),
-        rules: args.rules,
-        workload: if args.admitted_project {
-            ProfileWorkload::AdmittedProject
-        } else if args.project {
-            ProfileWorkload::LoaderProject
-        } else {
-            ProfileWorkload::Files
-        },
-        manifest: args.manifest,
-    })?;
+    let repeat = NonZeroUsize::new(args.repeat)
+        .ok_or_else(|| anyhow::anyhow!("--repeat must be at least 1"))?;
+    let workers = NonZeroUsize::new(args.workers)
+        .ok_or_else(|| anyhow::anyhow!("--workers must be at least 1"))?;
+    let workload = if args.admitted_project {
+        ProfileWorkload::AdmittedProject
+    } else if args.project {
+        ProfileWorkload::LoaderProject
+    } else {
+        ProfileWorkload::Files
+    };
+    let config = ProfileConfig::builder(args.paths)
+        .include(args.include)
+        .exclude(args.exclude)
+        .sample(args.sample)
+        .seed(args.seed)
+        .warm_up(args.warm_up)
+        .repeat(repeat)
+        .continue_on_error(args.continue_on_error)
+        .workers(workers)
+        .provider(args.provider.into())
+        .mode(args.profile.into())
+        .rules(args.rules)
+        .workload(workload)
+        .manifest(args.manifest)
+        .build()?;
+    let report = run_profile(&config)?;
     print_report(&report, args.quiet);
     Ok(report.errors == 0)
 }
@@ -98,9 +106,7 @@ fn print_report(report: &ProfileSummary, quiet: bool) {
         "Median measured repetition: {:.1?}",
         report.median_repetition_duration
     );
-    if report.workload.verified
-        && let Some(digest) = &report.workload.corpus_digest
-    {
+    if let ProfileCorpusIdentity::Verified(digest) = &report.workload.corpus {
         println!(
             "Manifest: sha256 {digest}, {} verified byte(s)",
             report.bytes

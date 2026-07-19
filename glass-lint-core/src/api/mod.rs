@@ -5,5 +5,5 @@
 //! provider policy remains in the provider crates.
 
 pub mod classification;
-pub mod compiler;
+pub(crate) mod compiler;
 pub mod rule;

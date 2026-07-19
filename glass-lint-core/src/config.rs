@@ -25,6 +25,6 @@ impl CoreConfig {
         self.limits
             .validate()
             .map_err(LintConfigError::InvalidLimits)?;
-        crate::lint::validate_selection(&self.selection, catalog)
+        self.selection.validate_against(catalog)
     }
 }

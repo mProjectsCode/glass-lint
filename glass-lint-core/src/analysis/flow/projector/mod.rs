@@ -261,10 +261,10 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             .map(|(key, _)| key)
             .collect::<Vec<_>>();
         for key in keys {
-            let Some(flow) = self.flow_index.get(key.1) else {
+            let Some(flow) = self.flow_index.get(key.flow) else {
                 continue;
             };
-            let Some(state) = self.flow_state.state_mut(key.0, key.1) else {
+            let Some(state) = self.flow_state.state_mut(key.object, key.flow) else {
                 continue;
             };
             for (index, requirement) in flow.requirements.iter().enumerate() {
@@ -280,7 +280,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     }
                 }
             }
-            self.emit_if_ready(key.1, key.0, event);
+            self.emit_if_ready(key.flow, key.object, event);
         }
     }
 

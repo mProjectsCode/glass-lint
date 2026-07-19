@@ -289,10 +289,16 @@ fn read_tsconfig_path_extends(
         source,
     })?;
     json_strip_comments::strip(&mut text).map_err(|error| {
-        ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
+        ProjectLoadError::InvalidOptions(crate::ProjectOptionError::Message(format!(
+            "parse {}: {error}",
+            config.display()
+        )))
     })?;
     let parsed: Value = serde_json::from_str(&text).map_err(|error| {
-        ProjectLoadError::InvalidOptions(format!("parse {}: {error}", config.display()))
+        ProjectLoadError::InvalidOptions(crate::ProjectOptionError::Message(format!(
+            "parse {}: {error}",
+            config.display()
+        )))
     })?;
     let mut effective = Value::Object(serde_json::Map::new());
     if let Some(extends) = parsed.get("extends").and_then(Value::as_str)

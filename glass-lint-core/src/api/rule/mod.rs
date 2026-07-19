@@ -4,6 +4,8 @@
 //! compiler. This keeps malformed IDs, taxonomy, matcher shapes, and
 //! unbounded declarations out of analysis and report construction.
 
+#![allow(clippy::redundant_pub_crate)]
+
 mod error;
 pub mod matcher;
 mod module;
@@ -12,6 +14,7 @@ mod taxonomy;
 pub mod validation;
 
 pub use error::{CompiledCatalogError, RuleBuildError};
+pub(crate) use matcher::MatcherFamily;
 pub use matcher::{
     ArgumentConstraint, ArgumentMatcher, CallMatcher, ClassMatcher, ConstructorMatcher,
     FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, Matcher, MatcherSet,

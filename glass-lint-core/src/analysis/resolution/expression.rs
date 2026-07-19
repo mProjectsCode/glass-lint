@@ -23,10 +23,10 @@ impl Resolver {
             range: ident.span.into(),
             symbol: ident.sym.to_string(),
         };
-        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
+        if let Some(value) = self.state.borrow().resolved_values.get(&key).cloned() {
             return value;
         }
-        if !self.resolving.borrow_mut().insert(key.clone()) {
+        if !self.state.borrow_mut().resolving.insert(key.clone()) {
             return Self::unknown_with_reason(UnknownReason::Cycle);
         }
         let seed = self.scopes.ident_value_seed(ident);
@@ -115,10 +115,10 @@ impl Resolver {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };
-        if let Some(value) = self.resolved_values.borrow().get(&key).cloned() {
+        if let Some(value) = self.state.borrow().resolved_values.get(&key).cloned() {
             return value;
         }
-        if !self.resolving.borrow_mut().insert(key.clone()) {
+        if !self.state.borrow_mut().resolving.insert(key.clone()) {
             return Self::unknown_with_reason(UnknownReason::Cycle);
         }
         let seed = self.scopes.member_value_seed(member);
@@ -147,8 +147,9 @@ impl Resolver {
             self.call_provenance_at(id, rooted_chain.as_ref(), member.span)
         };
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
-            self.values
+            self.state
                 .borrow_mut()
+                .values
                 .intern(Value::ModuleNamespace(module.clone()));
         }
         let resolved = ResolvedValue {
@@ -213,14 +214,18 @@ impl Resolver {
     }
 
     fn cache_resolution(&self, key: &ResolutionKey, value: ResolvedValue) {
-        self.resolved_values.borrow_mut().insert(key.clone(), value);
-        self.resolving.borrow_mut().remove(key);
+        self.state
+            .borrow_mut()
+            .resolved_values
+            .insert(key.clone(), value);
+        self.state.borrow_mut().resolving.remove(key);
     }
 
     pub(in crate::analysis) fn static_string_expr(&self, expr: &Expr) -> Option<String> {
         let value = syntax_constant::evaluate(expr, self).string()?.to_string();
-        self.values
+        self.state
             .borrow_mut()
+            .values
             .intern(Value::StaticString(value.clone()));
         Some(value)
     }
@@ -237,9 +242,9 @@ impl Resolver {
 
     pub(in crate::analysis) fn object_keys_expr(&self, expr: &Expr) -> Option<Vec<String>> {
         let keys = syntax_constant::evaluate(expr, self).object_keys()?;
-        let mut values = self.values.borrow_mut();
+        let mut state = self.state.borrow_mut();
         let unknown = ValueId::UNKNOWN;
-        values.intern(Value::StaticObject(
+        state.values.intern(Value::StaticObject(
             keys.iter().cloned().map(|key| (key, unknown)).collect(),
         ));
         Some(keys)
@@ -284,8 +289,9 @@ impl Resolver {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };
-        self.resolved_values
+        self.state
             .borrow()
+            .resolved_values
             .get(&key)
             .and_then(|value| value.syntactic_chain.clone())
             .or_else(|| crate::analysis::syntax::member_expression_chain(member))
@@ -310,7 +316,7 @@ impl Resolver {
 
     pub(in crate::analysis) fn static_value(&self, value: Value) -> ResolvedValue {
         let is_unknown = matches!(value, Value::Unknown);
-        let id = self.values.borrow_mut().intern(value);
+        let id = self.state.borrow_mut().values.intern(value);
         if id == ValueId::UNKNOWN && !is_unknown && self.value_arena_exhausted() {
             return Self::unknown_with_reason(UnknownReason::BudgetExhausted {
                 component: BudgetComponent::Values,
@@ -322,7 +328,7 @@ impl Resolver {
     }
 
     pub(in crate::analysis) fn fresh_object_value(&self) -> ResolvedValue {
-        let Some(object) = self.values.borrow_mut().allocate_object_id() else {
+        let Some(object) = self.state.borrow_mut().values.allocate_object_id() else {
             return Self::unknown();
         };
         self.static_value(Value::Object(object))
@@ -333,11 +339,11 @@ impl Resolver {
         span: swc_common::Span,
     ) -> ResolvedValue {
         let key = span.into();
-        if let Some(value) = self.fresh_values.borrow().get(&key).copied() {
+        if let Some(value) = self.state.borrow().fresh_values.get(&key).copied() {
             return ResolvedValue::local(value);
         }
         let value = self.fresh_object_value();
-        self.fresh_values.borrow_mut().insert(key, value.id);
+        self.state.borrow_mut().fresh_values.insert(key, value.id);
         value
     }
 }

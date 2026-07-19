@@ -36,10 +36,8 @@ pub fn rule() -> Rule {
                 .build()
                 .unwrap(),
         )
-        .matcher(Matcher::rooted_member_call("window.showOpenFilePicker"))
-        .matcher(Matcher::rooted_member_call("window.showSaveFilePicker"))
-        .matcher(Matcher::rooted_member_call("globalThis.showOpenFilePicker"))
-        .matcher(Matcher::rooted_member_call("globalThis.showSaveFilePicker"))
+        .matcher(Matcher::rooted_member_call("showOpenFilePicker"))
+        .matcher(Matcher::rooted_member_call("showSaveFilePicker"))
         .build()
         .unwrap()
 }

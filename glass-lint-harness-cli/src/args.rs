@@ -8,7 +8,7 @@ use glass_lint_harness::{ProfileCatalogProvider, RuleSelectionProfile};
 #[derive(Parser)]
 #[command(version, about = "Run conformance cases and profiling workloads")]
 /// Top-level CLI arguments shared by verification, reporting,
-/// render_adapter_comparison, and profiling.
+/// comparison, and profiling.
 pub struct Args {
     #[command(subcommand)]
     /// Operation to execute.
@@ -19,7 +19,7 @@ pub struct Args {
 }
 
 #[derive(Subcommand)]
-/// Commands for conformance cases, reports, render_adapter_comparison, and
+/// Commands for conformance cases, reports, comparison, and
 /// profiling.
 pub enum Command {
     /// Run cases and return a failing exit status when expectations differ.
@@ -34,7 +34,7 @@ pub enum Command {
         #[arg(long, value_enum, default_value_t = Format::Markdown)]
         format: Format,
     },
-    /// Run all configured adapters and write a render_adapter_comparison
+    /// Run all configured adapters and write a comparison
     /// report.
     Compare {
         /// Case file or directory to execute.

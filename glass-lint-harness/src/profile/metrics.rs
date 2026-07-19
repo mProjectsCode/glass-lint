@@ -17,15 +17,7 @@ pub(super) fn all_diagnostic_count(report: &AnalysisReport) -> usize {
 }
 
 pub(super) fn report_operation_counts(report: &AnalysisReport) -> ProfileOperationCounts {
-    ProfileOperationCounts {
-        files: report.operations.files,
-        requests: report.operations.requests,
-        edges: report.operations.edges,
-        exports: report.operations.exports,
-        scc_rounds: report.operations.scc_rounds,
-        effect_projections: report.operations.effect_projections,
-        evidence: report.operations.evidence,
-    }
+    report.operations
 }
 
 pub(super) fn evidence_order_digest(report: &AnalysisReport) -> String {

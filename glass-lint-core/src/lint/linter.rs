@@ -281,32 +281,29 @@ impl RuleSelection {
     pub fn overrides(&self) -> &[RuleOverride] {
         &self.overrides
     }
-}
 
-pub fn validate_selection(
-    selection: &RuleSelection,
-    catalog: &RuleCatalog,
-) -> Result<(), LintConfigError> {
-    for override_ in selection.overrides() {
-        if catalog
-            .rule_ids()
-            .iter()
-            .any(|id| override_.selector.matches(id.as_str()))
-        {
-            continue;
-        }
-        if !override_.selector.as_str().contains('*') {
-            return Err(LintConfigError::UnknownRule(
-                RuleId::parse(override_.selector.as_str().to_owned()).map_err(|_| {
-                    LintConfigError::InvalidSelector(override_.selector.as_str().into())
-                })?,
+    pub fn validate_against(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
+        for override_ in self.overrides() {
+            if catalog
+                .rule_ids()
+                .iter()
+                .any(|id| override_.selector.matches(id.as_str()))
+            {
+                continue;
+            }
+            if !override_.selector.as_str().contains('*') {
+                return Err(LintConfigError::UnknownRule(
+                    RuleId::parse(override_.selector.as_str().to_owned()).map_err(|_| {
+                        LintConfigError::InvalidSelector(override_.selector.as_str().into())
+                    })?,
+                ));
+            }
+            return Err(LintConfigError::InvalidSelector(
+                override_.selector.as_str().into(),
             ));
         }
-        return Err(LintConfigError::InvalidSelector(
-            override_.selector.as_str().into(),
-        ));
+        Ok(())
     }
-    Ok(())
 }
 
 /// Caller-supplied input to linter construction. Validation occurs in
@@ -393,7 +390,7 @@ impl Linter {
             }
             ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
         })?;
-        validate_selection(&config.selection, &catalog)?;
+        config.selection.validate_against(&catalog)?;
         let mut enabled = Vec::new();
         for (index, rule_id) in catalog.rule_ids().iter().enumerate() {
             let baseline = match config.selection.baseline {

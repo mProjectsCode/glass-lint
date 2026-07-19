@@ -15,6 +15,7 @@ line = 1
 column = 28
 end_line = 1
 end_column = 38
+outcome = "external"
 package = "obsidian"
 
 [[resolution]]
@@ -25,6 +26,7 @@ line = 1
 column = 22
 end_line = 1
 end_column = 32
+outcome = "internal"
 path = "src/helper.ts"
 
 [[resolution]]
@@ -35,4 +37,5 @@ line = 2
 column = 22
 end_line = 2
 end_column = 32
+outcome = "internal"
 path = "src/barrel.js"

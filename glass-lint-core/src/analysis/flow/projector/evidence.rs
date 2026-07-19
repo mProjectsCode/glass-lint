@@ -43,10 +43,10 @@ impl ObjectFlowProjector<'_, '_> {
                 .map(|(key, _)| key)
                 .collect::<Vec<_>>();
             for key in keys {
-                let Some(flow) = self.flow_index.get(key.1) else {
+                let Some(flow) = self.flow_index.get(key.flow) else {
                     continue;
                 };
-                let Some(state) = self.flow_state.state_mut(key.0, key.1) else {
+                let Some(state) = self.flow_state.state_mut(key.object, key.flow) else {
                     continue;
                 };
                 for (index, requirement) in flow.requirements.iter().enumerate() {
@@ -63,7 +63,7 @@ impl ObjectFlowProjector<'_, '_> {
                         state.record_requirement(index, event);
                     }
                 }
-                self.emit_if_ready(key.1, key.0, event);
+                self.emit_if_ready(key.flow, key.object, event);
             }
         }
     }
@@ -86,7 +86,7 @@ impl ObjectFlowProjector<'_, '_> {
             let states = self
                 .flow_state
                 .states_for(object)
-                .filter(|((_, flow), _)| flow_ids.contains(flow))
+                .filter(|(key, _)| flow_ids.contains(&key.flow))
                 .map(|(_, state)| state.clone())
                 .collect::<Vec<_>>();
             for state in states {
@@ -176,7 +176,7 @@ impl ObjectFlowProjector<'_, '_> {
             return;
         }
         debug_assert!(state.source_event() <= match_fact);
-        let key = (
+        let key = super::state::ReportEvidenceKey::new(
             state.flow_id().rule_index().get(),
             state.flow_id().flow_index(),
             state.object_id(),

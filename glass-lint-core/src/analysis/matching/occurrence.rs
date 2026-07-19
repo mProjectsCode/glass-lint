@@ -4,10 +4,7 @@
 //! deduplicated within each key. Queries can therefore borrow stable slices
 //! and emit evidence without repeating normalization policy.
 
-use std::{
-    collections::BTreeMap,
-    ops::{Deref, DerefMut},
-};
+use std::collections::BTreeMap;
 
 use super::super::facts::FactId;
 use crate::{ByteRange, analysis::SymbolPath};
@@ -51,6 +48,41 @@ impl<K: Ord> Default for OccurrenceIndex<K> {
 }
 
 impl<K: Ord> OccurrenceIndex<K> {
+    /// Look up one normalized occurrence bucket.
+    pub(super) fn get<Q>(&self, key: &Q) -> Option<&Vec<Occurrence>>
+    where
+        K: std::borrow::Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        self.0.get(key)
+    }
+
+    /// Whether no occurrence buckets are present.
+    #[cfg(test)]
+    pub(super) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Iterate over keys and normalized occurrence buckets.
+    pub(super) fn iter(&self) -> impl Iterator<Item = (&K, &Vec<Occurrence>)> {
+        self.0.iter()
+    }
+
+    /// Collect occurrences from all buckets satisfying one identity
+    /// predicate, returning no result when the predicate matches nothing.
+    pub(super) fn matching(
+        &self,
+        mut predicate: impl FnMut(&K) -> bool,
+    ) -> Option<Vec<Occurrence>> {
+        let occurrences = self
+            .0
+            .iter()
+            .filter(|(key, _)| predicate(key))
+            .flat_map(|(_, values)| values.iter().copied())
+            .collect::<Vec<_>>();
+        (!occurrences.is_empty()).then_some(occurrences)
+    }
+
     /// Append an already constructed occurrence before normalization.
     pub(super) fn push_occurrence(&mut self, key: K, occurrence: Occurrence) {
         self.0.entry(key).or_default().push(occurrence);
@@ -87,20 +119,6 @@ impl<K: Ord + Clone> OccurrenceIndex<K> {
                 self.0.entry(key).or_default().extend(occurrences);
             }
         }
-    }
-}
-
-impl<K: Ord> Deref for OccurrenceIndex<K> {
-    type Target = BTreeMap<K, Vec<Occurrence>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<K: Ord> DerefMut for OccurrenceIndex<K> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
     }
 }
 

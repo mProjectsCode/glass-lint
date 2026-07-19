@@ -19,24 +19,6 @@ pub fn rule() -> Rule {
         .matcher(Matcher::rooted_member_call(
             "navigator.geolocation.watchPosition",
         ))
-        .matcher(Matcher::rooted_member_call(
-            "window.navigator.geolocation.getCurrentPosition",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "window.navigator.geolocation.watchPosition",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "self.navigator.geolocation.getCurrentPosition",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "self.navigator.geolocation.watchPosition",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "globalThis.navigator.geolocation.getCurrentPosition",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "globalThis.navigator.geolocation.watchPosition",
-        ))
         .build()
         .unwrap()
 }

@@ -7,9 +7,9 @@
 
 use super::matcher::{
     ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
-    MatcherSet, MemberCallMatcher, MemberCallProvenance, MemberReadProvenance, ObjectEventMatcher,
-    ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicate, SymbolProvenance, ValueMatcher,
-    ValueMatcherKind,
+    MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, MemberReadProvenance,
+    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicate,
+    SymbolProvenance, ValueMatcher, ValueMatcherKind,
 };
 
 const MAX_ARGUMENT_INDEX: usize = 1 << 20;
@@ -17,56 +17,82 @@ const MAX_EXPRESSION_NODES: usize = 4096;
 
 /// Validate all matcher families in one assembled API matcher.
 pub(super) fn validate(matcher: &MatcherSet) -> Result<(), String> {
-    for call in &matcher.calls {
-        validate_name_at(&call.name, "call name")?;
-        call.provenance.validate_at("provenance")?;
-        validate_arguments(&call.arguments)?;
-    }
-    for call in &matcher.member_calls {
-        call.validate()?;
-    }
-    for read in &matcher.member_reads {
-        validate_chain(&read.chain, "member read chain")?;
-        read.provenance.validate_at("module name")?;
-    }
-    for value in matcher.imports.iter().chain(&matcher.string_contains) {
-        if value.trim().is_empty() {
-            return Err("literal matcher value must not be empty".into());
+    for family in matcher.families() {
+        match family {
+            MatcherFamily::Calls(calls) => {
+                for call in calls {
+                    validate_name_at(&call.name, "call name")?;
+                    call.provenance.validate_at("provenance")?;
+                    validate_arguments(&call.arguments)?;
+                }
+            }
+            MatcherFamily::MemberCalls(calls) => {
+                for call in calls {
+                    call.validate()?;
+                }
+            }
+            MatcherFamily::MemberReads(reads) => {
+                for read in reads {
+                    validate_chain(&read.chain, "member read chain")?;
+                    read.provenance.validate_at("module name")?;
+                }
+            }
+            MatcherFamily::Imports(values) | MatcherFamily::StringContains(values) => {
+                for value in values {
+                    if value.trim().is_empty() {
+                        return Err("literal matcher value must not be empty".into());
+                    }
+                }
+            }
+            MatcherFamily::PackageImports(patterns) => {
+                for pattern in patterns {
+                    if pattern.as_str().trim().is_empty() || !pattern.is_package() {
+                        return Err("package import matcher must be a package pattern".into());
+                    }
+                }
+            }
+            MatcherFamily::Classes(classes) => {
+                for class in classes {
+                    validate_name_at(&class.name, "class name")?;
+                    class.provenance.validate_at("provenance")?;
+                    if matches!(class.provenance, SymbolProvenance::Global) {
+                        return Err("class provenance cannot be global".into());
+                    }
+                }
+            }
+            MatcherFamily::Constructors(constructors) => {
+                for constructor in constructors {
+                    validate_name_at(&constructor.name, "constructor name")?;
+                    constructor.provenance.validate_at("provenance")?;
+                }
+            }
+            MatcherFamily::Flows(flows) => {
+                for flow in flows {
+                    validate_object_flow(flow, "flow")?;
+                }
+            }
+            MatcherFamily::ReturnedMemberCalls(values) => {
+                for returned in values {
+                    validate_chain(&returned.source, "returned-member source")?;
+                    validate_name_at(&returned.member, "returned-member name")?;
+                }
+            }
+            MatcherFamily::ReturnedMemberReads(values) => {
+                for returned in values {
+                    validate_chain(&returned.source, "returned-member source")?;
+                    validate_name_at(&returned.member, "returned-member name")?;
+                }
+            }
+            MatcherFamily::InstanceMemberCalls(values) => {
+                for instance in values {
+                    if instance.module_pattern.is_none() {
+                        validate_name_at(&instance.module, "instance module")?;
+                    }
+                    validate_name_at(&instance.export, "instance export")?;
+                    validate_name_at(&instance.member, "instance member")?;
+                }
+            }
         }
-    }
-    for pattern in &matcher.package_imports {
-        if pattern.as_str().trim().is_empty() || !pattern.is_package() {
-            return Err("package import matcher must be a package pattern".into());
-        }
-    }
-    for class in &matcher.classes {
-        validate_name_at(&class.name, "class name")?;
-        class.provenance.validate_at("provenance")?;
-        if matches!(class.provenance, SymbolProvenance::Global) {
-            return Err("class provenance cannot be global".into());
-        }
-    }
-    for constructor in &matcher.constructors {
-        validate_name_at(&constructor.name, "constructor name")?;
-        constructor.provenance.validate_at("provenance")?;
-    }
-    for returned in &matcher.returned_member_calls {
-        validate_chain(&returned.source, "returned-member source")?;
-        validate_name_at(&returned.member, "returned-member name")?;
-    }
-    for returned in &matcher.returned_member_reads {
-        validate_chain(&returned.source, "returned-member source")?;
-        validate_name_at(&returned.member, "returned-member name")?;
-    }
-    for instance in &matcher.instance_member_calls {
-        if instance.module_pattern.is_none() {
-            validate_name_at(&instance.module, "instance module")?;
-        }
-        validate_name_at(&instance.export, "instance export")?;
-        validate_name_at(&instance.member, "instance member")?;
-    }
-    for flow in &matcher.flows {
-        validate_object_flow(flow, "flow")?;
     }
     Ok(())
 }

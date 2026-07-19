@@ -102,17 +102,14 @@ impl SymbolPath {
         Self(path)
     }
 
-    /// Compare rooted paths while treating standard realm-object spellings
-    /// as the same semantic root. This keeps alias policy in the path type
-    /// instead of scattering dotted-string prefix logic across matchers.
-    pub(in crate::analysis) fn matches_global_object_alias(&self, found: &Self) -> bool {
-        let canonical = |path: &Self| {
-            path.0
-                .first()
-                .filter(|root| matches!(root.as_str(), "window" | "self" | "globalThis"))
-                .map_or_else(|| path.clone(), |_| Self(path.0[1..].to_vec()))
-        };
-        canonical(self) == canonical(found)
+    /// Compare rooted paths using the configured environment's realm-object
+    /// policy. No host spelling is implicitly recognized here.
+    pub(crate) fn matches_global_object_alias(
+        &self,
+        found: &Self,
+        environment: &crate::Environment,
+    ) -> bool {
+        environment.global_object_paths_match(&self.0, &found.0)
     }
 
     /// Remove the syntax-only `this.` prefix from a rooted path.

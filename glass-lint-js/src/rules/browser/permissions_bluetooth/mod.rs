@@ -14,15 +14,6 @@ pub fn rule() -> Rule {
         .matcher(Matcher::rooted_member_call(
             "navigator.bluetooth.requestDevice",
         ))
-        .matcher(Matcher::rooted_member_call(
-            "window.navigator.bluetooth.requestDevice",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "self.navigator.bluetooth.requestDevice",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "globalThis.navigator.bluetooth.requestDevice",
-        ))
         .build()
         .unwrap()
 }

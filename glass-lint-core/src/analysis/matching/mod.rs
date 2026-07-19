@@ -38,6 +38,7 @@ mod query;
 /// subplans are evaluated from facts because their predicates are not safe to
 /// collapse into a simple lookup key.
 pub struct OccurrenceIndexes {
+    environment: crate::Environment,
     // Each map represents a different confidence/provenance level. Do not
     // collapse these into one index: a global spelling, rooted alias, and
     // imported member have intentionally different matching semantics.
@@ -110,6 +111,13 @@ pub(in crate::analysis) enum LinkedModuleIdentity {
 pub(in crate::analysis) type ModuleIdentityMap = BTreeMap<ModuleExportKey, LinkedModuleIdentity>;
 
 impl OccurrenceIndexes {
+    pub(in crate::analysis) fn with_environment(environment: &crate::Environment) -> Self {
+        Self {
+            environment: environment.clone(),
+            ..Self::default()
+        }
+    }
+
     #[cfg(test)]
     pub(in crate::analysis) fn has_call(&self, name: &str) -> bool {
         self.call_indexes.calls.get(name).is_some()

@@ -11,89 +11,42 @@ pub fn rule() -> Rule {
         .category("browser/filesystem")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("window.showDirectoryPicker"))
-        .matcher(Matcher::rooted_member_call("self.showDirectoryPicker"))
-        .matcher(Matcher::rooted_member_call(
-            "globalThis.showDirectoryPicker",
-        ))
+        .matcher(Matcher::rooted_member_call("showDirectoryPicker"))
         .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
+            "showDirectoryPicker",
             "getFileHandle",
         ))
         .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
+            "showDirectoryPicker",
             "getDirectoryHandle",
         ))
         .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
+            "showDirectoryPicker",
             "removeEntry",
         ))
         .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
+            "showDirectoryPicker",
             "resolve",
         ))
         .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
+            "showDirectoryPicker",
             "queryPermission",
         ))
         .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
+            "showDirectoryPicker",
             "requestPermission",
         ))
         .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
+            "showDirectoryPicker",
             "entries",
         ))
+        .matcher(Matcher::returned_member_call("showDirectoryPicker", "keys"))
         .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
-            "keys",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
+            "showDirectoryPicker",
             "values",
         ))
         .matcher(Matcher::returned_member_call(
-            "window.showDirectoryPicker",
-            "isSameEntry",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
-            "getFileHandle",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
-            "getDirectoryHandle",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
-            "removeEntry",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
-            "resolve",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
-            "queryPermission",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
-            "requestPermission",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
-            "entries",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
-            "keys",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
-            "values",
-        ))
-        .matcher(Matcher::returned_member_call(
-            "self.showDirectoryPicker",
+            "showDirectoryPicker",
             "isSameEntry",
         ))
         .build()

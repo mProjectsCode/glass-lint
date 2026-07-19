@@ -10,11 +10,33 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::super::{
     super::value::{ObjectId, ValueId},
     index::FlowId,
-    state::FlowState,
+    state::{FlowState, FlowStateKey},
 };
 use crate::api::classification::ClassificationEvidence;
 
-type ReportEvidenceKey = (usize, usize, ObjectId, super::super::super::facts::FactId);
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub(super) struct ReportEvidenceKey {
+    rule: usize,
+    flow: usize,
+    object: ObjectId,
+    event: super::super::super::facts::FactId,
+}
+
+impl ReportEvidenceKey {
+    pub(super) fn new(
+        rule: usize,
+        flow: usize,
+        object: ObjectId,
+        event: super::super::super::facts::FactId,
+    ) -> Self {
+        Self {
+            rule,
+            flow,
+            object,
+            event,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Snapshot of aliases, flow states, and reachability at a control boundary.
@@ -22,7 +44,7 @@ pub(super) struct FlowEnvironment {
     /// Value-to-object aliases proven on the snapshot path.
     aliases: BTreeMap<ValueId, ObjectId>,
     /// Object/flow lifecycle states proven on the snapshot path.
-    states: BTreeMap<(ObjectId, FlowId), FlowState>,
+    states: BTreeMap<FlowStateKey, FlowState>,
     /// Whether execution can reach the snapshot.
     reachable: bool,
 }
@@ -33,7 +55,7 @@ pub(super) struct FlowStateTable {
     /// Current value aliases, keyed by semantic value identity.
     aliases: BTreeMap<ValueId, ObjectId>,
     /// Current lifecycle state for each object and flow matcher.
-    states: BTreeMap<(ObjectId, FlowId), FlowState>,
+    states: BTreeMap<FlowStateKey, FlowState>,
 }
 impl FlowStateTable {
     pub(super) fn clear(&mut self) {
@@ -66,19 +88,19 @@ impl FlowStateTable {
     pub(super) fn states_for(
         &self,
         object: ObjectId,
-    ) -> impl Iterator<Item = ((ObjectId, FlowId), &FlowState)> {
+    ) -> impl Iterator<Item = (FlowStateKey, &FlowState)> {
         self.states
             .iter()
-            .filter(move |((id, _), _)| *id == object)
+            .filter(move |(key, _)| key.object == object)
             .map(|(key, state)| (*key, state))
     }
 
     pub(super) fn state(&self, object: ObjectId, flow: FlowId) -> Option<&FlowState> {
-        self.states.get(&(object, flow))
+        self.states.get(&FlowStateKey { object, flow })
     }
 
     pub(super) fn state_mut(&mut self, object: ObjectId, flow: FlowId) -> Option<&mut FlowState> {
-        self.states.get_mut(&(object, flow))
+        self.states.get_mut(&FlowStateKey { object, flow })
     }
 
     pub(super) fn insert_state(&mut self, state: FlowState) {
@@ -90,7 +112,7 @@ impl FlowStateTable {
     }
 
     pub(super) fn remove_states_for(&mut self, object: ObjectId) {
-        self.states.retain(|(id, _), _| *id != object);
+        self.states.retain(|key, _| key.object != object);
     }
 
     pub(super) fn capture(&self, reachable: bool) -> FlowEnvironment {

@@ -321,6 +321,15 @@ impl ProjectModule {
     pub(crate) fn local(&self) -> &LocalArtifact {
         &self.local
     }
+
+    /// Return this module's authored requests with source-qualified keys.
+    pub(crate) fn authored_requests(&self) -> Vec<crate::ResolutionRequest> {
+        self.local.interface().authored_requests(
+            self.path(),
+            &self.source_context().lines,
+            &self.source_context().text,
+        )
+    }
 }
 
 #[cfg(test)]

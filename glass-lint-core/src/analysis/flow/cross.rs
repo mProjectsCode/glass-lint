@@ -186,22 +186,22 @@ impl ContextWorklist {
         let mut worklist = Self::default();
         // A returned value gets a fresh caller-side identity and therefore
         // needs a direct context even when no qualified call consumes it.
-        for ((module, function, value), candidates) in sources.iter() {
-            for (flow, source_fact) in candidates {
+        for (key, candidates) in sources.iter() {
+            for candidate in candidates {
                 worklist.push(CallContext {
-                    module: *module,
-                    function: *function,
+                    module: key.module,
+                    function: key.function,
                     parameter: None,
-                    source_root: Some(*value),
+                    source_root: Some(key.value),
                     state: CrossFlowState {
-                        flow: *flow,
+                        flow: candidate.flow,
                         source: QualifiedEvent {
-                            module: *module,
-                            fact: *source_fact,
+                            module: key.module,
+                            fact: candidate.fact,
                         },
                         requirements: RequirementSet::default(),
                     },
-                    crossed: *value != project.source_call_result(*module, *source_fact),
+                    crossed: key.value != project.source_call_result(key.module, candidate.fact),
                 });
             }
         }
@@ -222,16 +222,17 @@ impl ContextWorklist {
                         let root = effect
                             .value_root(argument.value())
                             .unwrap_or_else(|| argument.value());
-                        let Some(candidates) = sources.get(&(module.id(), effect.id(), root))
+                        let Some(candidates) =
+                            sources.get(&SourceKey::new(module.id(), effect.id(), root))
                         else {
                             continue;
                         };
-                        for (flow, source_fact) in candidates {
+                        for candidate in candidates {
                             let state = CrossFlowState {
-                                flow: *flow,
+                                flow: candidate.flow,
                                 source: QualifiedEvent {
                                     module: module.id(),
-                                    fact: *source_fact,
+                                    fact: candidate.fact,
                                 },
                                 requirements: RequirementSet::default(),
                             };
@@ -253,9 +254,29 @@ impl ContextWorklist {
 }
 
 /// Local effect/value key used while composing source identities.
-type SourceKey = (ModuleId, FunctionId, ValueId);
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct SourceKey {
+    module: ModuleId,
+    function: FunctionId,
+    value: ValueId,
+}
+
+impl SourceKey {
+    fn new(module: ModuleId, function: FunctionId, value: ValueId) -> Self {
+        Self {
+            module,
+            function,
+            value,
+        }
+    }
+}
+
 /// Flow matcher and source-event pair associated with a source identity.
-type SourceCandidate = (FlowId, FactId);
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct SourceCandidate {
+    flow: FlowId,
+    fact: FactId,
+}
 
 /// Proven source identities indexed by the local effect that produced them.
 /// Keeping insertion, transitive extension, and normalization here prevents
@@ -544,8 +565,11 @@ impl FlowSources {
                     for (flow_id, flow) in flows {
                         if call.matches_source(flow) {
                             sources.add(
-                                (module.id(), effect.id(), call.result()),
-                                (*flow_id, call.event()),
+                                SourceKey::new(module.id(), effect.id(), call.result()),
+                                SourceCandidate {
+                                    flow: *flow_id,
+                                    fact: call.event(),
+                                },
                             );
                         }
                     }
@@ -582,10 +606,14 @@ impl FlowSources {
                                 .value_root(returned.value())
                                 .unwrap_or_else(|| returned.value());
                             let candidates = sources
-                                .get(&(target_module, target_function, returned_root))
+                                .get(&SourceKey::new(
+                                    target_module,
+                                    target_function,
+                                    returned_root,
+                                ))
                                 .cloned();
                             changed |= sources.extend_optional(
-                                (module.id(), effect.id(), call.result()),
+                                SourceKey::new(module.id(), effect.id(), call.result()),
                                 candidates,
                             );
                         }
@@ -602,10 +630,11 @@ impl FlowSources {
                             let root = effect
                                 .value_root(argument.value())
                                 .unwrap_or_else(|| argument.value());
-                            let candidates =
-                                sources.get(&(module.id(), effect.id(), root)).cloned();
+                            let candidates = sources
+                                .get(&SourceKey::new(module.id(), effect.id(), root))
+                                .cloned();
                             changed |= sources.extend_optional(
-                                (module.id(), effect.id(), call.result()),
+                                SourceKey::new(module.id(), effect.id(), call.result()),
                                 candidates,
                             );
                         }

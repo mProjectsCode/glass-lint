@@ -2,7 +2,7 @@
 //!
 //! This crate keeps execution policy independent from the CLI so tests and
 //! alternate front ends observe the same normalization and
-//! render_adapter_comparison rules.
+//! comparison rules.
 
 mod adapters;
 mod builtins;
@@ -16,10 +16,10 @@ mod types;
 pub use adapters::{Adapter, ExternalAdapter, GlassLintAdapter};
 pub use cases::load_cases;
 pub use profile::{
-    ProfileCatalogProvider, ProfileConfig, ProfileOperationCounts, ProfilePhaseTimings,
-    ProfileRepetitionSummary, ProfileSummary, ProfileWorkload, ProfileWorkloadIdentity,
-    ProfileWorkloadSummary, RuleSelectionProfile, discover_profile_files,
-    ensure_profile_correctness_match, run_profile,
+    ProfileCatalogProvider, ProfileConfig, ProfileConfigBuilder, ProfileCorpusIdentity,
+    ProfileOperationCounts, ProfilePhaseTimings, ProfileRepetitionSummary, ProfileSummary,
+    ProfileWorkload, ProfileWorkloadIdentity, ProfileWorkloadSummary, RuleSelectionProfile,
+    discover_profile_files, ensure_profile_correctness_match, run_profile,
 };
 pub use profile_manifest::{
     ProfileManifest, ProfileManifestEntry, VerifiedProfileManifest, create_profile_manifest,
@@ -33,7 +33,7 @@ pub use runner::{AdapterTimings, run_suite};
 pub use types::{
     ADAPTER_PROTOCOL_VERSION, AdapterFile, AdapterProject, AdapterRequest, AdapterResolution,
     AdapterResolutionKind, AdapterResolutionResult, AdapterResponse, AdapterRun, Case, CaseResult,
-    FindingExpectation, ProjectCase, SuiteReport, ToolExpectation, ToolResult,
+    ExpectedCount, FindingExpectation, ProjectCase, SuiteReport, ToolExpectation, ToolResult,
 };
 
 #[cfg(test)]

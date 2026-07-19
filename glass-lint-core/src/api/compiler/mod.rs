@@ -4,13 +4,15 @@
 //! resulting plans are provider-neutral and can be projected onto many files
 //! without rebuilding matcher semantics.
 
-pub mod catalog;
-pub mod rule;
+#![allow(clippy::redundant_pub_crate)]
 
-pub use catalog::CompiledCatalog;
+pub(crate) mod catalog;
+pub(crate) mod rule;
+
+pub(crate) use catalog::CompiledCatalog;
 #[cfg(test)]
-pub use rule::CompiledMatcherPlan;
-pub use rule::{
+pub(crate) use rule::CompiledMatcherPlan;
+pub(crate) use rule::{
     CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments, CompiledRule,
     CompiledRuleSelection,
 };

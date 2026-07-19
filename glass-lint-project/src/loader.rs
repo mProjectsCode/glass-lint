@@ -36,6 +36,40 @@ pub struct ProjectLoadOutcome {
     pub metrics: ProjectLoadMetrics,
 }
 
+impl ProjectLoadOutcome {
+    fn complete(report: AnalysisReport) -> Self {
+        Self {
+            report,
+            partial_reason: None,
+            metrics: ProjectLoadMetrics::default(),
+        }
+    }
+
+    fn partial(
+        mut report: AnalysisReport,
+        reason: ProjectLoadError,
+    ) -> Result<Self, ProjectLoadError> {
+        let code = glass_lint_core::DiagnosticCode::new("incomplete_project").map_err(|error| {
+            ProjectLoadError::InvalidOptions(crate::ProjectOptionError::Message(error))
+        })?;
+        report.completion = glass_lint_core::ReportCompletion::Partial;
+        report
+            .diagnostics
+            .push(glass_lint_core::Diagnostic::Project(
+                glass_lint_core::AnalysisDiagnostic {
+                    code,
+                    message: reason.to_string(),
+                    location: None,
+                },
+            ));
+        Ok(Self {
+            report,
+            partial_reason: Some(reason),
+            metrics: ProjectLoadMetrics::default(),
+        })
+    }
+}
+
 /// Bounded construction counters and phase timings for profiling.
 ///
 /// Loader-owned discovery, reads, parsing, and resolution are separated from
@@ -67,6 +101,52 @@ pub struct ProjectLoadMetrics {
     pub edges: usize,
     /// Total source bytes read.
     pub bytes: u64,
+}
+
+/// Phase timings shared with harness profiling reports.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ProjectPhaseTimings {
+    pub discovery: Duration,
+    pub reads: Duration,
+    pub parse_and_local_analysis: Duration,
+    pub resolution: Duration,
+    pub linking: Duration,
+    pub linking_and_matching: Duration,
+    pub matching: Duration,
+    pub total: Duration,
+}
+
+impl std::ops::AddAssign for ProjectPhaseTimings {
+    fn add_assign(&mut self, rhs: Self) {
+        self.discovery = self.discovery.saturating_add(rhs.discovery);
+        self.reads = self.reads.saturating_add(rhs.reads);
+        self.parse_and_local_analysis = self
+            .parse_and_local_analysis
+            .saturating_add(rhs.parse_and_local_analysis);
+        self.resolution = self.resolution.saturating_add(rhs.resolution);
+        self.linking = self.linking.saturating_add(rhs.linking);
+        self.linking_and_matching = self
+            .linking_and_matching
+            .saturating_add(rhs.linking_and_matching);
+        self.matching = self.matching.saturating_add(rhs.matching);
+        self.total = self.total.saturating_add(rhs.total);
+    }
+}
+
+impl ProjectLoadMetrics {
+    #[must_use]
+    pub fn phase_timings(&self) -> ProjectPhaseTimings {
+        ProjectPhaseTimings {
+            discovery: self.discovery,
+            reads: self.reads,
+            parse_and_local_analysis: self.parse_and_local_analysis,
+            resolution: self.resolution,
+            linking: self.linking,
+            linking_and_matching: self.linking_and_matching,
+            matching: self.matching,
+            total: self.total,
+        }
+    }
 }
 
 impl std::ops::AddAssign for ProjectLoadMetrics {
@@ -130,17 +210,12 @@ impl ProjectLoader {
             ProjectLoadState::new(linter, &self.options, paths.root, selection, deadline)?;
         build.add_initial_paths(paths.initial_paths);
         match build.load_all(metrics) {
-            Ok(()) => Ok(ProjectLoadOutcome {
-                report: build.finish(metrics)?,
-                partial_reason: None,
-                metrics: ProjectLoadMetrics::default(),
-            }),
+            Ok(()) => Ok(ProjectLoadOutcome::complete(build.finish(metrics)?)),
             Err(ProjectLoadError::Timeout) => Err(ProjectLoadError::Timeout),
-            Err(error) => Ok(ProjectLoadOutcome {
-                report: build.finish_partial(metrics, &error)?,
-                partial_reason: Some(error),
-                metrics: ProjectLoadMetrics::default(),
-            }),
+            Err(error) => {
+                let report = build.finish_partial(metrics)?;
+                ProjectLoadOutcome::partial(report, error)
+            }
         }
     }
 }
@@ -209,14 +284,31 @@ impl AdmissionSet {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+struct ResolutionCacheKey {
+    importer: String,
+    kind: ResolutionRequestKind,
+    request: String,
+}
+
+impl ResolutionCacheKey {
+    fn new(importer: String, kind: ResolutionRequestKind, request: String) -> Self {
+        Self {
+            importer,
+            kind,
+            request,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
-struct ResolutionCache(BTreeMap<(String, ResolutionRequestKind, String), ResolverOutcome>);
+struct ResolutionCache(BTreeMap<ResolutionCacheKey, ResolverOutcome>);
 impl ResolutionCache {
-    fn get(&self, key: &(String, ResolutionRequestKind, String)) -> Option<&ResolverOutcome> {
+    fn get(&self, key: &ResolutionCacheKey) -> Option<&ResolverOutcome> {
         self.0.get(key)
     }
 
-    fn insert(&mut self, key: (String, ResolutionRequestKind, String), result: ResolverOutcome) {
+    fn insert(&mut self, key: ResolutionCacheKey, result: ResolverOutcome) {
         self.0.insert(key, result);
     }
 }
@@ -341,7 +433,7 @@ impl<'a> ProjectLoadState<'a> {
     ) -> Result<(), ProjectLoadError> {
         for request in requests {
             self.check_timeout()?;
-            let cache_key = (
+            let cache_key = ResolutionCacheKey::new(
                 request.key.importer.to_string(),
                 request.key.kind,
                 request.request.clone(),
@@ -409,29 +501,16 @@ impl<'a> ProjectLoadState<'a> {
     fn finish_partial(
         self,
         metrics: &mut ProjectLoadMetrics,
-        error: &ProjectLoadError,
     ) -> Result<AnalysisReport, ProjectLoadError> {
         let deadline = self.deadline;
         let link_start = Instant::now();
-        let (mut report, linking, matching) = self.session.finish_with_timings()?;
+        let (report, linking, matching) = self.session.finish_with_timings()?;
         if Instant::now() > deadline {
             return Err(ProjectLoadError::Timeout);
         }
         metrics.linking += linking;
         metrics.matching += matching;
         metrics.linking_and_matching += link_start.elapsed();
-        report.completion = glass_lint_core::ReportCompletion::Partial;
-        let code = glass_lint_core::DiagnosticCode::new("incomplete_project")
-            .map_err(ProjectLoadError::InvalidOptions)?;
-        report
-            .diagnostics
-            .push(glass_lint_core::Diagnostic::Project(
-                glass_lint_core::AnalysisDiagnostic {
-                    code,
-                    message: error.to_string(),
-                    location: None,
-                },
-            ));
         Ok(report)
     }
 }

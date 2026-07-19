@@ -5,7 +5,7 @@ use super::{BindingKey, ConstValue, Resolver, Value, ValueId};
 impl Resolver {
     /// Read a bounded constant value from the abstract value arena.
     pub(in crate::analysis) fn const_value(&self, id: ValueId) -> ConstValue {
-        let Some(value) = self.values.borrow().get(id).cloned() else {
+        let Some(value) = self.state.borrow().values.get(id).cloned() else {
             return ConstValue::Unknown;
         };
         match value {
@@ -48,6 +48,9 @@ impl Resolver {
                     .collect(),
             ),
         };
-        self.values.borrow_mut().intern_with_binding(value, binding)
+        self.state
+            .borrow_mut()
+            .values
+            .intern_with_binding(value, binding)
     }
 }

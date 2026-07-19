@@ -48,31 +48,7 @@ pub fn rule() -> Rule {
             ),
         ))
         .matcher(Matcher::from(
-            MemberCallMatcher::rooted("window.document.write").arg(
-                0,
-                ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
-            ),
-        ))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("globalThis.document.write").arg(
-                0,
-                ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
-            ),
-        ))
-        .matcher(Matcher::from(
             MemberCallMatcher::rooted("document.writeln").arg(
-                0,
-                ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
-            ),
-        ))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("window.document.writeln").arg(
-                0,
-                ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
-            ),
-        ))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("globalThis.document.writeln").arg(
                 0,
                 ValueMatcher::static_string().contains_any(["<script", "javascript:"]),
             ),

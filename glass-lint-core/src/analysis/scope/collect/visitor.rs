@@ -15,6 +15,76 @@ use super::{
     function_prototype_builtin, member_expression_chain, member_property_name,
     member_root_identifier, module_export_name,
 };
+use crate::analysis::SymbolPath;
+
+enum DeclarationClassification {
+    Binding {
+        name: String,
+        provenance: BindingProvenance,
+    },
+    Require {
+        pattern: Pat,
+        module: String,
+    },
+    ValueAlias {
+        pattern: Pat,
+        target: SymbolPath,
+    },
+    None,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn classify_declaration(
+    collector: &LexicalScopeCollector,
+    pattern: &Pat,
+    init: Option<&Expr>,
+    bound_alias: Option<BindingProvenance>,
+    module_alias: Option<BindingProvenance>,
+    const_value: Option<BindingProvenance>,
+    returned_alias: Option<BindingProvenance>,
+    value_alias: Option<SymbolPath>,
+    derived_function_pattern: bool,
+) -> DeclarationClassification {
+    let name = || match pattern {
+        Pat::Ident(ident) => Some(ident.id.sym.to_string()),
+        _ => None,
+    };
+    if let (Some(name), Some(provenance)) = (name(), bound_alias) {
+        return DeclarationClassification::Binding { name, provenance };
+    }
+    if let (Some(name), Some(provenance)) = (name(), module_alias.clone()) {
+        return DeclarationClassification::Binding { name, provenance };
+    }
+    if let Some(BindingProvenance::ModuleNamespace { module }) = module_alias {
+        return DeclarationClassification::Require {
+            pattern: pattern.clone(),
+            module,
+        };
+    }
+    if let Some(init) = init
+        && let Some(module) = collector.require_module_expr_name(init)
+    {
+        return DeclarationClassification::Require {
+            pattern: pattern.clone(),
+            module,
+        };
+    }
+    if let (Some(name), Some(provenance)) = (name(), const_value) {
+        return DeclarationClassification::Binding { name, provenance };
+    }
+    if value_alias.as_ref().is_none_or(|target| !target.is_root())
+        && let (Some(name), Some(provenance)) = (name(), returned_alias)
+    {
+        return DeclarationClassification::Binding { name, provenance };
+    }
+    if !derived_function_pattern && let Some(target) = value_alias {
+        return DeclarationClassification::ValueAlias {
+            pattern: pattern.clone(),
+            target,
+        };
+    }
+    DeclarationClassification::None
+}
 
 impl Visit for LexicalScopeCollector {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
@@ -93,12 +163,6 @@ impl Visit for LexicalScopeCollector {
                 .init
                 .as_deref()
                 .and_then(|init| self.rooted_expr_name(init));
-            let function_constructor_alias = value_alias
-                .as_ref()
-                .filter(|target| target.eq_chain("Function"))
-                .map(|target| BindingProvenance::ValueAlias {
-                    target: target.clone(),
-                });
             let returned_alias = declarator
                 .init
                 .as_deref()
@@ -115,34 +179,27 @@ impl Visit for LexicalScopeCollector {
             let derived_function_pattern =
                 collect_derived_function_pattern(self, &declarator.name, init, scope);
 
-            // TODO: this is a bit of a mess.
-            if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, bound_alias.as_ref())
-            {
-                self.insert(scope, ident.id.sym.to_string(), provenance.clone());
-            } else if let (Pat::Ident(ident), Some(provenance)) =
-                (&declarator.name, module_alias.as_ref())
-            {
-                self.insert(scope, ident.id.sym.to_string(), provenance.clone());
-            } else if let Some(BindingProvenance::ModuleNamespace { module }) =
-                module_alias.as_ref()
-            {
-                self.collect_require_aliases(&declarator.name, module.clone(), scope);
-            } else if let Some(init) = declarator.init.as_deref()
-                && let Some(module) = self.require_module_expr_name(init)
-            {
-                self.collect_require_aliases(&declarator.name, module, scope);
-            } else if let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, const_value) {
-                self.insert(scope, ident.id.sym.to_string(), provenance);
-            } else if let (Pat::Ident(ident), Some(provenance)) =
-                (&declarator.name, function_constructor_alias)
-            {
-                self.insert(scope, ident.id.sym.to_string(), provenance);
-            } else if value_alias.as_ref().is_none_or(|target| !target.is_root())
-                && let (Pat::Ident(ident), Some(provenance)) = (&declarator.name, returned_alias)
-            {
-                self.insert(scope, ident.id.sym.to_string(), provenance);
-            } else if !derived_function_pattern && let Some(target) = value_alias {
-                self.collect_value_aliases(&declarator.name, &target, scope);
+            match classify_declaration(
+                self,
+                &declarator.name,
+                init,
+                bound_alias,
+                module_alias,
+                const_value,
+                returned_alias,
+                value_alias,
+                derived_function_pattern,
+            ) {
+                DeclarationClassification::Binding { name, provenance } => {
+                    self.insert(scope, name, provenance);
+                }
+                DeclarationClassification::Require { pattern, module } => {
+                    self.collect_require_aliases(&pattern, module, scope);
+                }
+                DeclarationClassification::ValueAlias { pattern, target } => {
+                    self.collect_value_aliases(&pattern, &target, scope);
+                }
+                DeclarationClassification::None => {}
             }
             visit_initializer(self, init);
         }
@@ -150,16 +207,9 @@ impl Visit for LexicalScopeCollector {
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
         let rooted_alias = self.rooted_expr_name(&assignment.right);
-        let function_constructor_alias = rooted_alias
-            .as_ref()
-            .filter(|target| target.eq_chain("Function"))
-            .map(|target| BindingProvenance::ValueAlias {
-                target: target.clone(),
-            });
         let provenance = self
             .bound_callable_provenance(&assignment.right)
             .or_else(|| self.module_alias_provenance(&assignment.right))
-            .or(function_constructor_alias)
             .or_else(|| self.returned_object_provenance(&assignment.right))
             .or_else(|| self.const_provenance(&assignment.right))
             .or_else(|| rooted_alias.map(|target| BindingProvenance::ValueAlias { target }))

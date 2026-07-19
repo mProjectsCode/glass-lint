@@ -6,7 +6,7 @@ use glass_lint_core::ProjectInputError;
 #[derive(Debug)]
 pub enum ProjectLoadError {
     /// Loader options violate a configured invariant.
-    InvalidOptions(String),
+    InvalidOptions(ProjectOptionError),
     /// The selected path does not exist.
     SelectionNotFound(PathBuf),
     /// An entry or config selection is not a file.
@@ -40,10 +40,41 @@ pub enum ProjectLoadError {
     InvalidProjectInput(ProjectInputError),
 }
 
+#[derive(Debug)]
+pub enum ProjectOptionError {
+    ZeroBudget(&'static str),
+    SourceBytesOutOfRange { maximum: u64 },
+    ProjectBytesBelowFileBytes,
+    InvalidExtensions,
+    InvalidExtensionAliases,
+    Message(String),
+}
+
+impl fmt::Display for ProjectOptionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ZeroBudget(name) => write!(f, "{name} must be positive"),
+            Self::SourceBytesOutOfRange { maximum } => {
+                write!(f, "max_source_bytes must be between 1 and {maximum}")
+            }
+            Self::ProjectBytesBelowFileBytes => {
+                f.write_str("max_project_source_bytes must be at least max_source_bytes")
+            }
+            Self::InvalidExtensions => f.write_str("extensions must be non-empty file suffixes"),
+            Self::InvalidExtensionAliases => {
+                f.write_str("extension aliases must map file suffixes to non-empty suffix lists")
+            }
+            Self::Message(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for ProjectOptionError {}
+
 impl fmt::Display for ProjectLoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidOptions(message) => write!(f, "invalid project options: {message}"),
+            Self::InvalidOptions(error) => write!(f, "invalid project options: {error}"),
             Self::SelectionNotFound(path) => {
                 write!(f, "project selection does not exist: {}", path.display())
             }

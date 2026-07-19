@@ -264,7 +264,7 @@ impl ProjectSemanticModel {
     fn resolve_request_export(
         &self,
         module: ModuleId,
-        request_index: usize,
+        request_index: module::ModuleRequestId,
         imported: &str,
     ) -> ExportResolution {
         let Some(request) = self

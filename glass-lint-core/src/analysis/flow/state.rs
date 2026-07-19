@@ -23,6 +23,12 @@ pub(super) struct FlowState {
     requirements: RequirementSet,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub(super) struct FlowStateKey {
+    pub(super) object: ObjectId,
+    pub(super) flow: FlowId,
+}
+
 impl FlowState {
     /// Create an empty lifecycle state for a matched source.
     pub(super) fn new(flow: FlowId, source_event: FactId, object_id: ObjectId) -> Self {
@@ -44,8 +50,11 @@ impl FlowState {
     }
 
     /// Return the stable object/flow storage key.
-    pub(super) fn key(&self) -> (ObjectId, FlowId) {
-        (self.object_id, self.flow)
+    pub(super) fn key(&self) -> FlowStateKey {
+        FlowStateKey {
+            object: self.object_id,
+            flow: self.flow,
+        }
     }
 
     pub(super) fn flow_id(&self) -> FlowId {

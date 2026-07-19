@@ -8,9 +8,9 @@ use crate::api::compiler::CompiledRuleSelection;
 
 #[derive(Debug, Clone)]
 /// Compiled rules in deterministic declaration order.
-pub struct CompiledCatalog {
+pub(crate) struct CompiledCatalog {
     /// Immutable compiled matcher plans indexed by rule order.
-    pub rules: Vec<CompiledRule>,
+    pub(crate) rules: Vec<CompiledRule>,
 }
 
 impl CompiledCatalog {

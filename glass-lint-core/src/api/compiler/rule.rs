@@ -7,9 +7,9 @@
 use super::super::{
     classification::MatchKind,
     rule::{
-        ArgumentConstraint, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherSet,
-        MemberCallProvenance, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
-        ValueMatcher,
+        ArgumentConstraint, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherFamily,
+        MatcherSet, MemberCallProvenance, ObjectEventMatcher, ObjectFlowMatcher,
+        ObjectSourceMatcher, Rule, ValueMatcher,
     },
 };
 use crate::analysis::SymbolPath;
@@ -18,19 +18,19 @@ use crate::analysis::SymbolPath;
 /// declarations are compiled once while a catalog is built and never enter
 /// the per-file analysis path.
 #[derive(Debug, Clone)]
-pub struct CompiledMatcherPlan {
+pub(crate) struct CompiledMatcherPlan {
     query: QueryPlan,
 }
 
 #[derive(Debug, Clone)]
 /// Private compositional query representation consumed by semantic analysis.
-pub struct QueryPlan {
+pub(crate) struct QueryPlan {
     pub(crate) clauses: Box<[QueryClause]>,
     pub(crate) flows: Box<[CompiledObjectFlow]>,
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct QueryClause {
+pub(crate) struct QueryClause {
     pub(crate) identity: IdentityConstraint,
     pub(crate) event: EventPredicate,
     pub(crate) subject: SubjectConstraint,
@@ -39,13 +39,13 @@ pub struct QueryClause {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum IdentityStrength {
+pub(crate) enum IdentityStrength {
     Strict,
     Heuristic,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum IdentityConstraint {
+pub(crate) enum IdentityConstraint {
     Any {
         name: String,
         strength: IdentityStrength,
@@ -82,8 +82,13 @@ pub enum IdentityConstraint {
 }
 
 impl IdentityConstraint {
-    pub(crate) fn root_or_descendant_matches(&self, source: &SymbolPath) -> bool {
-        matches!(self, Self::Rooted { path } if source.is_equal_or_descendant_of(path))
+    pub(crate) fn root_or_descendant_matches(
+        &self,
+        source: &SymbolPath,
+        environment: &crate::Environment,
+    ) -> bool {
+        matches!(self, Self::Rooted { path } if path.matches_global_object_alias(source, environment)
+            || source.is_equal_or_descendant_of(path))
     }
 
     pub(crate) fn exact_root_matches(&self, source: &SymbolPath) -> bool {
@@ -97,7 +102,7 @@ impl IdentityConstraint {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum EventPredicate {
+pub(crate) enum EventPredicate {
     Call,
     Construct,
     MemberCall { member: SymbolPath },
@@ -108,7 +113,7 @@ pub enum EventPredicate {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum SubjectConstraint {
+pub(crate) enum SubjectConstraint {
     Direct,
     ReturnedFrom {
         producer: Box<IdentityConstraint>,
@@ -119,18 +124,18 @@ pub enum SubjectConstraint {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub enum QueryConstraint {
+pub(crate) enum QueryConstraint {
     Argument(ArgumentConstraint),
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct EvidenceDescriptor {
+pub(crate) struct EvidenceDescriptor {
     pub(crate) kind: MatchKind,
     pub(crate) symbol: String,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum InvalidQueryClause {
+pub(crate) enum InvalidQueryClause {
     /// The identity/event/subject dimensions cannot select a semantic fact.
     ImpossibleDimensions,
     /// Argument predicates require a call-bearing event.
@@ -212,13 +217,39 @@ impl QueryClause {
 
 impl QueryPlan {
     fn from_matcher(matcher: &MatcherSet, flows: Vec<CompiledObjectFlow>) -> Self {
-        let mut clauses = lower_calls(matcher);
-        clauses.extend(lower_member_calls(matcher));
-        clauses.extend(lower_member_reads(matcher));
-        clauses.extend(lower_literals(matcher));
-        clauses.extend(lower_classes_and_constructors(matcher));
-        clauses.extend(lower_returned_members(matcher));
-        clauses.extend(lower_instance_members(matcher));
+        let mut clauses = Vec::new();
+        for family in matcher.families() {
+            match family {
+                MatcherFamily::Calls(values) => clauses.extend(lower_calls(values)),
+                MatcherFamily::MemberCalls(values) => clauses.extend(lower_member_calls(values)),
+                MatcherFamily::MemberReads(values) => clauses.extend(lower_member_reads(values)),
+                MatcherFamily::Imports(values) => clauses.extend(lower_literals(values, &[], &[])),
+                MatcherFamily::PackageImports(values) => {
+                    clauses.extend(lower_literals(&[], values, &[]));
+                }
+                MatcherFamily::StringContains(values) => {
+                    clauses.extend(lower_literals(&[], &[], values));
+                }
+                MatcherFamily::Classes(values) => {
+                    clauses.extend(lower_classes_and_constructors(values, &[]));
+                }
+                MatcherFamily::Constructors(values) => {
+                    clauses.extend(lower_classes_and_constructors(&[], values));
+                }
+                MatcherFamily::Flows(values) => {
+                    let _ = values;
+                }
+                MatcherFamily::ReturnedMemberCalls(values) => {
+                    clauses.extend(lower_returned_members(values, &[]));
+                }
+                MatcherFamily::ReturnedMemberReads(values) => {
+                    clauses.extend(lower_returned_members(&[], values));
+                }
+                MatcherFamily::InstanceMemberCalls(values) => {
+                    clauses.extend(lower_instance_members(values));
+                }
+            }
+        }
         clauses.sort();
         clauses.dedup();
         for clause in &clauses {
@@ -241,9 +272,8 @@ impl QueryPlan {
     }
 }
 
-fn lower_calls(matcher: &MatcherSet) -> Vec<QueryClause> {
-    matcher
-        .calls
+fn lower_calls(values: &[super::super::rule::CallMatcher]) -> Vec<QueryClause> {
+    values
         .iter()
         .map(|call| QueryClause {
             identity: call_identity(&call.name, &call.provenance),
@@ -268,9 +298,8 @@ fn lower_calls(matcher: &MatcherSet) -> Vec<QueryClause> {
         .collect()
 }
 
-fn lower_member_calls(matcher: &MatcherSet) -> Vec<QueryClause> {
-    matcher
-        .member_calls
+fn lower_member_calls(values: &[super::super::rule::MemberCallMatcher]) -> Vec<QueryClause> {
+    values
         .iter()
         .map(|member| QueryClause {
             identity: member_identity(&member.chain, &member.provenance),
@@ -297,9 +326,8 @@ fn lower_member_calls(matcher: &MatcherSet) -> Vec<QueryClause> {
         .collect()
 }
 
-fn lower_member_reads(matcher: &MatcherSet) -> Vec<QueryClause> {
-    matcher
-        .member_reads
+fn lower_member_reads(values: &[super::super::rule::MemberReadMatcher]) -> Vec<QueryClause> {
+    values
         .iter()
         .map(|read| QueryClause {
             identity: member_read_identity(&read.chain, &read.provenance),
@@ -316,12 +344,15 @@ fn lower_member_reads(matcher: &MatcherSet) -> Vec<QueryClause> {
         .collect()
 }
 
-fn lower_literals(matcher: &MatcherSet) -> Vec<QueryClause> {
-    let imports = matcher
-        .imports
+fn lower_literals(
+    imports: &[String],
+    package_imports: &[crate::api::rule::ModuleSpecifierPattern],
+    string_contains: &[String],
+) -> Vec<QueryClause> {
+    let imports = imports
         .iter()
         .map(|value| literal_clause(value, EventPredicate::Import, MatchKind::Import));
-    let packages = matcher.package_imports.iter().map(|pattern| QueryClause {
+    let packages = package_imports.iter().map(|pattern| QueryClause {
         identity: IdentityConstraint::PackageSpecifier {
             pattern: pattern.clone(),
         },
@@ -333,7 +364,7 @@ fn lower_literals(matcher: &MatcherSet) -> Vec<QueryClause> {
             symbol: pattern.to_string(),
         },
     });
-    let strings = matcher.string_contains.iter().map(|value| {
+    let strings = string_contains.iter().map(|value| {
         literal_clause(
             value,
             EventPredicate::StringReference,
@@ -358,8 +389,11 @@ fn literal_clause(value: &str, event: EventPredicate, kind: MatchKind) -> QueryC
     }
 }
 
-fn lower_classes_and_constructors(matcher: &MatcherSet) -> Vec<QueryClause> {
-    let classes = matcher.classes.iter().map(|class| QueryClause {
+fn lower_classes_and_constructors(
+    classes: &[super::super::rule::ClassMatcher],
+    constructors: &[super::super::rule::ConstructorMatcher],
+) -> Vec<QueryClause> {
+    let classes = classes.iter().map(|class| QueryClause {
         identity: call_identity(&class.name, &class.provenance),
         event: EventPredicate::ClassReference,
         subject: SubjectConstraint::Direct,
@@ -369,7 +403,7 @@ fn lower_classes_and_constructors(matcher: &MatcherSet) -> Vec<QueryClause> {
             symbol: class.evidence_symbol(),
         },
     });
-    let constructors = matcher.constructors.iter().map(|constructor| QueryClause {
+    let constructors = constructors.iter().map(|constructor| QueryClause {
         identity: call_identity(&constructor.name, &constructor.provenance),
         event: EventPredicate::Construct,
         subject: SubjectConstraint::Direct,
@@ -382,8 +416,11 @@ fn lower_classes_and_constructors(matcher: &MatcherSet) -> Vec<QueryClause> {
     classes.chain(constructors).collect()
 }
 
-fn lower_returned_members(matcher: &MatcherSet) -> Vec<QueryClause> {
-    let calls = matcher.returned_member_calls.iter().map(|returned| {
+fn lower_returned_members(
+    calls_matchers: &[super::super::rule::ReturnedMemberCallMatcher],
+    reads_matchers: &[super::super::rule::ReturnedMemberReadMatcher],
+) -> Vec<QueryClause> {
+    let calls = calls_matchers.iter().map(|returned| {
         returned_member_clause(
             &returned.source,
             &returned.member,
@@ -393,7 +430,7 @@ fn lower_returned_members(matcher: &MatcherSet) -> Vec<QueryClause> {
             MatchKind::MemberCall,
         )
     });
-    let reads = matcher.returned_member_reads.iter().map(|returned| {
+    let reads = reads_matchers.iter().map(|returned| {
         returned_member_clause(
             &returned.source,
             &returned.member,
@@ -430,9 +467,10 @@ fn returned_member_clause(
     }
 }
 
-fn lower_instance_members(matcher: &MatcherSet) -> Vec<QueryClause> {
-    matcher
-        .instance_member_calls
+fn lower_instance_members(
+    values: &[super::super::rule::InstanceMemberCallMatcher],
+) -> Vec<QueryClause> {
+    values
         .iter()
         .map(|instance| {
             let constructor = instance.module_pattern.clone().map_or_else(
@@ -546,28 +584,28 @@ fn call_identity(
 
 #[derive(Debug, Clone)]
 /// Borrowed view of compiled rules selected for a classification run.
-pub struct CompiledRuleSelection<'a> {
+pub(crate) struct CompiledRuleSelection<'a> {
     /// All compiled rules, retained for stable rule indexes.
-    pub rules: &'a [CompiledRule],
+    pub(crate) rules: &'a [CompiledRule],
     /// Sorted selected rule indexes.
-    pub selected: &'a [crate::api::classification::RuleIndex],
+    pub(crate) selected: &'a [crate::api::classification::RuleIndex],
 }
 
 #[derive(Debug, Clone)]
 /// Compiled source/requirement/sink flow configuration for one symbol.
-pub struct CompiledObjectFlow {
+pub(crate) struct CompiledObjectFlow {
     /// Evidence symbol emitted for this flow.
-    pub symbol: String,
+    pub(crate) symbol: String,
     /// Object-producing member-call sources.
-    pub sources: Vec<CompiledObjectSource>,
+    pub(crate) sources: Vec<CompiledObjectSource>,
     /// Required object events.
-    pub requirements: Vec<CompiledObjectRequirement>,
+    pub(crate) requirements: Vec<CompiledObjectRequirement>,
     /// Terminal sink patterns.
-    pub sinks: Vec<CompiledObjectSink>,
+    pub(crate) sinks: Vec<CompiledObjectSink>,
     /// Whether every configured requirement must be observed.
-    pub all_requirements_required: bool,
+    pub(crate) all_requirements_required: bool,
     /// Whether configuration itself emits evidence after requirements.
-    pub emit_on_requirements: bool,
+    pub(crate) emit_on_requirements: bool,
 }
 
 impl CompiledObjectFlow {
@@ -641,13 +679,13 @@ impl CompiledObjectFlow {
 
 #[derive(Debug, Clone)]
 /// Compiled member-call source constraint.
-pub struct CompiledObjectSource {
+pub(crate) struct CompiledObjectSource {
     /// Required member-call chain.
-    pub member_call: SymbolPath,
+    pub(crate) member_call: SymbolPath,
     /// Argument constraints on the source call.
-    pub arguments: Vec<ArgumentConstraint>,
+    pub(crate) arguments: Vec<ArgumentConstraint>,
     /// Required rooted/module provenance mode.
-    pub provenance: MemberCallProvenance,
+    pub(crate) provenance: MemberCallProvenance,
 }
 
 impl CompiledObjectSource {
@@ -662,7 +700,7 @@ impl CompiledObjectSource {
 
 #[derive(Debug, Clone)]
 /// Event that must be observed on a flowed object.
-pub enum CompiledObjectRequirement {
+pub(crate) enum CompiledObjectRequirement {
     /// Required property write and value constraint.
     PropertyWrite {
         /// Written property name.
@@ -696,7 +734,7 @@ impl CompiledObjectRequirement {
 
 #[derive(Debug, Clone)]
 /// Argument-position matching mode for a compiled sink.
-pub enum CompiledObjectSinkArguments {
+pub(crate) enum CompiledObjectSinkArguments {
     /// Match every argument position present at the call site.
     Any,
     /// Match only configured argument positions.
@@ -722,13 +760,13 @@ impl CompiledObjectSinkArguments {
 
 #[derive(Debug, Clone)]
 /// Compiled terminal sink pattern for object flow.
-pub struct CompiledObjectSink {
+pub(crate) struct CompiledObjectSink {
     /// Accepted sink member-call chains.
-    pub member_calls: Vec<SymbolPath>,
+    pub(crate) member_calls: Vec<SymbolPath>,
     /// Accepted argument-position mode.
-    pub args: CompiledObjectSinkArguments,
+    pub(crate) args: CompiledObjectSinkArguments,
     /// Required rooted/module provenance mode.
-    pub provenance: MemberCallProvenance,
+    pub(crate) provenance: MemberCallProvenance,
 }
 
 impl CompiledObjectSink {
@@ -751,8 +789,14 @@ impl CompiledObjectSink {
 impl CompiledMatcherPlan {
     /// Compile a public API matcher and all of its object flows.
     pub fn compile(matcher: &MatcherSet) -> Self {
-        let flows: Vec<CompiledObjectFlow> = matcher
-            .flows
+        let flows = matcher
+            .families()
+            .into_iter()
+            .find_map(|family| match family {
+                MatcherFamily::Flows(values) => Some(values),
+                _ => None,
+            })
+            .unwrap_or_default()
             .iter()
             .map(CompiledObjectFlow::from_matcher)
             .collect();
@@ -804,18 +848,13 @@ impl<'a> CompiledRuleSelection<'a> {
     pub fn len(&self) -> usize {
         self.rules.len()
     }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.rules.is_empty()
-    }
 }
 
 #[derive(Debug, Clone)]
 /// One public rule paired with its compiled matcher plan.
-pub struct CompiledRule {
+pub(crate) struct CompiledRule {
     /// Compiled matcher data for the rule.
-    pub matcher: CompiledMatcherPlan,
+    pub(crate) matcher: CompiledMatcherPlan,
 }
 
 impl CompiledRule {

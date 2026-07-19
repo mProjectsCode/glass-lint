@@ -120,7 +120,7 @@ impl ValidatedLinkInput {
 
         let authored = modules
             .values()
-            .flat_map(ProjectSemanticModel::authored_requests)
+            .flat_map(ProjectModule::authored_requests)
             .map(|request| request.key)
             .collect::<BTreeSet<_>>();
         for (key, _) in &input.resolutions {
@@ -358,14 +358,7 @@ impl ProjectSemanticModel {
         let function = self
             .modules
             .get(&target)
-            .and_then(|module| {
-                module
-                    .local()
-                    .interface()
-                    .function_exports()
-                    .get(&target_export)
-            })
-            .copied();
+            .and_then(|module| module.local().interface().function_export(&target_export));
         let function = function?;
         Some((target, function))
     }
@@ -430,15 +423,6 @@ impl ProjectSemanticModel {
             effect_projections: self.effect_projections.get(),
             evidence,
         }
-    }
-
-    /// Return all authored module requests with source-qualified keys.
-    pub fn authored_requests(module: &ProjectModule) -> Vec<crate::ResolutionRequest> {
-        module.local().interface().authored_requests(
-            module.path(),
-            &module.source_context().lines,
-            &module.source_context().text,
-        )
     }
 
     pub fn classify_with_evidence_limit(

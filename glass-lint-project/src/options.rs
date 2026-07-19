@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::ProjectLoadError;
+use crate::{ProjectLoadError, error::ProjectOptionError};
 
 const DEFAULT_MAX_FILES: usize = 10_000;
 const DEFAULT_MAX_REQUESTS: usize = 50_000;
@@ -204,35 +204,36 @@ impl ProjectLoadOptions {
     pub fn validate(&self) -> Result<(), ProjectLoadError> {
         if self.max_files == 0 {
             return Err(ProjectLoadError::InvalidOptions(
-                "max_files must be positive".into(),
+                ProjectOptionError::ZeroBudget("max_files"),
             ));
         }
         if self.max_requests == 0 {
             return Err(ProjectLoadError::InvalidOptions(
-                "max_requests must be positive".into(),
+                ProjectOptionError::ZeroBudget("max_requests"),
             ));
         }
         if self.max_source_bytes == 0
             || self.max_source_bytes > glass_lint_core::MAX_SOURCE_BYTES as u64
         {
-            return Err(ProjectLoadError::InvalidOptions(format!(
-                "max_source_bytes must be between 1 and {}",
-                glass_lint_core::MAX_SOURCE_BYTES
-            )));
+            return Err(ProjectLoadError::InvalidOptions(
+                ProjectOptionError::SourceBytesOutOfRange {
+                    maximum: glass_lint_core::MAX_SOURCE_BYTES as u64,
+                },
+            ));
         }
         if self.max_project_source_bytes < self.max_source_bytes {
             return Err(ProjectLoadError::InvalidOptions(
-                "max_project_source_bytes must be at least max_source_bytes".into(),
+                ProjectOptionError::ProjectBytesBelowFileBytes,
             ));
         }
         if self.max_visited_entries == 0 {
             return Err(ProjectLoadError::InvalidOptions(
-                "max_visited_entries must be positive".into(),
+                ProjectOptionError::ZeroBudget("max_visited_entries"),
             ));
         }
         if self.max_timeout_ms == 0 {
             return Err(ProjectLoadError::InvalidOptions(
-                "max_timeout_ms must be positive".into(),
+                ProjectOptionError::ZeroBudget("max_timeout_ms"),
             ));
         }
         if self.extensions.is_empty()
@@ -242,7 +243,7 @@ impl ProjectLoadOptions {
                 .any(|extension| !valid_extension(extension))
         {
             return Err(ProjectLoadError::InvalidOptions(
-                "extensions must be non-empty file suffixes".into(),
+                ProjectOptionError::InvalidExtensions,
             ));
         }
         if self.extension_aliases.iter().any(|(extension, aliases)| {
@@ -251,7 +252,7 @@ impl ProjectLoadOptions {
                 || aliases.iter().any(|alias| !valid_extension(alias))
         }) {
             return Err(ProjectLoadError::InvalidOptions(
-                "extension aliases must map file suffixes to non-empty suffix lists".into(),
+                ProjectOptionError::InvalidExtensionAliases,
             ));
         }
         Ok(())

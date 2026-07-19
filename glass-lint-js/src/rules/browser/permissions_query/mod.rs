@@ -12,15 +12,6 @@ pub fn rule() -> Rule {
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .matcher(Matcher::rooted_member_call("navigator.permissions.query"))
-        .matcher(Matcher::rooted_member_call(
-            "window.navigator.permissions.query",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "self.navigator.permissions.query",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "globalThis.navigator.permissions.query",
-        ))
         .build()
         .unwrap()
 }

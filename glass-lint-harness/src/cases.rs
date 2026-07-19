@@ -17,7 +17,7 @@ use walkdir::WalkDir;
 
 use crate::types::{
     AdapterFile, AdapterResolution, AdapterResolutionKind, AdapterResolutionResult, Case,
-    FindingExpectation, ProjectCase, ToolExpectation,
+    ExpectedCount, FindingExpectation, ProjectCase, ToolExpectation,
 };
 
 fn language_for_path(path: &Path) -> &'static str {
@@ -191,12 +191,19 @@ struct ProjectResolutionManifest {
     column: u32,
     end_line: u32,
     end_column: u32,
-    path: Option<String>,
-    package: Option<String>,
-    name: Option<String>,
-    reason: Option<String>,
-    #[serde(default)]
-    missing: bool,
+    #[serde(flatten)]
+    outcome: ManifestResolutionOutcome,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
+enum ManifestResolutionOutcome {
+    Internal { path: String },
+    External { package: String },
+    Builtin { name: String },
+    Missing,
+    OutsideProject { path: String },
+    Unsupported { reason: String },
 }
 
 #[derive(Debug, Default, serde::Deserialize)]
@@ -246,22 +253,23 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
         .resolution
         .into_iter()
         .map(|resolution| {
-            let result = if resolution.missing {
-                AdapterResolutionResult::Missing
-            } else if let Some(path) = resolution.path {
-                AdapterResolutionResult::Internal { path }
-            } else if let Some(package) = resolution.package {
-                AdapterResolutionResult::External { package }
-            } else if let Some(name) = resolution.name {
-                AdapterResolutionResult::Builtin { name }
-            } else if let Some(reason) = resolution.reason {
-                AdapterResolutionResult::Unsupported { reason }
-            } else {
-                bail!(
-                    "resolution {} {} has no result",
-                    resolution.importer,
-                    resolution.request
-                )
+            let result = match resolution.outcome {
+                ManifestResolutionOutcome::Missing => AdapterResolutionResult::Missing,
+                ManifestResolutionOutcome::Internal { path } => {
+                    AdapterResolutionResult::Internal { path }
+                }
+                ManifestResolutionOutcome::External { package } => {
+                    AdapterResolutionResult::External { package }
+                }
+                ManifestResolutionOutcome::Builtin { name } => {
+                    AdapterResolutionResult::Builtin { name }
+                }
+                ManifestResolutionOutcome::OutsideProject { path } => {
+                    AdapterResolutionResult::OutsideProject { path }
+                }
+                ManifestResolutionOutcome::Unsupported { reason } => {
+                    AdapterResolutionResult::Unsupported { reason }
+                }
             };
             Ok(AdapterResolution {
                 importer: resolution.importer,
@@ -297,10 +305,12 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
         filename: entry_source.path.clone(),
         source: entry_source.source.clone(),
         project: Some(ProjectCase {
-            root: directory.to_owned(),
-            entries,
-            files,
-            resolutions,
+            protocol: crate::types::AdapterProject {
+                root: directory.to_string_lossy().into_owned(),
+                entries,
+                files,
+                resolutions,
+            },
             filesystem: metadata.filesystem,
         }),
         adapters: tools,
@@ -338,45 +348,47 @@ fn load_project_tools(
         }
         tools.insert(
             name.clone(),
-            ToolExpectation {
-                config: tool.config.clone(),
-                rules: tool.rules.clone(),
-                required: Vec::new(),
-                forbidden: Vec::new(),
-            },
+            ToolExpectation::new(tool.config.clone(), tool.rules.clone())
+                .map_err(|error| anyhow::anyhow!("project tool `{name}`: {error}"))?,
         );
     }
     for file in files {
         let parsed = parse_case(directory, &directory.join(&file.path), file.source.clone())?;
         for (name, expectation) in parsed.adapters {
-            let entry = tools.entry(name).or_insert_with(|| ToolExpectation {
-                config: None,
-                rules: Vec::new(),
-                required: Vec::new(),
-                forbidden: Vec::new(),
-            });
-            if entry.config.is_none() {
-                entry.config = expectation.config;
-            }
-            if entry.rules.is_empty() {
-                entry.rules = expectation.rules;
-            }
-            entry
-                .required
-                .extend(expectation.required.into_iter().map(|mut expected| {
+            let (selector, required, forbidden) = expectation.into_parts();
+            let requirements = required
+                .into_iter()
+                .map(|mut expected| {
                     if expected.path.is_none() {
-                        expected.path = Some(file.path.clone());
+                        expected.path = Some(
+                            glass_lint_core::ProjectRelativePath::new(file.path.clone())
+                                .map_err(|error| anyhow::anyhow!(error))?,
+                        );
                     }
-                    expected
-                }));
-            entry
-                .forbidden
-                .extend(expectation.forbidden.into_iter().map(|mut expected| {
+                    Ok::<_, anyhow::Error>(expected)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let forbidden = forbidden
+                .into_iter()
+                .map(|mut expected| {
                     if expected.path.is_none() {
-                        expected.path = Some(file.path.clone());
+                        expected.path = Some(
+                            glass_lint_core::ProjectRelativePath::new(file.path.clone())
+                                .map_err(|error| anyhow::anyhow!(error))?,
+                        );
                     }
-                    expected
-                }));
+                    Ok::<_, anyhow::Error>(expected)
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let expectation = ToolExpectation::from_selector(selector, requirements, forbidden)
+                .map_err(anyhow::Error::msg)?;
+            if let Some(entry) = tools.get_mut(&name) {
+                entry
+                    .merge_from(expectation)
+                    .map_err(|error| anyhow::anyhow!("project tool `{name}`: {error}"))?;
+            } else {
+                tools.insert(name, expectation);
+            }
         }
     }
     Ok(tools)
@@ -458,7 +470,7 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
     let mut rule_id = None;
     let mut message_id = None;
     let mut severity = None;
-    let mut count = Some(1);
+    let mut count = ExpectedCount::Exactly(1);
     let mut expected_line = Some(line);
     let mut column = None;
     let mut message = None;
@@ -467,7 +479,7 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
             "rule" => rule_id = Some(value),
             "message_id" => message_id = Some(value),
             "severity" => severity = Some(parse_severity(&value)?),
-            "count" => count = parse_optional_usize(&value)?,
+            "count" => count = parse_expected_count(&value)?,
             "line" => expected_line = parse_optional_u32(&value)?,
             "column" => column = parse_optional_u32(&value)?,
             "message" => message = Some(value),
@@ -485,9 +497,9 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
     diagnostic.column = column;
     diagnostic.message = message;
     if required {
-        expectation.required.push(diagnostic);
+        expectation.add_required(diagnostic);
     } else {
-        expectation.forbidden.push(diagnostic);
+        expectation.add_forbidden(diagnostic);
     }
     Ok(())
 }
@@ -521,11 +533,11 @@ fn parse_optional_u32(value: &str) -> Result<Option<u32>> {
     }
 }
 
-fn parse_optional_usize(value: &str) -> Result<Option<usize>> {
+fn parse_expected_count(value: &str) -> Result<ExpectedCount> {
     if value == "any" {
-        Ok(None)
+        Ok(ExpectedCount::AtLeastOne)
     } else {
-        Ok(Some(value.parse()?))
+        Ok(ExpectedCount::Exactly(value.parse()?))
     }
 }
 
@@ -549,7 +561,7 @@ globalThis.setTimeout('run()', 10);
         .unwrap();
         assert_eq!(case.id, "system/timer");
         assert_eq!(case.description, "Dynamic code");
-        assert_eq!(case.adapters["glass-lint"].required[0].line, Some(4));
+        assert_eq!(case.adapters["glass-lint"].required()[0].line, Some(4));
     }
 
     #[test]
@@ -566,8 +578,8 @@ function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=j
         )
         .unwrap();
 
-        assert_eq!(case.adapters["glass-lint"].forbidden.len(), 1);
-        assert_eq!(case.adapters["glass-lint"].forbidden[0].line, Some(3));
+        assert_eq!(case.adapters["glass-lint"].forbidden().len(), 1);
+        assert_eq!(case.adapters["glass-lint"].forbidden()[0].line, Some(3));
     }
 
     #[test]
@@ -594,5 +606,14 @@ function local(fetch) { fetch('/local'); } // @expect-no-error glass-lint rule=j
 
         let error = load_cases(root.path()).unwrap_err().to_string();
         assert!(error.contains("conflicts with its fixture extension"));
+    }
+
+    #[test]
+    fn rejects_legacy_competing_resolution_fields() {
+        let error = toml::from_str::<ProjectResolutionManifest>(
+            "importer = 'main.js'\nkind = 'import'\nrequest = 'pkg'\nline = 1\ncolumn = 1\nend_line = 1\nend_column = 4\npath = 'src/pkg.js'\npackage = 'pkg'\n",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("outcome"));
     }
 }

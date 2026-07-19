@@ -197,7 +197,7 @@ impl OccurrenceIndexes {
 
     fn record_call_special_cases(&mut self, fact: &super::super::facts::SemanticFact) {
         let FactPayload::Call {
-            rooted_chain,
+            rooted_chain: _,
             unwrap,
             callee_span,
             ..
@@ -205,17 +205,17 @@ impl OccurrenceIndexes {
         else {
             return;
         };
-        if rooted_chain
-            .as_ref()
-            .is_some_and(|chain| chain.eq_chain("Function"))
-        {
-            self.call_indexes
-                .global_calls
-                .push("Function".to_string(), fact.id, *callee_span);
-            self.call_indexes
-                .calls
-                .push("Function".to_string(), fact.id, *callee_span);
-        }
+        // if rooted_chain
+        //     .as_ref()
+        //     .is_some_and(|chain| chain.eq_chain("Function"))
+        // {
+        //     self.call_indexes
+        //         .global_calls
+        //         .push("Function".to_string(), fact.id, *callee_span);
+        //     self.call_indexes
+        //         .calls
+        //         .push("Function".to_string(), fact.id, *callee_span);
+        // }
         if let Some(unwrap) = unwrap
             && !unwrap.chain.is_empty()
         {

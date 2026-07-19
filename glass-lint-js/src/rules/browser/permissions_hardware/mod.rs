@@ -14,33 +14,6 @@ pub fn rule() -> Rule {
         .matcher(Matcher::rooted_member_call("navigator.hid.requestDevice"))
         .matcher(Matcher::rooted_member_call("navigator.serial.requestPort"))
         .matcher(Matcher::rooted_member_call("navigator.usb.requestDevice"))
-        .matcher(Matcher::rooted_member_call(
-            "window.navigator.hid.requestDevice",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "window.navigator.serial.requestPort",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "window.navigator.usb.requestDevice",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "self.navigator.hid.requestDevice",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "self.navigator.serial.requestPort",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "self.navigator.usb.requestDevice",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "globalThis.navigator.hid.requestDevice",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "globalThis.navigator.serial.requestPort",
-        ))
-        .matcher(Matcher::rooted_member_call(
-            "globalThis.navigator.usb.requestDevice",
-        ))
         .build()
         .unwrap()
 }

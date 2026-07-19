@@ -82,14 +82,14 @@ fn configured_linter(expectation: &ToolExpectation) -> Result<Linter> {
         glass_lint_js::electron_catalog(),
         glass_lint_obsidian::obsidian_catalog(),
     ];
-    if let Some(config) = expectation.config.as_deref() {
+    if let Some(config) = expectation.config() {
         if config != "heuristic" {
             bail!("unknown built-in glass-lint config `{config}`");
         }
         return Ok(Linter::new(LinterConfig::new(catalogs, environment))?);
     }
     let enabled = expectation
-        .rules
+        .rules()
         .iter()
         .map(|id| glass_lint_core::RuleId::parse(id.clone()))
         .collect::<Result<Vec<_>, _>>()?;
@@ -119,13 +119,13 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
         )
         .load_and_lint(
             &linter,
-            &glass_lint_project::ProjectSelection::directory(project.root.clone()),
+            &glass_lint_project::ProjectSelection::directory(project.root()),
         )?
         .report
     } else {
-        let mut session = linter.begin_analysis(project.root.clone())?;
+        let mut session = linter.begin_analysis(project.root())?;
         let mut authored = Vec::new();
-        for file in &project.files {
+        for file in project.files() {
             authored.extend(
                 session
                     .add_source(SourceFile::new(file.path.clone(), file.source.clone())?)?
@@ -133,7 +133,7 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
                     .map(|request| (request, file.path.clone())),
             );
         }
-        for resolution in &project.resolutions {
+        for resolution in project.resolutions() {
             let (kind, result) = <&AdapterResolution as TryInto<(_, _)>>::try_into(resolution)
                 .map_err(|error: String| anyhow::anyhow!(error))?;
             let request = authored
@@ -233,8 +233,8 @@ impl ExternalAdapter {
             filename: case.filename.clone(),
             language: case.language.clone(),
             source: case.source.clone(),
-            rules: expectation.rules.clone(),
-            config: expectation.config.clone(),
+            rules: expectation.rules().to_vec(),
+            config: expectation.config().map(str::to_owned),
             project: case.project.as_ref().map(adapter_project),
         };
         serde_json::to_writer(

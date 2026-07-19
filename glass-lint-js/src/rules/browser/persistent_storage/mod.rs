@@ -2,30 +2,13 @@
 
 use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
 
-const WEB_STORAGE_ROOTS: &[&str] = &[
-    "localStorage",
-    "sessionStorage",
-    "window.localStorage",
-    "window.sessionStorage",
-    "globalThis.localStorage",
-    "globalThis.sessionStorage",
-];
+const WEB_STORAGE_ROOTS: &[&str] = &["localStorage", "sessionStorage"];
 const WEB_STORAGE_METHODS: &[&str] = &["getItem", "setItem", "removeItem", "clear", "key"];
-const DATABASE_ROOTS: &[&str] = &["indexedDB", "window.indexedDB", "globalThis.indexedDB"];
+const DATABASE_ROOTS: &[&str] = &["indexedDB"];
 const DATABASE_METHODS: &[&str] = &["open", "deleteDatabase", "databases"];
-const CACHE_ROOTS: &[&str] = &[
-    "caches",
-    "window.caches",
-    "self.caches",
-    "globalThis.caches",
-];
+const CACHE_ROOTS: &[&str] = &["caches"];
 const CACHE_METHODS: &[&str] = &["open", "match", "has", "delete", "keys"];
-const STORAGE_MANAGER_ROOTS: &[&str] = &[
-    "navigator.storage",
-    "window.navigator.storage",
-    "self.navigator.storage",
-    "globalThis.navigator.storage",
-];
+const STORAGE_MANAGER_ROOTS: &[&str] = &["navigator.storage"];
 const STORAGE_MANAGER_METHODS: &[&str] = &["persist", "persisted", "estimate", "getDirectory"];
 const DIRECTORY_METHODS: &[&str] = &[
     "getFileHandle",
@@ -48,8 +31,7 @@ pub fn rule() -> Rule {
         .category("browser/storage")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_read("document.cookie"))
-        .matcher(Matcher::rooted_member_read("globalThis.document.cookie"));
+        .matcher(Matcher::rooted_member_read("document.cookie"));
 
     for root in WEB_STORAGE_ROOTS {
         for method in WEB_STORAGE_METHODS {
@@ -78,15 +60,7 @@ pub fn rule() -> Rule {
         }
     }
     for method in COOKIE_METHODS {
-        builder = builder.matcher(Matcher::rooted_member_call(format!(
-            "window.cookieStore.{method}"
-        )));
-        builder = builder.matcher(Matcher::rooted_member_call(format!(
-            "self.cookieStore.{method}"
-        )));
-        builder = builder.matcher(Matcher::rooted_member_call(format!(
-            "globalThis.cookieStore.{method}"
-        )));
+        builder = builder.matcher(Matcher::rooted_member_call(format!("cookieStore.{method}")));
     }
 
     builder.build().unwrap()

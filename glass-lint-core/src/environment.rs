@@ -182,6 +182,57 @@ impl Environment {
             None => false,
         }
     }
+
+    /// Whether two configured complete global-object bindings represent the
+    /// same promoted realm identity. Restricted foreign-realm objects remain
+    /// distinct even when their names are similar.
+    pub(crate) fn global_object_aliases_match(&self, left: &str, right: &str) -> bool {
+        if left == right {
+            return true;
+        }
+        matches!(
+            (
+                self.global_objects.get(left),
+                self.global_objects.get(right)
+            ),
+            (
+                Some(GlobalObjectMembers::ConfiguredGlobals),
+                Some(GlobalObjectMembers::ConfiguredGlobals)
+            )
+        )
+    }
+
+    pub(crate) fn global_object_paths_match(&self, left: &[String], right: &[String]) -> bool {
+        if left == right {
+            return true;
+        }
+        if let (Some(left_root), Some(right_root)) = (left.first(), right.first())
+            && self.global_object_aliases_match(left_root, right_root)
+        {
+            return left[1..] == right[1..];
+        }
+        if let Some(root) = left.first()
+            && self.is_global_object(root)
+            && left.len() > 1
+            && self.is_global_member(root, &left[1])
+            && &left[1..] == right
+        {
+            return true;
+        }
+        if let Some(root) = right.first()
+            && self.is_global_object(root)
+            && right.len() > 1
+            && self.is_global_member(root, &right[1])
+            && &right[1..] == left
+        {
+            return true;
+        }
+        false
+    }
+
+    fn is_global_object(&self, name: &str) -> bool {
+        self.global_objects.contains_key(name)
+    }
 }
 
 const ECMASCRIPT_GLOBALS: &[&str] = &[

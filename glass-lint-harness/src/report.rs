@@ -140,7 +140,7 @@ pub fn render_adapter_comparison(report: &SuiteReport) -> String {
         .collect();
 
     let mut out = String::from(
-        "# Adapter render_adapter_comparison\n\n\
+        "# Adapter comparison\n\n\
          This generated report compares findings from the configured adapters\n\
          on the loaded suite. Adapter catalogs differ, so counts are descriptive\n\
          rather than precision or recall scores.\n\n",

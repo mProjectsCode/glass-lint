@@ -88,15 +88,13 @@ pub fn rule() -> Rule {
         .matcher(rooted_global_traversal("Object.getOwnPropertySymbols"))
         .matcher(rooted_global_traversal("Object.getOwnPropertyDescriptors"))
         .matcher(rooted_global_traversal("Reflect.ownKeys"))
-        .matcher(rooted_global_this_traversal("Object.keys"))
-        .matcher(rooted_global_this_traversal("Object.entries"))
-        .matcher(rooted_global_this_traversal("Object.values"))
-        .matcher(rooted_global_this_traversal("Object.getOwnPropertyNames"))
-        .matcher(rooted_global_this_traversal("Object.getOwnPropertySymbols"))
-        .matcher(rooted_global_this_traversal(
-            "Object.getOwnPropertyDescriptors",
-        ))
-        .matcher(rooted_global_this_traversal("Reflect.ownKeys"))
+        .matcher(rooted_global_traversal("Object.keys"))
+        .matcher(rooted_global_traversal("Object.entries"))
+        .matcher(rooted_global_traversal("Object.values"))
+        .matcher(rooted_global_traversal("Object.getOwnPropertyNames"))
+        .matcher(rooted_global_traversal("Object.getOwnPropertySymbols"))
+        .matcher(rooted_global_traversal("Object.getOwnPropertyDescriptors"))
+        .matcher(rooted_global_traversal("Reflect.ownKeys"))
         .build()
         .unwrap()
 }
@@ -104,12 +102,5 @@ pub fn rule() -> Rule {
 fn rooted_global_traversal(method: &str) -> Matcher {
     Matcher::from(
         MemberCallMatcher::rooted(format!("global.{method}")).arg_rooted_exprs(0, METADATA_MAPS),
-    )
-}
-
-fn rooted_global_this_traversal(method: &str) -> Matcher {
-    Matcher::from(
-        MemberCallMatcher::rooted(format!("globalThis.{method}"))
-            .arg_rooted_exprs(0, METADATA_MAPS),
     )
 }

@@ -139,8 +139,12 @@ impl Resolver {
             SymbolCallProvenance::Local => rooted.map_or(Value::Local, Self::rooted_value),
             SymbolCallProvenance::Unknown(_) | SymbolCallProvenance::Ambiguous => Value::Unknown,
         };
-        let id = self.values.borrow_mut().intern_with_binding(value, binding);
-        debug_assert!(self.values.borrow().get(id).is_some());
+        let id = self
+            .state
+            .borrow_mut()
+            .values
+            .intern_with_binding(value, binding);
+        debug_assert!(self.state.borrow().values.get(id).is_some());
         id
     }
 
@@ -164,7 +168,7 @@ impl Resolver {
                 SymbolCallProvenance::Unknown(UnknownReason::Unsupported)
             };
         }
-        let Some(value) = self.values.borrow().get(id).cloned() else {
+        let Some(value) = self.state.borrow().values.get(id).cloned() else {
             return SymbolCallProvenance::Unknown(UnknownReason::Missing);
         };
         match value {

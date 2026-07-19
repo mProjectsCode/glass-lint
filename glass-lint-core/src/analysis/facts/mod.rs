@@ -42,9 +42,10 @@ impl SemanticFacts {
     pub(in crate::analysis) fn from_lowering(
         stream: FactStream,
         interface: ModuleInterface,
+        environment: &crate::Environment,
     ) -> Self {
         // Project the fact stream into rule-independent occurrence indexes.
-        let mut index = OccurrenceIndexes::default();
+        let mut index = OccurrenceIndexes::with_environment(environment);
         if stream.is_valid() {
             index.build_from_stream(&stream);
             index.normalize_occurrences();
@@ -273,7 +274,8 @@ mod tests {
             let (stream, interface) = builder.into_parts();
             format!(
                 "{:?}",
-                SemanticFacts::from_lowering(stream, interface).index
+                SemanticFacts::from_lowering(stream, interface, &crate::Environment::default())
+                    .index
             )
         };
 

@@ -38,19 +38,11 @@ pub fn rule() -> Rule {
                 .arg_static_strings(0, INPUT_EVENTS),
         ))
         .matcher(Matcher::from(
-            MemberCallMatcher::rooted("window.addEventListener")
-                .arg_static_strings(0, INPUT_EVENTS),
-        ))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("globalThis.addEventListener")
-                .arg_static_strings(0, INPUT_EVENTS),
+            MemberCallMatcher::rooted("addEventListener").arg_static_strings(0, INPUT_EVENTS),
         ))
         .matcher(Matcher::from(
             MemberCallMatcher::rooted("document.body.addEventListener")
                 .arg_static_strings(0, INPUT_EVENTS),
-        ))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("self.addEventListener").arg_static_strings(0, INPUT_EVENTS),
         ))
         .matcher(Matcher::rooted_member_read("document.onkeydown"))
         .matcher(Matcher::rooted_member_read("document.onkeyup"))
@@ -58,12 +50,6 @@ pub fn rule() -> Rule {
         .matcher(Matcher::rooted_member_read("document.onpaste"))
         .matcher(Matcher::rooted_member_read("document.oncopy"))
         .matcher(Matcher::rooted_member_read("document.oncut"))
-        .matcher(Matcher::rooted_member_read("window.onkeydown"))
-        .matcher(Matcher::rooted_member_read("window.onkeyup"))
-        .matcher(Matcher::rooted_member_read("window.onkeypress"))
-        .matcher(Matcher::rooted_member_read("window.onpaste"))
-        .matcher(Matcher::rooted_member_read("window.oncopy"))
-        .matcher(Matcher::rooted_member_read("window.oncut"))
         .build()
         .unwrap()
 }

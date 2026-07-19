@@ -146,7 +146,7 @@ pub fn lower_program(
     let mut builder = facts::build::FactBuilder::with_limit(&resolver, limits.semantic_operations);
     swc_ecma_visit::VisitWith::visit_with(program, &mut builder);
     let (stream, interface) = builder.into_parts();
-    let facts = facts::SemanticFacts::from_lowering(stream, interface);
+    let facts = facts::SemanticFacts::from_lowering(stream, interface, environment);
     let mut status = AnalysisStatus::default();
     // Scope collection, resolution, value interning, and path projection are
     // all local semantic work. Their bounded failures are intentionally

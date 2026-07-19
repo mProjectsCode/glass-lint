@@ -141,7 +141,7 @@ impl ProjectSemanticModel {
         let mut edge_budget = crate::budget::Budget::new(self.link_limit());
         for module in self.modules.values() {
             self.graph.ensure_node(module.id());
-            for request in Self::authored_requests(module) {
+            for request in module.authored_requests() {
                 let Some(resolution) = self.resolutions.get(&request.key) else {
                     if is_internal_request(&request.request) {
                         self.status.borrow_mut().record(

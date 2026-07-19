@@ -80,20 +80,27 @@ enum ResolutionKey {
     Member { range: ParserSpanKey },
 }
 
-// TODO: why is this so refcell-heavy? Can we remedy this?
+#[derive(Debug, Default)]
+struct ResolverState {
+    /// Interned values and binding identities.
+    values: ValueTable,
+    /// Fresh object values reused by checked source range.
+    fresh_values: BTreeMap<ParserSpanKey, ValueId>,
+    /// Cached expression resolutions keyed by source position.
+    resolved_values: BTreeMap<ResolutionKey, ResolvedValue>,
+    /// Active lookups used to break recursive resolution cycles.
+    resolving: BTreeSet<ResolutionKey>,
+}
+
 #[derive(Debug)]
 pub(super) struct Resolver {
     /// Scope/provenance seeds from the lexical collection pass.
     scopes: ScopeGraph,
     coordinates: SpanNormalizer,
-    /// Interned abstract values and binding identities.
-    values: RefCell<ValueTable>,
-    /// Fresh object values reused by checked source range.
-    fresh_values: RefCell<BTreeMap<ParserSpanKey, ValueId>>,
-    /// Cached expression resolutions keyed by source position.
-    resolved_values: RefCell<BTreeMap<ResolutionKey, ResolvedValue>>,
-    /// Active lookups used to break recursive resolution cycles.
-    resolving: RefCell<BTreeSet<ResolutionKey>>,
+    /// Cohesive mutable state for value interning, caching, and recursion
+    /// guards. Keeping these lifecycles together makes their borrow order
+    /// explicit at the resolver boundary.
+    state: RefCell<ResolverState>,
 }
 
 impl Default for Resolver {
@@ -101,10 +108,7 @@ impl Default for Resolver {
         Self {
             scopes: ScopeGraph::default(),
             coordinates: SpanNormalizer::default(),
-            values: RefCell::new(ValueTable::default()),
-            fresh_values: RefCell::new(BTreeMap::new()),
-            resolved_values: RefCell::new(BTreeMap::new()),
-            resolving: RefCell::new(BTreeSet::new()),
+            state: RefCell::new(ResolverState::default()),
         }
     }
 }
@@ -178,10 +182,7 @@ impl Resolver {
         Self {
             scopes,
             coordinates,
-            values: RefCell::new(ValueTable::default()),
-            fresh_values: RefCell::new(BTreeMap::new()),
-            resolved_values: RefCell::new(BTreeMap::new()),
-            resolving: RefCell::new(BTreeSet::new()),
+            state: RefCell::new(ResolverState::default()),
         }
     }
 
@@ -208,7 +209,7 @@ impl Resolver {
     }
 
     pub(in crate::analysis) fn value_arena_exhausted(&self) -> bool {
-        self.values.borrow().exhausted()
+        self.state.borrow().values.exhausted()
     }
 
     pub(in crate::analysis) fn instance_member_available(&self, member: &MemberExpr) -> bool {
@@ -218,12 +219,9 @@ impl Resolver {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        cell::RefCell,
-        collections::{BTreeMap, BTreeSet},
-    };
+    use std::cell::RefCell;
 
-    use super::{Resolver, SymbolCallProvenance, ValueId, ValueTable};
+    use super::{Resolver, ResolverState, SymbolCallProvenance, ValueId, ValueTable};
     use crate::analysis::{
         syntax::{BudgetComponent, UnknownReason},
         value::MAX_VALUES,
@@ -245,10 +243,10 @@ mod tests {
         let resolver = Resolver {
             scopes: super::ScopeGraph::default(),
             coordinates: crate::analysis::lowering::SpanNormalizer::default(),
-            values: RefCell::new(values),
-            fresh_values: RefCell::new(BTreeMap::new()),
-            resolved_values: RefCell::new(BTreeMap::new()),
-            resolving: RefCell::new(BTreeSet::new()),
+            state: RefCell::new(ResolverState {
+                values,
+                ..ResolverState::default()
+            }),
         };
         assert_eq!(
             resolver.call_provenance_for_value(ValueId::UNKNOWN),

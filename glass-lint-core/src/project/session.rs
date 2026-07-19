@@ -258,6 +258,43 @@ fn normalize_worker_limit(requested: usize) -> NonZeroUsize {
     NonZeroUsize::new(requested).unwrap_or(NonZeroUsize::MIN)
 }
 
+#[derive(Default)]
+struct AnalysisArtifacts {
+    authored_requests: BTreeMap<ResolutionRequestKey, ResolutionRequest>,
+    analyzed: BTreeMap<super::ProjectRelativePath, crate::analysis::LocalArtifact>,
+    parse_diagnostics: BTreeMap<super::ProjectRelativePath, crate::ParseDiagnostic>,
+}
+
+impl AnalysisArtifacts {
+    fn record_parse_failure(
+        &mut self,
+        path: super::ProjectRelativePath,
+        error: crate::ParseDiagnostic,
+    ) {
+        self.analyzed.remove(&path);
+        self.parse_diagnostics.insert(path, error);
+    }
+
+    fn record_lowered(
+        &mut self,
+        path: &super::ProjectRelativePath,
+        lowered: LoweredSource,
+    ) -> Vec<ResolutionRequest> {
+        let local = crate::analysis::LocalArtifact::new(lowered.source.clone(), lowered.semantic);
+        let requests = local.interface().authored_requests(
+            path,
+            &local.source_context().lines,
+            &local.source_context().text,
+        );
+        for request in &requests {
+            self.authored_requests
+                .insert(request.key.clone(), request.clone());
+        }
+        self.analyzed.insert(path.clone(), local);
+        requests
+    }
+}
+
 pub(super) const fn outstanding_job_bound(worker_limit: NonZeroUsize) -> usize {
     worker_limit.get().saturating_mul(2)
 }
@@ -278,9 +315,7 @@ pub struct AnalysisSession<'a> {
     pub(super) root: std::path::PathBuf,
     pub(super) sources: SourceTable,
     pub(super) resolutions: ResolutionTable,
-    pub(super) authored_requests: BTreeMap<ResolutionRequestKey, ResolutionRequest>,
-    pub(super) analyzed: BTreeMap<super::ProjectRelativePath, crate::analysis::LocalArtifact>,
-    pub(super) parse_diagnostics: BTreeMap<super::ProjectRelativePath, crate::ParseDiagnostic>,
+    artifacts: AnalysisArtifacts,
     pub(super) artifact_cache: ArtifactCacheHandle,
     #[cfg(test)]
     fingerprint_engine_version: &'static str,
@@ -340,9 +375,7 @@ impl<'a> AnalysisSession<'a> {
             root: normalize_root(&root.into())?,
             sources: SourceTable::default(),
             resolutions: ResolutionTable::default(),
-            authored_requests: BTreeMap::new(),
-            analyzed: BTreeMap::new(),
-            parse_diagnostics: BTreeMap::new(),
+            artifacts: AnalysisArtifacts::default(),
             artifact_cache: linter.artifact_cache_handle(),
             #[cfg(test)]
             fingerprint_engine_version: env!("CARGO_PKG_VERSION"),
@@ -389,7 +422,7 @@ impl<'a> AnalysisSession<'a> {
             let lowered = match crate::analysis::lower_source(self.linter, source) {
                 Ok(lowered) => lowered,
                 Err(error) => {
-                    self.parse_diagnostics.insert(path.clone(), error);
+                    self.artifacts.record_parse_failure(path.clone(), error);
                     return Ok(Vec::new());
                 }
             };
@@ -422,31 +455,7 @@ impl<'a> AnalysisSession<'a> {
         path: &super::ProjectRelativePath,
         lowered: LoweredSource,
     ) -> Vec<ResolutionRequest> {
-        Self::record_lowered_into(
-            &mut self.authored_requests,
-            &mut self.analyzed,
-            path,
-            lowered,
-        )
-    }
-
-    fn record_lowered_into(
-        authored_requests: &mut BTreeMap<ResolutionRequestKey, ResolutionRequest>,
-        analyzed: &mut BTreeMap<super::ProjectRelativePath, crate::analysis::LocalArtifact>,
-        path: &super::ProjectRelativePath,
-        lowered: LoweredSource,
-    ) -> Vec<ResolutionRequest> {
-        let local = crate::analysis::LocalArtifact::new(lowered.source.clone(), lowered.semantic);
-        let requests = local.interface().authored_requests(
-            path,
-            &local.source_context().lines,
-            &local.source_context().text,
-        );
-        for request in &requests {
-            authored_requests.insert(request.key.clone(), request.clone());
-        }
-        analyzed.insert(path.clone(), local);
-        requests
+        self.artifacts.record_lowered(path, lowered)
     }
 
     /// Analyze all admitted sources using a bounded worker count. Canonical
@@ -472,7 +481,8 @@ impl<'a> AnalysisSession<'a> {
             .sources
             .iter()
             .filter(|(path, _)| {
-                !self.analyzed.contains_key(*path) && !self.parse_diagnostics.contains_key(*path)
+                !self.artifacts.analyzed.contains_key(*path)
+                    && !self.artifacts.parse_diagnostics.contains_key(*path)
             })
             .map(|(path, source)| (path.to_owned(), source.clone()))
             .collect::<Vec<_>>();
@@ -500,9 +510,7 @@ impl<'a> AnalysisSession<'a> {
         }
 
         let artifact_cache = self.artifact_cache.clone();
-        let authored_requests = &mut self.authored_requests;
-        let analyzed = &mut self.analyzed;
-        let parse_diagnostics = &mut self.parse_diagnostics;
+        let artifacts = &mut self.artifacts;
         let mut release = |result: LocalJobResult| {
             match result.result {
                 Ok(artifact) => {
@@ -516,9 +524,7 @@ impl<'a> AnalysisSession<'a> {
                     if evicted {
                         observer.cache_evicted();
                     }
-                    requests.extend(Self::record_lowered_into(
-                        authored_requests,
-                        analyzed,
+                    requests.extend(artifacts.record_lowered(
                         &result.path,
                         LoweredSource {
                             source: LocatedSourceContext::new(&result.source),
@@ -527,7 +533,7 @@ impl<'a> AnalysisSession<'a> {
                     ));
                 }
                 Err(error) => {
-                    parse_diagnostics.insert(result.path, error);
+                    artifacts.record_parse_failure(result.path, error);
                 }
             }
             observer.merged();
@@ -600,7 +606,7 @@ impl<'a> AnalysisSession<'a> {
         mut result: ResolverOutcome,
     ) -> Result<(), ProjectInputError> {
         normalize_resolution_key(&mut key)?;
-        if !self.authored_requests.contains_key(&key) {
+        if !self.artifacts.authored_requests.contains_key(&key) {
             return Err(ProjectInputError::UnknownRequest(key));
         }
         normalize_result(&mut result)?;
@@ -622,7 +628,10 @@ impl<'a> AnalysisSession<'a> {
             resolutions: self.resolutions.into_values().collect(),
         }
         .validate()?;
-        self.linter
-            .finish_analyzed_project(input, self.analyzed, self.parse_diagnostics)
+        self.linter.finish_analyzed_project(
+            input,
+            self.artifacts.analyzed,
+            self.artifacts.parse_diagnostics,
+        )
     }
 }

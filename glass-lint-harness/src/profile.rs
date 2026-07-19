@@ -8,6 +8,7 @@
 use std::{
     collections::BTreeMap,
     fs,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     sync::{
         Arc, Barrier, Mutex, OnceLock,
@@ -19,8 +20,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{
-    AnalysisReport, Linter, LinterConfig, ReportCompletion, RuleBaseline, RuleId, RuleOverride,
-    RuleSelection, RuleState,
+    AnalysisOperationCounts, AnalysisReport, Linter, LinterConfig, ReportCompletion, RuleBaseline,
+    RuleId, RuleOverride, RuleSelection, RuleState,
 };
 use glass_lint_project::{ProjectLoadOptions, ProjectLoadOutcome, ProjectLoader, ProjectSelection};
 
@@ -61,33 +62,154 @@ pub enum ProfileWorkload {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProfileCorpusIdentity {
+    /// Corpus was selected and verified by an immutable manifest.
+    Verified(String),
+    /// Corpus was selected without a verification manifest.
+    Unverified,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProfileWorkloadIdentity {
     pub mode: ProfileWorkload,
-    pub corpus_digest: Option<String>,
-    pub verified: bool,
+    pub corpus: ProfileCorpusIdentity,
 }
 
 #[derive(Clone, Debug)]
 /// Validated-by-`run_profile` controls for one profile run.
 pub struct ProfileConfig {
     /// Files or directories to discover.
-    pub paths: Vec<PathBuf>,
+    paths: Vec<PathBuf>,
     /// Inclusive glob filters.
-    pub include: Vec<String>,
-    pub exclude: Vec<String>,
-    pub sample: Option<usize>,
-    pub seed: u64,
-    pub warm_up: usize,
-    pub repeat: usize,
-    pub continue_on_error: bool,
-    pub workers: usize,
-    pub provider: ProfileCatalogProvider,
-    pub mode: RuleSelectionProfile,
-    pub rules: Vec<String>,
+    include: Vec<String>,
+    exclude: Vec<String>,
+    sample: Option<usize>,
+    seed: u64,
+    warm_up: usize,
+    repeat: NonZeroUsize,
+    continue_on_error: bool,
+    workers: NonZeroUsize,
+    provider: ProfileCatalogProvider,
+    mode: RuleSelectionProfile,
+    rules: Vec<String>,
     /// Unit and execution path measured by this run.
-    pub workload: ProfileWorkload,
+    workload: ProfileWorkload,
     /// Optional immutable selection manifest shared by profiling modes.
-    pub manifest: Option<PathBuf>,
+    manifest: Option<PathBuf>,
+}
+
+/// Validated public construction path for profile runs.
+#[derive(Clone, Debug)]
+pub struct ProfileConfigBuilder {
+    config: ProfileConfig,
+}
+
+impl ProfileConfig {
+    pub fn builder(paths: impl IntoIterator<Item = PathBuf>) -> ProfileConfigBuilder {
+        ProfileConfigBuilder {
+            config: Self {
+                paths: paths.into_iter().collect(),
+                include: Vec::new(),
+                exclude: Vec::new(),
+                sample: None,
+                seed: 0,
+                warm_up: 0,
+                repeat: NonZeroUsize::MIN,
+                continue_on_error: false,
+                workers: NonZeroUsize::MIN,
+                provider: ProfileCatalogProvider::Js,
+                mode: RuleSelectionProfile::Recommended,
+                rules: Vec::new(),
+                workload: ProfileWorkload::Files,
+                manifest: None,
+            },
+        }
+    }
+}
+
+impl ProfileConfigBuilder {
+    #[must_use]
+    pub fn include(mut self, values: impl IntoIterator<Item = String>) -> Self {
+        self.config.include = values.into_iter().collect();
+        self
+    }
+
+    #[must_use]
+    pub fn exclude(mut self, values: impl IntoIterator<Item = String>) -> Self {
+        self.config.exclude = values.into_iter().collect();
+        self
+    }
+
+    #[must_use]
+    pub fn sample(mut self, value: Option<usize>) -> Self {
+        self.config.sample = value;
+        self
+    }
+
+    #[must_use]
+    pub fn seed(mut self, value: u64) -> Self {
+        self.config.seed = value;
+        self
+    }
+
+    #[must_use]
+    pub fn warm_up(mut self, value: usize) -> Self {
+        self.config.warm_up = value;
+        self
+    }
+
+    #[must_use]
+    pub fn repeat(mut self, value: NonZeroUsize) -> Self {
+        self.config.repeat = value;
+        self
+    }
+
+    #[must_use]
+    pub fn workers(mut self, value: NonZeroUsize) -> Self {
+        self.config.workers = value;
+        self
+    }
+
+    #[must_use]
+    pub fn continue_on_error(mut self, value: bool) -> Self {
+        self.config.continue_on_error = value;
+        self
+    }
+
+    #[must_use]
+    pub fn provider(mut self, value: ProfileCatalogProvider) -> Self {
+        self.config.provider = value;
+        self
+    }
+
+    #[must_use]
+    pub fn mode(mut self, value: RuleSelectionProfile) -> Self {
+        self.config.mode = value;
+        self
+    }
+
+    #[must_use]
+    pub fn rules(mut self, value: impl IntoIterator<Item = String>) -> Self {
+        self.config.rules = value.into_iter().collect();
+        self
+    }
+
+    #[must_use]
+    pub fn workload(mut self, value: ProfileWorkload) -> Self {
+        self.config.workload = value;
+        self
+    }
+
+    #[must_use]
+    pub fn manifest(mut self, value: Option<PathBuf>) -> Self {
+        self.config.manifest = value;
+        self
+    }
+
+    pub fn build(self) -> Result<ProfileConfig> {
+        validate_config(&self.config)?;
+        Ok(self.config)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -154,7 +276,7 @@ pub struct ProfileRepetitionSummary {
     pub evidence_order_digest: String,
 }
 
-/// Reject a performance render_adapter_comparison when deterministic
+/// Reject a performance comparison when deterministic
 /// correctness differs.
 pub fn ensure_profile_correctness_match(
     left: &ProfileSummary,
@@ -163,10 +285,11 @@ pub fn ensure_profile_correctness_match(
     if left.workload.mode != right.workload.mode {
         bail!("profile workload modes differ");
     }
-    if !left.workload.verified
-        || !right.workload.verified
-        || left.workload.corpus_digest != right.workload.corpus_digest
-        || left.bytes != right.bytes
+    if !matches!(
+        (&left.workload.corpus, &right.workload.corpus),
+        (ProfileCorpusIdentity::Verified(left), ProfileCorpusIdentity::Verified(right))
+            if left == right
+    ) || left.bytes != right.bytes
     {
         bail!("profile corpus identity differs");
     }
@@ -187,108 +310,29 @@ pub fn ensure_profile_correctness_match(
     Ok(())
 }
 
-fn merge_profile_repetition(
-    target: &mut ProfileRepetitionSummary,
-    source: ProfileRepetitionSummary,
-) {
-    target.duration += source.duration;
-    target.findings += source.findings;
-    target.diagnostics += source.diagnostics;
-    if source.completion == ReportCompletion::Partial {
-        target.completion = ReportCompletion::Partial;
-    }
-    target.run_completions.extend(source.run_completions);
-    target.operation_counts += source.operation_counts;
-    target.evidence_order_digest = combined_digest(&[
-        target.evidence_order_digest.clone(),
-        source.evidence_order_digest,
-    ]);
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct ProfilePhaseTimings {
-    pub discovery: Duration,
-    pub reads: Duration,
-    pub parse_and_local_analysis: Duration,
-    pub resolution: Duration,
-    pub linking: Duration,
-    pub linking_and_matching: Duration,
-    pub matching: Duration,
-    pub total: Duration,
-}
-
-impl std::ops::AddAssign for ProfilePhaseTimings {
-    fn add_assign(&mut self, rhs: Self) {
-        self.discovery = self.discovery.saturating_add(rhs.discovery);
-        self.reads = self.reads.saturating_add(rhs.reads);
-        self.parse_and_local_analysis = self
-            .parse_and_local_analysis
-            .saturating_add(rhs.parse_and_local_analysis);
-        self.resolution = self.resolution.saturating_add(rhs.resolution);
-        self.linking = self.linking.saturating_add(rhs.linking);
-        self.linking_and_matching = self
-            .linking_and_matching
-            .saturating_add(rhs.linking_and_matching);
-        self.matching = self.matching.saturating_add(rhs.matching);
-        self.total = self.total.saturating_add(rhs.total);
-    }
-}
-
-impl ProfilePhaseTimings {
-    fn from_project_metrics(metrics: &glass_lint_project::ProjectLoadMetrics) -> Self {
-        Self {
-            discovery: metrics.discovery,
-            reads: metrics.reads,
-            parse_and_local_analysis: metrics.parse_and_local_analysis,
-            resolution: metrics.resolution,
-            linking: metrics.linking,
-            linking_and_matching: metrics.linking_and_matching,
-            matching: metrics.matching,
-            total: metrics.total,
+impl ProfileRepetitionSummary {
+    fn merge(&mut self, source: Self) {
+        self.duration += source.duration;
+        self.findings += source.findings;
+        self.diagnostics += source.diagnostics;
+        if source.completion == ReportCompletion::Partial {
+            self.completion = ReportCompletion::Partial;
         }
+        self.run_completions.extend(source.run_completions);
+        self.operation_counts += source.operation_counts;
+        self.evidence_order_digest = combined_digest(&[
+            self.evidence_order_digest.clone(),
+            source.evidence_order_digest,
+        ]);
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct ProfileOperationCounts {
-    /// Files included in the profile.
-    pub files: usize,
-    /// Resolver requests observed.
-    pub requests: usize,
-    pub edges: usize,
-    pub exports: usize,
-    pub scc_rounds: usize,
-    pub effect_projections: usize,
-    pub evidence: usize,
-}
+/// Project-owned phase metrics used directly by profiling summaries.
+pub type ProfilePhaseTimings = glass_lint_project::ProjectPhaseTimings;
 
-impl std::ops::AddAssign for ProfileOperationCounts {
-    fn add_assign(&mut self, rhs: Self) {
-        self.files = self.files.saturating_add(rhs.files);
-        self.requests = self.requests.saturating_add(rhs.requests);
-        self.edges = self.edges.saturating_add(rhs.edges);
-        self.exports = self.exports.saturating_add(rhs.exports);
-        self.scc_rounds = self.scc_rounds.saturating_add(rhs.scc_rounds);
-        self.effect_projections = self
-            .effect_projections
-            .saturating_add(rhs.effect_projections);
-        self.evidence = self.evidence.saturating_add(rhs.evidence);
-    }
-}
-
-impl ProfileOperationCounts {
-    fn from_project(report: &glass_lint_core::AnalysisReport) -> Self {
-        Self {
-            files: report.operations.files,
-            requests: report.operations.requests,
-            edges: report.operations.edges,
-            exports: report.operations.exports,
-            scc_rounds: report.operations.scc_rounds,
-            effect_projections: report.operations.effect_projections,
-            evidence: report.operations.evidence,
-        }
-    }
-}
+/// Analysis counters reused by profiling without duplicating their fields or
+/// saturating aggregation semantics.
+pub type ProfileOperationCounts = AnalysisOperationCounts;
 
 struct RunOutcome {
     findings: usize,
@@ -375,8 +419,8 @@ fn project_run_outcome(
         findings: report.files.iter().map(|file| file.findings.len()).sum(),
         diagnostics: all_diagnostic_count(report),
         bytes: metrics.bytes,
-        phases: ProfilePhaseTimings::from_project_metrics(metrics),
-        counts: ProfileOperationCounts::from_project(report),
+        phases: metrics.phase_timings(),
+        counts: report_operation_counts(report),
         completion: report.completion,
         evidence_order_digest: evidence_order_digest(report),
     }
@@ -485,14 +529,14 @@ pub fn run_profile(config: &ProfileConfig) -> Result<ProfileSummary> {
     let mut measured_results_by_run = Vec::new();
     let measured = MeasuredRepetitionAccumulator::measure(
         config.warm_up,
-        config.repeat,
+        config.repeat.get(),
         || {
-            let _ = execute_file_profile(&prepared, &linters, config.workers, 1, 0);
+            let _ = execute_file_profile(&prepared, &linters, config.workers.get(), 1, 0);
             Ok(())
         },
         || {
             let (results, duration) =
-                execute_file_profile(&prepared, &linters, config.workers, 0, 1);
+                execute_file_profile(&prepared, &linters, config.workers.get(), 0, 1);
             let repetition = repetition_from_files(duration, &results);
             measured_results_by_run.push(results);
             Ok(repetition)
@@ -506,15 +550,17 @@ pub fn run_profile(config: &ProfileConfig) -> Result<ProfileSummary> {
 
     let mut totals = ProfileTotals::default();
     for result in workload_results {
-        totals.record(result, config.repeat);
+        totals.record(result, config.repeat.get());
     }
     let operation_counts = sum_operation_counts(&measured.repetitions);
 
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {
             mode: ProfileWorkload::Files,
-            verified: manifest_digest.is_some(),
-            corpus_digest: manifest_digest,
+            corpus: manifest_digest.map_or(
+                ProfileCorpusIdentity::Unverified,
+                ProfileCorpusIdentity::Verified,
+            ),
         },
         inputs: totals.files,
         bytes: totals.bytes,
@@ -538,7 +584,6 @@ pub fn run_profile(config: &ProfileConfig) -> Result<ProfileSummary> {
     })
 }
 
-#[allow(clippy::too_many_lines)]
 fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     let total_start = Instant::now();
     let (_, manifest_digest, _) = selected_profile_paths(config)?;
@@ -558,106 +603,28 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
                 operation_counts: ProfileOperationCounts::default(),
                 evidence_order_digest: String::new(),
             };
-            config.repeat
+            config.repeat.get()
         ],
     };
 
     for path in &config.paths {
-        let selection = if path.is_dir() {
-            ProjectSelection::directory(path.clone())
-        } else {
-            ProjectSelection::entry(path.clone())
-        };
-        let started = Instant::now();
-        let mut project_findings = 0;
-        let mut project_diagnostics = 0;
-        let mut project_files = 0;
-        let mut project_bytes = 0;
-        let mut project_error = None;
-        let mut successful_runs = 0_usize;
-        let mut project_completion = ReportCompletion::Complete;
-        let mut project_run_completions = Vec::new();
-        let mut project_counts = ProfileOperationCounts::default();
-        let mut project_evidence_digests = Vec::new();
-        for iteration in 0..config.warm_up + config.repeat {
-            let repetition_start = Instant::now();
-            let mut repetition = ProfileRepetitionSummary {
-                duration: Duration::ZERO,
-                findings: 0,
-                diagnostics: 0,
-                completion: ReportCompletion::Complete,
-                run_completions: Vec::new(),
-                operation_counts: ProfileOperationCounts::default(),
-                evidence_order_digest: String::new(),
-            };
-            for ProfileLinter(linter) in &linters {
-                match loader.load_and_lint(linter, &selection) {
-                    Ok(outcome) => {
-                        let (report, metrics, error) = profile_project_parts(outcome);
-                        project_error = error.or(project_error);
-                        if iteration >= config.warm_up {
-                            successful_runs = successful_runs.saturating_add(1);
-                            let outcome = project_run_outcome(&report, &metrics);
-                            repetition.findings += outcome.findings;
-                            repetition.diagnostics += outcome.diagnostics;
-                            repetition.run_completions.push(outcome.completion);
-                            project_run_completions.push(outcome.completion);
-                            repetition.operation_counts += outcome.counts;
-                            repetition.evidence_order_digest = combined_digest(&[
-                                repetition.evidence_order_digest,
-                                outcome.evidence_order_digest.clone(),
-                            ]);
-                            project_findings += outcome.findings;
-                            project_diagnostics += outcome.diagnostics;
-                            project_files = project_files.max(outcome.counts.files);
-                            project_bytes = project_bytes.max(outcome.bytes);
-                            if outcome.completion == ReportCompletion::Partial {
-                                project_completion = ReportCompletion::Partial;
-                            }
-                            project_counts += outcome.counts;
-                            project_evidence_digests.push(outcome.evidence_order_digest);
-                            phases += outcome.phases;
-                            counts += outcome.counts;
-                        }
-                    }
-                    Err(error) => {
-                        project_error = Some(format!("{error:#}"));
-                        if !config.continue_on_error {
-                            return Err(error.into());
-                        }
-                    }
-                }
-            }
-            if iteration >= config.warm_up {
-                repetition.duration = repetition_start.elapsed();
-                merge_profile_repetition(
-                    &mut measured.repetitions[iteration - config.warm_up],
-                    repetition,
-                );
-            }
+        let (result, repetitions, project_phases, project_counts, successful_runs) =
+            profile_loader_project(path, config, &loader, &linters)?;
+        for (target, source) in measured.repetitions.iter_mut().zip(repetitions) {
+            target.merge(source);
         }
-        totals.record(
-            ProfileWorkloadSummary {
-                path: path.clone(),
-                bytes: project_bytes,
-                findings: project_findings,
-                diagnostics: project_diagnostics,
-                measured_elapsed: started.elapsed(),
-                completion: project_completion,
-                run_completions: project_run_completions,
-                operation_counts: project_counts,
-                evidence_order_digest: combined_digest(&project_evidence_digests),
-                error: project_error,
-            },
-            successful_runs,
-        );
+        phases += project_phases;
+        counts += project_counts;
+        totals.record(result, successful_runs);
     }
     phases.total = total_start.elapsed();
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {
             mode: ProfileWorkload::LoaderProject,
-            verified: manifest_digest.is_some(),
-            corpus_digest: manifest_digest,
+            corpus: manifest_digest.map_or(
+                ProfileCorpusIdentity::Unverified,
+                ProfileCorpusIdentity::Verified,
+            ),
         },
         inputs: totals.files,
         bytes: totals.bytes,
@@ -677,6 +644,115 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         phase_timings: phases,
         operation_counts: counts,
     })
+}
+
+fn profile_loader_project(
+    path: &Path,
+    config: &ProfileConfig,
+    loader: &ProjectLoader,
+    linters: &[ProfileLinter],
+) -> Result<(
+    ProfileWorkloadSummary,
+    Vec<ProfileRepetitionSummary>,
+    ProfilePhaseTimings,
+    ProfileOperationCounts,
+    usize,
+)> {
+    let selection = if path.is_dir() {
+        ProjectSelection::directory(path.to_owned())
+    } else {
+        ProjectSelection::entry(path.to_owned())
+    };
+    let started = Instant::now();
+    let mut result = ProfileWorkloadSummary {
+        path: path.to_owned(),
+        bytes: 0,
+        findings: 0,
+        diagnostics: 0,
+        measured_elapsed: Duration::ZERO,
+        completion: ReportCompletion::Complete,
+        run_completions: Vec::new(),
+        operation_counts: ProfileOperationCounts::default(),
+        evidence_order_digest: String::new(),
+        error: None,
+    };
+    let mut repetitions = vec![
+        ProfileRepetitionSummary {
+            duration: Duration::ZERO,
+            findings: 0,
+            diagnostics: 0,
+            completion: ReportCompletion::Complete,
+            run_completions: Vec::new(),
+            operation_counts: ProfileOperationCounts::default(),
+            evidence_order_digest: String::new(),
+        };
+        config.repeat.get()
+    ];
+    let mut phases = ProfilePhaseTimings::default();
+    let mut counts = ProfileOperationCounts::default();
+    let mut evidence_digests = Vec::new();
+    let mut successful_runs = 0_usize;
+
+    for iteration in 0..config.warm_up + config.repeat.get() {
+        let repetition_start = Instant::now();
+        let mut repetition = if iteration < config.warm_up {
+            ProfileRepetitionSummary {
+                duration: Duration::ZERO,
+                findings: 0,
+                diagnostics: 0,
+                completion: ReportCompletion::Complete,
+                run_completions: Vec::new(),
+                operation_counts: ProfileOperationCounts::default(),
+                evidence_order_digest: String::new(),
+            }
+        } else {
+            repetitions[iteration - config.warm_up].clone()
+        };
+        for ProfileLinter(linter) in linters {
+            match loader.load_and_lint(linter, &selection) {
+                Ok(outcome) => {
+                    let (report, metrics, error) = profile_project_parts(outcome);
+                    result.error = error.or(result.error);
+                    if iteration >= config.warm_up {
+                        successful_runs = successful_runs.saturating_add(1);
+                        let outcome = project_run_outcome(&report, &metrics);
+                        repetition.findings += outcome.findings;
+                        repetition.diagnostics += outcome.diagnostics;
+                        repetition.run_completions.push(outcome.completion);
+                        result.run_completions.push(outcome.completion);
+                        repetition.operation_counts += outcome.counts;
+                        repetition.evidence_order_digest = combined_digest(&[
+                            repetition.evidence_order_digest,
+                            outcome.evidence_order_digest.clone(),
+                        ]);
+                        result.findings += outcome.findings;
+                        result.diagnostics += outcome.diagnostics;
+                        result.bytes = result.bytes.max(outcome.bytes);
+                        if outcome.completion == ReportCompletion::Partial {
+                            result.completion = ReportCompletion::Partial;
+                        }
+                        result.operation_counts += outcome.counts;
+                        evidence_digests.push(outcome.evidence_order_digest);
+                        phases += outcome.phases;
+                        counts += outcome.counts;
+                    }
+                }
+                Err(error) => {
+                    result.error = Some(format!("{error:#}"));
+                    if !config.continue_on_error {
+                        return Err(error.into());
+                    }
+                }
+            }
+        }
+        if iteration >= config.warm_up {
+            repetition.duration = repetition_start.elapsed();
+            repetitions[iteration - config.warm_up] = repetition;
+        }
+    }
+    result.measured_elapsed = started.elapsed();
+    result.evidence_order_digest = combined_digest(&evidence_digests);
+    Ok((result, repetitions, phases, counts, successful_runs))
 }
 
 fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
@@ -704,10 +780,10 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     }
     let measured = MeasuredRepetitionAccumulator::measure(
         config.warm_up,
-        config.repeat,
+        config.repeat.get(),
         || {
             for ProfileLinter(linter) in &linters {
-                let _ = admitted_project_run(&root, &prepared, linter, config.workers)?;
+                let _ = admitted_project_run(&root, &prepared, linter, config.workers.get())?;
             }
             Ok(())
         },
@@ -719,7 +795,7 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
             let mut run_completions = Vec::with_capacity(linters.len());
             let mut evidence_digests = Vec::new();
             for ProfileLinter(linter) in &linters {
-                let report = admitted_project_run(&root, &prepared, linter, config.workers)?;
+                let report = admitted_project_run(&root, &prepared, linter, config.workers.get())?;
                 repetition_findings += report
                     .files
                     .iter()
@@ -754,15 +830,17 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {
             mode: ProfileWorkload::AdmittedProject,
-            verified: manifest_digest.is_some(),
-            corpus_digest: manifest_digest,
+            corpus: manifest_digest.map_or(
+                ProfileCorpusIdentity::Unverified,
+                ProfileCorpusIdentity::Verified,
+            ),
         },
         inputs: prepared.len(),
         bytes,
         findings,
         diagnostics,
         errors: 0,
-        runs: config.repeat.saturating_mul(linters.len()),
+        runs: config.repeat.get().saturating_mul(linters.len()),
         setup_duration,
         measured_elapsed: elapsed,
         wall_duration: total_start.elapsed(),
@@ -840,12 +918,6 @@ fn prepare_file(path: &Path) -> Result<PreparedFile> {
 fn validate_config(config: &ProfileConfig) -> Result<()> {
     if config.paths.is_empty() {
         bail!("at least one --path is required");
-    }
-    if config.workers == 0 {
-        bail!("--workers must be at least 1");
-    }
-    if config.repeat == 0 {
-        bail!("--repeat must be at least 1");
     }
     if config.sample == Some(0) {
         bail!("--sample must be at least 1");
@@ -1089,15 +1161,23 @@ mod tests {
             sample: None,
             seed: 1,
             warm_up: 0,
-            repeat: 1,
+            repeat: NonZeroUsize::new(1).unwrap(),
             continue_on_error: false,
-            workers: 1,
+            workers: NonZeroUsize::new(1).unwrap(),
             provider: ProfileCatalogProvider::Js,
             mode: RuleSelectionProfile::Recommended,
             rules: vec![],
             workload: ProfileWorkload::Files,
             manifest: None,
         }
+    }
+
+    #[test]
+    fn public_profile_builder_rejects_empty_workloads() {
+        let error = ProfileConfig::builder(Vec::<PathBuf>::new())
+            .build()
+            .unwrap_err();
+        assert!(error.to_string().contains("at least one --path"));
     }
 
     #[test]
@@ -1188,9 +1268,9 @@ mod tests {
     fn admitted_config(root: &Path, workers: usize) -> ProfileConfig {
         ProfileConfig {
             workload: ProfileWorkload::AdmittedProject,
-            workers,
+            workers: NonZeroUsize::new(workers).unwrap(),
             warm_up: 1,
-            repeat: 1,
+            repeat: NonZeroUsize::new(1).unwrap(),
             ..config(root)
         }
     }
@@ -1335,7 +1415,7 @@ mod tests {
         first.manifest = Some(manifest.clone());
         let one = run_profile(&first).unwrap();
         let mut parallel = config(&root);
-        parallel.workers = 4;
+        parallel.workers = NonZeroUsize::new(4).unwrap();
         parallel.manifest = Some(manifest);
         let parallel = run_profile(&parallel).unwrap();
         ensure_profile_correctness_match(&one, &parallel).unwrap();
@@ -1352,11 +1432,14 @@ mod tests {
         one.workload = ProfileWorkload::LoaderProject;
         one.manifest = Some(manifest);
         let mut parallel = one.clone();
-        parallel.workers = 2;
+        parallel.workers = NonZeroUsize::new(2).unwrap();
 
         let one = run_profile(&one).unwrap();
         let parallel = run_profile(&parallel).unwrap();
-        assert!(one.workload.verified);
+        assert!(matches!(
+            one.workload.corpus,
+            ProfileCorpusIdentity::Verified(_)
+        ));
         assert_eq!(one.repetitions.len(), 1);
         assert!(!one.repetitions[0].run_completions.is_empty());
         ensure_profile_correctness_match(&one, &parallel).unwrap();
@@ -1375,10 +1458,7 @@ mod tests {
         let mut admitted_config = admitted_config(&root, 1);
         admitted_config.manifest = Some(manifest_path);
         let admitted = run_profile(&admitted_config).unwrap();
-        assert_eq!(
-            normal.workload.corpus_digest,
-            admitted.workload.corpus_digest
-        );
+        assert_eq!(normal.workload.corpus, admitted.workload.corpus);
         assert_eq!(normal.bytes, admitted.bytes);
         assert_eq!(normal.inputs, admitted.inputs);
     }

@@ -69,10 +69,12 @@ impl<'a> SourceCorpus<'a> {
                 continue;
             }
             if !metadata.is_dir() {
-                return Err(ProjectLoadError::InvalidOptions(format!(
-                    "corpus root is not a file or directory: {}",
-                    root.display()
-                )));
+                return Err(ProjectLoadError::InvalidOptions(
+                    crate::ProjectOptionError::Message(format!(
+                        "corpus root is not a file or directory: {}",
+                        root.display()
+                    )),
+                ));
             }
             let walker = WalkDir::new(root)
                 .follow_links(self.options.follow_symlinks)

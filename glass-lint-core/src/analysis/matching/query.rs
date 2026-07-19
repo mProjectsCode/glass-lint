@@ -42,33 +42,26 @@ impl OccurrenceIndexes {
 
     fn occurrences_for_subject(&self, clause: &QueryClause) -> Option<Vec<Occurrence>> {
         match (&clause.event, &clause.subject) {
-            (EventPredicate::MemberCall { member }, SubjectConstraint::ReturnedFrom { .. }) => self
-                .members
-                .returned_calls
-                .iter()
-                .filter(|(key, _)| {
-                    clause.identity.root_or_descendant_matches(key.source())
+            (EventPredicate::MemberCall { member }, SubjectConstraint::ReturnedFrom { .. }) => {
+                self.members.returned_calls.matching(|key| {
+                    clause
+                        .identity
+                        .root_or_descendant_matches(key.source(), &self.environment)
                         && member == key.member()
                 })
-                .flat_map(|(_, values)| values.iter().copied())
-                .collect::<Vec<_>>()
-                .pipe_some(),
-            (EventPredicate::MemberRead { member }, SubjectConstraint::ReturnedFrom { .. }) => self
-                .members
-                .returned_reads
-                .iter()
-                .filter(|(key, _)| {
-                    clause.identity.root_or_descendant_matches(key.source())
+            }
+            (EventPredicate::MemberRead { member }, SubjectConstraint::ReturnedFrom { .. }) => {
+                self.members.returned_reads.matching(|key| {
+                    clause
+                        .identity
+                        .root_or_descendant_matches(key.source(), &self.environment)
                         && member == key.member()
                 })
-                .flat_map(|(_, values)| values.iter().copied())
-                .collect::<Vec<_>>()
-                .pipe_some(),
+            }
             (EventPredicate::MemberCall { member }, SubjectConstraint::InstanceOf { .. }) => self
                 .members
                 .instance_calls
-                .iter()
-                .filter(|(key, _)| match &clause.identity {
+                .matching(|key| match &clause.identity {
                     IdentityConstraint::ModuleExport {
                         module: expected_module,
                         export: expected_export,
@@ -83,10 +76,7 @@ impl OccurrenceIndexes {
                             && member.eq_chain(key.member())
                     }
                     _ => false,
-                })
-                .flat_map(|(_, values)| values.iter().copied())
-                .collect::<Vec<_>>()
-                .pipe_some(),
+                }),
             _ => None,
         }
     }
@@ -107,11 +97,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::PackageModuleExport { module, export } => self
                     .call_indexes
                     .module_calls
-                    .iter()
-                    .filter(|(key, _)| module.matches(key.module()) && key.export() == export)
-                    .flat_map(|(_, values)| values.iter().copied())
-                    .collect::<Vec<_>>()
-                    .pipe_some(),
+                    .matching(|key| module.matches(key.module()) && key.export() == export),
                 _ => None,
             },
             EventPredicate::MemberCall { member } => match &clause.identity {
@@ -119,11 +105,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::Rooted { path } => self
                     .members
                     .rooted_calls
-                    .iter()
-                    .filter(|(key, _)| path.matches_global_object_alias(key))
-                    .flat_map(|(_, values)| values.iter().copied())
-                    .collect::<Vec<_>>()
-                    .pipe_some(),
+                    .matching(|key| path.matches_global_object_alias(key, &self.environment)),
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_calls
@@ -132,13 +114,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::PackageModuleNamespace { module } => self
                     .members
                     .module_calls
-                    .iter()
-                    .filter(|(key, _)| {
-                        module.matches(key.module()) && member.eq_chain(key.export())
-                    })
-                    .flat_map(|(_, values)| values.iter().copied())
-                    .collect::<Vec<_>>()
-                    .pipe_some(),
+                    .matching(|key| module.matches(key.module()) && member.eq_chain(key.export())),
                 _ => None,
             },
             EventPredicate::MemberRead { member } => match &clause.identity {
@@ -146,11 +122,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::Rooted { path } => self
                     .members
                     .rooted_reads
-                    .iter()
-                    .filter(|(key, _)| path.matches_global_object_alias(key))
-                    .flat_map(|(_, values)| values.iter().copied())
-                    .collect::<Vec<_>>()
-                    .pipe_some(),
+                    .matching(|key| path.matches_global_object_alias(key, &self.environment)),
                 IdentityConstraint::ModuleNamespace { module } => self
                     .members
                     .module_reads
@@ -159,13 +131,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::PackageModuleNamespace { module } => self
                     .members
                     .module_reads
-                    .iter()
-                    .filter(|(key, _)| {
-                        module.matches(key.module()) && member.eq_chain(key.export())
-                    })
-                    .flat_map(|(_, values)| values.iter().copied())
-                    .collect::<Vec<_>>()
-                    .pipe_some(),
+                    .matching(|key| module.matches(key.module()) && member.eq_chain(key.export())),
                 _ => None,
             },
             EventPredicate::ClassReference => match &clause.identity {
@@ -180,11 +146,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::PackageModuleExport { module, export } => self
                     .constructions
                     .module_classes
-                    .iter()
-                    .filter(|(key, _)| module.matches(key.module()) && key.export() == export)
-                    .flat_map(|(_, values)| values.iter().copied())
-                    .collect::<Vec<_>>()
-                    .pipe_some(),
+                    .matching(|key| module.matches(key.module()) && key.export() == export),
                 _ => None,
             },
             EventPredicate::Construct => match &clause.identity {
@@ -199,11 +161,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::PackageModuleExport { module, export } => self
                     .constructions
                     .module_constructors
-                    .iter()
-                    .filter(|(key, _)| module.matches(key.module()) && key.export() == export)
-                    .flat_map(|(_, values)| values.iter().copied())
-                    .collect::<Vec<_>>()
-                    .pipe_some(),
+                    .matching(|key| module.matches(key.module()) && key.export() == export),
                 _ => None,
             },
             EventPredicate::Import => match &clause.identity {
@@ -213,22 +171,14 @@ impl OccurrenceIndexes {
                 IdentityConstraint::PackageSpecifier { pattern } => self
                     .literals
                     .imports
-                    .iter()
-                    .filter(|(specifier, _)| pattern.matches(specifier))
-                    .flat_map(|(_, occurrences)| occurrences.iter().copied())
-                    .collect::<Vec<_>>()
-                    .pipe_some(),
+                    .matching(|specifier| pattern.matches(specifier)),
                 _ => None,
             },
             EventPredicate::StringReference => match &clause.identity {
-                IdentityConstraint::LiteralString { predicate } => Some(
-                    self.literals
-                        .strings
-                        .iter()
-                        .filter(|(literal, _)| literal.contains(predicate))
-                        .flat_map(|(_, values)| values.iter().copied())
-                        .collect(),
-                ),
+                IdentityConstraint::LiteralString { predicate } => self
+                    .literals
+                    .strings
+                    .matching(|literal| literal.contains(predicate)),
                 _ => None,
             },
         }
@@ -274,15 +224,5 @@ impl OccurrenceIndexes {
                 .push(symbol, FactId(u32::MAX), span),
             crate::api::classification::MatchKind::CallArgument => {}
         }
-    }
-}
-
-trait PipeSome: Sized {
-    fn pipe_some(self) -> Option<Self>;
-}
-
-impl<T> PipeSome for Vec<T> {
-    fn pipe_some(self) -> Option<Self> {
-        (!self.is_empty()).then_some(self)
     }
 }

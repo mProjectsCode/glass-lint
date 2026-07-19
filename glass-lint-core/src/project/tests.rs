@@ -619,5 +619,7 @@ fn session_uses_project_analysis_and_preserves_single_file_findings() {
 
 #[path = "tests/linking_and_flow.rs"]
 mod linking_and_flow;
+#[path = "tests/session_and_link_validation.rs"]
+mod session_and_link_validation;
 #[path = "tests/status_policy.rs"]
 mod status_policy;

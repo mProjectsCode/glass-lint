@@ -206,11 +206,7 @@ fn write_pretty<W: Write>(
     summary: AnalysisReportSummary,
     out: &mut W,
 ) -> Result<()> {
-    let options = PrettyOptions {
-        max_width: config.cli.pretty_max_width,
-        color: color_enabled(config),
-        show_evidence_source: config.cli.show_evidence_source,
-    };
+    let options = pretty_options(config);
     let pretty_files = files
         .iter()
         .flat_map(|file| {
@@ -223,16 +219,8 @@ fn write_pretty<W: Write>(
         .collect::<Vec<_>>();
     write_pretty_files(&pretty_files, options, out)?;
 
-    let summary_line = format!(
-        "{} file(s), {} finding(s), {} parse diagnostic(s), {} analysis diagnostic(s)",
-        summary.files, summary.findings, summary.parse_diagnostics, summary.file_diagnostics
-    );
-    write_summary(
-        config,
-        &summary_line,
-        summary.findings == 0 && summary.parse_diagnostics == 0 && summary.file_diagnostics == 0,
-        out,
-    )
+    let summary_line = base_summary_line(summary);
+    write_summary(config, &summary_line, summary_is_clean(summary), out)
 }
 
 fn write_pretty_files<W: Write>(
@@ -269,11 +257,7 @@ fn write_project_pretty<W: Write>(
     summary: AnalysisReportSummary,
     out: &mut W,
 ) -> Result<()> {
-    let options = PrettyOptions {
-        max_width: config.cli.pretty_max_width,
-        color: color_enabled(config),
-        show_evidence_source: config.cli.show_evidence_source,
-    };
+    let options = pretty_options(config);
     let pretty_files = report
         .files
         .iter()
@@ -302,18 +286,12 @@ fn write_project_pretty<W: Write>(
         }
     }
     let summary_line = format!(
-        "{} file(s), {} finding(s), {} parse diagnostic(s), {} analysis diagnostic(s), {} project diagnostic(s), completion={:?}",
-        summary.files,
-        summary.findings,
-        summary.parse_diagnostics,
-        summary.file_diagnostics,
+        "{}, {} project diagnostic(s), completion={:?}",
+        base_summary_line(summary),
         summary.report_diagnostics,
         report.completion
     );
-    let clean = summary.findings == 0
-        && summary.parse_diagnostics == 0
-        && summary.file_diagnostics == 0
-        && summary.report_diagnostics == 0;
+    let clean = summary_is_clean(summary) && summary.report_diagnostics == 0;
     let summary_line = format!(
         "{summary_line}, operations: {} request(s), {} edge(s), {} export(s), {} effect projection(s), {} evidence item(s)",
         report.operations.requests,
@@ -324,6 +302,25 @@ fn write_project_pretty<W: Write>(
     );
     write_summary(config, &summary_line, clean, out)?;
     Ok(())
+}
+
+fn pretty_options(config: &Config) -> PrettyOptions {
+    PrettyOptions {
+        max_width: config.cli.pretty_max_width,
+        color: color_enabled(config),
+        show_evidence_source: config.cli.show_evidence_source,
+    }
+}
+
+fn base_summary_line(summary: AnalysisReportSummary) -> String {
+    format!(
+        "{} file(s), {} finding(s), {} parse diagnostic(s), {} analysis diagnostic(s)",
+        summary.files, summary.findings, summary.parse_diagnostics, summary.file_diagnostics
+    )
+}
+
+fn summary_is_clean(summary: AnalysisReportSummary) -> bool {
+    summary.findings == 0 && summary.parse_diagnostics == 0 && summary.file_diagnostics == 0
 }
 
 fn write_summary<W: Write>(

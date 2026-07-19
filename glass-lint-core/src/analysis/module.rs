@@ -137,9 +137,12 @@ pub enum ModuleExport {
     /// Export exists but is represented by a non-callable value identity.
     Value,
     /// Export is forwarded through a specific request.
-    ReExport { request: usize, imported: String },
+    ReExport {
+        request: ModuleRequestId,
+        imported: String,
+    },
     /// Export exposes a namespace from a request.
-    Namespace { request: usize },
+    Namespace { request: ModuleRequestId },
     /// Export shape is ambiguous or unsupported.
     Unknown,
 }
@@ -149,13 +152,23 @@ pub enum ModuleExport {
 pub struct ModuleInterface {
     requests: Vec<ModuleRequest>,
     exports: BTreeMap<String, ModuleExport>,
-    star_exports: Vec<usize>,
+    star_exports: Vec<ModuleRequestId>,
     locals: BTreeSet<String>,
     unknown_exports: bool,
     function_exports: BTreeMap<String, FunctionId>,
     // TODO: why is this limited to strings? Should this not be extended to arbitrary static
     // values?
     static_strings: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// Stable identity of a request authored by one module interface.
+pub struct ModuleRequestId(usize);
+
+impl ModuleRequestId {
+    fn index(self) -> usize {
+        self.0
+    }
 }
 
 impl ModuleInterface {
@@ -171,8 +184,8 @@ impl ModuleInterface {
         kind: ResolutionRequestKind,
         specifier: impl Into<String>,
         role: ModuleRequestRole,
-    ) -> usize {
-        let index = self.requests.len();
+    ) -> ModuleRequestId {
+        let index = ModuleRequestId(self.requests.len());
         self.requests.push(ModuleRequest {
             span,
             kind,
@@ -222,7 +235,7 @@ impl ModuleInterface {
     }
 
     /// Append a star-export request while the interface remains known.
-    pub fn add_star_export(&mut self, request: usize) {
+    pub fn add_star_export(&mut self, request: ModuleRequestId) {
         if !self.unknown_exports {
             self.star_exports.push(request);
         }
@@ -246,12 +259,12 @@ impl ModuleInterface {
     }
 
     /// Borrow one request by its stable local index.
-    pub fn request(&self, index: usize) -> Option<&ModuleRequest> {
-        self.requests.get(index)
+    pub fn request(&self, index: ModuleRequestId) -> Option<&ModuleRequest> {
+        self.requests.get(index.index())
     }
 
     /// Iterate deferred star-export request indices.
-    pub fn star_exports(&self) -> impl Iterator<Item = &usize> {
+    pub fn star_exports(&self) -> impl Iterator<Item = &ModuleRequestId> {
         self.star_exports.iter()
     }
 
@@ -275,8 +288,8 @@ impl ModuleInterface {
         self.static_strings.get(name)
     }
 
-    pub(in crate::analysis) fn function_exports(&self) -> &BTreeMap<String, FunctionId> {
-        &self.function_exports
+    pub(in crate::analysis) fn function_export(&self, name: &str) -> Option<FunctionId> {
+        self.function_exports.get(name).copied()
     }
 
     /// Convert authored requests into public resolver keys using the source

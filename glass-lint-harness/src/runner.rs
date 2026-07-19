@@ -1,4 +1,4 @@
-//! Case execution and expectation render_adapter_comparison.
+//! Case execution and expectation comparison.
 //!
 //! The runner records one result per case/tool, treating skipped tools as
 //! explicit successful non-runs and preserving adapter timing by name.
@@ -16,7 +16,9 @@ use tracing::info;
 use crate::{
     adapters::Adapter,
     cases::load_cases,
-    types::{CaseResult, FindingExpectation, SuiteReport, ToolExpectation, ToolResult},
+    types::{
+        CaseResult, ExpectedCount, FindingExpectation, SuiteReport, ToolExpectation, ToolResult,
+    },
 };
 
 pub type AdapterTimings = BTreeMap<String, Duration>;
@@ -118,7 +120,7 @@ pub fn run_suite(
 
 impl FindingExpectation {
     fn matches(&self, finding: &Finding) -> bool {
-        finding.rule_id.as_str() == self.rule_id
+        finding.rule_id == self.rule_id
             && self
                 .message_id
                 .as_ref()
@@ -139,28 +141,30 @@ impl FindingExpectation {
             && self
                 .path
                 .as_ref()
-                .is_none_or(|path| finding.location.path.as_str() == path)
+                .is_none_or(|path| finding.location.path == *path)
     }
 }
 
 fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
     let mut errors = Vec::new();
-    for expected in &expectation.required {
+    for expected in expectation.required() {
         let actual = findings
             .iter()
             .enumerate()
             .filter(|(_, finding)| expected.matches(finding))
             .count();
-        if expected.count.is_some_and(|count| actual != count) {
+        let count_matches = match expected.count {
+            ExpectedCount::Exactly(count) => actual == count,
+            ExpectedCount::AtLeastOne => actual > 0,
+        };
+        if !count_matches {
             errors.push(format!(
-                "expected {} x {}, found {}",
-                expected.count.unwrap(),
-                expected.rule_id,
-                actual
+                "expected {:?} x {}, found {}",
+                expected.count, expected.rule_id, actual
             ));
         }
     }
-    for forbidden in &expectation.forbidden {
+    for forbidden in expectation.forbidden() {
         let actual = findings
             .iter()
             .enumerate()
@@ -175,11 +179,11 @@ fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
     }
     for finding in findings {
         let is_required = expectation
-            .required
+            .required()
             .iter()
             .any(|expected| expected.matches(finding));
         let is_forbidden = expectation
-            .forbidden
+            .forbidden()
             .iter()
             .any(|forbidden| forbidden.matches(finding));
         if !is_required && !is_forbidden {
@@ -197,6 +201,7 @@ mod tests {
     use glass_lint_core::Severity;
 
     use super::*;
+    use crate::types::ToolSelector;
 
     fn finding() -> Finding {
         Finding {
@@ -218,52 +223,52 @@ mod tests {
 
     #[test]
     fn finds_missing_diagnostic() {
-        let expected = ToolExpectation {
-            config: None,
-            rules: vec![],
-            required: vec![FindingExpectation {
+        let expected = ToolExpectation::from_selector(
+            ToolSelector::Rules(vec!["test:a.b".into()]),
+            vec![FindingExpectation {
                 path: None,
-                rule_id: "test:a.b".into(),
+                rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
                 message_id: None,
                 severity: None,
-                count: Some(2),
+                count: ExpectedCount::Exactly(2),
                 line: None,
                 column: None,
                 message: None,
             }],
-            forbidden: vec![],
-        };
+            vec![],
+        )
+        .unwrap();
         assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
 
     #[test]
     fn flags_unexpected_diagnostic() {
-        let expected = ToolExpectation {
-            config: None,
-            rules: vec![],
-            required: vec![],
-            forbidden: vec![],
-        };
+        let expected = ToolExpectation::from_selector(
+            ToolSelector::Config("heuristic".into()),
+            vec![],
+            vec![],
+        )
+        .unwrap();
         assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
 
     #[test]
     fn reports_forbidden_diagnostic_once() {
-        let expected = ToolExpectation {
-            config: None,
-            rules: vec![],
-            required: vec![],
-            forbidden: vec![FindingExpectation {
+        let expected = ToolExpectation::from_selector(
+            ToolSelector::Rules(vec!["test:a.b".into()]),
+            vec![],
+            vec![FindingExpectation {
                 path: None,
-                rule_id: "test:a.b".into(),
+                rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
                 message_id: None,
                 severity: None,
-                count: Some(1),
+                count: ExpectedCount::Exactly(1),
                 line: None,
                 column: None,
                 message: None,
             }],
-        };
+        )
+        .unwrap();
         assert_eq!(compare(&[finding()], &expected).len(), 1);
     }
 }
