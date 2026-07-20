@@ -5,7 +5,7 @@
 //! field that failed so provider authors can correct the rule
 //! deterministically.
 
-use super::matcher::{
+use crate::api::rule::matcher::{
     ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
     MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, MemberReadProvenance,
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicate,

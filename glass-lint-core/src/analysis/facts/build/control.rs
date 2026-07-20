@@ -10,7 +10,10 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::VisitWith;
 
-use super::{ControlKind, ControlRegionId, FactBuilder, FactKind, FactPayload, Span};
+use crate::analysis::{
+    facts::build::{ControlKind, ControlRegionId, FactBuilder, FactKind, FactPayload, Span},
+    value::ValueId,
+};
 
 impl FactBuilder<'_> {
     /// Allocate the region identity shared by all markers for one construct.
@@ -26,7 +29,7 @@ impl FactBuilder<'_> {
             FactPayload::Control {
                 kind,
                 region,
-                return_value: super::ValueId::UNKNOWN,
+                return_value: ValueId::UNKNOWN,
             },
         );
     }

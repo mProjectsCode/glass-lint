@@ -1,6 +1,9 @@
 //! Project finding assembly and deterministic evidence ownership.
 
-use super::{AnalysisReport, Evidence, Finding, ReportCompletion};
+use crate::{
+    ProjectRelativePath,
+    project::{AnalysisReport, Evidence, Finding, ReportCompletion},
+};
 
 /// Why independently produced reports could not be combined losslessly.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -30,11 +33,6 @@ impl std::fmt::Display for ReportCombineError {
 }
 
 impl std::error::Error for ReportCombineError {}
-
-#[cfg(test)]
-fn project_path(path: &str) -> super::types::ProjectRelativePath {
-    super::types::ProjectRelativePath::new(path).unwrap()
-}
 
 impl AnalysisReport {
     /// Losslessly combine reports produced by independent analyses.
@@ -81,12 +79,12 @@ impl AnalysisReport {
             .sort_by(|left, right| left.path.cmp(&right.path));
         combined.diagnostics.sort_by(|left, right| {
             (
-                left.path().map(super::ProjectRelativePath::as_str),
+                left.path().map(ProjectRelativePath::as_str),
                 left.code(),
                 left.message(),
             )
                 .cmp(&(
-                    right.path().map(super::ProjectRelativePath::as_str),
+                    right.path().map(ProjectRelativePath::as_str),
                     right.code(),
                     right.message(),
                 ))
@@ -133,7 +131,7 @@ mod tests {
             message: "request detected".into(),
             severity: Severity::Warning,
             location: SourceLocation {
-                path: project_path("src/é.js"),
+                path: ProjectRelativePath::new("src/é.js").unwrap(),
                 range: range(2, 4, 12),
             },
             evidence: vec![
@@ -142,7 +140,7 @@ mod tests {
                     count: 1,
                     evidence_truncated: false,
                     location: Some(SourceLocation {
-                        path: project_path("src/é.js"),
+                        path: ProjectRelativePath::new("src/é.js").unwrap(),
                         range: range(1, 1, 3),
                     }),
                 },
@@ -161,7 +159,7 @@ mod tests {
     #[test]
     fn qualifies_findings_and_preserves_missing_evidence_ranges() {
         let file = FileReport {
-            path: project_path("src/é.js"),
+            path: ProjectRelativePath::new("src/é.js").unwrap(),
             findings: vec![finding()],
             diagnostics: Vec::new(),
         };
@@ -180,7 +178,7 @@ mod tests {
             schema_version: crate::REPORT_VERSION,
             tool_version: "test".into(),
             files: vec![FileReport {
-                path: project_path(path),
+                path: ProjectRelativePath::new(path).unwrap(),
                 findings: Vec::new(),
                 diagnostics: Vec::new(),
             }],
@@ -219,10 +217,10 @@ mod tests {
     #[test]
     fn combine_reports_preserves_report_and_file_diagnostics() {
         let parse_only = FileReport {
-            path: project_path("broken.js"),
+            path: ProjectRelativePath::new("broken.js").unwrap(),
             findings: Vec::new(),
             diagnostics: vec![Diagnostic::parse(
-                project_path("broken.js"),
+                ProjectRelativePath::new("broken.js").unwrap(),
                 crate::ParseDiagnostic {
                     code: crate::project::types::DiagnosticKind::SyntaxError.into(),
                     message: "invalid syntax".into(),
@@ -326,7 +324,7 @@ mod tests {
             count: 1,
             evidence_truncated: false,
             location: Some(SourceLocation {
-                path: project_path("dep.js"),
+                path: ProjectRelativePath::new("dep.js").unwrap(),
                 range: range(3, 1, 2),
             }),
         };

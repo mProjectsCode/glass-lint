@@ -6,9 +6,9 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use super::super::{ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow};
 use crate::{
     analysis::{
+        ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow,
         matching::{ModuleOccurrenceOverlay, OccurrenceIndexes},
         status::{AnalysisComponent, IncompleteReason, StatusScope},
     },

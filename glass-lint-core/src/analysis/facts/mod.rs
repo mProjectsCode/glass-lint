@@ -6,22 +6,17 @@
 //! selection is applied only by [`SemanticFacts::project`] after that shared
 //! state has been built.
 
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
-#[cfg(test)]
-use self::build::FactBuilder;
-#[cfg(test)]
-use super::resolution::Resolver;
-#[cfg(test)]
-use super::syntax::SymbolCallProvenance;
-#[cfg(test)]
-use super::value::{FunctionId, ValueId};
-use super::{
-    flow::{effect::FunctionEffects, projector as object_flow},
-    matching::{self, OccurrenceIndexes},
-    module::ModuleInterface,
+use crate::{
+    analysis::{
+        flow::{effect::FunctionEffects, projector as object_flow},
+        matching::{self, LinkedModuleIdentity, ModuleIdentityMap, OccurrenceIndexes},
+        module::ModuleInterface,
+        value::ValueId,
+    },
+    api::compiler::CompiledRuleSelection,
 };
-use crate::api::compiler::CompiledRuleSelection;
 
 pub mod build;
 mod model;
@@ -87,13 +82,8 @@ impl SemanticFacts {
         &self,
         effects: &FunctionEffects,
         matchers: &CompiledRuleSelection<'_>,
-        identities: Option<&super::matching::ModuleIdentityMap>,
-        result_identities: Option<
-            &std::collections::BTreeMap<
-                super::value::ValueId,
-                super::matching::LinkedModuleIdentity,
-            >,
-        >,
+        identities: Option<&ModuleIdentityMap>,
+        result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
     ) -> Vec<Vec<crate::api::classification::ClassificationEvidence>> {
         let constrained_clauses = matchers
             .selected_matchers()
@@ -146,6 +136,10 @@ mod tests {
     use super::*;
     use crate::{
         ByteRange,
+        analysis::{
+            SymbolCallProvenance, facts::build::FactBuilder, resolution::Resolver,
+            value::FunctionId,
+        },
         api::{compiler::CompiledMatcherPlan, rule::MatcherSet},
     };
 

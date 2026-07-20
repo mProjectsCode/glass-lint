@@ -5,18 +5,27 @@
 //! unsupported dynamic forms.
 
 use smol_str::{SmolStr, ToSmolStr};
-use swc_ecma_ast::{CallExpr, Callee, VarDeclarator};
-
-use super::{
-    super::super::syntax::property_name, ArrowExpr, AssignExpr, AssignTarget, BindingProvenance,
-    BlockStmt, CatchClause, ClassDecl, Expr, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function,
-    ImportDecl, ImportSpecifier, LexicalScopeCollector, ObjectPatProp, Pat,
-    PropertyAliasAssignment, RootedPropertyMutation, ScopeId, ScopeKind, SimpleAssignTarget,
-    Spanned, SwitchStmt, VarDecl, VarDeclKind, Visit, VisitWith, WithStmt,
-    function_prototype_builtin, member_expression_chain, member_property_name,
-    member_root_identifier, module_export_name,
+use swc_common::Spanned;
+use swc_ecma_ast::{
+    ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CatchClause, ClassDecl, Expr,
+    FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, ImportDecl, ImportSpecifier, ObjectPatProp,
+    Pat, SimpleAssignTarget, SwitchStmt, VarDecl, VarDeclKind, VarDeclarator, WithStmt,
 };
-use crate::analysis::value::NamePath;
+use swc_ecma_visit::{Visit, VisitWith};
+
+use crate::analysis::{
+    scope::{
+        BindingProvenance, LexicalScopeCollector,
+        ScopeEffect::DynamicEvaluation,
+        ScopeId, ScopeKind,
+        collect::{PropertyAliasAssignment, RootedPropertyMutation},
+    },
+    syntax::{
+        function_prototype_builtin, member_expression_chain, member_property_name,
+        member_root_identifier, module_export_name, property_name,
+    },
+    value::NamePath,
+};
 
 enum DeclarationClassification {
     Binding {
@@ -276,7 +285,7 @@ impl Visit for LexicalScopeCollector<'_> {
             if callee.sym == *"eval" {
                 self.dynamic_evals.push((
                     self.binding_scope(VarDeclKind::Var),
-                    super::super::ScopeEffect::DynamicEvaluation { span: call.span },
+                    DynamicEvaluation { span: call.span },
                 ));
             }
             if let Ok(callee_name) = self.names.intern(callee.sym.as_ref()) {

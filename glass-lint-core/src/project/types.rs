@@ -10,7 +10,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{SourceLanguage, SourceRange};
+use crate::{
+    EvidenceList, RuleId, Severity, SourceLanguage, SourceRange, project::input::normalize_relative,
+};
 
 /// Whether a module request uses syntax that denotes an authored/internal
 /// target.
@@ -37,7 +39,7 @@ impl<'de> serde::Deserialize<'de> for ProjectRelativePath {
 impl ProjectRelativePath {
     /// Validate and normalize a project-relative path.
     pub fn new(path: impl AsRef<str>) -> Result<Self, ProjectInputError> {
-        super::input::normalize_relative(path)
+        normalize_relative(path)
     }
 
     pub(crate) fn from_normalized(path: String) -> Self {
@@ -314,17 +316,17 @@ pub struct Evidence {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct Finding {
     /// Fully qualified rule identifier.
-    pub rule_id: crate::RuleId,
+    pub rule_id: RuleId,
     /// Stable message identifier within the rule.
     pub message_id: String,
     /// Rendered finding message.
     pub message: String,
     /// Finding severity.
-    pub severity: crate::Severity,
+    pub severity: Severity,
     /// Primary project-qualified source location.
     pub location: SourceLocation,
     /// Supporting evidence in deterministic de-duplicated order.
-    pub evidence: super::EvidenceList,
+    pub evidence: EvidenceList,
 }
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct FileReport {
@@ -605,7 +607,7 @@ impl SourceFile {
 
 #[cfg(test)]
 mod tests {
-    use super::{DiagnosticCode, DiagnosticKind};
+    use super::*;
 
     #[test]
     fn diagnostic_kind_table_contains_only_canonical_codes() {

@@ -7,12 +7,12 @@
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::super::{
-    BTreeSet, ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId,
-    ProjectSemanticModel, ResolutionRequestKey, SymbolCallProvenance, module,
-};
 use crate::{
-    analysis::module::{DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
+    analysis::{
+        BTreeSet, ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId,
+        ProjectSemanticModel, ResolutionRequestKey, SymbolCallProvenance, module,
+        module::{DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
+    },
     project::is_internal_module_request as is_internal_request,
 };
 
@@ -43,23 +43,21 @@ impl ProjectSemanticModel {
                     Some(SymbolCallProvenance::Global { name }) => {
                         ExportResolution::Global { name: name.clone() }
                     }
-                    Some(
-                        SymbolCallProvenance::Local
-                        | SymbolCallProvenance::Unknown(_),
-                    )
-                    | None => project_module
-                        .local()
-                        .interface()
-                        .static_string(name)
-                        .map_or_else(
-                            || ExportResolution::Qualified {
-                                module,
-                                export: name.to_smolstr(),
-                            },
-                            |value| ExportResolution::StaticString {
-                                value: value.clone(),
-                            },
-                        ),
+                    Some(SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_)) | None => {
+                        project_module
+                            .local()
+                            .interface()
+                            .static_string(name)
+                            .map_or_else(
+                                || ExportResolution::Qualified {
+                                    module,
+                                    export: name.to_smolstr(),
+                                },
+                                |value| ExportResolution::StaticString {
+                                    value: value.clone(),
+                                },
+                            )
+                    }
                 }
             }
             module::ModuleExport::Value => {

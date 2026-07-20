@@ -9,7 +9,7 @@ use std::fmt;
 use smallvec::SmallVec;
 use smol_str::SmolStr;
 
-use super::super::name::{NameId, NameTable};
+use crate::analysis::name::{NameId, NameTable};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Canonical ID for an abstract value in one analysis arena.

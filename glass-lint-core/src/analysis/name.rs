@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use indexmap::IndexSet;
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::value::{NamePath, SymbolPath};
+use crate::analysis::value::{NamePath, SymbolPath};
 
 /// Core bound for one artifact; it matches the default semantic-operation
 /// bound while remaining independent of process lifetime and scheduling.

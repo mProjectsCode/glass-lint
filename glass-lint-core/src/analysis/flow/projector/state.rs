@@ -7,28 +7,28 @@
 
 use std::collections::BTreeSet;
 
-use super::super::{
-    super::value::{ObjectId, ValueId},
-    index::FlowId,
-    state::{FlowState, FlowStateKey},
+use crate::{
+    analysis::{
+        facts::{ControlRegionId, FactId},
+        flow::{
+            index::FlowId,
+            state::{FlowState, FlowStateKey},
+        },
+        value::{ObjectId, ValueId},
+    },
+    api::classification::ClassificationEvidence,
 };
-use crate::api::classification::ClassificationEvidence;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(super) struct ReportEvidenceKey {
     rule: usize,
     flow: usize,
     object: ObjectId,
-    event: super::super::super::facts::FactId,
+    event: FactId,
 }
 
 impl ReportEvidenceKey {
-    pub(super) fn new(
-        rule: usize,
-        flow: usize,
-        object: ObjectId,
-        event: super::super::super::facts::FactId,
-    ) -> Self {
+    pub(super) fn new(rule: usize, flow: usize, object: ObjectId, event: FactId) -> Self {
         Self {
             rule,
             flow,
@@ -223,25 +223,25 @@ impl FlowEvidence {
 /// Saved control construct state used to restore and join environments.
 pub(super) enum ControlFrame {
     Branch {
-        region: super::super::super::facts::ControlRegionId,
+        region: ControlRegionId,
         base: FlowEnvironment,
         then_exit: Option<FlowEnvironment>,
     },
     Loop {
-        region: super::super::super::facts::ControlRegionId,
+        region: ControlRegionId,
         baseline: FlowEnvironment,
         guaranteed: bool,
         breaks: Vec<FlowEnvironment>,
         continues: Vec<FlowEnvironment>,
     },
     Switch {
-        region: super::super::super::facts::ControlRegionId,
+        region: ControlRegionId,
         baseline: FlowEnvironment,
         breaks: Vec<FlowEnvironment>,
         has_default: bool,
     },
     Try {
-        region: super::super::super::facts::ControlRegionId,
+        region: ControlRegionId,
         baseline: FlowEnvironment,
         try_exit: Option<FlowEnvironment>,
         catch_exit: Option<FlowEnvironment>,

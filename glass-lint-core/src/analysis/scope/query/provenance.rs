@@ -8,13 +8,13 @@
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::{
-    BindingKey, BindingProvenance, Expr, Ident, IdentValueSeed, MemberExpr, MemberValueSeed,
-    ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant, contains,
-    member_root_identifier,
-};
 use crate::analysis::{
-    syntax::constant::Lookup,
+    scope::query::{
+        BindingKey, BindingProvenance, Expr, Ident, IdentValueSeed, MemberExpr, MemberValueSeed,
+        ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant,
+        contains, member_root_identifier,
+    },
+    syntax::{constant::Lookup, expression_name},
     value::BindingRoot,
 };
 
@@ -347,7 +347,8 @@ impl ScopeGraph<'_> {
 
     /// Produce the immutable resolver seed for an identifier occurrence.
     pub(in crate::analysis) fn ident_value_seed(&self, ident: &Ident) -> IdentValueSeed {
-        let binding = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)
+        let binding = self
+            .binding_with_scope_at(ident.sym.as_ref(), ident.span)
             .and_then(|(scope, _)| {
                 Some(BindingKey::new(BindingRoot::Binding {
                     function: self.function_scope_at(scope),
@@ -379,7 +380,7 @@ impl ScopeGraph<'_> {
         &self,
         member: &MemberExpr,
     ) -> Option<SymbolPath> {
-        let object = super::syntax::expression_name(&member.obj)?;
+        let object = expression_name(&member.obj)?;
         Some(object.append_chain(&self.member_property_name(member)?))
     }
 

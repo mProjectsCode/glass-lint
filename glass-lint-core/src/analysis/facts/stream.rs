@@ -7,9 +7,9 @@
 use std::sync::Arc;
 
 #[cfg(test)]
-use super::FactKind;
-use super::{FactId, MAX_FACTS, SemanticFact};
+use crate::analysis::facts::FactKind;
 use crate::analysis::{
+    facts::{FactId, MAX_FACTS, SemanticFact},
     name::NameTable,
     value::{PathId, PathInterner, PathSegment, PathSegmentInput},
 };

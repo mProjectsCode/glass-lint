@@ -1,13 +1,19 @@
 //! Project-session integration tests for normalization, linking, flow, and
 //! report ownership across multiple authored source files.
 
-use super::*;
 use crate::{
     Position, SourceRange,
     api::rule::{
         CallMatcher, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
         MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
         Severity, ValueMatcher,
+    },
+    project::{
+        session::{
+            ControlledReleaseOrder, CountingExecutionObserver, InvocationCounts,
+            outstanding_job_bound,
+        },
+        *,
     },
 };
 
@@ -54,9 +60,9 @@ fn controlled_release_orders_produce_identical_full_report() {
     ];
     let mut reports = Vec::new();
     for order in [
-        super::session::ControlledReleaseOrder::Forward,
-        super::session::ControlledReleaseOrder::Reverse,
-        super::session::ControlledReleaseOrder::Interleaved,
+        ControlledReleaseOrder::Forward,
+        ControlledReleaseOrder::Reverse,
+        ControlledReleaseOrder::Interleaved,
     ] {
         let linter = test_linter_with_limits(limits.clone());
         let mut session = linter.begin_analysis("/project").unwrap();
@@ -104,17 +110,17 @@ fn active_and_outstanding_use_the_production_bound() {
                 .admit_source(source_file(format!("{index:02}.js"), "fetch('x');"))
                 .unwrap();
         }
-        let observer = super::session::CountingExecutionObserver::new();
+        let observer = CountingExecutionObserver::new();
         session
             .analyze_admitted_sources_counted(requested, &observer)
             .unwrap();
         let workers = std::num::NonZeroUsize::new(requested).unwrap_or(std::num::NonZeroUsize::MIN);
         let (active, outstanding) = observer.peaks();
         assert!(active <= workers.get());
-        assert!(outstanding <= super::session::outstanding_job_bound(workers));
+        assert!(outstanding <= outstanding_job_bound(workers));
     }
     assert_eq!(
-        super::session::outstanding_job_bound(std::num::NonZeroUsize::MAX),
+        outstanding_job_bound(std::num::NonZeroUsize::MAX),
         usize::MAX
     );
 }
@@ -123,7 +129,7 @@ fn active_and_outstanding_use_the_production_bound() {
 fn cache_hit_attaches_only_current_path() {
     let linter = test_linter();
     let mut session = linter.begin_analysis("/project").unwrap();
-    let observer = super::session::CountingExecutionObserver::new();
+    let observer = CountingExecutionObserver::new();
     session
         .admit_source(source_file("a.js", "fetch('x');"))
         .unwrap();
@@ -151,7 +157,7 @@ fn identical_successful_source_lowers_once_then_hits() {
     session
         .admit_source(source_file("main.js", "fetch('/api');"))
         .unwrap();
-    let observer = super::session::CountingExecutionObserver::new();
+    let observer = CountingExecutionObserver::new();
     session
         .analyze_source_counted("main.js", &observer)
         .unwrap();
@@ -160,7 +166,7 @@ fn identical_successful_source_lowers_once_then_hits() {
         .unwrap();
     assert_eq!(
         observer.invocations(),
-        super::session::InvocationCounts {
+        InvocationCounts {
             parses: 1,
             lowers: 1,
             hits: 1,
@@ -175,7 +181,7 @@ fn identical_successful_source_lowers_once_then_hits() {
 #[test]
 fn separate_sessions_on_one_linter_reuse_the_artifact_cache() {
     let linter = test_linter();
-    let first_observer = super::session::CountingExecutionObserver::new();
+    let first_observer = CountingExecutionObserver::new();
     let mut first = linter.begin_analysis("/project").unwrap();
     first
         .admit_source(source_file("first.js", "fetch('/api');"))
@@ -185,7 +191,7 @@ fn separate_sessions_on_one_linter_reuse_the_artifact_cache() {
         .unwrap();
     first.finish().unwrap();
 
-    let second_observer = super::session::CountingExecutionObserver::new();
+    let second_observer = CountingExecutionObserver::new();
     let mut second = linter.begin_analysis("/project").unwrap();
     second
         .admit_source(source_file("second.js", "fetch('/api');"))
@@ -211,7 +217,7 @@ fn session_retry_does_not_cache_parse_failure() {
     session
         .admit_source(source_file("broken.js", "fetch("))
         .unwrap();
-    let observer = super::session::CountingExecutionObserver::new();
+    let observer = CountingExecutionObserver::new();
     session
         .analyze_source_counted("broken.js", &observer)
         .unwrap();
@@ -241,7 +247,7 @@ fn session_reuses_exhausted_artifact_with_partial_status() {
     session
         .admit_source(source_file("bounded.js", "fetch('/api');"))
         .unwrap();
-    let observer = super::session::CountingExecutionObserver::new();
+    let observer = CountingExecutionObserver::new();
     session
         .analyze_source_counted("bounded.js", &observer)
         .unwrap();
@@ -267,7 +273,7 @@ fn rule_selection_changes_projection_without_relowering() {
     first
         .admit_source(source_file("enabled.js", "fetch('/api');"))
         .unwrap();
-    let first_observer = super::session::CountingExecutionObserver::new();
+    let first_observer = CountingExecutionObserver::new();
     first
         .analyze_source_counted("enabled.js", &first_observer)
         .unwrap();
@@ -283,7 +289,7 @@ fn rule_selection_changes_projection_without_relowering() {
     second
         .admit_source(source_file("disabled.js", "fetch('/api');"))
         .unwrap();
-    let second_observer = super::session::CountingExecutionObserver::new();
+    let second_observer = CountingExecutionObserver::new();
     second
         .analyze_source_counted("disabled.js", &second_observer)
         .unwrap();
@@ -309,7 +315,7 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
             session.artifact_cache = base_cache.clone();
             configure(&mut session);
             session.admit_source(source).unwrap();
-            let observer = super::session::CountingExecutionObserver::new();
+            let observer = CountingExecutionObserver::new();
             session.analyze_source_counted(path, &observer).unwrap();
             let counts = observer.invocations();
             assert_eq!((counts.hits, counts.misses, counts.lowers), (0, 1, 1));
@@ -400,7 +406,7 @@ fn cache_eviction_is_bounded_and_deterministic() {
             ))
             .unwrap();
     }
-    let observer = super::session::CountingExecutionObserver::new();
+    let observer = CountingExecutionObserver::new();
     for index in 0..=capacity {
         session
             .analyze_source_counted(format!("{index:03}.js"), &observer)

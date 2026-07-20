@@ -8,12 +8,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::super::{
-    ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
-    matching::ModuleExportKey,
-};
 use crate::analysis::{
-    matching::LinkedModuleIdentity,
+    ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
+    matching::{LinkedModuleIdentity, ModuleExportKey, ModuleIdentityMap},
     module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
     syntax::SymbolCallProvenance,
 };
@@ -66,9 +63,7 @@ impl ProjectSemanticModel {
                                 }
                             })
                     }
-                    SymbolCallProvenance::Unknown(_) => {
-                        ExportResolution::Unknown
-                    }
+                    SymbolCallProvenance::Unknown(_) => ExportResolution::Unknown,
                 };
                 identities.insert(call.result(), resolution.into());
             }
@@ -77,10 +72,7 @@ impl ProjectSemanticModel {
     }
 
     /// Build imported and namespace-member identities for one module.
-    pub(super) fn module_identities(
-        &self,
-        module: ModuleId,
-    ) -> super::super::matching::ModuleIdentityMap {
+    pub(super) fn module_identities(&self, module: ModuleId) -> ModuleIdentityMap {
         let mut identities = BTreeMap::new();
         let Some(project_module) = self.modules.get(&module) else {
             return identities;

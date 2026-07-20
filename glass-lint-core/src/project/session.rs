@@ -5,16 +5,16 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc};
 
 struct LocalJob {
-    path: super::ProjectRelativePath,
+    path: ProjectRelativePath,
     source: SourceFile,
     key: ArtifactCacheKey,
 }
 
 struct LocalJobResult {
-    path: super::ProjectRelativePath,
+    path: ProjectRelativePath,
     source: SourceFile,
     key: ArtifactCacheKey,
-    result: Result<Arc<crate::analysis::SemanticArtifact>, crate::ParseDiagnostic>,
+    result: Result<Arc<crate::analysis::SemanticArtifact>, ParseDiagnostic>,
 }
 
 trait LocalJobExecutor {
@@ -22,7 +22,7 @@ trait LocalJobExecutor {
         &self,
         jobs: Vec<LocalJob>,
         worker_limit: NonZeroUsize,
-        linter: &crate::Linter,
+        linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
     );
@@ -161,7 +161,7 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
         &self,
         jobs: Vec<LocalJob>,
         worker_limit: NonZeroUsize,
-        linter: &crate::Linter,
+        linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
     ) {
@@ -223,7 +223,7 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
         &self,
         jobs: Vec<LocalJob>,
         _worker_limit: NonZeroUsize,
-        linter: &crate::Linter,
+        linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
     ) {
@@ -261,26 +261,22 @@ fn normalize_worker_limit(requested: usize) -> NonZeroUsize {
 #[derive(Default)]
 struct AnalysisArtifacts {
     authored_requests: BTreeMap<ResolutionRequestKey, ResolutionRequest>,
-    analyzed: BTreeMap<super::ProjectRelativePath, crate::analysis::LocalArtifact>,
-    parse_diagnostics: BTreeMap<super::ProjectRelativePath, crate::ParseDiagnostic>,
+    analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
+    parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
 }
 
 impl AnalysisArtifacts {
-    fn record_parse_failure(
-        &mut self,
-        path: super::ProjectRelativePath,
-        error: crate::ParseDiagnostic,
-    ) {
+    fn record_parse_failure(&mut self, path: ProjectRelativePath, error: ParseDiagnostic) {
         self.analyzed.remove(&path);
         self.parse_diagnostics.insert(path, error);
     }
 
     fn record_lowered(
         &mut self,
-        path: &super::ProjectRelativePath,
+        path: &ProjectRelativePath,
         lowered: LoweredSource,
     ) -> Vec<ResolutionRequest> {
-        let local = crate::analysis::LocalArtifact::new(lowered.source.clone(), lowered.semantic);
+        let local = LocalArtifact::new(lowered.source.clone(), lowered.semantic);
         let requests = local.interface().authored_requests(
             path,
             &local.source_context().lines,
@@ -299,19 +295,22 @@ pub(super) const fn outstanding_job_bound(worker_limit: NonZeroUsize) -> usize {
     worker_limit.get().saturating_mul(2)
 }
 
-use super::{
-    AnalysisReport, ProjectInput, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
-    ResolverOutcome, SourceFile,
-    input::{normalize_relative, normalize_resolution_key, normalize_result, normalize_root},
-    tables::{ResolutionTable, SourceTable},
-};
-use crate::analysis::{
-    ArtifactCacheHandle, ArtifactCacheKey, LocatedSourceContext, LoweredSource,
-    SharedSemanticArtifact,
+use crate::{
+    Linter, ParseDiagnostic, ProjectRelativePath,
+    analysis::{
+        ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
+        SharedSemanticArtifact,
+    },
+    project::{
+        AnalysisReport, ProjectInput, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
+        ResolverOutcome, SourceFile,
+        input::{normalize_relative, normalize_resolution_key, normalize_result, normalize_root},
+        tables::{ResolutionTable, SourceTable},
+    },
 };
 
 pub struct AnalysisSession<'a> {
-    pub(super) linter: &'a crate::Linter,
+    pub(super) linter: &'a Linter,
     pub(super) root: std::path::PathBuf,
     pub(super) sources: SourceTable,
     pub(super) resolutions: ResolutionTable,
@@ -367,7 +366,7 @@ impl<'a> AnalysisSession<'a> {
 
     /// Start an empty parse-once project session under a canonical root.
     pub fn new(
-        linter: &'a crate::Linter,
+        linter: &'a Linter,
         root: impl Into<std::path::PathBuf>,
     ) -> Result<Self, ProjectInputError> {
         Ok(Self {
@@ -452,7 +451,7 @@ impl<'a> AnalysisSession<'a> {
 
     fn record_lowered(
         &mut self,
-        path: &super::ProjectRelativePath,
+        path: &ProjectRelativePath,
         lowered: LoweredSource,
     ) -> Vec<ResolutionRequest> {
         self.artifacts.record_lowered(path, lowered)
@@ -493,7 +492,7 @@ impl<'a> AnalysisSession<'a> {
             if let Some(cached) = self.artifact_cache.get(&key) {
                 observer.cache_hit();
                 requests.extend(self.record_lowered(
-                    &super::ProjectRelativePath::new(path)?,
+                    &ProjectRelativePath::new(path)?,
                     LoweredSource {
                         source: LocatedSourceContext::new(&source),
                         semantic: Arc::clone(&cached.semantic),
@@ -502,7 +501,7 @@ impl<'a> AnalysisSession<'a> {
             } else {
                 observer.cache_miss();
                 uncached.push(LocalJob {
-                    path: super::ProjectRelativePath::new(path)?,
+                    path: ProjectRelativePath::new(path)?,
                     source,
                     key,
                 });

@@ -7,8 +7,10 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use super::super::{ExportResolution, ModuleId};
-use crate::project::ResolutionRequestKey;
+use crate::{
+    analysis::{ExportResolution, ModuleId},
+    project::ResolutionRequestKey,
+};
 
 #[derive(Debug, Default)]
 /// Deterministic internal-module graph and its SCC decomposition.

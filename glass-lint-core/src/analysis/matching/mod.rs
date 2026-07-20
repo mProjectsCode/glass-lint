@@ -14,12 +14,12 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use super::{
-    facts::{CallArgInfo, FactPayload, FactStream},
-    syntax::{SymbolCallProvenance, SymbolMemberProvenance},
-};
 use crate::{
-    analysis::value::NamePath,
+    analysis::{
+        facts::{CallArgInfo, FactPayload, FactStream},
+        syntax::{SymbolCallProvenance, SymbolMemberProvenance},
+        value::NamePath,
+    },
     api::classification::{ClassificationEvidence, MatchKind},
 };
 
@@ -344,9 +344,14 @@ pub(super) fn push_owned_evidence(
 mod tests {
     use super::*;
     use crate::{
-        ByteRange,
-        analysis::{SymbolPath, facts::FactId},
+        ByteRange, Environment,
+        analysis::{
+            SymbolPath,
+            facts::{FactId, build::build_test_stream},
+            resolution::Resolver,
+        },
         api::rule::{MatcherSet, MemberCallMatcher},
+        parse,
     };
 
     fn span(start: u32, end: u32) -> ByteRange {
@@ -408,8 +413,6 @@ mod tests {
 
     #[test]
     fn build_from_stream_populates_all_occurrence_indexes() {
-        use super::super::{facts::build::build_test_stream, resolution::Resolver};
-
         let src = r#"
             import { foo } from 'mod';
             import { Bar } from 'other-mod';
@@ -422,8 +425,8 @@ mod tests {
             const s = "hello world";
             require('fs');
         "#;
-        let parsed = crate::parse(src, "stream-index.js").expect("source should parse");
-        let mut environment = crate::Environment::default();
+        let parsed = parse(src, "stream-index.js").expect("source should parse");
+        let mut environment = Environment::default();
         environment
             .add_globals(["URL", "require"])
             .expect("test globals");

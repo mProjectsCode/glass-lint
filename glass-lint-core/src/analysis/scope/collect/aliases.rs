@@ -8,10 +8,11 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Span;
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
-use super::{
-    super::super::syntax::property_name, BindingProvenance, LexicalScopeCollector, ScopeId,
+use crate::analysis::{
+    scope::{BindingProvenance, LexicalScopeCollector, ScopeId},
+    syntax::property_name,
+    value::NamePath,
 };
-use crate::analysis::value::NamePath;
 
 impl LexicalScopeCollector<'_> {
     /// Record aliases introduced by a destructuring declaration.
@@ -64,7 +65,7 @@ impl LexicalScopeCollector<'_> {
     pub(super) fn collect_assignment_aliases(
         &mut self,
         pat: &Pat,
-        target: &super::super::super::value::NamePath,
+        target: &NamePath,
         span: Span,
         scope: ScopeId,
     ) {

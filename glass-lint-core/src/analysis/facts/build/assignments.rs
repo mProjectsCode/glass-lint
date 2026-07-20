@@ -6,7 +6,7 @@
 
 use swc_ecma_ast::AssignOp;
 
-use super::{
+use crate::analysis::facts::build::{
     AssignExpr, FactBuilder, FactKind, FactPayload, MemberExpr, Pat, Spanned, ValueId, VisitWith,
     member_property_name,
 };

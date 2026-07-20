@@ -356,7 +356,7 @@ mod tests {
         rules::{Confidence, Matcher},
     };
 
-    use super::{FileOutput, Table, write_json};
+    use super::*;
 
     fn linter(semantic_operations: usize) -> Linter {
         let rule = Rule::builder("network.fetch")

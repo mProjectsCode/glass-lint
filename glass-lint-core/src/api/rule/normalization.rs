@@ -8,12 +8,18 @@
 //! alternatives, and removes duplicates. It preserves matcher meaning while
 //! making compiled catalogs deterministic.
 
-use super::matcher::{
-    ArgumentConstraint, ArgumentMatcher, CallMatcher, ClassMatcher, ConstructorMatcher,
-    InstanceMemberCallMatcher, MatcherFamilyMut, MatcherSet, MemberCallMatcher,
-    MemberCallProvenance, MemberReadProvenance, ReturnedMemberCallMatcher,
-    ReturnedMemberReadMatcher, SymbolProvenance, ValueMatcher, ValueMatcherKind,
-    canonical_rooted_chain, normalize_flows, normalize_member_chain, normalize_strings,
+use crate::{
+    api::rule::{
+        StaticStringPredicate,
+        matcher::{
+            ArgumentConstraint, ArgumentMatcher, CallMatcher, ClassMatcher, ConstructorMatcher,
+            InstanceMemberCallMatcher, MatcherFamilyMut, MatcherSet, MemberCallMatcher,
+            MemberCallProvenance, MemberReadProvenance, ReturnedMemberCallMatcher,
+            ReturnedMemberReadMatcher, SymbolProvenance, ValueMatcher, ValueMatcherKind,
+            canonical_rooted_chain, normalize_flows, normalize_member_chain, normalize_strings,
+        },
+    },
+    rules::MemberReadMatcher,
 };
 
 impl MatcherSet {
@@ -83,7 +89,7 @@ fn normalize_member_calls(values: &mut Vec<MemberCallMatcher>) {
     values.dedup();
 }
 
-fn normalize_member_reads(values: &mut Vec<super::matcher::MemberReadMatcher>) {
+fn normalize_member_reads(values: &mut Vec<MemberReadMatcher>) {
     for member_read in values.iter_mut() {
         member_read.chain = normalize_member_chain(&member_read.chain);
         if member_read.provenance == MemberReadProvenance::Rooted {
@@ -232,11 +238,11 @@ impl ValueMatcher {
     pub(crate) fn normalize(&mut self) {
         if let ValueMatcherKind::StaticString(predicate) = &mut self.kind {
             match predicate {
-                super::matcher::StaticStringPredicate::Any => {}
-                super::matcher::StaticStringPredicate::Exact(values)
-                | super::matcher::StaticStringPredicate::Prefix(values)
-                | super::matcher::StaticStringPredicate::ContainsAny(values)
-                | super::matcher::StaticStringPredicate::ContainsAll(values) => {
+                StaticStringPredicate::Any => {}
+                StaticStringPredicate::Exact(values)
+                | StaticStringPredicate::Prefix(values)
+                | StaticStringPredicate::ContainsAny(values)
+                | StaticStringPredicate::ContainsAll(values) => {
                     normalize_strings(values);
                 }
             }

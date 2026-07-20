@@ -11,16 +11,22 @@
 use smol_str::ToSmolStr;
 use swc_ecma_ast::ExportDefaultExpr;
 
-use super::{
-    ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, DoWhileStmt, ExportDecl, Expr,
-    FactBuilder, FactKind, FactPayload, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, Ident,
-    IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase, OptChainExpr, Spanned, Str, SwitchStmt,
-    SymbolCallProvenance, SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr,
-    ValueId, VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr,
-    member_property_name,
-};
 use crate::{
-    analysis::module::{ImportedBinding, ModuleRequestRole},
+    analysis::{
+        facts::{
+            ControlRegionId,
+            build::{
+                ArrowExpr, AssignExpr, BinExpr, CallExpr, CondExpr, ControlKind, DoWhileStmt,
+                ExportDecl, Expr, FactBuilder, FactKind, FactPayload, FnDecl, ForInStmt, ForOfStmt,
+                ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase,
+                OptChainExpr, Spanned, Str, SwitchStmt, SymbolCallProvenance,
+                SymbolMemberProvenance, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, ValueId,
+                VarDeclarator, Visit, VisitWith, WhileStmt, effective_callee_expr,
+                member_property_name,
+            },
+        },
+        module::{ImportedBinding, ModuleRequestRole},
+    },
     project::ResolutionRequestKind,
 };
 
@@ -394,15 +400,11 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_break_stmt(&mut self, stmt: &swc_ecma_ast::BreakStmt) {
-        self.emit_control(stmt.span(), ControlKind::Break, super::ControlRegionId(0));
+        self.emit_control(stmt.span(), ControlKind::Break, ControlRegionId(0));
     }
 
     fn visit_continue_stmt(&mut self, stmt: &swc_ecma_ast::ContinueStmt) {
-        self.emit_control(
-            stmt.span(),
-            ControlKind::Continue,
-            super::ControlRegionId(0),
-        );
+        self.emit_control(stmt.span(), ControlKind::Continue, ControlRegionId(0));
     }
 
     fn visit_return_stmt(&mut self, stmt: &swc_ecma_ast::ReturnStmt) {
@@ -418,7 +420,7 @@ impl Visit for FactBuilder<'_> {
             stmt.span(),
             FactPayload::Control {
                 kind: ControlKind::Return,
-                region: super::ControlRegionId(0),
+                region: ControlRegionId(0),
                 return_value: value,
             },
         );

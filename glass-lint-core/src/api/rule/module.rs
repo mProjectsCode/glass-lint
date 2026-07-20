@@ -74,7 +74,7 @@ impl fmt::Display for ModuleSpecifierPattern {
 
 #[cfg(test)]
 mod tests {
-    use super::ModuleSpecifierPattern;
+    use super::*;
 
     #[test]
     fn package_patterns_obey_boundaries() {

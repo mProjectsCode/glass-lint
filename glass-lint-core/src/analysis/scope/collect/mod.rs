@@ -12,30 +12,25 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use history::AssignmentHistory;
 use smol_str::SmolStr;
-use swc_common::{BytePos, Span, Spanned};
-use swc_ecma_ast::{
-    ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CatchClause, ClassDecl, Expr, FnDecl,
-    ForInStmt, ForOfStmt, ForStmt, Function, ImportDecl, ImportSpecifier, ObjectPatProp, Pat,
-    SimpleAssignTarget, SwitchStmt, VarDecl, VarDeclKind, WithStmt,
-};
-use swc_ecma_visit::{Visit, VisitWith};
+use swc_common::{BytePos, Span};
+use swc_ecma_ast::{ArrowExpr, Expr, Function, Pat, VarDeclKind};
+use swc_ecma_visit::VisitWith;
 
-use super::{
-    super::{
-        syntax::{
-            collect_pat_bindings, function_prototype_builtin, is_function_constructor_member,
-            member_expression_chain, member_property_name, member_root_identifier,
-            module_export_name,
-        },
-        value::{BindingId, BindingVersion, FunctionId, SymbolPath},
-    },
-    AliasAssignment, BindingProvenance, BoundArgument, LexicalScope, ScopeEffect, ScopeGraph,
-    ScopeId, ScopeKind, ScopedName,
-    query::rooted::{RootedExprContext, rooted_expr_chain_with},
-};
 use crate::{
     Environment,
-    analysis::{name::NameId, value::NamePath},
+    analysis::{
+        name::NameId,
+        scope::{
+            AliasAssignment, BindingProvenance, LexicalScope, ScopeEffect, ScopeGraph,
+            ScopeGraphParts, ScopeId, ScopeKind, ScopedName,
+            query::rooted::{RootedExprContext, rooted_expr_chain_with},
+        },
+        syntax::{
+            collect_pat_bindings, function_prototype_builtin, is_function_constructor_member,
+            member_property_name, member_root_identifier,
+        },
+        value::{BindingId, BindingVersion, FunctionId, NamePath, SymbolPath},
+    },
 };
 
 pub(super) mod aliases;
@@ -211,10 +206,7 @@ impl<'a> LexicalScopeCollector<'a> {
         let mut next_function_id = 0u32;
         for (scope, lexical_scope) in self.scopes.iter().enumerate() {
             let scope = ScopeId::from(scope);
-            if matches!(
-                lexical_scope.kind,
-                super::ScopeKind::Program | super::ScopeKind::Function
-            ) {
+            if matches!(lexical_scope.kind, ScopeKind::Program | ScopeKind::Function) {
                 function_ids.insert(scope, FunctionId(next_function_id));
                 next_function_id = next_function_id.saturating_add(1);
             }
@@ -224,9 +216,10 @@ impl<'a> LexicalScopeCollector<'a> {
             .function_scopes
             .iter()
             .filter_map(|((scope, name), (function_scope, _))| {
-                function_ids.get(function_scope).copied().map(|function| {
-                    (Self::scoped_name_by_id(*scope, *name), function)
-                })
+                function_ids
+                    .get(function_scope)
+                    .copied()
+                    .map(|function| (Self::scoped_name_by_id(*scope, *name), function))
             })
             .collect();
         let function_aliases = self
@@ -252,7 +245,7 @@ impl<'a> LexicalScopeCollector<'a> {
         let property_assignments = self.property_assignments;
         let rooted_mutations = self.rooted_property_mutations;
         let dynamic_evals = self.dynamic_evals;
-        let mut graph = ScopeGraph::from_parts(super::ScopeGraphParts {
+        let mut graph = ScopeGraph::from_parts(ScopeGraphParts {
             environment: environment.clone(),
             names: self.names,
             scopes: self.scopes,
@@ -371,10 +364,7 @@ impl<'a> LexicalScopeCollector<'a> {
             self.name_exhausted = true;
             return;
         };
-        let next = self
-            .version_counters
-            .entry((scope, name_id))
-            .or_insert(0);
+        let next = self.version_counters.entry((scope, name_id)).or_insert(0);
         *next = next.saturating_add(1);
         let version = BindingVersion(*next);
         self.latest_assignments
@@ -599,6 +589,7 @@ impl RootedExprContext for LexicalScopeCollector<'_> {
 
 #[cfg(test)]
 mod tests {
+    use swc_common::Spanned;
     use swc_ecma_visit::VisitWith;
 
     use super::*;

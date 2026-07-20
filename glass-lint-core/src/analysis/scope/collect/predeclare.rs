@@ -11,9 +11,9 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use super::{
-    super::{super::syntax::module_export_name, BindingProvenance, ScopeKind},
-    LexicalScopeCollector,
+use crate::analysis::{
+    scope::{BindingProvenance, ScopeKind, collect::LexicalScopeCollector},
+    syntax::module_export_name,
 };
 
 pub(super) struct PredeclareVisitor<'a, 'b> {

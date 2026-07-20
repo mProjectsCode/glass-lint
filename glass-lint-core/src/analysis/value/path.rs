@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use super::super::name::NameId;
+use crate::analysis::name::NameId;
 
 const MAX_PATH_NODES: usize = 1 << 20;
 

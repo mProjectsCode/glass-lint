@@ -9,15 +9,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use indexmap::IndexSet;
 use smol_str::SmolStr;
 
-use super::{
-    effect::{EffectUse, FunctionEffect},
-    index::FlowId,
-    requirements::RequirementSet,
-};
 use crate::{
     analysis::{
         ProjectSemanticModel,
         facts::FactId,
+        flow::{
+            effect::{EffectUse, FunctionEffect},
+            index::FlowId,
+            requirements::RequirementSet,
+        },
         value::{FunctionId, ValueId},
     },
     api::{
@@ -138,7 +138,8 @@ struct CallContext {
 }
 
 #[derive(Default)]
-/// Deduplicating insertion-ordered worklist for bounded interprocedural contexts.
+/// Deduplicating insertion-ordered worklist for bounded interprocedural
+/// contexts.
 struct ContextWorklist {
     contexts: IndexSet<CallContext>,
 }

@@ -1,6 +1,8 @@
 //! Function identity queries across lexical scopes and aliases.
 
-use super::{BindingProvenance, Expr, FunctionId, ScopeGraph, ScopeId, Span};
+use crate::analysis::scope::query::{
+    BindingProvenance, Expr, FunctionId, ScopeGraph, ScopeId, Span,
+};
 
 impl ScopeGraph<'_> {
     /// Find the nearest enclosing function identity for a lexical scope.

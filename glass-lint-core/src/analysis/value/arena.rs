@@ -8,10 +8,9 @@
 use indexmap::IndexSet;
 use smol_str::SmolStr;
 
-use super::{BindingKey, ValueId};
 use crate::analysis::{
     name::{NameId, NameTable},
-    value::NamePath,
+    value::{BindingKey, NamePath, ValueId},
 };
 
 pub(in crate::analysis) const MAX_VALUES: usize = 65_536;

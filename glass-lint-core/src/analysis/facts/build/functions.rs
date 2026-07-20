@@ -8,9 +8,12 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Spanned;
 use swc_ecma_ast::ClassMethod;
 
-use super::{
-    ArrowExpr, BinExpr, BinaryOp, ClassDecl, ClassExpr, FactBuilder, FactKind, FactPayload, FnDecl,
-    Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
+use crate::analysis::facts::{
+    ClassFactRole,
+    build::{
+        ArrowExpr, BinExpr, BinaryOp, ClassDecl, ClassExpr, FactBuilder, FactKind, FactPayload,
+        FnDecl, Function, FunctionBoundary, Pat, PathId, Span, VisitWith,
+    },
 };
 
 impl FactBuilder<'_> {
@@ -144,7 +147,7 @@ impl FactBuilder<'_> {
             class_decl.ident.span(),
             FactPayload::Class {
                 name: Some(name),
-                role: super::super::ClassFactRole::Declaration,
+                role: ClassFactRole::Declaration,
                 provenance: provenance.clone(),
             },
         );
@@ -165,7 +168,7 @@ impl FactBuilder<'_> {
                 ident.span(),
                 FactPayload::Class {
                     name: Some(ident.sym.to_smolstr()),
-                    role: super::super::ClassFactRole::Declaration,
+                    role: ClassFactRole::Declaration,
                     provenance: provenance.clone(),
                 },
             );
@@ -183,7 +186,7 @@ impl FactBuilder<'_> {
                 binary.right.span(),
                 FactPayload::Class {
                     name: None,
-                    role: super::super::ClassFactRole::InstanceofOperand,
+                    role: ClassFactRole::InstanceofOperand,
                     provenance,
                 },
             );

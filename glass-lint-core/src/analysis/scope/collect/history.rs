@@ -6,9 +6,9 @@
 
 use std::collections::BTreeMap;
 
-use super::super::{
-    super::name::{NameId, NameTableCtx},
-    BindingProvenance, ScopeId,
+use crate::analysis::{
+    name::{NameId, NameTableCtx},
+    scope::{BindingProvenance, ScopeId},
 };
 
 #[derive(Debug)]

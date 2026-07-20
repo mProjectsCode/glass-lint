@@ -1,4 +1,4 @@
-use super::*;
+use crate::project::tests::*;
 
 #[test]
 fn linked_internal_aliases_preserve_external_and_global_call_identity() {

@@ -6,10 +6,10 @@
 
 use smol_str::ToSmolStr;
 
-use super::{
-    CallExpr, Callee, Expr, Lit, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
-};
 use crate::analysis::{
+    resolution::{
+        CallExpr, Callee, Expr, Lit, ResolvedValue, Resolver, SymbolCallProvenance, Value, ValueId,
+    },
     syntax::{BudgetComponent, UnknownReason},
     value::MAX_VALUES,
 };
@@ -25,8 +25,7 @@ impl Resolver<'_> {
         let provenance = self.call_provenance_for_value(id);
         if matches!(
             provenance,
-            SymbolCallProvenance::Global { .. }
-                | SymbolCallProvenance::ModuleExport { .. }
+            SymbolCallProvenance::Global { .. } | SymbolCallProvenance::ModuleExport { .. }
         ) {
             return provenance;
         }

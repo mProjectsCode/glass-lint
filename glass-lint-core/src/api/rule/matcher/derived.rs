@@ -1,6 +1,6 @@
 //! Constructor, class, and returned/instance member matcher declarations.
 
-use super::SymbolProvenance;
+use crate::api::rule::{ModuleSpecifierPattern, matcher::SymbolProvenance};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Matcher for a constructor invocation.
@@ -42,7 +42,7 @@ impl ConstructorMatcher {
         Ok(Self {
             name: export.into(),
             provenance: SymbolProvenance::PackageModuleExport {
-                module: super::super::ModuleSpecifierPattern::package(module)?,
+                module: ModuleSpecifierPattern::package(module)?,
             },
         })
     }
@@ -99,7 +99,7 @@ impl ClassMatcher {
         Ok(Self {
             name: export.into(),
             provenance: SymbolProvenance::PackageModuleExport {
-                module: super::super::ModuleSpecifierPattern::package(module)?,
+                module: ModuleSpecifierPattern::package(module)?,
             },
         })
     }
@@ -147,7 +147,7 @@ pub struct InstanceMemberCallMatcher {
     /// Exporting module specifier.
     pub module: String,
     /// Optional boundary-aware package pattern for the exporting module.
-    pub module_pattern: Option<super::super::ModuleSpecifierPattern>,
+    pub module_pattern: Option<ModuleSpecifierPattern>,
     /// Exported constructor/factory name.
     pub export: String,
     /// Instance member name.

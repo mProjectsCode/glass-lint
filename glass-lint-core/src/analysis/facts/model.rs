@@ -2,12 +2,14 @@
 
 use smol_str::SmolStr;
 
-use super::super::{
-    name::NameId,
-    syntax::{SymbolCallProvenance, SymbolMemberProvenance},
-    value::{FunctionId, PathId, SymbolPath, ValueId},
+use crate::{
+    ByteRange,
+    analysis::{
+        name::NameId,
+        syntax::{SymbolCallProvenance, SymbolMemberProvenance},
+        value::{FunctionId, NamePath, PathId, SymbolPath, ValueId},
+    },
 };
-use crate::{ByteRange, analysis::value::NamePath};
 
 // ── Fact stream types ───────────────────────────────────────────────────
 
@@ -38,7 +40,7 @@ pub(in crate::analysis) struct ControlRegionId(pub(in crate::analysis) u32);
 
 #[cfg(test)]
 mod control_region_tests {
-    use super::ControlRegionId;
+    use super::*;
 
     #[test]
     fn control_regions_are_typed_and_orderable() {

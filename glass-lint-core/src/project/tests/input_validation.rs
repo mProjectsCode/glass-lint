@@ -1,4 +1,4 @@
-use super::*;
+use crate::project::tests::*;
 
 #[test]
 fn validation_normalizes_and_sorts_sources_and_edges() {

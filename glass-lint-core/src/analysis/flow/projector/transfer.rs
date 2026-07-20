@@ -4,8 +4,13 @@
 //! flow result or live alias. Unknown and invalidated values are unbound so
 //! later sinks cannot inherit stale state.
 
-use super::{CallArgInfo, FactId, FactPayload, FlowState, ObjectFlowProjector, ObjectId, ValueId};
-use crate::analysis::{facts::FactStream, value::NamePath};
+use crate::analysis::{
+    facts::FactStream,
+    flow::projector::{
+        CallArgInfo, FactId, FactPayload, FlowState, ObjectFlowProjector, ObjectId, ValueId,
+    },
+    value::NamePath,
+};
 
 #[derive(Debug, Clone)]
 pub(super) struct SourceCall {

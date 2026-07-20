@@ -1,6 +1,6 @@
 //! Bounded constant queries backed by lexical provenance.
 
-use super::{
+use crate::analysis::scope::query::{
     BindingProvenance, ConstValue, EvalState, Expr, Ident, Lookup, MemberExpr, ScopeGraph, Span,
     constant,
 };
@@ -14,7 +14,6 @@ impl ScopeGraph<'_> {
         self.binding_with_scope_at(ident.sym.as_ref(), ident.span)
             .is_some_and(|(scope, _)| self.is_mutable_static_object(scope, ident.sym.as_ref()))
     }
-
 }
 
 impl Lookup for ScopeGraph<'_> {

@@ -18,22 +18,25 @@ use std::{
     collections::{BTreeMap, BTreeSet},
 };
 
-use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr};
 #[cfg(test)]
 use swc_ecma_ast::Program;
-#[cfg(test)]
-use crate::analysis::name::NameTable;
+use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr};
 
-use super::{
-    lowering::{ParserSpanKey, SpanNormalizer},
-    name::NameTableCtx,
-    scope::ScopeGraph,
-    syntax::{
-        SymbolCallProvenance, SymbolMemberProvenance,
-        constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
+use crate::{
+    ByteRange,
+    analysis::{
+        lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
+        name::{NameExhausted, NameId, NameTableCtx},
+        scope::{BoundArgument, ScopeGraph},
+        syntax::{
+            SymbolCallProvenance, SymbolMemberProvenance,
+            constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
+        },
+        value::{BindingKey, NamePath, SymbolPath, Value, ValueId, ValueTable},
     },
-    value::{BindingKey, MAX_VALUES, NamePath, SymbolPath, Value, ValueId, ValueTable},
 };
+#[cfg(test)]
+use crate::{Environment, analysis::name::NameTable};
 
 #[derive(Debug, Clone)]
 pub(super) struct ResolvedValue {
@@ -50,7 +53,7 @@ pub(super) struct ResolvedValue {
     /// Provenance for a member read from a function or constructor result.
     pub(super) returned_member: Option<(SymbolPath, SymbolPath)>,
     /// Arguments captured by a modeled callable value such as `bind`.
-    pub(super) bound_arguments: Option<Vec<Option<super::scope::BoundArgument>>>,
+    pub(super) bound_arguments: Option<Vec<Option<BoundArgument>>>,
     /// The source spelling before aliases are expanded.
     pub(super) syntactic_chain: Option<SymbolPath>,
 }
@@ -157,7 +160,7 @@ impl<'a> Resolver<'a> {
 
     #[cfg(test)]
     pub(in crate::analysis) fn collect(program: &Program) -> Self {
-        let mut environment = crate::Environment::default();
+        let mut environment = Environment::default();
         environment
             .add_globals([
                 "app", "client", "document", "fetch", "host", "require", "vault", "window",
@@ -172,23 +175,25 @@ impl<'a> Resolver<'a> {
     #[cfg(test)]
     pub(in crate::analysis) fn collect_with_environment(
         program: &Program,
-        environment: &crate::Environment,
+        environment: &Environment,
         coordinates: SpanNormalizer,
     ) -> Self {
-        Self::collect_with_name_limit(program, environment, coordinates, super::name::MAX_NAMES)
+        use crate::analysis::name::MAX_NAMES;
+
+        Self::collect_with_name_limit(program, environment, coordinates, MAX_NAMES)
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn collect_with_name_limit(
         program: &Program,
-        environment: &crate::Environment,
+        environment: &Environment,
         coordinates: SpanNormalizer,
         name_limit: usize,
     ) -> Self {
-        let table = Box::new(std::cell::RefCell::new(
-            super::name::NameTable::with_max_entries(name_limit),
-        ));
-        let leaked: &'static std::cell::RefCell<super::name::NameTable> = Box::leak(table);
+        use std::cell::RefCell;
+
+        let table = Box::new(RefCell::new(NameTable::with_max_entries(name_limit)));
+        let leaked: &'static RefCell<NameTable> = Box::leak(table);
         let names = NameTableCtx(leaked);
         let scopes = ScopeGraph::collect_with_environment(program, environment, names);
         Self::new(scopes, names, coordinates)
@@ -208,10 +213,7 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    pub(super) fn intern_name(
-        &self,
-        name: &str,
-    ) -> Result<super::name::NameId, super::name::NameExhausted> {
+    pub(super) fn intern_name(&self, name: &str) -> Result<NameId, NameExhausted> {
         self.names.intern(name)
     }
 
@@ -223,7 +225,7 @@ impl<'a> Resolver<'a> {
         self.names.exhausted()
     }
 
-    pub(super) fn name_exhaustion(&self) -> Option<super::name::NameExhausted> {
+    pub(super) fn name_exhaustion(&self) -> Option<NameExhausted> {
         self.names.exhaustion()
     }
 
@@ -235,7 +237,7 @@ impl<'a> Resolver<'a> {
     pub(in crate::analysis) fn normalize_span(
         &self,
         span: swc_common::Span,
-    ) -> Result<crate::ByteRange, super::lowering::InvalidParserSpan> {
+    ) -> Result<ByteRange, InvalidParserSpan> {
         self.coordinates.normalize(span)
     }
 
@@ -267,13 +269,13 @@ impl<'a> Resolver<'a> {
 mod tests {
     use std::cell::RefCell;
 
-    use super::{Resolver, ResolverState, SymbolCallProvenance, ValueId, ValueTable};
-    use crate::analysis::name::NameTable;
+    use super::*;
     use crate::analysis::{
-        name::NameTableCtx,
+        lowering::SpanNormalizer,
+        name::{NameTable, NameTableCtx},
         scope::ScopeGraph,
         syntax::{BudgetComponent, UnknownReason},
-        value::MAX_VALUES,
+        value::{MAX_VALUES, Value},
     };
 
     #[test]
@@ -281,7 +283,7 @@ mod tests {
         let table = RefCell::new(NameTable::default());
         let names = NameTableCtx(&table);
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, crate::analysis::lowering::SpanNormalizer::default());
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
         assert_eq!(
             resolver.call_provenance_for_value(ValueId::UNKNOWN),
             SymbolCallProvenance::Unknown(UnknownReason::Unsupported)
@@ -289,7 +291,7 @@ mod tests {
 
         let mut values = ValueTable::default();
         for value in 0..MAX_VALUES {
-            let _ = values.intern(super::Value::StaticNumber(value));
+            let _ = values.intern(Value::StaticNumber(value));
         }
         assert!(values.exhausted());
         let table = RefCell::new(NameTable::default());
@@ -298,7 +300,7 @@ mod tests {
         let resolver = Resolver {
             scopes,
             names,
-            coordinates: crate::analysis::lowering::SpanNormalizer::default(),
+            coordinates: SpanNormalizer::default(),
             state: RefCell::new(ResolverState {
                 values,
                 ..ResolverState::default()

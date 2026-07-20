@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::{
+use crate::project::{
     ModuleId, ProjectInput, ProjectInputError, ProjectRelativePath, ResolutionRequestKey,
     ResolverOutcome,
 };

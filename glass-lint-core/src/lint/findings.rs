@@ -1,10 +1,10 @@
 //! Conversion of semantic evidence into located lint findings.
 
-use super::{Linter, ranges::remove_contained_ranges};
 use crate::{
     Evidence, Finding, ProjectRelativePath, SourceLocation,
     api::classification::{ClassificationEvidence, ClassificationResult, MatchedCapability},
     diagnostic::{SourceLineIndex, SourceRange},
+    lint::{Linter, ranges::remove_contained_ranges},
 };
 
 impl Linter {

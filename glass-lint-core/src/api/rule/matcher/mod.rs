@@ -14,7 +14,7 @@ pub use flow::*;
 pub use member::*;
 use smol_str::ToSmolStr;
 
-use super::ModuleSpecifierPattern;
+use crate::api::rule::{ModuleSpecifierPattern, validation};
 
 #[derive(Debug, Clone, Default)]
 /// Collection of matcher families before validation and normalization.
@@ -400,7 +400,7 @@ impl MatcherSet {
 
     /// Validate all declarations without normalizing or mutating them.
     pub fn validate(&self) -> Result<(), String> {
-        super::validation::validate(self)
+        validation::validate(self)
     }
 
     /// Whether no matcher family contains a declaration.

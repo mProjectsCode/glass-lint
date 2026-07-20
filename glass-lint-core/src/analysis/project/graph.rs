@@ -4,11 +4,10 @@
 //! core's linker. Only internal targets become edges; all other outcomes are
 //! retained as diagnostics or unknown provenance.
 
-use super::super::{
-    BTreeMap, ExportResolution, LinkedModuleTarget, MAX_SCC_SIZE, ModuleId, ProjectSemanticModel,
-};
 use crate::{
     analysis::{
+        BTreeMap, ExportResolution, LinkedModuleTarget, MAX_SCC_SIZE, ModuleId,
+        ProjectSemanticModel,
         module::ModuleRequestRole,
         status::{AnalysisComponent, IncompleteReason},
     },

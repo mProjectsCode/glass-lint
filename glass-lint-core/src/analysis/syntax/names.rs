@@ -11,7 +11,10 @@ use swc_ecma_ast::{
     Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp, OptChainBase, Pat,
 };
 
-use crate::analysis::SymbolPath;
+use crate::analysis::{
+    SymbolPath,
+    syntax::constant::{NoLookup, evaluate},
+};
 
 /// Find the lexical root identifier of a member/optional-chain expression.
 pub fn member_root_identifier(member: &MemberExpr) -> Option<&Ident> {
@@ -213,5 +216,5 @@ fn is_function_like_expr(expr: &Expr) -> bool {
 }
 
 fn static_property_name(expr: &Expr) -> Option<SmolStr> {
-    super::constant::evaluate(expr, &super::constant::NoLookup).property_key()
+    evaluate(expr, &NoLookup).property_key()
 }

@@ -12,15 +12,18 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use smol_str::SmolStr;
 
-use super::{
-    super::{
-        facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, ParameterBinding},
+use crate::{
+    analysis::{
+        facts::{
+            CallArgInfo, ControlKind, FactId, FactPayload, FactStream, ParameterBinding,
+            SemanticFact,
+        },
+        flow::table::FunctionTable,
         syntax::SymbolCallProvenance,
-        value::{FunctionId, PathId, ValueId},
+        value::{FunctionId, NamePath, PathId, ValueId},
     },
-    table::FunctionTable,
+    budget::Budget,
 };
-use crate::{analysis::value::NamePath, budget::Budget};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// A parameter identity plus the destructured path that selects it.
@@ -482,7 +485,7 @@ impl FunctionEffect {
         }
     }
 
-    fn record_call(&mut self, fact: &super::super::facts::SemanticFact, budget: &mut Budget) {
+    fn record_call(&mut self, fact: &SemanticFact, budget: &mut Budget) {
         let FactPayload::Call {
             syntactic_chain,
             rooted_chain,

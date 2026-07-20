@@ -356,7 +356,7 @@ pub struct RuleMetadata {
 
 #[cfg(test)]
 mod tests {
-    use super::{ByteRange, InvalidSourceBoundary, SourceLineIndex};
+    use super::*;
 
     #[test]
     fn byte_ranges_reject_reversed_offsets_and_preserve_boundaries() {

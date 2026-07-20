@@ -8,13 +8,16 @@
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::{
-    BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
-    FactKind, FactPayload, InstanceCallable, MemberExpr, OptChainBase, ParameterBinding, Pat,
-    PathId, PathSegmentInput, Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId,
-    ValueProjection, VisitWith, effective_callee_expr, member_property_name,
+use crate::analysis::{
+    SymbolPath,
+    facts::build::{
+        BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
+        FactKind, FactPayload, InstanceCallable, MemberExpr, OptChainBase, ParameterBinding, Pat,
+        PathId, PathSegmentInput, Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance,
+        ValueId, ValueProjection, VisitWith, effective_callee_expr, member_property_name,
+    },
+    value::FunctionId,
 };
-use crate::analysis::{SymbolPath, value::FunctionId};
 
 impl FactBuilder<'_> {
     /// Record a direct, imported, optional, or callable-wrapper invocation in
@@ -110,7 +113,7 @@ impl FactBuilder<'_> {
                                     value: ValueId::UNKNOWN,
                                 }],
                                 spread: false,
-                                provenance: super::SymbolCallProvenance::Local,
+                                provenance: SymbolCallProvenance::Local,
                             },
                             FactBuilder::bound_arg_info,
                         )
@@ -443,7 +446,7 @@ impl FactBuilder<'_> {
                                 value: ValueId::UNKNOWN,
                             }],
                             spread: false,
-                            provenance: super::SymbolCallProvenance::Local,
+                            provenance: SymbolCallProvenance::Local,
                         })
                         .collect()
                 }),

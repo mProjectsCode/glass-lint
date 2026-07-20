@@ -397,7 +397,7 @@ mod tests {
 
     use swc_ecma_ast::{Expr, ExprStmt, MemberExpr, Program, Stmt};
 
-    use super::{ConstValue, Lookup, MAX_ARRAY_ITEMS, MAX_STRING_BYTES, evaluate};
+    use super::*;
 
     #[derive(Default)]
     struct TestLookup {
@@ -406,14 +406,14 @@ mod tests {
     }
 
     impl Lookup for TestLookup {
-        fn ident(&self, ident: &swc_ecma_ast::Ident, _state: &mut super::EvalState) -> ConstValue {
+        fn ident(&self, ident: &swc_ecma_ast::Ident, _state: &mut EvalState) -> ConstValue {
             self.values
                 .get(ident.sym.as_ref())
                 .cloned()
                 .unwrap_or(ConstValue::Unknown)
         }
 
-        fn member(&self, _member: &MemberExpr, _state: &mut super::EvalState) -> ConstValue {
+        fn member(&self, _member: &MemberExpr, _state: &mut EvalState) -> ConstValue {
             ConstValue::Unknown
         }
 
@@ -427,11 +427,11 @@ mod tests {
     }
 
     impl Lookup for RecursiveLookup {
-        fn ident(&self, _ident: &swc_ecma_ast::Ident, state: &mut super::EvalState) -> ConstValue {
+        fn ident(&self, _ident: &swc_ecma_ast::Ident, state: &mut EvalState) -> ConstValue {
             state.evaluate(&self.expression, self)
         }
 
-        fn member(&self, _member: &MemberExpr, _state: &mut super::EvalState) -> ConstValue {
+        fn member(&self, _member: &MemberExpr, _state: &mut EvalState) -> ConstValue {
             ConstValue::Unknown
         }
 

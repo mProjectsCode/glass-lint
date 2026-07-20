@@ -13,9 +13,9 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::VisitWith;
 
-use super::FactBuilder;
 use crate::{
     analysis::{
+        facts::build::FactBuilder,
         module::{
             COMMONJS_EXPORTS, COMMONJS_MODULE, COMMONJS_REQUIRE, DEFAULT_EXPORT, ModuleExport,
             ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,

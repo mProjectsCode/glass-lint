@@ -5,7 +5,7 @@ use std::time::Duration;
 use glass_lint_core::AnalysisReport;
 use sha2::{Digest, Sha256};
 
-use super::{ProfileOperationCounts, ProfileRepetitionSummary, ProfileWorkloadSummary};
+use crate::{ProfileOperationCounts, ProfileRepetitionSummary, ProfileWorkloadSummary};
 
 pub(super) fn all_diagnostic_count(report: &AnalysisReport) -> usize {
     report.diagnostics.len()

@@ -8,8 +8,12 @@
 //! Abrupt exits are held by their nearest relevant frame so `finally` and loop
 //! semantics cannot accidentally make one path definite on another.
 
-use super::{AbruptExit, ControlFrame, ControlKind, FlowEnvironment, ObjectFlowProjector};
-use crate::analysis::facts::ControlRegionId;
+use crate::analysis::{
+    facts::ControlRegionId,
+    flow::projector::{
+        AbruptExit, ControlFrame, ControlKind, FlowEnvironment, ObjectFlowProjector,
+    },
+};
 
 impl ObjectFlowProjector<'_, '_> {
     /// Apply one balanced control marker to the current environment.

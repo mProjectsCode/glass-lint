@@ -1,10 +1,12 @@
 //! Rule catalog construction and duplicate-ID validation.
 
-use super::{
-    super::rule::{CompiledCatalogError, Rule},
-    CompiledRule,
+use crate::{
+    Rule,
+    api::{
+        compiler::{CompiledRule, CompiledRuleSelection},
+        rule::CompiledCatalogError,
+    },
 };
-use crate::api::compiler::CompiledRuleSelection;
 
 #[derive(Debug, Clone)]
 /// Compiled rules in deterministic declaration order.

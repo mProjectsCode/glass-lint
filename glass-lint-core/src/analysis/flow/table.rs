@@ -1,6 +1,6 @@
 //! Dense tables for identities allocated by the fact builder.
 
-use super::super::value::FunctionId;
+use crate::analysis::value::FunctionId;
 
 #[derive(Debug, Clone)]
 /// Sparse dense-indexed storage for function identities.

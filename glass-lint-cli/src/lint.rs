@@ -120,7 +120,7 @@ mod tests {
 
     use glass_lint_project::{ProjectLoadOptions, ProjectSelection, SourceCorpus};
 
-    use super::project_selection;
+    use super::*;
 
     #[test]
     fn directory_selection_prefers_local_tsconfig() {

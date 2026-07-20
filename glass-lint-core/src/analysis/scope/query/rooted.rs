@@ -6,8 +6,10 @@
 
 use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase};
 
-use super::super::{BindingProvenance, ScopeGraph};
-use crate::analysis::SymbolPath;
+use crate::analysis::{
+    SymbolPath,
+    scope::{BindingProvenance, ScopeGraph},
+};
 
 pub(in crate::analysis) trait RootedExprContext {
     /// Resolve an identifier to a rooted chain at its use position.

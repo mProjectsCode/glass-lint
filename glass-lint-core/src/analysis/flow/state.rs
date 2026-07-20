@@ -4,11 +4,14 @@
 //! object. Requirement updates are monotone within a path; control joins may
 //! remove path-local keys before the state is used again.
 
-use super::{
-    super::{facts::FactId, flow::index::FlowId, value::ObjectId},
-    requirements::RequirementSet,
+use crate::{
+    analysis::{
+        facts::FactId,
+        flow::{index::FlowId, requirements::RequirementSet},
+        value::ObjectId,
+    },
+    api::compiler::CompiledObjectFlow,
 };
-use crate::api::compiler::CompiledObjectFlow;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Lifecycle of one allocated object under one selected flow matcher.

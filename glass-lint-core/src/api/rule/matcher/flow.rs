@@ -6,7 +6,7 @@
 
 use smol_str::SmolStr;
 
-use super::MemberCallMatcher;
+use crate::api::rule::{matcher::MemberCallMatcher, validation::validate_object_flow};
 
 /// A context-independent predicate over an argument value.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -406,7 +406,7 @@ impl ObjectFlowMatcherBuilder {
             condition: self.condition,
             completion: self.completion,
         };
-        super::super::validation::validate_object_flow(&matcher, "flow")?;
+        validate_object_flow(&matcher, "flow")?;
         Ok(matcher)
     }
 }

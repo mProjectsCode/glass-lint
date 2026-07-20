@@ -19,18 +19,18 @@ use std::collections::BTreeMap;
 use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable};
 use transfer::SourceCall;
 
-use super::{
-    super::{
+use crate::{
+    analysis::{
         facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary},
+        flow::{
+            effect::FunctionEffects,
+            index::{FlowId, FlowIndex, FlowLimits},
+            state::FlowState,
+            summary::FunctionSummaries,
+        },
+        name::NameTable,
         value::{ObjectId, ValueId},
     },
-    effect::FunctionEffects,
-    index::{FlowId, FlowIndex, FlowLimits},
-    state::FlowState,
-    summary::FunctionSummaries,
-};
-use crate::{
-    analysis::name::NameTable,
     api::{
         classification::{ClassificationEvidence, MatchKind},
         compiler::{CompiledObjectFlow, CompiledObjectRequirement},

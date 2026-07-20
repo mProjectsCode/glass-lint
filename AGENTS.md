@@ -46,6 +46,9 @@ disclosures, profiles, or rule policy. Rule IDs are `provider:name`, such as
   resource exhaustion.
 - Delete obsolete paths after migrations; update all callers in the same
   change.
+- Prefer `use create::foo` over repeating `create::foo` all over the place
+- Prefer `use crate::foo` over `use super::foo`. `use super::*` is only
+  allowed in unit test modules
 
 ## Tests and completion
 

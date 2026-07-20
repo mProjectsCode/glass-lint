@@ -1,5 +1,4 @@
-use super::*;
-use crate::AnalysisLimits;
+use crate::{AnalysisLimits, project::tests::*};
 
 fn configured_linter(limits: AnalysisLimits) -> crate::Linter {
     test_linter_with_selection(crate::RuleSelection::default(), limits)

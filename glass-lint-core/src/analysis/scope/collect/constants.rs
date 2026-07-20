@@ -6,8 +6,10 @@
 
 use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
-use super::{super::BindingProvenance, LexicalScopeCollector};
-use crate::analysis::syntax::constant::{self, ConstValue, EvalState, Lookup};
+use crate::analysis::{
+    scope::{BindingProvenance, collect::LexicalScopeCollector},
+    syntax::constant::{self, ConstValue, EvalState, Lookup},
+};
 
 impl Lookup for LexicalScopeCollector<'_> {
     /// Resolve only constant-shaped binding provenances from the current scope.

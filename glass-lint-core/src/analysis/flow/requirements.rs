@@ -1,10 +1,11 @@
 //! Requirement joins used by local and cross-module flow.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    hash::{Hash, Hasher},
+};
 
-use super::super::facts::FactId;
-
-use std::hash::{Hash, Hasher};
+use crate::analysis::facts::FactId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 /// Parameter-indexed requirements proven along the current flow path.

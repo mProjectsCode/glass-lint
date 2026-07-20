@@ -1,7 +1,9 @@
 //! Callable matcher declarations and provenance modes.
 
-use super::{ArgumentConstraint, ArgumentMatcher, ValueMatcher};
-use crate::api::rule::ModuleSpecifierPattern;
+use crate::api::rule::{
+    ModuleSpecifierPattern,
+    matcher::{ArgumentConstraint, ArgumentMatcher, ValueMatcher},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Matcher for a callable symbol and optional argument predicates.

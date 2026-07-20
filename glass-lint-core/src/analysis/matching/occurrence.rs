@@ -8,8 +8,10 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use super::super::{facts::FactId, name::NameId};
-use crate::{ByteRange, analysis::value::NamePath};
+use crate::{
+    ByteRange,
+    analysis::{facts::FactId, name::NameId, value::NamePath},
+};
 
 /// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different

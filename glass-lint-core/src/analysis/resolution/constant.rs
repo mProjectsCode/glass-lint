@@ -2,7 +2,7 @@
 
 use smol_str::SmolStr;
 
-use super::{BindingKey, ConstValue, Resolver, Value, ValueId};
+use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, ValueId};
 
 impl Resolver<'_> {
     /// Read a bounded constant value from the abstract value arena.

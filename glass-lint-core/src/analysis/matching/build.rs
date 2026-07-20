@@ -4,11 +4,16 @@
 //! occurrence without consulting selected rules; query selection happens only
 //! after normalization so catalog order cannot affect the shared model.
 
-use super::{
-    FactPayload, FactStream, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
-    occurrence::{InstanceMemberKey, ModuleExportKey, ReturnedMemberKey},
+use crate::analysis::{
+    SymbolPath,
+    facts::{ClassFactRole, SemanticFact},
+    matching::{
+        FactPayload, FactStream, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
+        occurrence::{InstanceMemberKey, ModuleExportKey, ReturnedMemberKey},
+    },
+    name::NameTable,
+    value::NamePath,
 };
-use crate::analysis::{SymbolPath, name::NameTable, value::NamePath};
 
 impl OccurrenceIndexes {
     /// Sort and deduplicate every occurrence index after fact collection.
@@ -51,7 +56,7 @@ impl OccurrenceIndexes {
         });
     }
 
-    fn record_fact(&mut self, fact: &super::super::facts::SemanticFact, names: &NameTable) {
+    fn record_fact(&mut self, fact: &SemanticFact, names: &NameTable) {
         match &fact.payload {
             FactPayload::Call { .. } => self.record_call_fact(fact, names),
 
@@ -79,7 +84,7 @@ impl OccurrenceIndexes {
                 provenance,
                 role,
             } => {
-                if matches!(role, super::super::facts::ClassFactRole::Declaration)
+                if matches!(role, ClassFactRole::Declaration)
                     && let Some(name) = name
                 {
                     self.constructions
@@ -109,7 +114,7 @@ impl OccurrenceIndexes {
         }
     }
 
-    fn record_call_fact(&mut self, fact: &super::super::facts::SemanticFact, names: &NameTable) {
+    fn record_call_fact(&mut self, fact: &SemanticFact, names: &NameTable) {
         let FactPayload::Call {
             callee_name,
             callee_span,
@@ -140,14 +145,13 @@ impl OccurrenceIndexes {
                     *callee_span,
                 );
             }
-            SymbolCallProvenance::Local
-            | SymbolCallProvenance::Unknown(_) => {}
+            SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_) => {}
         }
         self.record_call_paths(fact, names);
         self.record_call_special_cases(fact, names);
     }
 
-    fn record_call_paths(&mut self, fact: &super::super::facts::SemanticFact, names: &NameTable) {
+    fn record_call_paths(&mut self, fact: &SemanticFact, names: &NameTable) {
         let FactPayload::Call {
             syntactic_chain,
             rooted_chain,
@@ -201,11 +205,7 @@ impl OccurrenceIndexes {
         }
     }
 
-    fn record_call_special_cases(
-        &mut self,
-        fact: &super::super::facts::SemanticFact,
-        names: &NameTable,
-    ) {
+    fn record_call_special_cases(&mut self, fact: &SemanticFact, names: &NameTable) {
         let FactPayload::Call {
             rooted_chain: _,
             unwrap,
@@ -228,11 +228,7 @@ impl OccurrenceIndexes {
         }
     }
 
-    fn record_member_read_fact(
-        &mut self,
-        fact: &super::super::facts::SemanticFact,
-        names: &NameTable,
-    ) {
+    fn record_member_read_fact(&mut self, fact: &SemanticFact, names: &NameTable) {
         let FactPayload::MemberRead {
             syntactic_chain,
             rooted_chain,
@@ -272,7 +268,7 @@ impl OccurrenceIndexes {
         }
     }
 
-    fn record_construction_fact(&mut self, fact: &super::super::facts::SemanticFact) {
+    fn record_construction_fact(&mut self, fact: &SemanticFact) {
         let FactPayload::Construction {
             callee_name,
             callee_span,
@@ -302,8 +298,7 @@ impl OccurrenceIndexes {
                     *callee_span,
                 );
             }
-            SymbolCallProvenance::Local
-            | SymbolCallProvenance::Unknown(_) => {}
+            SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_) => {}
         }
     }
 }

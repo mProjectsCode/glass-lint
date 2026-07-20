@@ -9,16 +9,14 @@ use std::{cell::Cell, collections::BTreeMap};
 use smol_str::SmolStr;
 use swc_common::{BytePos, Span};
 
-use super::{
-    super::{
+use crate::{
+    Environment,
+    analysis::{
+        name::{NameId, NameTableCtx},
+        scope::collect::{PropertyAliasAssignment, RootedPropertyMutation},
         syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
         value::{BindingId, BindingKey, BindingVersion, FunctionId, NamePath, SymbolPath},
     },
-    collect::{PropertyAliasAssignment, RootedPropertyMutation},
-};
-use crate::{
-    Environment,
-    analysis::name::{NameId, NameTableCtx},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

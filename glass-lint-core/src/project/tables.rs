@@ -8,7 +8,9 @@ use std::{
     ops::Index,
 };
 
-use super::{Evidence, ProjectInputError, ResolutionRequestKey, ResolverOutcome, SourceFile};
+use crate::project::{
+    Evidence, ProjectInputError, ResolutionRequestKey, ResolverOutcome, SourceFile,
+};
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct ReportEvidenceKey {

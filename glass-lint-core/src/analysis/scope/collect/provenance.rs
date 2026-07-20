@@ -9,15 +9,16 @@ use std::collections::BTreeMap;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{CallExpr, Callee, Expr, Lit};
 
-use super::{
-    super::{
-        super::syntax::{
-            constant::{self, ConstValue},
-            member_property_name, property_name,
-        },
+use crate::analysis::{
+    scope::{
+        BoundArgument,
+        collect::{BindingProvenance, LexicalScopeCollector},
         query::rooted::RootedExprContext,
     },
-    BindingProvenance, BoundArgument, LexicalScopeCollector,
+    syntax::{
+        constant::{self, ConstValue},
+        member_property_name, property_name,
+    },
 };
 
 impl LexicalScopeCollector<'_> {

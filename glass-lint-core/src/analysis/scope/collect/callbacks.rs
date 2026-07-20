@@ -6,14 +6,11 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Span;
 use swc_ecma_ast::{CallExpr, Callee, Expr, ObjectPatProp, Pat};
 
-use super::{
-    super::{
-        super::syntax::{member_property_name, property_name},
-        BindingProvenance, ScopeId, ScopedName,
-    },
-    LexicalScopeCollector,
+use crate::analysis::{
+    name::{NameId, NameTableCtx},
+    scope::{BindingProvenance, ScopeId, ScopedName, collect::LexicalScopeCollector},
+    syntax::{member_property_name, property_name},
 };
-use crate::analysis::name::NameId;
 
 impl LexicalScopeCollector<'_> {
     /// Resolve the proven parameter aliases shared by all compatible calls to
@@ -23,7 +20,8 @@ impl LexicalScopeCollector<'_> {
     pub fn parameter_aliases(&self) -> BTreeMap<ScopedName, BindingProvenance> {
         let mut aliases = BTreeMap::<ScopedName, Option<BindingProvenance>>::new();
         for (caller_scope, callee_name, arguments) in &self.calls {
-            let Some((scope, parameters)) = self.function_for_call(*caller_scope, *callee_name) else {
+            let Some((scope, parameters)) = self.function_for_call(*caller_scope, *callee_name)
+            else {
                 continue;
             };
             for (index, parameter) in parameters.iter().enumerate() {
@@ -77,7 +75,7 @@ impl LexicalScopeCollector<'_> {
     /// Unsupported patterns intentionally contribute no bindings: callers
     /// must not infer aliases from a shape that the collector cannot prove.
     pub(super) fn project_parameter_pattern(
-        names: super::super::super::name::NameTableCtx<'_>,
+        names: NameTableCtx<'_>,
         pattern: &Pat,
         value: &BindingProvenance,
         output: &mut BTreeMap<SmolStr, BindingProvenance>,

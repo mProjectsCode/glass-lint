@@ -2,14 +2,15 @@
 
 use smol_str::SmolStr;
 
-use super::{
-    Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
-    SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,
-};
 use crate::analysis::{
     SymbolPath,
+    resolution::{
+        Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
+        SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,
+    },
     scope::ScopeId,
     syntax::{BudgetComponent, UnknownReason},
+    value::MAX_VALUES,
 };
 
 impl Resolver<'_> {
@@ -40,15 +41,12 @@ impl Resolver<'_> {
             value => self.intern_const_value(value, seed.binding),
         };
         let call = if id == ValueId::UNKNOWN
-            && !matches!(
-                seed.call,
-                SymbolCallProvenance::Unknown(_)
-            )
+            && !matches!(seed.call, SymbolCallProvenance::Unknown(_))
             && self.value_arena_exhausted()
         {
             SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
                 component: BudgetComponent::Values,
-                limit: super::MAX_VALUES,
+                limit: MAX_VALUES,
                 observed: None,
             })
         } else {
@@ -144,7 +142,7 @@ impl Resolver<'_> {
         let call = if id == ValueId::UNKNOWN && self.value_arena_exhausted() {
             SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
                 component: BudgetComponent::Values,
-                limit: super::MAX_VALUES,
+                limit: MAX_VALUES,
                 observed: None,
             })
         } else {
@@ -331,7 +329,7 @@ impl Resolver<'_> {
         if id == ValueId::UNKNOWN && !is_unknown && self.value_arena_exhausted() {
             return Self::unknown_with_reason(UnknownReason::BudgetExhausted {
                 component: BudgetComponent::Values,
-                limit: super::MAX_VALUES,
+                limit: MAX_VALUES,
                 observed: None,
             });
         }

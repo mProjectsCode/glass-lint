@@ -7,14 +7,13 @@
 use swc_common::Span;
 use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
-use super::{
-    BindingProvenance, BoundArgument, IdentValueSeed, MemberValueSeed, ScopeGraph, ScopeId,
-    ScopeKind,
-};
 use crate::analysis::{
-    scope::collect::aliases::contains,
+    scope::{
+        BindingProvenance, BoundArgument, IdentValueSeed, MemberValueSeed, ScopeGraph, ScopeId,
+        ScopeKind, collect::aliases::contains,
+    },
     syntax::{
-        self, SymbolCallProvenance, SymbolMemberProvenance,
+        SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self, ConstValue, EvalState, Lookup},
         member_root_identifier,
     },

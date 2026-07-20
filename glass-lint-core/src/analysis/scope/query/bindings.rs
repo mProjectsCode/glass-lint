@@ -1,6 +1,6 @@
 //! Lexical binding, scope, assignment-version, and shadowing queries.
 
-use super::{
+use crate::analysis::scope::query::{
     BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr, Ident,
     ScopeGraph, ScopeId, ScopeKind, Span,
 };

@@ -439,7 +439,8 @@ impl ProjectSemanticModel {
         ProjectionOutcome,
     ) {
         let (matcher_catalog, outcome) = self.project(catalog.to_matcher_catalog(selected));
-        let results = self.modules()
+        let results = self
+            .modules()
             .map(|module| {
                 let mut result = crate::api::classification::ClassificationResult::default();
                 for rule_index in selected {
@@ -554,7 +555,8 @@ mod tests {
             matcher: fetch_plan,
         };
         let fetch_rules = [fetch_rule];
-        let (_model, _outcome) = project.project(CompiledRuleSelection::new(&fetch_rules, &selected));
+        let (_model, _outcome) =
+            project.project(CompiledRuleSelection::new(&fetch_rules, &selected));
 
         let member = MatcherSet::from_matchers(vec![crate::api::rule::Matcher::from(
             crate::api::rule::MemberCallMatcher::heuristic("document.createElement"),
@@ -565,7 +567,8 @@ mod tests {
             matcher: member_plan,
         };
         let member_rules = [member_rule];
-        let (_model, _outcome) = project.project(CompiledRuleSelection::new(&member_rules, &selected));
+        let (_model, _outcome) =
+            project.project(CompiledRuleSelection::new(&member_rules, &selected));
 
         let after = format!(
             "{:?}",

@@ -5,11 +5,13 @@
 
 use smol_str::SmolStr;
 
-use super::{
-    BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegmentInput, ValueId,
-    ValueProjection, member_property_name,
+use crate::analysis::{
+    SymbolPath,
+    facts::build::{
+        BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegmentInput,
+        ValueId, ValueProjection, member_property_name,
+    },
 };
-use crate::analysis::SymbolPath;
 
 impl FactBuilder<'_> {
     /// Resolve one argument into the scalar, rooted, and statically addressable

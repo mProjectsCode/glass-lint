@@ -26,14 +26,15 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use super::{
-    CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactId, FactKind, FactPayload,
-    FactStream, FunctionBoundary, ParameterBinding, SemanticFact, ValueProjection,
-};
 use crate::{
     ByteRange,
     analysis::{
         SymbolPath,
+        facts::{
+            CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactId, FactKind, FactPayload,
+            FactStream, FunctionBoundary, MAX_FACTS, ParameterBinding, SemanticFact,
+            ValueProjection,
+        },
         module::ModuleInterface,
         resolution::Resolver,
         scope::{BoundArgument, ScopeId},
@@ -116,7 +117,7 @@ impl<'a> FactBuilder<'a> {
 
     #[cfg(test)]
     pub(super) fn new(resolver: &'a Resolver<'a>) -> Self {
-        Self::with_limit(resolver, super::MAX_FACTS)
+        Self::with_limit(resolver, MAX_FACTS)
     }
 
     pub fn with_limit(resolver: &'a Resolver<'a>, max_facts: usize) -> Self {
@@ -124,7 +125,7 @@ impl<'a> FactBuilder<'a> {
             resolver,
             stream: FactStream::new(),
             next_id: 0,
-            max_facts: max_facts.min(super::MAX_FACTS),
+            max_facts: max_facts.min(MAX_FACTS),
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
             instance_callables: BTreeMap::new(),

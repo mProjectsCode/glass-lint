@@ -4,8 +4,10 @@
 //! separate. `rule_index` and event IDs are internal correlation keys and are
 //! intentionally omitted from serialized reports.
 
-use super::rule::{Category, Confidence, Severity};
-use crate::ByteRange;
+use crate::{
+    ByteRange,
+    api::rule::{Category, Confidence, Severity},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable position of a rule within a validated catalog.

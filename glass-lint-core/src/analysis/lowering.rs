@@ -9,15 +9,18 @@ use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
-use super::{
-    SemanticArtifact, facts, module, resolution,
-    name::{NameTable, NameTableCtx},
-    scope::ScopeGraph,
-    status::{AnalysisComponent, AnalysisStatus, IncompleteReason},
-};
 use crate::{
     ParseDiagnostic, SourceFile,
-    analysis::{facts::SemanticFacts, flow::effect::FunctionEffects, status::StatusScope},
+    analysis::{
+        LocatedSourceContext, SemanticArtifact,
+        facts::{self, SemanticFacts},
+        flow::effect::FunctionEffects,
+        module,
+        name::{NameTable, NameTableCtx},
+        resolution,
+        scope::ScopeGraph,
+        status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
+    },
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -68,16 +71,8 @@ impl SpanNormalizer {
         &self,
         span: swc_common::Span,
     ) -> Result<crate::ByteRange, InvalidParserSpan> {
-        let offset = span
-            .lo
-            .0
-            .checked_sub(self.start)
-            .ok_or(InvalidParserSpan)?;
-        let end = span
-            .hi
-            .0
-            .checked_sub(self.start)
-            .ok_or(InvalidParserSpan)?;
+        let offset = span.lo.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
+        let end = span.hi.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
         if end > self.len
             || self.text.as_ref().is_some_and(|source| {
                 let offset = offset as usize;
@@ -95,7 +90,7 @@ impl SpanNormalizer {
 }
 
 pub struct LoweredSource {
-    pub(crate) source: super::local::LocatedSourceContext,
+    pub(crate) source: LocatedSourceContext,
     pub(crate) semantic: Arc<SemanticArtifact>,
 }
 
@@ -117,7 +112,7 @@ pub fn lower_source(
         &coordinates,
     );
     Ok(LoweredSource {
-        source: super::local::LocatedSourceContext::new(source),
+        source: LocatedSourceContext::new(source),
         semantic: Arc::new(semantic),
     })
 }

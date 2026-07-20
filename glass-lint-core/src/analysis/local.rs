@@ -13,8 +13,13 @@ use facts::SemanticFacts;
 use smol_str::SmolStr;
 use syntax::SymbolCallProvenance;
 
-use super::{facts, module::ModuleInterface, status::AnalysisStatus, syntax};
-use crate::{analysis::flow::effect::FunctionEffects, project::ModuleId};
+use crate::{
+    analysis::{
+        facts, flow::effect::FunctionEffects, module::ModuleInterface, status::AnalysisStatus,
+        syntax,
+    },
+    project::ModuleId,
+};
 
 #[derive(Clone, Debug)]
 pub struct LocatedSourceContext {
@@ -337,7 +342,7 @@ impl ProjectModule {
 mod tests {
     use std::sync::Arc;
 
-    use super::{LocalArtifact, LocatedSourceContext, SemanticArtifact};
+    use super::*;
 
     fn assert_send_sync<T: Send + Sync>() {}
 

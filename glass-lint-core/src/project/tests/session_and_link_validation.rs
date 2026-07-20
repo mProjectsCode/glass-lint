@@ -1,4 +1,4 @@
-use super::*;
+use crate::project::tests::*;
 
 #[test]
 fn project_keeps_sorted_parse_failures_separate_from_valid_modules() {

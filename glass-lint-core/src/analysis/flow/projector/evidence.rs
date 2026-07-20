@@ -6,12 +6,14 @@
 
 use std::collections::BTreeSet;
 
-use super::{
-    CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowId, FlowState, MatchKind,
-    ObjectFlowProjector, ObjectId, ValueId,
-};
 use crate::{
-    analysis::value::NamePath,
+    analysis::{
+        flow::projector::{
+            CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowId, FlowState,
+            MatchKind, ObjectFlowProjector, ObjectId, ValueId, state::ReportEvidenceKey,
+        },
+        value::NamePath,
+    },
     api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments},
 };
 
@@ -182,7 +184,7 @@ impl ObjectFlowProjector<'_, '_> {
             return;
         }
         debug_assert!(state.source_event() <= match_fact);
-        let key = super::state::ReportEvidenceKey::new(
+        let key = ReportEvidenceKey::new(
             state.flow_id().rule_index().get(),
             state.flow_id().flow_index(),
             state.object_id(),

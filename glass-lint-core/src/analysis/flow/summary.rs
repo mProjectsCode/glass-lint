@@ -10,16 +10,14 @@
 //! a projected sink. Recursive propagation stops at a fixed point or its
 //! explicit round bound.
 
-use crate::analysis::flow::effect::EffectCall;
-
-use super::{
-    super::{
-        facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
-        value::{FunctionId, PathId, PathInterner, PathSegment, ValueId},
+use crate::analysis::{
+    facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
+    flow::{
+        effect::{EffectCall, FunctionEffects},
+        index::{FlowId, FlowIndex},
+        table::FunctionTable,
     },
-    effect::FunctionEffects,
-    index::{FlowId, FlowIndex},
-    table::FunctionTable,
+    value::{FunctionId, PathId, PathInterner, PathSegment, ValueId},
 };
 
 const MAX_SUMMARY_ROUNDS: usize = 64;
@@ -513,7 +511,7 @@ impl ParameterBinding {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::resolution::Resolver;
+    use crate::analysis::{facts, resolution::Resolver};
 
     #[test]
     fn same_name_siblings_are_keyed_by_function_id() {
@@ -523,8 +521,7 @@ mod tests {
         )
         .expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
-        let stream =
-            super::super::super::facts::build::build_test_stream(&parsed.program, &resolver);
+        let stream = facts::build::build_test_stream(&parsed.program, &resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let summaries = FunctionSummaries::collect(
             &stream,

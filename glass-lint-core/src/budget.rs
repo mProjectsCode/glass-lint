@@ -78,7 +78,7 @@ impl Budget {
 
 #[cfg(test)]
 mod tests {
-    use super::{Budget, BudgetTracker};
+    use super::*;
 
     #[test]
     fn rejects_overflow_and_records_exhaustion() {

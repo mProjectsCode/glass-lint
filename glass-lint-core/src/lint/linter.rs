@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
-use super::catalog::RuleCatalog;
 use crate::{
     AnalysisReport, AnalysisSession, Environment, ProjectInput, ProjectInputError,
     ProviderCatalogError, REPORT_VERSION, RuleId,
     analysis::{LocalArtifact, ProjectSemanticModel},
     api::classification::ClassificationResult,
+    lint::catalog::RuleCatalog,
     project::ModuleId,
 };
 

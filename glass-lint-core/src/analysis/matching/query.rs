@@ -6,14 +6,16 @@ use std::collections::BTreeSet;
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
 
-use super::{
-    ClassificationEvidence, ModuleExportKey, ModuleOccurrenceOverlay, Occurrence,
-    OccurrenceIndexes,
-    occurrence::{ModuleOccurrences, OccurrenceIndex},
-    push_owned_evidence,
-};
 use crate::{
-    analysis::value::NamePath,
+    analysis::{
+        matching::{
+            ClassificationEvidence, ModuleExportKey, ModuleOccurrenceOverlay, Occurrence,
+            OccurrenceIndexes,
+            occurrence::{ModuleOccurrences, OccurrenceIndex},
+            push_owned_evidence,
+        },
+        value::NamePath,
+    },
     api::compiler::rule::{
         EventPredicate, IdentityConstraint, QueryClause, QueryPlan, SubjectConstraint,
     },

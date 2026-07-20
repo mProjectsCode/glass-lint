@@ -6,12 +6,21 @@
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use super::super::{
-    classification::MatchKind, rule::{
-        ArgumentConstraint, ClassMatcher, ConstructorMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, Rule, SymbolProvenance, ValueMatcher,
+use crate::{
+    analysis::SymbolPath,
+    api::{
+        classification::{MatchKind, RuleIndex},
+        rule::{
+            ArgumentConstraint, ClassMatcher, ConstructorMatcher, FlowCompletion, FlowCondition,
+            FlowSinkMatcher, InstanceMemberCallMatcher, MatcherFamily, MatcherSet,
+            MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
+            ModuleSpecifierPattern, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher,
+            ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, Rule, SymbolProvenance,
+            ValueMatcher,
+        },
     },
+    rules::CallMatcher,
 };
-use crate::{analysis::SymbolPath, api::{classification::RuleIndex, rule::ModuleSpecifierPattern}};
 
 /// Canonical matcher representation consumed by analysis.  Public matcher
 /// declarations are compiled once while a catalog is built and never enter
@@ -271,7 +280,7 @@ impl QueryPlan {
     }
 }
 
-fn lower_calls(values: &[super::super::rule::CallMatcher]) -> Vec<QueryClause> {
+fn lower_calls(values: &[CallMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|call| QueryClause {
@@ -466,9 +475,7 @@ fn returned_member_clause(
     }
 }
 
-fn lower_instance_members(
-    values: &[InstanceMemberCallMatcher],
-) -> Vec<QueryClause> {
+fn lower_instance_members(values: &[InstanceMemberCallMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|instance| {
@@ -503,10 +510,7 @@ fn lower_instance_members(
         .collect()
 }
 
-fn member_identity(
-    chain: &str,
-    provenance: &MemberCallProvenance,
-) -> IdentityConstraint {
+fn member_identity(chain: &str, provenance: &MemberCallProvenance) -> IdentityConstraint {
     match provenance {
         MemberCallProvenance::Any => IdentityConstraint::Any {
             name: chain.to_smolstr(),
@@ -515,11 +519,9 @@ fn member_identity(
         MemberCallProvenance::Rooted => IdentityConstraint::Rooted {
             path: SymbolPath::from(chain),
         },
-        MemberCallProvenance::ModuleNamespace { module } => {
-            IdentityConstraint::ModuleNamespace {
-                module: module.to_smolstr(),
-            }
-        }
+        MemberCallProvenance::ModuleNamespace { module } => IdentityConstraint::ModuleNamespace {
+            module: module.to_smolstr(),
+        },
         MemberCallProvenance::PackageModuleNamespace { module } => {
             IdentityConstraint::PackageModuleNamespace {
                 module: module.clone(),
@@ -528,10 +530,7 @@ fn member_identity(
     }
 }
 
-fn member_read_identity(
-    chain: &str,
-    provenance: &MemberReadProvenance,
-) -> IdentityConstraint {
+fn member_read_identity(chain: &str, provenance: &MemberReadProvenance) -> IdentityConstraint {
     match provenance {
         MemberReadProvenance::Any => IdentityConstraint::Any {
             name: chain.to_smolstr(),
@@ -540,11 +539,9 @@ fn member_read_identity(
         MemberReadProvenance::Rooted => IdentityConstraint::Rooted {
             path: SymbolPath::from(chain),
         },
-        MemberReadProvenance::ModuleNamespace { module } => {
-            IdentityConstraint::ModuleNamespace {
-                module: module.to_smolstr(),
-            }
-        }
+        MemberReadProvenance::ModuleNamespace { module } => IdentityConstraint::ModuleNamespace {
+            module: module.to_smolstr(),
+        },
         MemberReadProvenance::PackageModuleNamespace { module } => {
             IdentityConstraint::PackageModuleNamespace {
                 module: module.clone(),
@@ -553,10 +550,7 @@ fn member_read_identity(
     }
 }
 
-fn call_identity(
-    name: &str,
-    provenance: &SymbolProvenance,
-) -> IdentityConstraint {
+fn call_identity(name: &str, provenance: &SymbolProvenance) -> IdentityConstraint {
     match provenance {
         SymbolProvenance::Any => IdentityConstraint::Any {
             name: name.into(),
@@ -566,12 +560,10 @@ fn call_identity(
             name: name.into(),
             strength: IdentityStrength::Strict,
         },
-        SymbolProvenance::ModuleExport { module } => {
-            IdentityConstraint::ModuleExport {
-                module: module.to_smolstr(),
-                export: name.into(),
-            }
-        }
+        SymbolProvenance::ModuleExport { module } => IdentityConstraint::ModuleExport {
+            module: module.to_smolstr(),
+            export: name.into(),
+        },
         SymbolProvenance::PackageModuleExport { module } => {
             IdentityConstraint::PackageModuleExport {
                 module: module.clone(),
@@ -812,17 +804,12 @@ impl CompiledMatcherPlan {
 
 impl<'a> CompiledRuleSelection<'a> {
     /// Create a borrowed catalog view over sorted selected indexes.
-    pub fn new(
-        rules: &'a [CompiledRule],
-        selected: &'a [RuleIndex],
-    ) -> Self {
+    pub fn new(rules: &'a [CompiledRule], selected: &'a [RuleIndex]) -> Self {
         Self { rules, selected }
     }
 
     /// Iterate selected plans while preserving their catalog indexes.
-    pub fn selected_matchers(
-        &self,
-    ) -> impl Iterator<Item = (RuleIndex, &CompiledMatcherPlan)> {
+    pub fn selected_matchers(&self) -> impl Iterator<Item = (RuleIndex, &CompiledMatcherPlan)> {
         self.selected.iter().filter_map(move |&index| {
             self.rules
                 .get(index.get())
@@ -836,10 +823,7 @@ impl<'a> CompiledRuleSelection<'a> {
     }
 
     /// Borrow a compiled plan by its stable catalog index.
-    pub fn get(
-        &self,
-        index: RuleIndex,
-    ) -> Option<&'a CompiledMatcherPlan> {
+    pub fn get(&self, index: RuleIndex) -> Option<&'a CompiledMatcherPlan> {
         self.rules.get(index.get()).map(|rule| &rule.matcher)
     }
 

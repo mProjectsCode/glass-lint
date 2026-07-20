@@ -1,7 +1,12 @@
 //! Member-call and member-read matcher declarations.
 
-use super::{ArgumentConstraint, ArgumentMatcher};
-use crate::api::rule::ModuleSpecifierPattern;
+use crate::{
+    api::rule::{
+        ModuleSpecifierPattern,
+        matcher::{ArgumentConstraint, ArgumentMatcher},
+    },
+    rules::ValueMatcher,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Matcher for a member call with optional argument predicates.
@@ -67,7 +72,7 @@ impl MemberCallMatcher {
 
     #[must_use]
     pub fn arg_static_string(self, index: usize) -> Self {
-        self.arg(index, super::ValueMatcher::static_string())
+        self.arg(index, ValueMatcher::static_string())
     }
 
     #[must_use]
@@ -76,10 +81,7 @@ impl MemberCallMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.arg(
-            index,
-            super::ValueMatcher::static_string().equals_any(values),
-        )
+        self.arg(index, ValueMatcher::static_string().equals_any(values))
     }
 
     #[must_use]
@@ -88,10 +90,7 @@ impl MemberCallMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.arg(
-            index,
-            super::ValueMatcher::static_string().contains_any(values),
-        )
+        self.arg(index, ValueMatcher::static_string().contains_any(values))
     }
 
     #[must_use]
@@ -100,7 +99,7 @@ impl MemberCallMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.arg(index, super::ArgumentMatcher::object_keys(keys))
+        self.arg(index, ArgumentMatcher::object_keys(keys))
     }
 
     #[must_use]
@@ -108,11 +107,11 @@ impl MemberCallMatcher {
         self,
         index: usize,
         property: impl Into<String>,
-        value: super::ValueMatcher,
+        value: ValueMatcher,
     ) -> Self {
         self.arg(
             index,
-            super::ArgumentMatcher::object_property_value(property, value),
+            ArgumentMatcher::object_property_value(property, value),
         )
     }
 
@@ -122,7 +121,7 @@ impl MemberCallMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.arg(index, super::ArgumentMatcher::rooted_expressions(chains))
+        self.arg(index, ArgumentMatcher::rooted_expressions(chains))
     }
 
     /// Return the display/evidence symbol for this matcher.
