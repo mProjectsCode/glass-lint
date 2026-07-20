@@ -54,16 +54,31 @@ impl OccurrenceIndexes {
                     .iter()
                     .map(|argument| argument_with_overlay(argument, identities, result_identities))
                     .collect::<Vec<_>>();
+                let linked_effective = unwrap.as_ref().map(|unwrapped| {
+                    unwrapped
+                        .effective_args
+                        .iter()
+                        .map(|a| argument_with_overlay(a, identities, result_identities))
+                        .collect::<Vec<_>>()
+                });
                 let (effective_args, effective_name, effective_chain) =
                     unwrap.as_ref().map_or_else(
                         || {
                             (
-                                &linked_args,
+                                linked_args.as_slice(),
                                 callee_name.and_then(|id| stream.resolve_name(id)),
                                 None,
                             )
                         },
-                        |unwrapped| (&unwrapped.effective_args, None, Some(&unwrapped.chain)),
+                        |unwrapped| {
+                            (
+                                linked_effective
+                                    .as_deref()
+                                    .unwrap_or(&unwrapped.effective_args),
+                                None,
+                                Some(&unwrapped.chain),
+                            )
+                        },
                     );
                 for (rule_index, clause) in clauses {
                     let matches = match clause.event {

@@ -66,18 +66,20 @@ pub(super) struct LexicalScopeCollector {
     pub(super) rooted_property_mutations: Vec<RootedPropertyMutation>,
     /// Dynamic `eval` sites that make local provenance conservative.
     pub(super) dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
-    /// Function scopes and their parameter patterns by visible name.
-    pub(super) function_scopes: BTreeMap<(ScopeId, String), (ScopeId, Vec<Pat>)>,
+    /// Function scopes and their parameter patterns by visible NameId.
+    pub(super) function_scopes: BTreeMap<(ScopeId, NameId), (ScopeId, Vec<Pat>)>,
     /// Aliases that point to a locally declared helper function.
     pub(super) function_aliases: BTreeMap<ScopedName, ScopeId>,
     /// Calls retained for the later, scope-aware helper parameter pass.
-    calls: Vec<(ScopeId, String, Vec<Option<BindingProvenance>>)>,
+    calls: Vec<(ScopeId, NameId, Vec<Option<BindingProvenance>>)>,
     /// Proven callback arguments installed when an inline function is entered.
     inline_parameters: BTreeMap<BytePos, BTreeMap<SmolStr, BindingProvenance>>,
     /// `var`-bound objects whose mutation prevents constant projection.
     pub(super) mutable_static_objects: BTreeSet<ScopedName>,
     names: crate::analysis::name::NameTableHandle,
     pub(super) name_exhausted: bool,
+    /// Per (scope, name) counter to avoid rescanniing all assignments.
+    version_counters: BTreeMap<(ScopeId, NameId), u32>,
     reuse_scopes: bool,
     predeclared_scope_order: Vec<usize>,
     next_predeclared_scope: usize,
@@ -136,6 +138,7 @@ impl LexicalScopeCollector {
             mutable_static_objects: BTreeSet::new(),
             names,
             name_exhausted: false,
+            version_counters: BTreeMap::new(),
             reuse_scopes: false,
             predeclared_scope_order: Vec::new(),
             next_predeclared_scope: 0,
@@ -221,10 +224,9 @@ impl LexicalScopeCollector {
             .function_scopes
             .iter()
             .filter_map(|((scope, name), (function_scope, _))| {
-                function_ids
-                    .get(function_scope)
-                    .copied()
-                    .and_then(|function| self.scoped_name(*scope, name).map(|key| (key, function)))
+                function_ids.get(function_scope).copied().map(|function| {
+                    (Self::scoped_name_by_id(*scope, *name), function)
+                })
             })
             .collect();
         let function_aliases = self
@@ -349,6 +351,10 @@ impl LexicalScopeCollector {
             .map(|name| ScopedName::new(scope, name))
     }
 
+    pub(super) fn scoped_name_by_id(scope: ScopeId, name: NameId) -> ScopedName {
+        ScopedName::new(scope, name)
+    }
+
     fn insert_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {
         self.insert(scope, name, BindingProvenance::Local);
     }
@@ -365,16 +371,12 @@ impl LexicalScopeCollector {
             self.name_exhausted = true;
             return;
         };
-        let version = BindingVersion(
-            u32::try_from(
-                self.assignments
-                    .iter()
-                    .filter(|assignment| assignment.scope == scope && assignment.name == name_id)
-                    .count()
-                    .saturating_add(1),
-            )
-            .unwrap_or(u32::MAX),
-        );
+        let next = self
+            .version_counters
+            .entry((scope, name_id))
+            .or_insert(0);
+        *next = next.saturating_add(1);
+        let version = BindingVersion(*next);
         self.latest_assignments
             .record(scope, name, provenance.clone());
         self.assignments.push(AliasAssignment {
@@ -529,7 +531,10 @@ impl LexicalScopeCollector {
         arrow.params.clone()
     }
 
-    fn register_function_expression(&mut self, name: String, expr: &Expr) -> bool {
+    fn register_function_expression(&mut self, name: Option<NameId>, expr: &Expr) -> bool {
+        let Some(name) = name else {
+            return false;
+        };
         let declaration_scope = self.current_scope();
         match expr {
             Expr::Arrow(arrow) => {
@@ -562,7 +567,7 @@ impl LexicalScopeCollector {
                 self.pop_scope();
                 true
             }
-            Expr::Paren(paren) => self.register_function_expression(name, &paren.expr),
+            Expr::Paren(paren) => self.register_function_expression(Some(name), &paren.expr),
             _ => false,
         }
     }

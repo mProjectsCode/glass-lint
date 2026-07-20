@@ -53,7 +53,6 @@ impl<T> Knowledge<T> {
 /// Provenance of a callable symbol at a use position.
 pub(in crate::analysis) enum SymbolCallProvenance {
     /// A configured, unshadowed global callable.
-    /// TODO: Candidate for SybolPath?
     Global { name: SmolStr },
     /// A callable proven to be local to the current artifact.
     Local,
@@ -80,7 +79,6 @@ impl SymbolCallProvenance {
 /// Provenance of a member access rooted in a module namespace.
 pub(in crate::analysis) enum SymbolMemberProvenance {
     /// A statically named member of an imported namespace.
-    /// TODO: Consider using SymbolPath here for member
     ModuleNamespace { module: SmolStr, member: SmolStr },
 }
 

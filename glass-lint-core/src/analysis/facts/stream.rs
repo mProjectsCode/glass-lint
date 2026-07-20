@@ -1,8 +1,8 @@
 //! Immutable semantic fact stream with deterministic insertion order.
 //!
 //! Construction is append-only and validates dense IDs and the global fact
-//! budget. Query callers receive an immutable view; path interning is the only
-//! interior mutation and is deterministic for the same traversal.
+//! budget. Query callers receive an immutable view. Path interning happens
+//! during ordinary mutable construction, not through interior mutation.
 
 use std::sync::Arc;
 

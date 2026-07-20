@@ -38,21 +38,17 @@ impl From<swc_common::Span> for ParserSpanKey {
 
 #[derive(Clone, Debug, Default)]
 pub(in crate::analysis) struct SpanNormalizer {
-    source_start: u32,
-    source_len: u32,
-    boundaries: Option<Vec<bool>>,
+    start: u32,
+    len: u32,
+    text: Option<Arc<str>>,
 }
 
 impl SpanNormalizer {
     pub(in crate::analysis) fn new(source_start: swc_common::BytePos, source: &str) -> Self {
         Self {
-            source_start: source_start.0,
-            source_len: u32::try_from(source.len()).unwrap_or(u32::MAX),
-            boundaries: Some(
-                (0..=source.len())
-                    .map(|offset| source.is_char_boundary(offset))
-                    .collect(),
-            ),
+            start: source_start.0,
+            len: u32::try_from(source.len()).unwrap_or(u32::MAX),
+            text: Some(Arc::from(source)),
         }
     }
 
@@ -60,9 +56,9 @@ impl SpanNormalizer {
     pub(in crate::analysis) fn for_program(program: &Program) -> Self {
         let span = program.span();
         Self {
-            source_start: span.lo.0,
-            source_len: span.hi.0.saturating_sub(span.lo.0),
-            boundaries: None,
+            start: span.lo.0,
+            len: span.hi.0.saturating_sub(span.lo.0),
+            text: None,
         }
     }
 
@@ -70,25 +66,29 @@ impl SpanNormalizer {
         &self,
         span: swc_common::Span,
     ) -> Result<crate::ByteRange, InvalidParserSpan> {
-        let start = span
+        let offset = span
             .lo
             .0
-            .checked_sub(self.source_start)
+            .checked_sub(self.start)
             .ok_or(InvalidParserSpan)?;
         let end = span
             .hi
             .0
-            .checked_sub(self.source_start)
+            .checked_sub(self.start)
             .ok_or(InvalidParserSpan)?;
-        if end > self.source_len
-            || self.boundaries.as_ref().is_some_and(|boundaries| {
-                !boundaries.get(start as usize).copied().unwrap_or(false)
-                    || !boundaries.get(end as usize).copied().unwrap_or(false)
+        if end > self.len
+            || self.text.as_ref().is_some_and(|source| {
+                let offset = offset as usize;
+                let end = end as usize;
+                offset > source.len()
+                    || end > source.len()
+                    || !source.is_char_boundary(offset)
+                    || !source.is_char_boundary(end)
             })
         {
             return Err(InvalidParserSpan);
         }
-        crate::ByteRange::new(start, end).map_err(|_| InvalidParserSpan)
+        crate::ByteRange::new(offset, end).map_err(|_| InvalidParserSpan)
     }
 }
 

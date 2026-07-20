@@ -52,10 +52,9 @@ impl AnnotatedEvidence {
     pub(super) fn from_evidence(evidence: Vec<ClassificationEvidence>, limit: usize) -> Self {
         let mut symbols = Vec::with_capacity(evidence.len());
         let mut groups = BTreeMap::<(MatchKind, String), usize>::new();
-        let mut occurrences = Vec::new();
+        let mut raw_occurrences = Vec::new();
         let mut related = BTreeMap::new();
         let mut total_counts = BTreeMap::new();
-        let mut evidence_truncated = false;
         for evidence in evidence {
             let ClassificationEvidence {
                 kind,
@@ -82,29 +81,26 @@ impl AnnotatedEvidence {
                 .into_iter()
                 .filter(|occurrence| !occurrence.span.is_empty())
             {
-                let occurrence = EvidenceOccurrence {
+                raw_occurrences.push(EvidenceOccurrence {
                     event: occurrence.fact.map(FactId),
                     span: occurrence.span,
                     kind,
                     symbol_group,
-                };
-                let index = occurrences
-                    .binary_search_by(|candidate| {
-                        evidence_order(candidate).cmp(&evidence_order(&occurrence))
-                    })
-                    .unwrap_or_else(|index| index);
-                if occurrences
-                    .get(index)
-                    .is_some_and(|candidate| candidate == &occurrence)
-                {
-                    continue;
-                }
-                occurrences.insert(index, occurrence);
-                if occurrences.len() > limit {
-                    occurrences.pop();
-                    evidence_truncated = true;
-                }
+                });
             }
+        }
+        raw_occurrences.sort_by_key(evidence_order);
+        let mut occurrences = Vec::with_capacity(raw_occurrences.len().min(limit));
+        let mut evidence_truncated = false;
+        for occurrence in raw_occurrences {
+            if occurrences.last().is_some_and(|last| last == &occurrence) {
+                continue;
+            }
+            if occurrences.len() >= limit {
+                evidence_truncated = true;
+                break;
+            }
+            occurrences.push(occurrence);
         }
         Self {
             occurrences,

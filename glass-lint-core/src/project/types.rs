@@ -258,7 +258,7 @@ pub enum ResolverOutcome {
 /// use glass_lint_core::project::ModuleId;
 /// let forged = ModuleId(0);
 /// ```
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize)]
 pub struct ModuleId(u32);
 
 impl ModuleId {

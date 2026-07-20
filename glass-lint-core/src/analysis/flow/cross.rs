@@ -4,8 +4,9 @@
 //! source of truth for one module; this overlay carries a proven object state
 //! through parameter-to-call relations and qualified call edges.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 
+use indexmap::IndexSet;
 use smol_str::SmolStr;
 
 use super::{
@@ -110,14 +111,14 @@ impl SourceBudget {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// A fact location qualified by its owning project module.
 struct QualifiedEvent {
     module: ModuleId,
     fact: FactId,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// Monotone flow state carried through one qualified call context.
 struct CrossFlowState {
     flow: FlowId,
@@ -125,7 +126,7 @@ struct CrossFlowState {
     requirements: RequirementSet<QualifiedEvent>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// Worklist context identifying the function/value path currently projected.
 struct CallContext {
     module: ModuleId,
@@ -137,25 +138,22 @@ struct CallContext {
 }
 
 #[derive(Default)]
-/// Deduplicating FIFO worklist for bounded interprocedural contexts.
+/// Deduplicating insertion-ordered worklist for bounded interprocedural contexts.
 struct ContextWorklist {
-    pending: VecDeque<CallContext>,
-    seen: BTreeSet<CallContext>,
+    contexts: IndexSet<CallContext>,
 }
 
 impl ContextWorklist {
     fn push(&mut self, context: CallContext) {
-        if self.seen.insert(context.clone()) {
-            self.pending.push_back(context);
-        }
+        self.contexts.insert(context);
     }
 
     fn pop_front(&mut self) -> Option<CallContext> {
-        self.pending.pop_front()
+        self.contexts.shift_remove_index(0)
     }
 
     fn len(&self) -> usize {
-        self.seen.len()
+        self.contexts.len()
     }
 
     fn enqueue_parameters(

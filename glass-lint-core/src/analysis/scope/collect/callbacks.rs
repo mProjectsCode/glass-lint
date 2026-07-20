@@ -13,6 +13,7 @@ use super::{
     },
     LexicalScopeCollector,
 };
+use crate::analysis::name::NameId;
 
 impl LexicalScopeCollector {
     /// Resolve the proven parameter aliases shared by all compatible calls to
@@ -21,8 +22,8 @@ impl LexicalScopeCollector {
     /// another.
     pub fn parameter_aliases(&self) -> BTreeMap<ScopedName, BindingProvenance> {
         let mut aliases = BTreeMap::<ScopedName, Option<BindingProvenance>>::new();
-        for (caller_scope, callee, arguments) in &self.calls {
-            let Some((scope, parameters)) = self.function_for_call(*caller_scope, callee) else {
+        for (caller_scope, callee_name, arguments) in &self.calls {
+            let Some((scope, parameters)) = self.function_for_call(*caller_scope, *callee_name) else {
                 continue;
             };
             for (index, parameter) in parameters.iter().enumerate() {
@@ -160,9 +161,9 @@ impl LexicalScopeCollector {
         }
     }
 
-    fn function_for_call(&self, mut scope: ScopeId, name: &str) -> Option<&(ScopeId, Vec<Pat>)> {
+    fn function_for_call(&self, mut scope: ScopeId, name: NameId) -> Option<&(ScopeId, Vec<Pat>)> {
         loop {
-            if let Some(function) = self.function_scopes.get(&(scope, name.to_string())) {
+            if let Some(function) = self.function_scopes.get(&(scope, name)) {
                 return Some(function);
             }
             scope = self.scopes.get(scope.index())?.parent?;
@@ -170,9 +171,10 @@ impl LexicalScopeCollector {
     }
 
     pub(super) fn function_scope_for_name(&self, name: &str) -> Option<ScopeId> {
+        let name = self.names.lookup(name)?;
         let mut scope = self.current_scope();
         loop {
-            if let Some((function, _)) = self.function_scopes.get(&(scope, name.to_string())) {
+            if let Some((function, _)) = self.function_scopes.get(&(scope, name)) {
                 return Some(*function);
             }
             scope = self.scopes.get(scope.index())?.parent?;

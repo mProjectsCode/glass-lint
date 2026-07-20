@@ -279,14 +279,16 @@ impl Visit for LexicalScopeCollector {
                     super::super::ScopeEffect::DynamicEvaluation { span: call.span },
                 ));
             }
-            self.calls.push((
-                self.current_scope(),
-                callee.sym.to_string(),
-                call.args
-                    .iter()
-                    .map(|argument| self.argument_provenance(&argument.expr))
-                    .collect(),
-            ));
+            if let Ok(callee_name) = self.names.intern(callee.sym.as_ref()) {
+                self.calls.push((
+                    self.current_scope(),
+                    callee_name,
+                    call.args
+                        .iter()
+                        .map(|argument| self.argument_provenance(&argument.expr))
+                        .collect(),
+                ));
+            }
         }
         call.visit_children_with(self);
     }
@@ -300,8 +302,10 @@ impl Visit for LexicalScopeCollector {
         for parameter in &fn_decl.function.params {
             self.insert_pat_locals(scope, &parameter.pat);
         }
-        self.function_scopes
-            .insert((parent, fn_decl.ident.sym.to_string()), (scope, parameters));
+        if let Ok(name_id) = self.names.intern(fn_decl.ident.sym.as_ref()) {
+            self.function_scopes
+                .insert((parent, name_id), (scope, parameters));
+        }
         fn_decl.function.decorators.visit_with(self);
         fn_decl.function.body.visit_with(self);
         self.pop_scope();
@@ -431,7 +435,10 @@ fn register_declared_function(
     let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref()) else {
         return false;
     };
-    if !collector.register_function_expression(ident.id.sym.to_string(), init) {
+    let Ok(name_id) = collector.names.intern(ident.id.sym.as_ref()) else {
+        return false;
+    };
+    if !collector.register_function_expression(Some(name_id), init) {
         return false;
     }
     collector.insert_local(scope, ident.id.sym.to_string());

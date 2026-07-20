@@ -123,8 +123,8 @@ impl FlowStateTable {
     }
 
     pub(super) fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
-        // BTreeMap iteration gives callers stable object order for evidence and
-        // keeps duplicate aliases from multiplying the same state transition.
+        // Sorted-vector iteration gives callers stable object order for evidence
+        // and keeps duplicate aliases from multiplying the same state transition.
         self.aliases.0.iter().map(|(_, object)| *object)
     }
 

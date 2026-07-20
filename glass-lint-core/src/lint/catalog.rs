@@ -136,9 +136,9 @@ impl RuleCatalog {
     }
 
     #[must_use]
-    /// Clone fully-qualified rule IDs in catalog order.
-    pub fn rule_ids(&self) -> Vec<RuleId> {
-        self.rule_ids.clone()
+    /// Borrow fully-qualified rule IDs in catalog order.
+    pub fn rule_ids(&self) -> &[RuleId] {
+        &self.rule_ids
     }
 
     #[must_use]

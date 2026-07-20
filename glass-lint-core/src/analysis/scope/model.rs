@@ -88,8 +88,6 @@ pub(in crate::analysis) struct ScopeGraph {
     rooted_property_mutations: BTreeMap<NamePath, Vec<RootedPropertyMutationFact>>,
     /// Proven parameter identities shared by compatible call sites.
     parameter_aliases: BTreeMap<(FunctionId, NameId), BindingProvenance>,
-    /// Dynamic-evaluation sites that invalidate later lexical assumptions.
-    dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
     /// Dynamic-evaluation spans grouped by scope for indexed queries.
     dynamic_evals_by_scope: BTreeMap<ScopeId, Vec<ScopeEffect>>,
     /// Static objects whose `var` binding may be mutated.
@@ -162,18 +160,17 @@ impl ScopeGraph {
         for mutations in self.rooted_property_mutations.values_mut() {
             mutations.sort_by_key(|mutation| mutation.span.lo);
         }
-        self.dynamic_evals = dynamic_evals
+        let mut evals: Vec<(ScopeId, ScopeEffect)> = dynamic_evals
             .into_iter()
             .filter(|(_, effect)| self.binding_at("eval", effect.span()).is_none())
             .collect();
-        self.dynamic_evals
-            .sort_by_key(|(_, effect)| effect.span().hi);
+        evals.sort_by_key(|(_, effect)| effect.span().hi);
         self.dynamic_evals_by_scope.clear();
-        for (scope, effect) in &self.dynamic_evals {
+        for (scope, effect) in evals {
             self.dynamic_evals_by_scope
-                .entry(*scope)
+                .entry(scope)
                 .or_default()
-                .push(effect.clone());
+                .push(effect);
         }
         for spans in self.dynamic_evals_by_scope.values_mut() {
             spans.sort_by_key(|effect| effect.span().hi);
@@ -262,7 +259,6 @@ impl ScopeGraph {
             property_assignments: BTreeMap::new(),
             rooted_property_mutations: BTreeMap::new(),
             parameter_aliases: parts.parameter_aliases,
-            dynamic_evals: Vec::new(),
             dynamic_evals_by_scope: BTreeMap::new(),
             mutable_static_objects: parts.mutable_static_objects,
         }

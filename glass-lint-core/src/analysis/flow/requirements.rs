@@ -4,12 +4,23 @@ use std::collections::BTreeMap;
 
 use super::super::facts::FactId;
 
+use std::hash::{Hash, Hasher};
+
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd)]
 /// Parameter-indexed requirements proven along the current flow path.
 ///
 /// The map is intentionally typed by `K` so local fact IDs and qualified
 /// module events cannot be confused during joins.
 pub(super) struct RequirementSet<K = FactId>(BTreeMap<usize, K>);
+
+impl<K: Hash> Hash for RequirementSet<K> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for (k, v) in &self.0 {
+            k.hash(state);
+            v.hash(state);
+        }
+    }
+}
 
 impl<K> Default for RequirementSet<K> {
     fn default() -> Self {
