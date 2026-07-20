@@ -5,12 +5,12 @@
 //! later sinks cannot inherit stale state.
 
 use super::{CallArgInfo, FactId, FactPayload, FlowState, ObjectFlowProjector, ObjectId, ValueId};
-use crate::analysis::{SymbolPath, facts::FactStream};
+use crate::analysis::{facts::FactStream, value::NamePath};
 
 #[derive(Debug, Clone)]
 pub(super) struct SourceCall {
     /// Rooted or syntactic chain selected as the matcher lookup key.
-    chain: SymbolPath,
+    chain: NamePath,
     /// Effective arguments after any call/apply wrapper has been removed.
     args: Vec<CallArgInfo>,
     /// Original fact used for deterministic evidence anchoring.
@@ -42,6 +42,7 @@ impl SourceCall {
         };
         Self::from_parts(
             fact.id,
+            stream.names()?,
             rooted_chain.as_ref(),
             syntactic_chain.as_ref(),
             callee_name.and_then(|id| stream.resolve_name(id)),
@@ -53,8 +54,9 @@ impl SourceCall {
     /// Build a source-call view from explicit canonical call components.
     pub(super) fn from_parts(
         fact_id: FactId,
-        rooted_chain: Option<&SymbolPath>,
-        syntactic_chain: Option<&SymbolPath>,
+        names: &crate::analysis::name::NameTable,
+        rooted_chain: Option<&NamePath>,
+        syntactic_chain: Option<&crate::analysis::SymbolPath>,
         callee_name: Option<&str>,
         args: &[CallArgInfo],
         unwrap: Option<&crate::analysis::facts::CallUnwrap>,
@@ -63,13 +65,27 @@ impl SourceCall {
             || {
                 (
                     rooted_chain
-                        .or(syntactic_chain)
                         .cloned()
-                        .or_else(|| callee_name.map(SymbolPath::from)),
+                        .or_else(|| {
+                            syntactic_chain.and_then(|path| NamePath::from_symbol_path(path, names))
+                        })
+                        .or_else(|| {
+                            callee_name.and_then(|name| {
+                                NamePath::from_symbol_path(
+                                    &crate::analysis::SymbolPath::from(name),
+                                    names,
+                                )
+                            })
+                        }),
                     args.to_vec(),
                 )
             },
-            |unwrap| (Some(unwrap.chain.clone()), unwrap.effective_args.clone()),
+            |unwrap| {
+                (
+                    NamePath::from_symbol_path(&unwrap.chain, names),
+                    unwrap.effective_args.clone(),
+                )
+            },
         );
         Some(Self {
             chain: chain?,
@@ -79,7 +95,7 @@ impl SourceCall {
         })
     }
 
-    pub(super) fn chain(&self) -> &SymbolPath {
+    pub(super) fn chain(&self) -> &NamePath {
         &self.chain
     }
 
@@ -135,7 +151,7 @@ impl ObjectFlowProjector<'_, '_> {
     /// relationship without duplicating the source event.
     fn match_source(
         &mut self,
-        chain: &SymbolPath,
+        chain: &NamePath,
         args: &[CallArgInfo],
         source_fact: FactId,
         rooted: bool,
@@ -147,12 +163,12 @@ impl ObjectFlowProjector<'_, '_> {
             .filter(|id| {
                 self.flow_index.get(*id).is_some_and(|flow| {
                     flow.sources.iter().any(|source| {
-                        source.member_call == *chain
+                        NamePath::from_symbol_path(&source.member_call, self.names)
+                            .is_some_and(|member| member == *chain)
                             && source.provenance.matches_rooted(rooted)
                             && source.arguments.iter().all(|matcher| {
-                                args.get(matcher.index).is_some_and(|arg| {
-                                    matcher.matcher.matches(arg, self.stream.names())
-                                })
+                                args.get(matcher.index)
+                                    .is_some_and(|arg| matcher.matcher.matches(arg, self.names))
                             })
                     })
                 })

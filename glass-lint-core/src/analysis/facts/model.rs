@@ -7,7 +7,7 @@ use super::super::{
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
     value::{FunctionId, PathId, SymbolPath, ValueId},
 };
-use crate::ByteRange;
+use crate::{ByteRange, analysis::value::NamePath};
 
 // ── Fact stream types ───────────────────────────────────────────────────
 
@@ -138,11 +138,11 @@ pub(in crate::analysis) struct CallArgInfo {
     /// Statically evaluated string value, when available.
     pub(in crate::analysis) static_string: Option<String>,
     /// Statically known keys of a finite object argument.
-    pub(in crate::analysis) object_keys: Option<Vec<super::super::name::NameId>>,
+    pub(in crate::analysis) object_keys: Option<Vec<NameId>>,
     /// Statically known direct object-property string values.
-    pub(in crate::analysis) property_strings: Vec<(super::super::name::NameId, String)>,
+    pub(in crate::analysis) property_strings: Vec<(NameId, String)>,
     /// Proven rooted member chain for this argument.
-    pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
+    pub(in crate::analysis) rooted_chain: Option<NamePath>,
     /// Values reachable from this argument through a statically known object
     /// or array shape. The root is included with an empty path.
     pub(in crate::analysis) projections: Vec<ValueProjection>,
@@ -209,11 +209,11 @@ pub(in crate::analysis) enum FactPayload {
         /// Original member spelling when statically recoverable.
         syntactic_chain: Option<SymbolPath>,
         /// Proven rooted chain used by strict member matchers.
-        rooted_chain: Option<SymbolPath>,
+        rooted_chain: Option<NamePath>,
         /// Proven module namespace member, if applicable.
         module_member: Option<SymbolMemberProvenance>,
         /// Member returned by a previously resolved call, if applicable.
-        returned_member: Option<(SymbolPath, SymbolPath)>,
+        returned_member: Option<(NamePath, NamePath)>,
     },
     /// Variable declaration.
     Declaration {
@@ -259,11 +259,11 @@ pub(in crate::analysis) enum FactPayload {
         /// Member chain as written at the call site.
         syntactic_chain: Option<SymbolPath>,
         /// Proven rooted member chain, if available.
-        rooted_chain: Option<SymbolPath>,
+        rooted_chain: Option<NamePath>,
         /// Proven module member target, if available.
         module_member: Option<SymbolMemberProvenance>,
         /// Proven member returned by an earlier call, if available.
-        returned_member: Option<(SymbolPath, SymbolPath)>,
+        returned_member: Option<(NamePath, NamePath)>,
         /// Proven superclass identity for an instance method call.
         instance_class: Option<(SmolStr, SmolStr)>,
         /// Lexical function identity when the callee resolves to one.

@@ -41,7 +41,7 @@ use crate::{
             SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr,
             member_property_name,
         },
-        value::{PathId, PathSegmentInput, ValueId},
+        value::{NamePath, PathId, PathSegmentInput, ValueId},
     },
 };
 
@@ -99,6 +99,21 @@ pub struct FactBuilder<'a> {
 }
 
 impl<'a> FactBuilder<'a> {
+    pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
+        self.resolver.name_path(path)
+    }
+
+    pub(super) fn rooted_path(&self, path: Option<&SymbolPath>) -> Option<NamePath> {
+        path.and_then(|path| self.name_path(path))
+    }
+
+    pub(super) fn returned_path(
+        &self,
+        paths: Option<&(SymbolPath, SymbolPath)>,
+    ) -> Option<(NamePath, NamePath)> {
+        paths.and_then(|(source, member)| Some((self.name_path(source)?, self.name_path(member)?)))
+    }
+
     #[cfg(test)]
     pub(super) fn new(resolver: &'a Resolver) -> Self {
         Self::with_limit(resolver, super::MAX_FACTS)
@@ -211,7 +226,7 @@ impl<'a> FactBuilder<'a> {
     #[cfg(test)]
     pub(super) fn into_stream(self) -> FactStream {
         let mut stream = self.stream;
-        stream.freeze_names(std::sync::Arc::new(self.resolver.name_snapshot()));
+        let _ = stream.freeze_names(std::sync::Arc::new(self.resolver.name_snapshot()));
         stream
     }
 
@@ -238,7 +253,7 @@ pub fn build_test_stream(program: &swc_ecma_ast::Program, resolver: &Resolver) -
     let mut builder = FactBuilder::new(resolver);
     program.visit_with(&mut builder);
     let mut stream = builder.into_stream();
-    stream.freeze_names(std::sync::Arc::new(resolver.name_snapshot()));
+    let _ = stream.freeze_names(std::sync::Arc::new(resolver.name_snapshot()));
     stream
 }
 

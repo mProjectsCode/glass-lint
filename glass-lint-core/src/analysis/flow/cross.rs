@@ -488,13 +488,13 @@ impl UsageProjector<'_> {
     fn apply_receiver(
         &mut self,
         event: FactId,
-        chain: Option<&crate::analysis::SymbolPath>,
+        chain: Option<&crate::analysis::value::NamePath>,
         call_arguments: &[crate::analysis::facts::CallArgInfo],
     ) {
         let mut next = self.state.clone();
         for (index, requirement) in self.flow.requirements.iter().enumerate() {
             if let CompiledObjectRequirement::MemberCall { member, arguments } = requirement
-                && chain_matches(chain, member)
+                && chain_matches(chain, member, self.effect.names())
                 && arguments.iter().all(|matcher| {
                     call_arguments.get(matcher.index).is_some_and(|argument| {
                         matcher.matcher.matches(argument, self.effect.names())
@@ -517,12 +517,17 @@ impl UsageProjector<'_> {
     fn apply_argument(
         &mut self,
         event: FactId,
-        chain: Option<&crate::analysis::SymbolPath>,
+        chain: Option<&crate::analysis::value::NamePath>,
         rooted: bool,
         argument: usize,
     ) {
-        if self.flow.sink_matches(chain, rooted, argument)
-            && self.flow.requirements_ready(self.state.requirements.len())
+        if self.flow.sink_matches(
+            chain
+                .and_then(|chain| chain.to_symbol_path(self.effect.names()))
+                .as_ref(),
+            rooted,
+            argument,
+        ) && self.flow.requirements_ready(self.state.requirements.len())
             && self.context.crossed
         {
             emit(
@@ -755,10 +760,14 @@ fn usage_matches_context(
 }
 
 fn chain_matches(
-    chain: Option<&crate::analysis::SymbolPath>,
+    chain: Option<&crate::analysis::value::NamePath>,
     member: &crate::analysis::SymbolPath,
+    names: &crate::analysis::name::NameTable,
 ) -> bool {
-    chain.is_some_and(|chain| chain == member || chain.last_segment() == member.last_segment())
+    let Some(member) = crate::analysis::value::NamePath::from_symbol_path(member, names) else {
+        return false;
+    };
+    chain.is_some_and(|chain| chain == &member || chain.last_segment() == member.last_segment())
 }
 
 fn emit(

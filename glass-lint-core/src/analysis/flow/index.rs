@@ -6,7 +6,10 @@
 
 use std::collections::BTreeMap;
 
-use crate::{analysis::SymbolPath, api::compiler::CompiledObjectFlow};
+use crate::{
+    analysis::{name::NameTable, value::NamePath},
+    api::{classification::RuleIndex, compiler::CompiledObjectFlow},
+};
 
 const MAX_FLOW_OBJECTS: u32 = 65_536;
 const MAX_FLOW_STATES: usize = 262_144;
@@ -50,22 +53,19 @@ impl Default for FlowLimits {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable identifier for one selected rule flow matcher.
 pub(super) struct FlowId {
-    rule_index: crate::api::classification::RuleIndex,
+    rule_index: RuleIndex,
     flow_index: usize,
 }
 
 impl FlowId {
-    pub(super) fn new(
-        rule_index: crate::api::classification::RuleIndex,
-        flow_index: usize,
-    ) -> Self {
+    pub(super) fn new(rule_index: RuleIndex, flow_index: usize) -> Self {
         Self {
             rule_index,
             flow_index,
         }
     }
 
-    pub(super) fn rule_index(self) -> crate::api::classification::RuleIndex {
+    pub(super) fn rule_index(self) -> RuleIndex {
         self.rule_index
     }
 
@@ -78,17 +78,14 @@ impl FlowId {
 /// Rule-facing source/sink lookup buckets for selected flow matchers.
 pub(super) struct FlowIndex<'rules> {
     flows: BTreeMap<FlowId, &'rules CompiledObjectFlow>,
-    sources: BTreeMap<SymbolPath, Vec<FlowId>>,
-    sinks: BTreeMap<SymbolPath, Vec<FlowId>>,
+    sources: BTreeMap<NamePath, Vec<FlowId>>,
+    sinks: BTreeMap<NamePath, Vec<FlowId>>,
 }
 
 impl<'rules> FlowIndex<'rules> {
     pub(super) fn new(
-        rules: &[(
-            crate::api::classification::RuleIndex,
-            usize,
-            &'rules CompiledObjectFlow,
-        )],
+        rules: &[(RuleIndex, usize, &'rules CompiledObjectFlow)],
+        names: &NameTable,
     ) -> Self {
         // BTreeMap-backed keys make matcher lookup and emission deterministic
         // regardless of catalog construction order.
@@ -100,11 +97,15 @@ impl<'rules> FlowIndex<'rules> {
             };
             index.flows.insert(id, *flow);
             for source in &flow.sources {
-                index.add_source(&source.member_call, id);
+                if let Some(member_call) = NamePath::from_symbol_path(&source.member_call, names) {
+                    index.add_source(&member_call, id);
+                }
             }
             for sink in &flow.sinks {
                 for member_call in &sink.member_calls {
-                    index.add_sink(member_call, id);
+                    if let Some(member_call) = NamePath::from_symbol_path(member_call, names) {
+                        index.add_sink(&member_call, id);
+                    }
                 }
             }
         }
@@ -116,22 +117,22 @@ impl<'rules> FlowIndex<'rules> {
         self.flows.get(&id).copied()
     }
 
-    pub(super) fn source_ids(&self, member_call: &SymbolPath) -> Option<&[FlowId]> {
+    pub(super) fn source_ids(&self, member_call: &NamePath) -> Option<&[FlowId]> {
         self.sources.get(member_call).map(Vec::as_slice)
     }
 
-    pub(super) fn sink_ids(&self, member_call: &SymbolPath) -> Option<&[FlowId]> {
+    pub(super) fn sink_ids(&self, member_call: &NamePath) -> Option<&[FlowId]> {
         self.sinks.get(member_call).map(Vec::as_slice)
     }
 
-    fn add_source(&mut self, member_call: &SymbolPath, id: FlowId) {
+    fn add_source(&mut self, member_call: &NamePath, id: FlowId) {
         self.sources
             .entry(member_call.clone())
             .or_default()
             .push(id);
     }
 
-    fn add_sink(&mut self, member_call: &SymbolPath, id: FlowId) {
+    fn add_sink(&mut self, member_call: &NamePath, id: FlowId) {
         self.sinks.entry(member_call.clone()).or_default().push(id);
     }
 

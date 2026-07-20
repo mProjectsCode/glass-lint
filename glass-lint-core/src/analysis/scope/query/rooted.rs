@@ -26,7 +26,7 @@ impl RootedExprContext for ScopeGraph {
             Some(
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. },
-            ) => Some(target.clone()),
+            ) => self.symbol_path(target),
             Some(
                 BindingProvenance::BoundModuleCallable { .. }
                 | BindingProvenance::Local
@@ -39,7 +39,7 @@ impl RootedExprContext for ScopeGraph {
                 | BindingProvenance::StaticObjectValues(_),
             )
             | None => None,
-            Some(BindingProvenance::ReturnedObject { source }) => Some(source.clone()),
+            Some(BindingProvenance::ReturnedObject { source }) => self.symbol_path(source),
         }
     }
 

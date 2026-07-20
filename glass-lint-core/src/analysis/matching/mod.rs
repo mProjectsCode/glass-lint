@@ -19,7 +19,7 @@ use super::{
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
 use crate::{
-    analysis::SymbolPath,
+    analysis::value::NamePath,
     api::classification::{ClassificationEvidence, MatchKind},
 };
 
@@ -78,11 +78,11 @@ pub(super) struct CallIndexes {
 #[derive(Clone, Debug, Default)]
 /// Member call/read occurrences partitioned by rooted and module identity.
 pub(super) struct MemberIndexes {
-    calls: OccurrenceIndex<SymbolPath>,
-    rooted_calls: OccurrenceIndex<SymbolPath>,
+    calls: OccurrenceIndex<NamePath>,
+    rooted_calls: OccurrenceIndex<NamePath>,
     module_calls: ModuleOccurrences,
-    reads: OccurrenceIndex<SymbolPath>,
-    rooted_reads: OccurrenceIndex<SymbolPath>,
+    reads: OccurrenceIndex<NamePath>,
+    rooted_reads: OccurrenceIndex<NamePath>,
     module_reads: ModuleOccurrences,
     returned_calls: OccurrenceIndex<ReturnedMemberKey>,
     returned_reads: OccurrenceIndex<ReturnedMemberKey>,
@@ -131,6 +131,29 @@ impl OccurrenceIndexes {
             environment: environment.clone(),
             ..Self::default()
         }
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn is_empty(&self) -> bool {
+        self.call_indexes.calls.is_empty()
+            && self.call_indexes.global_calls.is_empty()
+            && self.call_indexes.module_calls.is_empty()
+            && self.members.calls.is_empty()
+            && self.members.rooted_calls.is_empty()
+            && self.members.module_calls.is_empty()
+            && self.members.reads.is_empty()
+            && self.members.rooted_reads.is_empty()
+            && self.members.module_reads.is_empty()
+            && self.members.returned_calls.is_empty()
+            && self.members.returned_reads.is_empty()
+            && self.members.instance_calls.is_empty()
+            && self.constructions.classes.is_empty()
+            && self.constructions.module_classes.is_empty()
+            && self.constructions.constructors.is_empty()
+            && self.constructions.global_constructors.is_empty()
+            && self.constructions.module_constructors.is_empty()
+            && self.literals.imports.is_empty()
+            && self.literals.strings.is_empty()
     }
 
     #[cfg(test)]
@@ -185,7 +208,11 @@ impl OccurrenceIndexes {
 
     #[cfg(test)]
     pub(in crate::analysis) fn has_member_call(&self, chain: &str) -> bool {
-        self.members.calls.get(&SymbolPath::from(chain)).is_some()
+        let path = chain
+            .split('.')
+            .filter_map(|segment| self.test_names.lookup(segment))
+            .collect::<Vec<_>>();
+        self.members.calls.get(&NamePath::from_ids(path)).is_some()
     }
 
     #[cfg(test)]
@@ -317,7 +344,7 @@ mod tests {
     use super::*;
     use crate::{
         ByteRange,
-        analysis::facts::FactId,
+        analysis::{SymbolPath, facts::FactId},
         api::rule::{MatcherSet, MemberCallMatcher},
     };
 
@@ -360,7 +387,11 @@ mod tests {
             .members
             .calls
             .iter()
-            .filter(|(symbol, _)| **symbol == SymbolPath::from_chain("client.request"))
+            .filter(|(symbol, _)| {
+                symbol
+                    .to_symbol_path(&facts.test_names)
+                    .is_some_and(|symbol| symbol == SymbolPath::from_chain("client.request"))
+            })
             .flat_map(|(_, occurrences)| occurrences.iter().map(Occurrence::span))
             .collect::<Vec<_>>();
         assert_eq!(evidence.len(), 1);

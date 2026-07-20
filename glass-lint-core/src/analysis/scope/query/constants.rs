@@ -41,14 +41,14 @@ impl Lookup for ScopeGraph {
             Some(BindingProvenance::StaticObjectKeys(values)) => ConstValue::Object(
                 values
                     .iter()
-                    .cloned()
+                    .filter_map(|key| self.resolve_name_id(*key))
                     .map(|key| (key, ConstValue::Unknown))
                     .collect(),
             ),
             Some(BindingProvenance::StaticObjectValues(values)) => ConstValue::Object(
                 values
                     .keys()
-                    .cloned()
+                    .filter_map(|key| self.resolve_name_id(*key))
                     .map(|key| (key, ConstValue::Unknown))
                     .collect(),
             ),

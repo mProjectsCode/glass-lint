@@ -11,7 +11,7 @@ use swc_ecma_ast::{ObjectPatProp, Pat};
 use super::{
     super::super::syntax::property_name, BindingProvenance, LexicalScopeCollector, ScopeId,
 };
-use crate::analysis::SymbolPath;
+use crate::analysis::value::NamePath;
 
 impl LexicalScopeCollector {
     /// Record aliases introduced by a destructuring declaration.
@@ -19,7 +19,7 @@ impl LexicalScopeCollector {
     /// This deliberately stops at unsupported pattern forms. A partial
     /// projection would make a later use look more precise than the source
     /// warrants, so callers should leave the binding unresolved instead.
-    pub(super) fn collect_value_aliases(&mut self, pat: &Pat, target: &SymbolPath, scope: ScopeId) {
+    pub(super) fn collect_value_aliases(&mut self, pat: &Pat, target: &NamePath, scope: ScopeId) {
         match pat {
             Pat::Ident(ident) => self.insert(
                 scope,
@@ -35,7 +35,7 @@ impl LexicalScopeCollector {
                             if let Some(property) = property_name(&key_value.key) {
                                 self.collect_value_aliases(
                                     &key_value.value,
-                                    &target.append_chain(&property),
+                                    &self.append_name_path(target, &property).unwrap_or_default(),
                                     scope,
                                 );
                             }
@@ -46,7 +46,9 @@ impl LexicalScopeCollector {
                                 scope,
                                 property.clone(),
                                 BindingProvenance::ValueAlias {
-                                    target: target.append_chain(&property),
+                                    target: self
+                                        .append_name_path(target, &property)
+                                        .unwrap_or_default(),
                                 },
                             );
                         }
@@ -62,7 +64,7 @@ impl LexicalScopeCollector {
     pub(super) fn collect_assignment_aliases(
         &mut self,
         pat: &Pat,
-        target: &super::super::super::value::SymbolPath,
+        target: &super::super::super::value::NamePath,
         span: Span,
         scope: ScopeId,
     ) {
@@ -70,7 +72,7 @@ impl LexicalScopeCollector {
             Pat::Ident(ident) => self.record_assignment(
                 span,
                 scope,
-                ident.id.sym.to_smolstr(),
+                ident.id.sym.as_ref(),
                 BindingProvenance::ValueAlias {
                     target: target.clone(),
                 },
@@ -82,7 +84,7 @@ impl LexicalScopeCollector {
                             if let Some(name) = property_name(&key_value.key) {
                                 self.collect_assignment_aliases(
                                     &key_value.value,
-                                    &target.append_chain(&name),
+                                    &self.append_name_path(target, &name).unwrap_or_default(),
                                     span,
                                     scope,
                                 );
@@ -93,9 +95,11 @@ impl LexicalScopeCollector {
                             self.record_assignment(
                                 span,
                                 scope,
-                                name.clone(),
+                                name.as_str(),
                                 BindingProvenance::ValueAlias {
-                                    target: target.append_chain(&name),
+                                    target: self
+                                        .append_name_path(target, &name)
+                                        .unwrap_or_default(),
                                 },
                             );
                         }

@@ -16,7 +16,7 @@ use super::{
     function_prototype_builtin, member_expression_chain, member_property_name,
     member_root_identifier, module_export_name,
 };
-use crate::analysis::SymbolPath;
+use crate::analysis::value::NamePath;
 
 enum DeclarationClassification {
     Binding {
@@ -29,7 +29,7 @@ enum DeclarationClassification {
     },
     ValueAlias {
         pattern: Pat,
-        target: SymbolPath,
+        target: NamePath,
     },
     None,
 }
@@ -43,7 +43,7 @@ fn classify_declaration(
     module_alias: Option<BindingProvenance>,
     const_value: Option<BindingProvenance>,
     returned_alias: Option<BindingProvenance>,
-    value_alias: Option<SymbolPath>,
+    value_alias: Option<NamePath>,
     derived_function_pattern: bool,
 ) -> DeclarationClassification {
     let name = || match pattern {
@@ -149,11 +149,9 @@ impl Visit for LexicalScopeCollector {
             if let (Pat::Ident(alias), Some(Expr::Ident(target))) =
                 (&declarator.name, declarator.init.as_deref())
                 && let Some(function_scope) = self.function_scope_for_name(target.sym.as_ref())
+                && let Some(key) = self.scoped_name(scope, alias.id.sym.as_ref())
             {
-                self.function_aliases.insert(
-                    self.scoped_name(scope, alias.id.sym.as_ref()),
-                    function_scope,
-                );
+                self.function_aliases.insert(key, function_scope);
             }
             let init = declarator.init.as_deref();
             let module_alias = declarator
@@ -163,7 +161,7 @@ impl Visit for LexicalScopeCollector {
             let value_alias = declarator
                 .init
                 .as_deref()
-                .and_then(|init| self.rooted_expr_name(init));
+                .and_then(|init| self.rooted_name_path(init));
             let returned_alias = declarator
                 .init
                 .as_deref()
@@ -207,7 +205,7 @@ impl Visit for LexicalScopeCollector {
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
-        let rooted_alias = self.rooted_expr_name(&assignment.right);
+        let rooted_alias = self.rooted_name_path(&assignment.right);
         let provenance = self
             .bound_callable_provenance(&assignment.right)
             .or_else(|| self.module_alias_provenance(&assignment.right))
@@ -218,30 +216,26 @@ impl Visit for LexicalScopeCollector {
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
                 if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
-                    self.scopes[*scope]
-                        .bindings
-                        .contains_key(
-                            &self
-                                .name_id(ident.id.sym.as_ref())
-                                .unwrap_or(crate::analysis::name::NameId::INVALID),
-                        )
+                    self.name_id(ident.id.sym.as_ref())
+                        .is_some_and(|name| self.scopes[*scope].bindings.contains_key(&name))
                         .then_some((ScopeId::from(*scope), ()))
                 }) {
                     self.record_assignment(
                         assignment.span,
                         scope,
-                        ident.id.sym.to_smolstr(),
+                        ident.id.sym.as_ref(),
                         provenance,
                     );
                 }
             }
             AssignTarget::Simple(SimpleAssignTarget::Member(member)) => {
-                if let Some(receiver) = self.rooted_expr_name(&member.obj) {
+                if let Some(receiver) = self.rooted_name_path(&member.obj) {
                     self.rooted_property_mutations.push(RootedPropertyMutation {
                         span: assignment.span,
                         scope: self.current_scope(),
                         receiver,
-                        property: member_property_name(&member.prop),
+                        property: member_property_name(&member.prop)
+                            .and_then(|property| self.interned_name(&property)),
                     });
                 }
                 self.invalidate_member_root(member, assignment.span);
@@ -260,7 +254,7 @@ impl Visit for LexicalScopeCollector {
             }
             AssignTarget::Pat(pattern) => {
                 let pattern: Pat = pattern.clone().into();
-                if let Some(target) = self.rooted_expr_name(&assignment.right) {
+                if let Some(target) = self.rooted_name_path(&assignment.right) {
                     self.collect_assignment_aliases(
                         &pattern,
                         &target,
@@ -327,7 +321,7 @@ impl Visit for LexicalScopeCollector {
         }
         if let Some(bindings) = self.inline_parameters.get(&function.span.lo).cloned() {
             for (name, provenance) in bindings {
-                self.record_assignment(function.span, scope, name, provenance);
+                self.record_assignment(function.span, scope, name.as_str(), provenance);
             }
         }
         function.decorators.visit_with(self);
@@ -343,7 +337,7 @@ impl Visit for LexicalScopeCollector {
         }
         if let Some(bindings) = self.inline_parameters.get(&arrow.span.lo).cloned() {
             for (name, provenance) in bindings {
-                self.record_assignment(arrow.span, scope, name, provenance);
+                self.record_assignment(arrow.span, scope, name.as_str(), provenance);
             }
         }
         arrow.body.visit_with(self);
@@ -421,8 +415,9 @@ fn collect_derived_function_pattern(
     for property in &object.props {
         if let ObjectPatProp::KeyValue(property) = property
             && property_name(&property.key).as_deref() == Some("constructor")
+            && let Some(target) = collector.name_path(&"Function".into())
         {
-            collector.collect_value_aliases(&property.value, &"Function".into(), scope);
+            collector.collect_value_aliases(&property.value, &target, scope);
         }
     }
     true
@@ -449,10 +444,11 @@ fn record_mutable_static_object(
     mutable_object: bool,
     declarator: &VarDeclarator,
 ) {
-    if mutable_object && let Pat::Ident(ident) = &declarator.name {
-        collector
-            .mutable_static_objects
-            .insert(collector.scoped_name(scope, ident.id.sym.as_ref()));
+    if mutable_object
+        && let Pat::Ident(ident) = &declarator.name
+        && let Some(name) = collector.scoped_name(scope, ident.id.sym.as_ref())
+    {
+        collector.mutable_static_objects.insert(name);
     }
 }
 

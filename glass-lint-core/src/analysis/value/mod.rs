@@ -11,7 +11,7 @@ mod path;
 pub(in crate::analysis) use arena::{CallableValue, MAX_VALUES, ObjectId, Value, ValueTable};
 pub use identity::SymbolPath;
 pub(in crate::analysis) use identity::{
-    BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, ValueId,
+    BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, NamePath, ValueId,
 };
 pub(in crate::analysis) use path::{PathId, PathInterner, PathSegment, PathSegmentInput};
 
@@ -33,13 +33,15 @@ mod tests {
             binding: BindingId(2),
             version: BindingVersion(0),
         });
-        first.append_segment("value".into());
+        let mut names = crate::analysis::name::NameTable::default();
+        let value = names.intern("value").unwrap();
+        first.append_segment(value);
         let mut second = BindingKey::new(BindingRoot::Binding {
             function: FunctionId(1),
             binding: BindingId(2),
             version: BindingVersion(1),
         });
-        second.append_segment("value".into());
+        second.append_segment(value);
         assert_ne!(first, second);
     }
 

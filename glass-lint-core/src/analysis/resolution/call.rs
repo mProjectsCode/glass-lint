@@ -138,7 +138,9 @@ impl Resolver {
                 module: module.clone(),
                 export: export.clone(),
             },
-            SymbolCallProvenance::Local => rooted.map_or(Value::Local, Self::rooted_value),
+            SymbolCallProvenance::Local => {
+                rooted.map_or(Value::Local, |path| self.rooted_value(path))
+            }
             SymbolCallProvenance::Unknown(_) | SymbolCallProvenance::Ambiguous => Value::Unknown,
         };
         let id = self
@@ -184,10 +186,14 @@ impl Resolver {
                 if path.is_root()
                     && path
                         .first_segment()
-                        .is_some_and(|root| self.scopes.is_configured_global(root)) =>
+                        .and_then(|root| self.scopes.resolve_name_id(root))
+                        .is_some_and(|root| self.scopes.is_configured_global(root.as_str())) =>
             {
                 SymbolCallProvenance::Global {
-                    name: path.first_segment().expect("root checked").to_smolstr(),
+                    name: self
+                        .scopes
+                        .resolve_name_id(path.first_segment().expect("root checked"))
+                        .expect("rooted name must remain interned"),
                 }
             }
             Value::Unknown => SymbolCallProvenance::Unknown(UnknownReason::Unsupported),

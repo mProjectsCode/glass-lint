@@ -14,13 +14,13 @@ use smol_str::SmolStr;
 
 use super::{
     super::{
-        facts::{CallArgInfo, ControlKind, FactPayload, FactStream, ParameterBinding},
+        facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, ParameterBinding},
         syntax::SymbolCallProvenance,
-        value::{FunctionId, PathId, SymbolPath, ValueId},
+        value::{FunctionId, PathId, ValueId},
     },
     table::FunctionTable,
 };
-use crate::budget::Budget;
+use crate::{analysis::value::NamePath, budget::Budget};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// A parameter identity plus the destructured path that selects it.
@@ -48,9 +48,9 @@ pub(in crate::analysis) struct EffectArgument {
 /// Resolver-backed call relation retained for later project composition.
 pub(in crate::analysis) struct EffectCall {
     /// Fact identity of the call event.
-    event: super::super::facts::FactId,
+    event: FactId,
     /// Callable chain used for source matching.
-    chain: Option<SymbolPath>,
+    chain: Option<NamePath>,
     /// Whether the chain was rooted by strict provenance.
     rooted: bool,
     /// Qualified function target when one is proven.
@@ -70,7 +70,7 @@ pub(in crate::analysis) struct EffectCall {
 pub(in crate::analysis) enum EffectUse {
     PropertyWrite {
         /// Fact identity of the write.
-        event: super::super::facts::FactId,
+        event: FactId,
         /// Written receiver when it aliases a parameter.
         receiver: Option<ParameterRef>,
         /// Receiver/value identity observed at the write.
@@ -82,9 +82,9 @@ pub(in crate::analysis) enum EffectUse {
     },
     CallArgument {
         /// Fact identity of the call.
-        event: super::super::facts::FactId,
+        event: FactId,
         /// Callable chain used for sink matching.
-        chain: Option<SymbolPath>,
+        chain: Option<NamePath>,
         /// Whether the callable chain has strict rooted provenance.
         rooted: bool,
         /// Argument identity passed to the call.
@@ -92,9 +92,9 @@ pub(in crate::analysis) enum EffectUse {
     },
     CallReceiver {
         /// Fact identity of the member call.
-        event: super::super::facts::FactId,
+        event: FactId,
         /// Member chain used for sink matching.
-        chain: Option<SymbolPath>,
+        chain: Option<NamePath>,
         /// Receiver parameter consumed by the member call.
         receiver: ParameterRef,
         /// Pre-computed arguments at the member call.
@@ -166,11 +166,11 @@ impl EffectArgument {
 }
 
 impl EffectCall {
-    pub(in crate::analysis) fn event(&self) -> super::super::facts::FactId {
+    pub(in crate::analysis) fn event(&self) -> FactId {
         self.event
     }
 
-    pub(in crate::analysis) fn chain(&self) -> Option<&SymbolPath> {
+    pub(in crate::analysis) fn chain(&self) -> Option<&NamePath> {
         self.chain.as_ref()
     }
 
@@ -204,8 +204,10 @@ impl EffectCall {
         names: &crate::analysis::name::NameTable,
     ) -> bool {
         flow.sources.iter().any(|source| {
-            self.chain() == Some(&source.member_call)
-                && source.provenance.matches_rooted(self.is_rooted())
+            self.chain().is_some_and(|chain| {
+                NamePath::from_symbol_path(&source.member_call, names)
+                    .is_some_and(|member| member == *chain)
+            }) && source.provenance.matches_rooted(self.is_rooted())
                 && source.arguments.iter().all(|matcher| {
                     self.call_arguments()
                         .get(matcher.index)
@@ -268,6 +270,9 @@ impl FunctionEffects {
     /// Extract matcher-independent effects from the canonical fact stream.
     pub(in crate::analysis) fn collect(stream: &FactStream, limit: usize) -> Self {
         let mut effects = Self::default();
+        if !stream.is_valid() {
+            return effects;
+        }
         let mut budget = Budget::new(limit);
         let mut value_provenance = BTreeMap::new();
         effects.initialize(stream, &mut budget);
@@ -345,7 +350,10 @@ impl FunctionEffects {
     }
 
     fn initialize(&mut self, stream: &FactStream, budget: &mut Budget) {
-        let names = Arc::clone(stream.names_arc());
+        let Some(names) = stream.names_arc() else {
+            return;
+        };
+        let names = Arc::clone(names);
         for fact in stream.facts() {
             let FactPayload::Function {
                 id,
@@ -401,7 +409,7 @@ impl FunctionEffect {
 
     fn record_property_write(
         &mut self,
-        event: super::super::facts::FactId,
+        event: FactId,
         receiver: ValueId,
         property: Option<&str>,
         static_value: Option<&String>,
@@ -493,11 +501,20 @@ impl FunctionEffect {
         let (chain, call_args) = unwrap.as_deref().map_or_else(
             || {
                 (
-                    rooted_chain.clone().or_else(|| syntactic_chain.clone()),
+                    rooted_chain.clone().or_else(|| {
+                        syntactic_chain
+                            .as_ref()
+                            .and_then(|path| NamePath::from_symbol_path(path, self.names()))
+                    }),
                     args.as_slice(),
                 )
             },
-            |unwrap| (Some(unwrap.chain.clone()), unwrap.effective_args.as_slice()),
+            |unwrap| {
+                (
+                    NamePath::from_symbol_path(&unwrap.chain, self.names()),
+                    unwrap.effective_args.as_slice(),
+                )
+            },
         );
         let arguments = call_args
             .iter()

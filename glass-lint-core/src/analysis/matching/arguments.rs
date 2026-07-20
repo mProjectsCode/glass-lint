@@ -11,7 +11,7 @@ use super::{
     push_owned_evidence,
 };
 use crate::{
-    analysis::{SymbolPath, syntax::UnknownReason},
+    analysis::{SymbolPath, syntax::UnknownReason, value::NamePath},
     api::compiler::rule::{
         EventPredicate, IdentityConstraint, QueryClause, QueryConstraint, SubjectConstraint,
     },
@@ -28,6 +28,9 @@ impl OccurrenceIndexes {
             &std::collections::BTreeMap<super::super::value::ValueId, super::LinkedModuleIdentity>,
         >,
     ) {
+        let Some(names) = stream.names() else {
+            return;
+        };
         for fact in stream.facts() {
             if let FactPayload::Call {
                 callee,
@@ -70,14 +73,14 @@ impl OccurrenceIndexes {
                             effective_chain,
                             &linked_call_provenance,
                             effective_args,
-                            stream.names(),
+                            names,
                         ),
                         EventPredicate::MemberCall { .. } => matches_member_clause(
                             clause,
                             fact,
                             linked_member_provenance.as_ref(),
                             &linked_args,
-                            stream.names(),
+                            names,
                         ),
                         EventPredicate::Construct
                         | EventPredicate::MemberRead { .. }
@@ -280,9 +283,14 @@ fn matches_member_clause(
     };
     let subject_matches = match &clause.subject {
         SubjectConstraint::Direct => true,
-        SubjectConstraint::ReturnedFrom { producer } => returned_member
-            .as_ref()
-            .is_some_and(|(source, found)| found == member && producer.exact_root_matches(source)),
+        SubjectConstraint::ReturnedFrom { producer } => {
+            returned_member.as_ref().is_some_and(|(source, found)| {
+                NamePath::from_symbol_path(member, names).is_some_and(|member| found == &member)
+                    && source
+                        .to_symbol_path(names)
+                        .is_some_and(|source| producer.exact_root_matches(&source))
+            })
+        }
         SubjectConstraint::InstanceOf { constructor } => instance_class
             .as_ref()
             .is_some_and(|(module, export)| constructor.identity_module_matches(module, export)),
@@ -296,12 +304,17 @@ fn matches_member_clause(
                 && (syntactic_chain
                     .as_ref()
                     .is_some_and(|chain| chain == member)
-                    || rooted_chain.as_ref().is_some_and(|chain| chain == member))
+                    || rooted_chain.as_ref().is_some_and(|chain| {
+                        NamePath::from_symbol_path(member, names)
+                            .is_some_and(|member| chain == &member)
+                    }))
         }
         (IdentityConstraint::Rooted { path }, SubjectConstraint::Direct) => {
             rooted_chain.as_ref().is_some_and(|chain| {
-                let canonical = chain.without_this_prefix();
-                canonical == *path && canonical == *member
+                let canonical = chain.without_this_prefix(names);
+                NamePath::from_symbol_path(path, names).is_some_and(|path| canonical == path)
+                    && NamePath::from_symbol_path(member, names)
+                        .is_some_and(|member| canonical == member)
             })
         }
         (IdentityConstraint::ModuleNamespace { module }, SubjectConstraint::Direct) => matches!(
@@ -321,9 +334,11 @@ fn matches_member_clause(
             )
         }
         (IdentityConstraint::Rooted { path }, SubjectConstraint::ReturnedFrom { .. }) => {
-            returned_member
-                .as_ref()
-                .is_some_and(|(source, found)| source == path && found == member)
+            returned_member.as_ref().is_some_and(|(source, found)| {
+                NamePath::from_symbol_path(path, names).is_some_and(|path| source == &path)
+                    && NamePath::from_symbol_path(member, names)
+                        .is_some_and(|member| found == &member)
+            })
         }
         (
             IdentityConstraint::ModuleExport { module, export },

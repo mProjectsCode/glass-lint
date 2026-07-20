@@ -26,16 +26,17 @@ impl FactBuilder<'_> {
                 value,
             });
         }
-        let object_keys = self.resolver.object_keys_expr(expr).map(|keys| {
+        let object_keys = self.resolver.object_keys_expr(expr).and_then(|keys| {
             keys.into_iter()
-                .filter_map(|key| self.intern_name(Some(key.as_str())))
-                .collect()
+                .map(|key| self.intern_name(Some(key.as_str())))
+                .collect::<Option<Vec<_>>>()
         });
         let property_strings = self
             .static_property_strings(expr)
             .into_iter()
-            .filter_map(|(key, value)| self.intern_name(Some(key.as_str())).map(|key| (key, value)))
-            .collect();
+            .map(|(key, value)| self.intern_name(Some(key.as_str())).map(|key| (key, value)))
+            .collect::<Option<Vec<_>>>()
+            .unwrap_or_default();
         CallArgInfo {
             value,
             base_value,
@@ -43,7 +44,10 @@ impl FactBuilder<'_> {
             static_string: self.resolver.static_string_expr(expr),
             object_keys,
             property_strings,
-            rooted_chain: self.resolver.rooted_expr_chain(expr),
+            rooted_chain: self
+                .resolver
+                .rooted_expr_chain(expr)
+                .and_then(|path| self.name_path(&path)),
             projections,
             spread: false,
             provenance,

@@ -127,7 +127,9 @@ impl Resolver {
         let syntactic = seed.syntactic_chain;
         // Prefer the alias-expanded path. Falling back to a rooted member keeps
         // direct global/`this` access available when no local alias is present.
-        let rooted_chain = seed.rooted_chain;
+        let rooted_chain = seed
+            .rooted_chain
+            .and_then(|path| self.scopes.symbol_path(&path));
         let module_member = seed.module_member;
         let scoped_call = match &module_member {
             Some(SymbolMemberProvenance::ModuleNamespace { module, member }) => {
@@ -159,7 +161,12 @@ impl Resolver {
             rooted_chain,
             call,
             module_member,
-            returned_member: seed.returned_member,
+            returned_member: seed.returned_member.and_then(|(source, member)| {
+                Some((
+                    self.scopes.symbol_path(&source)?,
+                    self.scopes.symbol_path(&member)?,
+                ))
+            }),
             bound_arguments: None,
             syntactic_chain: syntactic,
         };

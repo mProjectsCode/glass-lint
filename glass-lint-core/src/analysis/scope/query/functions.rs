@@ -26,22 +26,22 @@ impl ScopeGraph {
             return None;
         };
         let (scope, provenance) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
-        let function = self
-            .function_binding(scope, ident.sym.as_ref())
-            .or_else(|| self.function_alias(scope, ident.sym.as_ref()))
-            .or_else(|| {
-                let target = match provenance {
-                    BindingProvenance::ValueAlias { target }
-                    | BindingProvenance::BoundCallable { target, .. } => target
-                        .without_bind_suffix()
-                        .unwrap_or_else(|| target.clone()),
-                    _ => return None,
-                };
-                target
-                    .is_root()
-                    .then(|| self.function_binding_at(target.to_string().as_str(), ident.span))
-                    .flatten()
-            })?;
+        let function =
+            self.function_binding(scope, ident.sym.as_ref())
+                .or_else(|| self.function_alias(scope, ident.sym.as_ref()))
+                .or_else(|| {
+                    let target = match provenance {
+                        BindingProvenance::ValueAlias { target }
+                        | BindingProvenance::BoundCallable { target, .. } => self
+                            .symbol_path(target)
+                            .and_then(|target| target.without_bind_suffix().or(Some(target)))?,
+                        _ => return None,
+                    };
+                    target
+                        .is_root()
+                        .then(|| self.function_binding_at(target.to_string().as_str(), ident.span))
+                        .flatten()
+                })?;
         let function_end = self
             .function_spans()
             .find(|(candidate, _)| *candidate == function)

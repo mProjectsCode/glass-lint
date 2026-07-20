@@ -65,7 +65,7 @@ impl SemanticFacts {
         &self.stream
     }
 
-    pub(in crate::analysis) fn names(&self) -> &crate::analysis::name::NameTable {
+    pub(in crate::analysis) fn names(&self) -> Option<&crate::analysis::name::NameTable> {
         self.stream.names()
     }
 
@@ -273,7 +273,7 @@ mod tests {
             let mut builder = FactBuilder::new(&resolver);
             swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
             let (mut stream, interface) = builder.into_parts();
-            stream.freeze_names(std::sync::Arc::new(resolver.name_snapshot()));
+            let _ = stream.freeze_names(std::sync::Arc::new(resolver.name_snapshot()));
             format!(
                 "{:?}",
                 SemanticFacts::from_lowering(stream, interface, &crate::Environment::default())

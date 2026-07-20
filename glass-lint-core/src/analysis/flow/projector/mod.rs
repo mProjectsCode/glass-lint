@@ -28,9 +28,12 @@ use super::{
     state::FlowState,
     summary::FunctionSummaries,
 };
-use crate::api::{
-    classification::{ClassificationEvidence, MatchKind},
-    compiler::{CompiledObjectFlow, CompiledObjectRequirement},
+use crate::{
+    analysis::name::NameTable,
+    api::{
+        classification::{ClassificationEvidence, MatchKind},
+        compiler::{CompiledObjectFlow, CompiledObjectRequirement},
+    },
 };
 
 pub(in crate::analysis) fn collect(
@@ -57,9 +60,13 @@ pub(super) fn collect_with_limits(
 ) -> Vec<Vec<ClassificationEvidence>> {
     // Helpers are summarized before projection so a selected flow rule never
     // changes the canonical fact walk or requires another AST traversal.
-    let flow_index = FlowIndex::new(rules);
+    let Some(names) = stream.names() else {
+        return vec![Vec::new(); rule_count];
+    };
+    let flow_index = FlowIndex::new(rules, names);
     let helpers = FunctionSummaries::collect(stream, &flow_index);
-    let mut projector = ObjectFlowProjector::new(stream, flow_index, helpers, rule_count, limits);
+    let mut projector =
+        ObjectFlowProjector::new(stream, names, flow_index, helpers, rule_count, limits);
     for fact in stream.facts() {
         projector.transfer(fact);
     }
@@ -71,6 +78,7 @@ struct ObjectFlowProjector<'rules, 'stream> {
     /// The canonical facts are the projector's only input. In particular, it
     /// must never inspect the AST or reconstruct resolution decisions.
     stream: &'stream FactStream,
+    names: &'stream NameTable,
     flow_index: FlowIndex<'rules>,
     helpers: FunctionSummaries,
     /// Call results are indexed once so later assignments can start a flow
@@ -97,6 +105,7 @@ struct ObjectFlowProjector<'rules, 'stream> {
 impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     fn new(
         stream: &'stream FactStream,
+        names: &'stream NameTable,
         flow_index: FlowIndex<'rules>,
         helpers: FunctionSummaries,
         rule_count: usize,
@@ -120,6 +129,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
 
         Self {
             stream,
+            names,
             flow_index,
             helpers,
             calls_by_result,
@@ -215,6 +225,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         };
         if let Some(source) = SourceCall::from_parts(
             fact.id,
+            self.names,
             rooted_chain.as_ref(),
             syntactic_chain.as_ref(),
             callee_name.and_then(|id| self.stream.resolve_name(id)),

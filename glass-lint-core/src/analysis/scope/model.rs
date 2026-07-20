@@ -9,11 +9,17 @@ use std::{cell::Cell, collections::BTreeMap};
 use smol_str::SmolStr;
 use swc_common::{BytePos, Span};
 
-use super::super::{
-    syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
-    value::{BindingId, BindingKey, BindingVersion, FunctionId, SymbolPath},
+use super::{
+    super::{
+        syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
+        value::{BindingId, BindingKey, BindingVersion, FunctionId, NamePath, SymbolPath},
+    },
+    collect::{PropertyAliasAssignment, RootedPropertyMutation},
 };
-use crate::analysis::name::{NameId, NameTableHandle};
+use crate::{
+    Environment,
+    analysis::name::{NameId, NameTableHandle},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable identity of a lexical scope within one analyzed module.
@@ -58,7 +64,7 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Names used by compact local scope indexes.
     names: NameTableHandle,
     /// Host globals and member capabilities used for unshadowed checks.
-    environment: crate::Environment,
+    environment: Environment,
     /// Lexical scopes in predeclaration order.
     scopes: Vec<LexicalScope>,
     /// Scope indexes sorted by opening position for position lookup.
@@ -67,7 +73,7 @@ pub(in crate::analysis) struct ScopeGraph {
     /// one AST node.
     last_scope_query: Cell<Option<(Span, ScopeId)>>,
     /// Source-ordered assignments grouped by scope and name.
-    assignments: BTreeMap<ScopeId, BTreeMap<SmolStr, Vec<AliasAssignment>>>,
+    assignments: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>>,
     /// Stable binding IDs keyed by lexical scope and name.
     binding_ids: BTreeMap<ScopedName, BindingId>,
     /// Stable function IDs keyed by function scope.
@@ -77,9 +83,9 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Aliases to locally declared functions.
     function_aliases: BTreeMap<ScopedName, FunctionId>,
     /// Property writes indexed by versioned receiver and path.
-    property_assignments: BTreeMap<(BindingKey, SymbolPath), Vec<PropertyAliasFact>>,
+    property_assignments: BTreeMap<(BindingKey, NamePath), Vec<PropertyAliasFact>>,
     /// Rooted writes that invalidate member identities.
-    rooted_property_mutations: BTreeMap<SymbolPath, Vec<RootedPropertyMutationFact>>,
+    rooted_property_mutations: BTreeMap<NamePath, Vec<RootedPropertyMutationFact>>,
     /// Proven parameter identities shared by compatible call sites.
     parameter_aliases: BTreeMap<(FunctionId, NameId), BindingProvenance>,
     /// Dynamic-evaluation sites that invalidate later lexical assumptions.
@@ -91,15 +97,31 @@ pub(in crate::analysis) struct ScopeGraph {
 }
 
 impl ScopeGraph {
-    fn name_id(&self, name: &str) -> Option<NameId> {
+    pub(in crate::analysis) fn resolve_name_id(&self, name: NameId) -> Option<SmolStr> {
+        self.names.resolve(name)
+    }
+
+    pub(super) fn name_id(&self, name: &str) -> Option<NameId> {
         self.names.lookup(name)
+    }
+
+    pub(super) fn intern_name(&self, name: &str) -> Option<NameId> {
+        self.names.intern(name).ok()
+    }
+
+    pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
+        self.names.intern_path(path)
+    }
+
+    pub(in crate::analysis) fn symbol_path(&self, path: &NamePath) -> Option<SymbolPath> {
+        self.names.resolve_path(path)
     }
 
     /// Convert collector-side property events into sorted query indexes.
     pub(super) fn finish_collected_properties(
         &mut self,
-        property_assignments: Vec<super::collect::PropertyAliasAssignment>,
-        rooted_mutations: Vec<super::collect::RootedPropertyMutation>,
+        property_assignments: Vec<PropertyAliasAssignment>,
+        rooted_mutations: Vec<RootedPropertyMutation>,
         dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
     ) {
         for assignment in property_assignments {
@@ -114,6 +136,7 @@ impl ScopeGraph {
                     assignment
                         .property
                         .without_first_segment()
+                        .and_then(|path| self.name_path(&path))
                         .unwrap_or_default(),
                 ))
                 .or_default()
@@ -176,9 +199,12 @@ impl ScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<&AliasAssignment> {
-        self.assignments
-            .get(&scope)
-            .and_then(|assignments| assignments.get(name))
+        self.name_id(name)
+            .and_then(|name| {
+                self.assignments
+                    .get(&scope)
+                    .and_then(|assignments| assignments.get(&name))
+            })
             .and_then(|assignments| {
                 assignments
                     .partition_point(|assignment| assignment.span.lo <= span.lo)
@@ -275,7 +301,7 @@ impl ScopeGraph {
     ) -> bool {
         self.assignments
             .get(&scope)
-            .and_then(|assignments| assignments.get(name))
+            .and_then(|assignments| self.name_id(name).and_then(|name| assignments.get(&name)))
             .is_some_and(|assignments| {
                 assignments
                     .iter()
@@ -286,7 +312,7 @@ impl ScopeGraph {
     pub(super) fn binding_version(&self, scope: ScopeId, name: &str, span: Span) -> BindingVersion {
         self.assignments
             .get(&scope)
-            .and_then(|assignments| assignments.get(name))
+            .and_then(|assignments| self.name_id(name).and_then(|name| assignments.get(&name)))
             .and_then(|assignments| {
                 assignments
                     .partition_point(|assignment| assignment.span.lo <= span.lo)
@@ -298,14 +324,14 @@ impl ScopeGraph {
 
     pub(super) fn property_aliases(
         &self,
-        key: &(BindingKey, SymbolPath),
+        key: &(BindingKey, NamePath),
     ) -> Option<&[PropertyAliasFact]> {
         self.property_assignments.get(key).map(Vec::as_slice)
     }
 
     pub(super) fn rooted_mutations(
         &self,
-        root: &SymbolPath,
+        root: &NamePath,
     ) -> Option<&[RootedPropertyMutationFact]> {
         self.rooted_property_mutations.get(root).map(Vec::as_slice)
     }
@@ -364,11 +390,11 @@ impl ScopeGraph {
 
 /// Owned inputs used to assemble a collected [`ScopeGraph`].
 pub(super) struct ScopeGraphParts {
-    pub(super) environment: crate::Environment,
+    pub(super) environment: Environment,
     pub(super) names: NameTableHandle,
     pub(super) scopes: Vec<LexicalScope>,
     pub(super) scopes_by_start: Vec<ScopeId>,
-    pub(super) assignments: BTreeMap<ScopeId, BTreeMap<SmolStr, Vec<AliasAssignment>>>,
+    pub(super) assignments: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>>,
     pub(super) binding_ids: BTreeMap<ScopedName, BindingId>,
     pub(super) function_ids: BTreeMap<ScopeId, FunctionId>,
     pub(super) function_bindings: BTreeMap<ScopedName, FunctionId>,
@@ -386,7 +412,7 @@ fn span_contains(outer: Span, inner: Span) -> bool {
 pub(in crate::analysis::scope) struct RootedPropertyMutationFact {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) scope: ScopeId,
-    pub(in crate::analysis::scope) property: Option<SmolStr>,
+    pub(in crate::analysis::scope) property: Option<NameId>,
 }
 
 #[derive(Debug, Clone)]
@@ -428,10 +454,10 @@ impl ScopeEffect {
 pub(in crate::analysis) enum BindingProvenance {
     Local,
     ValueAlias {
-        target: SymbolPath,
+        target: NamePath,
     },
     BoundCallable {
-        target: SymbolPath,
+        target: NamePath,
         bound_arguments: Vec<Option<BoundArgument>>,
     },
     BoundModuleCallable {
@@ -440,7 +466,7 @@ pub(in crate::analysis) enum BindingProvenance {
         bound_arguments: Vec<Option<BoundArgument>>,
     },
     ReturnedObject {
-        source: SymbolPath,
+        source: NamePath,
     },
     ModuleExport {
         module: SmolStr,
@@ -452,15 +478,15 @@ pub(in crate::analysis) enum BindingProvenance {
     StaticString(String),
     StaticNumber(usize),
     StaticStringArray(Vec<String>),
-    StaticObjectKeys(Vec<SmolStr>),
-    StaticObjectValues(BTreeMap<SmolStr, SymbolPath>),
+    StaticObjectKeys(Vec<NameId>),
+    StaticObjectValues(BTreeMap<NameId, NamePath>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Static argument identity preserved by a modeled callable bind.
 pub(in crate::analysis) enum BoundArgument {
     StaticString(String),
-    RootedExpression(SymbolPath),
+    RootedExpression(NamePath),
 }
 
 /// The collection boundary between lexical analysis and value interning.
@@ -489,13 +515,13 @@ pub(in crate::analysis) struct MemberValueSeed {
     /// Syntax-only member spelling retained for diagnostics/indexing.
     pub(in crate::analysis) syntactic_chain: Option<SymbolPath>,
     /// Proven rooted path after alias and mutation checks.
-    pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
+    pub(in crate::analysis) rooted_chain: Option<NamePath>,
     /// Versioned receiver/property binding identity.
     pub(in crate::analysis) binding: Option<BindingKey>,
     /// Imported namespace/member provenance, when known.
     pub(in crate::analysis) module_member: Option<SymbolMemberProvenance>,
     /// Returned-object source and member name, when tracked.
-    pub(in crate::analysis) returned_member: Option<(SymbolPath, SymbolPath)>,
+    pub(in crate::analysis) returned_member: Option<(NamePath, NamePath)>,
 }
 
 #[derive(Debug, Clone)]
@@ -503,7 +529,7 @@ pub(in crate::analysis) struct MemberValueSeed {
 pub(in crate::analysis) struct AliasAssignment {
     pub(in crate::analysis::scope) span: Span,
     pub(in crate::analysis::scope) scope: ScopeId,
-    pub(in crate::analysis::scope) name: SmolStr,
+    pub(in crate::analysis::scope) name: NameId,
     pub(in crate::analysis::scope) version: BindingVersion,
     pub(in crate::analysis::scope) provenance: BindingProvenance,
 }

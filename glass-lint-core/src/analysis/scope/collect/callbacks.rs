@@ -30,13 +30,14 @@ impl LexicalScopeCollector {
                 if *caller_scope != *scope
                     && let Some(Some(target)) = arguments.get(index)
                 {
-                    Self::project_parameter_pattern(parameter, target, &mut projected);
+                    Self::project_parameter_pattern(&self.names, parameter, target, &mut projected);
                 }
                 for name in Self::parameter_binding_names(parameter) {
                     let target = projected.get(&name).cloned();
-                    let entry = aliases
-                        .entry(self.scoped_name(*scope, name.as_str()))
-                        .or_insert_with(|| target.clone());
+                    let Some(key) = self.scoped_name(*scope, name.as_str()) else {
+                        continue;
+                    };
+                    let entry = aliases.entry(key).or_insert_with(|| target.clone());
                     if *entry != target {
                         *entry = None;
                     }
@@ -45,7 +46,9 @@ impl LexicalScopeCollector {
             if arguments.len() != parameters.len() {
                 for parameter in parameters {
                     for name in Self::parameter_binding_names(parameter) {
-                        aliases.insert(self.scoped_name(*scope, name.as_str()), None);
+                        if let Some(key) = self.scoped_name(*scope, name.as_str()) {
+                            aliases.insert(key, None);
+                        }
                     }
                 }
             }
@@ -100,6 +103,7 @@ impl LexicalScopeCollector {
     /// Unsupported patterns intentionally contribute no bindings: callers
     /// must not infer aliases from a shape that the collector cannot prove.
     pub(super) fn project_parameter_pattern(
+        names: &super::super::super::name::NameTableHandle,
         pattern: &Pat,
         value: &BindingProvenance,
         output: &mut BTreeMap<SmolStr, BindingProvenance>,
@@ -108,7 +112,9 @@ impl LexicalScopeCollector {
             Pat::Ident(ident) => {
                 output.insert(ident.id.sym.to_smolstr(), value.clone());
             }
-            Pat::Assign(assign) => Self::project_parameter_pattern(&assign.left, value, output),
+            Pat::Assign(assign) => {
+                Self::project_parameter_pattern(names, &assign.left, value, output);
+            }
             Pat::Object(object) => {
                 let BindingProvenance::StaticObjectValues(values) = value else {
                     return;
@@ -119,10 +125,14 @@ impl LexicalScopeCollector {
                             let Some(key) = property_name(&property.key) else {
                                 continue;
                             };
+                            let Some(key) = names.lookup(key.as_str()) else {
+                                continue;
+                            };
                             let Some(target) = values.get(&key) else {
                                 continue;
                             };
                             Self::project_parameter_pattern(
+                                names,
                                 &property.value,
                                 &BindingProvenance::ValueAlias {
                                     target: target.clone(),
@@ -131,7 +141,9 @@ impl LexicalScopeCollector {
                             );
                         }
                         ObjectPatProp::Assign(property) => {
-                            if let Some(target) = values.get(property.key.sym.as_ref()) {
+                            if let Some(key) = names.lookup(property.key.sym.as_ref())
+                                && let Some(target) = values.get(&key)
+                            {
                                 output.insert(
                                     property.key.sym.to_smolstr(),
                                     BindingProvenance::ValueAlias {
@@ -179,7 +191,7 @@ impl LexicalScopeCollector {
         let mut bindings = BTreeMap::new();
         for (parameter, argument) in parameters.into_iter().zip(arguments) {
             if let Some(argument) = argument {
-                Self::project_parameter_pattern(parameter, &argument, &mut bindings);
+                Self::project_parameter_pattern(&self.names, parameter, &argument, &mut bindings);
             }
         }
         if !bindings.is_empty() {

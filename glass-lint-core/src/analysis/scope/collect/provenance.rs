@@ -10,9 +10,12 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{CallExpr, Callee, Expr, Lit};
 
 use super::{
-    super::super::syntax::{
-        constant::{self, ConstValue},
-        member_property_name, property_name,
+    super::{
+        super::syntax::{
+            constant::{self, ConstValue},
+            member_property_name, property_name,
+        },
+        query::rooted::RootedExprContext,
     },
     BindingProvenance, BoundArgument, LexicalScopeCollector,
 };
@@ -133,7 +136,11 @@ impl LexicalScopeCollector {
                     .collect::<Option<Vec<_>>>()?,
             )),
             ConstValue::Object(values) => Some(BindingProvenance::StaticObjectKeys(
-                values.keys().cloned().collect(),
+                values
+                    .keys()
+                    .map(|key| self.names.intern(key))
+                    .collect::<Result<Vec<_>, _>>()
+                    .ok()?,
             )),
             ConstValue::Unknown => None,
         }
@@ -155,7 +162,7 @@ impl LexicalScopeCollector {
             .or_else(|| self.static_object_values(expr))
             .or_else(|| self.const_provenance(expr))
             .or_else(|| {
-                self.rooted_expr_name(expr)
+                self.rooted_name_path(expr)
                     .map(|target| BindingProvenance::ValueAlias { target })
             })
     }
@@ -174,7 +181,7 @@ impl LexicalScopeCollector {
         if member_property_name(&member.prop).as_deref() != Some("bind") {
             return None;
         }
-        let target = self.rooted_expr_name(&member.obj)?;
+        let target = self.rooted_name_path(&member.obj)?;
         let bound_arguments = call
             .args
             .iter()
@@ -188,7 +195,7 @@ impl LexicalScopeCollector {
                         _ => None,
                     })
                     .or_else(|| {
-                        self.rooted_expr_name(&argument.expr)
+                        self.rooted_name_path(&argument.expr)
                             .map(BoundArgument::RootedExpression)
                     })
             })
@@ -220,7 +227,12 @@ impl LexicalScopeCollector {
                 {
                     return None;
                 }
-                let source = self.rooted_expr_name(callee)?;
+                let source = match &**callee {
+                    Expr::Member(member) => self
+                        .rooted_member_chain(member)
+                        .and_then(|path| self.name_path(&path))?,
+                    _ => self.rooted_name_path(callee)?,
+                };
                 (!source.is_root()).then_some(BindingProvenance::ReturnedObject { source })
             }
             Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
@@ -240,7 +252,7 @@ impl LexicalScopeCollector {
                         source: source.clone(),
                     });
                 }
-                self.rooted_expr_name(expr)
+                self.rooted_name_path(expr)
                     .map(|source| BindingProvenance::ReturnedObject { source })
             }
             Expr::Paren(paren) => self.returned_object_provenance(&paren.expr),
@@ -265,8 +277,9 @@ impl LexicalScopeCollector {
             let swc_ecma_ast::Prop::KeyValue(property) = &**property else {
                 return None;
             };
-            let target = self.rooted_expr_name(&property.value)?;
-            values.insert(property_name(&property.key)?, target);
+            let target = self.rooted_name_path(&property.value)?;
+            let key = property_name(&property.key)?;
+            values.insert(self.names.intern(key.as_str()).ok()?, target);
         }
         Some(BindingProvenance::StaticObjectValues(values))
     }

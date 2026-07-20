@@ -12,8 +12,11 @@ use super::{
     occurrence::{ModuleOccurrences, OccurrenceIndex},
     push_owned_evidence,
 };
-use crate::api::compiler::rule::{
-    EventPredicate, IdentityConstraint, QueryClause, QueryPlan, SubjectConstraint,
+use crate::{
+    analysis::value::NamePath,
+    api::compiler::rule::{
+        EventPredicate, IdentityConstraint, QueryClause, QueryPlan, SubjectConstraint,
+    },
 };
 
 fn merge_occurrences(
@@ -97,7 +100,7 @@ impl OccurrenceIndexes {
         names: &crate::analysis::name::NameTable,
     ) -> Option<Vec<Occurrence>> {
         if !matches!(clause.subject, SubjectConstraint::Direct) {
-            return self.occurrences_for_subject(clause, overlay);
+            return self.occurrences_for_subject(clause, overlay, names);
         }
         self.occurrences_for_event(clause, overlay, names)
     }
@@ -106,22 +109,27 @@ impl OccurrenceIndexes {
         &self,
         clause: &QueryClause,
         _overlay: Option<&ModuleOccurrenceOverlay>,
+        names: &crate::analysis::name::NameTable,
     ) -> Option<Vec<Occurrence>> {
         match (&clause.event, &clause.subject) {
             (EventPredicate::MemberCall { member }, SubjectConstraint::ReturnedFrom { .. }) => {
                 self.members.returned_calls.matching(|key| {
-                    clause
-                        .identity
-                        .root_or_descendant_matches(key.source(), &self.environment)
-                        && member == key.member()
+                    key.source().to_symbol_path(names).is_some_and(|source| {
+                        clause
+                            .identity
+                            .root_or_descendant_matches(&source, &self.environment)
+                    }) && crate::analysis::value::NamePath::from_symbol_path(member, names)
+                        .is_some_and(|member| member == *key.member())
                 })
             }
             (EventPredicate::MemberRead { member }, SubjectConstraint::ReturnedFrom { .. }) => {
                 self.members.returned_reads.matching(|key| {
-                    clause
-                        .identity
-                        .root_or_descendant_matches(key.source(), &self.environment)
-                        && member == key.member()
+                    key.source().to_symbol_path(names).is_some_and(|source| {
+                        clause
+                            .identity
+                            .root_or_descendant_matches(&source, &self.environment)
+                    }) && crate::analysis::value::NamePath::from_symbol_path(member, names)
+                        .is_some_and(|member| member == *key.member())
                 })
             }
             (EventPredicate::MemberCall { member }, SubjectConstraint::InstanceOf { .. }) => self
@@ -181,11 +189,16 @@ impl OccurrenceIndexes {
                 _ => None,
             },
             EventPredicate::MemberCall { member } => match &clause.identity {
-                IdentityConstraint::Any { .. } => self.members.calls.get(member).cloned(),
-                IdentityConstraint::Rooted { path } => self
-                    .members
-                    .rooted_calls
-                    .matching(|key| path.matches_global_object_alias(key, &self.environment)),
+                IdentityConstraint::Any { .. } => {
+                    crate::analysis::value::NamePath::from_symbol_path(member, names)
+                        .and_then(|member| self.members.calls.get(&member).cloned())
+                }
+                IdentityConstraint::Rooted { path } => {
+                    let expected = NamePath::from_symbol_path(path, names)?;
+                    self.members.rooted_calls.matching(|key| {
+                        expected.matches_global_object_alias_with(key, names, &self.environment)
+                    })
+                }
                 IdentityConstraint::ModuleNamespace { module } => {
                     let key = ModuleExportKey::new(module.clone(), member.to_string());
                     module_occurrences(
@@ -204,11 +217,16 @@ impl OccurrenceIndexes {
                 _ => None,
             },
             EventPredicate::MemberRead { member } => match &clause.identity {
-                IdentityConstraint::Any { .. } => self.members.reads.get(member).cloned(),
-                IdentityConstraint::Rooted { path } => self
-                    .members
-                    .rooted_reads
-                    .matching(|key| path.matches_global_object_alias(key, &self.environment)),
+                IdentityConstraint::Any { .. } => {
+                    crate::analysis::value::NamePath::from_symbol_path(member, names)
+                        .and_then(|member| self.members.reads.get(&member).cloned())
+                }
+                IdentityConstraint::Rooted { path } => {
+                    let expected = NamePath::from_symbol_path(path, names)?;
+                    self.members.rooted_reads.matching(|key| {
+                        expected.matches_global_object_alias_with(key, names, &self.environment)
+                    })
+                }
                 IdentityConstraint::ModuleNamespace { module } => {
                     let key = ModuleExportKey::new(module.clone(), member.to_string());
                     module_occurrences(
@@ -306,14 +324,26 @@ impl OccurrenceIndexes {
                 self.call_indexes.calls.push(name, FactId(u32::MAX), span);
             }
             crate::api::classification::MatchKind::MemberCall => {
-                self.members
-                    .calls
-                    .push(symbol.into(), FactId(u32::MAX), span);
+                let key = symbol
+                    .split('.')
+                    .map(|segment| self.test_name(segment))
+                    .collect::<Vec<_>>();
+                self.members.calls.push(
+                    crate::analysis::value::NamePath::from_ids(key),
+                    FactId(u32::MAX),
+                    span,
+                );
             }
             crate::api::classification::MatchKind::MemberRead => {
-                self.members
-                    .reads
-                    .push(symbol.into(), FactId(u32::MAX), span);
+                let key = symbol
+                    .split('.')
+                    .map(|segment| self.test_name(segment))
+                    .collect::<Vec<_>>();
+                self.members.reads.push(
+                    crate::analysis::value::NamePath::from_ids(key),
+                    FactId(u32::MAX),
+                    span,
+                );
             }
             crate::api::classification::MatchKind::Import => {
                 self.literals.imports.push(symbol, FactId(u32::MAX), span);

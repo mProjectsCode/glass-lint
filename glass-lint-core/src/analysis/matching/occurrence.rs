@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use smol_str::SmolStr;
 
 use super::super::{facts::FactId, name::NameId};
-use crate::{ByteRange, analysis::SymbolPath};
+use crate::{ByteRange, analysis::value::NamePath};
 
 /// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different
@@ -128,20 +128,20 @@ pub(in crate::analysis) struct InstanceMemberKey {
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub(in crate::analysis) struct ReturnedMemberKey {
-    source: SymbolPath,
-    member: SymbolPath,
+    source: NamePath,
+    member: NamePath,
 }
 
 impl ReturnedMemberKey {
-    pub(in crate::analysis) fn new(source: SymbolPath, member: SymbolPath) -> Self {
+    pub(in crate::analysis) fn new(source: NamePath, member: NamePath) -> Self {
         Self { source, member }
     }
 
-    pub(in crate::analysis) fn source(&self) -> &SymbolPath {
+    pub(in crate::analysis) fn source(&self) -> &NamePath {
         &self.source
     }
 
-    pub(in crate::analysis) fn member(&self) -> &SymbolPath {
+    pub(in crate::analysis) fn member(&self) -> &NamePath {
         &self.member
     }
 }

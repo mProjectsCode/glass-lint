@@ -21,14 +21,14 @@ impl Lookup for LexicalScopeCollector {
             Some(BindingProvenance::StaticObjectKeys(values)) => ConstValue::Object(
                 values
                     .iter()
-                    .cloned()
+                    .filter_map(|key| self.names.resolve(*key))
                     .map(|key| (key, ConstValue::Unknown))
                     .collect(),
             ),
             Some(BindingProvenance::StaticObjectValues(values)) => ConstValue::Object(
                 values
                     .keys()
-                    .cloned()
+                    .filter_map(|key| self.names.resolve(*key))
                     .map(|key| (key, ConstValue::Unknown))
                     .collect(),
             ),
@@ -42,8 +42,8 @@ impl Lookup for LexicalScopeCollector {
             && self
                 .visible_binding_scope(ident.sym.as_ref())
                 .is_some_and(|scope| {
-                    self.mutable_static_objects
-                        .contains(&self.scoped_name(scope, ident.sym.as_ref()))
+                    self.scoped_name(scope, ident.sym.as_ref())
+                        .is_some_and(|name| self.mutable_static_objects.contains(&name))
                 })
         {
             return ConstValue::Unknown;

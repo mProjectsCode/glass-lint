@@ -12,7 +12,10 @@ use crate::{
         matching::{ModuleOccurrenceOverlay, OccurrenceIndexes},
         status::{AnalysisComponent, IncompleteReason},
     },
-    api::{classification::ClassificationEvidence, compiler::CompiledRuleSelection},
+    api::{
+        classification::{ClassificationEvidence, RuleIndex},
+        compiler::CompiledRuleSelection,
+    },
 };
 
 #[derive(Debug)]
@@ -63,6 +66,7 @@ impl ProjectSemanticModel {
                 )
             })
             .collect();
+
         let (cross, exhausted, projection_count) = flow::cross::collect(self, &matchers);
         if exhausted {
             self.flow_budget.mark_exhausted();
@@ -76,6 +80,7 @@ impl ProjectSemanticModel {
             );
         }
         self.effect_projections.set(projection_count);
+
         let mut projections = projections;
         for (module, evidence) in cross {
             if let Some(projection) = projections.get_mut(&module) {
@@ -84,6 +89,7 @@ impl ProjectSemanticModel {
                 }
             }
         }
+
         ProjectMatcherModel {
             matchers,
             projections,
@@ -96,13 +102,16 @@ impl ProjectMatcherModel<'_> {
     pub fn evidence_for(
         &self,
         module: &ProjectModule,
-        rule_index: crate::api::classification::RuleIndex,
+        rule_index: RuleIndex,
         evidence_limit: usize,
     ) -> Vec<ClassificationEvidence> {
         if !self.matchers.is_selected(rule_index) {
             return Vec::new();
         }
         let Some(matcher) = self.matchers.get(rule_index) else {
+            return Vec::new();
+        };
+        let Some(names) = module.local().facts().names() else {
             return Vec::new();
         };
         let mut evidence = self
@@ -112,9 +121,10 @@ impl ProjectMatcherModel<'_> {
                 projection.index.evidence_for_with_overlay(
                     matcher.query(),
                     Some(&projection.overlay),
-                    module.local().facts().names(),
+                    names,
                 )
             });
+
         if let Some(projected) = self
             .projections
             .get(&module.id())
@@ -122,6 +132,7 @@ impl ProjectMatcherModel<'_> {
         {
             evidence.extend_from_slice(projected);
         }
+
         evidence::AnnotatedEvidence::from_evidence(evidence, evidence_limit).into_evidence()
     }
 }

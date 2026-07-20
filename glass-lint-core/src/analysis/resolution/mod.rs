@@ -28,7 +28,7 @@ use super::{
         SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
     },
-    value::{BindingKey, MAX_VALUES, SymbolPath, Value, ValueId, ValueTable},
+    value::{BindingKey, MAX_VALUES, NamePath, SymbolPath, Value, ValueId, ValueTable},
 };
 
 #[derive(Debug, Clone)]
@@ -156,10 +156,10 @@ impl Resolver {
     /// Convert a canonical member chain into the arena's structured value.
     /// Keeping this conversion beside `Resolver` ensures callers do not need
     /// to know how rooted values are represented internally.
-    pub(super) fn rooted_value(chain: &SymbolPath) -> Value {
-        Value::RootedMember {
-            path: chain.clone(),
-        }
+    pub(super) fn rooted_value(&self, chain: &SymbolPath) -> Value {
+        self.names
+            .lookup_path(chain)
+            .map_or(Value::Unknown, |path| Value::RootedMember { path })
     }
 
     #[cfg(test)]
@@ -176,12 +176,22 @@ impl Resolver {
         Self::collect_with_environment(program, &environment, SpanNormalizer::for_program(program))
     }
 
+    #[cfg(test)]
     pub(in crate::analysis) fn collect_with_environment(
         program: &Program,
         environment: &crate::Environment,
         coordinates: SpanNormalizer,
     ) -> Self {
-        let names = NameTableHandle::new();
+        Self::collect_with_name_limit(program, environment, coordinates, super::name::MAX_NAMES)
+    }
+
+    pub(in crate::analysis) fn collect_with_name_limit(
+        program: &Program,
+        environment: &crate::Environment,
+        coordinates: SpanNormalizer,
+        name_limit: usize,
+    ) -> Self {
+        let names = NameTableHandle::with_max_entries(name_limit);
         let scopes = ScopeGraph::collect_with_environment(program, environment, names.clone());
         Self {
             scopes,
@@ -198,8 +208,16 @@ impl Resolver {
         self.names.intern(name)
     }
 
+    pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
+        self.names.intern_path(path)
+    }
+
     pub(super) fn name_table_exhausted(&self) -> bool {
         self.names.exhausted()
+    }
+
+    pub(super) fn name_exhaustion(&self) -> Option<super::name::NameExhausted> {
+        self.names.exhaustion()
     }
 
     #[cfg(test)]
@@ -207,7 +225,7 @@ impl Resolver {
         self.names.snapshot()
     }
 
-    pub(super) fn into_name_table(self) -> NameTable {
+    pub(super) fn into_name_table(self) -> Option<NameTable> {
         let Self {
             names,
             scopes,

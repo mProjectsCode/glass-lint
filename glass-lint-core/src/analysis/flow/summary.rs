@@ -318,7 +318,10 @@ impl FunctionSummaries {
                 else {
                     continue;
                 };
-                let Some(chain) = rooted_chain.as_ref().or(syntactic_chain.as_ref()) else {
+                let syntactic_name = syntactic_chain.as_ref().and_then(|path| {
+                    crate::analysis::value::NamePath::from_symbol_path(path, stream.names()?)
+                });
+                let Some(chain) = rooted_chain.as_ref().or(syntactic_name.as_ref()) else {
                     continue;
                 };
                 for flow_id in flow_index.sink_ids(chain).into_iter().flatten() {
@@ -326,7 +329,12 @@ impl FunctionSummaries {
                         continue;
                     };
                     for sink in &flow.sinks {
-                        if !sink.member_calls.iter().any(|member| member == chain) {
+                        if !sink.member_calls.iter().any(|member| {
+                            stream.names().is_some_and(|names| {
+                                crate::analysis::value::NamePath::from_symbol_path(member, names)
+                                    .is_some_and(|member| member == *chain)
+                            })
+                        }) {
                             continue;
                         }
                         for argument_index in sink.args.present_indices(args.len()) {
@@ -598,7 +606,10 @@ mod tests {
         let resolver = Resolver::collect(&parsed.program);
         let stream =
             super::super::super::facts::build::build_test_stream(&parsed.program, &resolver);
-        let summaries = FunctionSummaries::collect(&stream, &FlowIndex::new(&[]));
+        let summaries = FunctionSummaries::collect(
+            &stream,
+            &FlowIndex::new(&[], stream.names().expect("test stream names")),
+        );
         assert!(summaries.by_id.len() >= 2);
         assert_eq!(
             summaries

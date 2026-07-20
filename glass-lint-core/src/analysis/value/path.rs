@@ -263,36 +263,38 @@ impl PathInterner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::name::NameTable;
+
+    fn property(names: &mut NameTable, value: &str) -> PathSegment {
+        PathSegment::Property(names.intern(value).expect("path test names fit"))
+    }
 
     #[test]
     fn shared_prefixes_are_canonical_and_index_free() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let client = paths
-            .append(PathId::EMPTY, PathSegment::Property("client".into()))
+            .append(PathId::EMPTY, property(&mut names, "client"))
             .unwrap();
         let request = paths
-            .append(client, PathSegment::Property("request".into()))
+            .append(client, property(&mut names, "request"))
             .unwrap();
-        let send = paths
-            .append(request, PathSegment::Property("send".into()))
-            .unwrap();
+        let send = paths.append(request, property(&mut names, "send")).unwrap();
         assert_eq!(
-            paths.append(client, PathSegment::Property("request".into())),
+            paths.append(client, property(&mut names, "request")),
             Some(request)
         );
         assert!(paths.starts_with(send, request));
-        assert_eq!(
-            paths.last(send),
-            Some(&PathSegment::Property("send".into()))
-        );
+        assert_eq!(paths.last(send), Some(&property(&mut names, "send")));
         assert_eq!(paths.depth(send), Some(3));
     }
 
     #[test]
     fn property_and_index_segments_remain_distinct() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let property = paths
-            .append(PathId::EMPTY, PathSegment::Property("0".into()))
+            .append(PathId::EMPTY, property(&mut names, "0"))
             .unwrap();
         let index = paths.append(PathId::EMPTY, PathSegment::Index(0)).unwrap();
         assert_ne!(property, index);
@@ -301,18 +303,15 @@ mod tests {
     #[test]
     fn appending_shared_prefixes_does_not_duplicate_nodes() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let root = paths
-            .append(PathId::EMPTY, PathSegment::Property("root".into()))
+            .append(PathId::EMPTY, property(&mut names, "root"))
             .unwrap();
         let before = paths.node_count();
-        let _ = paths
-            .append(root, PathSegment::Property("child".into()))
-            .unwrap();
+        let _ = paths.append(root, property(&mut names, "child")).unwrap();
         let after = paths.node_count();
         assert_eq!(after, before + 1);
-        let _ = paths
-            .append(root, PathSegment::Property("child".into()))
-            .unwrap();
+        let _ = paths.append(root, property(&mut names, "child")).unwrap();
         assert_eq!(paths.node_count(), after);
     }
 
@@ -339,8 +338,9 @@ mod tests {
     #[test]
     fn first_index_returns_none_for_property_segment() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let prop = paths
-            .append(PathId::EMPTY, PathSegment::Property("x".into()))
+            .append(PathId::EMPTY, property(&mut names, "x"))
             .unwrap();
         assert_eq!(paths.first_index(prop), None);
     }
@@ -348,8 +348,9 @@ mod tests {
     #[test]
     fn starts_with_matches_exact_path() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let a = paths
-            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
         assert!(paths.starts_with(a, a));
     }
@@ -357,18 +358,20 @@ mod tests {
     #[test]
     fn starts_with_rejects_deeper_prefix() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let a = paths
-            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
-        let ab = paths.append(a, PathSegment::Property("b".into())).unwrap();
+        let ab = paths.append(a, property(&mut names, "b")).unwrap();
         assert!(!paths.starts_with(a, ab));
     }
 
     #[test]
     fn without_first_on_single_segment_returns_empty() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let a = paths
-            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
         assert_eq!(paths.without_first(a), Some(PathId::EMPTY));
     }
@@ -376,17 +379,18 @@ mod tests {
     #[test]
     fn without_first_on_multi_segment() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         // Build "b.c" first so the edges exist for re-interning.
         let b = paths
-            .append(PathId::EMPTY, PathSegment::Property("b".into()))
+            .append(PathId::EMPTY, property(&mut names, "b"))
             .unwrap();
-        let bc = paths.append(b, PathSegment::Property("c".into())).unwrap();
+        let bc = paths.append(b, property(&mut names, "c")).unwrap();
         // Now build "a.b.c" by appending to "a" using the "b.c" subtree.
         let a = paths
-            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
-        let ab = paths.append(a, PathSegment::Property("b".into())).unwrap();
-        let abc = paths.append(ab, PathSegment::Property("c".into())).unwrap();
+        let ab = paths.append(a, property(&mut names, "b")).unwrap();
+        let abc = paths.append(ab, property(&mut names, "c")).unwrap();
         // without_first("a.b.c") strips the first segment "a",
         // then re-interns "b.c" from EMPTY.  The edges (EMPTY, "b")
         // and (b, "c") already exist, so this yields the same PathId
@@ -405,13 +409,14 @@ mod tests {
     #[test]
     fn concat_creates_correct_intermediate_paths() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let a = paths
-            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
         let b = paths
-            .append(PathId::EMPTY, PathSegment::Property("b".into()))
+            .append(PathId::EMPTY, property(&mut names, "b"))
             .unwrap();
-        let bc = paths.append(b, PathSegment::Property("c".into())).unwrap();
+        let bc = paths.append(b, property(&mut names, "c")).unwrap();
         // concat("a", "b.c") = "a.b.c"
         let abc = paths.concat(a, bc).unwrap();
         assert_eq!(paths.depth(abc), Some(3));
@@ -424,8 +429,9 @@ mod tests {
     #[test]
     fn concat_with_empty_suffix_returns_prefix() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let a = paths
-            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
         assert_eq!(paths.concat(a, PathId::EMPTY), Some(a));
     }
@@ -433,8 +439,9 @@ mod tests {
     #[test]
     fn concat_with_empty_prefix_returns_suffix() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let a = paths
-            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
         assert_eq!(paths.concat(PathId::EMPTY, a), Some(a));
     }
@@ -442,14 +449,15 @@ mod tests {
     #[test]
     fn concat_with_buffer_reuses_scratch_buffer() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let a = paths
-            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
         let b = paths
-            .append(PathId::EMPTY, PathSegment::Property("b".into()))
+            .append(PathId::EMPTY, property(&mut names, "b"))
             .unwrap();
-        let bc = paths.append(b, PathSegment::Property("c".into())).unwrap();
-        let mut buf = vec![PathSegment::Property("x".into())];
+        let bc = paths.append(b, property(&mut names, "c")).unwrap();
+        let mut buf = vec![property(&mut names, "x")];
         let result = paths.concat_with_buffer(a, bc, &mut buf);
         assert!(result.is_some());
         assert!(buf.is_empty());
@@ -458,13 +466,14 @@ mod tests {
     #[test]
     fn edge_reuse_after_concat() {
         let mut paths = PathInterner::new();
+        let mut names = NameTable::default();
         let a = paths
-            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
         let b = paths
-            .append(PathId::EMPTY, PathSegment::Property("b".into()))
+            .append(PathId::EMPTY, property(&mut names, "b"))
             .unwrap();
-        let bc = paths.append(b, PathSegment::Property("c".into())).unwrap();
+        let bc = paths.append(b, property(&mut names, "c")).unwrap();
         let abc = paths.concat(a, bc).unwrap();
         let before = paths.node_count();
         // Re-concatenating the same segments should reuse edges

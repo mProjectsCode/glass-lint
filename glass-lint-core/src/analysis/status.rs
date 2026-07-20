@@ -41,6 +41,10 @@ pub(in crate::analysis) enum IncompleteReason {
         limit: usize,
         observed: Option<usize>,
     },
+    NameExhausted {
+        limit: usize,
+        attempted: usize,
+    },
     UnsupportedModuleInterface {
         kind: ModuleInterfaceKind,
     },
@@ -176,6 +180,10 @@ impl IncompleteReason {
                     format!("{text}; limit={limit}, observed={observed:?}"),
                 )
             }
+            Self::NameExhausted { limit, attempted } => (
+                DiagnosticKind::NameBudgetExhausted,
+                format!("semantic name table exhausted; limit={limit}, attempted={attempted}"),
+            ),
             Self::UnsupportedModuleInterface {
                 kind: ModuleInterfaceKind::CommonJsExports,
             } => (

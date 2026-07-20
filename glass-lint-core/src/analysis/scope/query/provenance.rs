@@ -32,7 +32,11 @@ impl ScopeGraph {
         }
 
         let receiver = self.binding_key_for_name(root, span)?;
-        if self.property_was_written_at(&receiver, SymbolPath::from_chain(member), span) {
+        if self.property_was_written_at(
+            &receiver,
+            self.name_path(&SymbolPath::from_chain(member))?,
+            span,
+        ) {
             return None;
         }
         if self.rooted_property_was_mutated_at(&root.as_str().into(), Some(member), span) {
@@ -75,9 +79,10 @@ impl ScopeGraph {
 
         for prefix_end in (2..=segments.len()).rev() {
             let path = segments[1..prefix_end].to_vec();
-            let Some(assignments) =
-                self.property_aliases(&(receiver_key.clone(), SymbolPath::from_segments(path)))
-            else {
+            let Some(path) = self.name_path(&SymbolPath::from_segments(path)) else {
+                continue;
+            };
+            let Some(assignments) = self.property_aliases(&(receiver_key.clone(), path)) else {
                 continue;
             };
 
@@ -99,17 +104,17 @@ impl ScopeGraph {
             Some(BindingProvenance::ValueAlias { target })
                 if self.rooted_path_available(target) =>
             {
-                Some(target.append_path(&suffix))
+                Some(self.symbol_path(target)?.append_path(&suffix))
             }
             Some(BindingProvenance::BoundCallable { target, .. })
                 if self.rooted_path_available(target) =>
             {
-                Some(target.append_path(&suffix))
+                Some(self.symbol_path(target)?.append_path(&suffix))
             }
             Some(BindingProvenance::ReturnedObject { source })
                 if self.rooted_path_available(source) =>
             {
-                Some(source.append_path(&suffix))
+                Some(self.symbol_path(source)?.append_path(&suffix))
             }
             Some(
                 BindingProvenance::ValueAlias { .. }
@@ -209,15 +214,22 @@ impl ScopeGraph {
     }
 
     /// Whether a path starts at an allowed stable root.
-    fn rooted_path_available(&self, path: &SymbolPath) -> bool {
-        path.first_segment() == Some("this")
-            || path
-                .first_segment()
-                .is_some_and(|root| self.is_global(root))
+    fn rooted_path_available(&self, path: &crate::analysis::value::NamePath) -> bool {
+        self.symbol_path(path).is_some_and(|path| {
+            path.first_segment() == Some("this")
+                || path
+                    .first_segment()
+                    .is_some_and(|root| self.is_global(root))
+        })
     }
 
     /// Whether a receiver path was assigned before this use in its scope.
-    fn property_was_written_at(&self, receiver: &BindingKey, path: SymbolPath, span: Span) -> bool {
+    fn property_was_written_at(
+        &self,
+        receiver: &BindingKey,
+        path: crate::analysis::value::NamePath,
+        span: Span,
+    ) -> bool {
         self.property_aliases(&(receiver.clone(), path))
             .is_some_and(|assignments| {
                 assignments.iter().any(|assignment| {
@@ -236,12 +248,15 @@ impl ScopeGraph {
         property: Option<&str>,
         span: Span,
     ) -> bool {
-        self.rooted_mutations(root).is_some_and(|mutations| {
+        let Some(root) = self.name_path(root) else {
+            return false;
+        };
+        let property = property.and_then(|property| self.name_id(property));
+        self.rooted_mutations(&root).is_some_and(|mutations| {
             mutations.iter().any(|mutation| {
                 mutation.span.lo <= span.lo
                     && mutation
                         .property
-                        .as_deref()
                         .is_none_or(|written| property.is_none_or(|expected| written == expected))
                     && self
                         .scope_span(mutation.scope)
@@ -268,37 +283,41 @@ impl ScopeGraph {
                     export: export.clone(),
                 }
             }
-            Some(BindingProvenance::ValueAlias { target })
-                if target.is_root() && self.is_global(&target.to_string()) =>
-            {
-                SymbolCallProvenance::Global {
-                    name: target.to_smolstr(),
+            Some(BindingProvenance::ValueAlias { target }) => {
+                let Some(path) = self.symbol_path(target) else {
+                    return SymbolCallProvenance::Local;
+                };
+                let root = path.without_bind_suffix().unwrap_or_else(|| path.clone());
+                if root.is_root()
+                    && root
+                        .first_segment()
+                        .is_some_and(|root| self.is_global(root))
+                {
+                    SymbolCallProvenance::Global {
+                        name: root.first_segment().unwrap().to_smolstr(),
+                    }
+                } else {
+                    self.module_export_for_chain(&path.to_string(), span)
+                        .unwrap_or(SymbolCallProvenance::Local)
                 }
             }
-            Some(BindingProvenance::ValueAlias { target })
-                if target.without_bind_suffix().as_ref().is_some_and(|target| {
-                    target.is_root() && self.is_global(&target.to_string())
-                }) =>
-            {
-                SymbolCallProvenance::Global {
-                    name: target
-                        .without_bind_suffix()
-                        .map_or_else(|| target.to_smolstr(), |root| root.to_smolstr()),
+            Some(BindingProvenance::BoundCallable { target, .. }) => {
+                let Some(path) = self.symbol_path(target) else {
+                    return SymbolCallProvenance::Local;
+                };
+                if path.is_root()
+                    && path
+                        .first_segment()
+                        .is_some_and(|root| self.is_global(root))
+                {
+                    SymbolCallProvenance::Global {
+                        name: path.first_segment().unwrap().to_smolstr(),
+                    }
+                } else {
+                    self.module_export_for_chain(&path.to_string(), span)
+                        .unwrap_or(SymbolCallProvenance::Local)
                 }
             }
-            Some(BindingProvenance::ValueAlias { target }) => self
-                .module_export_for_chain(&target.to_string(), span)
-                .unwrap_or(SymbolCallProvenance::Local),
-            Some(BindingProvenance::BoundCallable { target, .. })
-                if target.is_root() && self.is_global(&target.to_string()) =>
-            {
-                SymbolCallProvenance::Global {
-                    name: target.to_smolstr(),
-                }
-            }
-            Some(BindingProvenance::BoundCallable { target, .. }) => self
-                .module_export_for_chain(&target.to_string(), span)
-                .unwrap_or(SymbolCallProvenance::Local),
             Some(BindingProvenance::BoundModuleCallable { module, export, .. }) => {
                 SymbolCallProvenance::ModuleExport {
                     module: module.clone(),
@@ -354,19 +373,17 @@ impl ScopeGraph {
             return None;
         }
         match self.binding_at(ident.sym.as_ref(), ident.span)? {
-            BindingProvenance::ValueAlias { target } if self.rooted_path_available(target) => Some(
-                target
-                    .without_bind_suffix()
-                    .unwrap_or_else(|| target.clone()),
-            ),
+            BindingProvenance::ValueAlias { target } if self.rooted_path_available(target) => self
+                .symbol_path(target)
+                .and_then(|path| path.without_bind_suffix().or(Some(path))),
             BindingProvenance::BoundCallable { target, .. }
                 if self.rooted_path_available(target) =>
             {
-                Some(target.clone())
+                self.symbol_path(target)
             }
             BindingProvenance::BoundModuleCallable { .. } => None,
             BindingProvenance::ReturnedObject { source } if self.rooted_path_available(source) => {
-                Some(source.clone())
+                self.symbol_path(source)
             }
             _ => None,
         }
@@ -429,7 +446,8 @@ impl ScopeGraph {
         let rooted_chain = syntactic_chain
             .as_ref()
             .and_then(|chain| self.resolve_member_chain(member, chain))
-            .or_else(|| self.rooted_member_chain(member));
+            .or_else(|| self.rooted_member_chain(member))
+            .and_then(|path| self.name_path(&path));
         let module_member = syntactic_chain
             .as_ref()
             .and_then(|chain| self.member_call_provenance_for_chain(member, &chain.to_string()));
@@ -516,7 +534,7 @@ impl ScopeGraph {
                 (!source.is_root()).then_some(source)
             }
             Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
-                BindingProvenance::ReturnedObject { source } => Some(source.clone()),
+                BindingProvenance::ReturnedObject { source } => self.symbol_path(source),
                 _ => None,
             },
             Expr::Member(member) => {
@@ -538,9 +556,12 @@ impl ScopeGraph {
     pub(in crate::analysis) fn returned_member(
         &self,
         member: &MemberExpr,
-    ) -> Option<(SymbolPath, SymbolPath)> {
+    ) -> Option<(
+        crate::analysis::value::NamePath,
+        crate::analysis::value::NamePath,
+    )> {
         let source = self.returned_object_source(&member.obj)?;
         let property = self.member_property_name(member)?;
-        Some((source, property.into()))
+        Some((self.name_path(&source)?, self.name_path(&property.into())?))
     }
 }

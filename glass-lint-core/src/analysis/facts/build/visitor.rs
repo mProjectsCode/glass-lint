@@ -51,9 +51,9 @@ impl Visit for FactBuilder<'_> {
             member.span(),
             FactPayload::MemberRead {
                 syntactic_chain,
-                rooted_chain: resolved.rooted_chain.clone(),
+                rooted_chain: self.rooted_path(resolved.rooted_chain.as_ref()),
                 module_member: resolved.module_member.clone(),
-                returned_member: resolved.returned_member,
+                returned_member: self.returned_path(resolved.returned_member.as_ref()),
             },
         );
         member.visit_children_with(self);
@@ -183,9 +183,9 @@ impl Visit for FactBuilder<'_> {
                     member.span(),
                     FactPayload::MemberRead {
                         syntactic_chain,
-                        rooted_chain: resolved.rooted_chain.clone(),
+                        rooted_chain: self.rooted_path(resolved.rooted_chain.as_ref()),
                         module_member: resolved.module_member.clone(),
-                        returned_member: resolved.returned_member,
+                        returned_member: self.returned_path(resolved.returned_member.as_ref()),
                     },
                 );
                 member.visit_children_with(self);

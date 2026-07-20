@@ -6,7 +6,10 @@
 
 use std::fmt;
 
+use smallvec::SmallVec;
 use smol_str::SmolStr;
+
+use super::super::name::{NameId, NameTable};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Canonical ID for an abstract value in one analysis arena.
@@ -28,6 +31,159 @@ pub(in crate::analysis) struct BindingVersion(pub(in crate::analysis) u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable identity of a function used by helper-flow summaries.
 pub(in crate::analysis) struct FunctionId(pub(in crate::analysis) u32);
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// Artifact-local member path. Unlike [`SymbolPath`], this path cannot be
+/// compared across artifacts and therefore stores only canonical name IDs.
+pub(in crate::analysis) struct NamePath(SmallVec<[NameId; 4]>);
+
+#[allow(dead_code)]
+impl NamePath {
+    pub(in crate::analysis) fn new() -> Self {
+        Self(SmallVec::new())
+    }
+
+    pub(in crate::analysis) fn append(&mut self, segment: NameId) {
+        self.0.push(segment);
+    }
+
+    pub(in crate::analysis) fn segments(&self) -> &[NameId] {
+        &self.0
+    }
+
+    pub(in crate::analysis) fn first_segment(&self) -> Option<NameId> {
+        self.0.first().copied()
+    }
+
+    pub(in crate::analysis) fn last_segment(&self) -> Option<NameId> {
+        self.0.last().copied()
+    }
+
+    pub(in crate::analysis) fn without_last_segment(&self) -> Option<Self> {
+        self.0.last().is_some().then(|| {
+            Self(
+                self.0[..self.0.len().saturating_sub(1)]
+                    .iter()
+                    .copied()
+                    .collect(),
+            )
+        })
+    }
+
+    pub(in crate::analysis) fn without_first_segment(&self) -> Option<Self> {
+        (!self.0.is_empty()).then(|| Self(self.0[1..].iter().copied().collect()))
+    }
+
+    pub(in crate::analysis) fn append_path(&self, suffix: &Self) -> Self {
+        let mut path = self.clone();
+        path.0.extend(suffix.0.iter().copied());
+        path
+    }
+
+    pub(in crate::analysis) fn is_root(&self) -> bool {
+        self.0.len() <= 1
+    }
+
+    pub(in crate::analysis) fn without_segment(&self, name: &str, table: &NameTable) -> Self {
+        if self.first_segment().and_then(|id| table.resolve(id)) == Some(name) {
+            return self.without_first_segment().unwrap_or_default();
+        }
+        self.clone()
+    }
+
+    pub(in crate::analysis) fn without_this_prefix(&self, table: &NameTable) -> Self {
+        self.without_segment("this", table)
+    }
+
+    pub(in crate::analysis) fn without_bind_suffix(&self, table: &NameTable) -> Option<Self> {
+        (self.last_segment().and_then(|id| table.resolve(id)) == Some("bind"))
+            .then(|| self.without_last_segment())
+            .flatten()
+    }
+
+    pub(in crate::analysis) fn from_symbol_path(
+        path: &SymbolPath,
+        table: &NameTable,
+    ) -> Option<Self> {
+        path.segments()
+            .iter()
+            .map(|segment| table.lookup(segment))
+            .collect::<Option<SmallVec<[NameId; 4]>>>()
+            .map(Self)
+    }
+
+    pub(in crate::analysis) fn is_equal_or_descendant_of(&self, root: &Self) -> bool {
+        self.0.starts_with(&root.0)
+    }
+
+    pub(in crate::analysis) fn to_symbol_path(&self, table: &NameTable) -> Option<SymbolPath> {
+        self.0
+            .iter()
+            .map(|id| table.resolve(*id).map(SmolStr::new))
+            .collect::<Option<Vec<_>>>()
+            .map(SymbolPath::from_segments)
+    }
+
+    /// Compare an artifact-local path with another artifact-local path using
+    /// the environment's rooted-object alias policy. Only root/member names
+    /// are resolved for the policy checks; ordinary path segments stay IDs.
+    pub(crate) fn matches_global_object_alias_with(
+        &self,
+        found: &Self,
+        table: &NameTable,
+        environment: &crate::Environment,
+    ) -> bool {
+        if self == found {
+            return true;
+        }
+
+        let Some(expected_root) = self.first_segment().and_then(|id| table.resolve(id)) else {
+            return false;
+        };
+        let Some(found_root) = found.first_segment().and_then(|id| table.resolve(id)) else {
+            return false;
+        };
+        if environment.global_object_aliases_match(expected_root, found_root)
+            && self.segments().get(1..) == found.segments().get(1..)
+        {
+            return true;
+        }
+
+        if self.segments().len() > 1
+            && environment
+                .global_objects()
+                .any(|object| object == expected_root)
+            && self
+                .segments()
+                .get(1)
+                .and_then(|id| table.resolve(*id))
+                .is_some_and(|member| environment.is_global_member(expected_root, member))
+            && self.segments().get(1..) == Some(found.segments())
+        {
+            return true;
+        }
+
+        if found.segments().len() > 1
+            && environment
+                .global_objects()
+                .any(|object| object == found_root)
+            && found
+                .segments()
+                .get(1)
+                .and_then(|id| table.resolve(*id))
+                .is_some_and(|member| environment.is_global_member(found_root, member))
+            && found.segments().get(1..) == Some(self.segments())
+        {
+            return true;
+        }
+
+        false
+    }
+
+    pub(in crate::analysis) fn from_ids(ids: impl IntoIterator<Item = NameId>) -> Self {
+        Self(ids.into_iter().collect())
+    }
+}
 
 /// Canonical member path represented as individual segments rather than a
 /// formatted string, so identity and display concerns stay separate.
@@ -162,6 +318,62 @@ impl fmt::Display for SymbolPath {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn name_paths_use_the_same_table_for_checked_conversion() {
+        let mut names = NameTable::default();
+        let client = names.intern("client").unwrap();
+        let request = names.intern("request").unwrap();
+        let path = NamePath::from_ids([client, request]);
+
+        assert_eq!(path.first_segment(), Some(client));
+        assert_eq!(path.last_segment(), Some(request));
+        assert_eq!(
+            path.to_symbol_path(&names),
+            Some(SymbolPath::from("client.request"))
+        );
+        assert_eq!(
+            NamePath::from_symbol_path(&SymbolPath::from("client.request"), &names),
+            Some(path)
+        );
+    }
+
+    #[test]
+    fn missing_compiled_segments_fail_closed() {
+        let mut names = NameTable::default();
+        names.intern("client").unwrap();
+
+        assert!(NamePath::from_symbol_path(&SymbolPath::from("client.request"), &names).is_none());
+    }
+
+    #[test]
+    fn id_only_path_operations_preserve_segment_identity() {
+        let mut names = NameTable::default();
+        let this = names.intern("this").unwrap();
+        let client = names.intern("client").unwrap();
+        let bind = names.intern("bind").unwrap();
+        let send = names.intern("send").unwrap();
+        let path = NamePath::from_ids([this, client, bind]);
+
+        assert_eq!(
+            path.without_this_prefix(&names),
+            NamePath::from_ids([client, bind])
+        );
+        assert_eq!(
+            path.without_bind_suffix(&names),
+            Some(NamePath::from_ids([this, client]))
+        );
+        assert_eq!(
+            path.append_path(&NamePath::from_ids([send])),
+            NamePath::from_ids([this, client, bind, send])
+        );
+        assert!(!path.is_root());
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Root identity plus versioned member path for alias/flow keys.
 pub(in crate::analysis) enum BindingRoot {
@@ -181,9 +393,8 @@ pub(in crate::analysis) enum BindingRoot {
 pub(in crate::analysis) struct BindingKey {
     /// Stable root identity.
     root: BindingRoot,
-    /// Static member path from the root.
-    /// TODO: SymbolPath applicable here?
-    path: Vec<SmolStr>,
+    /// Artifact-local static member path from the root.
+    path: NamePath,
 }
 
 impl BindingKey {
@@ -191,12 +402,12 @@ impl BindingKey {
     pub(in crate::analysis) fn new(root: BindingRoot) -> Self {
         Self {
             root,
-            path: Vec::new(),
+            path: NamePath::new(),
         }
     }
 
     /// Extend the key with one static member segment.
-    pub(in crate::analysis) fn append_segment(&mut self, segment: SmolStr) {
-        self.path.push(segment);
+    pub(in crate::analysis) fn append_segment(&mut self, segment: NameId) {
+        self.path.append(segment);
     }
 }

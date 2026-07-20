@@ -74,7 +74,7 @@ impl FactStream {
     }
 
     /// Whether every appended fact has satisfied the stream invariants.
-    pub(super) fn is_valid(&self) -> bool {
+    pub(in crate::analysis) fn is_valid(&self) -> bool {
         self.valid && self.issues.is_empty()
     }
 
@@ -98,27 +98,30 @@ impl FactStream {
         self.issues.insert(FactStreamIssue::NameExhausted);
     }
 
-    pub(in crate::analysis) fn freeze_names(&mut self, names: Arc<NameTable>) {
+    pub(in crate::analysis) fn freeze_names(
+        &mut self,
+        names: Arc<NameTable>,
+    ) -> Result<(), Arc<NameTable>> {
+        if self.names.is_some() {
+            return Err(names);
+        }
         self.names = Some(names);
+        Ok(())
     }
 
-    pub(in crate::analysis) fn names(&self) -> &NameTable {
-        self.names
-            .as_deref()
-            .expect("semantic stream names must be frozen")
+    pub(in crate::analysis) fn names(&self) -> Option<&NameTable> {
+        self.names.as_deref()
     }
 
-    pub(in crate::analysis) fn names_arc(&self) -> &Arc<NameTable> {
-        self.names
-            .as_ref()
-            .expect("semantic stream names must be frozen")
+    pub(in crate::analysis) fn names_arc(&self) -> Option<&Arc<NameTable>> {
+        self.names.as_ref()
     }
 
     pub(in crate::analysis) fn resolve_name(
         &self,
         id: crate::analysis::name::NameId,
     ) -> Option<&str> {
-        self.names().resolve(id)
+        self.names()?.resolve(id)
     }
 
     pub(in crate::analysis) fn name_exhausted(&self) -> bool {
@@ -194,8 +197,19 @@ mod tests {
     #[test]
     fn name_exhaustion_is_rejected_before_indexing() {
         let mut stream = FactStream::new();
+        assert!(stream.names().is_none());
         stream.mark_name_exhausted();
         assert!(stream.name_exhausted());
         assert!(!stream.is_valid());
+    }
+
+    #[test]
+    fn names_can_only_be_frozen_once() {
+        let mut stream = FactStream::new();
+        let first = std::sync::Arc::new(NameTable::default());
+        let second = std::sync::Arc::new(NameTable::default());
+        assert!(stream.freeze_names(first).is_ok());
+        assert!(stream.freeze_names(second).is_err());
+        assert!(stream.names().is_some());
     }
 }

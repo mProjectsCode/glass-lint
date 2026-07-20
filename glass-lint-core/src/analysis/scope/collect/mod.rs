@@ -11,7 +11,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use history::AssignmentHistory;
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 use swc_common::{BytePos, Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CatchClause, ClassDecl, Expr, FnDecl,
@@ -33,7 +33,10 @@ use super::{
     ScopeId, ScopeKind, ScopedName,
     query::rooted::{RootedExprContext, rooted_expr_chain_with},
 };
-use crate::Environment;
+use crate::{
+    Environment,
+    analysis::{name::NameId, value::NamePath},
+};
 
 pub(super) mod aliases;
 mod callbacks;
@@ -74,6 +77,7 @@ pub(super) struct LexicalScopeCollector {
     /// `var`-bound objects whose mutation prevents constant projection.
     pub(super) mutable_static_objects: BTreeSet<ScopedName>,
     names: crate::analysis::name::NameTableHandle,
+    pub(super) name_exhausted: bool,
     reuse_scopes: bool,
     predeclared_scope_order: Vec<usize>,
     next_predeclared_scope: usize,
@@ -96,8 +100,8 @@ pub(super) struct PropertyAliasAssignment {
 pub(super) struct RootedPropertyMutation {
     pub(super) span: Span,
     pub(super) scope: ScopeId,
-    pub(super) receiver: SymbolPath,
-    pub(super) property: Option<SmolStr>,
+    pub(super) receiver: NamePath,
+    pub(super) property: Option<NameId>,
 }
 
 impl LexicalScopeCollector {
@@ -131,6 +135,7 @@ impl LexicalScopeCollector {
             inline_parameters: BTreeMap::new(),
             mutable_static_objects: BTreeSet::new(),
             names,
+            name_exhausted: false,
             reuse_scopes: false,
             predeclared_scope_order: Vec::new(),
             next_predeclared_scope: 0,
@@ -170,13 +175,16 @@ impl LexicalScopeCollector {
             (scope.span.lo, scope.depth)
         });
 
-        let mut assignments = BTreeMap::<ScopeId, BTreeMap<SmolStr, Vec<AliasAssignment>>>::new();
+        let mut assignments = BTreeMap::<
+            ScopeId,
+            BTreeMap<crate::analysis::name::NameId, Vec<AliasAssignment>>,
+        >::new();
         let collected_assignments = std::mem::take(&mut self.assignments);
         for assignment in collected_assignments {
             assignments
                 .entry(assignment.scope)
                 .or_default()
-                .entry(assignment.name.clone())
+                .entry(assignment.name)
                 .or_default()
                 .push(assignment);
         }
@@ -216,7 +224,7 @@ impl LexicalScopeCollector {
                 function_ids
                     .get(function_scope)
                     .copied()
-                    .map(|function| (self.scoped_name(*scope, name), function))
+                    .and_then(|function| self.scoped_name(*scope, name).map(|key| (key, function)))
             })
             .collect();
         let function_aliases = self
@@ -306,10 +314,10 @@ impl LexicalScopeCollector {
         provenance: BindingProvenance,
     ) {
         let name = name.into();
-        let name = self
-            .names
-            .intern(name.as_str())
-            .unwrap_or(crate::analysis::name::NameId::INVALID);
+        let Ok(name) = self.names.intern(name.as_str()) else {
+            self.name_exhausted = true;
+            return;
+        };
         self.scopes[scope.index()].bindings.insert(name, provenance);
     }
 
@@ -317,12 +325,28 @@ impl LexicalScopeCollector {
         self.names.lookup(name)
     }
 
-    pub(super) fn scoped_name(&self, scope: ScopeId, name: &str) -> ScopedName {
-        let name = self
-            .names
-            .intern(name)
-            .unwrap_or(crate::analysis::name::NameId::INVALID);
-        ScopedName::new(scope, name)
+    pub(super) fn interned_name(&self, name: &str) -> Option<crate::analysis::name::NameId> {
+        self.names.intern(name).ok()
+    }
+
+    pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
+        self.names.intern_path(path)
+    }
+
+    pub(super) fn rooted_name_path(&self, expr: &Expr) -> Option<NamePath> {
+        self.rooted_expr_name(expr)
+            .and_then(|path| self.name_path(&path))
+    }
+
+    pub(super) fn append_name_path(&self, path: &NamePath, segment: &str) -> Option<NamePath> {
+        let id = self.names.intern(segment).ok()?;
+        Some(path.append_path(&NamePath::from_ids([id])))
+    }
+
+    pub(super) fn scoped_name(&self, scope: ScopeId, name: &str) -> Option<ScopedName> {
+        self.names
+            .lookup(name)
+            .map(|name| ScopedName::new(scope, name))
     }
 
     fn insert_local(&mut self, scope: ScopeId, name: impl Into<SmolStr>) {
@@ -334,25 +358,29 @@ impl LexicalScopeCollector {
         &mut self,
         span: Span,
         scope: ScopeId,
-        name: SmolStr,
+        name: &str,
         provenance: BindingProvenance,
     ) {
+        let Ok(name_id) = self.names.intern(name) else {
+            self.name_exhausted = true;
+            return;
+        };
         let version = BindingVersion(
             u32::try_from(
                 self.assignments
                     .iter()
-                    .filter(|assignment| assignment.scope == scope && assignment.name == name)
+                    .filter(|assignment| assignment.scope == scope && assignment.name == name_id)
                     .count()
                     .saturating_add(1),
             )
             .unwrap_or(u32::MAX),
         );
         self.latest_assignments
-            .record(scope, name.as_str(), provenance.clone());
+            .record(scope, name, provenance.clone());
         self.assignments.push(AliasAssignment {
             span,
             scope,
-            name,
+            name: name_id,
             version,
             provenance,
         });
@@ -473,18 +501,15 @@ impl LexicalScopeCollector {
             return;
         }
         let Some(scope) = self.stack.iter().rev().find(|scope| {
-            self.scopes[**scope].bindings.contains_key(
-                &self
-                    .name_id(root.sym.as_ref())
-                    .unwrap_or(crate::analysis::name::NameId::INVALID),
-            )
+            self.name_id(root.sym.as_ref())
+                .is_some_and(|name| self.scopes[**scope].bindings.contains_key(&name))
         }) else {
             return;
         };
         self.record_assignment(
             span,
             ScopeId::from(*scope),
-            root.sym.to_smolstr(),
+            root.sym.as_ref(),
             BindingProvenance::Local,
         );
     }
@@ -549,7 +574,7 @@ impl RootedExprContext for LexicalScopeCollector {
             Some(
                 BindingProvenance::ValueAlias { target }
                 | BindingProvenance::BoundCallable { target, .. },
-            ) => Some(target.clone()),
+            ) => self.names.resolve_path(target),
             Some(_) => None,
             None => Some(ident.sym.as_ref().into()),
         }

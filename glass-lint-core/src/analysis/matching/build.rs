@@ -8,7 +8,7 @@ use super::{
     FactPayload, FactStream, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
     occurrence::{InstanceMemberKey, ModuleExportKey, ReturnedMemberKey},
 };
-use crate::analysis::SymbolPath;
+use crate::analysis::{SymbolPath, name::NameTable, value::NamePath};
 
 impl OccurrenceIndexes {
     /// Sort and deduplicate every occurrence index after fact collection.
@@ -40,21 +40,22 @@ impl OccurrenceIndexes {
     pub(in crate::analysis) fn build_from_stream(&mut self, stream: &FactStream) {
         #[cfg(test)]
         {
-            self.test_names = stream.names().clone();
+            if let Some(names) = stream.names() {
+                self.test_names = names.clone();
+            }
         }
         // This is the sole projection from semantic facts into shared matcher
         // indexes. Rule selection must happen later, in query code.
-        stream
-            .facts()
-            .iter()
-            .for_each(|fact| self.record_fact(fact));
+        stream.facts().iter().for_each(|fact| {
+            self.record_fact(fact, stream.names().expect("valid stream has names"));
+        });
     }
 
-    fn record_fact(&mut self, fact: &super::super::facts::SemanticFact) {
+    fn record_fact(&mut self, fact: &super::super::facts::SemanticFact, names: &NameTable) {
         match &fact.payload {
-            FactPayload::Call { .. } => self.record_call_fact(fact),
+            FactPayload::Call { .. } => self.record_call_fact(fact, names),
 
-            FactPayload::MemberRead { .. } => self.record_member_read_fact(fact),
+            FactPayload::MemberRead { .. } => self.record_member_read_fact(fact, names),
 
             FactPayload::Construction { .. } => self.record_construction_fact(fact),
 
@@ -108,7 +109,7 @@ impl OccurrenceIndexes {
         }
     }
 
-    fn record_call_fact(&mut self, fact: &super::super::facts::SemanticFact) {
+    fn record_call_fact(&mut self, fact: &super::super::facts::SemanticFact, names: &NameTable) {
         let FactPayload::Call {
             callee_name,
             callee_span,
@@ -143,11 +144,11 @@ impl OccurrenceIndexes {
             | SymbolCallProvenance::Unknown(_)
             | SymbolCallProvenance::Ambiguous => {}
         }
-        self.record_call_paths(fact);
-        self.record_call_special_cases(fact);
+        self.record_call_paths(fact, names);
+        self.record_call_special_cases(fact, names);
     }
 
-    fn record_call_paths(&mut self, fact: &super::super::facts::SemanticFact) {
+    fn record_call_paths(&mut self, fact: &super::super::facts::SemanticFact, names: &NameTable) {
         let FactPayload::Call {
             syntactic_chain,
             rooted_chain,
@@ -161,13 +162,15 @@ impl OccurrenceIndexes {
             return;
         };
         let span = *callee_span;
-        if let Some(chain) = syntactic_chain {
-            self.members.calls.push(chain.clone(), fact.id, span);
+        if let Some(chain) = syntactic_chain
+            && let Some(chain) = NamePath::from_symbol_path(chain, names)
+        {
+            self.members.calls.push(chain, fact.id, span);
         }
         if let Some(chain) = rooted_chain {
             self.members
                 .rooted_calls
-                .push(chain.without_this_prefix(), fact.id, span);
+                .push(chain.without_this_prefix(names), fact.id, span);
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
             self.call_indexes.module_calls.push(
@@ -199,7 +202,11 @@ impl OccurrenceIndexes {
         }
     }
 
-    fn record_call_special_cases(&mut self, fact: &super::super::facts::SemanticFact) {
+    fn record_call_special_cases(
+        &mut self,
+        fact: &super::super::facts::SemanticFact,
+        names: &NameTable,
+    ) {
         let FactPayload::Call {
             rooted_chain: _,
             unwrap,
@@ -211,19 +218,22 @@ impl OccurrenceIndexes {
         };
         if let Some(unwrap) = unwrap
             && !unwrap.chain.is_empty()
+            && let Some(chain) = NamePath::from_symbol_path(&unwrap.chain, names)
         {
             self.members
                 .calls
-                .push(unwrap.chain.clone(), fact.id, *callee_span);
-            self.members.rooted_calls.push(
-                unwrap.chain.without_this_prefix(),
-                fact.id,
-                *callee_span,
-            );
+                .push(chain.clone(), fact.id, *callee_span);
+            self.members
+                .rooted_calls
+                .push(chain.without_this_prefix(names), fact.id, *callee_span);
         }
     }
 
-    fn record_member_read_fact(&mut self, fact: &super::super::facts::SemanticFact) {
+    fn record_member_read_fact(
+        &mut self,
+        fact: &super::super::facts::SemanticFact,
+        names: &NameTable,
+    ) {
         let FactPayload::MemberRead {
             syntactic_chain,
             rooted_chain,
@@ -234,13 +244,15 @@ impl OccurrenceIndexes {
         else {
             return;
         };
-        if let Some(chain) = syntactic_chain {
-            self.members.reads.push(chain.clone(), fact.id, fact.span);
+        if let Some(chain) = syntactic_chain
+            && let Some(chain) = NamePath::from_symbol_path(chain, names)
+        {
+            self.members.reads.push(chain, fact.id, fact.span);
         }
         if let Some(chain) = rooted_chain {
             self.members
                 .rooted_reads
-                .push(chain.without_this_prefix(), fact.id, fact.span);
+                .push(chain.without_this_prefix(names), fact.id, fact.span);
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
             self.members.module_reads.push(

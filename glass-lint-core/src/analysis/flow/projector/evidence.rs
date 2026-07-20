@@ -11,7 +11,7 @@ use super::{
     ObjectFlowProjector, ObjectId, ValueId,
 };
 use crate::{
-    analysis::SymbolPath,
+    analysis::value::NamePath,
     api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments},
 };
 
@@ -20,7 +20,7 @@ impl ObjectFlowProjector<'_, '_> {
     pub(super) fn record_configuration(
         &mut self,
         receiver: Option<ValueId>,
-        chain: &SymbolPath,
+        chain: &NamePath,
         args: &[CallArgInfo],
         event: FactId,
     ) {
@@ -54,11 +54,12 @@ impl ObjectFlowProjector<'_, '_> {
                         member,
                         arguments: matchers,
                     } = requirement
-                        && (member == chain || chain.last_segment() == member.last_segment())
+                        && NamePath::from_symbol_path(member, self.names).is_some_and(|member| {
+                            member == *chain || chain.last_segment() == member.last_segment()
+                        })
                         && matchers.iter().all(|matcher| {
-                            args.get(matcher.index).is_some_and(|arg| {
-                                matcher.matcher.matches(arg, self.stream.names())
-                            })
+                            args.get(matcher.index)
+                                .is_some_and(|arg| matcher.matcher.matches(arg, self.names))
                         })
                     {
                         state.record_requirement(index, event);
@@ -72,7 +73,7 @@ impl ObjectFlowProjector<'_, '_> {
     /// Check sink arguments against live states and emit completed flows.
     pub(super) fn record_sinks(
         &mut self,
-        chain: &SymbolPath,
+        chain: &NamePath,
         args: &[CallArgInfo],
         sink_fact: FactId,
         rooted: bool,
@@ -95,8 +96,10 @@ impl ObjectFlowProjector<'_, '_> {
                     continue;
                 };
                 let matches = flow.sinks.iter().any(|sink| {
-                    sink.member_calls.iter().any(|member| member == chain)
-                        && sink.provenance.matches_rooted(rooted)
+                    sink.member_calls.iter().any(|member| {
+                        NamePath::from_symbol_path(member, self.names)
+                            .is_some_and(|member| member == *chain)
+                    }) && sink.provenance.matches_rooted(rooted)
                         && match &sink.args {
                             CompiledObjectSinkArguments::Any => true,
                             CompiledObjectSinkArguments::Indices(indices) => {

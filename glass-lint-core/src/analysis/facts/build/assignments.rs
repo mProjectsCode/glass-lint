@@ -86,9 +86,9 @@ impl FactBuilder<'_> {
             member.span(),
             FactPayload::MemberRead {
                 syntactic_chain: self.resolver.member_expression_chain(member),
-                rooted_chain: resolved_member.rooted_chain.clone(),
+                rooted_chain: self.rooted_path(resolved_member.rooted_chain.as_ref()),
                 module_member: resolved_member.module_member.clone(),
-                returned_member: resolved_member.returned_member.clone(),
+                returned_member: self.returned_path(resolved_member.returned_member.as_ref()),
             },
         );
         assignment.right.visit_with(self);

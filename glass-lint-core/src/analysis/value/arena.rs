@@ -8,8 +8,11 @@
 use indexmap::IndexSet;
 use smol_str::SmolStr;
 
-use super::{BindingKey, SymbolPath, ValueId};
-use crate::analysis::name::{NameId, NameTable};
+use super::{BindingKey, ValueId};
+use crate::analysis::{
+    name::{NameId, NameTable},
+    value::NamePath,
+};
 
 pub(in crate::analysis) const MAX_VALUES: usize = 65_536;
 const MAX_OBJECTS: u32 = 65_536;
@@ -24,7 +27,7 @@ pub(in crate::analysis) enum Value {
     /// A local or ambiguous value.
     Local,
     /// A statically rooted member path.
-    RootedMember { path: SymbolPath },
+    RootedMember { path: NamePath },
     /// A module namespace identity.
     ModuleNamespace(SmolStr),
     /// A named export identity.
