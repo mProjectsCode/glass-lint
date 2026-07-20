@@ -6,6 +6,8 @@
 //! selection is applied only by [`SemanticFacts::project`] after that shared
 //! state has been built.
 
+use std::sync::Arc;
+
 #[cfg(test)]
 use self::build::FactBuilder;
 #[cfg(test)]
@@ -26,14 +28,14 @@ pub(in crate::analysis) use stream::FactStream;
 
 // ── SemanticFacts ───────────────────────────────────────────────────────
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 /// Immutable per-file semantic state shared by all selected matchers.
 ///
 /// A malformed or budget-exhausted stream remains available for diagnostics,
 /// but indexing and projection fail closed rather than consuming partial facts.
 pub(in crate::analysis) struct SemanticFacts {
     stream: FactStream,
-    index: OccurrenceIndexes,
+    index: Arc<OccurrenceIndexes>,
     interface: ModuleInterface,
 }
 
@@ -53,7 +55,7 @@ impl SemanticFacts {
 
         Self {
             stream,
-            index,
+            index: Arc::new(index),
             interface,
         }
     }
@@ -67,9 +69,8 @@ impl SemanticFacts {
         self.stream.is_valid()
     }
 
-    /// Clone the rule-independent occurrence indexes for local or project use.
-    pub(in crate::analysis) fn cloned_matcher_facts(&self) -> OccurrenceIndexes {
-        self.index.clone()
+    pub(in crate::analysis) fn shared_matcher_index(&self) -> Arc<OccurrenceIndexes> {
+        Arc::clone(&self.index)
     }
 
     /// Borrow the module requests and export facts collected during the walk.

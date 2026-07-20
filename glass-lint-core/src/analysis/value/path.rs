@@ -33,7 +33,7 @@ impl PathId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// One static property or numeric index path segment.
 pub(in crate::analysis) enum PathSegment {
     /// Named property access.
@@ -47,19 +47,18 @@ pub(in crate::analysis) enum PathSegment {
 struct PathNode {
     /// Parent path ID.
     parent: PathId,
-    /// Segment appended at this node, absent only for the root.
-    segment: Option<PathSegment>,
     /// Number of segments from the root.
     depth: u32,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 /// Bounded canonical interner for static member/index paths.
 pub(in crate::analysis) struct PathInterner {
     /// Parent-linked path nodes, with node zero as the empty path.
     nodes: Vec<PathNode>,
-    /// Canonical edge lookup for shared prefixes.
-    by_edge: HashMap<(PathId, PathSegment), PathId>,
+    /// Canonical outgoing edges for each parent. Keeping the segment in the
+    /// edge entry lets lookups compare borrowed segments without cloning.
+    by_parent: HashMap<PathId, Vec<(PathSegment, PathId)>>,
 }
 
 impl PathInterner {
@@ -68,10 +67,9 @@ impl PathInterner {
         Self {
             nodes: vec![PathNode {
                 parent: PathId::EMPTY,
-                segment: None,
                 depth: 0,
             }],
-            by_edge: HashMap::new(),
+            by_parent: HashMap::new(),
         }
     }
 
@@ -85,20 +83,24 @@ impl PathInterner {
         if parent_index >= self.nodes.len() {
             return None;
         }
-        if let Some(path) = self.by_edge.get(&(parent, segment.clone())) {
-            return Some(*path);
+        if let Some(path) = self
+            .by_parent
+            .get(&parent)
+            .and_then(|edges| edges.iter().find(|(existing, _)| existing == &segment))
+            .map(|(_, path)| *path)
+        {
+            return Some(path);
         }
         if self.nodes.len() >= MAX_PATH_NODES {
             return None;
         }
         let id = PathId(u32::try_from(self.nodes.len()).ok()?);
         let depth = self.nodes[parent_index].depth.checked_add(1)?;
-        self.nodes.push(PathNode {
-            parent,
-            segment: Some(segment.clone()),
-            depth,
-        });
-        self.by_edge.insert((parent, segment), id);
+        self.nodes.push(PathNode { parent, depth });
+        self.by_parent
+            .entry(parent)
+            .or_default()
+            .push((segment, id));
         Some(id)
     }
 
@@ -134,13 +136,61 @@ impl PathInterner {
     /// Borrow the final segment of a valid non-empty path.
     #[cfg(test)]
     pub(in crate::analysis) fn last(&self, path: PathId) -> Option<&PathSegment> {
-        self.nodes.get(path.index()?)?.segment.as_ref()
+        self.segment(path)
     }
 
-    /// Return the parent path ID of a valid path.
-    /// Return the first segment when it is an array/index segment.
+    fn segment(&self, path: PathId) -> Option<&PathSegment> {
+        let node = self.nodes.get(path.index()?)?;
+        if path.is_empty() {
+            return None;
+        }
+        self.by_parent
+            .get(&node.parent)?
+            .iter()
+            .find(|(_, child)| *child == path)
+            .map(|(segment, _)| segment)
+    }
+
+    /// Walk the parent chain from `path` to the root and collect segments in
+    /// source order into the caller-owned buffer. Returns `None` for invalid
+    /// paths; returns `Some(())` (possibly with an empty buffer) for the empty
+    /// root path.
+    fn collect_segments(&self, path: PathId, buf: &mut Vec<PathSegment>) -> Option<()> {
+        buf.clear();
+        let mut current = path;
+        while !current.is_empty() {
+            let node = self.nodes.get(current.index()?)?;
+            buf.push(self.segment(current)?.clone());
+            current = node.parent;
+        }
+        buf.reverse();
+        Some(())
+    }
+
+    /// Return a summary-owned projection of a valid path.
+    pub(in crate::analysis) fn owned_segments(&self, path: PathId) -> Option<Vec<PathSegment>> {
+        let mut segments = Vec::new();
+        self.collect_segments(path, &mut segments)?;
+        Some(segments)
+    }
+
+    /// Return the first segment of a path by walking directly to the
+    /// leaf node. This avoids building a complete segment vector.
+    fn first_segment_of(&self, path: PathId) -> Option<&PathSegment> {
+        let mut current = path;
+        let mut last = None;
+        while !current.is_empty() {
+            let node = self.nodes.get(current.index()?)?;
+            last = Some(self.segment(current)?);
+            current = node.parent;
+        }
+        last
+    }
+
+    /// Return the first index segment of a valid path, if the first
+    /// segment is an array/index access.
     pub(in crate::analysis) fn first_index(&self, path: PathId) -> Option<u32> {
-        match self.segments(path)?.first()? {
+        match self.first_segment_of(path)? {
             PathSegment::Index(index) => Some(*index),
             PathSegment::Property(_) => None,
         }
@@ -148,52 +198,53 @@ impl PathInterner {
 
     /// Remove the first segment and recover the canonical remaining path.
     pub(in crate::analysis) fn without_first(&self, path: PathId) -> Option<PathId> {
-        let mut segments = self.segments(path)?;
-        segments.first()?;
-        segments.remove(0);
-        let mut result = PathId::EMPTY;
-        for segment in segments {
-            result = self.by_edge.get(&(result, segment)).copied()?;
-        }
-        Some(result)
+        self.segment(path)?;
+        self.rebuild_without_first(path)
     }
 
-    /// Append every segment of `suffix` to `prefix` through the interner.
-    pub(in crate::analysis) fn concat(&mut self, prefix: PathId, suffix: PathId) -> Option<PathId> {
-        let segments = self.segments(suffix)?;
+    fn find_edge(&self, parent: PathId, segment: &PathSegment) -> Option<PathId> {
+        self.by_parent
+            .get(&parent)?
+            .iter()
+            .find(|(existing, _)| existing == segment)
+            .map(|(_, path)| *path)
+    }
+
+    /// Rebuild the canonical suffix while unwinding the parent chain. This
+    /// uses call-stack storage instead of materializing a segment vector.
+    fn rebuild_without_first(&self, path: PathId) -> Option<PathId> {
+        let node = self.nodes.get(path.index()?)?;
+        let segment = self.segment(path)?;
+        if node.parent.is_empty() {
+            return Some(PathId::EMPTY);
+        }
+        let parent = self.rebuild_without_first(node.parent)?;
+        self.find_edge(parent, segment)
+    }
+
+    /// Append every segment of `suffix` to `prefix` through the interner,
+    /// reusing a caller-owned scratch buffer to avoid intermediate
+    /// allocation.
+    #[cfg(test)]
+    pub(in crate::analysis) fn concat_with_buffer(
+        &mut self,
+        prefix: PathId,
+        suffix: PathId,
+        buf: &mut Vec<PathSegment>,
+    ) -> Option<PathId> {
+        self.collect_segments(suffix, buf)?;
         let mut result = prefix;
-        for segment in segments {
+        for segment in buf.drain(..) {
             result = self.append(result, segment)?;
         }
         Some(result)
     }
 
-    /// Return a path's segments from root to leaf.
-    fn segments(&self, path: PathId) -> Option<Vec<PathSegment>> {
-        let nodes = self.nodes_for(path);
-        if !path.is_empty() && nodes.is_empty() {
-            return None;
-        }
-        Some(
-            nodes
-                .into_iter()
-                .filter_map(|node| node.segment.clone())
-                .collect(),
-        )
-    }
-
-    fn nodes_for(&self, path: PathId) -> Vec<&PathNode> {
-        let mut nodes = Vec::new();
-        let mut current = path;
-        while !current.is_empty() {
-            let Some(node) = self.nodes.get(current.index().unwrap_or(MAX_PATH_NODES)) else {
-                return Vec::new();
-            };
-            nodes.push(node);
-            current = node.parent;
-        }
-        nodes.reverse();
-        nodes
+    /// Append every segment of `suffix` to `prefix` through the interner.
+    #[cfg(test)]
+    pub(in crate::analysis) fn concat(&mut self, prefix: PathId, suffix: PathId) -> Option<PathId> {
+        let mut buf = Vec::new();
+        self.concat_with_buffer(prefix, suffix, &mut buf)
     }
 
     #[cfg(test)]
@@ -256,5 +307,162 @@ mod tests {
             .append(root, PathSegment::Property("child".into()))
             .unwrap();
         assert_eq!(paths.node_count(), after);
+    }
+
+    #[test]
+    fn empty_path_has_no_first_index() {
+        let paths = PathInterner::new();
+        assert_eq!(paths.first_index(PathId::EMPTY), None);
+    }
+
+    #[test]
+    fn invalid_path_returns_none() {
+        let paths = PathInterner::new();
+        assert_eq!(paths.first_index(PathId(u32::MAX)), None);
+        assert_eq!(paths.without_first(PathId(u32::MAX)), None);
+    }
+
+    #[test]
+    fn first_index_returns_index_for_index_segment() {
+        let mut paths = PathInterner::new();
+        let idx = paths.append(PathId::EMPTY, PathSegment::Index(7)).unwrap();
+        assert_eq!(paths.first_index(idx), Some(7));
+    }
+
+    #[test]
+    fn first_index_returns_none_for_property_segment() {
+        let mut paths = PathInterner::new();
+        let prop = paths
+            .append(PathId::EMPTY, PathSegment::Property("x".into()))
+            .unwrap();
+        assert_eq!(paths.first_index(prop), None);
+    }
+
+    #[test]
+    fn starts_with_matches_exact_path() {
+        let mut paths = PathInterner::new();
+        let a = paths
+            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .unwrap();
+        assert!(paths.starts_with(a, a));
+    }
+
+    #[test]
+    fn starts_with_rejects_deeper_prefix() {
+        let mut paths = PathInterner::new();
+        let a = paths
+            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .unwrap();
+        let ab = paths.append(a, PathSegment::Property("b".into())).unwrap();
+        assert!(!paths.starts_with(a, ab));
+    }
+
+    #[test]
+    fn without_first_on_single_segment_returns_empty() {
+        let mut paths = PathInterner::new();
+        let a = paths
+            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .unwrap();
+        assert_eq!(paths.without_first(a), Some(PathId::EMPTY));
+    }
+
+    #[test]
+    fn without_first_on_multi_segment() {
+        let mut paths = PathInterner::new();
+        // Build "b.c" first so the edges exist for re-interning.
+        let b = paths
+            .append(PathId::EMPTY, PathSegment::Property("b".into()))
+            .unwrap();
+        let bc = paths.append(b, PathSegment::Property("c".into())).unwrap();
+        // Now build "a.b.c" by appending to "a" using the "b.c" subtree.
+        let a = paths
+            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .unwrap();
+        let ab = paths.append(a, PathSegment::Property("b".into())).unwrap();
+        let abc = paths.append(ab, PathSegment::Property("c".into())).unwrap();
+        // without_first("a.b.c") strips the first segment "a",
+        // then re-interns "b.c" from EMPTY.  The edges (EMPTY, "b")
+        // and (b, "c") already exist, so this yields the same PathId
+        // as `bc`.
+        let result = paths.without_first(abc);
+        assert_eq!(result, Some(bc));
+        assert_eq!(paths.depth(bc), Some(2));
+    }
+
+    #[test]
+    fn without_first_on_empty_returns_none() {
+        let paths = PathInterner::new();
+        assert_eq!(paths.without_first(PathId::EMPTY), None);
+    }
+
+    #[test]
+    fn concat_creates_correct_intermediate_paths() {
+        let mut paths = PathInterner::new();
+        let a = paths
+            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .unwrap();
+        let b = paths
+            .append(PathId::EMPTY, PathSegment::Property("b".into()))
+            .unwrap();
+        let bc = paths.append(b, PathSegment::Property("c".into())).unwrap();
+        // concat("a", "b.c") = "a.b.c"
+        let abc = paths.concat(a, bc).unwrap();
+        assert_eq!(paths.depth(abc), Some(3));
+        // "a.b.c" starts with "a" in the trie
+        assert!(paths.starts_with(abc, a));
+        // "a.b.c" does NOT start with "b.c" (different subtree)
+        assert!(!paths.starts_with(abc, bc));
+    }
+
+    #[test]
+    fn concat_with_empty_suffix_returns_prefix() {
+        let mut paths = PathInterner::new();
+        let a = paths
+            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .unwrap();
+        assert_eq!(paths.concat(a, PathId::EMPTY), Some(a));
+    }
+
+    #[test]
+    fn concat_with_empty_prefix_returns_suffix() {
+        let mut paths = PathInterner::new();
+        let a = paths
+            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .unwrap();
+        assert_eq!(paths.concat(PathId::EMPTY, a), Some(a));
+    }
+
+    #[test]
+    fn concat_with_buffer_reuses_scratch_buffer() {
+        let mut paths = PathInterner::new();
+        let a = paths
+            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .unwrap();
+        let b = paths
+            .append(PathId::EMPTY, PathSegment::Property("b".into()))
+            .unwrap();
+        let bc = paths.append(b, PathSegment::Property("c".into())).unwrap();
+        let mut buf = vec![PathSegment::Property("x".into())];
+        let result = paths.concat_with_buffer(a, bc, &mut buf);
+        assert!(result.is_some());
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn edge_reuse_after_concat() {
+        let mut paths = PathInterner::new();
+        let a = paths
+            .append(PathId::EMPTY, PathSegment::Property("a".into()))
+            .unwrap();
+        let b = paths
+            .append(PathId::EMPTY, PathSegment::Property("b".into()))
+            .unwrap();
+        let bc = paths.append(b, PathSegment::Property("c".into())).unwrap();
+        let abc = paths.concat(a, bc).unwrap();
+        let before = paths.node_count();
+        // Re-concatenating the same segments should reuse edges
+        let abc2 = paths.concat(a, bc).unwrap();
+        assert_eq!(abc, abc2);
+        assert_eq!(paths.node_count(), before);
     }
 }

@@ -5,8 +5,7 @@
 //! The table never evicts entries, so IDs remain stable for the lifetime of a
 //! file analysis.
 
-use std::collections::HashMap;
-
+use indexmap::IndexSet;
 use smol_str::SmolStr;
 
 use super::{BindingKey, SymbolPath, ValueId};
@@ -83,10 +82,8 @@ pub(in crate::analysis) struct ObjectId(pub(in crate::analysis) u32);
 #[derive(Debug)]
 /// Per-file canonical value arena with explicit capacity limits.
 pub(in crate::analysis) struct ValueTable {
-    /// Canonical value storage indexed by `ValueId`.
-    values: Vec<Value>,
-    /// Reverse map used to reuse equal values.
-    ids: HashMap<Value, ValueId>,
+    /// Insertion-ordered canonical storage. The set index is the value ID.
+    values: IndexSet<Value>,
     /// Next bounded object identity.
     next_object: u32,
     exhausted: bool,
@@ -94,11 +91,8 @@ pub(in crate::analysis) struct ValueTable {
 
 impl Default for ValueTable {
     fn default() -> Self {
-        let mut ids = HashMap::new();
-        ids.insert(Value::Unknown, ValueId::UNKNOWN);
         Self {
-            values: vec![Value::Unknown],
-            ids,
+            values: IndexSet::from([Value::Unknown]),
             next_object: 0,
             exhausted: false,
         }
@@ -108,8 +102,8 @@ impl Default for ValueTable {
 impl ValueTable {
     /// Intern a value, returning unknown when the arena is exhausted.
     pub(in crate::analysis) fn intern(&mut self, value: Value) -> ValueId {
-        if let Some(id) = self.ids.get(&value) {
-            return *id;
+        if let Some(index) = self.values.get_index_of(&value) {
+            return ValueId(u32::try_from(index).unwrap_or(ValueId::UNKNOWN.0));
         }
         if self.values.len() >= MAX_VALUES {
             self.exhausted = true;
@@ -119,8 +113,7 @@ impl ValueTable {
             return ValueId::UNKNOWN;
         };
         let id = ValueId(index);
-        self.values.push(value.clone());
-        self.ids.insert(value, id);
+        self.values.insert(value);
         id
     }
 
@@ -148,7 +141,7 @@ impl ValueTable {
 
     /// Borrow an interned value, rejecting malformed/out-of-range IDs.
     pub(in crate::analysis) fn get(&self, id: ValueId) -> Option<&Value> {
-        self.values.get(usize::try_from(id.0).ok()?)
+        self.values.get_index(usize::try_from(id.0).ok()?)
     }
 
     pub(in crate::analysis) fn exhausted(&self) -> bool {

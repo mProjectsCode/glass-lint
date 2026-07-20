@@ -29,20 +29,21 @@ glob = "0.3.3"
 json-strip-comments = "=3.1.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-sha2 = "0.10"
-toml = "0.9"
+sha2 = "0.11"
+toml = "1.1"
 walkdir = "2.5"
 smallvec = "1.15.2"
+indexmap = "2.14.0"
 smol_str = "0.3.6"
-swc_common = "23.0.0"
-swc_ecma_ast = "25.0.0"
-swc_ecma_parser = { version = "41.0.0", features = ["typescript"] }
-swc_ecma_transforms_base = "44.0.0"
-swc_ecma_transforms_typescript = "50.0.0"
-swc_ecma_visit = "25.0.0"
+swc_common = "24.0"
+swc_ecma_ast = "26.0"
+swc_ecma_parser = { version = "42.0", features = ["typescript"] }
+swc_ecma_transforms_base = "46.0"
+swc_ecma_transforms_typescript = "52.0"
+swc_ecma_visit = "26.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["fmt", "env-filter", "registry"] }
-oxc_resolver = "=11.22.0"
+oxc_resolver = "11.24.2"
 tempfile = "3.20"
 
 [workspace.lints.clippy]

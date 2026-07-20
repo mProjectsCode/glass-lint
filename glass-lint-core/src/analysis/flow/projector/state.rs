@@ -5,7 +5,7 @@
 //! keys, which is the precision boundary that prevents path-local facts from
 //! leaking after a control-flow merge.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use super::super::{
     super::value::{ObjectId, ValueId},
@@ -42,9 +42,9 @@ impl ReportEvidenceKey {
 /// Snapshot of aliases, flow states, and reachability at a control boundary.
 pub(super) struct FlowEnvironment {
     /// Value-to-object aliases proven on the snapshot path.
-    aliases: BTreeMap<ValueId, ObjectId>,
+    aliases: AliasTable,
     /// Object/flow lifecycle states proven on the snapshot path.
-    states: BTreeMap<FlowStateKey, FlowState>,
+    states: StateTable,
     /// Whether execution can reach the snapshot.
     reachable: bool,
 }
@@ -53,24 +53,79 @@ pub(super) struct FlowEnvironment {
 /// Mutable live alias and object-state tables for one projector pass.
 pub(super) struct FlowStateTable {
     /// Current value aliases, keyed by semantic value identity.
-    aliases: BTreeMap<ValueId, ObjectId>,
+    aliases: AliasTable,
     /// Current lifecycle state for each object and flow matcher.
-    states: BTreeMap<FlowStateKey, FlowState>,
+    states: StateTable,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct AliasTable(Vec<(ValueId, ObjectId)>);
+
+impl AliasTable {
+    fn position(&self, value: ValueId) -> Result<usize, usize> {
+        self.0.binary_search_by_key(&value, |(key, _)| *key)
+    }
+
+    fn get(&self, value: ValueId) -> Option<ObjectId> {
+        self.position(value).ok().map(|index| self.0[index].1)
+    }
+
+    fn insert(&mut self, value: ValueId, object: ObjectId) {
+        match self.position(value) {
+            Ok(index) => self.0[index].1 = object,
+            Err(index) => self.0.insert(index, (value, object)),
+        }
+    }
+
+    fn remove(&mut self, value: ValueId) -> Option<ObjectId> {
+        self.position(value)
+            .ok()
+            .map(|index| self.0.remove(index).1)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct StateTable(Vec<(FlowStateKey, FlowState)>);
+
+impl StateTable {
+    fn position(&self, key: FlowStateKey) -> Result<usize, usize> {
+        self.0.binary_search_by_key(&key, |(key, _)| *key)
+    }
+
+    fn get(&self, key: FlowStateKey) -> Option<&FlowState> {
+        self.position(key).ok().map(|index| &self.0[index].1)
+    }
+
+    fn get_mut(&mut self, key: FlowStateKey) -> Option<&mut FlowState> {
+        self.position(key).ok().map(|index| &mut self.0[index].1)
+    }
+
+    fn insert(&mut self, state: FlowState) {
+        let key = state.key();
+        match self.position(key) {
+            Ok(index) => self.0[index].1 = state,
+            Err(index) => self.0.insert(index, (key, state)),
+        }
+    }
+
+    fn remove_object(&mut self, object: ObjectId) {
+        self.0.retain(|(key, _)| key.object != object);
+    }
 }
 impl FlowStateTable {
     pub(super) fn clear(&mut self) {
-        self.aliases.clear();
-        self.states.clear();
+        self.aliases.0.clear();
+        self.states.0.clear();
     }
 
     pub(super) fn object_for(&self, value: ValueId) -> Option<ObjectId> {
-        self.aliases.get(&value).copied()
+        self.aliases.get(value)
     }
 
     pub(super) fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
         // BTreeMap iteration gives callers stable object order for evidence and
         // keeps duplicate aliases from multiplying the same state transition.
-        self.aliases.values().copied()
+        self.aliases.0.iter().map(|(_, object)| *object)
     }
 
     pub(super) fn bind(&mut self, value: ValueId, object: ObjectId) {
@@ -78,11 +133,11 @@ impl FlowStateTable {
     }
 
     pub(super) fn unbind(&mut self, value: ValueId) -> Option<ObjectId> {
-        self.aliases.remove(&value)
+        self.aliases.remove(value)
     }
 
     pub(super) fn has_alias_for(&self, object: ObjectId) -> bool {
-        self.aliases.values().any(|alias| *alias == object)
+        self.aliases.0.iter().any(|(_, alias)| *alias == object)
     }
 
     pub(super) fn states_for(
@@ -90,29 +145,30 @@ impl FlowStateTable {
         object: ObjectId,
     ) -> impl Iterator<Item = (FlowStateKey, &FlowState)> {
         self.states
+            .0
             .iter()
             .filter(move |(key, _)| key.object == object)
             .map(|(key, state)| (*key, state))
     }
 
     pub(super) fn state(&self, object: ObjectId, flow: FlowId) -> Option<&FlowState> {
-        self.states.get(&FlowStateKey { object, flow })
+        self.states.get(FlowStateKey { object, flow })
     }
 
     pub(super) fn state_mut(&mut self, object: ObjectId, flow: FlowId) -> Option<&mut FlowState> {
-        self.states.get_mut(&FlowStateKey { object, flow })
+        self.states.get_mut(FlowStateKey { object, flow })
     }
 
     pub(super) fn insert_state(&mut self, state: FlowState) {
-        self.states.insert(state.key(), state);
+        self.states.insert(state);
     }
 
     pub(super) fn state_count(&self) -> usize {
-        self.states.len()
+        self.states.0.len()
     }
 
     pub(super) fn remove_states_for(&mut self, object: ObjectId) {
-        self.states.retain(|key, _| key.object != object);
+        self.states.remove_object(object);
     }
 
     pub(super) fn capture(&self, reachable: bool) -> FlowEnvironment {
@@ -213,8 +269,8 @@ impl FlowEnvironment {
     /// Construct an unreachable environment with no usable state.
     pub(super) fn unreachable() -> Self {
         Self {
-            aliases: BTreeMap::new(),
-            states: BTreeMap::new(),
+            aliases: AliasTable::default(),
+            states: StateTable::default(),
             reachable: false,
         }
     }
@@ -227,23 +283,27 @@ impl FlowEnvironment {
         if !right.is_reachable() {
             return left.clone();
         }
-        let aliases = left
-            .aliases
-            .iter()
-            .filter_map(|(binding, object)| {
-                (right.aliases.get(binding) == Some(object)).then_some((*binding, *object))
-            })
-            .collect();
-        let states = left
-            .states
-            .iter()
-            .filter_map(|(key, left_state)| {
-                let right_state = right.states.get(key)?;
-                let mut state = left_state.clone();
-                state.retain_requirement_keys(right_state);
-                Some((*key, state))
-            })
-            .collect();
+        let aliases = AliasTable(
+            left.aliases
+                .0
+                .iter()
+                .filter_map(|(binding, object)| {
+                    (right.aliases.get(*binding) == Some(*object)).then_some((*binding, *object))
+                })
+                .collect(),
+        );
+        let states = StateTable(
+            left.states
+                .0
+                .iter()
+                .filter_map(|(key, left_state)| {
+                    let right_state = right.states.get(*key)?;
+                    let mut state = left_state.clone();
+                    state.retain_requirement_keys(right_state);
+                    Some((*key, state))
+                })
+                .collect(),
+        );
         Self {
             aliases,
             states,

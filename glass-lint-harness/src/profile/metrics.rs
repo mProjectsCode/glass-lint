@@ -22,7 +22,7 @@ pub(super) fn report_operation_counts(report: &AnalysisReport) -> ProfileOperati
 
 pub(super) fn evidence_order_digest(report: &AnalysisReport) -> String {
     let encoded = serde_json::to_vec(&report.files).expect("report DTOs serialize");
-    format!("{:x}", Sha256::digest(encoded))
+    format!("{:?}", Sha256::digest(encoded))
 }
 
 pub(super) fn combined_digest(digests: &[String]) -> String {
@@ -31,7 +31,7 @@ pub(super) fn combined_digest(digests: &[String]) -> String {
         hasher.update(digest.as_bytes());
         hasher.update([0]);
     }
-    format!("{:x}", hasher.finalize())
+    format!("{:?}", hasher.finalize())
 }
 
 pub(super) fn median_duration(repetitions: &[ProfileRepetitionSummary]) -> Duration {

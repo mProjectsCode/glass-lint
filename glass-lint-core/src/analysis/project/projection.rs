@@ -4,12 +4,12 @@
 //! linking. It applies qualified identities once, composes bounded flow, and
 //! leaves rule selection to the compiled matcher catalog.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use super::super::{ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow};
 use crate::{
     analysis::{
-        matching::OccurrenceIndexes,
+        matching::{ModuleOccurrenceOverlay, OccurrenceIndexes},
         status::{AnalysisComponent, IncompleteReason},
     },
     api::{classification::ClassificationEvidence, compiler::CompiledRuleSelection},
@@ -28,7 +28,8 @@ pub struct ProjectMatcherModel<'matchers> {
 /// Materialized matcher inputs for one project module.
 struct ProjectModuleProjection {
     /// Local occurrences after applying imported/namespace identities.
-    index: OccurrenceIndexes,
+    index: Arc<OccurrenceIndexes>,
+    overlay: ModuleOccurrenceOverlay,
     /// Direct constrained and cross-module flow evidence by rule index.
     projected: Vec<Vec<ClassificationEvidence>>,
 }
@@ -44,14 +45,15 @@ impl ProjectSemanticModel {
             .modules
             .values()
             .map(|module| {
-                let mut facts = module.local().facts().cloned_matcher_facts();
+                let index = module.local().facts().shared_matcher_index();
                 let identities = self.module_identities(module.id());
                 let result_identities = self.call_result_identities(module.id());
-                facts.apply_module_overlay(&identities);
+                let overlay = index.module_overlay(&identities);
                 (
                     module.id(),
                     ProjectModuleProjection {
-                        index: facts,
+                        index,
+                        overlay,
                         projected: module.local().facts().project(
                             &matchers,
                             Some(&identities),
@@ -107,7 +109,9 @@ impl ProjectMatcherModel<'_> {
             .projections
             .get(&module.id())
             .map_or_else(Vec::new, |projection| {
-                projection.index.evidence_for(matcher.query())
+                projection
+                    .index
+                    .evidence_for_with_overlay(matcher.query(), Some(&projection.overlay))
             });
         if let Some(projected) = self
             .projections

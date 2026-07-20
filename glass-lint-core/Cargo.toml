@@ -15,6 +15,7 @@ swc_ecma_transforms_base.workspace = true
 swc_ecma_transforms_typescript.workspace = true
 swc_ecma_visit.workspace = true
 smallvec.workspace = true
+indexmap.workspace = true
 smol_str.workspace = true
 
 [features]

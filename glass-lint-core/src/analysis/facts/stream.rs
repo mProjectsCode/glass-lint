@@ -16,7 +16,7 @@ enum FactStreamIssue {
     InvalidParserSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 /// Canonical facts plus the path interner used by argument and flow queries.
 /// Invalid streams are retained only as a diagnostic boundary and must not be
 /// indexed or projected as if their suffix were trustworthy.

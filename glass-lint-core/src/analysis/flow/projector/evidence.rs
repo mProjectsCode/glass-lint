@@ -126,15 +126,17 @@ impl ObjectFlowProjector<'_, '_> {
         for sink in summary.sinks() {
             let Some(parameter) = summary.parameters().iter().find(|parameter| {
                 parameter.parameter_index == sink.parameter_index()
-                    && (parameter.path == sink.path()
+                    && (sink
+                        .path()
+                        .matches_base(self.stream.paths(), parameter.path)
                         || (parameter.rest
-                            && self.stream.paths().starts_with(sink.path(), parameter.path)))
+                            && sink
+                                .path()
+                                .starts_with_base(self.stream.paths(), parameter.path)))
             }) else {
                 continue;
             };
-            let mut parameter = parameter.clone();
-            parameter.path = sink.path();
-            let Some(value) = parameter.project_argument(self.stream, args) else {
+            let Some(value) = parameter.project_argument_at(self.stream, args, sink.path()) else {
                 continue;
             };
             let Some(object) = self.flow_state.object_for(value) else {

@@ -15,13 +15,78 @@ use smol_str::SmolStr;
 use super::{
     super::{
         facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
-        value::{FunctionId, PathId, PathInterner, ValueId},
+        value::{FunctionId, PathId, PathInterner, PathSegment, ValueId},
     },
     index::{FlowId, FlowIndex},
     table::FunctionTable,
 };
 
 const MAX_SUMMARY_ROUNDS: usize = 64;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+/// A base artifact path or a compact path owned by a function summary.
+pub(super) enum SummaryPath {
+    Base(PathId),
+    Owned(Vec<PathSegment>),
+}
+
+impl SummaryPath {
+    pub(super) fn base(path: PathId) -> Self {
+        Self::Base(path)
+    }
+
+    pub(super) fn join(paths: &PathInterner, prefix: PathId, suffix: PathId) -> Option<Self> {
+        let mut segments = paths.owned_segments(prefix)?;
+        segments.extend(paths.owned_segments(suffix)?);
+        Some(Self::Owned(segments))
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        match self {
+            Self::Base(path) => path.is_empty(),
+            Self::Owned(segments) => segments.is_empty(),
+        }
+    }
+
+    pub(super) fn matches_base(&self, paths: &PathInterner, base: PathId) -> bool {
+        match self {
+            Self::Base(path) => *path == base,
+            Self::Owned(segments) => paths
+                .owned_segments(base)
+                .is_some_and(|candidate| candidate == *segments),
+        }
+    }
+
+    pub(super) fn starts_with_base(&self, paths: &PathInterner, prefix: PathId) -> bool {
+        match self {
+            Self::Base(path) => paths.starts_with(*path, prefix),
+            Self::Owned(segments) => paths.owned_segments(prefix).is_some_and(|prefix| {
+                segments.len() >= prefix.len()
+                    && segments.iter().zip(prefix.iter()).all(|(a, b)| a == b)
+            }),
+        }
+    }
+
+    pub(super) fn first_index(&self, paths: &PathInterner) -> Option<u32> {
+        match self {
+            Self::Base(path) => paths.first_index(*path),
+            Self::Owned(segments) => match segments.first()? {
+                PathSegment::Index(index) => Some(*index),
+                PathSegment::Property(_) => None,
+            },
+        }
+    }
+
+    pub(super) fn without_first(&self, paths: &PathInterner) -> Option<Self> {
+        match self {
+            Self::Base(path) => Some(Self::Base(paths.without_first(*path)?)),
+            Self::Owned(segments) if !segments.is_empty() => {
+                Some(Self::Owned(segments[1..].to_vec()))
+            }
+            Self::Owned(_) => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Sink reachable through a function parameter path.
@@ -31,7 +96,7 @@ pub(super) struct FunctionSinkSummary {
     /// Top-level parameter receiving the propagated object.
     parameter_index: usize,
     /// Nested path at which the sink consumes the object.
-    path: PathId,
+    path: SummaryPath,
 }
 
 #[derive(Debug, Clone)]
@@ -69,8 +134,13 @@ impl SinkSet {
     }
 
     fn sort_and_dedup(&mut self) {
-        self.0
-            .sort_by_key(|sink| (sink.flow(), sink.parameter_index(), sink.path()));
+        self.0.sort_by(|left, right| {
+            (left.flow(), left.parameter_index(), left.path()).cmp(&(
+                right.flow(),
+                right.parameter_index(),
+                right.path(),
+            ))
+        });
         self.0.dedup();
     }
 }
@@ -118,8 +188,8 @@ impl FunctionSinkSummary {
         self.parameter_index
     }
 
-    pub(super) fn path(&self) -> PathId {
-        self.path
+    pub(super) fn path(&self) -> &SummaryPath {
+        &self.path
     }
 }
 
@@ -147,10 +217,10 @@ impl FunctionSummaries {
     pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Self {
         let mut summaries = Self::default();
         let calls_by_function = summaries.collect_facts(stream);
-        let mut paths: PathInterner = stream.paths().clone();
+        let paths = stream.paths();
 
         // First collect facts whose sink is directly visible in the function.
-        summaries.collect_direct_sinks(stream, flow_index, &calls_by_function, &mut paths);
+        summaries.collect_direct_sinks(stream, flow_index, &calls_by_function, paths);
 
         // Propagate sink projections through proven FunctionId call edges. Since
         // every propagation only adds a deduplicated projection, this is a finite
@@ -229,7 +299,7 @@ impl FunctionSummaries {
         stream: &FactStream,
         flow_index: &FlowIndex<'_>,
         calls_by_function: &FunctionTable<Vec<FactId>>,
-        paths: &mut PathInterner,
+        paths: &PathInterner,
     ) {
         for (_, summary) in self.by_id.iter_mut() {
             let Some(call_ids) = calls_by_function.get(summary.id) else {
@@ -267,7 +337,8 @@ impl FunctionSummaries {
                             }) else {
                                 continue;
                             };
-                            let Some(path) = paths.concat(parameter.path, argument.base_path)
+                            let Some(path) =
+                                SummaryPath::join(paths, parameter.path, argument.base_path)
                             else {
                                 continue;
                             };
@@ -321,18 +392,18 @@ impl FunctionSummaries {
                         let Some(target_parameter) =
                             target_summary.parameters.iter().find(|parameter| {
                                 parameter.parameter_index == sink.parameter_index()
-                                    && (parameter.path == sink.path()
+                                    && (sink.path().matches_base(stream.paths(), parameter.path)
                                         || (parameter.rest
-                                            && stream
-                                                .paths()
-                                                .starts_with(sink.path(), parameter.path)))
+                                            && sink
+                                                .path()
+                                                .starts_with_base(stream.paths(), parameter.path)))
                             })
                         else {
                             continue;
                         };
-                        let mut target_parameter = target_parameter.clone();
-                        target_parameter.path = sink.path();
-                        let Some(argument) = target_parameter.project_argument(stream, args) else {
+                        let Some(argument) =
+                            target_parameter.project_argument_at(stream, args, sink.path())
+                        else {
                             continue;
                         };
                         let Some(caller_parameter) = caller_parameters.iter().find(|parameter| {
@@ -345,7 +416,7 @@ impl FunctionSummaries {
                         let projection = FunctionSinkSummary {
                             flow: sink.flow(),
                             parameter_index: caller_parameter.parameter_index,
-                            path: caller_parameter.path,
+                            path: SummaryPath::base(caller_parameter.path),
                         };
                         if let Some(caller_summary) = self.by_id.get_mut(caller) {
                             changed |= caller_summary.add_sink(projection);
@@ -456,6 +527,16 @@ impl ParameterBinding {
         stream: &FactStream,
         args: &[CallArgInfo],
     ) -> Option<ValueId> {
+        let path = SummaryPath::base(self.path);
+        self.project_argument_at(stream, args, &path)
+    }
+
+    pub(super) fn project_argument_at(
+        &self,
+        stream: &FactStream,
+        args: &[CallArgInfo],
+        path: &SummaryPath,
+    ) -> Option<ValueId> {
         let Some(argument) = args.get(self.parameter_index) else {
             return self
                 .path
@@ -469,31 +550,31 @@ impl ParameterBinding {
         }
 
         if self.rest {
-            let index = stream.paths().first_index(self.path)?;
+            let index = path.first_index(stream.paths())?;
             let argument = args.get(self.parameter_index.saturating_add(index as usize))?;
             if argument.spread {
                 return None;
             }
-            let path = stream.paths().without_first(self.path)?;
+            let path = path.without_first(stream.paths())?;
             if path.is_empty() {
                 return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
             }
             return argument
                 .projections
                 .iter()
-                .find(|projection| projection.path == path)
+                .find(|projection| path.matches_base(stream.paths(), projection.path))
                 .map(|projection| projection.value)
                 .filter(|value| *value != ValueId::UNKNOWN);
         }
 
-        if self.path.is_empty() {
+        if path.is_empty() {
             return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
         }
 
         argument
             .projections
             .iter()
-            .find(|projection| projection.path == self.path)
+            .find(|projection| path.matches_base(stream.paths(), projection.path))
             .map(|projection| projection.value)
             .filter(|value| *value != ValueId::UNKNOWN)
             .or_else(|| self.default.filter(|value| *value != ValueId::UNKNOWN))

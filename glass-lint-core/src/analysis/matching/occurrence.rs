@@ -110,20 +110,6 @@ impl<K: Ord> OccurrenceIndex<K> {
     }
 }
 
-impl<K: Ord + Clone> OccurrenceIndex<K> {
-    pub(super) fn remap_keys<F>(&mut self, mut remap: F)
-    where
-        F: FnMut(&K) -> Option<K>,
-    {
-        let previous = std::mem::take(&mut self.0);
-        for (key, occurrences) in previous {
-            if let Some(key) = remap(&key) {
-                self.0.entry(key).or_default().extend(occurrences);
-            }
-        }
-    }
-}
-
 pub(in crate::analysis) type Occurrences = OccurrenceIndex<SmolStr>;
 
 /// Stable key for a module request and one exported member.

@@ -248,7 +248,7 @@ fn digest_json(value: &impl Serialize) -> Result<String> {
 }
 
 fn digest_bytes(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    format!("{:?}", Sha256::digest(bytes))
 }
 
 #[cfg(test)]

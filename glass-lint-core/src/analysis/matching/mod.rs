@@ -33,7 +33,7 @@ mod arguments;
 mod build;
 mod query;
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 /// Matcher-independent occurrence indexes projected from one fact stream.
 ///
 /// The indexes are reusable across rule catalogs; constrained clauses and flow
@@ -54,7 +54,18 @@ pub struct OccurrenceIndexes {
     literals: LiteralIndexes,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
+/// Additional project identities layered over an immutable local index.
+pub(in crate::analysis) struct ModuleOccurrenceOverlay {
+    masked: std::collections::BTreeSet<ModuleExportKey>,
+    call_indexes: CallIndexes,
+    member_calls: ModuleOccurrences,
+    member_reads: ModuleOccurrences,
+    module_classes: ModuleOccurrences,
+    module_constructors: ModuleOccurrences,
+}
+
+#[derive(Debug, Default)]
 /// Call occurrences partitioned by confidence/provenance level.
 pub(super) struct CallIndexes {
     calls: Occurrences,
@@ -165,9 +176,13 @@ impl OccurrenceIndexes {
             || !self.members.module_calls.is_empty()
     }
 
-    pub(in crate::analysis) fn apply_module_overlay(&mut self, identities: &ModuleIdentityMap) {
-        let remap = |key: &ModuleExportKey| {
-            let identity = identities.get(key).cloned().or_else(|| {
+    pub(in crate::analysis) fn module_overlay(
+        &self,
+        identities: &ModuleIdentityMap,
+    ) -> ModuleOccurrenceOverlay {
+        let mut overlay = ModuleOccurrenceOverlay::default();
+        let identity_for = |key: &ModuleExportKey| {
+            identities.get(key).cloned().or_else(|| {
                 identities
                     .get(&ModuleExportKey::wildcard(key.module().clone()))
                     .map(|identity| match identity {
@@ -179,56 +194,71 @@ impl OccurrenceIndexes {
                         }
                         other => other.clone(),
                     })
-            });
-            match identity {
-                Some(LinkedModuleIdentity::External { module, export }) => {
-                    Some(ModuleExportKey::new(module, export))
-                }
-                Some(
-                    LinkedModuleIdentity::Global { .. }
-                    | LinkedModuleIdentity::Qualified { .. }
-                    | LinkedModuleIdentity::StaticString { .. }
-                    | LinkedModuleIdentity::Unknown,
-                ) => None,
-                None => Some(key.clone()),
-            }
+            })
         };
 
-        let global_occurrences = self
-            .call_indexes
-            .module_calls
-            .iter()
-            .filter_map(|(key, occurrences)| {
-                identities.get(key).and_then(|identity| {
-                    if let LinkedModuleIdentity::Global { name } = identity {
-                        Some((name.clone(), occurrences.clone()))
-                    } else {
-                        None
-                    }
-                })
-            })
-            .collect::<Vec<_>>();
+        let mut remap_occurrences =
+            |source: &ModuleOccurrences,
+             target: &mut ModuleOccurrences,
+             mut global_target: Option<&mut Occurrences>| {
+                for (key, occurrences) in source.iter() {
+                    let Some(identity) = identity_for(key) else {
+                        continue;
+                    };
+                    overlay.masked.insert(key.clone());
+                    target_entry(&identity, occurrences, target, global_target.as_deref_mut());
+                }
+            };
+        remap_occurrences(
+            &self.call_indexes.module_calls,
+            &mut overlay.call_indexes.module_calls,
+            Some(&mut overlay.call_indexes.global_calls),
+        );
+        remap_occurrences(&self.members.module_calls, &mut overlay.member_calls, None);
+        remap_occurrences(&self.members.module_reads, &mut overlay.member_reads, None);
+        remap_occurrences(
+            &self.constructions.module_classes,
+            &mut overlay.module_classes,
+            None,
+        );
+        remap_occurrences(
+            &self.constructions.module_constructors,
+            &mut overlay.module_constructors,
+            None,
+        );
+        overlay.call_indexes.global_calls.normalize();
+        overlay.call_indexes.module_calls.normalize();
+        overlay.member_calls.normalize();
+        overlay.member_reads.normalize();
+        overlay.module_classes.normalize();
+        overlay.module_constructors.normalize();
+        overlay
+    }
+}
 
-        self.call_indexes.module_calls.remap_keys(remap);
-        self.members.module_calls.remap_keys(remap);
-        self.members.module_reads.remap_keys(remap);
-        self.constructions.module_classes.remap_keys(remap);
-        self.constructions.module_constructors.remap_keys(remap);
-
-        // A callable imported through an internal module can resolve to a
-        // global identity (for example `export const f = fetch`). It is safe
-        // to add that occurrence to the global index, but never to infer one
-        // from a qualified local or unknown export.
-        for (name, occurrences) in global_occurrences {
+fn target_entry(
+    identity: &LinkedModuleIdentity,
+    occurrences: &[Occurrence],
+    target: &mut ModuleOccurrences,
+    global_target: Option<&mut Occurrences>,
+) {
+    match identity {
+        LinkedModuleIdentity::External { module, export } => {
+            let key = ModuleExportKey::new(module.clone(), export.clone());
             for occurrence in occurrences {
-                self.call_indexes.global_calls.push(
-                    name.clone(),
-                    occurrence.event(),
-                    occurrence.span(),
-                );
+                target.push_occurrence(key.clone(), *occurrence);
             }
         }
-        self.call_indexes.global_calls.normalize();
+        LinkedModuleIdentity::Global { name } => {
+            if let Some(global_target) = global_target {
+                for occurrence in occurrences {
+                    global_target.push_occurrence(name.clone(), *occurrence);
+                }
+            }
+        }
+        LinkedModuleIdentity::Qualified { .. }
+        | LinkedModuleIdentity::StaticString { .. }
+        | LinkedModuleIdentity::Unknown => {}
     }
 }
 
