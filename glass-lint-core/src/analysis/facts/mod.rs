@@ -16,7 +16,11 @@ use super::resolution::Resolver;
 use super::syntax::SymbolCallProvenance;
 #[cfg(test)]
 use super::value::{FunctionId, ValueId};
-use super::{flow::projector as object_flow, matching::OccurrenceIndexes, module::ModuleInterface};
+use super::{
+    flow::{effect::FunctionEffects, projector as object_flow},
+    matching::{self, OccurrenceIndexes},
+    module::ModuleInterface,
+};
 use crate::api::compiler::CompiledRuleSelection;
 
 pub mod build;
@@ -81,6 +85,7 @@ impl SemanticFacts {
     /// Projects constrained-clause and flow evidence after linking.
     pub(in crate::analysis) fn project(
         &self,
+        effects: &FunctionEffects,
         matchers: &CompiledRuleSelection<'_>,
         identities: Option<&super::matching::ModuleIdentityMap>,
         result_identities: Option<
@@ -118,7 +123,7 @@ impl SemanticFacts {
         if !self.stream.is_valid() {
             return projected_evidence;
         }
-        OccurrenceIndexes::compute_constrained_evidence_from_stream_with_overlay(
+        matching::compute_constrained_evidence_from_stream_with_overlay(
             &self.stream,
             &constrained_clauses,
             &mut projected_evidence,
@@ -126,7 +131,7 @@ impl SemanticFacts {
             result_identities,
         );
         for (rule_index, evidence) in
-            object_flow::collect(&self.stream, &flow_matchers, matchers.len())
+            object_flow::collect(&self.stream, effects, &flow_matchers, matchers.len())
                 .into_iter()
                 .enumerate()
         {

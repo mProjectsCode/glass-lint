@@ -33,23 +33,6 @@ pub(in crate::analysis) enum BudgetComponent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-/// Common outcome vocabulary for bounded semantic resolution.
-pub(in crate::analysis) enum Knowledge<T> {
-    /// A value proven by the artifact.
-    Known(T),
-    /// No single value could be proven, with the reason retained.
-    Unknown(UnknownReason),
-    /// More than one incompatible value remained possible.
-    Ambiguous,
-}
-
-impl<T> Knowledge<T> {
-    pub(in crate::analysis) fn is_known(&self) -> bool {
-        matches!(self, Self::Known(_))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 /// Provenance of a callable symbol at a use position.
 pub(in crate::analysis) enum SymbolCallProvenance {
     /// A configured, unshadowed global callable.
@@ -60,19 +43,6 @@ pub(in crate::analysis) enum SymbolCallProvenance {
     ModuleExport { module: SmolStr, export: SmolStr },
     /// A resolution that did not produce a proven identity.
     Unknown(UnknownReason),
-    /// Multiple incompatible identities were possible.
-    Ambiguous,
-}
-
-impl SymbolCallProvenance {
-    /// Lift this outcome into the shared knowledge vocabulary.
-    pub(in crate::analysis) fn knowledge(&self) -> Knowledge<&Self> {
-        match self {
-            Self::Unknown(reason) => Knowledge::Unknown(reason.clone()),
-            Self::Ambiguous => Knowledge::Ambiguous,
-            _ => Knowledge::Known(self),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,38 +50,4 @@ impl SymbolCallProvenance {
 pub(in crate::analysis) enum SymbolMemberProvenance {
     /// A statically named member of an imported namespace.
     ModuleNamespace { module: SmolStr, member: SmolStr },
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{BudgetComponent, Knowledge, SymbolCallProvenance, UnknownReason};
-
-    #[test]
-    fn provenance_outcomes_keep_unknown_and_ambiguous_distinct() {
-        let known = SymbolCallProvenance::Global {
-            name: "fetch".into(),
-        };
-        assert!(known.knowledge().is_known());
-        assert!(matches!(
-            SymbolCallProvenance::Unknown(UnknownReason::BudgetExhausted {
-                component: BudgetComponent::Values,
-                limit: 65_536,
-                observed: None,
-            })
-            .knowledge(),
-            Knowledge::Unknown(UnknownReason::BudgetExhausted {
-                component: BudgetComponent::Values,
-                limit: 65_536,
-                observed: None,
-            })
-        ));
-        assert!(matches!(
-            SymbolCallProvenance::Ambiguous.knowledge(),
-            Knowledge::Ambiguous
-        ));
-        assert!(matches!(
-            SymbolCallProvenance::Unknown(UnknownReason::Cycle).knowledge(),
-            Knowledge::Unknown(UnknownReason::Cycle)
-        ));
-    }
 }

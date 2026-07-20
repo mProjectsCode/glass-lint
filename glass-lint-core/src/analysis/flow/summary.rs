@@ -10,13 +10,14 @@
 //! a projected sink. Recursive propagation stops at a fixed point or its
 //! explicit round bound.
 
-use smol_str::SmolStr;
+use crate::analysis::flow::effect::EffectCall;
 
 use super::{
     super::{
         facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
         value::{FunctionId, PathId, PathInterner, PathSegment, ValueId},
     },
+    effect::FunctionEffects,
     index::{FlowId, FlowIndex},
     table::FunctionTable,
 };
@@ -115,10 +116,6 @@ pub(super) struct FunctionSummary {
     calls: Vec<FactId>,
     /// Sinks directly or transitively reachable through this helper.
     sinks: SinkSet,
-    /// Writes that may invalidate a propagated object.
-    writes: Vec<PropertyWriteProjection>,
-    /// Reasons this summary must not be used for precise propagation.
-    invalid: SummaryInvalidation,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -161,24 +158,6 @@ impl IntoIterator for SinkSet {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// Property write retained as a summary invalidation/provenance event.
-pub(super) struct PropertyWriteProjection {
-    event: FactId,
-    target: ValueId,
-    receiver: Option<ValueId>,
-    property: Option<SmolStr>,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-/// Summary invalidation flags that force conservative invocation behavior.
-pub(super) struct SummaryInvalidation {
-    /// A parameter/object identity was reassigned.
-    reassigned: bool,
-    /// A dynamic or unsupported shape was encountered.
-    dynamic: bool,
-}
-
 impl FunctionSinkSummary {
     pub(super) fn flow(&self) -> FlowId {
         self.flow
@@ -190,12 +169,6 @@ impl FunctionSinkSummary {
 
     pub(super) fn path(&self) -> &SummaryPath {
         &self.path
-    }
-}
-
-impl SummaryInvalidation {
-    fn mark_reassigned(&mut self) {
-        self.reassigned = true;
     }
 }
 
@@ -214,9 +187,13 @@ impl FunctionSummaries {
         self.by_id.insert(summary.id, summary);
     }
 
-    pub(super) fn collect(stream: &FactStream, flow_index: &FlowIndex<'_>) -> Self {
+    pub(super) fn collect(
+        stream: &FactStream,
+        effects: &FunctionEffects,
+        flow_index: &FlowIndex<'_>,
+    ) -> Self {
         let mut summaries = Self::default();
-        let calls_by_function = summaries.collect_facts(stream);
+        let calls_by_function = summaries.collect_facts(effects);
         let paths = stream.paths();
 
         // First collect facts whose sink is directly visible in the function.
@@ -233,65 +210,28 @@ impl FunctionSummaries {
         summaries
     }
 
-    fn collect_facts(&mut self, stream: &FactStream) -> FunctionTable<Vec<FactId>> {
+    fn collect_facts(&mut self, effects: &FunctionEffects) -> FunctionTable<Vec<FactId>> {
         let mut calls_by_function = FunctionTable::default();
-        for fact in stream.facts() {
-            match &fact.payload {
-                FactPayload::Function {
-                    id,
-                    parameters,
-                    boundary: crate::analysis::facts::FunctionBoundary::Enter,
-                    ..
-                } => {
-                    let parameter_count = parameters
+        for effect in effects.iter_effects() {
+            if self.get(effect.id()).is_none() {
+                self.insert(FunctionSummary {
+                    id: effect.id(),
+                    parameters: effect.parameters().to_vec(),
+                    parameter_count: effect
+                        .parameters()
                         .iter()
                         .map(|parameter| parameter.parameter_index)
                         .max()
-                        .map_or(0, |index| index.saturating_add(1));
-                    if self.get(*id).is_none() {
-                        self.insert(FunctionSummary {
-                            id: *id,
-                            parameters: parameters.clone(),
-                            parameter_count,
-                            has_rest: parameters.iter().any(|parameter| parameter.rest),
-                            calls: Vec::new(),
-                            sinks: SinkSet::default(),
-                            writes: Vec::new(),
-                            invalid: SummaryInvalidation::default(),
-                        });
-                    }
-                }
-                FactPayload::Assignment {
-                    target, receiver, ..
-                } => {
-                    if let Some(summary) = self.by_id.get_mut(fact.function) {
-                        summary.record_write(fact.id, *target, *receiver, None, true);
-                    }
-                }
-                FactPayload::PropertyWrite {
-                    target,
-                    receiver,
-                    property,
-                    ..
-                } => {
-                    if let Some(summary) = self.by_id.get_mut(fact.function) {
-                        summary.record_write(
-                            fact.id,
-                            *target,
-                            Some(*receiver),
-                            property
-                                .and_then(|id| stream.resolve_name(id))
-                                .map(SmolStr::new),
-                            false,
-                        );
-                    }
-                }
-                FactPayload::Call { .. } => calls_by_function
-                    .get_mut_or_insert_with(fact.function, Vec::new)
-                    .expect("fact function IDs are allocated densely")
-                    .push(fact.id),
-                _ => {}
+                        .map_or(0, |index| index.saturating_add(1)),
+                    has_rest: effect.parameters().iter().any(|parameter| parameter.rest),
+                    calls: effect.calls().iter().map(EffectCall::event).collect(),
+                    sinks: SinkSet::default(),
+                });
             }
+        }
+        // Build calls_by_function from the same data.
+        for summary in self.by_id.values() {
+            calls_by_function.insert(summary.id, summary.calls.clone());
         }
         calls_by_function
     }
@@ -462,27 +402,6 @@ impl FunctionSummary {
     }
 }
 
-impl FunctionSummary {
-    fn record_write(
-        &mut self,
-        event: FactId,
-        target: ValueId,
-        receiver: Option<ValueId>,
-        property: Option<SmolStr>,
-        reassigned: bool,
-    ) {
-        if reassigned {
-            self.invalid.mark_reassigned();
-        }
-        self.writes.push(PropertyWriteProjection {
-            event,
-            target,
-            receiver,
-            property,
-        });
-    }
-}
-
 /// Check whether a call provides enough proven values for a function summary.
 /// Unknown and spread arguments fail closed because they cannot safely support
 /// a parameter-path projection.
@@ -606,8 +525,10 @@ mod tests {
         let resolver = Resolver::collect(&parsed.program);
         let stream =
             super::super::super::facts::build::build_test_stream(&parsed.program, &resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
         let summaries = FunctionSummaries::collect(
             &stream,
+            &effects,
             &FlowIndex::new(&[], stream.names().expect("test stream names")),
         );
         assert!(summaries.by_id.len() >= 2);

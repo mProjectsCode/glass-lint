@@ -24,6 +24,7 @@ use super::{
         facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary},
         value::{ObjectId, ValueId},
     },
+    effect::FunctionEffects,
     index::{FlowId, FlowIndex, FlowLimits},
     state::FlowState,
     summary::FunctionSummaries,
@@ -38,6 +39,7 @@ use crate::{
 
 pub(in crate::analysis) fn collect(
     stream: &FactStream,
+    effects: &FunctionEffects,
     rules: &[(
         crate::api::classification::RuleIndex,
         usize,
@@ -45,11 +47,12 @@ pub(in crate::analysis) fn collect(
     )],
     rule_count: usize,
 ) -> Vec<Vec<ClassificationEvidence>> {
-    collect_with_limits(stream, rules, rule_count, FlowLimits::default())
+    collect_with_limits(stream, effects, rules, rule_count, FlowLimits::default())
 }
 
 pub(super) fn collect_with_limits(
     stream: &FactStream,
+    effects: &FunctionEffects,
     rules: &[(
         crate::api::classification::RuleIndex,
         usize,
@@ -64,7 +67,7 @@ pub(super) fn collect_with_limits(
         return vec![Vec::new(); rule_count];
     };
     let flow_index = FlowIndex::new(rules, names);
-    let helpers = FunctionSummaries::collect(stream, &flow_index);
+    let helpers = FunctionSummaries::collect(stream, effects, &flow_index);
     let mut projector =
         ObjectFlowProjector::new(stream, names, flow_index, helpers, rule_count, limits);
     for fact in stream.facts() {
@@ -337,9 +340,11 @@ mod tests {
         let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
         let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
         let flow = CompiledObjectFlow::from_matcher(flow);
         collect_with_limits(
             &stream,
+            &effects,
             &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
             1,
             FlowLimits::default(),
@@ -556,6 +561,7 @@ mod tests {
         let parsed = crate::parse(source, "flow-location.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
         let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
         let sink_span = stream
             .facts()
             .iter()
@@ -570,6 +576,7 @@ mod tests {
         let flow = CompiledObjectFlow::from_matcher(&script_flow());
         let evidence = collect_with_limits(
             &stream,
+            &effects,
             &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
             1,
             FlowLimits::default(),
@@ -596,6 +603,7 @@ mod tests {
             crate::parse(source, "flow-requirement-location.js").expect("source should parse");
         let resolver = Resolver::collect(&parsed.program);
         let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
         let configuration = stream
             .facts()
             .iter()
@@ -607,6 +615,7 @@ mod tests {
         let flow = CompiledObjectFlow::from_matcher(&flow);
         let evidence = collect_with_limits(
             &stream,
+            &effects,
             &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
             1,
             FlowLimits::default(),

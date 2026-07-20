@@ -27,7 +27,6 @@ impl Resolver<'_> {
             provenance,
             SymbolCallProvenance::Global { .. }
                 | SymbolCallProvenance::ModuleExport { .. }
-                | SymbolCallProvenance::Ambiguous
         ) {
             return provenance;
         }
@@ -141,7 +140,7 @@ impl Resolver<'_> {
             SymbolCallProvenance::Local => {
                 rooted.map_or(Value::Local, |path| self.rooted_value(path))
             }
-            SymbolCallProvenance::Unknown(_) | SymbolCallProvenance::Ambiguous => Value::Unknown,
+            SymbolCallProvenance::Unknown(_) => Value::Unknown,
         };
         let id = self
             .state

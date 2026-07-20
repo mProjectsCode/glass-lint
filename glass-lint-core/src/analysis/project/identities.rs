@@ -66,7 +66,7 @@ impl ProjectSemanticModel {
                                 }
                             })
                     }
-                    SymbolCallProvenance::Unknown(_) | SymbolCallProvenance::Ambiguous => {
+                    SymbolCallProvenance::Unknown(_) => {
                         ExportResolution::Unknown
                     }
                 };

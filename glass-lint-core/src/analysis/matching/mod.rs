@@ -30,6 +30,7 @@ use occurrence::{
     Occurrences, ReturnedMemberKey,
 };
 mod arguments;
+pub(in crate::analysis) use arguments::compute_constrained_evidence_from_stream_with_overlay;
 mod build;
 mod query;
 

@@ -45,8 +45,7 @@ impl ProjectSemanticModel {
                     }
                     Some(
                         SymbolCallProvenance::Local
-                        | SymbolCallProvenance::Unknown(_)
-                        | SymbolCallProvenance::Ambiguous,
+                        | SymbolCallProvenance::Unknown(_),
                     )
                     | None => project_module
                         .local()

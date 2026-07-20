@@ -42,7 +42,7 @@ impl Resolver<'_> {
         let call = if id == ValueId::UNKNOWN
             && !matches!(
                 seed.call,
-                SymbolCallProvenance::Unknown(_) | SymbolCallProvenance::Ambiguous
+                SymbolCallProvenance::Unknown(_)
             )
             && self.value_arena_exhausted()
         {

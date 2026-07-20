@@ -42,19 +42,6 @@ impl<T> FunctionTable<T> {
         vacant
     }
 
-    /// Borrow an existing value or create it once in the requested slot.
-    pub(in crate::analysis) fn get_mut_or_insert_with(
-        &mut self,
-        id: FunctionId,
-        create: impl FnOnce() -> T,
-    ) -> Option<&mut T> {
-        let index = usize::try_from(id.0).ok()?;
-        if self.values.len() <= index {
-            self.values.resize_with(index + 1, || None);
-        }
-        Some(self.values[index].get_or_insert_with(create))
-    }
-
     /// Iterate present entries in ascending function-ID order.
     pub(in crate::analysis) fn iter(&self) -> impl Iterator<Item = (FunctionId, &T)> {
         self.values.iter().enumerate().filter_map(|(index, value)| {

@@ -93,7 +93,7 @@ impl OccurrenceIndexes {
         evidence
     }
 
-    fn occurrences_for_clause(
+    pub(in crate::analysis) fn occurrences_for_clause(
         &self,
         clause: &QueryClause,
         overlay: Option<&ModuleOccurrenceOverlay>,

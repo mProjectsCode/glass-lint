@@ -234,6 +234,7 @@ pub(in crate::analysis) enum FactPayload {
     /// Property write (obj.prop = value).
     PropertyWrite {
         /// Resolved identity for the written member.
+        #[allow(dead_code)]
         target: ValueId,
         /// Object identity receiving the property write.
         receiver: ValueId,

@@ -141,8 +141,7 @@ impl OccurrenceIndexes {
                 );
             }
             SymbolCallProvenance::Local
-            | SymbolCallProvenance::Unknown(_)
-            | SymbolCallProvenance::Ambiguous => {}
+            | SymbolCallProvenance::Unknown(_) => {}
         }
         self.record_call_paths(fact, names);
         self.record_call_special_cases(fact, names);
@@ -304,8 +303,7 @@ impl OccurrenceIndexes {
                 );
             }
             SymbolCallProvenance::Local
-            | SymbolCallProvenance::Unknown(_)
-            | SymbolCallProvenance::Ambiguous => {}
+            | SymbolCallProvenance::Unknown(_) => {}
         }
     }
 }

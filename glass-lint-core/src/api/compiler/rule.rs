@@ -7,14 +7,11 @@
 use smol_str::{SmolStr, ToSmolStr};
 
 use super::super::{
-    classification::MatchKind,
-    rule::{
-        ArgumentConstraint, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherFamily,
-        MatcherSet, MemberCallProvenance, ObjectEventMatcher, ObjectFlowMatcher,
-        ObjectSourceMatcher, Rule, ValueMatcher,
+    classification::MatchKind, rule::{
+        ArgumentConstraint, ClassMatcher, ConstructorMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, Rule, SymbolProvenance, ValueMatcher,
     },
 };
-use crate::analysis::SymbolPath;
+use crate::{analysis::SymbolPath, api::{classification::RuleIndex, rule::ModuleSpecifierPattern}};
 
 /// Canonical matcher representation consumed by analysis.  Public matcher
 /// declarations are compiled once while a catalog is built and never enter
@@ -61,14 +58,14 @@ pub(crate) enum IdentityConstraint {
         export: SmolStr,
     },
     PackageModuleExport {
-        module: crate::api::rule::ModuleSpecifierPattern,
+        module: ModuleSpecifierPattern,
         export: SmolStr,
     },
     ModuleNamespace {
         module: SmolStr,
     },
     PackageModuleNamespace {
-        module: crate::api::rule::ModuleSpecifierPattern,
+        module: ModuleSpecifierPattern,
     },
     Rooted {
         path: SymbolPath,
@@ -79,7 +76,7 @@ pub(crate) enum IdentityConstraint {
         predicate: String,
     },
     PackageSpecifier {
-        pattern: crate::api::rule::ModuleSpecifierPattern,
+        pattern: ModuleSpecifierPattern,
     },
 }
 
@@ -300,7 +297,7 @@ fn lower_calls(values: &[super::super::rule::CallMatcher]) -> Vec<QueryClause> {
         .collect()
 }
 
-fn lower_member_calls(values: &[super::super::rule::MemberCallMatcher]) -> Vec<QueryClause> {
+fn lower_member_calls(values: &[MemberCallMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|member| QueryClause {
@@ -328,7 +325,7 @@ fn lower_member_calls(values: &[super::super::rule::MemberCallMatcher]) -> Vec<Q
         .collect()
 }
 
-fn lower_member_reads(values: &[super::super::rule::MemberReadMatcher]) -> Vec<QueryClause> {
+fn lower_member_reads(values: &[MemberReadMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|read| QueryClause {
@@ -348,7 +345,7 @@ fn lower_member_reads(values: &[super::super::rule::MemberReadMatcher]) -> Vec<Q
 
 fn lower_literals(
     imports: &[String],
-    package_imports: &[crate::api::rule::ModuleSpecifierPattern],
+    package_imports: &[ModuleSpecifierPattern],
     string_contains: &[String],
 ) -> Vec<QueryClause> {
     let imports = imports
@@ -392,8 +389,8 @@ fn literal_clause(value: &str, event: EventPredicate, kind: MatchKind) -> QueryC
 }
 
 fn lower_classes_and_constructors(
-    classes: &[super::super::rule::ClassMatcher],
-    constructors: &[super::super::rule::ConstructorMatcher],
+    classes: &[ClassMatcher],
+    constructors: &[ConstructorMatcher],
 ) -> Vec<QueryClause> {
     let classes = classes.iter().map(|class| QueryClause {
         identity: call_identity(&class.name, &class.provenance),
@@ -419,8 +416,8 @@ fn lower_classes_and_constructors(
 }
 
 fn lower_returned_members(
-    calls_matchers: &[super::super::rule::ReturnedMemberCallMatcher],
-    reads_matchers: &[super::super::rule::ReturnedMemberReadMatcher],
+    calls_matchers: &[ReturnedMemberCallMatcher],
+    reads_matchers: &[ReturnedMemberReadMatcher],
 ) -> Vec<QueryClause> {
     let calls = calls_matchers.iter().map(|returned| {
         returned_member_clause(
@@ -470,7 +467,7 @@ fn returned_member_clause(
 }
 
 fn lower_instance_members(
-    values: &[super::super::rule::InstanceMemberCallMatcher],
+    values: &[InstanceMemberCallMatcher],
 ) -> Vec<QueryClause> {
     values
         .iter()
@@ -508,22 +505,22 @@ fn lower_instance_members(
 
 fn member_identity(
     chain: &str,
-    provenance: &super::super::rule::MemberCallProvenance,
+    provenance: &MemberCallProvenance,
 ) -> IdentityConstraint {
     match provenance {
-        super::super::rule::MemberCallProvenance::Any => IdentityConstraint::Any {
+        MemberCallProvenance::Any => IdentityConstraint::Any {
             name: chain.to_smolstr(),
             strength: IdentityStrength::Heuristic,
         },
-        super::super::rule::MemberCallProvenance::Rooted => IdentityConstraint::Rooted {
+        MemberCallProvenance::Rooted => IdentityConstraint::Rooted {
             path: SymbolPath::from(chain),
         },
-        super::super::rule::MemberCallProvenance::ModuleNamespace { module } => {
+        MemberCallProvenance::ModuleNamespace { module } => {
             IdentityConstraint::ModuleNamespace {
                 module: module.to_smolstr(),
             }
         }
-        super::super::rule::MemberCallProvenance::PackageModuleNamespace { module } => {
+        MemberCallProvenance::PackageModuleNamespace { module } => {
             IdentityConstraint::PackageModuleNamespace {
                 module: module.clone(),
             }
@@ -533,22 +530,22 @@ fn member_identity(
 
 fn member_read_identity(
     chain: &str,
-    provenance: &super::super::rule::MemberReadProvenance,
+    provenance: &MemberReadProvenance,
 ) -> IdentityConstraint {
     match provenance {
-        super::super::rule::MemberReadProvenance::Any => IdentityConstraint::Any {
+        MemberReadProvenance::Any => IdentityConstraint::Any {
             name: chain.to_smolstr(),
             strength: IdentityStrength::Heuristic,
         },
-        super::super::rule::MemberReadProvenance::Rooted => IdentityConstraint::Rooted {
+        MemberReadProvenance::Rooted => IdentityConstraint::Rooted {
             path: SymbolPath::from(chain),
         },
-        super::super::rule::MemberReadProvenance::ModuleNamespace { module } => {
+        MemberReadProvenance::ModuleNamespace { module } => {
             IdentityConstraint::ModuleNamespace {
                 module: module.to_smolstr(),
             }
         }
-        super::super::rule::MemberReadProvenance::PackageModuleNamespace { module } => {
+        MemberReadProvenance::PackageModuleNamespace { module } => {
             IdentityConstraint::PackageModuleNamespace {
                 module: module.clone(),
             }
@@ -558,24 +555,24 @@ fn member_read_identity(
 
 fn call_identity(
     name: &str,
-    provenance: &super::super::rule::SymbolProvenance,
+    provenance: &SymbolProvenance,
 ) -> IdentityConstraint {
     match provenance {
-        super::super::rule::SymbolProvenance::Any => IdentityConstraint::Any {
+        SymbolProvenance::Any => IdentityConstraint::Any {
             name: name.into(),
             strength: IdentityStrength::Heuristic,
         },
-        super::super::rule::SymbolProvenance::Global => IdentityConstraint::Global {
+        SymbolProvenance::Global => IdentityConstraint::Global {
             name: name.into(),
             strength: IdentityStrength::Strict,
         },
-        super::super::rule::SymbolProvenance::ModuleExport { module } => {
+        SymbolProvenance::ModuleExport { module } => {
             IdentityConstraint::ModuleExport {
                 module: module.to_smolstr(),
                 export: name.into(),
             }
         }
-        super::super::rule::SymbolProvenance::PackageModuleExport { module } => {
+        SymbolProvenance::PackageModuleExport { module } => {
             IdentityConstraint::PackageModuleExport {
                 module: module.clone(),
                 export: name.into(),
@@ -590,7 +587,7 @@ pub(crate) struct CompiledRuleSelection<'a> {
     /// All compiled rules, retained for stable rule indexes.
     pub(crate) rules: &'a [CompiledRule],
     /// Sorted selected rule indexes.
-    pub(crate) selected: &'a [crate::api::classification::RuleIndex],
+    pub(crate) selected: &'a [RuleIndex],
 }
 
 #[derive(Debug, Clone)]
@@ -817,7 +814,7 @@ impl<'a> CompiledRuleSelection<'a> {
     /// Create a borrowed catalog view over sorted selected indexes.
     pub fn new(
         rules: &'a [CompiledRule],
-        selected: &'a [crate::api::classification::RuleIndex],
+        selected: &'a [RuleIndex],
     ) -> Self {
         Self { rules, selected }
     }
@@ -825,7 +822,7 @@ impl<'a> CompiledRuleSelection<'a> {
     /// Iterate selected plans while preserving their catalog indexes.
     pub fn selected_matchers(
         &self,
-    ) -> impl Iterator<Item = (crate::api::classification::RuleIndex, &CompiledMatcherPlan)> {
+    ) -> impl Iterator<Item = (RuleIndex, &CompiledMatcherPlan)> {
         self.selected.iter().filter_map(move |&index| {
             self.rules
                 .get(index.get())
@@ -834,14 +831,14 @@ impl<'a> CompiledRuleSelection<'a> {
     }
 
     /// Whether a catalog index is selected by this view.
-    pub fn is_selected(&self, index: crate::api::classification::RuleIndex) -> bool {
+    pub fn is_selected(&self, index: RuleIndex) -> bool {
         self.selected.binary_search(&index).is_ok()
     }
 
     /// Borrow a compiled plan by its stable catalog index.
     pub fn get(
         &self,
-        index: crate::api::classification::RuleIndex,
+        index: RuleIndex,
     ) -> Option<&'a CompiledMatcherPlan> {
         self.rules.get(index.get()).map(|rule| &rule.matcher)
     }

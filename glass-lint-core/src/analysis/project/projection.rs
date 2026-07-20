@@ -69,6 +69,7 @@ impl ProjectSemanticModel {
                         index,
                         overlay,
                         projected: module.local().facts().project(
+                            module.local().effects(),
                             &matchers,
                             Some(&identities),
                             Some(&result_identities),
