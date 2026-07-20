@@ -7,19 +7,19 @@
 use std::collections::BTreeMap;
 
 use super::super::{
-    super::name::{NameId, NameTableHandle},
+    super::name::{NameId, NameTableCtx},
     BindingProvenance, ScopeId,
 };
 
 #[derive(Debug)]
 /// Most recent assignment provenance for each scope-local binding.
-pub(super) struct AssignmentHistory {
-    names: NameTableHandle,
+pub(super) struct AssignmentHistory<'a> {
+    names: NameTableCtx<'a>,
     assignments: BTreeMap<ScopeId, BTreeMap<NameId, BindingProvenance>>,
 }
 
-impl AssignmentHistory {
-    pub(super) fn new(names: NameTableHandle) -> Self {
+impl<'a> AssignmentHistory<'a> {
+    pub(super) fn new(names: NameTableCtx<'a>) -> Self {
         Self {
             names,
             assignments: BTreeMap::new(),

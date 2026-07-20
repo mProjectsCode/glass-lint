@@ -4,7 +4,7 @@ use smol_str::SmolStr;
 
 use super::{BindingKey, ConstValue, Resolver, Value, ValueId};
 
-impl Resolver {
+impl Resolver<'_> {
     /// Read a bounded constant value from the abstract value arena.
     pub(in crate::analysis) fn const_value(&self, id: ValueId) -> ConstValue {
         let Some(value) = self.state.borrow().values.get(id).cloned() else {

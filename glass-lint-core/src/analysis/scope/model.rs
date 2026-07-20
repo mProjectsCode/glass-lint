@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{
     Environment,
-    analysis::name::{NameId, NameTableHandle},
+    analysis::name::{NameId, NameTableCtx},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -58,11 +58,11 @@ impl From<usize> for ScopeId {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug)]
 /// Immutable lexical scope/index model consumed by resolution queries.
-pub(in crate::analysis) struct ScopeGraph {
+pub(in crate::analysis) struct ScopeGraph<'a> {
     /// Names used by compact local scope indexes.
-    names: NameTableHandle,
+    names: NameTableCtx<'a>,
     /// Host globals and member capabilities used for unshadowed checks.
     environment: Environment,
     /// Lexical scopes in predeclaration order.
@@ -94,7 +94,51 @@ pub(in crate::analysis) struct ScopeGraph {
     mutable_static_objects: std::collections::BTreeSet<ScopedName>,
 }
 
-impl ScopeGraph {
+impl<'a> ScopeGraph<'a> {
+    /// Create a minimally-initialized scope graph for test use. The caller
+    /// must ensure the `NameTableCtx` outlives the graph.
+    #[cfg(test)]
+    pub(in crate::analysis) fn create_for_test(names: NameTableCtx<'a>) -> Self {
+        Self {
+            names,
+            environment: crate::Environment::default(),
+            scopes: Vec::new(),
+            scopes_by_start: Vec::new(),
+            last_scope_query: std::cell::Cell::new(None),
+            assignments: std::collections::BTreeMap::new(),
+            binding_ids: std::collections::BTreeMap::new(),
+            function_ids: std::collections::BTreeMap::new(),
+            function_bindings: std::collections::BTreeMap::new(),
+            function_aliases: std::collections::BTreeMap::new(),
+            property_assignments: std::collections::BTreeMap::new(),
+            rooted_property_mutations: std::collections::BTreeMap::new(),
+            parameter_aliases: std::collections::BTreeMap::new(),
+            dynamic_evals_by_scope: std::collections::BTreeMap::new(),
+            mutable_static_objects: std::collections::BTreeSet::new(),
+        }
+    }
+
+    /// Assemble the immutable graph before property indexes are attached.
+    pub(super) fn from_parts(parts: ScopeGraphParts<'a>) -> Self {
+        Self {
+            environment: parts.environment,
+            names: parts.names,
+            scopes: parts.scopes,
+            scopes_by_start: parts.scopes_by_start,
+            last_scope_query: std::cell::Cell::new(None),
+            assignments: parts.assignments,
+            binding_ids: parts.binding_ids,
+            function_ids: parts.function_ids,
+            function_bindings: parts.function_bindings,
+            function_aliases: parts.function_aliases,
+            property_assignments: std::collections::BTreeMap::new(),
+            rooted_property_mutations: std::collections::BTreeMap::new(),
+            parameter_aliases: parts.parameter_aliases,
+            dynamic_evals_by_scope: std::collections::BTreeMap::new(),
+            mutable_static_objects: parts.mutable_static_objects,
+        }
+    }
+
     pub(in crate::analysis) fn resolve_name_id(&self, name: NameId) -> Option<SmolStr> {
         self.names.resolve(name)
     }
@@ -243,27 +287,6 @@ impl ScopeGraph {
             .and_then(|name| self.scopes.get(scope.index())?.bindings.get(&name))
     }
 
-    /// Assemble the immutable graph before property indexes are attached.
-    pub(super) fn from_parts(parts: ScopeGraphParts) -> Self {
-        Self {
-            environment: parts.environment,
-            names: parts.names,
-            scopes: parts.scopes,
-            scopes_by_start: parts.scopes_by_start,
-            last_scope_query: Cell::new(None),
-            assignments: parts.assignments,
-            binding_ids: parts.binding_ids,
-            function_ids: parts.function_ids,
-            function_bindings: parts.function_bindings,
-            function_aliases: parts.function_aliases,
-            property_assignments: BTreeMap::new(),
-            rooted_property_mutations: BTreeMap::new(),
-            parameter_aliases: parts.parameter_aliases,
-            dynamic_evals_by_scope: BTreeMap::new(),
-            mutable_static_objects: parts.mutable_static_objects,
-        }
-    }
-
     pub(super) fn function_for_scope(&self, scope: ScopeId) -> Option<FunctionId> {
         self.function_ids.get(&scope).copied()
     }
@@ -385,9 +408,9 @@ impl ScopeGraph {
 }
 
 /// Owned inputs used to assemble a collected [`ScopeGraph`].
-pub(super) struct ScopeGraphParts {
+pub(super) struct ScopeGraphParts<'a> {
     pub(super) environment: Environment,
-    pub(super) names: NameTableHandle,
+    pub(super) names: NameTableCtx<'a>,
     pub(super) scopes: Vec<LexicalScope>,
     pub(super) scopes_by_start: Vec<ScopeId>,
     pub(super) assignments: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>>,

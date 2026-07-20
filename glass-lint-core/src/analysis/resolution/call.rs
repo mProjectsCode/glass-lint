@@ -14,7 +14,7 @@ use crate::analysis::{
     value::MAX_VALUES,
 };
 
-impl Resolver {
+impl Resolver<'_> {
     /// Recover global callable provenance for a resolved value at a position.
     pub(super) fn call_provenance_at(
         &self,

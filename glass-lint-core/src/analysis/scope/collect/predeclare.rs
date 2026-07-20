@@ -16,12 +16,12 @@ use super::{
     LexicalScopeCollector,
 };
 
-pub(super) struct PredeclareVisitor<'a> {
+pub(super) struct PredeclareVisitor<'a, 'b> {
     /// Collector whose scope tree and hoisted bindings this pass populates.
-    pub(super) collector: &'a mut LexicalScopeCollector,
+    pub(super) collector: &'a mut LexicalScopeCollector<'b>,
 }
 
-impl PredeclareVisitor<'_> {
+impl PredeclareVisitor<'_, '_> {
     /// Insert import bindings before ordinary source-order traversal.
     fn insert_import(&mut self, import: &ImportDecl) {
         let scope = self.collector.current_scope();
@@ -77,7 +77,7 @@ impl PredeclareVisitor<'_> {
     }
 }
 
-impl Visit for PredeclareVisitor<'_> {
+impl Visit for PredeclareVisitor<'_, '_> {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         self.insert_import(import);
     }

@@ -15,8 +15,9 @@ impl FactBuilder<'_> {
     /// Resolve one argument into the scalar, rooted, and statically addressable
     /// views consumed by call matchers and parameter-path flow.
     pub(super) fn arg_info(&mut self, expr: &Expr) -> CallArgInfo {
-        let value = self.resolver.resolve_expr(expr).id;
-        let provenance = self.resolver.resolve_expr(expr).call;
+        let resolved = self.resolver.resolve_expr(expr);
+        let value = resolved.id;
+        let provenance = resolved.call;
         let (base_value, base_path) = self.expression_projection(expr);
         let mut projections = Vec::new();
         self.collect_value_projections(expr, PathId::EMPTY, &mut projections);

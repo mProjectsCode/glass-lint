@@ -20,7 +20,7 @@ use super::{
     BindingProvenance, BoundArgument, LexicalScopeCollector,
 };
 
-impl LexicalScopeCollector {
+impl LexicalScopeCollector<'_> {
     /// Resolve a module export, namespace member, dynamic import, or require
     /// expression while preserving lexical shadowing checks.
     pub(super) fn module_alias_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {

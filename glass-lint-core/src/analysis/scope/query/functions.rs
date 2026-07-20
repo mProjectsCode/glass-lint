@@ -2,7 +2,7 @@
 
 use super::{BindingProvenance, Expr, FunctionId, ScopeGraph, ScopeId, Span};
 
-impl ScopeGraph {
+impl ScopeGraph<'_> {
     /// Find the nearest enclosing function identity for a lexical scope.
     pub(in crate::analysis) fn function_scope_at(&self, scope: ScopeId) -> FunctionId {
         let mut current = Some(scope);

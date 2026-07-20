@@ -51,7 +51,7 @@ mod visitor;
 /// The prepass establishes lexical binding identity; the normal visitor then
 /// reuses that scope tree while recording assignments and supported
 /// provenance at each use position.
-pub(super) struct LexicalScopeCollector {
+pub(super) struct LexicalScopeCollector<'a> {
     /// Lexical scopes in predeclaration/traversal order.
     pub(super) scopes: Vec<LexicalScope>,
     /// Current lexical path during AST traversal.
@@ -59,7 +59,7 @@ pub(super) struct LexicalScopeCollector {
     /// Assignment events retain source order for use-position provenance.
     pub(super) assignments: Vec<AliasAssignment>,
     /// Latest use-position assignment state per lexical scope.
-    latest_assignments: AssignmentHistory,
+    latest_assignments: AssignmentHistory<'a>,
     /// Property writes retained for flow-aware rooted-member queries.
     pub(super) property_assignments: Vec<PropertyAliasAssignment>,
     /// Writes that invalidate a rooted receiver/property identity.
@@ -76,7 +76,7 @@ pub(super) struct LexicalScopeCollector {
     inline_parameters: BTreeMap<BytePos, BTreeMap<SmolStr, BindingProvenance>>,
     /// `var`-bound objects whose mutation prevents constant projection.
     pub(super) mutable_static_objects: BTreeSet<ScopedName>,
-    names: crate::analysis::name::NameTableHandle,
+    names: crate::analysis::name::NameTableCtx<'a>,
     pub(super) name_exhausted: bool,
     /// Per (scope, name) counter to avoid rescanniing all assignments.
     version_counters: BTreeMap<(ScopeId, NameId), u32>,
@@ -106,16 +106,16 @@ pub(super) struct RootedPropertyMutation {
     pub(super) property: Option<NameId>,
 }
 
-impl LexicalScopeCollector {
+impl<'a> LexicalScopeCollector<'a> {
     /// Initialize an empty collector with a program-level lexical scope.
     #[cfg(test)]
     pub fn new(program_span: Span) -> Self {
-        Self::with_names(program_span, crate::analysis::name::NameTableHandle::new())
+        Self::with_names(program_span, crate::analysis::name::NameTableCtx::testing())
     }
 
     pub(super) fn with_names(
         program_span: Span,
-        names: crate::analysis::name::NameTableHandle,
+        names: crate::analysis::name::NameTableCtx<'a>,
     ) -> Self {
         Self {
             scopes: vec![LexicalScope {
@@ -127,7 +127,7 @@ impl LexicalScopeCollector {
             }],
             stack: vec![0],
             assignments: Vec::new(),
-            latest_assignments: AssignmentHistory::new(names.clone()),
+            latest_assignments: AssignmentHistory::new(names),
             property_assignments: Vec::new(),
             rooted_property_mutations: Vec::new(),
             dynamic_evals: Vec::new(),
@@ -168,7 +168,7 @@ impl LexicalScopeCollector {
     /// ID allocation, normalization, and post-collection property indexing
     /// belong to this transition so callers cannot observe a partially built
     /// graph or pass the collector's storage around independently.
-    pub(super) fn freeze(mut self, environment: &Environment) -> ScopeGraph {
+    pub(super) fn freeze(mut self, environment: &Environment) -> ScopeGraph<'a> {
         let parameter_aliases_by_scope = self.parameter_aliases();
         let mut scopes_by_start = (0..self.scopes.len())
             .map(ScopeId::from)
@@ -573,7 +573,7 @@ impl LexicalScopeCollector {
     }
 }
 
-impl RootedExprContext for LexicalScopeCollector {
+impl RootedExprContext for LexicalScopeCollector<'_> {
     fn rooted_ident_chain(&self, ident: &swc_ecma_ast::Ident) -> Option<SymbolPath> {
         match self.visible_binding(ident.sym.as_ref()) {
             Some(
@@ -603,7 +603,7 @@ mod tests {
 
     use super::*;
 
-    fn collect(source: &str) -> LexicalScopeCollector {
+    fn collect(source: &str) -> LexicalScopeCollector<'_> {
         let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");
         let mut collector = LexicalScopeCollector::new(parsed.program.span());
         collector.predeclare(&parsed.program);

@@ -43,34 +43,37 @@ pub fn effective_callee_expr(expr: &Expr) -> &Expr {
     }
 }
 
-/// Collect all names introduced by a binding pattern deterministically.
-pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<SmolStr>) {
+/// Walk every `Ident` binding introduced by a destructuring pattern.
+/// The walker handles all standard JavaScript pattern forms (Ident, Assign,
+/// Rest, Array, Object, Expr, Invalid) and calls `f` for each name.
+pub fn walk_pat_ident_bindings(pat: &Pat, f: &mut impl FnMut(&Ident)) {
     match pat {
-        Pat::Ident(ident) => {
-            bindings.insert(ident.id.sym.to_smolstr());
-        }
+        Pat::Ident(ident) => f(&ident.id),
+        Pat::Assign(assign) => walk_pat_ident_bindings(&assign.left, f),
+        Pat::Rest(rest) => walk_pat_ident_bindings(&rest.arg, f),
         Pat::Array(array) => {
             for elem in array.elems.iter().flatten() {
-                collect_pat_bindings(elem, bindings);
+                walk_pat_ident_bindings(elem, f);
             }
         }
-        Pat::Rest(rest) => collect_pat_bindings(&rest.arg, bindings),
         Pat::Object(object) => {
             for prop in &object.props {
                 match prop {
-                    ObjectPatProp::KeyValue(key_value) => {
-                        collect_pat_bindings(&key_value.value, bindings);
-                    }
-                    ObjectPatProp::Assign(assign) => {
-                        bindings.insert(assign.key.sym.to_smolstr());
-                    }
-                    ObjectPatProp::Rest(rest) => collect_pat_bindings(&rest.arg, bindings),
+                    ObjectPatProp::KeyValue(kv) => walk_pat_ident_bindings(&kv.value, f),
+                    ObjectPatProp::Assign(assign) => f(&assign.key),
+                    ObjectPatProp::Rest(rest) => walk_pat_ident_bindings(&rest.arg, f),
                 }
             }
         }
-        Pat::Assign(assign) => collect_pat_bindings(&assign.left, bindings),
         Pat::Invalid(_) | Pat::Expr(_) => {}
     }
+}
+
+/// Collect all names introduced by a binding pattern deterministically.
+pub fn collect_pat_bindings(pat: &Pat, bindings: &mut BTreeSet<SmolStr>) {
+    walk_pat_ident_bindings(pat, &mut |ident| {
+        bindings.insert(ident.sym.to_smolstr());
+    });
 }
 
 /// Normalize an identifier or string export name to its authored spelling.

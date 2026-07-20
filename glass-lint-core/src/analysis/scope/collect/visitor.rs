@@ -87,7 +87,7 @@ fn classify_declaration(
     DeclarationClassification::None
 }
 
-impl Visit for LexicalScopeCollector {
+impl Visit for LexicalScopeCollector<'_> {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         let scope = self.current_scope();
         let module = import.src.value.to_string_lossy().to_smolstr();

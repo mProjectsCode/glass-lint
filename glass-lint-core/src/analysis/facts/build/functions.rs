@@ -20,6 +20,10 @@ impl FactBuilder<'_> {
     }
 
     /// Emit a function boundary with parameter bindings owned by its body.
+    ///
+    /// Only `Enter` facts carry resolved parameter bindings; `Exit` facts are
+    /// flow markers that the projector uses to restore the calling frame and
+    /// never read parameter data.
     pub(super) fn emit_function_fact(
         &mut self,
         span: Span,
@@ -28,17 +32,23 @@ impl FactBuilder<'_> {
     ) {
         let scope = self.scope_at(span);
         let id = self.resolver.function_id_for_scope(scope);
-        let mut parameter_bindings = Vec::new();
-        for (parameter_index, parameter) in parameters {
-            self.parameter_bindings(
-                &parameter,
-                parameter_index,
-                PathId::EMPTY,
-                None,
-                false,
-                &mut parameter_bindings,
-            );
-        }
+        let parameter_bindings = match boundary {
+            FunctionBoundary::Enter => {
+                let mut bindings = Vec::new();
+                for (parameter_index, parameter) in parameters {
+                    self.parameter_bindings(
+                        &parameter,
+                        parameter_index,
+                        PathId::EMPTY,
+                        None,
+                        false,
+                        &mut bindings,
+                    );
+                }
+                bindings
+            }
+            FunctionBoundary::Exit => Vec::new(),
+        };
         self.emit(
             FactKind::Function,
             span,

@@ -2,10 +2,10 @@
 
 use super::{
     BindingProvenance, ConstValue, EvalState, Expr, Ident, Lookup, MemberExpr, ScopeGraph, Span,
-    Spanned, constant,
+    constant,
 };
 
-impl ScopeGraph {
+impl ScopeGraph<'_> {
     /// Whether an identifier refers to a mutable static object binding.
     pub(in crate::analysis) fn mutable_static_object_at(&self, expr: &Expr) -> bool {
         let Expr::Ident(ident) = expr else {
@@ -15,18 +15,9 @@ impl ScopeGraph {
             .is_some_and(|(scope, _)| self.is_mutable_static_object(scope, ident.sym.as_ref()))
     }
 
-    /// Evaluate constants while the lexical collector is still the source of
-    /// binding facts. The resolver interns this result during its immutable
-    /// build, so matcher queries do not call back into scope provenance.
-    pub(in crate::analysis) fn constant_value(&self, expr: &Expr) -> ConstValue {
-        if self.has_dynamic_lookup_at(expr.span()) {
-            return ConstValue::Unknown;
-        }
-        constant::evaluate(expr, self)
-    }
 }
 
-impl Lookup for ScopeGraph {
+impl Lookup for ScopeGraph<'_> {
     /// Convert only known static binding provenances into constant values.
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
         if self.has_dynamic_lookup_at(ident.span) {

@@ -4,7 +4,7 @@
 //! function targets, module provenance, and rooted chains. They fail closed
 //! when dynamic lookup, shadowing, or mutation makes a fact ambiguous.
 
-use swc_common::{Span, Spanned};
+use swc_common::Span;
 use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
 use super::{

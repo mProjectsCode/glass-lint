@@ -15,7 +15,7 @@ use super::{
 };
 use crate::analysis::name::NameId;
 
-impl LexicalScopeCollector {
+impl LexicalScopeCollector<'_> {
     /// Resolve the proven parameter aliases shared by all compatible calls to
     /// a helper. Conflicting call sites are discarded rather than merged:
     /// retaining an ambiguous alias would leak one caller's provenance into
@@ -31,7 +31,7 @@ impl LexicalScopeCollector {
                 if *caller_scope != *scope
                     && let Some(Some(target)) = arguments.get(index)
                 {
-                    Self::project_parameter_pattern(&self.names, parameter, target, &mut projected);
+                    Self::project_parameter_pattern(self.names, parameter, target, &mut projected);
                 }
                 for name in Self::parameter_binding_names(parameter) {
                     let target = projected.get(&name).cloned();
@@ -65,46 +65,19 @@ impl LexicalScopeCollector {
     /// sorting and deduplicating keeps the call projection deterministic.
     fn parameter_binding_names(pattern: &Pat) -> Vec<SmolStr> {
         let mut names = Vec::new();
-        Self::collect_parameter_binding_names(pattern, &mut names);
+        crate::analysis::syntax::walk_pat_ident_bindings(pattern, &mut |ident| {
+            names.push(ident.sym.to_smolstr());
+        });
         names.sort();
         names.dedup();
         names
-    }
-
-    fn collect_parameter_binding_names(pattern: &Pat, names: &mut Vec<SmolStr>) {
-        match pattern {
-            Pat::Ident(ident) => names.push(ident.id.sym.to_smolstr()),
-            Pat::Assign(assign) => Self::collect_parameter_binding_names(&assign.left, names),
-            Pat::Object(object) => {
-                for property in &object.props {
-                    match property {
-                        ObjectPatProp::KeyValue(property) => {
-                            Self::collect_parameter_binding_names(&property.value, names);
-                        }
-                        ObjectPatProp::Assign(property) => {
-                            names.push(property.key.sym.to_smolstr());
-                        }
-                        ObjectPatProp::Rest(property) => {
-                            Self::collect_parameter_binding_names(&property.arg, names);
-                        }
-                    }
-                }
-            }
-            Pat::Array(array) => {
-                for element in array.elems.iter().flatten() {
-                    Self::collect_parameter_binding_names(element, names);
-                }
-            }
-            Pat::Rest(rest) => Self::collect_parameter_binding_names(&rest.arg, names),
-            Pat::Expr(_) | Pat::Invalid(_) => {}
-        }
     }
 
     /// Project a proven object argument through a destructured parameter.
     /// Unsupported patterns intentionally contribute no bindings: callers
     /// must not infer aliases from a shape that the collector cannot prove.
     pub(super) fn project_parameter_pattern(
-        names: &super::super::super::name::NameTableHandle,
+        names: super::super::super::name::NameTableCtx<'_>,
         pattern: &Pat,
         value: &BindingProvenance,
         output: &mut BTreeMap<SmolStr, BindingProvenance>,
@@ -193,7 +166,7 @@ impl LexicalScopeCollector {
         let mut bindings = BTreeMap::new();
         for (parameter, argument) in parameters.into_iter().zip(arguments) {
             if let Some(argument) = argument {
-                Self::project_parameter_pattern(&self.names, parameter, &argument, &mut bindings);
+                Self::project_parameter_pattern(self.names, parameter, &argument, &mut bindings);
             }
         }
         if !bindings.is_empty() {

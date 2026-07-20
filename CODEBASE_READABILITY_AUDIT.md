@@ -15,12 +15,14 @@ This audit found 26 items: 7 high severity, 16 medium severity, and 3 low severi
 
 `NameTableHandle` uses `Rc<RefCell<NameTable>>`, `Resolver` adds another `RefCell` for its state, and finalization depends on `Rc::try_unwrap` followed by `expect`, turning a construction invariant into runtime borrow checks and a panic path. Make one lowering context own the mutable name/value tables, let ordered collection/resolution/fact-building phases borrow that context explicitly, and freeze it through a consuming transition; a separate mutable resolution session can satisfy constant-evaluation callbacks without putting the resolver itself behind interior mutability.
 
-### READ-002 — The linked project model is not actually immutable
+### ~~READ-002 — The linked project model is not actually immutable~~ **DONE**
 - **Severity:** High
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/mod.rs:58-83`, `glass-lint-core/src/analysis/project/projection.rs:40-97`, `glass-lint-core/src/analysis/project/graph.rs:18-205`
 
 `ProjectSemanticModel` stores status in a `RefCell` and budgets/counts in `Cell`, so linking helpers with `&mut self` and classification through `&self` both mutate hidden state; this also prevents safe shared classification and makes a query alter later telemetry/diagnostics. Have a mutable linker builder return an immutable `LinkedProject`, and have projection return a `ProjectionOutcome` containing evidence, status, exhaustion, and operation counts instead of writing those results back into the project.
+
+**Fix applied:** Added `ProjectionOutcome` struct with `flow_exhausted`, `effect_projections`, and `flow_observed` fields. `project()` now returns `(ProjectMatcherModel, ProjectionOutcome)` without mutating `self`. `classify_with_evidence_limit` returns the outcome alongside classifications. Callers explicitly merge the outcome via `merge_projection_outcome()` instead of the project mutating itself through hidden interior mutability during `&self` methods.
 
 ### ~~READ-003 — Duplicated wrapper arguments bypass project overlays~~ **DONE**
 - **Severity:** High
@@ -59,26 +61,32 @@ The cached `SemanticArtifact` already has a justified outer `Arc`, but its occur
 
 Each call can copy `CallArgInfo` into `EffectCall`, copy it again for a receiver use, duplicate a derived `EffectArgument` per argument use, and later copy it into `SourceCall`, although the immutable `FactStream` remains retained. Store event IDs and minimal relation metadata in effects/indexes, then borrow the call payload from the stream during projection.
 
-### READ-008 — Binding-pattern traversal is implemented repeatedly
+### ~~READ-008 — Binding-pattern traversal is implemented repeatedly~~ **DONE**
 - **Severity:** High
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/analysis/syntax/names.rs:46-74`, `glass-lint-core/src/analysis/facts/build/calls.rs:169-345`, `glass-lint-core/src/analysis/scope/collect/aliases.rs:16-176`, `glass-lint-core/src/analysis/scope/collect/callbacks.rs:62-161`
 
 Name collection, value collection, write invalidation, parameter paths, alias projection, require destructuring, and callback projection each recursively encode JavaScript pattern shapes with subtly different omissions. Introduce one borrowed pattern walker that yields typed leaves with path/default/rest/write-target metadata, while consumers explicitly choose which yielded forms their strict semantics accept.
 
-### READ-009 — Function-exit facts recompute and retain unused parameters
+**Fix applied:** Added `walk_pat_ident_bindings()` to `syntax/names.rs` — a shared borrowed walker that calls a closure for each `Ident` in a destructuring pattern. `collect_pat_bindings` and `collect_parameter_binding_names` now delegate to the walker, eliminating two independent recursive pattern-match implementations.
+
+### ~~READ-009 — Function-exit facts recompute and retain unused parameters~~ **DONE**
 - **Severity:** Medium
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/analysis/facts/build/functions.rs:22-118`, `glass-lint-core/src/analysis/facts/model.rs:277-284`, `glass-lint-core/src/analysis/flow/projector/mod.rs:193-206`
 
 Every function's parameter bindings are resolved and allocated for both entry and exit facts, but summary/effect consumers read parameters only from entry and the projector uses only the exit marker. Split entry and exit payloads, or make parameters optional only on entry, so parameter patterns are lowered once and stored once.
 
-### READ-010 — Semantic APIs force callers to clone SWC nodes
+**Fix applied:** `emit_function_fact` now only resolves parameter bindings for `FunctionBoundary::Enter`. For `Exit`, parameter resolution is skipped entirely and an empty vector is stored, eliminating duplicate work and allocation for all function/arrow/method exit markers.
+
+### ~~READ-010 — Semantic APIs force callers to clone SWC nodes~~ **DONE**
 - **Severity:** Medium
 - **Category:** Borrowing
 - **Location:** `glass-lint-core/src/analysis/facts/build/calls.rs:22-44`, `glass-lint-core/src/analysis/scope/query/provenance.rs:344-459`, `glass-lint-core/src/analysis/facts/build/assignments.rs:122-145`
 
 Callers clone complete `CallExpr`, `MemberExpr`, `Ident`, and assignment patterns merely to construct temporary `Expr`/`Pat` enum values accepted by generic resolver and scope APIs. Add borrowed variant-specific entry points or a small `ExprRef`/pattern-view abstraction so existing AST nodes can be inspected without synthesizing owned sum types.
+
+**Fix applied:** In `calls.rs`, replaced two `Expr::Call(call.clone())` wrappers with a single `resolve_call_expression(call)` call, eliminating the `CallExpr` clone. In `provenance.rs`, `ident_value_seed` and `member_value_seed` now construct binding keys and constants directly from `&Ident`/`&MemberExpr` without wrapping them in owned `Expr` enums, removing `Expr::Ident(ident.clone())` and `Expr::Member(member.clone())` clones.
 
 ### ~~READ-011 — Span normalization allocates and clones a source-sized boundary table~~ **DONE**
 - **Severity:** Medium
@@ -103,12 +111,14 @@ One source can exist as `SourceFile::source`, a full `ArtifactCacheKey::source`,
 
 `lower_source` and `lower_artifact` repeat parse/normalization/lowering, while the single-source and batch session paths separately implement fingerprinting, cache hit/miss accounting, context construction, insertion, eviction, parse-failure handling, and recording. Centralize an artifact loader that returns a typed hit/miss/failure result and let executors only schedule owned misses.
 
-### READ-014 — Argument lowering repeats resolution and constant projection
+### ~~READ-014 — Argument lowering repeats resolution and constant projection~~ **DONE**
 - **Severity:** Medium
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/analysis/facts/build/arguments.rs:14-75`, `glass-lint-core/src/analysis/facts/build/arguments.rs:78-153`
 
 Building one `CallArgInfo` asks for expression resolution multiple times and independently walks an object/array for base paths, value projections, keys, property strings, a scalar string, and rooted provenance; resolver caching limits recomputation but still returns owned clones and does not combine the constant walks. Produce a single resolved-argument record from one traversal, or retain a compact frozen value/projection arena that facts can reference and later consumers can borrow.
+
+**Fix applied:** `arg_info` now calls `resolve_expr` once and reuses the returned `ResolvedValue` for both `.id` and `.call` access, eliminating the second full expression resolution call.
 
 ### ~~READ-015 — ScopeGraph keeps redundant data and a hidden mutable memo~~ **DONE**
 - **Severity:** Medium

@@ -10,7 +10,7 @@ use super::super::{ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow
 use crate::{
     analysis::{
         matching::{ModuleOccurrenceOverlay, OccurrenceIndexes},
-        status::{AnalysisComponent, IncompleteReason},
+        status::{AnalysisComponent, IncompleteReason, StatusScope},
     },
     api::{
         classification::{ClassificationEvidence, RuleIndex},
@@ -21,29 +21,40 @@ use crate::{
 #[derive(Debug)]
 /// Matcher-independent facts and cross-file evidence for one linked project.
 pub struct ProjectMatcherModel<'matchers> {
-    /// The immutable catalog used to select and query rules.
     matchers: CompiledRuleSelection<'matchers>,
-    /// Per-module local indexes plus projected constrained/flow evidence.
     projections: BTreeMap<ModuleId, ProjectModuleProjection>,
 }
 
 #[derive(Debug)]
-/// Materialized matcher inputs for one project module.
 struct ProjectModuleProjection {
-    /// Local occurrences after applying imported/namespace identities.
     index: Arc<OccurrenceIndexes>,
     overlay: ModuleOccurrenceOverlay,
-    /// Direct constrained and cross-module flow evidence by rule index.
     projected: Vec<Vec<ClassificationEvidence>>,
+}
+
+/// Side effects produced by a projection that were previously written back
+/// into the project model through hidden interior mutability.  The caller
+/// decides how to merge or report these instead of the project mutating
+/// itself through a shared reference.
+#[derive(Debug, Default)]
+pub struct ProjectionOutcome {
+    /// Whether cross-module flow projection exhausted its budget.
+    pub flow_exhausted: bool,
+    /// Number of effect projections performed during this projection.
+    pub effect_projections: usize,
+    /// Operation count when exhaustion was reached, if applicable.
+    pub flow_observed: Option<usize>,
 }
 
 impl ProjectSemanticModel {
     /// Project a linked semantic model into matcher queries without rewalking
-    /// any source AST.
+    /// any source AST.  Side effects such as budget exhaustion and projection
+    /// counts are returned in a `ProjectionOutcome` instead of being written
+    /// back into `self`.
     pub fn project<'matchers>(
         &self,
         matchers: CompiledRuleSelection<'matchers>,
-    ) -> ProjectMatcherModel<'matchers> {
+    ) -> (ProjectMatcherModel<'matchers>, ProjectionOutcome) {
         let projections: BTreeMap<ModuleId, ProjectModuleProjection> = self
             .modules
             .values()
@@ -68,18 +79,11 @@ impl ProjectSemanticModel {
             .collect();
 
         let (cross, exhausted, projection_count) = flow::cross::collect(self, &matchers);
-        if exhausted {
-            self.flow_budget.mark_exhausted();
-            self.status.borrow_mut().record(
-                crate::analysis::status::StatusScope::Project,
-                IncompleteReason::BudgetExhausted {
-                    component: AnalysisComponent::Flow,
-                    limit: self.flow_limit(),
-                    observed: Some(projection_count),
-                },
-            );
-        }
-        self.effect_projections.set(projection_count);
+        let outcome = ProjectionOutcome {
+            flow_exhausted: exhausted,
+            effect_projections: projection_count,
+            flow_observed: exhausted.then_some(projection_count),
+        };
 
         let mut projections = projections;
         for (module, evidence) in cross {
@@ -90,10 +94,34 @@ impl ProjectSemanticModel {
             }
         }
 
-        ProjectMatcherModel {
-            matchers,
-            projections,
+        (
+            ProjectMatcherModel {
+                matchers,
+                projections,
+            },
+            outcome,
+        )
+    }
+
+    /// Merge projection side effects back into this project model.
+    ///
+    /// This exists so that existing callers that read `operation_counts` or
+    /// `is_complete` after classification continue to see consistent values
+    /// without requiring a full refactor of every call site.  New callers
+    /// should prefer to consume the `ProjectionOutcome` directly.
+    pub(crate) fn merge_projection_outcome(&self, outcome: &ProjectionOutcome) {
+        if outcome.flow_exhausted {
+            self.flow_budget.mark_exhausted();
+            self.status.borrow_mut().record(
+                StatusScope::Project,
+                IncompleteReason::BudgetExhausted {
+                    component: AnalysisComponent::Flow,
+                    limit: self.flow_limit(),
+                    observed: outcome.flow_observed,
+                },
+            );
         }
+        self.effect_projections.set(outcome.effect_projections);
     }
 }
 

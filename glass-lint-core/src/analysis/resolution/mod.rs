@@ -18,11 +18,15 @@ use std::{
     collections::{BTreeMap, BTreeSet},
 };
 
-use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
+use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr};
+#[cfg(test)]
+use swc_ecma_ast::Program;
+#[cfg(test)]
+use crate::analysis::name::NameTable;
 
 use super::{
     lowering::{ParserSpanKey, SpanNormalizer},
-    name::{NameTable, NameTableHandle},
+    name::NameTableCtx,
     scope::ScopeGraph,
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance,
@@ -94,10 +98,10 @@ struct ResolverState {
 }
 
 #[derive(Debug)]
-pub(super) struct Resolver {
+pub(super) struct Resolver<'a> {
     /// Scope/provenance seeds from the lexical collection pass.
-    scopes: ScopeGraph,
-    names: NameTableHandle,
+    scopes: ScopeGraph<'a>,
+    names: NameTableCtx<'a>,
     coordinates: SpanNormalizer,
     /// Cohesive mutable state for value interning, caching, and recursion
     /// guards. Keeping these lifecycles together makes their borrow order
@@ -105,18 +109,7 @@ pub(super) struct Resolver {
     state: RefCell<ResolverState>,
 }
 
-impl Default for Resolver {
-    fn default() -> Self {
-        Self {
-            scopes: ScopeGraph::default(),
-            names: NameTableHandle::new(),
-            coordinates: SpanNormalizer::default(),
-            state: RefCell::new(ResolverState::default()),
-        }
-    }
-}
-
-impl Lookup for Resolver {
+impl Lookup for Resolver<'_> {
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
         self.const_value(self.resolve_ident(ident).id)
     }
@@ -152,7 +145,7 @@ impl Lookup for Resolver {
     }
 }
 
-impl Resolver {
+impl<'a> Resolver<'a> {
     /// Convert a canonical member chain into the arena's structured value.
     /// Keeping this conversion beside `Resolver` ensures callers do not need
     /// to know how rooted values are represented internally.
@@ -185,14 +178,28 @@ impl Resolver {
         Self::collect_with_name_limit(program, environment, coordinates, super::name::MAX_NAMES)
     }
 
+    #[cfg(test)]
     pub(in crate::analysis) fn collect_with_name_limit(
         program: &Program,
         environment: &crate::Environment,
         coordinates: SpanNormalizer,
         name_limit: usize,
     ) -> Self {
-        let names = NameTableHandle::with_max_entries(name_limit);
-        let scopes = ScopeGraph::collect_with_environment(program, environment, names.clone());
+        let table = Box::new(std::cell::RefCell::new(
+            super::name::NameTable::with_max_entries(name_limit),
+        ));
+        let leaked: &'static std::cell::RefCell<super::name::NameTable> = Box::leak(table);
+        let names = NameTableCtx(leaked);
+        let scopes = ScopeGraph::collect_with_environment(program, environment, names);
+        Self::new(scopes, names, coordinates)
+    }
+
+    /// Build a resolver with an externally-owned name table.
+    pub(super) fn new(
+        scopes: ScopeGraph<'a>,
+        names: NameTableCtx<'a>,
+        coordinates: SpanNormalizer,
+    ) -> Self {
         Self {
             scopes,
             names,
@@ -223,17 +230,6 @@ impl Resolver {
     #[cfg(test)]
     pub(super) fn name_snapshot(&self) -> NameTable {
         self.names.snapshot()
-    }
-
-    pub(super) fn into_name_table(self) -> Option<NameTable> {
-        let Self {
-            names,
-            scopes,
-            coordinates: _,
-            state: _,
-        } = self;
-        drop(scopes);
-        names.into_table()
     }
 
     pub(in crate::analysis) fn normalize_span(
@@ -272,14 +268,20 @@ mod tests {
     use std::cell::RefCell;
 
     use super::{Resolver, ResolverState, SymbolCallProvenance, ValueId, ValueTable};
+    use crate::analysis::name::NameTable;
     use crate::analysis::{
+        name::NameTableCtx,
+        scope::ScopeGraph,
         syntax::{BudgetComponent, UnknownReason},
         value::MAX_VALUES,
     };
 
     #[test]
     fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
-        let resolver = Resolver::default();
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, crate::analysis::lowering::SpanNormalizer::default());
         assert_eq!(
             resolver.call_provenance_for_value(ValueId::UNKNOWN),
             SymbolCallProvenance::Unknown(UnknownReason::Unsupported)
@@ -290,9 +292,12 @@ mod tests {
             let _ = values.intern(super::Value::StaticNumber(value));
         }
         assert!(values.exhausted());
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
         let resolver = Resolver {
-            scopes: super::ScopeGraph::default(),
-            names: super::NameTableHandle::new(),
+            scopes,
+            names,
             coordinates: crate::analysis::lowering::SpanNormalizer::default(),
             state: RefCell::new(ResolverState {
                 values,

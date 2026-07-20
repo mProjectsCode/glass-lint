@@ -81,7 +81,7 @@ impl InstanceCallable {
 /// interface.
 pub struct FactBuilder<'a> {
     /// Scope and provenance answers are prepared before this AST walk.
-    resolver: &'a Resolver,
+    resolver: &'a Resolver<'a>,
     /// Facts are appended in source traversal order and never rewritten.
     stream: FactStream,
     /// Monotonic semantic fact identity, bounded by `MAX_FACTS`.
@@ -115,11 +115,11 @@ impl<'a> FactBuilder<'a> {
     }
 
     #[cfg(test)]
-    pub(super) fn new(resolver: &'a Resolver) -> Self {
+    pub(super) fn new(resolver: &'a Resolver<'a>) -> Self {
         Self::with_limit(resolver, super::MAX_FACTS)
     }
 
-    pub fn with_limit(resolver: &'a Resolver, max_facts: usize) -> Self {
+    pub fn with_limit(resolver: &'a Resolver<'a>, max_facts: usize) -> Self {
         Self {
             resolver,
             stream: FactStream::new(),
@@ -249,7 +249,10 @@ impl<'a> FactBuilder<'a> {
 
 #[cfg(test)]
 /// Build the canonical fact stream used by fact-construction tests.
-pub fn build_test_stream(program: &swc_ecma_ast::Program, resolver: &Resolver) -> FactStream {
+pub fn build_test_stream<'a>(
+    program: &'a swc_ecma_ast::Program,
+    resolver: &'a Resolver<'a>,
+) -> FactStream {
     let mut builder = FactBuilder::new(resolver);
     program.visit_with(&mut builder);
     let mut stream = builder.into_stream();

@@ -3,7 +3,7 @@
 //! Parser and AST details stop here. Downstream project analysis receives an
 //! immutable local artifact and its source map, never a parsed program.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{cell::RefCell, collections::BTreeMap, sync::Arc};
 
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
@@ -11,6 +11,8 @@ use swc_ecma_visit::VisitWith;
 
 use super::{
     SemanticArtifact, facts, module, resolution,
+    name::{NameTable, NameTableCtx},
+    scope::ScopeGraph,
     status::{AnalysisComponent, AnalysisStatus, IncompleteReason},
 };
 use crate::{
@@ -161,12 +163,13 @@ fn lower_program_with_name_limit(
     coordinates: &SpanNormalizer,
     name_limit: usize,
 ) -> SemanticArtifact {
-    let resolver = resolution::Resolver::collect_with_name_limit(
-        program,
-        environment,
-        coordinates.clone(),
-        name_limit,
-    );
+    // The lowering function owns the RefCell<NameTable> and passes a borrowed
+    // NameTableCtx to every phase. No Rc, no try_unwrap, no panic path.
+    let name_table = RefCell::new(NameTable::with_max_entries(name_limit));
+    let names = NameTableCtx(&name_table);
+    let scopes = ScopeGraph::collect_with_environment(program, environment, names);
+    let resolver = resolution::Resolver::new(scopes, names, coordinates.clone());
+
     let mut builder = facts::build::FactBuilder::with_limit(&resolver, limits.semantic_operations);
     VisitWith::visit_with(program, &mut builder);
 
@@ -221,13 +224,11 @@ fn lower_program_with_name_limit(
         stream.mark_name_exhausted();
     }
 
-    // TODO: if we design with the borrow checker in mind, is there not a simpler
-    // way to do this?
-    let names = resolver
-        .into_name_table()
-        .expect("Failed to aquire exclusive NameTable");
+    // Release the resolver (and its NameTableCtx borrow) so the name_table
+    // can be taken out of its RefCell.
+    drop(resolver);
     stream
-        .freeze_names(Arc::new(names))
+        .freeze_names(Arc::new(name_table.into_inner()))
         .expect("Stream already owns a NameTable");
 
     let facts = SemanticFacts::from_lowering(stream, interface, environment);

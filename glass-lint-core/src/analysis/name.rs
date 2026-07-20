@@ -1,6 +1,6 @@
 //! Bounded names owned by one semantic artifact.
 
-use std::{cell::RefCell, rc::Rc};
+use std::cell::RefCell;
 
 use indexmap::IndexSet;
 use smol_str::{SmolStr, ToSmolStr};
@@ -29,29 +29,14 @@ pub(in crate::analysis) struct NameTable {
     exhausted: bool,
 }
 
-/// Private handle used only while one artifact is being lowered. The sharing
-/// mechanism is deliberately hidden so callers cannot retain or compare
-/// interner state outside the lowering lifetime.
-#[derive(Clone, Debug)]
-pub(in crate::analysis) struct NameTableHandle(Rc<RefCell<NameTable>>);
+/// Borrowed context for interning and resolving names during lowering. The
+/// lowering function owns the underlying `RefCell<NameTable>` and passes this
+/// borrowed view to every phase. No `Rc`, no `try_unwrap`, no panic path.
+#[derive(Copy, Clone, Debug)]
+pub(in crate::analysis) struct NameTableCtx<'a>(pub(super) &'a RefCell<NameTable>);
 
-impl Default for NameTableHandle {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl NameTableHandle {
-    pub(in crate::analysis) fn new() -> Self {
-        Self::with_max_entries(MAX_NAMES)
-    }
-
-    pub(in crate::analysis) fn with_max_entries(max_entries: usize) -> Self {
-        Self(Rc::new(RefCell::new(NameTable::with_max_entries(
-            max_entries,
-        ))))
-    }
-
+#[allow(clippy::trivially_copy_pass_by_ref)]
+impl NameTableCtx<'_> {
     pub(in crate::analysis) fn intern(&self, name: &str) -> Result<NameId, NameExhausted> {
         self.0.borrow_mut().intern(name)
     }
@@ -64,20 +49,17 @@ impl NameTableHandle {
         self.0.borrow().resolve(id).map(SmolStr::new)
     }
 
-    /// Intern every segment of a path without cloning the table. The path is
-    /// retained only with the same handle-owned table, so a failed segment
-    /// remains an explicit unknown result.
+    /// Intern every segment of a path. Failed segments produce `None`.
     pub(in crate::analysis) fn intern_path(&self, path: &SymbolPath) -> Option<NamePath> {
         self.0.borrow_mut().intern_path(path)
     }
 
-    /// Look up an already-known path without mutating or cloning the table.
+    /// Look up an already-known path without mutating the table.
     pub(in crate::analysis) fn lookup_path(&self, path: &SymbolPath) -> Option<NamePath> {
         self.0.borrow().lookup_path(path)
     }
 
-    /// Resolve an artifact-local path through the live table without making
-    /// a full table snapshot.
+    /// Resolve an artifact-local path through the live table.
     pub(in crate::analysis) fn resolve_path(&self, path: &NamePath) -> Option<SymbolPath> {
         self.0.borrow().resolve_path(path)
     }
@@ -90,12 +72,17 @@ impl NameTableHandle {
         self.0.borrow().exhaustion()
     }
 
-    pub(in crate::analysis) fn with_mut<R>(&self, f: impl FnOnce(&mut NameTable) -> R) -> R {
-        f(&mut self.0.borrow_mut())
+    /// Convenience constructor for test code that needs a throwaway context.
+    /// The backing table is leaked to `'static` so callers don't need to own
+    /// their own `RefCell` in single-use helper functions.
+    #[cfg(test)]
+    pub(in crate::analysis) fn testing() -> NameTableCtx<'static> {
+        let cell = Box::new(RefCell::new(NameTable::default()));
+        NameTableCtx(Box::leak(cell))
     }
 
-    pub(in crate::analysis) fn into_table(self) -> Option<NameTable> {
-        Rc::try_unwrap(self.0).ok().map(RefCell::into_inner)
+    pub(in crate::analysis) fn with_mut<R>(&self, f: impl FnOnce(&mut NameTable) -> R) -> R {
+        f(&mut self.0.borrow_mut())
     }
 
     #[cfg(test)]
@@ -233,10 +220,13 @@ mod tests {
     }
 
     #[test]
-    fn releasing_a_shared_handle_is_checked_without_panicking() {
-        let handle = NameTableHandle::new();
-        let retained = handle.clone();
-        assert!(handle.into_table().is_none());
-        drop(retained);
+    fn borrowed_context_shares_names_without_rc() {
+        let table = RefCell::new(NameTable::default());
+        let ctx = NameTableCtx(&table);
+        let first = ctx.intern("client").unwrap();
+        assert_eq!(ctx.lookup("client"), Some(first));
+        assert_eq!(ctx.resolve(first), Some(SmolStr::new("client")));
+        let second = ctx.intern("client").unwrap();
+        assert_eq!(first, second);
     }
 }

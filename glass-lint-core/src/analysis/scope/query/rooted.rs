@@ -16,7 +16,7 @@ pub(in crate::analysis) trait RootedExprContext {
     fn rooted_member_chain(&self, member: &MemberExpr) -> Option<SymbolPath>;
 }
 
-impl RootedExprContext for ScopeGraph {
+impl RootedExprContext for ScopeGraph<'_> {
     fn rooted_ident_chain(&self, ident: &Ident) -> Option<SymbolPath> {
         if self.has_dynamic_lookup_at(ident.span) {
             return None;
@@ -71,7 +71,7 @@ pub(in crate::analysis) fn rooted_expr_chain_with(
     }
 }
 
-impl ScopeGraph {
+impl ScopeGraph<'_> {
     /// Resolve a supported expression shape to a rooted symbol path.
     pub(in crate::analysis) fn rooted_expr_chain(&self, expr: &Expr) -> Option<SymbolPath> {
         rooted_expr_chain_with(self, expr)

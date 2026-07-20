@@ -14,7 +14,7 @@ use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
-use crate::analysis::name::NameTableHandle;
+use crate::analysis::name::NameTableCtx;
 
 mod collect;
 mod query;
@@ -22,22 +22,22 @@ mod query;
 mod model;
 pub(in crate::analysis) use model::*;
 
-impl ScopeGraph {
+impl ScopeGraph<'_> {
     #[cfg(test)]
     pub(super) fn collect(program: &Program) -> Self {
         Self::collect_with_environment(
             program,
             &crate::Environment::default(),
-            NameTableHandle::new(),
+            crate::analysis::name::NameTableCtx::testing(),
         )
     }
 
     /// Build one matcher-independent scope graph using the configured globals.
-    pub(super) fn collect_with_environment(
+    pub(super) fn collect_with_environment<'a>(
         program: &Program,
         environment: &crate::Environment,
-        names: NameTableHandle,
-    ) -> Self {
+        names: NameTableCtx<'a>,
+    ) -> ScopeGraph<'a> {
         let mut collector = LexicalScopeCollector::with_names(program.span(), names);
         // Build declarations before collecting initializers and uses.  This
         // makes the resolver position-aware without making it traversal-order

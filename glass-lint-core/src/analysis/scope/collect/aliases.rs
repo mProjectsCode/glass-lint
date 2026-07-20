@@ -13,7 +13,7 @@ use super::{
 };
 use crate::analysis::value::NamePath;
 
-impl LexicalScopeCollector {
+impl LexicalScopeCollector<'_> {
     /// Record aliases introduced by a destructuring declaration.
     ///
     /// This deliberately stops at unsupported pattern forms. A partial

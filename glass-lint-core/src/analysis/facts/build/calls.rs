@@ -25,8 +25,9 @@ impl FactBuilder<'_> {
             let Some(callee_span) = self.byte_range(call.span) else {
                 return;
             };
+            let resolved = self.resolver.resolve_call_expression(call);
             let result = if matches!(call.callee, Callee::Import(_)) {
-                self.resolver.resolve_expr(&Expr::Call(call.clone())).id
+                resolved.id
             } else {
                 self.call_result(call.span())
             };
@@ -40,7 +41,7 @@ impl FactBuilder<'_> {
                     result,
                     callee_span,
                     callee_name: None,
-                    call_provenance: self.resolver.resolve_expr(&Expr::Call(call.clone())).call,
+                    call_provenance: resolved.call,
                     syntactic_chain: None,
                     rooted_chain: None,
                     module_member: None,

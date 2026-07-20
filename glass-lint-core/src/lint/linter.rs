@@ -546,12 +546,13 @@ impl Linter {
         tracing::info!(target: "glass_lint::project::link", files = link_counts.files, requests = link_counts.requests, edges = link_counts.edges, elapsed = ?linking_elapsed, "stage finished");
         let matching_start = std::time::Instant::now();
         tracing::debug!(target: "glass_lint::project::matching", rules = self.enabled.len(), "stage started");
-        let classifications = project.classify_with_evidence_limit(
+        let (classifications, projection_outcome) = project.classify_with_evidence_limit(
             self.catalog.compiled(),
             &self.catalog.rules,
             &self.enabled,
             self.limits.evidence_items,
         );
+        project.merge_projection_outcome(&projection_outcome);
         let matching_elapsed = matching_start.elapsed();
         self.populate_project_files(&project, &classifications, &sources, &mut files);
 

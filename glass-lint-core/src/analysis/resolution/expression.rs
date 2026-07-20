@@ -12,7 +12,7 @@ use crate::analysis::{
     syntax::{BudgetComponent, UnknownReason},
 };
 
-impl Resolver {
+impl Resolver<'_> {
     /// Returns a CommonJS module only when the callee is proven to be the
     /// unshadowed global loader. Import collection and alias provenance both
     /// depend on this conservative distinction.

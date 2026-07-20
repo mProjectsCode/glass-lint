@@ -13,8 +13,12 @@ use super::{
     ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant, contains,
     member_root_identifier,
 };
+use crate::analysis::{
+    syntax::constant::Lookup,
+    value::BindingRoot,
+};
 
-impl ScopeGraph {
+impl ScopeGraph<'_> {
     /// Resolve a direct member of a recognized host global object to the same
     /// callable identity as its bare global binding. This is deliberately
     /// limited to one property segment: `window.fetch` is the global `fetch`,
@@ -266,7 +270,7 @@ impl ScopeGraph {
     }
 }
 
-impl ScopeGraph {
+impl ScopeGraph<'_> {
     /// Resolve callable provenance while rejecting dynamic or shadowed uses.
     pub(in crate::analysis) fn call_provenance(
         &self,
@@ -343,12 +347,24 @@ impl ScopeGraph {
 
     /// Produce the immutable resolver seed for an identifier occurrence.
     pub(in crate::analysis) fn ident_value_seed(&self, ident: &Ident) -> IdentValueSeed {
-        let expr = Expr::Ident(ident.clone());
+        let binding = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)
+            .and_then(|(scope, _)| {
+                Some(BindingKey::new(BindingRoot::Binding {
+                    function: self.function_scope_at(scope),
+                    binding: self.binding_id_at(scope, ident.sym.as_ref())?,
+                    version: self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
+                }))
+            });
+        let constant = if self.has_dynamic_lookup_at(ident.span) {
+            constant::ConstValue::Unknown
+        } else {
+            self.ident(ident, &mut constant::EvalState::default())
+        };
         IdentValueSeed {
             call: self.call_provenance(ident.sym.as_ref(), ident.span),
             rooted_chain: self.callable_member_chain(ident),
-            binding: self.binding_key_for_expr(&expr),
-            constant: self.constant_value(&expr),
+            binding,
+            constant,
             bound_arguments: self.bound_arguments(ident),
         }
     }
@@ -452,10 +468,17 @@ impl ScopeGraph {
             .as_ref()
             .and_then(|chain| self.member_call_provenance_for_chain(member, &chain.to_string()));
         let returned_member = self.returned_member(member);
+        let binding = self
+            .binding_key_for_expr(&member.obj)
+            .or_else(|| self.global_key_for_expr(&member.obj))
+            .and_then(|mut key| {
+                key.append_segment(self.intern_name(self.member_property_name(member)?.as_str())?);
+                Some(key)
+            });
         MemberValueSeed {
             syntactic_chain,
             rooted_chain,
-            binding: self.binding_key_for_expr(&Expr::Member(member.clone())),
+            binding,
             module_member,
             returned_member,
         }
