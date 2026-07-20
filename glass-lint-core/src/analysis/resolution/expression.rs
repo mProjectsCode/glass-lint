@@ -244,11 +244,13 @@ impl Resolver {
 
     pub(in crate::analysis) fn object_keys_expr(&self, expr: &Expr) -> Option<Vec<SmolStr>> {
         let keys = syntax_constant::evaluate(expr, self).object_keys()?;
-        let mut state = self.state.borrow_mut();
         let unknown = ValueId::UNKNOWN;
-        state.values.intern(Value::StaticObject(
-            keys.iter().cloned().map(|key| (key, unknown)).collect(),
-        ));
+        let mut state = self.state.borrow_mut();
+        self.names.with_mut(|names| {
+            state
+                .values
+                .intern_static_object(keys.iter().cloned().map(|key| (key, unknown)), names);
+        });
         Some(keys)
     }
 

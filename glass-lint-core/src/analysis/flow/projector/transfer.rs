@@ -5,7 +5,7 @@
 //! later sinks cannot inherit stale state.
 
 use super::{CallArgInfo, FactId, FactPayload, FlowState, ObjectFlowProjector, ObjectId, ValueId};
-use crate::analysis::SymbolPath;
+use crate::analysis::{SymbolPath, facts::FactStream};
 
 #[derive(Debug, Clone)]
 pub(super) struct SourceCall {
@@ -25,7 +25,10 @@ impl SourceCall {
     /// `.call()` and `.apply()` facts carry both the wrapper syntax and the
     /// effective target invocation. Flow rules match the latter, so an unwrap
     /// replaces both the chain and argument list before source matching.
-    pub(super) fn from_fact(fact: &crate::analysis::facts::SemanticFact) -> Option<Self> {
+    pub(super) fn from_fact(
+        fact: &crate::analysis::facts::SemanticFact,
+        stream: &FactStream,
+    ) -> Option<Self> {
         let FactPayload::Call {
             rooted_chain,
             syntactic_chain,
@@ -41,7 +44,7 @@ impl SourceCall {
             fact.id,
             rooted_chain.as_ref(),
             syntactic_chain.as_ref(),
-            callee_name.as_deref(),
+            callee_name.and_then(|id| stream.resolve_name(id)),
             args,
             unwrap.as_deref(),
         )
@@ -147,8 +150,9 @@ impl ObjectFlowProjector<'_, '_> {
                         source.member_call == *chain
                             && source.provenance.matches_rooted(rooted)
                             && source.arguments.iter().all(|matcher| {
-                                args.get(matcher.index)
-                                    .is_some_and(|arg| matcher.matcher.matches(arg))
+                                args.get(matcher.index).is_some_and(|arg| {
+                                    matcher.matcher.matches(arg, self.stream.names())
+                                })
                             })
                     })
                 })

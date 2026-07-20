@@ -6,7 +6,7 @@
 use smol_str::SmolStr;
 
 use super::{
-    BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegment, ValueId,
+    BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegmentInput, ValueId,
     ValueProjection, member_property_name,
 };
 use crate::analysis::SymbolPath;
@@ -26,13 +26,23 @@ impl FactBuilder<'_> {
                 value,
             });
         }
+        let object_keys = self.resolver.object_keys_expr(expr).map(|keys| {
+            keys.into_iter()
+                .filter_map(|key| self.intern_name(Some(key.as_str())))
+                .collect()
+        });
+        let property_strings = self
+            .static_property_strings(expr)
+            .into_iter()
+            .filter_map(|(key, value)| self.intern_name(Some(key.as_str())).map(|key| (key, value)))
+            .collect();
         CallArgInfo {
             value,
             base_value,
             base_path,
             static_string: self.resolver.static_string_expr(expr),
-            object_keys: self.resolver.object_keys_expr(expr),
-            property_strings: self.static_property_strings(expr),
+            object_keys,
+            property_strings,
             rooted_chain: self.resolver.rooted_expr_chain(expr),
             projections,
             spread: false,
@@ -75,9 +85,9 @@ impl FactBuilder<'_> {
                     let Ok(index) = u32::try_from(index) else {
                         return (ValueId::UNKNOWN, PathId::EMPTY);
                     };
-                    self.append_path(path, PathSegment::Index(index))
+                    self.append_path(path, PathSegmentInput::Index(index))
                 } else {
-                    self.append_path(path, PathSegment::Property(property))
+                    self.append_path(path, PathSegmentInput::Property(property.as_str()))
                 };
                 (base, path)
             }
@@ -114,7 +124,7 @@ impl FactBuilder<'_> {
                     let Some(name) = crate::analysis::syntax::property_name(&property.key) else {
                         continue;
                     };
-                    let path = self.append_path(path, PathSegment::Property(name));
+                    let path = self.append_path(path, PathSegmentInput::Property(name.as_str()));
                     self.collect_value_projections(&property.value, path, output);
                 }
             }
@@ -124,7 +134,7 @@ impl FactBuilder<'_> {
                     let Ok(index) = u32::try_from(index) else {
                         continue;
                     };
-                    let path = self.append_path(path, PathSegment::Index(index));
+                    let path = self.append_path(path, PathSegmentInput::Index(index));
                     self.collect_value_projections(&element.expr, path, output);
                 }
             }

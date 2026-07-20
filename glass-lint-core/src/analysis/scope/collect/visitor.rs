@@ -151,7 +151,7 @@ impl Visit for LexicalScopeCollector {
                 && let Some(function_scope) = self.function_scope_for_name(target.sym.as_ref())
             {
                 self.function_aliases.insert(
-                    super::super::ScopedName::new(scope, alias.id.sym.as_ref()),
+                    self.scoped_name(scope, alias.id.sym.as_ref()),
                     function_scope,
                 );
             }
@@ -220,7 +220,11 @@ impl Visit for LexicalScopeCollector {
                 if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
                     self.scopes[*scope]
                         .bindings
-                        .contains_key(ident.id.sym.as_ref())
+                        .contains_key(
+                            &self
+                                .name_id(ident.id.sym.as_ref())
+                                .unwrap_or(crate::analysis::name::NameId::INVALID),
+                        )
                         .then_some((ScopeId::from(*scope), ()))
                 }) {
                     self.record_assignment(
@@ -448,7 +452,7 @@ fn record_mutable_static_object(
     if mutable_object && let Pat::Ident(ident) = &declarator.name {
         collector
             .mutable_static_objects
-            .insert(super::super::ScopedName::new(scope, ident.id.sym.as_ref()));
+            .insert(collector.scoped_name(scope, ident.id.sym.as_ref()));
     }
 }
 

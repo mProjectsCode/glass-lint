@@ -109,9 +109,11 @@ impl ProjectMatcherModel<'_> {
             .projections
             .get(&module.id())
             .map_or_else(Vec::new, |projection| {
-                projection
-                    .index
-                    .evidence_for_with_overlay(matcher.query(), Some(&projection.overlay))
+                projection.index.evidence_for_with_overlay(
+                    matcher.query(),
+                    Some(&projection.overlay),
+                    module.local().facts().names(),
+                )
             });
         if let Some(projected) = self
             .projections

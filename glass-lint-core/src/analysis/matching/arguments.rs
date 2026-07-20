@@ -51,11 +51,17 @@ impl OccurrenceIndexes {
                     .iter()
                     .map(|argument| argument_with_overlay(argument, identities, result_identities))
                     .collect::<Vec<_>>();
-                let (effective_args, effective_name, effective_chain) = unwrap
-                    .as_ref()
-                    .map_or((&linked_args, callee_name.as_deref(), None), |unwrapped| {
-                        (&unwrapped.effective_args, None, Some(&unwrapped.chain))
-                    });
+                let (effective_args, effective_name, effective_chain) =
+                    unwrap.as_ref().map_or_else(
+                        || {
+                            (
+                                &linked_args,
+                                callee_name.and_then(|id| stream.resolve_name(id)),
+                                None,
+                            )
+                        },
+                        |unwrapped| (&unwrapped.effective_args, None, Some(&unwrapped.chain)),
+                    );
                 for (rule_index, clause) in clauses {
                     let matches = match clause.event {
                         EventPredicate::Call => matches_call_clause(
@@ -64,12 +70,14 @@ impl OccurrenceIndexes {
                             effective_chain,
                             &linked_call_provenance,
                             effective_args,
+                            stream.names(),
                         ),
                         EventPredicate::MemberCall { .. } => matches_member_clause(
                             clause,
                             fact,
                             linked_member_provenance.as_ref(),
                             &linked_args,
+                            stream.names(),
                         ),
                         EventPredicate::Construct
                         | EventPredicate::MemberRead { .. }
@@ -213,6 +221,7 @@ fn matches_call_clause(
     callee_chain: Option<&crate::analysis::SymbolPath>,
     call_provenance: &SymbolCallProvenance,
     args: &[CallArgInfo],
+    names: &crate::analysis::name::NameTable,
 ) -> bool {
     if !matches!(clause.subject, SubjectConstraint::Direct) {
         return false;
@@ -246,7 +255,7 @@ fn matches_call_clause(
         | IdentityConstraint::LiteralString { .. }
         | IdentityConstraint::PackageSpecifier { .. } => false,
     };
-    identity_matches && constraints_match(&clause.constraints, args)
+    identity_matches && constraints_match(&clause.constraints, args, names)
 }
 
 fn matches_member_clause(
@@ -254,6 +263,7 @@ fn matches_member_clause(
     fact: &super::super::facts::SemanticFact,
     module_member: Option<&SymbolMemberProvenance>,
     args: &[CallArgInfo],
+    names: &crate::analysis::name::NameTable,
 ) -> bool {
     let FactPayload::Call {
         syntactic_chain,
@@ -341,14 +351,18 @@ fn matches_member_clause(
         }
         _ => false,
     };
-    identity_matches && constraints_match(&clause.constraints, args)
+    identity_matches && constraints_match(&clause.constraints, args, names)
 }
 
-fn constraints_match(constraints: &[QueryConstraint], args: &[CallArgInfo]) -> bool {
+fn constraints_match(
+    constraints: &[QueryConstraint],
+    args: &[CallArgInfo],
+    names: &crate::analysis::name::NameTable,
+) -> bool {
     constraints.iter().all(|constraint| match constraint {
         QueryConstraint::Argument(argument) => args
             .get(argument.index)
-            .is_some_and(|value| argument.matcher.matches(value)),
+            .is_some_and(|value| argument.matcher.matches(value, names)),
     })
 }
 

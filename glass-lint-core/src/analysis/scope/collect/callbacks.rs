@@ -35,7 +35,7 @@ impl LexicalScopeCollector {
                 for name in Self::parameter_binding_names(parameter) {
                     let target = projected.get(&name).cloned();
                     let entry = aliases
-                        .entry(ScopedName::new(*scope, name))
+                        .entry(self.scoped_name(*scope, name.as_str()))
                         .or_insert_with(|| target.clone());
                     if *entry != target {
                         *entry = None;
@@ -45,7 +45,7 @@ impl LexicalScopeCollector {
             if arguments.len() != parameters.len() {
                 for parameter in parameters {
                     for name in Self::parameter_binding_names(parameter) {
-                        aliases.insert(ScopedName::new(*scope, name), None);
+                        aliases.insert(self.scoped_name(*scope, name.as_str()), None);
                     }
                 }
             }

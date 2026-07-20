@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use super::super::facts::FactId;
+use super::super::{facts::FactId, name::NameId};
 use crate::{ByteRange, analysis::SymbolPath};
 
 /// Typed occurrence storage. Keeping insertion and normalization in one
@@ -111,6 +111,7 @@ impl<K: Ord> OccurrenceIndex<K> {
 }
 
 pub(in crate::analysis) type Occurrences = OccurrenceIndex<SmolStr>;
+pub(in crate::analysis) type NameOccurrences = OccurrenceIndex<NameId>;
 
 /// Stable key for a module request and one exported member.
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]

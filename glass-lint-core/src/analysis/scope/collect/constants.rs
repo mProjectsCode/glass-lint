@@ -43,7 +43,7 @@ impl Lookup for LexicalScopeCollector {
                 .visible_binding_scope(ident.sym.as_ref())
                 .is_some_and(|scope| {
                     self.mutable_static_objects
-                        .contains(&super::super::ScopedName::new(scope, ident.sym.as_ref()))
+                        .contains(&self.scoped_name(scope, ident.sym.as_ref()))
                 })
         {
             return ConstValue::Unknown;

@@ -145,35 +145,35 @@ pub fn lower_program(
         resolution::Resolver::collect_with_environment(program, environment, coordinates.clone());
     let mut builder = facts::build::FactBuilder::with_limit(&resolver, limits.semantic_operations);
     swc_ecma_visit::VisitWith::visit_with(program, &mut builder);
-    let (stream, interface) = builder.into_parts();
-    let facts = facts::SemanticFacts::from_lowering(stream, interface, environment);
+    let (mut stream, interface) = builder.into_parts();
     let mut status = AnalysisStatus::default();
     // Scope collection, resolution, value interning, and path projection are
     // all local semantic work. Their bounded failures are intentionally
     // aggregated under the Facts component so retained-prefix policy has one
     // typed status boundary rather than several sentinel booleans.
-    if facts.stream().budget_exhausted()
-        || facts.stream().path_exhausted()
+    if stream.budget_exhausted()
+        || stream.path_exhausted()
+        || stream.name_exhausted()
+        || resolver.name_table_exhausted()
         || resolver.value_arena_exhausted()
-        || !facts.is_valid()
+        || !stream.is_structurally_valid()
     {
         status.record(
             crate::analysis::status::StatusScope::Project,
             IncompleteReason::BudgetExhausted {
                 component: AnalysisComponent::Facts,
                 limit: limits.semantic_operations,
-                observed: Some(facts.stream().facts().len()),
+                observed: Some(stream.facts().len()),
             },
         );
     }
-    if facts.stream().invalid_parser_span() {
+    if stream.invalid_parser_span() {
         status.record(
             crate::analysis::status::StatusScope::Project,
             IncompleteReason::InvalidParserSpan,
         );
     }
-    let export_origins = facts
-        .interface()
+    let export_origins = interface
         .exports()
         .filter_map(|(_, export)| match export {
             module::ModuleExport::Local { name } => Some((
@@ -186,6 +186,12 @@ pub fn lower_program(
             | module::ModuleExport::Unknown => None,
         })
         .collect::<BTreeMap<_, _>>();
+    if resolver.name_table_exhausted() {
+        stream.mark_name_exhausted();
+    }
+    let names = std::sync::Arc::new(resolver.into_name_table());
+    stream.freeze_names(names);
+    let facts = facts::SemanticFacts::from_lowering(stream, interface, environment);
     let effects = flow::effect::FunctionEffects::collect(facts.stream(), limits.effect_operations);
     if effects.budget_exhausted() {
         status.record(

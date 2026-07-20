@@ -8,7 +8,7 @@
 //! prevents a complete summary. Invalid summaries are not used for qualified
 //! propagation, preserving fail-closed behavior across module boundaries.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use smol_str::SmolStr;
 
@@ -121,6 +121,7 @@ pub struct FunctionEffect {
     /// Source-order value copies. Project flow uses this to connect a source
     /// call result through local declarations before a qualified call.
     value_roots: BTreeMap<ValueId, ValueId>,
+    names: Arc<crate::analysis::name::NameTable>,
 }
 
 #[derive(Clone, Debug)]
@@ -200,6 +201,7 @@ impl EffectCall {
     pub(in crate::analysis) fn matches_source(
         &self,
         flow: &crate::api::compiler::CompiledObjectFlow,
+        names: &crate::analysis::name::NameTable,
     ) -> bool {
         flow.sources.iter().any(|source| {
             self.chain() == Some(&source.member_call)
@@ -207,7 +209,7 @@ impl EffectCall {
                 && source.arguments.iter().all(|matcher| {
                     self.call_arguments()
                         .get(matcher.index)
-                        .is_some_and(|argument| matcher.matcher.matches(argument))
+                        .is_some_and(|argument| matcher.matcher.matches(argument, names))
                 })
         })
     }
@@ -302,7 +304,7 @@ impl FunctionEffects {
                 } => effect.record_property_write(
                     fact.id,
                     *receiver,
-                    property.as_ref(),
+                    property.and_then(|id| stream.resolve_name(id)),
                     static_value.as_ref(),
                     &mut budget,
                 ),
@@ -343,6 +345,7 @@ impl FunctionEffects {
     }
 
     fn initialize(&mut self, stream: &FactStream, budget: &mut Budget) {
+        let names = Arc::clone(stream.names_arc());
         for fact in stream.facts() {
             let FactPayload::Function {
                 id,
@@ -369,6 +372,7 @@ impl FunctionEffects {
                         .iter()
                         .map(|parameter| (parameter.value, parameter.value))
                         .collect(),
+                    names: names.clone(),
                 },
             );
         }
@@ -383,6 +387,7 @@ impl FunctionEffects {
                     returns: Vec::new(),
                     invalid: false,
                     value_roots: BTreeMap::new(),
+                    names,
                 },
             );
         }
@@ -390,11 +395,15 @@ impl FunctionEffects {
 }
 
 impl FunctionEffect {
+    pub(in crate::analysis) fn names(&self) -> &crate::analysis::name::NameTable {
+        self.names.as_ref()
+    }
+
     fn record_property_write(
         &mut self,
         event: super::super::facts::FactId,
         receiver: ValueId,
-        property: Option<&SmolStr>,
+        property: Option<&str>,
         static_value: Option<&String>,
         budget: &mut Budget,
     ) {
@@ -406,7 +415,7 @@ impl FunctionEffect {
             event,
             receiver: self.parameter_for(receiver),
             value: receiver,
-            property: property.cloned(),
+            property: property.map(SmolStr::new),
             static_value: static_value.cloned(),
         });
     }

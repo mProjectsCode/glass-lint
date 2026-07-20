@@ -3,6 +3,7 @@
 use smol_str::SmolStr;
 
 use super::super::{
+    name::NameId,
     syntax::{SymbolCallProvenance, SymbolMemberProvenance},
     value::{FunctionId, PathId, SymbolPath, ValueId},
 };
@@ -137,9 +138,9 @@ pub(in crate::analysis) struct CallArgInfo {
     /// Statically evaluated string value, when available.
     pub(in crate::analysis) static_string: Option<String>,
     /// Statically known keys of a finite object argument.
-    pub(in crate::analysis) object_keys: Option<Vec<SmolStr>>,
+    pub(in crate::analysis) object_keys: Option<Vec<super::super::name::NameId>>,
     /// Statically known direct object-property string values.
-    pub(in crate::analysis) property_strings: Vec<(SmolStr, String)>,
+    pub(in crate::analysis) property_strings: Vec<(super::super::name::NameId, String)>,
     /// Proven rooted member chain for this argument.
     pub(in crate::analysis) rooted_chain: Option<SymbolPath>,
     /// Values reachable from this argument through a statically known object
@@ -237,7 +238,7 @@ pub(in crate::analysis) enum FactPayload {
         /// Object identity receiving the property write.
         receiver: ValueId,
         /// Statically known property name, if the key is not dynamic.
-        property: Option<SmolStr>,
+        property: Option<NameId>,
         /// Statically evaluated string assigned to the property.
         static_value: Option<String>,
     },
@@ -252,7 +253,7 @@ pub(in crate::analysis) enum FactPayload {
         /// range.
         callee_span: ByteRange,
         /// Direct callee name when syntax supplies one.
-        callee_name: Option<SmolStr>,
+        callee_name: Option<NameId>,
         /// Resolver-backed callable provenance.
         call_provenance: SymbolCallProvenance,
         /// Member chain as written at the call site.
@@ -297,7 +298,7 @@ pub(in crate::analysis) enum FactPayload {
         /// Byte range of the constructor expression.
         callee_span: ByteRange,
         /// Constructor name when strict provenance permits one.
-        callee_name: Option<SmolStr>,
+        callee_name: Option<NameId>,
         /// Resolver-backed constructor provenance.
         provenance: SymbolCallProvenance,
     },

@@ -14,6 +14,8 @@ use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
+use crate::analysis::name::NameTableHandle;
+
 mod collect;
 mod query;
 
@@ -23,15 +25,20 @@ pub(in crate::analysis) use model::*;
 impl ScopeGraph {
     #[cfg(test)]
     pub(super) fn collect(program: &Program) -> Self {
-        Self::collect_with_environment(program, &crate::Environment::default())
+        Self::collect_with_environment(
+            program,
+            &crate::Environment::default(),
+            NameTableHandle::new(),
+        )
     }
 
     /// Build one matcher-independent scope graph using the configured globals.
     pub(super) fn collect_with_environment(
         program: &Program,
         environment: &crate::Environment,
+        names: NameTableHandle,
     ) -> Self {
-        let mut collector = LexicalScopeCollector::new(program.span());
+        let mut collector = LexicalScopeCollector::with_names(program.span(), names);
         // Build declarations before collecting initializers and uses.  This
         // makes the resolver position-aware without making it traversal-order
         // dependent: an earlier use of a later declaration is local/TDZ, not
@@ -136,5 +143,33 @@ mod tests {
         let cross_scope_span = swc_common::Span::new(block_use.span.lo, program_uses[2].span.hi);
         assert_eq!(graph.scope_at(cross_scope_span), program_scope);
         assert_eq!(graph.scope_at(cross_scope_span), program_scope);
+    }
+
+    #[test]
+    fn function_parameters_remain_local_with_compact_scope_names() {
+        struct Names<'a>(&'a mut Vec<Ident>);
+        impl Visit for Names<'_> {
+            fn visit_ident(&mut self, ident: &Ident) {
+                if ident.sym == *"PluginSettingTab" {
+                    self.0.push(ident.clone());
+                }
+            }
+        }
+
+        let parsed = crate::parse(
+            "function shadowed(PluginSettingTab) { new PluginSettingTab(); }",
+            "parameter.js",
+        )
+        .expect("source should parse");
+        let graph = ScopeGraph::collect(&parsed.program);
+        let mut identifiers = Vec::new();
+        parsed.program.visit_with(&mut Names(&mut identifiers));
+        identifiers.sort_by_key(|ident| ident.span.lo);
+        assert_eq!(identifiers.len(), 2);
+        assert!(
+            graph
+                .binding_at("PluginSettingTab", identifiers[1].span)
+                .is_some()
+        );
     }
 }

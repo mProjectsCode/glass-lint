@@ -56,8 +56,9 @@ impl ObjectFlowProjector<'_, '_> {
                     } = requirement
                         && (member == chain || chain.last_segment() == member.last_segment())
                         && matchers.iter().all(|matcher| {
-                            args.get(matcher.index)
-                                .is_some_and(|arg| matcher.matcher.matches(arg))
+                            args.get(matcher.index).is_some_and(|arg| {
+                                matcher.matcher.matches(arg, self.stream.names())
+                            })
                         })
                     {
                         state.record_requirement(index, event);

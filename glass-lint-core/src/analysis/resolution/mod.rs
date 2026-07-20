@@ -22,6 +22,7 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr, Program};
 
 use super::{
     lowering::{ParserSpanKey, SpanNormalizer},
+    name::{NameTable, NameTableHandle},
     scope::ScopeGraph,
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance,
@@ -96,6 +97,7 @@ struct ResolverState {
 pub(super) struct Resolver {
     /// Scope/provenance seeds from the lexical collection pass.
     scopes: ScopeGraph,
+    names: NameTableHandle,
     coordinates: SpanNormalizer,
     /// Cohesive mutable state for value interning, caching, and recursion
     /// guards. Keeping these lifecycles together makes their borrow order
@@ -107,6 +109,7 @@ impl Default for Resolver {
     fn default() -> Self {
         Self {
             scopes: ScopeGraph::default(),
+            names: NameTableHandle::new(),
             coordinates: SpanNormalizer::default(),
             state: RefCell::new(ResolverState::default()),
         }
@@ -178,12 +181,41 @@ impl Resolver {
         environment: &crate::Environment,
         coordinates: SpanNormalizer,
     ) -> Self {
-        let scopes = ScopeGraph::collect_with_environment(program, environment);
+        let names = NameTableHandle::new();
+        let scopes = ScopeGraph::collect_with_environment(program, environment, names.clone());
         Self {
             scopes,
+            names,
             coordinates,
             state: RefCell::new(ResolverState::default()),
         }
+    }
+
+    pub(super) fn intern_name(
+        &self,
+        name: &str,
+    ) -> Result<super::name::NameId, super::name::NameExhausted> {
+        self.names.intern(name)
+    }
+
+    pub(super) fn name_table_exhausted(&self) -> bool {
+        self.names.exhausted()
+    }
+
+    #[cfg(test)]
+    pub(super) fn name_snapshot(&self) -> NameTable {
+        self.names.snapshot()
+    }
+
+    pub(super) fn into_name_table(self) -> NameTable {
+        let Self {
+            names,
+            scopes,
+            coordinates: _,
+            state: _,
+        } = self;
+        drop(scopes);
+        names.into_table()
     }
 
     pub(in crate::analysis) fn normalize_span(
@@ -242,6 +274,7 @@ mod tests {
         assert!(values.exhausted());
         let resolver = Resolver {
             scopes: super::ScopeGraph::default(),
+            names: super::NameTableHandle::new(),
             coordinates: crate::analysis::lowering::SpanNormalizer::default(),
             state: RefCell::new(ResolverState {
                 values,

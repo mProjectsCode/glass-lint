@@ -279,7 +279,9 @@ impl FunctionSummaries {
                             fact.id,
                             *target,
                             Some(*receiver),
-                            property.clone(),
+                            property
+                                .and_then(|id| stream.resolve_name(id))
+                                .map(SmolStr::new),
                             false,
                         );
                     }

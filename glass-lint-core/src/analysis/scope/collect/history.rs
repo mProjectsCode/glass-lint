@@ -6,25 +6,43 @@
 
 use std::collections::BTreeMap;
 
-use smol_str::SmolStr;
+use super::super::{
+    super::name::{NameId, NameTableHandle},
+    BindingProvenance, ScopeId,
+};
 
-use super::super::{BindingProvenance, ScopeId};
-
-#[derive(Debug, Default)]
+#[derive(Debug)]
 /// Most recent assignment provenance for each scope-local binding.
-pub(super) struct AssignmentHistory(BTreeMap<ScopeId, BTreeMap<SmolStr, BindingProvenance>>);
+pub(super) struct AssignmentHistory {
+    names: NameTableHandle,
+    assignments: BTreeMap<ScopeId, BTreeMap<NameId, BindingProvenance>>,
+}
 
 impl AssignmentHistory {
+    pub(super) fn new(names: NameTableHandle) -> Self {
+        Self {
+            names,
+            assignments: BTreeMap::new(),
+        }
+    }
+
     /// Replace the latest assignment for one scope/name pair.
-    pub(super) fn record(&mut self, scope: ScopeId, name: SmolStr, provenance: BindingProvenance) {
-        self.0.entry(scope).or_default().insert(name, provenance);
+    pub(super) fn record(&mut self, scope: ScopeId, name: &str, provenance: BindingProvenance) {
+        let Ok(name) = self.names.intern(name) else {
+            return;
+        };
+        self.assignments
+            .entry(scope)
+            .or_default()
+            .insert(name, provenance);
     }
 
     /// Return the latest assignment visible in one lexical scope.
     pub(super) fn get(&self, scope: ScopeId, name: &str) -> Option<&BindingProvenance> {
-        self.0
+        let name = self.names.lookup(name)?;
+        self.assignments
             .get(&scope)
-            .and_then(|assignments| assignments.get(name))
+            .and_then(|assignments| assignments.get(&name))
     }
 
     /// Whether an assignment has been recorded for the scope/name pair.

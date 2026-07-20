@@ -9,6 +9,7 @@ use indexmap::IndexSet;
 use smol_str::SmolStr;
 
 use super::{BindingKey, SymbolPath, ValueId};
+use crate::analysis::name::{NameId, NameTable};
 
 pub(in crate::analysis) const MAX_VALUES: usize = 65_536;
 const MAX_OBJECTS: u32 = 65_536;
@@ -35,7 +36,7 @@ pub(in crate::analysis) enum Value {
     /// An interned array of value identities.
     StaticArray(Vec<ValueId>),
     /// An interned object shape of named value identities.
-    StaticObject(Vec<(SmolStr, ValueId)>),
+    StaticObject(Vec<(NameId, ValueId)>),
     /// A callable target with receiver and bound arguments.
     Callable(CallableValue),
     /// An allocated object identity.
@@ -126,6 +127,22 @@ impl ValueTable {
     ) -> ValueId {
         let target = self.intern(value);
         binding.map_or(target, |key| self.intern(Value::Binding { key, target }))
+    }
+
+    pub(in crate::analysis) fn intern_static_object(
+        &mut self,
+        values: impl IntoIterator<Item = (SmolStr, ValueId)>,
+        names: &mut NameTable,
+    ) -> ValueId {
+        let mut canonical = Vec::new();
+        for (name, value) in values {
+            let Ok(id) = names.intern(name.as_str()) else {
+                self.exhausted = true;
+                return ValueId::UNKNOWN;
+            };
+            canonical.push((id, value));
+        }
+        self.intern(Value::StaticObject(canonical))
     }
 
     /// Allocate a distinct object identity within the object budget.

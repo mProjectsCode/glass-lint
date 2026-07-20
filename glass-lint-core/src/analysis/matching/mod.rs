@@ -26,8 +26,8 @@ use crate::{
 mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
 use occurrence::{
-    InstanceMemberKey, ModuleOccurrences, Occurrence, OccurrenceIndex, Occurrences,
-    ReturnedMemberKey,
+    InstanceMemberKey, ModuleOccurrences, NameOccurrences, Occurrence, OccurrenceIndex,
+    Occurrences, ReturnedMemberKey,
 };
 mod arguments;
 mod build;
@@ -52,6 +52,8 @@ pub struct OccurrenceIndexes {
     members: MemberIndexes,
     constructions: ConstructionIndexes,
     literals: LiteralIndexes,
+    #[cfg(test)]
+    test_names: crate::analysis::name::NameTable,
 }
 
 #[derive(Debug, Default)]
@@ -68,7 +70,7 @@ pub(in crate::analysis) struct ModuleOccurrenceOverlay {
 #[derive(Debug, Default)]
 /// Call occurrences partitioned by confidence/provenance level.
 pub(super) struct CallIndexes {
-    calls: Occurrences,
+    calls: NameOccurrences,
     global_calls: Occurrences,
     module_calls: ModuleOccurrences,
 }
@@ -92,7 +94,7 @@ pub(super) struct MemberIndexes {
 pub(super) struct ConstructionIndexes {
     classes: Occurrences,
     module_classes: ModuleOccurrences,
-    constructors: Occurrences,
+    constructors: NameOccurrences,
     global_constructors: Occurrences,
     module_constructors: ModuleOccurrences,
 }
@@ -132,8 +134,15 @@ impl OccurrenceIndexes {
     }
 
     #[cfg(test)]
+    fn test_name(&mut self, name: &str) -> crate::analysis::name::NameId {
+        self.test_names.intern(name).expect("test name bound")
+    }
+
+    #[cfg(test)]
     pub(in crate::analysis) fn has_call(&self, name: &str) -> bool {
-        self.call_indexes.calls.get(name).is_some()
+        self.test_names
+            .lookup(name)
+            .is_some_and(|id| self.call_indexes.calls.get(&id).is_some())
     }
 
     #[cfg(test)]
@@ -160,8 +169,18 @@ impl OccurrenceIndexes {
     }
 
     #[cfg(test)]
+    pub(in crate::analysis) fn has_module_constructor(&self, module: &str, name: &str) -> bool {
+        self.constructions
+            .module_constructors
+            .get(&ModuleExportKey::new(module, name))
+            .is_some()
+    }
+
+    #[cfg(test)]
     pub(in crate::analysis) fn has_constructor(&self, name: &str) -> bool {
-        self.constructions.constructors.get(name).is_some()
+        self.test_names
+            .lookup(name)
+            .is_some_and(|id| self.constructions.constructors.get(&id).is_some())
     }
 
     #[cfg(test)]
@@ -367,11 +386,20 @@ mod tests {
             foo();
             x.hello();
             new MyClass();
+            new URL("https://example.com");
             const s = "hello world";
             require('fs');
         "#;
         let parsed = crate::parse(src, "stream-index.js").expect("source should parse");
-        let resolver = Resolver::collect(&parsed.program);
+        let mut environment = crate::Environment::default();
+        environment
+            .add_globals(["URL", "require"])
+            .expect("test globals");
+        let resolver = Resolver::collect_with_environment(
+            &parsed.program,
+            &environment,
+            crate::analysis::lowering::SpanNormalizer::for_program(&parsed.program),
+        );
         let stream = build_test_stream(&parsed.program, &resolver);
 
         let mut index = OccurrenceIndexes::default();
@@ -406,16 +434,10 @@ mod tests {
         );
 
         // Constructor call should be indexed.
-        assert!(
-            index.constructions.constructors.get("MyClass").is_some(),
-            "should have MyClass constructor"
-        );
+        assert!(index.has_constructor("URL"), "should have URL constructor");
 
         // foo() is an identifier call with module provenance.
-        assert!(
-            index.call_indexes.calls.get("foo").is_some(),
-            "should have foo call"
-        );
+        assert!(index.has_call("foo"), "should have foo call");
         assert!(
             index
                 .call_indexes

@@ -11,7 +11,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use super::{
     BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
     FactKind, FactPayload, InstanceCallable, MemberExpr, OptChainBase, ParameterBinding, Pat,
-    PathId, PathSegment, Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId,
+    PathId, PathSegmentInput, Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance, ValueId,
     ValueProjection, VisitWith, effective_callee_expr, member_property_name,
 };
 use crate::analysis::{SymbolPath, value::FunctionId};
@@ -119,6 +119,7 @@ impl FactBuilder<'_> {
             .unwrap_or_default();
         effective_args.extend(self.args_info(args));
 
+        let callee_name = self.intern_name(resolved.callee_name.as_deref());
         self.emit(
             FactKind::Call,
             span,
@@ -127,7 +128,7 @@ impl FactBuilder<'_> {
                 receiver: resolved.receiver,
                 result,
                 callee_span: resolved.callee_span,
-                callee_name: resolved.callee_name,
+                callee_name,
                 call_provenance: resolved.call_provenance,
                 syntactic_chain: resolved.syntactic_chain,
                 rooted_chain: resolved.rooted_chain,
@@ -283,7 +284,7 @@ impl FactBuilder<'_> {
                     let Ok(index) = u32::try_from(index) else {
                         continue;
                     };
-                    let path = self.append_path(path, PathSegment::Index(index));
+                    let path = self.append_path(path, PathSegmentInput::Index(index));
                     self.parameter_bindings(element, parameter_index, path, default, rest, output);
                 }
             }
@@ -295,7 +296,8 @@ impl FactBuilder<'_> {
                             else {
                                 continue;
                             };
-                            let path = self.append_path(path, PathSegment::Property(name));
+                            let path =
+                                self.append_path(path, PathSegmentInput::Property(name.as_str()));
                             self.parameter_bindings(
                                 &property.value,
                                 parameter_index,
@@ -308,7 +310,7 @@ impl FactBuilder<'_> {
                         swc_ecma_ast::ObjectPatProp::Assign(property) => {
                             let path = self.append_path(
                                 path,
-                                PathSegment::Property(property.key.sym.to_smolstr()),
+                                PathSegmentInput::Property(property.key.sym.as_ref()),
                             );
                             output.push(ParameterBinding {
                                 parameter_index,

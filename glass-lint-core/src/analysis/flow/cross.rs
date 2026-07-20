@@ -496,9 +496,9 @@ impl UsageProjector<'_> {
             if let CompiledObjectRequirement::MemberCall { member, arguments } = requirement
                 && chain_matches(chain, member)
                 && arguments.iter().all(|matcher| {
-                    call_arguments
-                        .get(matcher.index)
-                        .is_some_and(|argument| matcher.matcher.matches(argument))
+                    call_arguments.get(matcher.index).is_some_and(|argument| {
+                        matcher.matcher.matches(argument, self.effect.names())
+                    })
                 })
             {
                 next.requirements.insert(
@@ -565,7 +565,7 @@ impl FlowSources {
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
                     for (flow_id, flow) in flows {
-                        if call.matches_source(flow) {
+                        if call.matches_source(flow, effect.names()) {
                             sources.add(
                                 SourceKey::new(module.id(), effect.id(), call.result()),
                                 SourceCandidate {

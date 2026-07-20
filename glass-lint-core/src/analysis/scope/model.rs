@@ -6,13 +6,14 @@
 
 use std::{cell::Cell, collections::BTreeMap};
 
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 use swc_common::{BytePos, Span};
 
 use super::super::{
     syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
     value::{BindingId, BindingKey, BindingVersion, FunctionId, SymbolPath},
 };
+use crate::analysis::name::{NameId, NameTableHandle};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable identity of a lexical scope within one analyzed module.
@@ -22,23 +23,20 @@ pub(in crate::analysis) struct ScopeId(usize);
 /// A name resolved within one lexical scope.
 pub(in crate::analysis) struct ScopedName {
     scope: ScopeId,
-    name: SmolStr,
+    name: NameId,
 }
 
 impl ScopedName {
-    pub(in crate::analysis) fn new(scope: ScopeId, name: impl Into<SmolStr>) -> Self {
-        Self {
-            scope,
-            name: name.into(),
-        }
+    pub(in crate::analysis) fn new(scope: ScopeId, name: NameId) -> Self {
+        Self { scope, name }
     }
 
     pub(in crate::analysis) fn scope(&self) -> ScopeId {
         self.scope
     }
 
-    pub(in crate::analysis) fn name(&self) -> &SmolStr {
-        &self.name
+    pub(in crate::analysis) fn name(&self) -> NameId {
+        self.name
     }
 }
 
@@ -57,6 +55,8 @@ impl From<usize> for ScopeId {
 #[derive(Debug, Default, Clone)]
 /// Immutable lexical scope/index model consumed by resolution queries.
 pub(in crate::analysis) struct ScopeGraph {
+    /// Names used by compact local scope indexes.
+    names: NameTableHandle,
     /// Host globals and member capabilities used for unshadowed checks.
     environment: crate::Environment,
     /// Lexical scopes in predeclaration order.
@@ -81,7 +81,7 @@ pub(in crate::analysis) struct ScopeGraph {
     /// Rooted writes that invalidate member identities.
     rooted_property_mutations: BTreeMap<SymbolPath, Vec<RootedPropertyMutationFact>>,
     /// Proven parameter identities shared by compatible call sites.
-    parameter_aliases: BTreeMap<(FunctionId, SmolStr), BindingProvenance>,
+    parameter_aliases: BTreeMap<(FunctionId, NameId), BindingProvenance>,
     /// Dynamic-evaluation sites that invalidate later lexical assumptions.
     dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
     /// Dynamic-evaluation spans grouped by scope for indexed queries.
@@ -91,6 +91,10 @@ pub(in crate::analysis) struct ScopeGraph {
 }
 
 impl ScopeGraph {
+    fn name_id(&self, name: &str) -> Option<NameId> {
+        self.names.lookup(name)
+    }
+
     /// Convert collector-side property events into sorted query indexes.
     pub(super) fn finish_collected_properties(
         &mut self,
@@ -184,7 +188,8 @@ impl ScopeGraph {
     }
 
     pub(super) fn binding_id_at(&self, scope: ScopeId, name: &str) -> Option<BindingId> {
-        self.binding_ids.get(&ScopedName::new(scope, name)).copied()
+        self.name_id(name)
+            .and_then(|name| self.binding_ids.get(&ScopedName::new(scope, name)).copied())
     }
 
     pub(super) fn parameter_alias_for(
@@ -192,9 +197,10 @@ impl ScopeGraph {
         scope: ScopeId,
         name: &str,
     ) -> Option<&BindingProvenance> {
-        self.function_ids
-            .get(&scope)
-            .and_then(|function| self.parameter_aliases.get(&(*function, name.to_smolstr())))
+        self.function_ids.get(&scope).and_then(|function| {
+            self.name_id(name)
+                .and_then(|name| self.parameter_aliases.get(&(*function, name)))
+        })
     }
 
     pub(in crate::analysis) fn scope_parent(&self, scope: ScopeId) -> Option<ScopeId> {
@@ -210,13 +216,15 @@ impl ScopeGraph {
     }
 
     pub(super) fn scope_binding(&self, scope: ScopeId, name: &str) -> Option<&BindingProvenance> {
-        self.scopes.get(scope.index())?.bindings.get(name)
+        self.name_id(name)
+            .and_then(|name| self.scopes.get(scope.index())?.bindings.get(&name))
     }
 
     /// Assemble the immutable graph before property indexes are attached.
     pub(super) fn from_parts(parts: ScopeGraphParts) -> Self {
         Self {
             environment: parts.environment,
+            names: parts.names,
             scopes: parts.scopes,
             scopes_by_start: parts.scopes_by_start,
             last_scope_query: Cell::new(None),
@@ -248,13 +256,13 @@ impl ScopeGraph {
 
     pub(super) fn function_binding(&self, scope: ScopeId, name: &str) -> Option<FunctionId> {
         self.function_bindings
-            .get(&ScopedName::new(scope, name))
+            .get(&ScopedName::new(scope, self.name_id(name)?))
             .copied()
     }
 
     pub(super) fn function_alias(&self, scope: ScopeId, name: &str) -> Option<FunctionId> {
         self.function_aliases
-            .get(&ScopedName::new(scope, name))
+            .get(&ScopedName::new(scope, self.name_id(name)?))
             .copied()
     }
 
@@ -303,8 +311,10 @@ impl ScopeGraph {
     }
 
     pub(super) fn is_mutable_static_object(&self, scope: ScopeId, name: &str) -> bool {
-        self.mutable_static_objects
-            .contains(&ScopedName::new(scope, name))
+        self.name_id(name).is_some_and(|name| {
+            self.mutable_static_objects
+                .contains(&ScopedName::new(scope, name))
+        })
     }
 
     pub(super) fn has_eval_after(&self, scope: ScopeId, span: Span) -> bool {
@@ -355,6 +365,7 @@ impl ScopeGraph {
 /// Owned inputs used to assemble a collected [`ScopeGraph`].
 pub(super) struct ScopeGraphParts {
     pub(super) environment: crate::Environment,
+    pub(super) names: NameTableHandle,
     pub(super) scopes: Vec<LexicalScope>,
     pub(super) scopes_by_start: Vec<ScopeId>,
     pub(super) assignments: BTreeMap<ScopeId, BTreeMap<SmolStr, Vec<AliasAssignment>>>,
@@ -362,7 +373,7 @@ pub(super) struct ScopeGraphParts {
     pub(super) function_ids: BTreeMap<ScopeId, FunctionId>,
     pub(super) function_bindings: BTreeMap<ScopedName, FunctionId>,
     pub(super) function_aliases: BTreeMap<ScopedName, FunctionId>,
-    pub(super) parameter_aliases: BTreeMap<(FunctionId, SmolStr), BindingProvenance>,
+    pub(super) parameter_aliases: BTreeMap<(FunctionId, NameId), BindingProvenance>,
     pub(super) mutable_static_objects: std::collections::BTreeSet<ScopedName>,
 }
 
@@ -385,7 +396,7 @@ pub(in crate::analysis) struct LexicalScope {
     pub(in crate::analysis::scope) depth: usize,
     pub(in crate::analysis::scope) kind: ScopeKind,
     pub(in crate::analysis::scope) parent: Option<ScopeId>,
-    pub(in crate::analysis::scope) bindings: BTreeMap<SmolStr, BindingProvenance>,
+    pub(in crate::analysis::scope) bindings: BTreeMap<NameId, BindingProvenance>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -41,7 +41,7 @@ use crate::{
             SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr,
             member_property_name,
         },
-        value::{PathId, PathSegment, ValueId},
+        value::{PathId, PathSegmentInput, ValueId},
     },
 };
 
@@ -130,10 +130,32 @@ impl<'a> FactBuilder<'a> {
         self.resolver.scope_at(span)
     }
 
-    fn append_path(&mut self, parent: PathId, segment: PathSegment) -> PathId {
-        self.stream.intern_path(parent, segment).unwrap_or_else(|| {
-            self.stream.mark_path_exhausted();
-            PathId::EMPTY
+    fn append_path(&mut self, parent: PathId, segment: PathSegmentInput<'_>) -> PathId {
+        let segment = match segment {
+            PathSegmentInput::Property(name) => self
+                .intern_name(Some(name))
+                .map(PathSegmentInput::PropertyId),
+            other => Some(other),
+        };
+        let Some(segment) = segment else {
+            return PathId::EMPTY;
+        };
+        self.stream
+            .intern_path_input(parent, segment)
+            .unwrap_or_else(|| {
+                self.stream.mark_path_exhausted();
+                PathId::EMPTY
+            })
+    }
+
+    fn intern_name(&mut self, name: Option<&str>) -> Option<crate::analysis::name::NameId> {
+        name.and_then(|name| {
+            if let Ok(id) = self.resolver.intern_name(name) {
+                Some(id)
+            } else {
+                self.stream.mark_name_exhausted();
+                None
+            }
         })
     }
 
@@ -188,7 +210,9 @@ impl<'a> FactBuilder<'a> {
 
     #[cfg(test)]
     pub(super) fn into_stream(self) -> FactStream {
-        self.stream
+        let mut stream = self.stream;
+        stream.freeze_names(std::sync::Arc::new(self.resolver.name_snapshot()));
+        stream
     }
 
     pub fn into_parts(self) -> (FactStream, ModuleInterface) {
@@ -213,7 +237,9 @@ impl<'a> FactBuilder<'a> {
 pub fn build_test_stream(program: &swc_ecma_ast::Program, resolver: &Resolver) -> FactStream {
     let mut builder = FactBuilder::new(resolver);
     program.visit_with(&mut builder);
-    builder.into_stream()
+    let mut stream = builder.into_stream();
+    stream.freeze_names(std::sync::Arc::new(resolver.name_snapshot()));
+    stream
 }
 
 #[cfg(test)]
@@ -431,7 +457,10 @@ mod tests {
                 matches!(call_provenance, SymbolCallProvenance::Global { name } if name == "fetch"),
                 "fetch should resolve to global provenance"
             );
-            assert_eq!(callee_name.as_deref(), Some("fetch"));
+            assert_eq!(
+                callee_name.and_then(|id| stream.resolve_name(id)),
+                Some("fetch")
+            );
         } else {
             panic!("expected Call payload");
         }

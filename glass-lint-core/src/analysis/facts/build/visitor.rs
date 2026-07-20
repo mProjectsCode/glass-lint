@@ -231,11 +231,11 @@ impl Visit for FactBuilder<'_> {
                 }
                 _ => (None, resolved.call),
             };
-
         new_expr.visit_children_with(self);
         let Some(callee_span) = self.byte_range(callee_span) else {
             return;
         };
+        let callee_name = self.intern_name(callee_name.as_deref());
         self.emit(
             FactKind::Construction,
             new_expr.span(),

@@ -65,8 +65,8 @@ impl SemanticFacts {
         &self.stream
     }
 
-    pub(in crate::analysis) fn is_valid(&self) -> bool {
-        self.stream.is_valid()
+    pub(in crate::analysis) fn names(&self) -> &crate::analysis::name::NameTable {
+        self.stream.names()
     }
 
     pub(in crate::analysis) fn shared_matcher_index(&self) -> Arc<OccurrenceIndexes> {
@@ -272,7 +272,8 @@ mod tests {
             let _ = (matchers, selected);
             let mut builder = FactBuilder::new(&resolver);
             swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
-            let (stream, interface) = builder.into_parts();
+            let (mut stream, interface) = builder.into_parts();
+            stream.freeze_names(std::sync::Arc::new(resolver.name_snapshot()));
             format!(
                 "{:?}",
                 SemanticFacts::from_lowering(stream, interface, &crate::Environment::default())
@@ -335,8 +336,8 @@ mod tests {
             "should have module class for Bar from other-mod"
         );
         assert!(
-            index.has_constructor("Bar") || index.has_constructor("MyClass"),
-            "should have constructor entries"
+            index.has_module_constructor("other-mod", "Bar"),
+            "should have module constructor entries"
         );
         assert!(index.has_any_member_call(), "should have member calls");
     }

@@ -106,7 +106,9 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             .facts()
             .iter()
             .filter_map(|fact| match &fact.payload {
-                FactPayload::Call { result, .. } => Some((*result, SourceCall::from_fact(fact)?)),
+                FactPayload::Call { result, .. } => {
+                    Some((*result, SourceCall::from_fact(fact, stream)?))
+                }
                 _ => None,
             })
             .collect();
@@ -168,7 +170,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 }
                 self.record_property_write(
                     *receiver,
-                    property.as_deref(),
+                    property.and_then(|id| self.stream.resolve_name(id)),
                     static_value.as_deref(),
                     fact.id,
                 );
@@ -215,7 +217,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             fact.id,
             rooted_chain.as_ref(),
             syntactic_chain.as_ref(),
-            callee_name.as_deref(),
+            callee_name.and_then(|id| self.stream.resolve_name(id)),
             args,
             unwrap.as_deref(),
         ) {

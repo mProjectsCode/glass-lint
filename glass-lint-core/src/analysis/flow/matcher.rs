@@ -1,7 +1,7 @@
 //! Shared value predicates for fact-driven flow analysis.
 
 use crate::{
-    analysis::facts::CallArgInfo,
+    analysis::{facts::CallArgInfo, name::NameTable},
     api::rule::{ArgumentMatcher, StaticStringPredicate, ValueMatcher, ValueMatcherKind},
 };
 
@@ -42,13 +42,14 @@ impl ValueMatcher {
 
 impl ArgumentMatcher {
     /// Match a pre-computed call argument without consulting the AST.
-    pub(in crate::analysis) fn matches(&self, argument: &CallArgInfo) -> bool {
+    pub(in crate::analysis) fn matches(&self, argument: &CallArgInfo, names: &NameTable) -> bool {
         match self {
             Self::Value(value) => value.matches_flow_value(argument.static_string.as_deref()),
             Self::ObjectKeys(expected) => argument.object_keys.as_ref().is_some_and(|keys| {
-                expected
-                    .iter()
-                    .all(|expected| keys.iter().any(|key| key == expected))
+                expected.iter().all(|expected| {
+                    keys.iter()
+                        .any(|key| names.resolve(*key) == Some(expected.as_str()))
+                })
             }),
             Self::RootedExpressions(expected) => {
                 argument.rooted_chain.as_ref().is_some_and(|chain| {
@@ -56,10 +57,12 @@ impl ArgumentMatcher {
                     expected.iter().any(|candidate| chain.eq_chain(candidate))
                 })
             }
-            Self::ObjectPropertyValue { property, value } => argument
-                .property_strings
-                .iter()
-                .any(|(found, string)| found == property && value.matches_flow_value(Some(string))),
+            Self::ObjectPropertyValue { property, value } => {
+                argument.property_strings.iter().any(|(found, string)| {
+                    names.resolve(*found) == Some(property.as_str())
+                        && value.matches_flow_value(Some(string))
+                })
+            }
         }
     }
 }

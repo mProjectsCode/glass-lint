@@ -4,16 +4,22 @@
 //! budget. Query callers receive an immutable view; path interning is the only
 //! interior mutation and is deterministic for the same traversal.
 
+use std::sync::Arc;
+
 #[cfg(test)]
 use super::FactKind;
 use super::{FactId, MAX_FACTS, SemanticFact};
-use crate::analysis::value::{PathId, PathInterner, PathSegment};
+use crate::analysis::{
+    name::NameTable,
+    value::{PathId, PathInterner, PathSegment, PathSegmentInput},
+};
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum FactStreamIssue {
     BudgetExhausted,
     PathExhausted,
     InvalidParserSpan,
+    NameExhausted,
 }
 
 #[derive(Debug)]
@@ -25,6 +31,8 @@ pub(in crate::analysis) struct FactStream {
     facts: Vec<SemanticFact>,
     /// Interned property/index paths used by argument projections.
     paths: PathInterner,
+    /// Frozen table shared by all local semantic consumers.
+    names: Option<Arc<NameTable>>,
     /// False after any ID, budget, or append invariant is violated.
     valid: bool,
     /// Typed construction outcomes that make the retained stream incomplete.
@@ -38,6 +46,7 @@ impl FactStream {
         Self {
             facts: Vec::new(),
             paths: PathInterner::new(),
+            names: None,
             valid: true,
             issues: std::collections::BTreeSet::new(),
         }
@@ -66,6 +75,10 @@ impl FactStream {
 
     /// Whether every appended fact has satisfied the stream invariants.
     pub(super) fn is_valid(&self) -> bool {
+        self.valid && self.issues.is_empty()
+    }
+
+    pub(in crate::analysis) fn is_structurally_valid(&self) -> bool {
         self.valid
     }
 
@@ -79,6 +92,37 @@ impl FactStream {
 
     pub(super) fn mark_invalid_parser_span(&mut self) {
         self.issues.insert(FactStreamIssue::InvalidParserSpan);
+    }
+
+    pub(in crate::analysis) fn mark_name_exhausted(&mut self) {
+        self.issues.insert(FactStreamIssue::NameExhausted);
+    }
+
+    pub(in crate::analysis) fn freeze_names(&mut self, names: Arc<NameTable>) {
+        self.names = Some(names);
+    }
+
+    pub(in crate::analysis) fn names(&self) -> &NameTable {
+        self.names
+            .as_deref()
+            .expect("semantic stream names must be frozen")
+    }
+
+    pub(in crate::analysis) fn names_arc(&self) -> &Arc<NameTable> {
+        self.names
+            .as_ref()
+            .expect("semantic stream names must be frozen")
+    }
+
+    pub(in crate::analysis) fn resolve_name(
+        &self,
+        id: crate::analysis::name::NameId,
+    ) -> Option<&str> {
+        self.names().resolve(id)
+    }
+
+    pub(in crate::analysis) fn name_exhausted(&self) -> bool {
+        self.issues.contains(&FactStreamIssue::NameExhausted)
     }
 
     pub(in crate::analysis) fn budget_exhausted(&self) -> bool {
@@ -103,8 +147,16 @@ impl FactStream {
         &self.paths
     }
 
-    /// Intern one path extension without exposing mutable stream state.
-    pub(super) fn intern_path(&mut self, parent: PathId, segment: PathSegment) -> Option<PathId> {
+    pub(super) fn intern_path_input(
+        &mut self,
+        parent: PathId,
+        segment: PathSegmentInput<'_>,
+    ) -> Option<PathId> {
+        let segment = match segment {
+            PathSegmentInput::Property(_) => return None,
+            PathSegmentInput::PropertyId(name) => PathSegment::Property(name),
+            PathSegmentInput::Index(index) => PathSegment::Index(index),
+        };
         self.paths.append(parent, segment)
     }
 
@@ -136,5 +188,14 @@ mod tests {
         let mut stream = FactStream::new();
         stream.mark_path_exhausted();
         assert!(stream.path_exhausted());
+        assert!(!stream.is_valid());
+    }
+
+    #[test]
+    fn name_exhaustion_is_rejected_before_indexing() {
+        let mut stream = FactStream::new();
+        stream.mark_name_exhausted();
+        assert!(stream.name_exhausted());
+        assert!(!stream.is_valid());
     }
 }

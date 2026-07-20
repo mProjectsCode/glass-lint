@@ -61,20 +61,21 @@ impl OccurrenceIndexes {
         &self,
         plan: &QueryPlan,
     ) -> Vec<ClassificationEvidence> {
-        self.evidence_for_with_overlay(plan, None)
+        self.evidence_for_with_overlay(plan, None, &self.test_names)
     }
 
     pub(in crate::analysis) fn evidence_for_with_overlay(
         &self,
         plan: &QueryPlan,
         overlay: Option<&ModuleOccurrenceOverlay>,
+        names: &crate::analysis::name::NameTable,
     ) -> Vec<ClassificationEvidence> {
         let mut evidence = Vec::new();
         for clause in plan.clauses() {
             if !clause.constraints.is_empty() {
                 continue;
             }
-            let occurrences = self.occurrences_for_clause(clause, overlay);
+            let occurrences = self.occurrences_for_clause(clause, overlay, names);
             push_owned_evidence(
                 &mut evidence,
                 clause.evidence.kind,
@@ -93,11 +94,12 @@ impl OccurrenceIndexes {
         &self,
         clause: &QueryClause,
         overlay: Option<&ModuleOccurrenceOverlay>,
+        names: &crate::analysis::name::NameTable,
     ) -> Option<Vec<Occurrence>> {
         if !matches!(clause.subject, SubjectConstraint::Direct) {
             return self.occurrences_for_subject(clause, overlay);
         }
-        self.occurrences_for_event(clause, overlay)
+        self.occurrences_for_event(clause, overlay, names)
     }
 
     fn occurrences_for_subject(
@@ -150,10 +152,13 @@ impl OccurrenceIndexes {
         &self,
         clause: &QueryClause,
         overlay: Option<&ModuleOccurrenceOverlay>,
+        names: &crate::analysis::name::NameTable,
     ) -> Option<Vec<Occurrence>> {
         match &clause.event {
             EventPredicate::Call => match &clause.identity {
-                IdentityConstraint::Any { name, .. } => self.call_indexes.calls.get(name).cloned(),
+                IdentityConstraint::Any { name, .. } => names
+                    .lookup(name)
+                    .and_then(|id| self.call_indexes.calls.get(&id).cloned()),
                 IdentityConstraint::Global { name, .. } => merge_occurrences(
                     self.call_indexes.global_calls.get(name),
                     overlay.and_then(|overlay| overlay.call_indexes.global_calls.get(name)),
@@ -243,7 +248,10 @@ impl OccurrenceIndexes {
                 _ => None,
             },
             EventPredicate::Construct => match &clause.identity {
-                IdentityConstraint::Any { name, .. } | IdentityConstraint::Global { name, .. } => {
+                IdentityConstraint::Any { name, .. } => names
+                    .lookup(name)
+                    .and_then(|id| self.constructions.constructors.get(&id).cloned()),
+                IdentityConstraint::Global { name, .. } => {
                     self.constructions.global_constructors.get(name).cloned()
                 }
                 IdentityConstraint::ModuleExport { module, export } => {
@@ -294,7 +302,8 @@ impl OccurrenceIndexes {
         let symbol = symbol.into();
         match kind {
             crate::api::classification::MatchKind::Call => {
-                self.call_indexes.calls.push(symbol, FactId(u32::MAX), span);
+                let name = self.test_name(symbol.as_str());
+                self.call_indexes.calls.push(name, FactId(u32::MAX), span);
             }
             crate::api::classification::MatchKind::MemberCall => {
                 self.members
@@ -317,10 +326,12 @@ impl OccurrenceIndexes {
                     .classes
                     .push(symbol, FactId(u32::MAX), span);
             }
-            crate::api::classification::MatchKind::Constructor => self
-                .constructions
-                .constructors
-                .push(symbol, FactId(u32::MAX), span),
+            crate::api::classification::MatchKind::Constructor => {
+                let name = self.test_name(symbol.as_str());
+                self.constructions
+                    .constructors
+                    .push(name, FactId(u32::MAX), span);
+            }
             crate::api::classification::MatchKind::CallArgument => {}
         }
     }

@@ -77,6 +77,9 @@ primary event.
 - Files, findings, evidence, diagnostics, and operation counts are
   deterministic.
 - Parser, scope, fact, compiler, cache, and budget internals remain private.
+- `NameId` values are opaque and artifact-local; they may be compared only
+  with the `NameTable` retained by the same semantic artifact. Textual
+  ordering and cross-artifact/project interfaces continue to use strings.
 
 Core stays one crate while these layers share an evolving private semantic
 model. A split requires a stable, independently owned contract, acyclic

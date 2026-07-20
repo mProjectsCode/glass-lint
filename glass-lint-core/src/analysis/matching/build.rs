@@ -38,6 +38,10 @@ impl OccurrenceIndexes {
     }
 
     pub(in crate::analysis) fn build_from_stream(&mut self, stream: &FactStream) {
+        #[cfg(test)]
+        {
+            self.test_names = stream.names().clone();
+        }
         // This is the sole projection from semantic facts into shared matcher
         // indexes. Rule selection must happen later, in query code.
         stream
@@ -115,9 +119,7 @@ impl OccurrenceIndexes {
             return;
         };
         if let Some(name) = callee_name {
-            self.call_indexes
-                .calls
-                .push(name.clone(), fact.id, *callee_span);
+            self.call_indexes.calls.push(*name, fact.id, *callee_span);
         }
         match call_provenance {
             SymbolCallProvenance::Global { name } => {
@@ -269,10 +271,12 @@ impl OccurrenceIndexes {
         else {
             return;
         };
-        if let Some(name) = callee_name {
+        if let Some(name) = callee_name
+            && matches!(provenance, SymbolCallProvenance::Global { .. })
+        {
             self.constructions
                 .constructors
-                .push(name.clone(), fact.id, *callee_span);
+                .push(*name, fact.id, *callee_span);
         }
         match provenance {
             SymbolCallProvenance::Global { name } => {

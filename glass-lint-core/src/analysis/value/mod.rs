@@ -13,7 +13,7 @@ pub use identity::SymbolPath;
 pub(in crate::analysis) use identity::{
     BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, ValueId,
 };
-pub(in crate::analysis) use path::{PathId, PathInterner, PathSegment};
+pub(in crate::analysis) use path::{PathId, PathInterner, PathSegment, PathSegmentInput};
 
 #[cfg(test)]
 mod tests {
