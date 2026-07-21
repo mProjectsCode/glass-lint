@@ -39,6 +39,154 @@ use crate::{
     },
 };
 
+struct MatcherEvaluator<'a> {
+    names: &'a NameTable,
+    identities: Option<&'a ModuleIdentityMap>,
+    result_identities: Option<&'a BTreeMap<ValueId, LinkedModuleIdentity>>,
+}
+
+impl<'a> MatcherEvaluator<'a> {
+    fn new(
+        names: &'a NameTable,
+        identities: Option<&'a ModuleIdentityMap>,
+        result_identities: Option<&'a BTreeMap<ValueId, LinkedModuleIdentity>>,
+    ) -> Self {
+        Self {
+            names,
+            identities,
+            result_identities,
+        }
+    }
+
+    fn argument_with_overlay(&self, argument: &CallArgInfo) -> CallArgInfo {
+        let mut argument = argument.clone();
+        if let Some(result_identities) = self.result_identities
+            && let Some(identity) = result_identities.get(&argument.value)
+        {
+            apply_identity_to_argument(&mut argument, identity);
+        }
+        if let Some(identities) = self.identities
+            && let SymbolCallProvenance::ModuleExport { module, export } = &argument.provenance
+            && let Some(identity) =
+                identities.get(&ModuleExportKey::new(module.clone(), export.clone()))
+        {
+            apply_identity_to_argument(&mut argument, identity);
+        }
+        argument
+    }
+
+    fn overlaid_call_provenance(
+        &self,
+        raw: &SymbolCallProvenance,
+        callee: ValueId,
+    ) -> SymbolCallProvenance {
+        if let Some(result_identities) = self.result_identities
+            && let Some(identity) = result_identities.get(&callee)
+        {
+            return match identity {
+                LinkedModuleIdentity::External { module, export } => {
+                    SymbolCallProvenance::ModuleExport {
+                        module: module.clone(),
+                        export: export.clone(),
+                    }
+                }
+                LinkedModuleIdentity::Global { name } => {
+                    SymbolCallProvenance::Global { name: name.clone() }
+                }
+                _ => raw.clone(),
+            };
+        }
+        if let SymbolCallProvenance::ModuleExport { module, export } = raw
+            && let Some(identities) = self.identities
+            && let Some(identity) =
+                identities.get(&ModuleExportKey::new(module.clone(), export.clone()))
+        {
+            return match identity {
+                LinkedModuleIdentity::External { module, export } => {
+                    SymbolCallProvenance::ModuleExport {
+                        module: module.clone(),
+                        export: export.clone(),
+                    }
+                }
+                LinkedModuleIdentity::Global { name } => {
+                    SymbolCallProvenance::Global { name: name.clone() }
+                }
+                _ => raw.clone(),
+            };
+        }
+        raw.clone()
+    }
+
+    fn fact_matches_clause(&self, fact: &SemanticFact, clause: &QueryClause) -> bool {
+        let FactPayload::Call {
+            callee,
+            syntactic_chain,
+            rooted_chain,
+            returned_member,
+            instance_class,
+            call_provenance,
+            callee_name,
+            args,
+            unwrap,
+            ..
+        } = &fact.payload
+        else {
+            return false;
+        };
+        let callee_name: Option<smol_str::SmolStr> =
+            callee_name.and_then(|id| self.names.resolve(id).map(Into::into));
+        let call_provenance = self.overlaid_call_provenance(call_provenance, *callee);
+
+        match &clause.event {
+            EventPredicate::Call => {
+                if !matches!(clause.subject, SubjectConstraint::Direct) {
+                    return false;
+                }
+                if !call_identity_matches(
+                    clause,
+                    &call_provenance,
+                    callee_name.as_ref(),
+                    syntactic_chain.as_ref(),
+                ) {
+                    return false;
+                }
+                self.check_constrained_args(
+                    clause,
+                    args,
+                    unwrap.as_deref(),
+                )
+            }
+            EventPredicate::MemberCall { member } => {
+                if !member_subject_matches(
+                    clause,
+                    member,
+                    returned_member.as_ref(),
+                    instance_class.as_ref(),
+                    self.names,
+                ) {
+                    return false;
+                }
+                if !member_identity_matches(
+                    clause,
+                    member,
+                    syntactic_chain.as_ref(),
+                    rooted_chain.as_ref(),
+                    fact,
+                    self.names,
+                ) {
+                    return false;
+                }
+                let linked_args: Vec<CallArgInfo> = args
+                    .iter()
+                    .map(|a| self.argument_with_overlay(a))
+                    .collect();
+                constraints_match(&clause.constraints, &linked_args, self.names)
+            }
+            _ => false,
+        }
+    }
+}
+
 /// Evaluate constrained clauses once over call facts.
 ///
 /// Every candidate fact is checked by the same [`fact_matches_clause`]
@@ -54,11 +202,12 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     let Some(names) = stream.names() else {
         return;
     };
+    let evaluator = MatcherEvaluator::new(names, identities, result_identities);
     for (rule_index, clause) in clauses {
         let candidates: Vec<Occurrence> = stream
             .facts()
             .iter()
-            .filter(|fact| fact_matches_clause(fact, clause, names, identities, result_identities))
+            .filter(|fact| evaluator.fact_matches_clause(fact, clause))
             .map(|fact| Occurrence::new(fact.id, fact.span))
             .collect();
 
@@ -77,27 +226,6 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     }
 }
 
-fn argument_with_overlay(
-    argument: &CallArgInfo,
-    identities: Option<&ModuleIdentityMap>,
-    result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
-) -> CallArgInfo {
-    let mut argument = argument.clone();
-    if let Some(result_identities) = result_identities
-        && let Some(identity) = result_identities.get(&argument.value)
-    {
-        apply_identity_to_argument(&mut argument, identity);
-    }
-    if let Some(identities) = identities
-        && let SymbolCallProvenance::ModuleExport { module, export } = &argument.provenance
-        && let Some(identity) =
-            identities.get(&ModuleExportKey::new(module.clone(), export.clone()))
-    {
-        apply_identity_to_argument(&mut argument, identity);
-    }
-    argument
-}
-
 fn apply_identity_to_argument(argument: &mut CallArgInfo, identity: &LinkedModuleIdentity) {
     if let LinkedModuleIdentity::StaticString { value } = identity {
         argument.static_string = Some(value.clone());
@@ -108,138 +236,6 @@ fn apply_identity_to_argument(argument: &mut CallArgInfo, identity: &LinkedModul
             export: export.clone(),
         };
     }
-}
-
-/// Shared predicate: does a fact match a clause's event, identity, subject,
-/// and argument constraints, using string-based comparison (not NamePath)?
-///
-/// This is the single predicate evaluator that the constrained path uses for
-/// candidate selection.  The unconstrained index path has an equivalent but
-/// separate implementation because its keys are NamePaths; the subject-matter
-/// logic (event, identity, subject) is intentionally kept the same.
-fn fact_matches_clause(
-    fact: &SemanticFact,
-    clause: &QueryClause,
-    names: &NameTable,
-    identities: Option<&ModuleIdentityMap>,
-    result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
-) -> bool {
-    let FactPayload::Call {
-        callee,
-        syntactic_chain,
-        rooted_chain,
-        returned_member,
-        instance_class,
-        call_provenance,
-        callee_name,
-        args,
-        unwrap,
-        ..
-    } = &fact.payload
-    else {
-        return false;
-    };
-    let callee_name: Option<smol_str::SmolStr> =
-        callee_name.and_then(|id| names.resolve(id).map(Into::into));
-    let call_provenance =
-        overlaid_call_provenance(call_provenance, *callee, identities, result_identities);
-
-    match &clause.event {
-        EventPredicate::Call => {
-            if !matches!(clause.subject, SubjectConstraint::Direct) {
-                return false;
-            }
-            if !call_identity_matches(
-                clause,
-                &call_provenance,
-                callee_name.as_ref(),
-                syntactic_chain.as_ref(),
-            ) {
-                return false;
-            }
-            check_constrained_args(
-                clause,
-                args,
-                unwrap.as_deref(),
-                identities,
-                result_identities,
-                names,
-            )
-        }
-        EventPredicate::MemberCall { member } => {
-            if !member_subject_matches(
-                clause,
-                member,
-                returned_member.as_ref(),
-                instance_class.as_ref(),
-                names,
-            ) {
-                return false;
-            }
-            if !member_identity_matches(
-                clause,
-                member,
-                syntactic_chain.as_ref(),
-                rooted_chain.as_ref(),
-                fact,
-                names,
-            ) {
-                return false;
-            }
-            let linked_args: Vec<CallArgInfo> = args
-                .iter()
-                .map(|a| argument_with_overlay(a, identities, result_identities))
-                .collect();
-            constraints_match(&clause.constraints, &linked_args, names)
-        }
-        _ => false,
-    }
-}
-
-/// Apply identity and result overlay to a call's raw provenance.
-fn overlaid_call_provenance(
-    raw: &SymbolCallProvenance,
-    callee: ValueId,
-    identities: Option<&ModuleIdentityMap>,
-    result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
-) -> SymbolCallProvenance {
-    // Result identities are set by flow analysis and take priority.
-    if let Some(result_identities) = result_identities
-        && let Some(identity) = result_identities.get(&callee)
-    {
-        return match identity {
-            LinkedModuleIdentity::External { module, export } => {
-                SymbolCallProvenance::ModuleExport {
-                    module: module.clone(),
-                    export: export.clone(),
-                }
-            }
-            LinkedModuleIdentity::Global { name } => {
-                SymbolCallProvenance::Global { name: name.clone() }
-            }
-            _ => raw.clone(),
-        };
-    }
-    // Project-level identity map upgrades module-export provenances.
-    if let SymbolCallProvenance::ModuleExport { module, export } = raw
-        && let Some(identities) = identities
-        && let Some(identity) =
-            identities.get(&ModuleExportKey::new(module.clone(), export.clone()))
-    {
-        return match identity {
-            LinkedModuleIdentity::External { module, export } => {
-                SymbolCallProvenance::ModuleExport {
-                    module: module.clone(),
-                    export: export.clone(),
-                }
-            }
-            LinkedModuleIdentity::Global { name } => {
-                SymbolCallProvenance::Global { name: name.clone() }
-            }
-            _ => raw.clone(),
-        };
-    }
-    raw.clone()
 }
 
 fn call_identity_matches(
@@ -380,31 +376,29 @@ fn member_identity_matches(
     }
 }
 
-fn check_constrained_args(
-    clause: &QueryClause,
-    args: &[CallArgInfo],
-    unwrap: Option<&CallUnwrap>,
-    identities: Option<&ModuleIdentityMap>,
-    result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
-    names: &NameTable,
-) -> bool {
-    let linked_args: Vec<CallArgInfo> = args
-        .iter()
-        .map(|a| argument_with_overlay(a, identities, result_identities))
-        .collect();
-
-    // For unwrapped calls (.call()/.apply()), check effective args.
-    unwrap.map_or_else(
-        || constraints_match(&clause.constraints, &linked_args, names),
-        |unwrap| {
-            let linked_effective: Vec<CallArgInfo> = unwrap
-                .effective_args
-                .iter()
-                .map(|a| argument_with_overlay(a, identities, result_identities))
-                .collect();
-            constraints_match(&clause.constraints, &linked_effective, names)
-        },
-    )
+impl MatcherEvaluator<'_> {
+    fn check_constrained_args(
+        &self,
+        clause: &QueryClause,
+        args: &[CallArgInfo],
+        unwrap: Option<&CallUnwrap>,
+    ) -> bool {
+        let linked_args: Vec<CallArgInfo> = args
+            .iter()
+            .map(|a| self.argument_with_overlay(a))
+            .collect();
+        unwrap.map_or_else(
+            || constraints_match(&clause.constraints, &linked_args, self.names),
+            |unwrap| {
+                let linked_effective: Vec<CallArgInfo> = unwrap
+                    .effective_args
+                    .iter()
+                    .map(|a| self.argument_with_overlay(a))
+                    .collect();
+                constraints_match(&clause.constraints, &linked_effective, self.names)
+            },
+        )
+    }
 }
 
 fn constraints_match(
@@ -647,7 +641,9 @@ mod tests {
             },
         };
         assert_eq!(
-            argument_with_overlay(&argument, Some(&identities), None).static_string,
+            MatcherEvaluator::new(&crate::analysis::name::NameTable::default(), Some(&identities), None)
+                .argument_with_overlay(&argument)
+                .static_string,
             Some("https://example.test".into())
         );
     }

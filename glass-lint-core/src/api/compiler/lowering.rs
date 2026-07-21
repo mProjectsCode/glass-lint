@@ -1,0 +1,306 @@
+use smol_str::ToSmolStr;
+
+use crate::{
+    analysis::SymbolPath,
+    api::{
+        classification::MatchKind,
+        compiler::rule::{
+            EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength, QueryClause,
+            QueryConstraint, SubjectConstraint,
+        },
+        rule::{
+            ClassMatcher, ConstructorMatcher, InstanceMemberCallMatcher, MemberCallMatcher,
+            MemberCallProvenance, MemberReadMatcher, ModuleSpecifierPattern,
+            ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, SymbolProvenance,
+        },
+    },
+    rules::CallMatcher,
+};
+
+fn call_identity(name: &str, provenance: &SymbolProvenance) -> IdentityConstraint {
+    match provenance {
+        SymbolProvenance::Any => IdentityConstraint::Any {
+            name: name.into(),
+            strength: IdentityStrength::Heuristic,
+        },
+        SymbolProvenance::Global => IdentityConstraint::Global {
+            name: name.into(),
+            strength: IdentityStrength::Strict,
+        },
+        SymbolProvenance::ModuleExport { module } => IdentityConstraint::ModuleExport {
+            module: module.to_smolstr(),
+            export: name.into(),
+        },
+        SymbolProvenance::PackageModuleExport { module } => {
+            IdentityConstraint::PackageModuleExport {
+                module: module.clone(),
+                export: name.into(),
+            }
+        }
+    }
+}
+
+fn member_identity(chain: &str, provenance: &MemberCallProvenance) -> IdentityConstraint {
+    match provenance {
+        MemberCallProvenance::Any => IdentityConstraint::Any {
+            name: chain.to_smolstr(),
+            strength: IdentityStrength::Heuristic,
+        },
+        MemberCallProvenance::Rooted => IdentityConstraint::Rooted {
+            path: SymbolPath::from(chain),
+        },
+        MemberCallProvenance::ModuleNamespace { module } => IdentityConstraint::ModuleNamespace {
+            module: module.to_smolstr(),
+        },
+        MemberCallProvenance::PackageModuleNamespace { module } => {
+            IdentityConstraint::PackageModuleNamespace {
+                module: module.clone(),
+            }
+        }
+    }
+}
+
+fn lower_member_clause(
+    identity: IdentityConstraint,
+    event: EventPredicate,
+    constraints: Box<[QueryConstraint]>,
+    kind: MatchKind,
+    symbol: String,
+) -> QueryClause {
+    QueryClause {
+        identity,
+        event,
+        subject: SubjectConstraint::Direct,
+        constraints,
+        evidence: EvidenceDescriptor { kind, symbol },
+    }
+}
+
+pub(super) fn lower_calls(values: &[CallMatcher]) -> Vec<QueryClause> {
+    values
+        .iter()
+        .map(|call| QueryClause {
+            identity: call_identity(&call.name, &call.provenance),
+            event: EventPredicate::Call,
+            subject: SubjectConstraint::Direct,
+            constraints: call
+                .arguments
+                .iter()
+                .cloned()
+                .map(QueryConstraint::Argument)
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+            evidence: EvidenceDescriptor {
+                kind: if call.arguments.is_empty() {
+                    MatchKind::Call
+                } else {
+                    MatchKind::CallArgument
+                },
+                symbol: call.evidence_symbol(),
+            },
+        })
+        .collect()
+}
+
+pub(super) fn lower_member_calls(values: &[MemberCallMatcher]) -> Vec<QueryClause> {
+    values
+        .iter()
+        .map(|member| {
+            let constraints = member
+                .arguments
+                .iter()
+                .cloned()
+                .map(QueryConstraint::Argument)
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+            lower_member_clause(
+                member_identity(&member.chain, &member.provenance),
+                EventPredicate::MemberCall {
+                    member: SymbolPath::from(member.chain.as_str()),
+                },
+                constraints,
+                if member.arguments.is_empty() {
+                    MatchKind::MemberCall
+                } else {
+                    MatchKind::CallArgument
+                },
+                member.evidence_symbol(),
+            )
+        })
+        .collect()
+}
+
+pub(super) fn lower_member_reads(values: &[MemberReadMatcher]) -> Vec<QueryClause> {
+    values
+        .iter()
+        .map(|read| {
+            lower_member_clause(
+                member_identity(read.chain.as_str(), &read.provenance),
+                EventPredicate::MemberRead {
+                    member: SymbolPath::from(read.chain.as_str()),
+                },
+                Box::new([]),
+                MatchKind::MemberRead,
+                read.evidence_symbol(),
+            )
+        })
+        .collect()
+}
+
+fn literal_clause(value: &str, event: EventPredicate, kind: MatchKind) -> QueryClause {
+    QueryClause {
+        identity: IdentityConstraint::LiteralString {
+            predicate: value.to_owned(),
+        },
+        event,
+        subject: SubjectConstraint::Direct,
+        constraints: Box::new([]),
+        evidence: EvidenceDescriptor {
+            kind,
+            symbol: value.to_owned(),
+        },
+    }
+}
+
+pub(super) fn lower_literals(
+    imports: &[String],
+    package_imports: &[ModuleSpecifierPattern],
+    string_contains: &[String],
+) -> Vec<QueryClause> {
+    let imports = imports
+        .iter()
+        .map(|value| literal_clause(value, EventPredicate::Import, MatchKind::Import));
+    let packages = package_imports.iter().map(|pattern| QueryClause {
+        identity: IdentityConstraint::PackageSpecifier {
+            pattern: pattern.clone(),
+        },
+        event: EventPredicate::Import,
+        subject: SubjectConstraint::Direct,
+        constraints: Box::new([]),
+        evidence: EvidenceDescriptor {
+            kind: MatchKind::Import,
+            symbol: pattern.to_string(),
+        },
+    });
+    let strings = string_contains.iter().map(|value| {
+        literal_clause(
+            value,
+            EventPredicate::StringReference,
+            MatchKind::StringContains,
+        )
+    });
+    imports.chain(packages).chain(strings).collect()
+}
+
+pub(super) fn lower_classes_and_constructors(
+    classes: &[ClassMatcher],
+    constructors: &[ConstructorMatcher],
+) -> Vec<QueryClause> {
+    let classes = classes.iter().map(|class| QueryClause {
+        identity: call_identity(&class.name, &class.provenance),
+        event: EventPredicate::ClassReference,
+        subject: SubjectConstraint::Direct,
+        constraints: Box::new([]),
+        evidence: EvidenceDescriptor {
+            kind: MatchKind::Class,
+            symbol: class.evidence_symbol(),
+        },
+    });
+    let constructors = constructors.iter().map(|constructor| QueryClause {
+        identity: call_identity(&constructor.name, &constructor.provenance),
+        event: EventPredicate::Construct,
+        subject: SubjectConstraint::Direct,
+        constraints: Box::new([]),
+        evidence: EvidenceDescriptor {
+            kind: MatchKind::Constructor,
+            symbol: constructor.evidence_symbol(),
+        },
+    });
+    classes.chain(constructors).collect()
+}
+
+fn returned_member_clause(
+    source: &str,
+    member: &str,
+    event: EventPredicate,
+    kind: MatchKind,
+) -> QueryClause {
+    QueryClause {
+        identity: IdentityConstraint::Rooted {
+            path: SymbolPath::from(source),
+        },
+        event,
+        subject: SubjectConstraint::ReturnedFrom {
+            producer: Box::new(IdentityConstraint::Rooted {
+                path: SymbolPath::from(source),
+            }),
+        },
+        constraints: Box::new([]),
+        evidence: EvidenceDescriptor {
+            kind,
+            symbol: format!("{source}.{member}"),
+        },
+    }
+}
+
+pub(super) fn lower_returned_members(
+    calls_matchers: &[ReturnedMemberCallMatcher],
+    reads_matchers: &[ReturnedMemberReadMatcher],
+) -> Vec<QueryClause> {
+    let calls = calls_matchers.iter().map(|returned| {
+        returned_member_clause(
+            &returned.source,
+            &returned.member,
+            EventPredicate::MemberCall {
+                member: returned.member.clone().into(),
+            },
+            MatchKind::MemberCall,
+        )
+    });
+    let reads = reads_matchers.iter().map(|returned| {
+        returned_member_clause(
+            &returned.source,
+            &returned.member,
+            EventPredicate::MemberRead {
+                member: returned.member.clone().into(),
+            },
+            MatchKind::MemberRead,
+        )
+    });
+    calls.chain(reads).collect()
+}
+
+pub(super) fn lower_instance_members(values: &[InstanceMemberCallMatcher]) -> Vec<QueryClause> {
+    values
+        .iter()
+        .map(|instance| {
+            let constructor = instance.module_pattern.clone().map_or_else(
+                || IdentityConstraint::ModuleExport {
+                    module: instance.module.to_smolstr(),
+                    export: instance.export.to_smolstr(),
+                },
+                |module| IdentityConstraint::PackageModuleExport {
+                    module,
+                    export: instance.export.to_smolstr(),
+                },
+            );
+            QueryClause {
+                identity: constructor.clone(),
+                event: EventPredicate::MemberCall {
+                    member: SymbolPath::from(instance.member.as_str()),
+                },
+                subject: SubjectConstraint::InstanceOf {
+                    constructor: Box::new(constructor),
+                },
+                constraints: Box::new([]),
+                evidence: EvidenceDescriptor {
+                    kind: MatchKind::MemberCall,
+                    symbol: format!(
+                        "{}:{}.{}",
+                        instance.module, instance.export, instance.member
+                    ),
+                },
+            }
+        })
+        .collect()
+}

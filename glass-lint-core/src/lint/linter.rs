@@ -19,111 +19,6 @@ struct ProjectFileState {
     parse_paths: Vec<(crate::ProjectRelativePath, String)>,
 }
 
-fn initialize_project_files(
-    input: &ProjectInput,
-    parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
-) -> ProjectFileState {
-    let parse_paths = parse_diagnostics
-        .iter()
-        .map(|(path, diagnostic)| (path.clone(), diagnostic.code.as_str().to_owned()))
-        .collect::<Vec<_>>();
-    let mut files = input
-        .sources
-        .iter()
-        .map(|source| {
-            (
-                source.path.clone(),
-                crate::FileReport {
-                    path: source.path.clone(),
-                    findings: Vec::new(),
-                    diagnostics: Vec::new(),
-                },
-            )
-        })
-        .collect::<BTreeMap<_, _>>();
-    for (path, diagnostic) in parse_diagnostics {
-        let normalized = path;
-        files.insert(
-            normalized.clone(),
-            crate::FileReport {
-                path: normalized.clone(),
-                findings: Vec::new(),
-                diagnostics: vec![crate::Diagnostic::parse(normalized, diagnostic)],
-            },
-        );
-    }
-    ProjectFileState { files, parse_paths }
-}
-
-fn attach_project_diagnostics(
-    project: &ProjectSemanticModel,
-    files: &mut BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
-) -> Vec<crate::Diagnostic> {
-    let (status_files, status_project) = project.status_diagnostics();
-    for (path, mut diagnostic) in status_files {
-        diagnostic.location = Some(crate::SourceLocation {
-            path: path.clone(),
-            range: crate::SourceRange::new(
-                crate::Position::new(1, 1).expect("one-based position"),
-                crate::Position::new(1, 1).expect("one-based position"),
-            )
-            .expect("ordered source range"),
-        });
-        if let Some(file) = files.get_mut(&path) {
-            file.diagnostics
-                .push(crate::Diagnostic::project(diagnostic));
-        }
-    }
-
-    let mut diagnostics = Vec::new();
-    for diagnostic in project.diagnostics().iter().cloned() {
-        if let Some(path) = diagnostic
-            .location
-            .as_ref()
-            .map(|location| location.path.clone())
-        {
-            if let Some(file) = files.get_mut(&path) {
-                file.diagnostics
-                    .push(crate::Diagnostic::project(diagnostic));
-            }
-        } else {
-            diagnostics.push(crate::Diagnostic::project(diagnostic));
-        }
-    }
-    diagnostics.extend(status_project.into_iter().map(crate::Diagnostic::project));
-    diagnostics.sort_by(|left, right| left.code().cmp(right.code()));
-    diagnostics
-}
-
-fn assemble_project_report(
-    project: &ProjectSemanticModel,
-    files: BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
-    diagnostics: Vec<crate::Diagnostic>,
-) -> AnalysisReport {
-    let evidence = files
-        .values()
-        .map(|file| {
-            file.findings
-                .iter()
-                .map(|finding| finding.evidence.len())
-                .sum::<usize>()
-        })
-        .sum();
-    let is_partial = !project.is_complete();
-    AnalysisReport {
-        schema_version: REPORT_VERSION,
-        tool_version: env!("CARGO_PKG_VERSION").into(),
-        files: files.into_values().collect(),
-        diagnostics,
-        operations: project.operation_counts(evidence),
-        completion: if is_partial {
-            crate::ReportCompletion::Partial
-        } else {
-            crate::ReportCompletion::Complete
-        },
-    }
-}
-
 /// Caller-supplied input to linter construction. Validation occurs in
 /// [`Linter::new`].
 #[derive(Clone, Debug)]
@@ -363,7 +258,7 @@ impl Linter {
         let ProjectFileState {
             mut files,
             parse_paths,
-        } = initialize_project_files(&input, parse_diagnostics);
+        } = Self::initialize_project_files(&input, parse_diagnostics);
 
         tracing::debug!(
             target: "glass_lint::project::link",
@@ -398,8 +293,8 @@ impl Linter {
         let matching_elapsed = matching_start.elapsed();
         self.populate_project_files(&project, &classifications, &mut files);
 
-        let diagnostics = attach_project_diagnostics(&project, &mut files);
-        let report = assemble_project_report(&project, files, diagnostics);
+        let diagnostics = Self::attach_project_diagnostics(&project, &mut files);
+        let report = Self::assemble_project_report(&project, files, diagnostics);
 
         let summary = report.summary();
         tracing::info!(
@@ -482,6 +377,111 @@ impl Linter {
             project_finding
         })
         .collect()
+    }
+
+    fn initialize_project_files(
+        input: &ProjectInput,
+        parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
+    ) -> ProjectFileState {
+        let parse_paths = parse_diagnostics
+            .iter()
+            .map(|(path, diagnostic)| (path.clone(), diagnostic.code.as_str().to_owned()))
+            .collect::<Vec<_>>();
+        let mut files = input
+            .sources
+            .iter()
+            .map(|source| {
+                (
+                    source.path.clone(),
+                    crate::FileReport {
+                        path: source.path.clone(),
+                        findings: Vec::new(),
+                        diagnostics: Vec::new(),
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        for (path, diagnostic) in parse_diagnostics {
+            let normalized = path;
+            files.insert(
+                normalized.clone(),
+                crate::FileReport {
+                    path: normalized.clone(),
+                    findings: Vec::new(),
+                    diagnostics: vec![crate::Diagnostic::parse(normalized, diagnostic)],
+                },
+            );
+        }
+        ProjectFileState { files, parse_paths }
+    }
+
+    fn attach_project_diagnostics(
+        project: &ProjectSemanticModel,
+        files: &mut BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
+    ) -> Vec<crate::Diagnostic> {
+        let (status_files, status_project) = project.status_diagnostics();
+        for (path, mut diagnostic) in status_files {
+            diagnostic.location = Some(crate::SourceLocation {
+                path: path.clone(),
+                range: crate::SourceRange::new(
+                    crate::Position::new(1, 1).expect("one-based position"),
+                    crate::Position::new(1, 1).expect("one-based position"),
+                )
+                .expect("ordered source range"),
+            });
+            if let Some(file) = files.get_mut(&path) {
+                file.diagnostics
+                    .push(crate::Diagnostic::project(diagnostic));
+            }
+        }
+
+        let mut diagnostics = Vec::new();
+        for diagnostic in project.diagnostics().iter().cloned() {
+            if let Some(path) = diagnostic
+                .location
+                .as_ref()
+                .map(|location| location.path.clone())
+            {
+                if let Some(file) = files.get_mut(&path) {
+                    file.diagnostics
+                        .push(crate::Diagnostic::project(diagnostic));
+                }
+            } else {
+                diagnostics.push(crate::Diagnostic::project(diagnostic));
+            }
+        }
+        diagnostics.extend(status_project.into_iter().map(crate::Diagnostic::project));
+        diagnostics.sort_by(|left, right| left.code().cmp(right.code()));
+        diagnostics
+    }
+
+    fn assemble_project_report(
+        project: &ProjectSemanticModel,
+        files: BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
+        diagnostics: Vec<crate::Diagnostic>,
+    ) -> AnalysisReport {
+        let evidence = files
+            .values()
+            .map(|file| {
+                file.findings
+                    .iter()
+                    .map(|finding| finding.evidence.len())
+                    .sum::<usize>()
+            })
+            .sum();
+        let is_partial = !project.is_complete();
+        AnalysisReport {
+            schema_version: REPORT_VERSION,
+            tool_version: env!("CARGO_PKG_VERSION").into(),
+            files: files.into_values().collect(),
+            diagnostics,
+            operations: project.operation_counts(evidence),
+            completion: if is_partial {
+                crate::ReportCompletion::Partial
+            } else {
+                crate::ReportCompletion::Complete
+            },
+        }
     }
 }
 

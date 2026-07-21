@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::Deref,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use crate::{ProjectLoadError, error::ProjectOptionError};
@@ -197,6 +197,29 @@ impl ProjectLoadOptions {
     pub fn validated(self) -> Result<ValidatedProjectLoadOptions, ProjectLoadError> {
         self.validate()?;
         Ok(ValidatedProjectLoadOptions(self))
+    }
+
+    /// Test whether a source path's extension is supported.
+    pub fn supports(&self, path: &Path) -> bool {
+        let name = path.to_string_lossy().to_ascii_lowercase();
+        self.extensions
+            .iter()
+            .any(|extension| name.ends_with(&extension.to_ascii_lowercase()))
+            && ![".d.ts", ".d.cts", ".d.mts"]
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
+    }
+
+    /// Test whether a path under `root` is excluded by any directory name.
+    pub fn excludes_path(&self, root: &Path, path: &Path) -> bool {
+        path.strip_prefix(root).is_ok_and(|relative| {
+            relative.components().any(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .is_some_and(|name| self.excluded_directories.contains(name))
+            })
+        })
     }
 
     /// Validate budgets, suffixes, and alias mappings before any I/O begins.

@@ -71,6 +71,36 @@ impl ProjectLoadOutcome {
     }
 }
 
+/// Shared timing phase fields for loading and profiling.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct ProjectPhases {
+    discovery: Duration,
+    reads: Duration,
+    parse_and_local_analysis: Duration,
+    resolution: Duration,
+    linking_and_matching: Duration,
+    linking: Duration,
+    matching: Duration,
+    total: Duration,
+}
+
+impl std::ops::AddAssign for ProjectPhases {
+    fn add_assign(&mut self, rhs: Self) {
+        self.discovery = self.discovery.saturating_add(rhs.discovery);
+        self.reads = self.reads.saturating_add(rhs.reads);
+        self.parse_and_local_analysis = self
+            .parse_and_local_analysis
+            .saturating_add(rhs.parse_and_local_analysis);
+        self.resolution = self.resolution.saturating_add(rhs.resolution);
+        self.linking_and_matching = self
+            .linking_and_matching
+            .saturating_add(rhs.linking_and_matching);
+        self.linking = self.linking.saturating_add(rhs.linking);
+        self.matching = self.matching.saturating_add(rhs.matching);
+        self.total = self.total.saturating_add(rhs.total);
+    }
+}
+
 /// Bounded construction counters and phase timings for profiling.
 ///
 /// Loader-owned discovery, reads, parsing, and resolution are separated from
@@ -117,24 +147,50 @@ pub struct ProjectPhaseTimings {
     pub total: Duration,
 }
 
+impl ProjectPhaseTimings {
+    fn phases(&self) -> ProjectPhases {
+        ProjectPhases {
+            discovery: self.discovery,
+            reads: self.reads,
+            parse_and_local_analysis: self.parse_and_local_analysis,
+            resolution: self.resolution,
+            linking: self.linking,
+            linking_and_matching: self.linking_and_matching,
+            matching: self.matching,
+            total: self.total,
+        }
+    }
+}
+
 impl std::ops::AddAssign for ProjectPhaseTimings {
     fn add_assign(&mut self, rhs: Self) {
-        self.discovery = self.discovery.saturating_add(rhs.discovery);
-        self.reads = self.reads.saturating_add(rhs.reads);
-        self.parse_and_local_analysis = self
-            .parse_and_local_analysis
-            .saturating_add(rhs.parse_and_local_analysis);
-        self.resolution = self.resolution.saturating_add(rhs.resolution);
-        self.linking = self.linking.saturating_add(rhs.linking);
-        self.linking_and_matching = self
-            .linking_and_matching
-            .saturating_add(rhs.linking_and_matching);
-        self.matching = self.matching.saturating_add(rhs.matching);
-        self.total = self.total.saturating_add(rhs.total);
+        let mut phases = self.phases();
+        phases += rhs.phases();
+        self.discovery = phases.discovery;
+        self.reads = phases.reads;
+        self.parse_and_local_analysis = phases.parse_and_local_analysis;
+        self.resolution = phases.resolution;
+        self.linking = phases.linking;
+        self.linking_and_matching = phases.linking_and_matching;
+        self.matching = phases.matching;
+        self.total = phases.total;
     }
 }
 
 impl ProjectLoadMetrics {
+    fn phases(&self) -> ProjectPhases {
+        ProjectPhases {
+            discovery: self.discovery,
+            reads: self.reads,
+            parse_and_local_analysis: self.parse_and_local_analysis,
+            resolution: self.resolution,
+            linking: self.linking,
+            linking_and_matching: self.linking_and_matching,
+            matching: self.matching,
+            total: self.total,
+        }
+    }
+
     #[must_use]
     pub fn phase_timings(&self) -> ProjectPhaseTimings {
         ProjectPhaseTimings {
@@ -152,18 +208,16 @@ impl ProjectLoadMetrics {
 
 impl std::ops::AddAssign for ProjectLoadMetrics {
     fn add_assign(&mut self, rhs: Self) {
-        self.discovery = self.discovery.saturating_add(rhs.discovery);
-        self.reads = self.reads.saturating_add(rhs.reads);
-        self.parse_and_local_analysis = self
-            .parse_and_local_analysis
-            .saturating_add(rhs.parse_and_local_analysis);
-        self.resolution = self.resolution.saturating_add(rhs.resolution);
-        self.linking_and_matching = self
-            .linking_and_matching
-            .saturating_add(rhs.linking_and_matching);
-        self.linking = self.linking.saturating_add(rhs.linking);
-        self.matching = self.matching.saturating_add(rhs.matching);
-        self.total = self.total.saturating_add(rhs.total);
+        let mut phases = self.phases();
+        phases += rhs.phases();
+        self.discovery = phases.discovery;
+        self.reads = phases.reads;
+        self.parse_and_local_analysis = phases.parse_and_local_analysis;
+        self.resolution = phases.resolution;
+        self.linking_and_matching = phases.linking_and_matching;
+        self.linking = phases.linking;
+        self.matching = phases.matching;
+        self.total = phases.total;
         self.files = self.files.saturating_add(rhs.files);
         self.requests = self.requests.saturating_add(rhs.requests);
         self.edges = self.edges.saturating_add(rhs.edges);
@@ -470,15 +524,11 @@ impl<'a> ProjectLoadState<'a> {
             metrics.edges = self.counters.edges;
             let target = self.root.join(path);
             if target.exists()
-                && !crate::discovery::excluded_path(
-                    &self.root,
-                    &target,
-                    &self.discovery.options().excluded_directories,
-                )
-                && crate::discovery::is_supported_runtime_source(
-                    &target,
-                    &self.discovery.options().extensions,
-                )
+                && !self
+                    .discovery
+                    .options()
+                    .excludes_path(&self.root, &target)
+                && self.discovery.options().supports(&target)
             {
                 self.queue.push(target);
             }

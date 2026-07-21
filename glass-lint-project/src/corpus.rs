@@ -57,7 +57,7 @@ impl<'a> SourceCorpus<'a> {
                 continue;
             };
             if metadata.is_file() {
-                if is_supported_runtime_source(root, &self.options.extensions) && include(root) {
+                if self.options.supports(root) && include(root) {
                     paths.insert(root.clone());
                 }
                 continue;
@@ -129,7 +129,7 @@ impl<'a> SourceCorpus<'a> {
                 ProjectLoadError::Io { path, source }
             })?;
             if entry.file_type().is_file()
-                && is_supported_runtime_source(entry.path(), &self.options.extensions)
+                && self.options.supports(entry.path())
                 && include(entry.path())
             {
                 paths.insert(entry.into_path());
@@ -143,7 +143,7 @@ impl<'a> SourceCorpus<'a> {
 
     /// Read one supported source file after enforcing the byte budget.
     pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
-        if !is_supported_runtime_source(path, &self.options.extensions) {
+        if !self.options.supports(path) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         }
         let file = fs::File::open(path).map_err(|source| ProjectLoadError::Io {
@@ -224,12 +224,3 @@ impl<'a> SourceCorpus<'a> {
     }
 }
 
-pub fn is_supported_runtime_source(path: &Path, extensions: &[String]) -> bool {
-    let name = path.to_string_lossy().to_ascii_lowercase();
-    extensions
-        .iter()
-        .any(|extension| name.ends_with(&extension.to_ascii_lowercase()))
-        && ![".d.ts", ".d.cts", ".d.mts"]
-            .iter()
-            .any(|suffix| name.ends_with(suffix))
-}

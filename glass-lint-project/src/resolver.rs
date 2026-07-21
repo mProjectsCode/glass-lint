@@ -9,7 +9,7 @@ use glass_lint_core::{
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
 use crate::{
-    discovery::{absolute_path, excluded_path, inside_root, is_supported_runtime_source, realpath},
+    discovery::{absolute_path, inside_root, realpath},
     options::{ProjectLoadOptions, ProjectSelection},
 };
 
@@ -24,14 +24,49 @@ pub struct ProjectResolver {
 impl ProjectResolver {
     /// Build import and CommonJS resolvers under one project root.
     pub fn new(root: &Path, selection: &ProjectSelection, options: &ProjectLoadOptions) -> Self {
-        let import = Resolver::new(resolver_options(root, selection, options, false));
-        let require = import.clone_with_options(resolver_options(root, selection, options, true));
+        let import = Resolver::new(Self::build_options(root, selection, options, false));
+        let require = import.clone_with_options(Self::build_options(root, selection, options, true));
         Self {
             root: root.to_path_buf(),
             options: options.clone(),
             import,
             require,
         }
+    }
+
+    fn build_options(
+        root: &Path,
+        selection: &ProjectSelection,
+        options: &ProjectLoadOptions,
+        require: bool,
+    ) -> ResolveOptions {
+        let extension_alias = options
+            .extension_aliases
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        let mut resolver_options = ResolveOptions {
+            condition_names: if require {
+                vec!["node".into(), "require".into()]
+            } else {
+                vec!["node".into(), "import".into()]
+            },
+            extensions: options.extensions.clone(),
+            extension_alias,
+            symlinks: options.follow_symlinks,
+            roots: vec![root.to_path_buf()],
+            builtin_modules: true,
+            ..ResolveOptions::default()
+        };
+        if let ProjectSelection::Tsconfig(path) = selection {
+            resolver_options.tsconfig = Some(oxc_resolver::TsconfigDiscovery::Manual(
+                oxc_resolver::TsconfigOptions {
+                    config_file: absolute_path(path),
+                    references: oxc_resolver::TsconfigReferences::Auto,
+                },
+            ));
+        }
+        resolver_options
     }
 
     /// Resolve one request into a provider-neutral, root-classified outcome.
@@ -70,7 +105,7 @@ impl ProjectResolver {
                 }
             };
         }
-        if excluded_path(&self.root, &path, &self.options.excluded_directories) {
+        if self.options.excludes_path(&self.root, &path) {
             return if is_internal_module_request(request) {
                 ResolverOutcome::Unsupported {
                     reason: format!("excluded target `{}`", path.display()),
@@ -81,7 +116,7 @@ impl ProjectResolver {
                 }
             };
         }
-        if !is_supported_runtime_source(&path, &self.options.extensions) {
+        if !self.options.supports(&path) {
             return ResolverOutcome::Unsupported {
                 reason: format!("unsupported target `{}`", path.display()),
             };
@@ -98,41 +133,6 @@ impl ProjectResolver {
         };
         ResolverOutcome::Internal { path }
     }
-}
-
-fn resolver_options(
-    root: &Path,
-    selection: &ProjectSelection,
-    options: &ProjectLoadOptions,
-    require: bool,
-) -> ResolveOptions {
-    let extension_alias = options
-        .extension_aliases
-        .iter()
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-    let mut resolver_options = ResolveOptions {
-        condition_names: if require {
-            vec!["node".into(), "require".into()]
-        } else {
-            vec!["node".into(), "import".into()]
-        },
-        extensions: options.extensions.clone(),
-        extension_alias,
-        symlinks: options.follow_symlinks,
-        roots: vec![root.to_path_buf()],
-        builtin_modules: true,
-        ..ResolveOptions::default()
-    };
-    if let ProjectSelection::Tsconfig(path) = selection {
-        resolver_options.tsconfig = Some(oxc_resolver::TsconfigDiscovery::Manual(
-            oxc_resolver::TsconfigOptions {
-                config_file: absolute_path(path),
-                references: oxc_resolver::TsconfigReferences::Auto,
-            },
-        ));
-    }
-    resolver_options
 }
 
 fn package_name(request: &str) -> String {

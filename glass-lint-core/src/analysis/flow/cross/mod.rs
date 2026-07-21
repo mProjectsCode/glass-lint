@@ -4,10 +4,11 @@
 //! source of truth for one module; this overlay carries a proven object state
 //! through parameter-to-call relations and qualified call edges.
 
+mod propagation;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use indexmap::IndexSet;
-use smol_str::SmolStr;
 
 use crate::{
     analysis::{
@@ -22,7 +23,7 @@ use crate::{
     },
     api::{
         classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},
-        compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledRuleSelection},
+        compiler::{CompiledObjectFlow, CompiledRuleSelection},
     },
     project::ModuleId,
 };
@@ -32,14 +33,14 @@ const MAX_SOURCE_REFINEMENT_ROUNDS: usize = 64;
 const MAX_RELATED_EVIDENCE: usize = 8;
 
 #[derive(Clone, Copy)]
-enum EvidenceRole {
+pub(super) enum EvidenceRole {
     Source,
     Requirement,
     Sink,
 }
 
 impl EvidenceRole {
-    fn label(self) -> &'static str {
+    pub(super) fn label(self) -> &'static str {
         match self {
             Self::Source => "flow source",
             Self::Requirement => "flow requirement",
@@ -113,28 +114,28 @@ impl SourceBudget {
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// A fact location qualified by its owning project module.
-struct QualifiedEvent {
-    module: ModuleId,
-    fact: FactId,
+pub(super) struct QualifiedEvent {
+    pub(super) module: ModuleId,
+    pub(super) fact: FactId,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// Monotone flow state carried through one qualified call context.
-struct CrossFlowState {
-    flow: FlowId,
-    source: QualifiedEvent,
-    requirements: RequirementSet<QualifiedEvent>,
+pub(super) struct CrossFlowState {
+    pub(super) flow: FlowId,
+    pub(super) source: QualifiedEvent,
+    pub(super) requirements: RequirementSet<QualifiedEvent>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Ord, PartialOrd)]
 /// Worklist context identifying the function/value path currently projected.
-struct CallContext {
-    module: ModuleId,
-    function: FunctionId,
-    parameter: Option<usize>,
-    source_root: Option<ValueId>,
-    state: CrossFlowState,
-    crossed: bool,
+pub(super) struct CallContext {
+    pub(super) module: ModuleId,
+    pub(super) function: FunctionId,
+    pub(super) parameter: Option<usize>,
+    pub(super) source_root: Option<ValueId>,
+    pub(super) state: CrossFlowState,
+    pub(super) crossed: bool,
 }
 
 #[derive(Default)]
@@ -145,19 +146,19 @@ struct ContextWorklist {
 }
 
 impl ContextWorklist {
-    fn push(&mut self, context: CallContext) {
+    pub(super) fn push(&mut self, context: CallContext) {
         self.contexts.insert(context);
     }
 
-    fn pop_front(&mut self) -> Option<CallContext> {
+    pub(super) fn pop_front(&mut self) -> Option<CallContext> {
         self.contexts.shift_remove_index(0)
     }
 
-    fn len(&self) -> usize {
+    pub(super) fn len(&self) -> usize {
         self.contexts.len()
     }
 
-    fn enqueue_parameters(
+    pub(super) fn enqueue_parameters(
         &mut self,
         project: &ProjectSemanticModel,
         module: ModuleId,
@@ -371,7 +372,7 @@ pub(in crate::analysis) fn collect(
         let names = project
             .module_names(context.module)
             .expect("module has names");
-        UsageProjector {
+        propagation::UsageProjector {
             project,
             evidence: &mut evidence,
             context: &context,
@@ -383,7 +384,7 @@ pub(in crate::analysis) fn collect(
             names,
         }
         .project();
-        CallPropagation {
+        propagation::CallPropagation {
             project,
             effect,
             module: context.module,
@@ -407,164 +408,6 @@ pub(in crate::analysis) fn collect(
         }
     }
     (evidence, exhausted, budget.projections)
-}
-
-struct UsageProjector<'a> {
-    project: &'a ProjectSemanticModel,
-    evidence: &'a mut BTreeMap<ModuleId, Vec<Vec<ClassificationEvidence>>>,
-    context: &'a CallContext,
-    effect: &'a FunctionEffect,
-    flow: &'a CompiledObjectFlow,
-    state: &'a mut CrossFlowState,
-    propagated: &'a mut BTreeSet<FactId>,
-    worklist: &'a mut ContextWorklist,
-    names: &'a crate::analysis::name::NameTable,
-}
-
-impl UsageProjector<'_> {
-    fn project(&mut self) {
-        for usage in self.effect.uses() {
-            if !usage_matches_context(self.effect, usage, self.context) {
-                continue;
-            }
-            CallPropagation {
-                project: self.project,
-                effect: self.effect,
-                module: self.context.module,
-                context: self.context,
-                propagated: self.propagated,
-                through: Some(effect_use_event(usage)),
-                state: self.state,
-                worklist: self.worklist,
-            }
-            .propagate();
-            match usage {
-                EffectUse::PropertyWrite {
-                    event,
-                    property,
-                    static_value,
-                    ..
-                } => self.apply_property(*event, property.as_ref(), static_value.as_ref()),
-                EffectUse::CallReceiver { event, chain, .. } => {
-                    self.apply_receiver(*event, chain.as_ref());
-                }
-                EffectUse::CallArgument {
-                    event,
-                    chain,
-                    rooted,
-                    argument,
-                } => self.apply_argument(*event, chain.as_ref(), *rooted, argument.index()),
-            }
-        }
-    }
-
-    fn apply_property(
-        &mut self,
-        event: FactId,
-        property: Option<&SmolStr>,
-        static_value: Option<&String>,
-    ) {
-        let mut next = self.state.clone();
-        for (index, requirement) in self.flow.requirements.iter().enumerate() {
-            if let CompiledObjectRequirement::PropertyWrite {
-                property: expected,
-                value,
-            } = requirement
-                && property == Some(expected)
-                && value.matches_flow_value(static_value.map(String::as_str))
-            {
-                next.requirements.insert(
-                    index,
-                    QualifiedEvent {
-                        module: self.context.module,
-                        fact: event,
-                    },
-                );
-            }
-        }
-        self.emit_requirements(&next, event);
-        *self.state = next;
-    }
-
-    fn apply_receiver(&mut self, event: FactId, chain: Option<&crate::analysis::value::NamePath>) {
-        let Some(call_args) = self
-            .project
-            .module_names(self.context.module)
-            .and_then(|_| {
-                self.project
-                    .module_fact_stream(self.context.module)?
-                    .call_args_for_event(event)
-            })
-        else {
-            return;
-        };
-        let mut next = self.state.clone();
-        for (index, requirement) in self.flow.requirements.iter().enumerate() {
-            if let CompiledObjectRequirement::MemberCall { member, arguments } = requirement
-                && chain_matches(chain, member, self.names)
-                && arguments.iter().all(|matcher| {
-                    call_args
-                        .get(matcher.index)
-                        .is_some_and(|argument| matcher.matcher.matches(argument, self.names))
-                })
-            {
-                next.requirements.insert(
-                    index,
-                    QualifiedEvent {
-                        module: self.context.module,
-                        fact: event,
-                    },
-                );
-            }
-        }
-        self.emit_requirements(&next, event);
-        *self.state = next;
-    }
-
-    fn apply_argument(
-        &mut self,
-        event: FactId,
-        chain: Option<&crate::analysis::value::NamePath>,
-        rooted: bool,
-        argument: usize,
-    ) {
-        if self.flow.sink_matches(
-            chain
-                .and_then(|chain| chain.to_symbol_path(self.names))
-                .as_ref(),
-            rooted,
-            argument,
-        ) && self.flow.requirements_ready(self.state.requirements.len())
-            && self.context.crossed
-        {
-            emit(
-                self.project,
-                self.evidence,
-                self.context.module,
-                self.context.state.flow,
-                self.state,
-                event,
-                self.flow,
-            );
-        }
-    }
-
-    fn emit_requirements(&mut self, state: &CrossFlowState, event: FactId) {
-        if self.flow.emit_on_requirements
-            && self.flow.requirements_ready(state.requirements.len())
-            && self.context.crossed
-        {
-            emit(
-                self.project,
-                self.evidence,
-                self.context.module,
-                self.context.state.flow,
-                state,
-                event,
-                self.flow,
-            );
-        }
-    }
 }
 
 impl FlowSources {
@@ -669,7 +512,7 @@ impl FlowSources {
     }
 }
 
-fn effect_use_event(usage: &EffectUse) -> FactId {
+pub(super) fn effect_use_event(usage: &EffectUse) -> FactId {
     match usage {
         EffectUse::PropertyWrite { event, .. }
         | EffectUse::CallArgument { event, .. }
@@ -677,63 +520,7 @@ fn effect_use_event(usage: &EffectUse) -> FactId {
     }
 }
 
-struct CallPropagation<'a> {
-    project: &'a ProjectSemanticModel,
-    effect: &'a FunctionEffect,
-    module: ModuleId,
-    context: &'a CallContext,
-    propagated: &'a mut BTreeSet<FactId>,
-    through: Option<FactId>,
-    state: &'a CrossFlowState,
-    worklist: &'a mut ContextWorklist,
-}
-
-impl CallPropagation<'_> {
-    fn propagate(&mut self) {
-        for call in self.effect.calls() {
-            if self.through.is_some_and(|event| call.event() > event)
-                || !self.propagated.insert(call.event())
-            {
-                continue;
-            }
-            let Some((target_module, target_function)) = self.project.qualified_function_target(
-                self.module,
-                call.target(),
-                call.provenance(),
-            ) else {
-                continue;
-            };
-            for argument in call.arguments() {
-                let connected = argument.parameter().is_some_and(|parameter| {
-                    self.context
-                        .parameter
-                        .is_some_and(|index| parameter.index() == index)
-                        && parameter.is_root()
-                        && argument.is_root()
-                }) || (self.context.parameter.is_none()
-                    && self.context.source_root.is_some_and(|root| {
-                        self.effect
-                            .value_root(argument.value())
-                            .unwrap_or_else(|| argument.value())
-                            == root
-                    })
-                    && argument.is_root());
-                if connected {
-                    self.worklist.enqueue_parameters(
-                        self.project,
-                        target_module,
-                        target_function,
-                        argument.index(),
-                        self.state,
-                        self.context.crossed || target_module != self.module,
-                    );
-                }
-            }
-        }
-    }
-}
-
-fn usage_matches_context(
+pub(super) fn usage_matches_context(
     effect: &FunctionEffect,
     usage: &EffectUse,
     context: &CallContext,
@@ -770,7 +557,7 @@ fn usage_matches_context(
     }
 }
 
-fn chain_matches(
+pub(super) fn chain_matches(
     chain: Option<&crate::analysis::value::NamePath>,
     member: &crate::analysis::SymbolPath,
     names: &crate::analysis::name::NameTable,
@@ -781,7 +568,7 @@ fn chain_matches(
     chain.is_some_and(|chain| chain == &member || chain.last_segment() == member.last_segment())
 }
 
-fn emit(
+pub(super) fn emit(
     project: &ProjectSemanticModel,
     evidence: &mut BTreeMap<ModuleId, Vec<Vec<ClassificationEvidence>>>,
     module: ModuleId,
@@ -823,7 +610,7 @@ fn emit(
     let _ = state;
 }
 
-fn related_evidence(
+pub(super) fn related_evidence(
     state: &CrossFlowState,
     sink_module: ModuleId,
     sink_event: FactId,
@@ -847,7 +634,7 @@ fn related_evidence(
     related
 }
 
-fn related_event(event: &QualifiedEvent, role: EvidenceRole) -> RelatedClassificationEvidence {
+pub(super) fn related_event(event: &QualifiedEvent, role: EvidenceRole) -> RelatedClassificationEvidence {
     RelatedClassificationEvidence {
         module: event.module.get(),
         event: event.fact.0,

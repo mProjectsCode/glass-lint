@@ -64,7 +64,7 @@ impl<'a> ProjectDiscovery<'a> {
         if !path.is_file() {
             return Err(ProjectLoadError::SelectionNotFile(path.to_path_buf()));
         }
-        if !is_supported_runtime_source(path, &self.options.extensions) {
+        if !self.options.supports(path) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         }
         Ok(vec![path.to_path_buf()])
@@ -125,7 +125,7 @@ impl<'a> ProjectDiscovery<'a> {
                 ProjectLoadError::Io { path, source }
             })?;
             if entry.file_type().is_file()
-                && is_supported_runtime_source(entry.path(), &self.options.extensions)
+                && self.options.supports(entry.path())
             {
                 entries.push(entry.into_path());
                 if entries.len() > self.options.max_files {
@@ -192,7 +192,7 @@ impl<'a> ProjectDiscovery<'a> {
     ) -> Result<(), ProjectLoadError> {
         for file in files.iter().filter_map(Value::as_str) {
             let path = base.join(file);
-            if path.exists() && is_supported_runtime_source(&path, &self.options.extensions) {
+            if path.exists() && self.options.supports(&path) {
                 selected.insert(realpath(&path)?);
             }
         }
@@ -340,20 +340,6 @@ pub fn realpath(path: &Path) -> Result<PathBuf, ProjectLoadError> {
 pub fn inside_root(root: &Path, path: &Path) -> bool {
     path.strip_prefix(root).is_ok()
 }
-
-/// Test whether any project-relative component is in the exclusion set.
-pub fn excluded_path(root: &Path, path: &Path, excluded: &BTreeSet<String>) -> bool {
-    path.strip_prefix(root).is_ok_and(|relative| {
-        relative.components().any(|component| {
-            component
-                .as_os_str()
-                .to_str()
-                .is_some_and(|name| excluded.contains(name))
-        })
-    })
-}
-
-pub use crate::corpus::is_supported_runtime_source;
 
 fn parse_error(config: &Path, error: impl std::fmt::Display) -> ProjectLoadError {
     ProjectLoadError::InvalidOptions(crate::ProjectOptionError::Message(format!(
