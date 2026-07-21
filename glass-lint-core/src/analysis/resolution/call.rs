@@ -104,16 +104,16 @@ impl Resolver<'_> {
         if crate::analysis::syntax::member_property_name(&member.prop).as_deref() != Some("bind") {
             return self.fresh_object_value_at(call.span);
         }
-        let target = self.resolve_expr(&member.obj).id;
+        let target = self.resolve_expr_id(&member.obj);
         let receiver = call
             .args
             .first()
-            .map(|argument| self.resolve_expr(&argument.expr).id);
+            .map(|argument| self.resolve_expr_id(&argument.expr));
         let bound_arguments = call
             .args
             .iter()
             .skip(1)
-            .map(|argument| self.resolve_expr(&argument.expr).id)
+            .map(|argument| self.resolve_expr_id(&argument.expr))
             .collect();
         self.static_value(Value::Callable(crate::analysis::value::CallableValue::new(
             target,
@@ -170,32 +170,44 @@ impl Resolver<'_> {
                 SymbolCallProvenance::Unknown(UnknownReason::Unsupported)
             };
         }
-        let Some(value) = self.state.borrow().values.get(id).cloned() else {
-            return SymbolCallProvenance::Unknown(UnknownReason::Missing);
-        };
-        match value {
-            Value::Binding { target, .. } => self.call_provenance_for_value(target),
-            Value::Global(name) => SymbolCallProvenance::Global { name },
-            Value::ModuleExport { module, export } => {
-                SymbolCallProvenance::ModuleExport { module, export }
-            }
-            Value::Callable(callable) => self.call_provenance_for_value(callable.target()),
-            Value::RootedMember { path }
-                if path.is_root()
-                    && path
-                        .first_segment()
-                        .and_then(|root| self.scopes.resolve_name_id(root))
-                        .is_some_and(|root| self.scopes.is_global(root.as_str())) =>
-            {
-                SymbolCallProvenance::Global {
-                    name: self
-                        .scopes
-                        .resolve_name_id(path.first_segment().expect("root checked"))
-                        .expect("rooted name must remain interned"),
+        let mut current = id;
+        loop {
+            let state = self.state.borrow();
+            let Some(value) = state.values.get(current) else {
+                return SymbolCallProvenance::Unknown(UnknownReason::Missing);
+            };
+            match value {
+                // Follow indirections while the arena entry remains borrowed;
+                // large arrays/objects are never cloned merely to inspect
+                // their outer variant.
+                Value::Binding { target, .. } => current = *target,
+                Value::Callable(callable) => current = callable.target(),
+                Value::Global(name) => {
+                    return SymbolCallProvenance::Global { name: name.clone() };
                 }
+                Value::ModuleExport { module, export } => {
+                    return SymbolCallProvenance::ModuleExport {
+                        module: module.clone(),
+                        export: export.clone(),
+                    };
+                }
+                Value::RootedMember { path } if path.is_root() => {
+                    let Some(root) = path.first_segment() else {
+                        return SymbolCallProvenance::Unknown(UnknownReason::Unresolved);
+                    };
+                    let Some(name) = self.scopes.resolve_name_id(root) else {
+                        return SymbolCallProvenance::Unknown(UnknownReason::Missing);
+                    };
+                    if self.scopes.is_global(name.as_str()) {
+                        return SymbolCallProvenance::Global { name };
+                    }
+                    return SymbolCallProvenance::Unknown(UnknownReason::Unresolved);
+                }
+                Value::Unknown => {
+                    return SymbolCallProvenance::Unknown(UnknownReason::Unsupported);
+                }
+                _ => return SymbolCallProvenance::Unknown(UnknownReason::Unresolved),
             }
-            Value::Unknown => SymbolCallProvenance::Unknown(UnknownReason::Unsupported),
-            _ => SymbolCallProvenance::Unknown(UnknownReason::Unresolved),
         }
     }
 }

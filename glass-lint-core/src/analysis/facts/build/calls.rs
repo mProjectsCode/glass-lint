@@ -166,18 +166,18 @@ impl FactBuilder<'_> {
     pub(super) fn value_for_expr(&mut self, expr: &Expr) -> ValueId {
         if let Expr::Call(call) = expr {
             if matches!(call.callee, swc_ecma_ast::Callee::Import(_)) {
-                return self.resolver.resolve_expr(expr).id;
+                return self.resolver.resolve_expr_id(expr);
             }
             return self.call_result(call.span());
         }
-        self.resolver.resolve_expr(expr).id
+        self.resolver.resolve_expr_id(expr)
     }
 
     /// Collect value identities bound by a destructuring pattern in source
     /// order; unsupported targets are deliberately omitted or unknown.
     pub(super) fn pattern_values(&self, pattern: &Pat, values: &mut Vec<ValueId>) {
         match pattern {
-            Pat::Ident(ident) => values.push(self.resolver.resolve_ident(&ident.id).id),
+            Pat::Ident(ident) => values.push(self.resolver.resolve_ident_id(&ident.id)),
             Pat::Assign(assign) => self.pattern_values(&assign.left, values),
             Pat::Rest(rest) => self.pattern_values(&rest.arg, values),
             Pat::Array(array) => {
@@ -192,7 +192,7 @@ impl FactBuilder<'_> {
                             self.pattern_values(&property.value, values);
                         }
                         swc_ecma_ast::ObjectPatProp::Assign(property) => {
-                            values.push(self.resolver.resolve_ident(&property.key.id).id);
+                            values.push(self.resolver.resolve_ident_id(&property.key.id));
                         }
                         swc_ecma_ast::ObjectPatProp::Rest(property) => {
                             self.pattern_values(&property.arg, values);
@@ -211,7 +211,7 @@ impl FactBuilder<'_> {
         targets: &mut Vec<(ValueId, Option<ValueId>)>,
     ) {
         match pattern {
-            Pat::Ident(ident) => targets.push((self.resolver.resolve_ident(&ident.id).id, None)),
+            Pat::Ident(ident) => targets.push((self.resolver.resolve_ident_id(&ident.id), None)),
             Pat::Assign(assign) => self.pattern_write_targets(&assign.left, targets),
             Pat::Rest(rest) => self.pattern_write_targets(&rest.arg, targets),
             Pat::Array(array) => {
@@ -226,7 +226,7 @@ impl FactBuilder<'_> {
                             self.pattern_write_targets(&property.value, targets);
                         }
                         swc_ecma_ast::ObjectPatProp::Assign(property) => {
-                            targets.push((self.resolver.resolve_ident(&property.key.id).id, None));
+                            targets.push((self.resolver.resolve_ident_id(&property.key.id), None));
                         }
                         swc_ecma_ast::ObjectPatProp::Rest(property) => {
                             self.pattern_write_targets(&property.arg, targets);
@@ -237,11 +237,11 @@ impl FactBuilder<'_> {
             Pat::Expr(expr) => {
                 if let Expr::Member(member) = &**expr {
                     targets.push((
-                        self.resolver.resolve_member(member).id,
-                        Some(self.resolver.resolve_expr(&member.obj).id),
+                        self.resolver.resolve_member_id(member),
+                        Some(self.resolver.resolve_expr_id(&member.obj)),
                     ));
                 } else {
-                    targets.push((self.resolver.resolve_expr(expr).id, None));
+                    targets.push((self.resolver.resolve_expr_id(expr), None));
                 }
             }
             Pat::Invalid(_) => {}
@@ -263,7 +263,7 @@ impl FactBuilder<'_> {
             Pat::Ident(ident) => output.push(ParameterBinding {
                 parameter_index,
                 path,
-                value: self.resolver.resolve_ident(&ident.id).id,
+                value: self.resolver.resolve_ident_id(&ident.id),
                 default,
                 rest,
             }),
@@ -272,7 +272,7 @@ impl FactBuilder<'_> {
                     &assign.left,
                     parameter_index,
                     path,
-                    Some(self.resolver.resolve_expr(&assign.right).id),
+                    Some(self.resolver.resolve_expr_id(&assign.right)),
                     rest,
                     output,
                 );
@@ -341,11 +341,11 @@ impl FactBuilder<'_> {
                 output.push(ParameterBinding {
                     parameter_index,
                     path,
-                    value: self.resolver.resolve_ident(&property.key.id).id,
+                    value: self.resolver.resolve_ident_id(&property.key.id),
                     default: property
                         .value
                         .as_deref()
-                        .map(|value| self.resolver.resolve_expr(value).id),
+                        .map(|value| self.resolver.resolve_expr_id(value)),
                     rest,
                 });
             }
@@ -523,7 +523,7 @@ impl FactBuilder<'_> {
             .instance_member_available(member)
             .then(|| self.instance_class_for_receiver(&member.obj))
             .flatten();
-        let receiver = Some(self.resolver.resolve_expr(&member.obj).id);
+        let receiver = Some(self.resolver.resolve_expr_id(&member.obj));
         let callee_span = self.byte_range(member.span)?;
         let target_function = self.resolver.function_id_for_expr(&member.obj);
         let mut callee = ResolvedCallee::from_resolved(resolved, callee_span, target_function);
@@ -555,7 +555,7 @@ impl FactBuilder<'_> {
     pub(super) fn instance_callable_for_expr(&self, expr: &Expr) -> Option<InstanceCallable> {
         match expr {
             Expr::Ident(ident) => {
-                self.extracted_instance_callable(self.resolver.resolve_ident(ident).id)
+                self.extracted_instance_callable(self.resolver.resolve_ident_id(ident))
             }
             Expr::Member(member) => {
                 if !self.resolver.instance_member_available(member) {

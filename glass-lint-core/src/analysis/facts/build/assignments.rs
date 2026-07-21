@@ -54,7 +54,7 @@ impl FactBuilder<'_> {
         source: ValueId,
     ) {
         assignment.right.visit_with(self);
-        let target = self.resolver.resolve_ident(&ident.id).id;
+        let target = self.resolver.resolve_ident_id(&ident.id);
         self.instance_callables.remove(&target);
         if let Some(callable) = self.instance_callable_for_expr(&assignment.right) {
             self.instance_callables.insert(target, callable);
@@ -98,7 +98,7 @@ impl FactBuilder<'_> {
         );
         assignment.right.visit_with(self);
         let target = resolved_member.id;
-        let receiver = self.resolver.resolve_expr(&member.obj).id;
+        let receiver = self.resolver.resolve_expr_id(&member.obj);
         if assignment.op == AssignOp::Assign {
             let property = self.intern_name(member_property_name(&member.prop).as_deref());
             self.emit(

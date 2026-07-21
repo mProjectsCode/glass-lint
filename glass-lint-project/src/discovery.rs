@@ -221,16 +221,8 @@ impl<'a> ProjectDiscovery<'a> {
     }
 
     pub fn read_source(&self, root: &Path, path: &Path) -> Result<SourceFile, ProjectLoadError> {
-        let canonical_root = realpath(root)?;
-        let canonical_path = realpath(path)?;
-        if !inside_root(&canonical_root, &canonical_path) {
-            return Err(ProjectLoadError::SelectionOutsideRoot {
-                selection: path.to_path_buf(),
-                root: canonical_root,
-            });
-        }
         crate::corpus::SourceCorpus::new_unchecked(self.options)
-            .load_source_file_at(&canonical_root, &canonical_path)
+            .load_source_file(root, path)
     }
 
 }

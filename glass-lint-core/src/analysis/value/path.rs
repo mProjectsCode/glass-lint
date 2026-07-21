@@ -56,6 +56,8 @@ struct PathNode {
     parent: PathId,
     /// Number of segments from the root.
     depth: u32,
+    /// Segment leading from `parent` to this node.
+    segment: Option<PathSegment>,
 }
 
 #[derive(Debug, Default)]
@@ -63,9 +65,9 @@ struct PathNode {
 pub(in crate::analysis) struct PathInterner {
     /// Parent-linked path nodes, with node zero as the empty path.
     nodes: Vec<PathNode>,
-    /// Canonical outgoing edges for each parent. Keeping the segment in the
-    /// edge entry lets lookups compare borrowed segments without cloning.
-    by_parent: HashMap<PathId, Vec<(PathSegment, PathId)>>,
+    /// Addressable canonical edge lookup. The node retains its segment for
+    /// ID-to-segment queries, while this index avoids scanning sibling edges.
+    by_edge: HashMap<(PathId, PathSegment), PathId>,
 }
 
 impl PathInterner {
@@ -75,8 +77,9 @@ impl PathInterner {
             nodes: vec![PathNode {
                 parent: PathId::EMPTY,
                 depth: 0,
+                segment: None,
             }],
-            by_parent: HashMap::new(),
+            by_edge: HashMap::new(),
         }
     }
 
@@ -90,24 +93,20 @@ impl PathInterner {
         if parent_index >= self.nodes.len() {
             return None;
         }
-        if let Some(path) = self
-            .by_parent
-            .get(&parent)
-            .and_then(|edges| edges.iter().find(|(existing, _)| existing == &segment))
-            .map(|(_, path)| *path)
-        {
-            return Some(path);
+        if let Some(path) = self.by_edge.get(&(parent, segment.clone())) {
+            return Some(*path);
         }
         if self.nodes.len() >= MAX_PATH_NODES {
             return None;
         }
         let id = PathId(u32::try_from(self.nodes.len()).ok()?);
         let depth = self.nodes[parent_index].depth.checked_add(1)?;
-        self.nodes.push(PathNode { parent, depth });
-        self.by_parent
-            .entry(parent)
-            .or_default()
-            .push((segment, id));
+        self.nodes.push(PathNode {
+            parent,
+            depth,
+            segment: Some(segment.clone()),
+        });
+        self.by_edge.insert((parent, segment), id);
         Some(id)
     }
 
@@ -151,11 +150,7 @@ impl PathInterner {
         if path.is_empty() {
             return None;
         }
-        self.by_parent
-            .get(&node.parent)?
-            .iter()
-            .find(|(_, child)| *child == path)
-            .map(|(segment, _)| segment)
+        node.segment.as_ref()
     }
 
     /// Walk the parent chain from `path` to the root and collect segments in
@@ -210,11 +205,9 @@ impl PathInterner {
     }
 
     fn find_edge(&self, parent: PathId, segment: &PathSegment) -> Option<PathId> {
-        self.by_parent
-            .get(&parent)?
-            .iter()
-            .find(|(existing, _)| existing == segment)
-            .map(|(_, path)| *path)
+        self.by_edge
+            .get(&(parent, segment.clone()))
+            .copied()
     }
 
     /// Rebuild the canonical suffix while unwinding the parent chain. This

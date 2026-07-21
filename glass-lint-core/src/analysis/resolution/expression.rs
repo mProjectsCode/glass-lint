@@ -16,7 +16,6 @@ use crate::analysis::{
 impl Resolver<'_> {
     /// Narrow query: return only the interned value ID for an identifier,
     /// avoiding a clone of the full `ResolvedValue` on cache hits.
-    #[allow(dead_code)]
     pub(in crate::analysis) fn resolve_ident_id(&self, ident: &Ident) -> ValueId {
         let key = ResolutionKey::Ident {
             range: ident.span.into(),
@@ -26,6 +25,28 @@ impl Resolver<'_> {
             return cached.id;
         }
         self.resolve_ident(ident).id
+    }
+
+    /// Narrow query for a member expression when callers need only its arena
+    /// identity. Cache hits remain borrowed through the cache's `Arc` rather
+    /// than cloning the complete provenance record.
+    pub(in crate::analysis) fn resolve_member_id(&self, member: &MemberExpr) -> ValueId {
+        let key = ResolutionKey::Member {
+            range: member.span.into(),
+        };
+        if let Some(cached) = self.state.borrow().resolved_values.get(&key) {
+            return cached.id;
+        }
+        self.resolve_member(member).id
+    }
+
+    /// Narrow expression query used by identity-only fact construction.
+    pub(in crate::analysis) fn resolve_expr_id(&self, expr: &Expr) -> ValueId {
+        match expr {
+            Expr::Ident(ident) => self.resolve_ident_id(ident),
+            Expr::Member(member) => self.resolve_member_id(member),
+            _ => self.resolve_expr(expr).id,
+        }
     }
 
     /// Returns a CommonJS module only when the callee is proven to be the
@@ -214,7 +235,7 @@ impl Resolver<'_> {
                     .iter()
                     .map(|element| {
                         element.as_ref().map_or(ValueId::UNKNOWN, |element| {
-                            self.resolve_expr(&element.expr).id
+                            self.resolve_expr_id(&element.expr)
                         })
                     })
                     .collect();

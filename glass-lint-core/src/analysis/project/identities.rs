@@ -74,7 +74,7 @@ impl ProjectSemanticModel {
 
     /// Build imported and namespace-member identities for one module.
     pub(super) fn module_identities(&self, module: ModuleId) -> ModuleIdentityMap {
-        let mut identities = BTreeMap::new();
+        let mut identities = ModuleIdentityMap::new();
         let Some(project_module) = self.modules.get(&module) else {
             return identities;
         };

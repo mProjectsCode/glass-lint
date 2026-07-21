@@ -46,12 +46,10 @@ pub(in crate::analysis) enum SymbolCallProvenance {
 }
 
 impl SymbolCallProvenance {
-    /// Return a cloned `(module, export)` tuple when this provenance is a
-    /// `ModuleExport`, allowing callers to construct lookup keys without
-    /// matching on the variant themselves.
-    pub(in crate::analysis) fn module_export_tuple(&self) -> Option<(SmolStr, SmolStr)> {
+    /// Return borrowed module/export parts for an overlay lookup.
+    pub(in crate::analysis) fn module_export_parts(&self) -> Option<(&str, &str)> {
         match self {
-            Self::ModuleExport { module, export } => Some((module.clone(), export.clone())),
+            Self::ModuleExport { module, export } => Some((module, export)),
             _ => None,
         }
     }

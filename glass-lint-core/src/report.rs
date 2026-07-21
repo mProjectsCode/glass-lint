@@ -5,6 +5,7 @@
 //! width without changing the serialized report.
 
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     fmt::{self, Display},
 };
@@ -40,6 +41,7 @@ pub struct PrettyReport<'a> {
     source: &'a str,
     options: PrettyOptions,
     line_starts: &'a [usize],
+    line_cache: Option<&'a RefCell<BTreeMap<usize, Vec<Cell>>>>,
 }
 
 #[derive(Clone)]
@@ -49,6 +51,7 @@ pub struct PrettyFile<'a> {
     filename: &'a str,
     source: &'a str,
     line_starts: Vec<usize>,
+    line_cache: RefCell<BTreeMap<usize, Vec<Cell>>>,
 }
 
 impl<'a> PrettyFile<'a> {
@@ -61,6 +64,7 @@ impl<'a> PrettyFile<'a> {
             filename,
             source,
             line_starts,
+            line_cache: RefCell::new(BTreeMap::new()),
         }
     }
 }
@@ -173,12 +177,13 @@ impl<'a> PrettyReports<'a> {
                     PrettyReport::style(self.options.color, Style::new().dim(), message)
                 )?;
                 if evidence.is_none() || self.options.show_evidence_source {
-                    PrettyReport::new(
+                    PrettyReport::new_with_cache(
                         file.report,
                         file.filename,
                         file.source,
                         self.options,
                         &file.line_starts,
+                        &file.line_cache,
                     )
                     .excerpt(range, 4, f)?;
                 }
@@ -310,6 +315,25 @@ impl<'a> PrettyReport<'a> {
             source,
             options,
             line_starts,
+            line_cache: None,
+        }
+    }
+
+    fn new_with_cache(
+        report: &'a FileReport,
+        filename: &'a str,
+        source: &'a str,
+        options: PrettyOptions,
+        line_starts: &'a [usize],
+        line_cache: &'a RefCell<BTreeMap<usize, Vec<Cell>>>,
+    ) -> Self {
+        Self {
+            report,
+            filename,
+            source,
+            options,
+            line_starts,
+            line_cache: Some(line_cache),
         }
     }
 
@@ -332,7 +356,32 @@ impl<'a> PrettyReport<'a> {
         // The excerpt gutter is part of the configured display budget.
         let width = self.options.max_width.saturating_sub(indent).max(1);
         let gutter = " ".repeat(indent);
-        let cells: Vec<Cell> = line
+        if let Some(cache) = self.line_cache
+            && !cache.borrow().contains_key(&line_idx)
+        {
+            let cells = line
+                .chars()
+                .scan(0usize, |column, ch| {
+                    let width = display_width(ch, *column);
+                    let cell = Cell {
+                        ch,
+                        start: *column,
+                        width,
+                    };
+                    *column += width;
+                    Some(cell)
+                })
+                .collect();
+            cache.borrow_mut().insert(line_idx, cells);
+        }
+        if let Some(cache) = self.line_cache {
+            let cached = cache.borrow();
+            let Some(cells) = cached.get(&line_idx) else {
+                return Ok(());
+            };
+            return self.write_excerpt(cells, range, width, &gutter, out);
+        }
+        let cells = line
             .chars()
             .scan(0usize, |column, ch| {
                 let width = display_width(ch, *column);
@@ -344,13 +393,23 @@ impl<'a> PrettyReport<'a> {
                 *column += width;
                 Some(cell)
             })
-            .collect();
+            .collect::<Vec<_>>();
+        self.write_excerpt(&cells, range, width, &gutter, out)
+    }
 
+    fn write_excerpt(
+        &self,
+        cells: &[Cell],
+        range: &SourceRange,
+        width: usize,
+        gutter: &str,
+        out: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
         let total_width = cells.last().map_or(0, |cell| cell.start + cell.width);
         let start = range.start().column().saturating_sub(1) as usize;
         let end = (range.end().column().saturating_sub(1) as usize).max(start + 1);
         let (window_start, window_end, leading, trailing) =
-            Self::select_window(&cells, total_width, start, width);
+            Self::select_window(cells, total_width, start, width);
 
         let mut text = String::new();
         if leading {

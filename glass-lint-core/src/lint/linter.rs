@@ -358,7 +358,7 @@ impl Linter {
                 })
                 .collect();
             if !related.is_empty() {
-                related_by_rule.insert(rule_id, related);
+                related_by_rule.entry(rule_id).or_default().extend(related);
             }
         }
 
@@ -370,8 +370,8 @@ impl Linter {
         .into_iter()
         .map(|finding| {
             let mut project_finding = finding;
-            if let Some(related) = related_by_rule.remove(&project_finding.rule_id) {
-                project_finding.append_related(related);
+            if let Some(related) = related_by_rule.get(&project_finding.rule_id) {
+                project_finding.append_related(related.iter().cloned());
             }
             project_finding
         })

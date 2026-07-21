@@ -134,7 +134,7 @@ pub(super) struct Resolver<'a> {
 
 impl Lookup for Resolver<'_> {
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
-        self.const_value(self.resolve_ident(ident).id)
+        self.const_value(self.resolve_ident_id(ident))
     }
 
     fn spread(&self, expr: &Expr, state: &mut EvalState) -> ConstValue {
@@ -169,6 +169,12 @@ impl Lookup for Resolver<'_> {
 }
 
 impl<'a> Resolver<'a> {
+    /// Freeze the interning arena after lowering so artifact consumers retain
+    /// the authoritative value shapes alongside the fact stream.
+    pub(in crate::analysis) fn into_values(self) -> ValueTable {
+        self.state.into_inner().values
+    }
+
     /// Convert a canonical member chain into the arena's structured value.
     /// Keeping this conversion beside `Resolver` ensures callers do not need
     /// to know how rooted values are represented internally.

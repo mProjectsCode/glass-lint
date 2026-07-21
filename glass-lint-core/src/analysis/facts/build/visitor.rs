@@ -115,7 +115,7 @@ impl Visit for FactBuilder<'_> {
 
     fn visit_update_expr(&mut self, update: &UpdateExpr) {
         update.arg.visit_with(self);
-        let target = self.resolver.resolve_expr(&update.arg).id;
+        let target = self.resolver.resolve_expr_id(&update.arg);
         self.emit(
             FactKind::Assignment,
             update.span(),
@@ -123,7 +123,7 @@ impl Visit for FactBuilder<'_> {
                 target,
                 source: ValueId::UNKNOWN,
                 receiver: match &*update.arg {
-                    Expr::Member(member) => Some(self.resolver.resolve_expr(&member.obj).id),
+                    Expr::Member(member) => Some(self.resolver.resolve_expr_id(&member.obj)),
                     _ => None,
                 },
             },
@@ -133,7 +133,7 @@ impl Visit for FactBuilder<'_> {
     fn visit_unary_expr(&mut self, unary: &UnaryExpr) {
         unary.arg.visit_with(self);
         if unary.op == UnaryOp::Delete {
-            let target = self.resolver.resolve_expr(&unary.arg).id;
+            let target = self.resolver.resolve_expr_id(&unary.arg);
             self.emit(
                 FactKind::Assignment,
                 unary.span(),
@@ -141,7 +141,7 @@ impl Visit for FactBuilder<'_> {
                     target,
                     source: ValueId::UNKNOWN,
                     receiver: match &*unary.arg {
-                        Expr::Member(member) => Some(self.resolver.resolve_expr(&member.obj).id),
+                        Expr::Member(member) => Some(self.resolver.resolve_expr_id(&member.obj)),
                         _ => None,
                     },
                 },
@@ -421,7 +421,7 @@ impl Visit for FactBuilder<'_> {
             .arg
             .as_deref()
             .map_or(crate::analysis::value::ValueId::UNKNOWN, |expr| {
-                self.resolver.resolve_expr(expr).id
+                self.resolver.resolve_expr_id(expr)
             });
         self.emit(
             FactKind::Control,

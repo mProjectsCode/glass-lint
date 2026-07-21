@@ -42,7 +42,7 @@ Cached `Arc<ResolvedValue>` hits still deep-clone the inner record, insertion cl
 
 **Implementation guardrails:** Do not solve this by placing every `Value` or every cache result in a new `Arc`; that adds allocation and atomic-reference overhead while leaving the broad APIs and repeated projections intact. Establish an explicit mutable interning phase and immutable inspection API, with handles/views for callers that need only an ID, provenance, or path. Completion requires removing deep clones from cache hits and recursive arena traversal, with cycle, reassignment, ambiguity, and exhaustion tests proving the narrower APIs still fail closed.
 
-**Status:** Not fixed. `resolved_values` stores an `Arc<ResolvedValue>`, but cache hits call `value.as_ref().clone()`, which deep-clones the inner record; the `Arc` does not escape the resolver API. Recursive paths still call `ValueTable::get(...).cloned()` before inspecting values, including constant/provenance queries. The added `resolve_ident_id` narrow helper is dead code and does not change the broad recursive APIs. A real fix still needs stable handles or borrowed inspection after the mutable interning phase, with cycle/reassignment/ambiguity/exhaustion parity tests.
+**Status:** Partial. Identity-only fact-building paths now use `resolve_ident_id`, `resolve_member_id`, and `resolve_expr_id`, so cache hits do not clone the broad `ResolvedValue` for those consumers. `call_provenance_for_value` now follows binding/callable links through borrowed arena entries and clones only strings needed in returned provenance. Rich resolver APIs still deep-clone cached records, and constant materialization still clones composite shapes; stable resolution handles or a full immutable query phase remain outstanding.
 
 ### READ-005 — The canonical value arena is discarded while facts retain duplicate projections
 
@@ -54,7 +54,7 @@ Cached `Arc<ResolvedValue>` hits still deep-clone the inner record, insertion cl
 
 **Implementation guardrails:** The retained table should be immutable and artifact-local; later phases must not regain an interning back door or create self-referential facts borrowing the table. Pass the stream and frozen values together to consumers, resolve IDs through narrow borrowed accessors, and migrate matching, effects, and project projection in the same change. Delete duplicated string/key/projection fields once all consumers move—keeping them as a cache or compatibility path would leave two semantic authorities that can drift.
 
-**Status:** Not fixed. The stream, names, and paths are retained in `SemanticFacts`, but `ValueTable` is still owned by `Resolver` and is dropped before `SemanticFacts::from_lowering` is called. `ValueId` and `ValueProjection` therefore remain handles without a retained value-shape authority, while facts still carry copied strings/provenance and downstream code reconstructs projections. The lowering-budget refactor does not address this ownership boundary.
+**Status:** Partial. Lowering now moves the immutable `ValueTable` into `SemanticFacts` alongside the retained stream, so `ValueId` has an artifact-local shape authority after `Resolver` is dropped. Matching and flow consumers still use copied fact payloads and do not yet borrow composite shapes through that table; duplicate projection/string fields remain and the full migration is outstanding.
 
 ### READ-006 — Argument construction still evaluates one expression through several pipelines
 
@@ -126,7 +126,7 @@ Summary construction copies effect parameters, direct-sink collection clones eve
 
 **Implementation guardrails:** Keep the artifact's frozen path IDs immutable and introduce a separate bounded summary path domain rather than mutating canonical facts during projection. One storage structure should answer both ID-to-node and `(parent, segment)`-to-ID lookups; duplicating segment ownership across unrelated maps recreates synchronization risk. Preserve explicit path exhaustion and distinguish property names from numeric indices in joins, prefixes, and suffix removal tests.
 
-**Status:** Not fixed. `PathInterner` still stores sibling edges in `by_parent` vectors and scans them for `(parent, segment)` lookup; `SummaryPath::join` and `without_first` still materialize owned segment vectors. The immutable artifact interner also has no summary-local/composite domain for newly projected paths, so fixed-point code continues to carry owned path representations.
+**Status:** Partial. `PathInterner` now uses an addressable `(parent, segment)` edge map and stores each node's segment directly, removing sibling scans for lookup and ID-to-segment recovery. `SummaryPath::join`/`without_first` still materialize owned segment vectors, and there is no bounded summary-local/composite path domain yet.
 
 ### READ-013 — Occurrence queries allocate an intermediate vector for every clause
 
@@ -138,7 +138,7 @@ Although exact occurrence buckets are borrowable slices and `Occurrence` is `Cop
 
 **Implementation guardrails:** Use a small enum or concrete iterator composition for exact, overlay, merged, and filtered candidates so the optimization does not replace vector allocation with one heap-allocated boxed iterator per clause. Candidate selection and full clause evaluation must remain separate, with both constrained and unconstrained paths sharing the same semantic evaluator. Completion means exact indexed queries perform no intermediate allocation and package/overlay queries allocate only when the final evidence owner requires storage.
 
-**Status:** Introduced `CandidateOccurrences` enum (`occurrence.rs`) with three variants: `Indexed(&[Occurrence])` for exact index slices, `Merged(MergeOccurrenceIter)` for combined base+overlay slices, and `Scanned(Vec<Occurrence>)` for package/pattern queries. The corresponding `CandidateOccurrenceIter` implements `Iterator` without a heap-allocated box. `occurrences_for_clause` and all helpers return `Option<CandidateOccurrences>` where `None` means "index cannot represent this query" (triggering fallback scan). Exact indexed lookups (the common case in `occurrences_for_event`) now borrow directly without calling `to_vec`; overlay-based global lookups use the already allocation-free `MergeOccurrenceIter`. `evidence_for_with_overlay` and `compute_constrained_evidence_from_stream_with_overlay` consume the enum directly, allocating only at the final `push_owned_evidence` boundary.
+**Status:** Fixed. `CandidateOccurrences` provides indexed, merged, and scanned representations without a boxed iterator. Exact lookups borrow index slices directly, overlay lookups use the allocation-free merge iterator, and fallback scans remain explicit through `None`. Evidence collection allocates only at the final owned-evidence boundary. The focused matching tests and full workspace gate pass.
 
 ### READ-014 — Overlay lookup duplicates conversion logic and constructs owned lookup keys
 
@@ -148,7 +148,7 @@ Although exact occurrence buckets are borrowable slices and `Occurrence` is `Cop
 
 Result-value and module-export overlays repeat the same `LinkedModuleIdentity`-to-provenance conversion, while each argument/call lookup constructs a `ModuleExportKey` by cloning module and export strings. Put conversion on `LinkedModuleIdentity` and expose a borrowed tuple-key lookup or interned identity handle so predicates can query overlays without temporary owned keys.
 
-**Status:** Partial. The conversion and lookup chain now has one helper, but `lookup_identity` still constructs an owned `ModuleExportKey` from cloned module/export strings for each query. No borrowed tuple-key lookup or interned identity handle was introduced, so the allocation and high-fanout ownership issue remains under a centralized wrapper.
+**Status:** Fixed. `ModuleIdentityMap` now owns a two-level module/export table and exposes borrowed `get_parts` lookup. Argument overlay matching obtains borrowed provenance parts directly, while occurrence indexes retain their separate event-owned keys. The targeted overlay and constrained-matching tests pass.
 
 ### READ-015 — Evidence normalization rebuilds its grouped state and clones string keys per occurrence
 
@@ -158,7 +158,7 @@ Result-value and module-export overlays repeat the same `LinkedModuleIdentity`-t
 
 After building one `BTreeMap<EvidenceKey, EvidenceAccum>`, normalization clones every string-bearing key into a flat vector, sorts/deduplicates it again, rebuilds a second grouped map, and looks back into the first map for counts and related evidence; the final sort clones symbols again. Normalize and bound each accumulator in place, retain borrowed/indexed keys for any global ordering, and track truncation per group plus overall group-limit truncation explicitly.
 
-**Status:** Partial. The flat occurrence/key buffer, second grouped map, and redundant dedup pass are gone, so the largest per-occurrence duplication was removed. Normalization still owns a `BTreeMap<EvidenceKey, EvidenceAccum>`, rebuilds final DTOs, and clones each symbol in the final sort key; truncation is also tracked globally rather than as separate group/global causes. The finding is reduced, not fully addressed by in-place normalization.
+**Status:** Fixed. Normalization keeps one bounded accumulator map, transfers owned keys into the final DTOs without cloning them, sorts with borrowed symbol keys, and records per-group occurrence truncation separately from global group-limit truncation. Evidence normalization tests and the full workspace gate pass.
 
 ### READ-017 — Finding assembly rescans evidence and capabilities and clones report records
 
@@ -170,7 +170,7 @@ For each surviving range, `findings_for_capability` scans the entire range map a
 
 **Implementation guardrails:** Keep semantic classification borrowed and matcher-independent until the final report boundary; do not introduce another intermediate owned finding model mirroring the public DTO. Associate related evidence by `RuleIndex` while processing its capability, and make range containment/grouping a single domain operation with deterministic ordering. Snapshot and adversarial nested-range tests should prove that the one-pass assembly preserves deduplication, counts, truncation, and related-event locations.
 
-**Status:** Partial and behaviorally risky. The new map removes the repeated capability scan, but it is another owned evidence model (`BTreeMap<RuleId, Vec<Evidence>>`) and still clones report records before the final DTO boundary. More importantly, `remove(&project_finding.rule_id)` gives related evidence to only the first finding for a rule, whereas the old code recomputed it for every matching finding. Assembly still needs a capability/range operation that preserves repeated findings and owns only final report data.
+**Status:** Partial. The map removes the repeated capability scan and now accumulates all related evidence for a rule, preserving it for every finding of that rule instead of consuming it on the first finding. It remains an owned intermediate evidence model and clones report records before the final DTO boundary; a capability/range operation that owns only final report data is still outstanding.
 
 ### READ-018 — Pretty rendering rebuilds a full line layout and per-character strings for each finding
 
@@ -180,7 +180,7 @@ For each surviving range, `findings_for_capability` scans the entire range map a
 
 Every excerpt allocates `Vec<Cell>` for the complete source line, then `Cell::display` and `display_width` allocate `String`s for ordinary characters; repeated findings on one minified line therefore repeat work proportional to the full line length. Cache per-line display layout for a report or stream only the selected window, append ordinary chars directly, and measure a `char` without allocating a temporary string.
 
-**Status:** Partial. Direct writing and stack-allocated UTF-8 width measurement remove the per-character temporary strings. Each excerpt still builds a `Vec<Cell>` for the complete source line and repeats that work for every finding; no per-line layout cache or selected-window rendering was added. The high-cost full-line allocation remains.
+**Status:** Fixed. Direct writing and stack-allocated UTF-8 width measurement remove per-character temporary strings, and `PrettyFile` now caches each computed line layout for reuse by repeated evidence on the same line. Standalone `PrettyReport` rendering remains allocation-local by design; grouped report rendering uses the shared cache. Pretty-report tests and the full workspace gate pass.
 
 ### READ-019 — Matcher-family knowledge remains duplicated despite the family macro
 
@@ -192,7 +192,7 @@ The macro generates only family views; the same twelve families still appear in 
 
 **Implementation guardrails:** The chosen authority must make omission from validation, normalization, or lowering a compile-time error when a family is added. Do not add a new registry beside the existing fields/enums; generate or eliminate the old exhaustive lists and update every provider caller in the same breaking change. Add a contract test that enumerates every declared family through construction, validation, normalization, flattening, and compilation.
 
-**Status:** Partial. The macros now generate iteration, emptiness, and push dispatch, but the family list is still repeated in `MatcherSet`, `Matcher`, conversions, normalization/validation, and compiler lowering. Adding a family can still compile while being omitted from one of those paths. The change reduces three lists but does not make validation, normalization, and lowering exhaustive from one declaration.
+**Status:** Partial. The canonical family declaration now generates `Matcher`, family views, flattening, push dispatch, and emptiness checks. The family list is still repeated in conversions, normalization/validation, and compiler lowering, so adding a family can still compile while being omitted from one of those paths. Exhaustive validation, normalization, and lowering from one declaration remain outstanding.
 
 ### READ-020 — Public matcher declarations still expose invalid mutable states
 
@@ -216,7 +216,7 @@ Admission builds canonical source/resolution maps, converts them back to vectors
 
 **Implementation guardrails:** `ValidatedProjectInput` must be a true state transition, not a wrapper around the same raw vectors; its fields should make duplicates, unknown importers, and unnormalized targets unrepresentable. Bulk `lint_project` and incremental `AnalysisSession` paths must converge on the same owned tables and consume them without revalidation or remapping. Preserve deterministic ID assignment and public DTO serialization, then remove map-to-vector adapters and duplicate module-ID helpers rather than retaining them for convenience.
 
-**Status:** Partial and split between entry paths. `ProjectInput::admit` and `ValidatedLinkInput::build` now use canonical maps and precomputed IDs, but the incremental session still drains its tables into new maps at finish and recomputes module IDs there. The test-only `ProjectInput::module_ids` algorithm remains, and bulk/session paths do not consume one shared validated state transition. The public DTO conversion is defensible at the API boundary; the remaining issue is the duplicate internal admission/remapping path.
+**Status:** Fixed. `ValidatedProjectInput::from_maps` is the single internal transition that assigns deterministic module IDs. Bulk admission and incremental sessions both pass canonical `BTreeMap` tables into it; session table-draining and the duplicate test-only ID algorithm were removed. Public `ProjectInput::validate` still performs its intentional DTO conversion at the API boundary.
 
 ### READ-024 — Filesystem walking and boundary policy are implemented twice
 
@@ -228,7 +228,7 @@ Admission builds canonical source/resolution maps, converts them back to vectors
 
 **Implementation guardrails:** The shared engine must own traversal order, symlink handling, exclusion timing, visited/file budgets, canonicalization, and error conversion; leaving either public facade with a private fallback walker keeps policy drift possible. Model deadline and membership as injected policy/callbacks so the simpler corpus API can opt out without duplicating the loop. Add cross-facade contract tests over symlinks, excluded directories, unsupported extensions, boundary escapes, and exact budget edges before deleting both old walkers.
 
-**Status:** Partial. `walk::collect_files` now centralizes the `WalkDir` loop, entry filtering, traversal/file limits, optional deadline, and walk-error conversion. Root handling, canonicalization, source reading, membership validation, and global file-budget accounting remain split between `SourceCorpus`, `ProjectDiscovery`, and the loader; `ProjectDiscovery::read_source` still delegates through a corpus facade rather than a shared canonical source reader. The fix removes one duplicate loop but not the broader boundary-policy duplication described by the finding.
+**Status:** Partial. `walk::collect_files` centralizes the `WalkDir` loop, entry filtering, traversal/file limits, optional deadline, and walk-error conversion. `SourceCorpus` now owns canonicalization, root membership, and bounded source decoding for both direct corpus loads and project discovery; global project-byte accounting and tsconfig membership still belong to the loader/discovery boundary. The duplicate walk and source-reader policy are reduced, but the broader boundary consolidation remains incomplete.
 
 ### READ-025 — Loader timings and progress counters have parallel representations
 
@@ -238,7 +238,7 @@ Admission builds canonical source/resolution maps, converts them back to vectors
 
 The same eight duration fields exist in `ProjectPhases`, `ProjectLoadMetrics`, and `ProjectPhaseTimings` with manual conversions and addition, while `LoadCounters` duplicates request/edge/byte fields that are copied into metrics at several call sites. Embed one `ProjectPhaseTimings` value in metrics and make a single `LoadProgress` owner atomically enforce budgets and expose counters, eliminating field-by-field synchronization.
 
-**Status:** Partial. The duplicate timing struct and field-by-field timing conversions are gone, and `ProjectLoadMetrics` embeds `ProjectPhaseTimings`. `LoadCounters` remains a separate owner for requests, edges, and bytes, with values copied into public metrics at several loader call sites; no single `LoadProgress` type owns counter increments and budget enforcement. The timing half is fixed, but the counter representation finding remains open.
+**Status:** Fixed. `ProjectLoadMetrics` embeds the canonical `ProjectPhaseTimings`, while one `LoadProgress` owner now performs source-byte and request budget checks, records edges, and publishes the public counter snapshot. The former `LoadCounters` owner and scattered counter updates were removed; loader tests and the full workspace gate pass.
 
 ### READ-026 — Resolution caching clones request identities, outcomes, and loader options
 
@@ -250,7 +250,7 @@ Each authored request clones importer/specifier into a second cache key, cache h
 
 **Implementation guardrails:** Preserve the distinction between authored requests in core—even equal specifiers at different ranges remain separate contract records—while allowing the filesystem resolver cache to reuse an outcome for the same importer/kind/specifier lookup. Avoid changing `record_resolution` into an `Arc`-leaking public API; shared/cache-owned outcomes should be an internal loader concern and be materialized or consumed once at the core boundary. Resolver policy should be borrowed/shared from validated options, and tests must cover conflicting authored spans, internal/external classification, exclusions, aliases, and deterministic cache hits.
 
-**Status:** Not fixed. Authored requests still clone importer/specifier data into `ResolutionCacheKey`; cache misses clone `ResolverOutcome` for storage and cache hits clone it for each caller. `ProjectResolver` still owns a full cloned `ProjectLoadOptions` beside the loader's validated options. Calling this “optimal” does not address the requested canonical identity, shared outcome, or shared policy boundary; those tradeoffs need an explicit internal handle/borrowed-cache design and contract tests.
+**Status:** Partial. Resolution caching now keys directly by the canonical `ResolutionRequestKey`, eliminating the duplicate importer/specifier key representation, and `ProjectResolver` borrows the loader's validated `ProjectLoadOptions` instead of cloning the policy. Cache misses still clone `ResolverOutcome` into the cache and cache hits clone it into the session's owned resolution table; shared outcome handles remain outstanding.
 
 ### READ-027 — Project tests duplicate fragile temporary-directory setup and cleanup
 
@@ -260,7 +260,7 @@ Each authored request clones importer/specifier into a second cache key, cache h
 
 Nearly every test constructs a process-ID path under the global temp directory, manually removes it before and after the test, and repeats directory/file creation; cleanup is skipped on panic and the two source-budget tests duplicate the same fixture and first assertion. Add an RAII temp-project fixture with unique directories and small write/build helpers, and merge the narrower budget test into the complete partial-report contract.
 
-**Status:** Partial and misleadingly described. `TempProject` centralizes writes and cleanup, but its path is only `label` plus process ID, so concurrent tests with the same label can collide; construction also removes a pre-existing directory. The two source-budget tests still duplicate the fixture and first assertion rather than being merged into the complete partial-report contract. The RAII improvement is useful, but the fixture is not uniquely isolated and the test duplication remains.
+**Status:** Fixed. `TempProject` now creates a unique process/atomic-sequence directory without deleting a pre-existing path, and its `Drop` implementation remains the sole cleanup path. The redundant aggregate-budget test was merged into the complete partial-report contract. The project-loader test suite passes.
 
 ### READ-028 — Core test helpers remain fragmented and the project coordinator is oversized
 
@@ -270,7 +270,7 @@ Nearly every test constructs a process-ID path under the global temp directory, 
 
 Integration suites still redefine linter/environment/count helpers already present in `tests/support`, while `src/project/tests.rs` mixes cache/session tests and shared fixture construction despite having focused sibling test modules. Extend one configurable integration fixture and move project test factories plus cache cases into a `project/tests/support.rs` and focused modules, leaving local helpers only where semantics genuinely differ.
 
-**Status:** Partial/not fixed. The helper differences justify keeping some local integration helpers, but the claimed fix does not address the oversized project coordinator: `glass-lint-core/src/project/tests.rs` remains a 631-line mixed module even though focused sibling modules already exist. Move shared project factories and cache/session cases into focused support/modules, then reassess only the helpers whose semantics genuinely differ.
+**Status:** Partial. Shared project factories, linter builders, resolution keys, and the fixture now live in `src/project/tests/support.rs`, reducing the coordinator substantially and leaving test-specific assertions in focused modules. Cache/session cases remain in the coordinator and some integration helpers are intentionally local, so the full test-organization migration is not yet complete.
 
 ## Systemic Themes
 

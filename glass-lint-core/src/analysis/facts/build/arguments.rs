@@ -109,14 +109,14 @@ impl FactBuilder<'_> {
             Expr::Seq(sequence) => sequence.exprs.last().map_or_else(
                 || {
                     (
-                        known_value.unwrap_or_else(|| self.resolver.resolve_expr(expr).id),
+                        known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
                         PathId::EMPTY,
                     )
                 },
                 |last| self.expression_projection(last, known_value),
             ),
             _ => (
-                known_value.unwrap_or_else(|| self.resolver.resolve_expr(expr).id),
+                known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
                 PathId::EMPTY,
             ),
         }
@@ -133,7 +133,7 @@ impl FactBuilder<'_> {
     ) {
         output.push(ValueProjection {
             path,
-            value: known_value.unwrap_or_else(|| self.resolver.resolve_expr(expr).id),
+            value: known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
         });
         match expr {
             Expr::Object(object) => {

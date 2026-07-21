@@ -16,7 +16,7 @@ use crate::{
             OccurrenceIndexes,
         },
         module::ModuleInterface,
-        value::ValueId,
+        value::{ValueId, ValueTable},
     },
     api::compiler::CompiledRuleSelection,
 };
@@ -39,6 +39,7 @@ pub(in crate::analysis) struct SemanticFacts {
     stream: FactStream,
     index: Arc<OccurrenceIndexes>,
     interface: ModuleInterface,
+    values: ValueTable,
 }
 
 impl SemanticFacts {
@@ -47,6 +48,7 @@ impl SemanticFacts {
         stream: FactStream,
         interface: ModuleInterface,
         environment: &crate::Environment,
+        values: ValueTable,
     ) -> Self {
         // Project the fact stream into rule-independent occurrence indexes.
         let mut index = OccurrenceIndexes::with_environment(environment);
@@ -59,6 +61,7 @@ impl SemanticFacts {
             stream,
             index: Arc::new(index),
             interface,
+            values,
         }
     }
 
@@ -114,7 +117,9 @@ impl SemanticFacts {
             .collect::<Vec<_>>();
 
         let mut projected_evidence = vec![Vec::new(); matchers.len()];
-        if !self.stream.is_valid() {
+        if !self.stream.is_valid()
+            || self.values.get(ValueId::UNKNOWN).is_none()
+        {
             return projected_evidence;
         }
         matching::compute_constrained_evidence_from_stream_with_overlay(
@@ -280,10 +285,17 @@ mod tests {
             let mut builder = FactBuilder::new(&resolver);
             swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
             let (mut stream, interface) = builder.into_parts();
-            let _ = stream.freeze_names(resolver.name_snapshot());
+            let names = resolver.name_snapshot();
+            let values = resolver.into_values();
+            let _ = stream.freeze_names(names);
             format!(
                 "{:?}",
-                SemanticFacts::from_lowering(stream, interface, &crate::Environment::default())
+                SemanticFacts::from_lowering(
+                    stream,
+                    interface,
+                    &crate::Environment::default(),
+                    values,
+                )
                     .index
             )
         };

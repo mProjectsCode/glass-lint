@@ -252,12 +252,12 @@ fn lower_program_with_name_limit(
         stream.mark_name_exhausted();
     }
 
-    drop(resolver);
+    let values = resolver.into_values();
     stream
         .freeze_names(name_table.into_inner())
         .expect("Stream already owns a NameTable");
 
-    let facts = SemanticFacts::from_lowering(stream, interface, environment);
+    let facts = SemanticFacts::from_lowering(stream, interface, environment, values);
     let effects = FunctionEffects::collect(facts.stream(), limits.effect_operations);
     if let Some(reason) = check_effects_budget(&effects, limits) {
         status.record(StatusScope::Project, reason);

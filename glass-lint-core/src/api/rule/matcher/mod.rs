@@ -46,102 +46,69 @@ pub struct MatcherSet {
 /// Exhaustive view of matcher families. Keeping this dispatch in the owning
 /// type makes adding a family a compile-time edit at one canonical list.
 macro_rules! matcher_families {
-    ($(($variant:ident, $field:ident, $ty:ty)),* $(,)?) => {
-        const MATCHER_FAMILY_COUNT: usize = [$(stringify!($variant)),*].len();
+    ($(($family_variant:ident, $matcher_variant:ident, $field:ident, $ty:ty)),* $(,)?) => {
+        const MATCHER_FAMILY_COUNT: usize = [$(stringify!($family_variant)),*].len();
+
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        pub enum Matcher {
+            $(
+                $matcher_variant($ty),
+            )*
+        }
 
         pub(crate) enum MatcherFamily<'a> {
-            $($variant(&'a [$ty]),)*
+            $($family_variant(&'a [$ty]),)*
         }
 
         pub(crate) enum MatcherFamilyMut<'a> {
-            $($variant(&'a mut Vec<$ty>),)*
+            $($family_variant(&'a mut Vec<$ty>),)*
         }
 
         impl MatcherSet {
             pub(crate) fn families(&self) -> [MatcherFamily<'_>; MATCHER_FAMILY_COUNT] {
                 [
-                    $(MatcherFamily::$variant(&self.$field[..]),)*
+                    $(MatcherFamily::$family_variant(&self.$field[..]),)*
                 ]
             }
 
             pub(crate) fn families_mut(&mut self) -> [MatcherFamilyMut<'_>; MATCHER_FAMILY_COUNT] {
                 [
-                    $(MatcherFamilyMut::$variant(&mut self.$field),)*
+                    $(MatcherFamilyMut::$family_variant(&mut self.$field),)*
                 ]
+            }
+
+            pub fn into_matchers(self) -> Vec<Matcher> {
+                let mut result = Vec::new();
+                $(result.extend(self.$field.into_iter().map(Matcher::$matcher_variant));)*
+                result
+            }
+
+            pub fn push(&mut self, matcher: Matcher) {
+                match matcher {
+                    $(Matcher::$matcher_variant(value) => self.$field.push(value),)*
+                }
+            }
+
+            pub fn is_empty(&self) -> bool {
+                $(self.$field.is_empty())&&*
             }
         }
     };
 }
 
-/// Flatten matcher families in family order into a single Vec.
-macro_rules! matcher_families_into_iter {
-    ($self:ident, $Matcher:ty, $(($variant:ident, $field:ident)),* $(,)?) => {{
-        let mut result = Vec::new();
-        $(
-            result.extend($self.$field.into_iter().map(<$Matcher>::$variant));
-        )*
-        result
-    }};
-}
-
-/// Check that every family Vec is empty.
-macro_rules! matcher_families_is_empty {
-    ($self:ident, $(($field:ident)),* $(,)?) => {
-        $($self.$field.is_empty())&&*
-    };
-}
-
-/// Dispatch each `Matcher` variant into the corresponding family Vec.
-macro_rules! matcher_families_push {
-    ($self:ident, $matcher:expr, $(($variant:ident, $field:ident)),* $(,)?) => {
-        match $matcher {
-            $(Matcher::$variant(value) => $self.$field.push(value),)*
-        }
-    };
-}
-
 matcher_families! {
-    (Calls, calls, CallMatcher),
-    (MemberCalls, member_calls, MemberCallMatcher),
-    (MemberReads, member_reads, MemberReadMatcher),
-    (Imports, imports, String),
-    (PackageImports, package_imports, ModuleSpecifierPattern),
-    (StringContains, string_contains, String),
-    (Classes, classes, ClassMatcher),
-    (Constructors, constructors, ConstructorMatcher),
-    (Flows, flows, ObjectFlowMatcher),
-    (ReturnedMemberCalls, returned_member_calls, ReturnedMemberCallMatcher),
-    (ReturnedMemberReads, returned_member_reads, ReturnedMemberReadMatcher),
-    (InstanceMemberCalls, instance_member_calls, InstanceMemberCallMatcher),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// One typed matcher declaration in a rule.
-pub enum Matcher {
-    /// Direct callable matcher.
-    Call(CallMatcher),
-    /// Member-call matcher.
-    MemberCall(MemberCallMatcher),
-    /// Member-read matcher.
-    MemberRead(MemberReadMatcher),
-    /// Module import matcher.
-    Import(String),
-    /// Package-root module matcher.
-    PackageImport(ModuleSpecifierPattern),
-    /// Static string matcher.
-    StringContains(String),
-    /// Class matcher.
-    Class(ClassMatcher),
-    /// Constructor matcher.
-    Constructor(ConstructorMatcher),
-    /// Object-flow matcher.
-    ObjectFlow(ObjectFlowMatcher),
-    /// Returned-object member-call matcher.
-    ReturnedMemberCall(ReturnedMemberCallMatcher),
-    /// Returned-object member-read matcher.
-    ReturnedMemberRead(ReturnedMemberReadMatcher),
-    /// Exported-instance member-call matcher.
-    InstanceMemberCall(InstanceMemberCallMatcher),
+    (Calls, Call, calls, CallMatcher),
+    (MemberCalls, MemberCall, member_calls, MemberCallMatcher),
+    (MemberReads, MemberRead, member_reads, MemberReadMatcher),
+    (Imports, Import, imports, String),
+    (PackageImports, PackageImport, package_imports, ModuleSpecifierPattern),
+    (StringContains, StringContains, string_contains, String),
+    (Classes, Class, classes, ClassMatcher),
+    (Constructors, Constructor, constructors, ConstructorMatcher),
+    (Flows, ObjectFlow, flows, ObjectFlowMatcher),
+    (ReturnedMemberCalls, ReturnedMemberCall, returned_member_calls, ReturnedMemberCallMatcher),
+    (ReturnedMemberReads, ReturnedMemberRead, returned_member_reads, ReturnedMemberReadMatcher),
+    (InstanceMemberCalls, InstanceMemberCall, instance_member_calls, InstanceMemberCallMatcher),
 }
 
 impl Matcher {
@@ -336,68 +303,9 @@ impl MatcherSet {
         api_matcher
     }
 
-    /// Flatten matcher families in their canonical family order.
-    pub fn into_matchers(self) -> Vec<Matcher> {
-        matcher_families_into_iter!(
-            self,
-            Matcher,
-            (Call, calls),
-            (MemberCall, member_calls),
-            (MemberRead, member_reads),
-            (Import, imports),
-            (PackageImport, package_imports),
-            (StringContains, string_contains),
-            (Class, classes),
-            (Constructor, constructors),
-            (ObjectFlow, flows),
-            (ReturnedMemberCall, returned_member_calls),
-            (ReturnedMemberRead, returned_member_reads),
-            (InstanceMemberCall, instance_member_calls),
-        )
-    }
-
-    /// Append one typed matcher to its corresponding family.
-    pub fn push(&mut self, matcher: Matcher) {
-        matcher_families_push!(
-            self,
-            matcher,
-            (Call, calls),
-            (MemberCall, member_calls),
-            (MemberRead, member_reads),
-            (Import, imports),
-            (PackageImport, package_imports),
-            (StringContains, string_contains),
-            (Class, classes),
-            (Constructor, constructors),
-            (ObjectFlow, flows),
-            (ReturnedMemberCall, returned_member_calls),
-            (ReturnedMemberRead, returned_member_reads),
-            (InstanceMemberCall, instance_member_calls),
-        );
-    }
-
     /// Validate all declarations without normalizing or mutating them.
     pub fn validate(&self) -> Result<(), MatcherBuildError> {
         validation::validate(self)
-    }
-
-    /// Whether no matcher family contains a declaration.
-    pub fn is_empty(&self) -> bool {
-        matcher_families_is_empty!(
-            self,
-            (calls),
-            (member_calls),
-            (member_reads),
-            (imports),
-            (package_imports),
-            (string_contains),
-            (classes),
-            (constructors),
-            (flows),
-            (returned_member_calls),
-            (returned_member_reads),
-            (instance_member_calls),
-        )
     }
 
     #[must_use]

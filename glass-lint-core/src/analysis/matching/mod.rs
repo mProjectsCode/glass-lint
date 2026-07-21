@@ -165,7 +165,48 @@ impl LinkedModuleIdentity {
     }
 }
 
-pub(in crate::analysis) type ModuleIdentityMap = BTreeMap<ModuleExportKey, LinkedModuleIdentity>;
+/// Imported identities indexed by borrowed module/export parts.
+///
+/// Occurrence indexes retain [`ModuleExportKey`] beside each event. This
+/// overlay is queried at high fan-out, so it owns each module/export string
+/// once and accepts borrowed lookups thereafter.
+#[derive(Clone, Debug, Default)]
+pub(in crate::analysis) struct ModuleIdentityMap {
+    modules: BTreeMap<SmolStr, BTreeMap<SmolStr, LinkedModuleIdentity>>,
+}
+
+impl ModuleIdentityMap {
+    pub(in crate::analysis) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(in crate::analysis) fn get(
+        &self,
+        key: &ModuleExportKey,
+    ) -> Option<&LinkedModuleIdentity> {
+        self.get_parts(key.module(), key.export())
+    }
+
+    pub(in crate::analysis) fn get_parts(
+        &self,
+        module: &str,
+        export: &str,
+    ) -> Option<&LinkedModuleIdentity> {
+        self.modules.get(module)?.get(export)
+    }
+
+    pub(in crate::analysis) fn insert(
+        &mut self,
+        key: ModuleExportKey,
+        value: LinkedModuleIdentity,
+    ) -> Option<LinkedModuleIdentity> {
+        let (module, export) = key.into_parts();
+        self.modules
+            .entry(module)
+            .or_default()
+            .insert(export, value)
+    }
+}
 
 impl OccurrenceIndexes {
     pub(in crate::analysis) fn with_environment(environment: &crate::Environment) -> Self {

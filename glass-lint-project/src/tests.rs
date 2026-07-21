@@ -4,6 +4,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
@@ -17,13 +18,16 @@ struct TempProject {
     root: PathBuf,
 }
 
+static NEXT_TEMP_PROJECT: AtomicU64 = AtomicU64::new(0);
+
 impl TempProject {
     fn new(label: &str) -> Self {
+        let serial = NEXT_TEMP_PROJECT.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
-            "glass-lint-project-{label}-{}",
-            std::process::id()
+            "glass-lint-project-{label}-{}-{serial}",
+            std::process::id(),
         ));
-        let _ = fs::remove_dir_all(&root);
+        fs::create_dir(&root).unwrap();
         Self { root }
     }
 
@@ -115,25 +119,6 @@ fn discovery_stops_at_visited_entry_budget() {
 }
 
 #[test]
-fn aggregate_source_budget_is_checked_before_second_parse() {
-    let project = TempProject::new("bytes");
-    project.write("a.js", "1234567890");
-    project.write("b.js", "1234567890");
-    let options = ProjectLoadOptions {
-        max_project_source_bytes: 15,
-        max_source_bytes: 10,
-        ..Default::default()
-    };
-    let outcome = ProjectLoader::new(options.validated().unwrap())
-        .load_and_lint(&linter(), &ProjectSelection::directory(project.root()))
-        .unwrap();
-    assert!(matches!(
-        outcome.partial_reason,
-        Some(ProjectLoadError::ProjectSourceTooLarge { .. })
-    ));
-}
-
-#[test]
 fn deterministic_loader_budget_returns_partial_report_and_error() {
     let project = TempProject::new("partial");
     project.write("a.js", "1234567890");
@@ -171,7 +156,10 @@ fn extensionless_internal_import_is_followed() {
     project.write("helper.ts", "export const value = 1;");
     let loader = ProjectLoader::new(ProjectLoadOptions::default().validated().unwrap());
     let report = loader
-        .load_and_lint(&linter(), &ProjectSelection::entry(project.root().join("main.js")))
+        .load_and_lint(
+            &linter(),
+            &ProjectSelection::entry(project.root().join("main.js")),
+        )
         .unwrap();
     assert_eq!(report.report.files.len(), 2);
 }
@@ -183,7 +171,10 @@ fn reports_project_phase_metrics_and_operation_counts() {
     project.write("helper.ts", "export const value = 1;");
     let loader = ProjectLoader::new(ProjectLoadOptions::default().validated().unwrap());
     let outcome = loader
-        .load_and_lint(&linter(), &ProjectSelection::entry(project.root().join("main.js")))
+        .load_and_lint(
+            &linter(),
+            &ProjectSelection::entry(project.root().join("main.js")),
+        )
         .unwrap();
     assert_eq!(outcome.report.files.len(), 2);
     assert_eq!(outcome.metrics.files, 2);

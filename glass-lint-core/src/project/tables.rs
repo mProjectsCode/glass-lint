@@ -135,9 +135,8 @@ impl SourceTable {
         self.0.iter().map(|(path, source)| (path.as_str(), source))
     }
 
-    /// Consume the table in normalized path order.
-    pub fn into_values(self) -> impl Iterator<Item = SourceFile> {
-        self.0.into_values()
+    pub(crate) fn into_map(self) -> BTreeMap<ProjectRelativePath, SourceFile> {
+        self.0
     }
 }
 
@@ -159,9 +158,8 @@ impl ResolutionTable {
         Ok(())
     }
 
-    /// Consume the table in request-key order.
-    pub fn into_values(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolverOutcome)> {
-        self.0.into_iter()
+    pub(crate) fn into_map(self) -> BTreeMap<ResolutionRequestKey, ResolverOutcome> {
+        self.0
     }
 }
 

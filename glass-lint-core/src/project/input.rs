@@ -41,13 +41,7 @@ impl ProjectInput {
     /// still performs for external consumers.
     pub(crate) fn admit(self) -> Result<ValidatedProjectInput, ProjectInputError> {
         let (root, sources, resolutions) = self.validate_into_maps()?;
-        let module_ids = compute_module_ids(&sources);
-        Ok(ValidatedProjectInput {
-            root,
-            sources,
-            resolutions,
-            module_ids,
-        })
+        Ok(ValidatedProjectInput::from_maps(root, sources, resolutions))
     }
 
     /// Canonicalizes project identities and validates all cross-record
@@ -153,30 +147,6 @@ impl ProjectInput {
         Ok((root, sources, resolutions))
     }
 
-    /// Assign stable IDs from normalized path order. Test-only because the
-    /// canonical IDs are precomputed during [`ProjectInput::admit`].
-    #[cfg(test)]
-    #[must_use]
-    pub fn module_ids(&self) -> BTreeMap<ProjectRelativePath, ModuleId> {
-        let mut paths = self
-            .sources
-            .iter()
-            .map(|source| source.path.clone())
-            .collect::<Vec<_>>();
-        paths.sort();
-        paths
-            .into_iter()
-            .enumerate()
-            .map(|(index, path)| {
-                (
-                    path,
-                    ModuleId::new(
-                        u32::try_from(index).expect("module count exceeds ModuleId range"),
-                    ),
-                )
-            })
-            .collect()
-    }
 }
 
 /// Project records after path, target, duplicate, and cross-reference
@@ -193,6 +163,25 @@ pub(crate) struct ValidatedProjectInput {
     pub(crate) sources: BTreeMap<ProjectRelativePath, crate::SourceFile>,
     pub(crate) resolutions: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
     pub(crate) module_ids: BTreeMap<ProjectRelativePath, ModuleId>,
+}
+
+impl ValidatedProjectInput {
+    /// Create the canonical internal project state from already-normalized
+    /// tables. Stable module IDs are assigned here so bulk and incremental
+    /// admission cannot drift into separate numbering algorithms.
+    pub(crate) fn from_maps(
+        root: PathBuf,
+        sources: BTreeMap<ProjectRelativePath, crate::SourceFile>,
+        resolutions: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
+    ) -> Self {
+        let module_ids = compute_module_ids(&sources);
+        Self {
+            root,
+            sources,
+            resolutions,
+            module_ids,
+        }
+    }
 }
 
 /// Validate the root path that anchors project-relative normalization.

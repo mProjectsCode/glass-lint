@@ -81,7 +81,7 @@ impl FactBuilder<'_> {
                         if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
                             && let Some(value) = self
                                 .resolver
-                                .static_string_value(self.resolver.resolve_ident(&binding.id).id)
+                                .static_string_value(self.resolver.resolve_ident_id(&binding.id))
                         {
                             self.interface
                                 .add_static_string(binding.id.sym.to_string(), value);

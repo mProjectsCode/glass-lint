@@ -30,8 +30,9 @@ fn validation_normalizes_and_sorts_sources_and_edges() {
             path: project_path("a.js")
         }
     );
-    assert_eq!(input.module_ids()["a.js"], ModuleId::new(0));
-    assert_eq!(input.module_ids()["z.js"], ModuleId::new(1));
+    let validated = input.admit().unwrap();
+    assert_eq!(validated.module_ids["a.js"], ModuleId::new(0));
+    assert_eq!(validated.module_ids["z.js"], ModuleId::new(1));
 }
 
 #[test]

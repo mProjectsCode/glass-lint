@@ -234,6 +234,10 @@ impl ModuleExportKey {
         &self.export
     }
 
+    pub(in crate::analysis) fn into_parts(self) -> (SmolStr, SmolStr) {
+        (self.module, self.export)
+    }
+
     pub(in crate::analysis) fn wildcard(module: impl Into<SmolStr>) -> Self {
         Self::new(module, "*")
     }

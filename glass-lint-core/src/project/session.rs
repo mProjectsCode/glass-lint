@@ -4,8 +4,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc};
 
-use crate::project::ModuleId;
-
 struct LocalJob {
     path: ProjectRelativePath,
     source: SourceFile,
@@ -685,30 +683,11 @@ impl<'a> AnalysisSession<'a> {
     pub fn finish_with_timings(
         self,
     ) -> Result<(AnalysisReport, std::time::Duration, std::time::Duration), ProjectInputError> {
-        let sources: BTreeMap<ProjectRelativePath, crate::SourceFile> = self
-            .sources
-            .into_values()
-            .map(|source| (source.path.clone(), source))
-            .collect();
-        let module_ids = sources
-            .keys()
-            .enumerate()
-            .map(|(index, path)| {
-                (
-                    path.clone(),
-                    ModuleId::new(
-                        u32::try_from(index).expect("module count exceeds ModuleId range"),
-                    ),
-                )
-            })
-            .collect();
-        let resolutions: BTreeMap<_, _> = self.resolutions.into_values().collect();
-        let input = ValidatedProjectInput {
-            root: self.root,
-            sources,
-            resolutions,
-            module_ids,
-        };
+        let input = ValidatedProjectInput::from_maps(
+            self.root,
+            self.sources.into_map(),
+            self.resolutions.into_map(),
+        );
         self.linter.finish_analyzed_project(
             input,
             self.artifacts.analyzed,

@@ -7,8 +7,7 @@ use std::{
 };
 
 use glass_lint_core::{
-    AnalysisReport, Linter, ProjectRelativePath, ResolutionRequest, ResolutionRequestKind,
-    ResolverOutcome,
+    AnalysisReport, Linter, ResolutionRequest, ResolverOutcome,
 };
 
 use crate::{
@@ -251,43 +250,30 @@ impl AdmissionSet {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-struct ResolutionCacheKey {
-    importer: ProjectRelativePath,
-    kind: ResolutionRequestKind,
-    request: String,
-}
-
-impl ResolutionCacheKey {
-    fn new(importer: ProjectRelativePath, kind: ResolutionRequestKind, request: String) -> Self {
-        Self {
-            importer,
-            kind,
-            request,
-        }
-    }
-}
-
 #[derive(Debug, Default)]
-struct ResolutionCache(BTreeMap<ResolutionCacheKey, ResolverOutcome>);
+struct ResolutionCache(BTreeMap<glass_lint_core::ResolutionRequestKey, ResolverOutcome>);
 impl ResolutionCache {
-    fn get(&self, key: &ResolutionCacheKey) -> Option<&ResolverOutcome> {
+    fn get(&self, key: &glass_lint_core::ResolutionRequestKey) -> Option<&ResolverOutcome> {
         self.0.get(key)
     }
 
-    fn insert(&mut self, key: ResolutionCacheKey, result: ResolverOutcome) {
+    fn insert(
+        &mut self,
+        key: glass_lint_core::ResolutionRequestKey,
+        result: ResolverOutcome,
+    ) {
         self.0.insert(key, result);
     }
 }
 
 #[derive(Debug, Default)]
-struct LoadCounters {
+struct LoadProgress {
     requests: usize,
     edges: usize,
     source_bytes: u64,
 }
 
-impl LoadCounters {
+impl LoadProgress {
     fn add_requests(&mut self, count: usize, limit: usize) -> Result<(), ProjectLoadError> {
         self.requests = self
             .requests
@@ -302,6 +288,23 @@ impl LoadCounters {
     fn record_edge(&mut self) {
         self.edges = self.edges.saturating_add(1);
     }
+
+    fn record_source_bytes(&mut self, bytes: u64, limit: u64) -> Result<(), ProjectLoadError> {
+        self.source_bytes = self.source_bytes.saturating_add(bytes);
+        if self.source_bytes > limit {
+            return Err(ProjectLoadError::ProjectSourceTooLarge {
+                bytes: self.source_bytes,
+                limit,
+            });
+        }
+        Ok(())
+    }
+
+    fn publish(&self, metrics: &mut ProjectLoadMetrics) {
+        metrics.requests = self.requests;
+        metrics.edges = self.edges;
+        metrics.bytes = self.source_bytes;
+    }
 }
 
 /// Mutable state for one project construction. Keeping the queue, cache, and
@@ -309,12 +312,12 @@ impl LoadCounters {
 struct ProjectLoadState<'a> {
     session: glass_lint_core::AnalysisSession<'a>,
     discovery: ProjectDiscovery<'a>,
-    resolver: ProjectResolver,
+    resolver: ProjectResolver<'a>,
     root: PathBuf,
     queue: PathWorkQueue,
     admitted: AdmissionSet,
     resolved: ResolutionCache,
-    counters: LoadCounters,
+    progress: LoadProgress,
     deadline: Instant,
 }
 
@@ -334,7 +337,7 @@ impl<'a> ProjectLoadState<'a> {
             queue: PathWorkQueue::default(),
             admitted: AdmissionSet::default(),
             resolved: ResolutionCache::default(),
-            counters: LoadCounters::default(),
+            progress: LoadProgress::default(),
             deadline,
         })
     }
@@ -371,25 +374,21 @@ impl<'a> ProjectLoadState<'a> {
         let source = self.discovery.read_source(&self.root, &path)?;
         metrics.timings.reads += read_start.elapsed();
         let source_bytes = u64::try_from(source.source.len()).unwrap_or(u64::MAX);
-        self.counters.source_bytes = self.counters.source_bytes.saturating_add(source_bytes);
-        if self.counters.source_bytes > self.discovery.options().max_project_source_bytes {
-            return Err(ProjectLoadError::ProjectSourceTooLarge {
-                bytes: self.counters.source_bytes,
-                limit: self.discovery.options().max_project_source_bytes,
-            });
-        }
+        self.progress.record_source_bytes(
+            source_bytes,
+            self.discovery.options().max_project_source_bytes,
+        )?;
 
         let parse_start = Instant::now();
         let source_path = source.path.to_string();
         self.session.admit_source(source)?;
         let requests = self.session.analyze_source(source_path)?;
         metrics.timings.parse_and_local_analysis += parse_start.elapsed();
-        metrics.bytes = metrics.bytes.saturating_add(source_bytes);
         metrics.files = self.admitted.len();
 
-        self.counters
+        self.progress
             .add_requests(requests.len(), self.discovery.options().max_requests)?;
-        metrics.requests = self.counters.requests;
+        self.progress.publish(metrics);
         self.record_requests(requests, metrics)
     }
 
@@ -400,11 +399,11 @@ impl<'a> ProjectLoadState<'a> {
     ) -> Result<(), ProjectLoadError> {
         for request in requests {
             self.check_timeout()?;
-            let cache_key = ResolutionCacheKey::new(
-                request.key.importer.clone(),
-                request.key.kind,
-                request.request.clone(),
-            );
+            // A request key is the source-position identity emitted by the
+            // semantic interface. One source location has one authored
+            // request, so retaining it avoids copying the importer and
+            // specifier into a second cache key representation.
+            let cache_key = request.key.clone();
             let result = if let Some(result) = self.resolved.get(&cache_key) {
                 result.clone()
             } else {
@@ -432,8 +431,8 @@ impl<'a> ProjectLoadState<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) {
         if let ResolverOutcome::Internal { path } = result {
-            self.counters.record_edge();
-            metrics.edges = self.counters.edges;
+            self.progress.record_edge();
+            self.progress.publish(metrics);
             let target = self.root.join(path);
             if target.exists()
                 && !self.discovery.options().excludes_path(&self.root, &target)

@@ -22,8 +22,8 @@ use crate::{
         facts::{ArgumentView, CallUnwrap, SemanticFact},
         matching::{
             CallArgInfo, ClassificationEvidence, FactPayload, FactStream, LinkedModuleIdentity,
-            ModuleExportKey, ModuleIdentityMap,
-            ModuleOccurrenceOverlay, Occurrence, OccurrenceIndexes, SymbolCallProvenance,
+            ModuleIdentityMap, ModuleOccurrenceOverlay, Occurrence, OccurrenceIndexes,
+            SymbolCallProvenance,
             push_owned_evidence,
         },
         name::NameTable,
@@ -56,15 +56,13 @@ impl<'a> MatcherEvaluator<'a> {
 
     /// Look up the resolved identity for a module-export provenance.
     ///
-    /// Centralizes the `module_export_tuple` → `ModuleExportKey` → map lookup
-    /// chain that was previously duplicated in both the argument-overlay and
-    /// call-provenance paths.
+    /// Look up module provenance without constructing a temporary owned key.
     fn lookup_identity(
         &self,
         provenance: &SymbolCallProvenance,
     ) -> Option<&LinkedModuleIdentity> {
-        let (module, export) = provenance.module_export_tuple()?;
-        self.identities?.get(&ModuleExportKey::new(module, export))
+        let (module, export) = provenance.module_export_parts()?;
+        self.identities?.get_parts(module, export)
     }
 
     fn argument_with_overlay<'b>(&'b self, argument: &'b CallArgInfo) -> ArgumentView<'b> {
@@ -406,7 +404,7 @@ mod tests {
         analysis::{
             facts::{CallArgInfo, FactStream, build::build_test_stream},
             lowering::SpanNormalizer,
-            matching::{LinkedModuleIdentity, OccurrenceIndexes},
+            matching::{LinkedModuleIdentity, ModuleExportKey, OccurrenceIndexes},
             resolution::Resolver,
             syntax::SymbolCallProvenance,
             value::{PathId, ValueId},

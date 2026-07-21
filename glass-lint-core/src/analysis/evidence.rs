@@ -16,6 +16,7 @@ struct EvidenceKey(MatchKind, String);
 /// Per-key accumulated state used during normalization.
 struct EvidenceAccum {
     total_count: usize,
+    occurrences_truncated: bool,
     related: Vec<RelatedClassificationEvidence>,
     occurrences: Vec<crate::api::classification::ClassificationEvidenceOccurrence>,
 }
@@ -33,6 +34,7 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
         let key = EvidenceKey(item.kind, item.symbol);
         let accum = acc.entry(key).or_insert_with(|| EvidenceAccum {
             total_count: 0,
+            occurrences_truncated: false,
             related: Vec::new(),
             occurrences: Vec::new(),
         });
@@ -47,7 +49,6 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
 
     // Sort and deduplicate occurrences within each key, then apply the
     // per-group occurrence limit directly so caller-owned storage is reused.
-    let mut any_truncated = false;
     for accum in acc.values_mut() {
         accum.occurrences.sort_by_key(|occurrence| {
             (
@@ -59,7 +60,7 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
         accum.occurrences.dedup();
         if accum.occurrences.len() > limit {
             accum.occurrences.truncate(limit);
-            any_truncated = true;
+            accum.occurrences_truncated = true;
         }
     }
 
@@ -74,27 +75,35 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
             kind: key.0,
             symbol: key.1,
             count: u32::try_from(accum.total_count).unwrap_or(u32::MAX),
-            evidence_truncated: any_truncated,
+            evidence_truncated: accum.occurrences_truncated,
             occurrences: accum.occurrences,
             related: accum.related,
         })
         .collect();
-    sorted.sort_by_key(|item| {
-        (
-            item.occurrences
-                .first()
-                .map(|o| (o.span.start(), o.span.end())),
-            item.kind,
-            item.symbol.clone(),
-        )
+    sorted.sort_by(|left, right| {
+        let left_span = left
+            .occurrences
+            .first()
+            .map(|occurrence| (occurrence.span.start(), occurrence.span.end()));
+        let right_span = right
+            .occurrences
+            .first()
+            .map(|occurrence| (occurrence.span.start(), occurrence.span.end()));
+        (left_span, left.kind, left.symbol.as_str()).cmp(&(
+            right_span,
+            right.kind,
+            right.symbol.as_str(),
+        ))
     });
 
     // Apply the global group limit.
-    if sorted.len() > limit {
+    let global_truncated = if sorted.len() > limit {
         sorted.truncate(limit);
-        any_truncated = true;
-    }
-    if any_truncated {
+        true
+    } else {
+        false
+    };
+    if global_truncated {
         for item in &mut sorted {
             item.evidence_truncated = true;
         }
