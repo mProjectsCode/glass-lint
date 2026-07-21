@@ -81,11 +81,16 @@ impl FactBuilder<'_> {
         member.obj.visit_with(self);
         member.prop.visit_with(self);
         let resolved_member = self.resolver.resolve_member(member);
+        let chain = self.resolver.member_expression_chain(member);
+        let syntactic_path = chain
+            .as_ref()
+            .and_then(|path| self.name_path(path));
         self.emit(
             FactKind::MemberRead,
             member.span(),
             FactPayload::MemberRead {
-                syntactic_chain: self.resolver.member_expression_chain(member),
+                syntactic_chain: chain,
+                syntactic_path,
                 rooted_chain: self.rooted_path(resolved_member.rooted_chain.as_ref()),
                 module_member: resolved_member.module_member.clone(),
                 returned_member: self.returned_path(resolved_member.returned_member.as_ref()),

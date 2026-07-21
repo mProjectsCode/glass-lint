@@ -10,6 +10,8 @@
 //! to a fixed point via SCCs and produces a `ModuleOccurrenceOverlay` for
 //! each module's matcher queries.
 
+pub(super) mod model;
+
 mod exports;
 mod graph;
 pub(super) mod identities;

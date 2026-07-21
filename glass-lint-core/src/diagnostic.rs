@@ -217,6 +217,35 @@ impl<'de> Deserialize<'de> for Position {
 pub struct SourceLineIndex {
     starts: Vec<usize>,
     source: crate::SourceText,
+    /// Per-line checkpoint intervals for fast column computation on long lines.
+    /// Each checkpoint is `(byte_offset_from_line_start, char_count)`.
+    /// Empty for lines under 256 bytes.
+    checkpoints: Vec<Vec<(usize, usize)>>,
+}
+
+fn compute_checkpoints(source: &str, starts: &[usize]) -> Vec<Vec<(usize, usize)>> {
+    starts
+        .iter()
+        .enumerate()
+        .map(|(i, &line_start)| {
+            let line_end = starts.get(i + 1).copied().unwrap_or(source.len());
+            let line_len = line_end - line_start;
+            if line_len < 256 {
+                return Vec::new();
+            }
+            let line = &source[line_start..line_end];
+            let mut checkpoints = Vec::new();
+            checkpoints.push((0, 0));
+            let mut next_marker = 256usize;
+            for (char_count, (byte_offset, _)) in line.char_indices().enumerate() {
+                if byte_offset >= next_marker {
+                    checkpoints.push((byte_offset, char_count));
+                    next_marker = next_marker.saturating_add(256);
+                }
+            }
+            checkpoints
+        })
+        .collect()
 }
 
 impl SourceLineIndex {
@@ -225,9 +254,11 @@ impl SourceLineIndex {
     pub fn new(source: &str) -> Self {
         let mut starts = vec![0];
         starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
+        let checkpoints = compute_checkpoints(source, &starts);
         Self {
             starts,
             source: source.into(),
+            checkpoints,
         }
     }
 
@@ -237,7 +268,12 @@ impl SourceLineIndex {
     pub fn from_text(source: crate::SourceText) -> Self {
         let mut starts = vec![0];
         starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
-        Self { starts, source }
+        let checkpoints = compute_checkpoints(&source, &starts);
+        Self {
+            starts,
+            source,
+            checkpoints,
+        }
     }
 
     /// Convert a validated byte offset into a one-based display position.
@@ -246,14 +282,23 @@ impl SourceLineIndex {
             .starts
             .partition_point(|start| *start <= offset)
             .saturating_sub(1);
+        let line_start = self.starts[line];
+        let checkpoints = &self.checkpoints[line];
+
+        let column = if checkpoints.is_empty() {
+            self.source[line_start..offset].chars().count()
+        } else {
+            let byte_offset = offset - line_start;
+            let checkpoint = checkpoints
+                .partition_point(|(bo, _)| *bo <= byte_offset)
+                .saturating_sub(1);
+            let (check_byte, check_char) = checkpoints[checkpoint];
+            check_char + self.source[line_start + check_byte..offset].chars().count()
+        };
+
         Position::new(
             line.try_into().unwrap_or(u32::MAX).saturating_add(1),
-            self.source[self.starts[line]..offset]
-                .chars()
-                .count()
-                .try_into()
-                .unwrap_or(u32::MAX)
-                .saturating_add(1),
+            column.try_into().unwrap_or(u32::MAX).saturating_add(1),
         )
         .expect("line index always produces one-based positions")
     }

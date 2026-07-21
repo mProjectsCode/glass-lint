@@ -9,9 +9,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
-    ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId, ProjectSemanticModel,
+    ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel,
     matching::{LinkedModuleIdentity, ModuleExportKey, ModuleIdentityMap},
     module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
+    project::model::MAX_EXPORT_DEPTH,
     syntax::SymbolCallProvenance,
 };
 

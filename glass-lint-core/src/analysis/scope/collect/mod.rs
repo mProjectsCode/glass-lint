@@ -11,9 +11,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use history::AssignmentHistory;
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{BytePos, Span};
-use swc_ecma_ast::{ArrowExpr, Expr, Function, Pat, VarDeclKind};
+use swc_ecma_ast::{ArrowExpr, Expr, Function, ObjectPatProp, Pat, VarDeclKind};
 use swc_ecma_visit::VisitWith;
 
 use crate::{
@@ -27,7 +27,7 @@ use crate::{
         },
         syntax::{
             collect_pat_bindings, function_prototype_builtin, is_function_constructor_member,
-            member_property_name, member_root_identifier,
+            member_property_name, member_root_identifier, property_name,
         },
         value::{BindingId, BindingVersion, FunctionId, NamePath, SymbolPath},
     },
@@ -62,7 +62,7 @@ pub(super) struct LexicalScopeCollector<'a> {
     /// Dynamic `eval` sites that make local provenance conservative.
     pub(super) dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
     /// Function scopes and their parameter patterns by visible NameId.
-    pub(super) function_scopes: BTreeMap<(ScopeId, NameId), (ScopeId, Vec<Pat>)>,
+    pub(super) function_scopes: BTreeMap<(ScopeId, NameId), (ScopeId, Vec<CompactPat>)>,
     /// Aliases that point to a locally declared helper function.
     pub(super) function_aliases: BTreeMap<ScopedName, ScopeId>,
     /// Calls retained for the later, scope-aware helper parameter pass.
@@ -101,6 +101,47 @@ pub(super) struct RootedPropertyMutation {
     pub(super) scope: ScopeId,
     pub(super) receiver: NamePath,
     pub(super) property: Option<NameId>,
+}
+
+/// Compact parameter pattern descriptor that avoids cloning SWC Pat ASTs.
+#[derive(Debug, Clone)]
+pub(super) enum CompactPat {
+    Ident(SmolStr),
+    Assign(Box<Self>),
+    Object(BTreeMap<SmolStr, Self>),
+    Array,
+    Rest(Box<Self>),
+    Other,
+}
+
+fn compact_pat(pattern: &Pat) -> CompactPat {
+    match pattern {
+        Pat::Ident(ident) => CompactPat::Ident(ident.id.sym.to_smolstr()),
+        Pat::Assign(assign) => CompactPat::Assign(Box::new(compact_pat(&assign.left))),
+        Pat::Object(object) => {
+            let mut props = BTreeMap::new();
+            for prop in &object.props {
+                match prop {
+                    ObjectPatProp::KeyValue(kv) => {
+                        if let Some(key) = property_name(&kv.key) {
+                            props.insert(key, compact_pat(&kv.value));
+                        }
+                    }
+                    ObjectPatProp::Assign(assign) => {
+                        props.insert(
+                            assign.key.sym.to_smolstr(),
+                            CompactPat::Ident(assign.key.sym.to_smolstr()),
+                        );
+                    }
+                    ObjectPatProp::Rest(_) => {}
+                }
+            }
+            CompactPat::Object(props)
+        }
+        Pat::Array(_) => CompactPat::Array,
+        Pat::Rest(rest) => CompactPat::Rest(Box::new(compact_pat(&rest.arg))),
+        Pat::Invalid(_) | Pat::Expr(_) => CompactPat::Other,
+    }
 }
 
 impl<'a> LexicalScopeCollector<'a> {
@@ -518,16 +559,16 @@ impl<'a> LexicalScopeCollector<'a> {
     /// Copy parameter patterns into the function metadata used by the later
     /// call-site projection pass. Keeping this conversion here makes the
     /// collector's function metadata independent of SWC's parameter wrapper.
-    fn function_parameters(function: &Function) -> Vec<Pat> {
+    fn function_parameters(function: &Function) -> Vec<CompactPat> {
         function
             .params
             .iter()
-            .map(|parameter| parameter.pat.clone())
+            .map(|parameter| compact_pat(&parameter.pat))
             .collect()
     }
 
-    fn arrow_parameters(arrow: &ArrowExpr) -> Vec<Pat> {
-        arrow.params.clone()
+    fn arrow_parameters(arrow: &ArrowExpr) -> Vec<CompactPat> {
+        arrow.params.iter().map(compact_pat).collect()
     }
 
     fn register_function_expression(&mut self, name: Option<NameId>, expr: &Expr) -> bool {

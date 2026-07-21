@@ -34,7 +34,7 @@ impl SourceCall {
     ) -> Option<Self> {
         let FactPayload::Call {
             rooted_chain,
-            syntactic_chain,
+            syntactic_path,
             callee_name,
             unwrap,
             ..
@@ -46,7 +46,7 @@ impl SourceCall {
             fact.id,
             stream.names()?,
             rooted_chain.as_ref(),
-            syntactic_chain.as_ref(),
+            syntactic_path.as_ref(),
             callee_name.and_then(|id| stream.resolve_name(id)),
             unwrap.as_deref(),
         )
@@ -57,7 +57,7 @@ impl SourceCall {
         fact_id: FactId,
         names: &crate::analysis::name::NameTable,
         rooted_chain: Option<&NamePath>,
-        syntactic_chain: Option<&crate::analysis::SymbolPath>,
+        syntactic_path: Option<&NamePath>,
         callee_name: Option<&str>,
         unwrap: Option<&crate::analysis::facts::CallUnwrap>,
     ) -> Option<Self> {
@@ -65,9 +65,7 @@ impl SourceCall {
             || {
                 rooted_chain
                     .cloned()
-                    .or_else(|| {
-                        syntactic_chain.and_then(|path| NamePath::from_symbol_path(path, names))
-                    })
+                    .or_else(|| syntactic_path.cloned())
                     .or_else(|| {
                         callee_name.and_then(|name| {
                             NamePath::from_symbol_path(
@@ -77,7 +75,7 @@ impl SourceCall {
                         })
                     })
             },
-            |unwrap| NamePath::from_symbol_path(&unwrap.chain, names),
+            |unwrap| unwrap.chain_path.clone(),
         );
         Some(Self {
             chain: chain?,
@@ -155,8 +153,8 @@ impl ObjectFlowProjector<'_, '_> {
                             .is_some_and(|member| member == *chain)
                             && source.provenance.matches_rooted(rooted)
                             && source.arguments.iter().all(|matcher| {
-                                args.get(matcher.index)
-                                    .is_some_and(|arg| matcher.matcher.matches(arg, self.names))
+                                args.get(matcher.index())
+                                    .is_some_and(|arg| matcher.matcher().matches(arg, self.names))
                             })
                     })
                 })

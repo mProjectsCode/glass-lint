@@ -80,18 +80,18 @@ pub(super) fn lower_calls(values: &[CallMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|call| QueryClause {
-            identity: call_identity(&call.name, &call.provenance),
+            identity: call_identity(call.name(), call.provenance()),
             event: EventPredicate::Call,
             subject: SubjectConstraint::Direct,
             constraints: call
-                .arguments
+                .arguments()
                 .iter()
                 .cloned()
                 .map(QueryConstraint::Argument)
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             evidence: EvidenceDescriptor {
-                kind: if call.arguments.is_empty() {
+                kind: if call.arguments().is_empty() {
                     MatchKind::Call
                 } else {
                     MatchKind::CallArgument
@@ -107,19 +107,19 @@ pub(super) fn lower_member_calls(values: &[MemberCallMatcher]) -> Vec<QueryClaus
         .iter()
         .map(|member| {
             let constraints = member
-                .arguments
+                .arguments()
                 .iter()
                 .cloned()
                 .map(QueryConstraint::Argument)
                 .collect::<Vec<_>>()
                 .into_boxed_slice();
             lower_member_clause(
-                member_identity(&member.chain, &member.provenance),
+                member_identity(member.chain(), member.provenance()),
                 EventPredicate::MemberCall {
-                    member: SymbolPath::from(member.chain.as_str()),
+                    member: SymbolPath::from(member.chain()),
                 },
                 constraints,
-                if member.arguments.is_empty() {
+                if member.arguments().is_empty() {
                     MatchKind::MemberCall
                 } else {
                     MatchKind::CallArgument
@@ -135,9 +135,9 @@ pub(super) fn lower_member_reads(values: &[MemberReadMatcher]) -> Vec<QueryClaus
         .iter()
         .map(|read| {
             lower_member_clause(
-                member_identity(read.chain.as_str(), &read.provenance),
+                member_identity(read.chain(), read.provenance()),
                 EventPredicate::MemberRead {
-                    member: SymbolPath::from(read.chain.as_str()),
+                    member: SymbolPath::from(read.chain()),
                 },
                 Box::new([]),
                 MatchKind::MemberRead,
@@ -197,7 +197,7 @@ pub(super) fn lower_classes_and_constructors(
     constructors: &[ConstructorMatcher],
 ) -> Vec<QueryClause> {
     let classes = classes.iter().map(|class| QueryClause {
-        identity: call_identity(&class.name, &class.provenance),
+        identity: call_identity(class.name(), class.provenance()),
         event: EventPredicate::ClassReference,
         subject: SubjectConstraint::Direct,
         constraints: Box::new([]),
@@ -207,7 +207,7 @@ pub(super) fn lower_classes_and_constructors(
         },
     });
     let constructors = constructors.iter().map(|constructor| QueryClause {
-        identity: call_identity(&constructor.name, &constructor.provenance),
+        identity: call_identity(constructor.name(), constructor.provenance()),
         event: EventPredicate::Construct,
         subject: SubjectConstraint::Direct,
         constraints: Box::new([]),
@@ -249,20 +249,20 @@ pub(super) fn lower_returned_members(
 ) -> Vec<QueryClause> {
     let calls = calls_matchers.iter().map(|returned| {
         returned_member_clause(
-            &returned.source,
-            &returned.member,
+            returned.source(),
+            returned.member(),
             EventPredicate::MemberCall {
-                member: returned.member.clone().into(),
+                member: returned.member().into(),
             },
             MatchKind::MemberCall,
         )
     });
     let reads = reads_matchers.iter().map(|returned| {
         returned_member_clause(
-            &returned.source,
-            &returned.member,
+            returned.source(),
+            returned.member(),
             EventPredicate::MemberRead {
-                member: returned.member.clone().into(),
+                member: returned.member().into(),
             },
             MatchKind::MemberRead,
         )
@@ -274,20 +274,20 @@ pub(super) fn lower_instance_members(values: &[InstanceMemberCallMatcher]) -> Ve
     values
         .iter()
         .map(|instance| {
-            let constructor = instance.module_pattern.clone().map_or_else(
+            let constructor = instance.module_pattern().cloned().map_or_else(
                 || IdentityConstraint::ModuleExport {
-                    module: instance.module.to_smolstr(),
-                    export: instance.export.to_smolstr(),
+                    module: instance.module().to_smolstr(),
+                    export: instance.export().to_smolstr(),
                 },
                 |module| IdentityConstraint::PackageModuleExport {
                     module,
-                    export: instance.export.to_smolstr(),
+                    export: instance.export().to_smolstr(),
                 },
             );
             QueryClause {
                 identity: constructor.clone(),
                 event: EventPredicate::MemberCall {
-                    member: SymbolPath::from(instance.member.as_str()),
+                    member: SymbolPath::from(instance.member()),
                 },
                 subject: SubjectConstraint::InstanceOf {
                     constructor: Box::new(constructor),
@@ -297,7 +297,9 @@ pub(super) fn lower_instance_members(values: &[InstanceMemberCallMatcher]) -> Ve
                     kind: MatchKind::MemberCall,
                     symbol: format!(
                         "{}:{}.{}",
-                        instance.module, instance.export, instance.member
+                        instance.module(),
+                        instance.export(),
+                        instance.member()
                     ),
                 },
             }

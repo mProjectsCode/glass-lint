@@ -30,13 +30,28 @@ pub struct RuleOverride {
     enabled: bool,
 }
 
+/// A segment of a parsed rule selector.
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum PatternSegment {
+    /// A literal string that must appear verbatim.
+    Literal(String),
+    /// A `*` wildcard matching any sequence of characters.
+    Wildcard,
+}
+
 /// Parsed rule selector. The wildcard language is intentionally tiny: `*`
 /// matches any sequence of characters, while all other characters are
 /// literal. Keeping the parsed shape here prevents validation and execution
 /// from maintaining separate interpretations of the same selector.
-#[derive(Clone, Debug, serde::Serialize, Eq, PartialEq)]
-#[serde(transparent)]
-pub struct RuleSelector(String);
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuleSelector {
+    /// Original selector text for serialization and display.
+    raw: String,
+    /// Pre-parsed segments for O(n) matching.
+    segments: Vec<PatternSegment>,
+    /// Whether the original selector ends with `*` (anchors the final literal).
+    ends_with_wildcard: bool,
+}
 
 fn deserialize_selector<'de, D>(deserializer: D) -> Result<RuleSelector, D::Error>
 where
@@ -44,6 +59,12 @@ where
 {
     let value = <String as serde::Deserialize>::deserialize(deserializer)?;
     RuleSelector::parse(value).map_err(serde::de::Error::custom)
+}
+
+impl serde::Serialize for RuleSelector {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.raw)
+    }
 }
 
 impl RuleSelector {
@@ -57,21 +78,62 @@ impl RuleSelector {
         }
         RuleId::parse(selector.replace('*', "placeholder"))
             .map_err(|_| LintConfigError::InvalidSelector(selector.clone()))?;
-        Ok(Self(selector))
+
+        let mut segments = Vec::new();
+        for part in selector.split('*') {
+            if !part.is_empty() {
+                segments.push(PatternSegment::Literal(part.to_owned()));
+            }
+            segments.push(PatternSegment::Wildcard);
+        }
+        segments.pop(); // Remove trailing wildcard added by split.
+        let ends_with_wildcard = selector.ends_with('*');
+
+        Ok(Self {
+            raw: selector,
+            segments,
+            ends_with_wildcard,
+        })
     }
 
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.raw
+    }
+
+    pub fn has_wildcard(&self) -> bool {
+        self.ends_with_wildcard
+            || self
+                .segments
+                .iter()
+                .any(|s| matches!(s, PatternSegment::Wildcard))
     }
 
     fn matches(&self, id: &str) -> bool {
-        self.0.split('*').enumerate().all(|(index, part)| {
-            if index == 0 {
-                id.starts_with(part)
+        let mut pos = 0usize;
+        for (i, segment) in self.segments.iter().enumerate() {
+            let PatternSegment::Literal(lit) = segment else {
+                continue;
+            };
+            if i == 0 {
+                // First literal must match at the start.
+                if !id.starts_with(lit) {
+                    return false;
+                }
+                pos = lit.len();
+            } else if i == self.segments.len() - 1 && !self.ends_with_wildcard {
+                // Last literal (no trailing *) must match up to the end.
+                if !id[pos..].ends_with(lit) {
+                    return false;
+                }
             } else {
-                id.contains(part)
+                // Intermediate literals must be found in order.
+                let Some(found) = id[pos..].find(lit) else {
+                    return false;
+                };
+                pos += found + lit.len();
             }
-        }) && (self.0.ends_with('*') || id.ends_with(self.0.rsplit('*').next().unwrap_or_default()))
+        }
+        true
     }
 }
 
@@ -145,7 +207,7 @@ impl RuleSelection {
             {
                 continue;
             }
-            if !override_.selector.as_str().contains('*') {
+            if !override_.selector.has_wildcard() {
                 return Err(LintConfigError::UnknownRule(
                     RuleId::parse(override_.selector.as_str().to_owned()).map_err(|_| {
                         LintConfigError::InvalidSelector(override_.selector.as_str().into())

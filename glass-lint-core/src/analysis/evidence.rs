@@ -8,6 +8,18 @@ use crate::api::classification::{
 #[cfg(test)]
 use crate::api::rule::Rule;
 
+/// Internal key that owns its data once and is used across all accumulators,
+/// avoiding string clones for separate count, related, and occurrence maps.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct EvidenceKey(MatchKind, String);
+
+/// Per-key accumulated state used during normalization.
+struct EvidenceAccum {
+    total_count: usize,
+    related: Vec<RelatedClassificationEvidence>,
+    occurrences: Vec<crate::api::classification::ClassificationEvidenceOccurrence>,
+}
+
 /// Sort, deduplicate, bound, and normalize evidence occurrences in place.
 ///
 /// Within each `(kind, symbol)` group, occurrences are sorted by source
@@ -15,26 +27,45 @@ use crate::api::rule::Rule;
 /// retains the original total (not the bounded count) so callers can report
 /// how many events were found even when only a subset is shown.
 pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, limit: usize) {
-    let mut all = Vec::new();
-    let mut total_counts = BTreeMap::<(MatchKind, String), usize>::new();
-    let mut related_map =
-        BTreeMap::<(MatchKind, String), Vec<RelatedClassificationEvidence>>::new();
+    let mut acc: BTreeMap<EvidenceKey, EvidenceAccum> = BTreeMap::new();
 
     for item in evidence.drain(..) {
-        let key = (item.kind, item.symbol.clone());
-        *total_counts.entry(key.clone()).or_default() += item.count as usize;
-        related_map
-            .entry(key.clone())
-            .or_default()
-            .extend(item.related);
+        let key = EvidenceKey(item.kind, item.symbol);
+        let accum = acc.entry(key).or_insert_with(|| EvidenceAccum {
+            total_count: 0,
+            related: Vec::new(),
+            occurrences: Vec::new(),
+        });
+        accum.total_count = accum.total_count.saturating_add(item.count as usize);
+        accum.related.extend(item.related);
         for occurrence in item.occurrences {
             if !occurrence.span.is_empty() {
-                all.push((key.clone(), occurrence));
+                accum.occurrences.push(occurrence);
             }
         }
     }
 
-    all.sort_by_key(|(key, occurrence)| {
+    // Sort and deduplicate occurrences within each key.
+    for (_, accum) in acc.iter_mut() {
+        accum.occurrences.sort_by_key(|occurrence| {
+            (
+                occurrence.span.start(),
+                occurrence.span.end(),
+                occurrence.fact.unwrap_or(u32::MAX),
+            )
+        });
+        accum.occurrences.dedup();
+    }
+
+    // Collect into a flat buffer maintaining the key for grouping.
+    let mut flat: Vec<(EvidenceKey, crate::api::classification::ClassificationEvidenceOccurrence)> =
+        Vec::new();
+    for (key, accum) in &acc {
+        for occurrence in &accum.occurrences {
+            flat.push((key.clone(), occurrence.clone()));
+        }
+    }
+    flat.sort_by_key(|(key, occurrence)| {
         (
             key.0,
             occurrence.span.start(),
@@ -42,13 +73,13 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
             occurrence.fact.unwrap_or(u32::MAX),
         )
     });
-    all.dedup();
+    flat.dedup();
 
     let mut truncated = false;
-    let mut grouped: BTreeMap<(MatchKind, String), Vec<_>> = BTreeMap::new();
-    for (key, occurrence) in all {
+    let mut grouped: BTreeMap<EvidenceKey, Vec<_>> = BTreeMap::new();
+    for (key, occurrence) in flat {
         if grouped.len() < limit || grouped.contains_key(&key) {
-            let entry = grouped.entry(key.clone()).or_default();
+            let entry = grouped.entry(key).or_default();
             if entry.len() < limit {
                 entry.push(occurrence);
             } else {
@@ -59,20 +90,22 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
         }
     }
 
-    for ((kind, ref symbol), occurrences) in grouped {
-        let total = total_counts
-            .get(&(kind, symbol.clone()))
-            .copied()
+    for (key, occurrences) in grouped {
+        let total = acc
+            .get(&key)
+            .map(|a| a.total_count)
             .unwrap_or(occurrences.len());
+        let related = acc
+            .get_mut(&key)
+            .map(|a| std::mem::take(&mut a.related))
+            .unwrap_or_default();
         evidence.push(ClassificationEvidence {
-            kind,
-            symbol: symbol.clone(),
+            kind: key.0,
+            symbol: key.1,
             count: u32::try_from(total).unwrap_or(u32::MAX),
             evidence_truncated: truncated,
             occurrences,
-            related: related_map
-                .remove(&(kind, symbol.clone()))
-                .unwrap_or_default(),
+            related,
         });
     }
     evidence.sort_by_key(|item| {

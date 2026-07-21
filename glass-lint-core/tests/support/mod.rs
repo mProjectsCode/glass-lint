@@ -8,7 +8,7 @@
 #![allow(dead_code)]
 
 use glass_lint_core::{
-    Environment, Linter, LinterConfig, RuleCatalog,
+    Environment, FileReport, Linter, LinterConfig, RuleCatalog,
     rules::{Builder, Confidence, Rule, Severity},
 };
 
@@ -19,6 +19,37 @@ pub fn rule(id: &str) -> Builder {
         .category("test")
         .severity(Severity::Info)
         .confidence(Confidence::High)
+}
+
+/// Create a linter from rules and an environment.
+pub fn test_linter(rules: Vec<Rule>, environment: Environment) -> Linter {
+    let catalog = RuleCatalog::new("test", rules).unwrap();
+    Linter::new(LinterConfig::new(vec![catalog], environment)).unwrap()
+}
+
+/// Create a linter from a single rule with the test environment.
+pub fn test_linter_for(rule: Rule) -> Linter {
+    test_linter(vec![rule], test_environment())
+}
+
+/// Lint a snippet with a single rule and return the file report.
+pub fn lint_snippet(source: &str, rule: Rule) -> FileReport {
+    test_linter_for(rule)
+        .lint_snippet(source, "test.js")
+        .unwrap()
+        .files
+        .into_iter()
+        .next()
+        .unwrap()
+}
+
+/// Return finding messages from a file report.
+pub fn finding_messages(report: &FileReport) -> Vec<&str> {
+    report
+        .findings
+        .iter()
+        .map(|finding| finding.message.as_str())
+        .collect()
 }
 
 /// Default test environment with common globals.

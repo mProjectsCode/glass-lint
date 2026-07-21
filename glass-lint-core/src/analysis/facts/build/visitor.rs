@@ -51,12 +51,16 @@ impl Visit for FactBuilder<'_> {
         // A member expression is a read role at this node; its object and
         // property children are visited separately for their own references.
         let resolved = self.resolver.resolve_member(member);
-        let syntactic_chain = self.resolver.member_expression_chain(member);
+        let chain = self.resolver.member_expression_chain(member);
+        let syntactic_path = chain
+            .as_ref()
+            .and_then(|path| self.name_path(path));
         self.emit(
             FactKind::MemberRead,
             member.span(),
             FactPayload::MemberRead {
-                syntactic_chain,
+                syntactic_chain: chain,
+                syntactic_path,
                 rooted_chain: self.rooted_path(resolved.rooted_chain.as_ref()),
                 module_member: resolved.module_member.clone(),
                 returned_member: self.returned_path(resolved.returned_member.as_ref()),
@@ -183,12 +187,16 @@ impl Visit for FactBuilder<'_> {
             }
             OptChainBase::Member(member) => {
                 let resolved = self.resolver.resolve_member(member);
-                let syntactic_chain = self.resolver.member_expression_chain(member);
+                let chain = self.resolver.member_expression_chain(member);
+                let syntactic_path = chain
+                    .as_ref()
+                    .and_then(|path| self.name_path(path));
                 self.emit(
                     FactKind::MemberRead,
                     member.span(),
                     FactPayload::MemberRead {
-                        syntactic_chain,
+                        syntactic_chain: chain,
+                        syntactic_path,
                         rooted_chain: self.rooted_path(resolved.rooted_chain.as_ref()),
                         module_member: resolved.module_member.clone(),
                         returned_member: self.returned_path(resolved.returned_member.as_ref()),

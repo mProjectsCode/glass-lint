@@ -20,7 +20,7 @@ use crate::{
         },
         flow::table::FunctionTable,
         syntax::SymbolCallProvenance,
-        value::{FunctionId, NamePath, PathId, SymbolPath, ValueId},
+        value::{FunctionId, NamePath, PathId, ValueId},
     },
     budget::Budget,
 };
@@ -207,8 +207,8 @@ impl EffectCall {
                     .is_some_and(|member| member == *chain)
             }) && source.provenance.matches_rooted(self.is_rooted())
                 && source.arguments.iter().all(|matcher| {
-                    args.get(matcher.index)
-                        .is_some_and(|argument| matcher.matcher.matches(argument, names))
+                    args.get(matcher.index())
+                        .is_some_and(|argument| matcher.matcher().matches(argument, names))
                 })
         })
     }
@@ -270,9 +270,9 @@ impl FunctionEffects {
         if !stream.is_valid() {
             return effects;
         }
-        let Some(names) = stream.names() else {
+        if stream.names().is_none() {
             return effects;
-        };
+        }
         let mut budget = Budget::new(limit);
         let mut value_provenance = BTreeMap::new();
         effects.initialize(stream, &mut budget);
@@ -313,7 +313,7 @@ impl FunctionEffects {
                     static_value.as_ref(),
                     &mut budget,
                 ),
-                FactPayload::Call { .. } => effect.record_call(fact, &mut budget, names),
+                FactPayload::Call { .. } => effect.record_call(fact, &mut budget),
                 FactPayload::Control {
                     kind: ControlKind::Return,
                     return_value,
@@ -458,10 +458,9 @@ impl FunctionEffect {
         &mut self,
         fact: &SemanticFact,
         budget: &mut Budget,
-        names: &crate::analysis::name::NameTable,
     ) {
         let FactPayload::Call {
-            syntactic_chain,
+            syntactic_path,
             rooted_chain,
             args,
             target_function,
@@ -478,9 +477,8 @@ impl FunctionEffect {
         let (chain, call_args) = Self::call_chain_and_args(
             unwrap.as_deref(),
             rooted_chain.as_ref(),
-            syntactic_chain.as_ref(),
+            syntactic_path.as_ref(),
             args,
-            names,
         );
         let arguments = self.build_effect_arguments(call_args);
         if budget.try_push() {
@@ -525,22 +523,19 @@ impl FunctionEffect {
     fn call_chain_and_args<'a>(
         unwrap: Option<&'a CallUnwrap>,
         rooted_chain: Option<&NamePath>,
-        syntactic_chain: Option<&SymbolPath>,
+        syntactic_path: Option<&NamePath>,
         args: &'a [CallArgInfo],
-        names: &crate::analysis::name::NameTable,
     ) -> (Option<NamePath>, &'a [CallArgInfo]) {
         unwrap.map_or_else(
             || {
                 (
-                    rooted_chain.cloned().or_else(|| {
-                        syntactic_chain.and_then(|path| NamePath::from_symbol_path(path, names))
-                    }),
+                    rooted_chain.cloned().or_else(|| syntactic_path.cloned()),
                     args,
                 )
             },
             |unwrap| {
                 (
-                    NamePath::from_symbol_path(&unwrap.chain, names),
+                    unwrap.chain_path.clone(),
                     unwrap.effective_args.as_slice(),
                 )
             },

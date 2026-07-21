@@ -13,7 +13,7 @@ mod normalization;
 mod taxonomy;
 pub mod validation;
 
-pub use error::{CompiledCatalogError, RuleBuildError};
+pub use error::{CompiledCatalogError, MatcherBuildError, RuleBuildError};
 pub(crate) use matcher::MatcherFamily;
 pub use matcher::{
     ArgumentConstraint, ArgumentMatcher, CallMatcher, ClassMatcher, ConstructorMatcher,
@@ -312,17 +312,14 @@ mod tests {
             )))
             .build()
             .unwrap_err();
-        assert!(error.contains("condition"));
+        assert!(matches!(error, MatcherBuildError::MissingRequired));
 
         let error = Rule::builder("class.invalid-global")
             .description("rule")
             .category("classes")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .matcher(Matcher::from(ClassMatcher {
-                name: "Client".into(),
-                provenance: SymbolProvenance::Global,
-            }))
+            .matcher(Matcher::heuristic_class(""))
             .build()
             .unwrap_err();
         assert!(matches!(error, RuleBuildError::InvalidMatcher(_)));

@@ -12,9 +12,7 @@ pub use call::*;
 pub use derived::*;
 pub use flow::*;
 pub use member::*;
-use smol_str::ToSmolStr;
-
-use crate::api::rule::{ModuleSpecifierPattern, validation};
+use crate::api::rule::{MatcherBuildError, ModuleSpecifierPattern, validation};
 
 #[derive(Debug, Clone, Default)]
 /// Collection of matcher families before validation and normalization.
@@ -47,70 +45,47 @@ pub struct MatcherSet {
 
 /// Exhaustive view of matcher families. Keeping this dispatch in the owning
 /// type makes adding a family a compile-time edit at one canonical list.
-pub(crate) enum MatcherFamily<'a> {
-    Calls(&'a [CallMatcher]),
-    MemberCalls(&'a [MemberCallMatcher]),
-    MemberReads(&'a [MemberReadMatcher]),
-    Imports(&'a [String]),
-    PackageImports(&'a [ModuleSpecifierPattern]),
-    StringContains(&'a [String]),
-    Classes(&'a [ClassMatcher]),
-    Constructors(&'a [ConstructorMatcher]),
-    Flows(&'a [ObjectFlowMatcher]),
-    ReturnedMemberCalls(&'a [ReturnedMemberCallMatcher]),
-    ReturnedMemberReads(&'a [ReturnedMemberReadMatcher]),
-    InstanceMemberCalls(&'a [InstanceMemberCallMatcher]),
+macro_rules! matcher_families {
+    ($(($variant:ident, $field:ident, $ty:ty)),* $(,)?) => {
+        const MATCHER_FAMILY_COUNT: usize = [$(stringify!($variant)),*].len();
+
+        pub(crate) enum MatcherFamily<'a> {
+            $($variant(&'a [$ty]),)*
+        }
+
+        pub(crate) enum MatcherFamilyMut<'a> {
+            $($variant(&'a mut Vec<$ty>),)*
+        }
+
+        impl MatcherSet {
+            pub(crate) fn families(&self) -> [MatcherFamily<'_>; MATCHER_FAMILY_COUNT] {
+                [
+                    $(MatcherFamily::$variant(&self.$field[..]),)*
+                ]
+            }
+
+            pub(crate) fn families_mut(&mut self) -> [MatcherFamilyMut<'_>; MATCHER_FAMILY_COUNT] {
+                [
+                    $(MatcherFamilyMut::$variant(&mut self.$field),)*
+                ]
+            }
+        }
+    };
 }
 
-pub(crate) enum MatcherFamilyMut<'a> {
-    Calls(&'a mut Vec<CallMatcher>),
-    MemberCalls(&'a mut Vec<MemberCallMatcher>),
-    MemberReads(&'a mut Vec<MemberReadMatcher>),
-    Imports(&'a mut Vec<String>),
-    PackageImports(&'a mut Vec<ModuleSpecifierPattern>),
-    StringContains(&'a mut Vec<String>),
-    Classes(&'a mut Vec<ClassMatcher>),
-    Constructors(&'a mut Vec<ConstructorMatcher>),
-    Flows(&'a mut Vec<ObjectFlowMatcher>),
-    ReturnedMemberCalls(&'a mut Vec<ReturnedMemberCallMatcher>),
-    ReturnedMemberReads(&'a mut Vec<ReturnedMemberReadMatcher>),
-    InstanceMemberCalls(&'a mut Vec<InstanceMemberCallMatcher>),
-}
-
-impl MatcherSet {
-    pub(crate) fn families(&self) -> [MatcherFamily<'_>; 12] {
-        [
-            MatcherFamily::Calls(&self.calls),
-            MatcherFamily::MemberCalls(&self.member_calls),
-            MatcherFamily::MemberReads(&self.member_reads),
-            MatcherFamily::Imports(&self.imports),
-            MatcherFamily::PackageImports(&self.package_imports),
-            MatcherFamily::StringContains(&self.string_contains),
-            MatcherFamily::Classes(&self.classes),
-            MatcherFamily::Constructors(&self.constructors),
-            MatcherFamily::Flows(&self.flows),
-            MatcherFamily::ReturnedMemberCalls(&self.returned_member_calls),
-            MatcherFamily::ReturnedMemberReads(&self.returned_member_reads),
-            MatcherFamily::InstanceMemberCalls(&self.instance_member_calls),
-        ]
-    }
-
-    pub(crate) fn families_mut(&mut self) -> [MatcherFamilyMut<'_>; 12] {
-        [
-            MatcherFamilyMut::Calls(&mut self.calls),
-            MatcherFamilyMut::MemberCalls(&mut self.member_calls),
-            MatcherFamilyMut::MemberReads(&mut self.member_reads),
-            MatcherFamilyMut::Imports(&mut self.imports),
-            MatcherFamilyMut::PackageImports(&mut self.package_imports),
-            MatcherFamilyMut::StringContains(&mut self.string_contains),
-            MatcherFamilyMut::Classes(&mut self.classes),
-            MatcherFamilyMut::Constructors(&mut self.constructors),
-            MatcherFamilyMut::Flows(&mut self.flows),
-            MatcherFamilyMut::ReturnedMemberCalls(&mut self.returned_member_calls),
-            MatcherFamilyMut::ReturnedMemberReads(&mut self.returned_member_reads),
-            MatcherFamilyMut::InstanceMemberCalls(&mut self.instance_member_calls),
-        ]
-    }
+matcher_families! {
+    (Calls, calls, CallMatcher),
+    (MemberCalls, member_calls, MemberCallMatcher),
+    (MemberReads, member_reads, MemberReadMatcher),
+    (Imports, imports, String),
+    (PackageImports, package_imports, ModuleSpecifierPattern),
+    (StringContains, string_contains, String),
+    (Classes, classes, ClassMatcher),
+    (Constructors, constructors, ConstructorMatcher),
+    (Flows, flows, ObjectFlowMatcher),
+    (ReturnedMemberCalls, returned_member_calls, ReturnedMemberCallMatcher),
+    (ReturnedMemberReads, returned_member_reads, ReturnedMemberReadMatcher),
+    (InstanceMemberCalls, instance_member_calls, InstanceMemberCallMatcher),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -158,7 +133,7 @@ impl Matcher {
     pub fn package_call(
         module: impl Into<String>,
         export: impl Into<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, MatcherBuildError> {
         CallMatcher::package_export(module, export).map(Into::into)
     }
 
@@ -177,7 +152,7 @@ impl Matcher {
     pub fn package_member_call(
         module: impl Into<String>,
         member: impl Into<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, MatcherBuildError> {
         MemberCallMatcher::package_member(module, member).map(Into::into)
     }
 
@@ -196,7 +171,7 @@ impl Matcher {
     pub fn package_member_read(
         module: impl Into<String>,
         member: impl Into<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, MatcherBuildError> {
         MemberReadMatcher::package_member(module, member).map(Into::into)
     }
 
@@ -204,7 +179,7 @@ impl Matcher {
         Self::Import(module.into())
     }
 
-    pub fn package_import(module: impl Into<String>) -> Result<Self, String> {
+    pub fn package_import(module: impl Into<String>) -> Result<Self, MatcherBuildError> {
         ModuleSpecifierPattern::package(module).map(Self::PackageImport)
     }
 
@@ -223,7 +198,7 @@ impl Matcher {
     pub fn package_class(
         module: impl Into<String>,
         export: impl Into<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, MatcherBuildError> {
         ClassMatcher::package_export(module, export).map(Into::into)
     }
 
@@ -242,22 +217,16 @@ impl Matcher {
     pub fn package_constructor(
         module: impl Into<String>,
         export: impl Into<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, MatcherBuildError> {
         ConstructorMatcher::package_export(module, export).map(Into::into)
     }
 
     pub fn returned_member_call(source: impl Into<String>, member: impl Into<String>) -> Self {
-        Self::ReturnedMemberCall(ReturnedMemberCallMatcher {
-            source: source.into(),
-            member: member.into(),
-        })
+        Self::ReturnedMemberCall(ReturnedMemberCallMatcher::new(source, member))
     }
 
     pub fn returned_member_read(source: impl Into<String>, member: impl Into<String>) -> Self {
-        Self::ReturnedMemberRead(ReturnedMemberReadMatcher {
-            source: source.into(),
-            member: member.into(),
-        })
+        Self::ReturnedMemberRead(ReturnedMemberReadMatcher::new(source, member))
     }
 
     pub fn instance_member_call(
@@ -265,27 +234,22 @@ impl Matcher {
         export: impl Into<String>,
         member: impl Into<String>,
     ) -> Self {
-        Self::InstanceMemberCall(InstanceMemberCallMatcher {
-            module: module.into(),
-            module_pattern: None,
-            export: export.into(),
-            member: member.into(),
-        })
+        Self::InstanceMemberCall(InstanceMemberCallMatcher::new(module, export, member))
     }
 
     pub fn package_instance_member_call(
         module: impl Into<String>,
         export: impl Into<String>,
         member: impl Into<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, MatcherBuildError> {
         let module = module.into();
         let pattern = ModuleSpecifierPattern::package(module.clone())?;
-        Ok(Self::InstanceMemberCall(InstanceMemberCallMatcher {
+        Ok(Self::InstanceMemberCall(InstanceMemberCallMatcher::with_package(
             module,
-            module_pattern: Some(pattern),
-            export: export.into(),
-            member: member.into(),
-        }))
+            pattern,
+            export,
+            member,
+        )))
     }
 }
 
@@ -399,7 +363,7 @@ impl MatcherSet {
     }
 
     /// Validate all declarations without normalizing or mutating them.
-    pub fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), MatcherBuildError> {
         validation::validate(self)
     }
 
@@ -427,58 +391,10 @@ impl MatcherSet {
 
 pub fn normalize_flows(values: &mut Vec<ObjectFlowMatcher>) {
     for flow in values.iter_mut() {
-        flow.symbol = flow.symbol.trim().to_string();
-        for source in &mut flow.sources {
-            source.call.normalize();
-        }
-        if let Some(condition) = &mut flow.condition {
-            condition.normalize();
-        }
-        if let Some(completion) = &mut flow.completion {
-            completion.normalize();
-        }
+        flow.normalize();
     }
-    values.sort_by(|left, right| left.symbol.cmp(&right.symbol));
+    values.sort_by(|left, right| left.symbol().cmp(right.symbol()));
     values.dedup();
-}
-
-impl FlowCondition {
-    fn normalize(&mut self) {
-        let events = match self {
-            Self::AnyOf(events) | Self::AllOf(events) => events,
-        };
-        for event in events {
-            event.normalize();
-        }
-    }
-}
-
-impl ObjectEventMatcher {
-    fn normalize(&mut self) {
-        match self {
-            Self::PropertyWrite { property, value } => {
-                *property = property.trim().to_smolstr();
-                value.normalize();
-            }
-            Self::MemberCall { member, arguments } => {
-                *member = member.trim().to_string();
-                ArgumentConstraint::normalize_all(arguments);
-            }
-        }
-    }
-}
-
-impl FlowCompletion {
-    fn normalize(&mut self) {
-        if let Self::AnySink(sinks) = self {
-            for sink in sinks {
-                match sink {
-                    FlowSinkMatcher::ArgumentOf { call, .. }
-                    | FlowSinkMatcher::AnyArgumentOf { call } => call.normalize(),
-                }
-            }
-        }
-    }
 }
 
 pub fn normalize_strings(values: &mut Vec<String>) {

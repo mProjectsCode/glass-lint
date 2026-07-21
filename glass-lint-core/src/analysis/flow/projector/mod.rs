@@ -205,7 +205,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             return;
         }
         let FactPayload::Call {
-            syntactic_chain,
+            syntactic_path,
             rooted_chain,
             callee_name,
             receiver,
@@ -221,7 +221,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             fact.id,
             self.names,
             rooted_chain.as_ref(),
-            syntactic_chain.as_ref(),
+            syntactic_path.as_ref(),
             callee_name.and_then(|id| self.stream.resolve_name(id)),
             unwrap.as_deref(),
         ) {

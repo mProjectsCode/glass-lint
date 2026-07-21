@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+use crate::api::rule::error::MatcherBuildError;
+
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 /// An exact module specifier or a package root with boundary-aware subpaths.
 pub struct ModuleSpecifierPattern {
@@ -11,18 +13,22 @@ pub struct ModuleSpecifierPattern {
 
 impl ModuleSpecifierPattern {
     /// Construct an exact authored module specifier.
-    pub fn exact(name: impl Into<String>) -> Result<Self, String> {
+    pub fn exact(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
         let name = name.into().trim().to_string();
         (!name.is_empty())
             .then_some(Self {
                 name,
                 package: false,
             })
-            .ok_or_else(|| "module specifier must not be empty".into())
+            .ok_or_else(|| {
+                MatcherBuildError::InvalidModuleSpecifier(
+                    "module specifier must not be empty".into(),
+                )
+            })
     }
 
     /// Construct a package-root pattern matching the root and `/...` subpaths.
-    pub fn package(name: impl Into<String>) -> Result<Self, String> {
+    pub fn package(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
         let name = name.into().trim().to_string();
         if name.is_empty()
             || name.ends_with('/')
@@ -30,7 +36,9 @@ impl ModuleSpecifierPattern {
             || name.starts_with('/')
             || name.contains("://")
         {
-            return Err(format!("invalid package specifier `{name}`"));
+            return Err(MatcherBuildError::InvalidModuleSpecifier(format!(
+                "invalid package specifier `{name}`"
+            )));
         }
         if let Some(scope) = name.strip_prefix('@') {
             let mut parts = scope.split('/');
@@ -38,10 +46,14 @@ impl ModuleSpecifierPattern {
                 || parts.next().is_none_or(str::is_empty)
                 || parts.next().is_some()
             {
-                return Err(format!("invalid scoped package specifier `{name}`"));
+                return Err(MatcherBuildError::InvalidModuleSpecifier(format!(
+                    "invalid scoped package specifier `{name}`"
+                )));
             }
         } else if name.contains('/') {
-            return Err(format!("package root must not contain `/`: `{name}`"));
+            return Err(MatcherBuildError::InvalidModuleSpecifier(format!(
+                "package root must not contain `/`: `{name}`"
+            )));
         }
         Ok(Self {
             name,

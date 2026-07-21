@@ -114,7 +114,7 @@ impl OccurrenceIndexes {
         }
     }
 
-    fn record_call_fact(&mut self, fact: &SemanticFact, names: &NameTable) {
+    fn record_call_fact(&mut self, fact: &SemanticFact, _names: &NameTable) {
         let FactPayload::Call {
             callee_name,
             callee_span,
@@ -147,13 +147,14 @@ impl OccurrenceIndexes {
             }
             SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_) => {}
         }
-        self.record_call_paths(fact, names);
-        self.record_call_special_cases(fact, names);
+        self.record_call_paths(fact);
+        self.record_call_special_cases(fact);
     }
 
-    fn record_call_paths(&mut self, fact: &SemanticFact, names: &NameTable) {
+    fn record_call_paths(&mut self, fact: &SemanticFact) {
         let FactPayload::Call {
             syntactic_chain,
+            syntactic_path,
             rooted_chain,
             module_member,
             returned_member,
@@ -165,10 +166,8 @@ impl OccurrenceIndexes {
             return;
         };
         let span = *callee_span;
-        if let Some(chain) = syntactic_chain
-            && let Some(chain) = NamePath::from_symbol_path(chain, names)
-        {
-            self.members.calls.push(chain, fact.id, span);
+        if let Some(chain) = syntactic_path {
+            self.members.calls.push(chain.clone(), fact.id, span);
         }
         if let Some(chain) = rooted_chain {
             self.members.rooted_calls.push(chain.clone(), fact.id, span);
@@ -203,9 +202,8 @@ impl OccurrenceIndexes {
         }
     }
 
-    fn record_call_special_cases(&mut self, fact: &SemanticFact, names: &NameTable) {
+    fn record_call_special_cases(&mut self, fact: &SemanticFact) {
         let FactPayload::Call {
-            rooted_chain: _,
             unwrap,
             callee_span,
             ..
@@ -214,19 +212,20 @@ impl OccurrenceIndexes {
             return;
         };
         if let Some(unwrap) = unwrap
+            && let Some(chain) = &unwrap.chain_path
             && !unwrap.chain.is_empty()
-            && let Some(chain) = NamePath::from_symbol_path(&unwrap.chain, names)
         {
             self.members
                 .calls
                 .push(chain.clone(), fact.id, *callee_span);
-            self.members.rooted_calls.push(chain, fact.id, *callee_span);
+            self.members.rooted_calls.push(chain.clone(), fact.id, *callee_span);
         }
     }
 
     fn record_member_read_fact(&mut self, fact: &SemanticFact, names: &NameTable) {
         let FactPayload::MemberRead {
             syntactic_chain,
+            syntactic_path,
             rooted_chain,
             module_member,
             returned_member,
@@ -235,7 +234,9 @@ impl OccurrenceIndexes {
         else {
             return;
         };
-        if let Some(chain) = syntactic_chain
+        if let Some(chain) = syntactic_path {
+            self.members.reads.push(chain.clone(), fact.id, fact.span);
+        } else if let Some(chain) = syntactic_chain
             && let Some(chain) = NamePath::from_symbol_path(chain, names)
         {
             self.members.reads.push(chain, fact.id, fact.span);

@@ -6,9 +6,10 @@
 
 use crate::{
     analysis::{
-        BTreeMap, ExportResolution, LinkedModuleTarget, MAX_SCC_SIZE, ModuleId,
+        BTreeMap, ExportResolution, LinkedModuleTarget, ModuleId,
         ProjectSemanticModel,
         module::ModuleRequestRole,
+        project::model::MAX_SCC_SIZE,
         status::{AnalysisComponent, IncompleteReason},
     },
     project::{ProjectRelativePath, is_internal_module_request as is_internal_request},

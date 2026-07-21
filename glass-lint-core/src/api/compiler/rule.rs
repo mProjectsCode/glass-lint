@@ -372,7 +372,11 @@ mod tests {
         analysis::SymbolPath,
         api::{
             classification::MatchKind,
-            rule::{CallMatcher, Matcher, MatcherSet, ObjectFlowMatcher},
+            rule::{
+                CallMatcher, FlowCompletion, FlowCondition, Matcher, MatcherSet,
+                MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher,
+                ValueMatcher,
+            },
         },
     };
 
@@ -398,12 +402,19 @@ mod tests {
             Matcher::string_contains("https://"),
             Matcher::heuristic_class("Worker"),
             Matcher::global_constructor("URL"),
-            Matcher::from(ObjectFlowMatcher {
-                symbol: "request".into(),
-                sources: Vec::new(),
-                condition: None,
-                completion: None,
-            }),
+            Matcher::from(
+                ObjectFlowMatcher::builder("request")
+                    .source(ObjectSourceMatcher::returned_by(
+                        MemberCallMatcher::rooted("test.method"),
+                    ))
+                    .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                        "ready",
+                        ValueMatcher::any_value(),
+                    )))
+                    .complete_at(FlowCompletion::configuration())
+                    .build()
+                    .unwrap(),
+            ),
             Matcher::returned_member_call("create", "send"),
             Matcher::returned_member_read("create", "token"),
             Matcher::instance_member_call("pkg", "Client", "send"),

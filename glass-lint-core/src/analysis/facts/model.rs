@@ -210,6 +210,8 @@ pub(in crate::analysis) struct CallUnwrap {
     /// The chain spelling of the target being called (e.g. `"fetch"` or
     /// `"mod.fn"`).
     pub(in crate::analysis) chain: SymbolPath,
+    /// Interned version of the unwrap chain, precomputed during lowering.
+    pub(in crate::analysis) chain_path: Option<NamePath>,
     /// Effective arguments after removing the receiver and options/array
     /// wrapper.
     pub(in crate::analysis) effective_args: Vec<CallArgInfo>,
@@ -234,6 +236,8 @@ pub(in crate::analysis) enum FactPayload {
     MemberRead {
         /// Original member spelling when statically recoverable.
         syntactic_chain: Option<SymbolPath>,
+        /// Syntactic chain converted to NamePath during lowering.
+        syntactic_path: Option<NamePath>,
         /// Proven rooted chain used by strict member matchers.
         rooted_chain: Option<NamePath>,
         /// Proven module namespace member, if applicable.
@@ -282,6 +286,8 @@ pub(in crate::analysis) enum FactPayload {
         call_provenance: SymbolCallProvenance,
         /// Member chain as written at the call site.
         syntactic_chain: Option<SymbolPath>,
+        /// Syntactic chain converted to NamePath during lowering.
+        syntactic_path: Option<NamePath>,
         /// Proven rooted member chain, if available.
         rooted_chain: Option<NamePath>,
         /// Proven module member target, if available.

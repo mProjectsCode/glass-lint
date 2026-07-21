@@ -143,7 +143,7 @@ mod tests {
     use crate::{
         ByteRange,
         analysis::{
-            SymbolCallProvenance, facts::build::FactBuilder, resolution::Resolver,
+            syntax::SymbolCallProvenance, facts::build::FactBuilder, resolution::Resolver,
             value::FunctionId,
         },
         api::{compiler::CompiledMatcherPlan, rule::MatcherSet},
@@ -164,6 +164,7 @@ mod tests {
                     callee_name: None,
                     call_provenance: SymbolCallProvenance::Local,
                     syntactic_chain: None,
+                    syntactic_path: None,
                     rooted_chain: None,
                     module_member: None,
                     returned_member: None,
@@ -174,6 +175,7 @@ mod tests {
                 },
                 FactKind::MemberRead => FactPayload::MemberRead {
                     syntactic_chain: None,
+                    syntactic_path: None,
                     rooted_chain: None,
                     module_member: None,
                     returned_member: None,

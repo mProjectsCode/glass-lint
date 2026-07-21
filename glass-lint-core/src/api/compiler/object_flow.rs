@@ -43,7 +43,7 @@ impl CompiledObjectFlow {
     }
 
     pub fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
-        let (requirements, all_requirements_required) = match flow.condition.as_ref() {
+        let (requirements, all_requirements_required) = match flow.condition() {
             Some(FlowCondition::AnyOf(events)) => (
                 events
                     .iter()
@@ -60,7 +60,7 @@ impl CompiledObjectFlow {
             ),
             None => (Vec::new(), false),
         };
-        let (sinks, emit_on_requirements) = match flow.completion.as_ref() {
+        let (sinks, emit_on_requirements) = match flow.completion() {
             Some(FlowCompletion::Configuration) => (Vec::new(), true),
             Some(FlowCompletion::AnySink(sinks)) => (
                 sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
@@ -69,9 +69,9 @@ impl CompiledObjectFlow {
             None => (Vec::new(), false),
         };
         Self {
-            symbol: flow.symbol.clone(),
+            symbol: flow.symbol().to_owned(),
             sources: flow
-                .sources
+                .sources()
                 .iter()
                 .map(CompiledObjectSource::from_matcher)
                 .collect(),
@@ -93,9 +93,9 @@ pub(crate) struct CompiledObjectSource {
 impl CompiledObjectSource {
     fn from_matcher(source: &ObjectSourceMatcher) -> Self {
         Self {
-            member_call: SymbolPath::from(source.call.chain()),
-            arguments: source.call.arguments().to_vec(),
-            provenance: source.call.provenance.clone(),
+            member_call: SymbolPath::from(source.call().chain()),
+            arguments: source.call().arguments().to_vec(),
+            provenance: source.call().provenance().clone(),
         }
     }
 }
@@ -159,12 +159,12 @@ impl CompiledObjectSink {
             FlowSinkMatcher::ArgumentOf { call, index } => Self {
                 member_calls: vec![SymbolPath::from(call.chain())],
                 args: CompiledObjectSinkArguments::Indices(vec![*index]),
-                provenance: call.provenance.clone(),
+                provenance: call.provenance().clone(),
             },
             FlowSinkMatcher::AnyArgumentOf { call } => Self {
                 member_calls: vec![SymbolPath::from(call.chain())],
                 args: CompiledObjectSinkArguments::Any,
-                provenance: call.provenance.clone(),
+                provenance: call.provenance().clone(),
             },
         }
     }

@@ -113,8 +113,8 @@ impl UsageProjector<'_> {
                 && chain_matches(chain, member, self.names)
                 && arguments.iter().all(|matcher| {
                     call_args
-                        .get(matcher.index)
-                        .is_some_and(|argument| matcher.matcher.matches(argument, self.names))
+                        .get(matcher.index())
+                        .is_some_and(|argument| matcher.matcher().matches(argument, self.names))
                 })
             {
                 next.requirements.insert(

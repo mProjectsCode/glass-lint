@@ -191,16 +191,16 @@ impl FunctionSummaries {
         flow_index: &FlowIndex<'_>,
     ) -> Self {
         let mut summaries = Self::default();
-        let calls_by_function = summaries.collect_facts(effects);
+        summaries.collect_facts(effects);
         let paths = stream.paths();
 
         // First collect facts whose sink is directly visible in the function.
-        summaries.collect_direct_sinks(stream, flow_index, &calls_by_function, paths);
+        summaries.collect_direct_sinks(stream, flow_index, paths);
 
         // Propagate sink projections through proven FunctionId call edges. Since
         // every propagation only adds a deduplicated projection, this is a finite
         // monotone fixed point even for recursive SCCs.
-        summaries.propagate_sinks(stream, &calls_by_function);
+        summaries.propagate_sinks(stream);
 
         for (_, summary) in summaries.by_id.iter_mut() {
             summary.sinks.sort_and_dedup();
@@ -208,8 +208,7 @@ impl FunctionSummaries {
         summaries
     }
 
-    fn collect_facts(&mut self, effects: &FunctionEffects) -> FunctionTable<Vec<FactId>> {
-        let mut calls_by_function = FunctionTable::default();
+    fn collect_facts(&mut self, effects: &FunctionEffects) {
         for effect in effects.iter_effects() {
             if self.get(effect.id()).is_none() {
                 self.insert(FunctionSummary {
@@ -227,26 +226,24 @@ impl FunctionSummaries {
                 });
             }
         }
-        // Build calls_by_function from the same data.
-        for summary in self.by_id.values() {
-            calls_by_function.insert(summary.id, summary.calls.clone());
-        }
-        calls_by_function
     }
 
     fn collect_direct_sinks(
         &mut self,
         stream: &FactStream,
         flow_index: &FlowIndex<'_>,
-        calls_by_function: &FunctionTable<Vec<FactId>>,
         paths: &PathInterner,
     ) {
-        for (_, summary) in self.by_id.iter_mut() {
-            let Some(call_ids) = calls_by_function.get(summary.id) else {
+        let call_ids: Vec<(FunctionId, Vec<FactId>)> = self
+            .by_id
+            .iter()
+            .map(|(id, summary)| (id, summary.calls.clone()))
+            .collect();
+        for (id, calls) in call_ids {
+            let Some(summary) = self.by_id.get_mut(id) else {
                 continue;
             };
-            summary.calls.clone_from(call_ids);
-            for call_id in call_ids {
+            for call_id in &calls {
                 summary.collect_sinks_for_call(stream, flow_index, paths, *call_id);
             }
         }
@@ -255,20 +252,20 @@ impl FunctionSummaries {
     fn propagate_sinks(
         &mut self,
         stream: &FactStream,
-        calls_by_function: &FunctionTable<Vec<FactId>>,
     ) {
         for _ in 0..MAX_SUMMARY_ROUNDS {
             let mut changed = false;
             let function_ids = self.by_id.iter().map(|(id, _)| id).collect::<Vec<_>>();
             for caller in function_ids {
-                let Some(calls) = calls_by_function.get(caller) else {
-                    continue;
-                };
-                let caller_parameters = self
+                let calls: Vec<FactId> = self
+                    .get(caller)
+                    .map(|summary| summary.calls.clone())
+                    .unwrap_or_default();
+                let caller_parameters: Vec<ParameterBinding> = self
                     .get(caller)
                     .map(|summary| summary.parameters.clone())
                     .unwrap_or_default();
-                for call_id in calls {
+                for call_id in &calls {
                     changed |=
                         self.propagate_call_sinks(*call_id, caller, &caller_parameters, stream);
                 }
@@ -289,18 +286,19 @@ impl FunctionSummaries {
         let Some((target, args)) = resolve_call_target(call_id, stream) else {
             return false;
         };
-        let Some(target_summary) = self.get(target).cloned() else {
-            return false;
+        // Extract target data without cloning the full summary.
+        let (target_parameters, target_sinks) = match self.get(target) {
+            Some(summary) if summary.is_invocation_compatible(stream, args) => {
+                (summary.parameters.clone(), summary.sinks().into_iter().cloned().collect::<Vec<_>>())
+            }
+            _ => return false,
         };
-        if !target_summary.is_invocation_compatible(stream, args) {
-            return false;
-        }
         let mut changed = false;
-        for sink in target_summary.sinks {
+        for sink in &target_sinks {
             if let Some(projection) = try_project_sink(
-                &target_summary.parameters,
+                &target_parameters,
                 caller_parameters,
-                &sink,
+                sink,
                 stream,
                 args,
             ) && let Some(caller_summary) = self.by_id.get_mut(caller)
@@ -431,7 +429,7 @@ impl FunctionSummary {
         call_id: FactId,
     ) {
         let Some(FactPayload::Call {
-            syntactic_chain,
+            syntactic_path,
             rooted_chain,
             args,
             ..
@@ -439,10 +437,7 @@ impl FunctionSummary {
         else {
             return;
         };
-        let syntactic_name = syntactic_chain.as_ref().and_then(|path| {
-            crate::analysis::value::NamePath::from_symbol_path(path, stream.names()?)
-        });
-        let Some(chain) = rooted_chain.as_ref().or(syntactic_name.as_ref()) else {
+        let Some(chain) = rooted_chain.as_ref().or(syntactic_path.as_ref()) else {
             return;
         };
         for flow_id in flow_index.sink_ids(chain).into_iter().flatten() {

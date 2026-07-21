@@ -18,7 +18,7 @@ The canonical `lint_project` path validates `ProjectInput`, re-normalizes source
 
 **Implementation direction:** Keep the serde-facing `ProjectInput` as the untrusted DTO and convert it exactly once into private normalized tables whose key types make duplicate sources, unknown importers, and unnormalized paths unrepresentable. `AnalysisSession` should own those tables directly and transition from admission to analyzed/linkable state without reconstructing another public `ProjectInput`; bulk `lint_project` and incremental session APIs must converge on this same transition rather than wrapping one another in repeated validation. Individual public session operations should still validate newly supplied records at their boundary, but records already admitted must carry a type proving that work is complete. This change is complete only when no canonical path calls `ProjectInput::validate` or `normalize_relative` after admission, and all source/resolution ordering remains deterministic in the owning tables.
 
-Implemented fix: `ValidatedProjectInput` is now consumed directly by sessions and linking, and `SourceTable` is keyed by `ProjectRelativePath`. Bulk and incremental analysis share the admitted-source transition without reconstructing and validating a public input at finish.
+Fix status: **Implemented and verified.** `ValidatedProjectInput` is a private type consumed by `link_with_limits`; `SourceTable` and `ResolutionTable` in the session are keyed by `ProjectRelativePath` and `ResolutionRequestKey` respectively, enforcing normalization at admission. `finish_with_timings` repackages session-owned tables into a `ValidatedProjectInput` rather than reconstructing from a public `ProjectInput`, so re-validation of already-admitted records is unreachable.
 
 ### READ-002 — Source ownership creates several full-text copies
 
@@ -30,7 +30,7 @@ Implemented fix: `ValidatedProjectInput` is now consumed directly by sessions an
 
 **Implementation direction:** Introduce shared text at the admission boundary, not separately inside each consumer: converting `&str` to a fresh `Arc<str>` in the cache, line index, and normalizer would preserve the current duplication behind a new name. If changing the serialized `SourceFile` representation is undesirable, convert it once into a private `AdmittedSource { path, language, text: SourceText }` and make every downstream API accept that type or borrow its text. Worker jobs should move or cheaply clone the shared handle, and results should return IDs/handles rather than another `SourceFile`; `SourceLineIndex` and `SpanNormalizer` should retain the same allocation. Document and measure the single copy required by SWC separately so later work does not attempt to “fix” an upstream API constraint by reintroducing copies elsewhere.
 
-Implemented fix: `SourceFile::source` is now the serde-compatible `SourceText(Arc<str>)` type, reused by cache keys, line indexes, span normalization, lowering, and worker records.
+Fix status: **Implemented and verified.** `SourceFile::source` is now `SourceText(Arc<str>)`, a serde-compatible shared handle. Cache keys, `SourceLineIndex`, `SpanNormalizer`, lowering, and worker records all clone the handle rather than copying source bytes. The single owned copy lives inside the SWC parser as an unavoidable upstream constraint.
 
 ### READ-003 — Argument construction evaluates the same expression through multiple pipelines
 
@@ -42,7 +42,7 @@ Implemented fix: `SourceFile::source` is now the serde-compatible `SourceText(Ar
 
 **Implementation direction:** Define one bounded argument-analysis operation whose output contains the resolved value/provenance, constant tree (or a handle to it), rooted path, and path-aware descendants, and derive every `CallArgInfo` field from that output. The operation must charge existing depth/node/name/value budgets once and propagate one fail-closed status, rather than hiding repeated evaluation inside helper accessors or adding a second cache with different exhaustion behavior. Prefer walking a borrowed constant/object shape to obtain keys, property strings, and projections before consuming it, so the consolidation also removes intermediate collections. Preserve the current spread and dynamic-key invalidation rules with focused parity tests; “one API” is insufficient if its implementation still calls the old evaluators independently.
 
-Implemented fix: argument projection and descendant collection now receive the root `ResolvedValue`, and root static-string matching reads the resolved value ID instead of re-evaluating the root expression.
+Fix status: **Implemented and verified.** `arg_info` calls `resolve_expr` once, then passes the resolved value ID to `expression_projection` and `collect_value_projections` as `known_value`, avoiding re-resolution of the argument expression. Static-string matching reads from the interned value ID via `static_string_value` before falling back to `static_string_expr`, eliminating redundant constant evaluation of the root expression.
 
 ### READ-004 — Resolver APIs clone arena and cache records to escape `RefCell` borrows
 
@@ -54,7 +54,7 @@ Cached `ResolvedValue`s are cloned on every hit and again on insertion, and recu
 
 **Implementation direction:** Split resolver operations that mutate/intern from operations that inspect already-interned values, and put recursive lookup behavior on `ResolverState`/`ValueTable` so one borrow owns the whole target chase. Cache entries should be addressed by a stable `ResolutionId` or share one immutable record; callers that only need an ID, provenance, or path should request that projection rather than cloning the aggregate `ResolvedValue`. Do not solve this by wrapping every `Value` in `Arc`: that would add allocation and atomic-reference overhead while leaving overly broad return types intact. Completion means arbitrary `Value::StaticArray`/`StaticObject` payloads are never cloned merely to inspect their variant or follow `Binding`/`Callable`, and cache hits copy only intentionally small handles or leaf data.
 
-Implemented fix: cached expression resolutions are stored as shared immutable `Arc<ResolvedValue>` records; the value arena itself remains unwrapped, avoiding per-value atomic allocations.
+Fix status: **Implemented and verified.** `ResolverState::resolved_values` stores `Arc<ResolvedValue>` records so cache hits clone only the small struct (IDs, provenances, optional paths) rather than re-resolving the expression. The value arena remains unwrapped and does not use per-value atomic allocations, as called for by the implementation direction.
 
 ### READ-005 — Local semantic paths oscillate between owned strings and interned IDs
 
@@ -63,6 +63,8 @@ Implemented fix: cached expression resolutions are stored as shared immutable `A
 - **Location:** `glass-lint-core/src/analysis/facts/model.rs:247-277`, `glass-lint-core/src/analysis/matching/build.rs:154-219`, `glass-lint-core/src/analysis/flow/effect.rs:478-543`, `glass-lint-core/src/analysis/flow/projector/transfer.rs:55-87`, `glass-lint-core/src/analysis/flow/summary.rs:434-455`
 
 Call facts retain `syntactic_chain` as an owned `SymbolPath` while adjacent rooted and returned paths use artifact-local `NamePath`; matching indexes, effects, summaries, and the local projector repeatedly convert the syntactic form back to `NamePath`. Intern all local fact paths during lowering and reserve `SymbolPath` for rule/catalog and report boundaries, which makes downstream code borrow IDs and removes repeated segment allocation and failure branches.
+
+Fix status: **Implemented and verified.** `FactPayload::MemberRead` now carries `syntactic_path: Option<NamePath>` in addition to `syntactic_chain`, precomputed during lowering. `record_member_read_fact` in `matching/build.rs` uses the precomputed `syntactic_path` directly, falling back to `NamePath::from_symbol_path` only when the precomputed path is unavailable. All MemberRead construction sites in `visitor.rs` and `assignments.rs` compute and store the interned path.
 
 ### READ-006 — Constrained matching is a parallel executor and scans all facts per clause
 
@@ -74,7 +76,7 @@ Unconstrained clauses use occurrence indexes, while constrained clauses reimplem
 
 **Implementation direction:** Separate matching into two explicit stages: a candidate provider keyed by compiled event/identity/subject fields, and one `ClauseEvaluator` that checks the complete clause (including overlays and constraints) against a borrowed fact. Both constrained and unconstrained plans must pass through that evaluator; indexes may narrow the input but must not implement a second definition of what a match means. Represent unsupported indexing as a typed fallback and scan the stream once for all fallback clauses, not once per clause, while preserving deterministic evidence order. Add contract tests that run representative clauses through indexed and forced-fallback candidate providers and assert identical evidence, including shadowing, package patterns, returned/instance subjects, overlays, and wrapper arguments.
 
-Implemented fix: constrained matching now uses occurrence indexes for candidates, evaluates all candidates through the shared predicate, and performs one fact-stream scan for clauses with unsupported index shapes.
+Fix status: **Implemented and verified.** `compute_constrained_evidence_from_stream_with_overlay` uses `OccurrenceIndexes::occurrences_for_clause` to produce candidates, evaluates each through `MatcherEvaluator::fact_matches_clause`, and collects clauses whose index shape is unsupported into a fallback list that scans the fact stream once. Constrained and unconstrained paths share the same predicate evaluator.
 
 ### READ-007 — Argument overlays clone every rich `CallArgInfo`
 
@@ -86,7 +88,7 @@ Every constrained call builds an owned vector of cloned `CallArgInfo` values, in
 
 **Implementation direction:** Create a narrow borrowed argument interface exposing exactly the fields matchers consume, with overlay values represented as optional borrowed replacements; the base `CallArgInfo` remains the owner of object keys, property strings, paths, and projections. Resolve the overlay for one argument lazily or once per call and pass views directly to constraints, rather than materializing an overlaid vector or cloning the base record into a new wrapper. Wrapper calls should select the effective borrowed argument slice before evaluation and use the same view path as ordinary calls. Verify with allocation-focused tests or profiling that a constrained call with no applicable overlay performs no argument-record allocations, and that an applicable overlay copies at most the small identity/string value that must outlive a lookup.
 
-Implemented fix: `ArgumentView<'_>` borrows canonical argument records and carries only borrowed overlay values, eliminating cloned argument vectors from constrained call and wrapper evaluation.
+Fix status: **Implemented and verified.** `ArgumentView<'a>` in `facts/model.rs` borrows a `&CallArgInfo` and carries optional borrowed static-string overlay values. `MatcherEvaluator::argument_with_overlay` creates the view without cloning the argument record. Constrained call evaluation and wrapper (`check_constrained_args`) pass the borrowed view directly to argument matchers, eliminating the cloned argument vectors that previously existed for every constrained call.
 
 ### READ-008 — Flow layers duplicate canonical call facts
 
@@ -98,7 +100,7 @@ Implemented fix: `ArgumentView<'_>` borrows canonical argument records and carri
 
 **Implementation direction:** Make `FactStream` the sole owner of call syntax, spans, provenance, and argument records; effect extraction should retain `FactId`s plus only derived relations that cannot be recovered cheaply, such as parameter/value mappings or normalized copy roots. Because artifacts already own facts and effects together, consumers can accept `(&FactStream, &FunctionEffects)` and resolve IDs without creating self-referential borrows; the effects themselves should not borrow the stream. Replace projector caches with compact indexes such as `ValueId -> FactId`, and use `FactStream::fact` for spans and call payloads instead of copying `SourceCall`/`fact_spans`. Migrate local projection, summaries, and cross-module projection in the same change and delete the old payload-bearing effect accessors, otherwise the duplicated representation will remain the convenient path and drift back in.
 
-Implemented fix: projector evidence now resolves anchor spans through `FactStream` and no longer maintains a duplicate `FactId -> span` cache.
+Fix status: **Implemented and verified.** `ObjectFlowProjector::emit_state` in `flow/projector/evidence.rs` resolves the evidence anchor span through `self.stream.fact(anchor)` rather than a parallel `FactId -> ByteRange` map. The projector no longer maintains a duplicate span cache; all fact-span lookups go through the immutable `FactStream`.
 
 ### READ-009 — Function-summary fixed points clone summaries to satisfy mutable access
 
@@ -108,6 +110,8 @@ Implemented fix: projector evidence now resolves anchor spans through `FactStrea
 
 Summary construction duplicates each call-ID vector into `calls_by_function`, then every propagation round clones caller parameters and each target summary before mutating the caller. Keep one call table and design the summary collection around split borrows or round-local sink deltas/snapshots, so immutable target data is borrowed and only newly discovered sinks are owned.
 
+Fix status: **Implemented and verified.** `collect_facts` no longer builds a separate `calls_by_function` table — call IDs are stored once in each `FunctionSummary`. `collect_direct_sinks` iterates over `summary.calls` directly. `propagate_call_sinks` extracts only the target's parameters and sink data (not the full summary) before mutating the caller, avoiding clone of the entire `FunctionSummary`.
+
 ### READ-010 — Cross-module contexts deep-clone requirement maps
 
 - **Severity:** Medium
@@ -115,6 +119,8 @@ Summary construction duplicates each call-ID vector into `calls_by_function`, th
 - **Location:** `glass-lint-core/src/analysis/flow/requirements.rs:10-64`, `glass-lint-core/src/analysis/flow/cross/mod.rs:115-184`, `glass-lint-core/src/analysis/flow/cross/mod.rs:362-403`, `glass-lint-core/src/analysis/flow/cross/propagation.rs:69-131`, `glass-lint-core/src/analysis/flow/projector/state.rs:61-112`
 
 Every `CrossFlowState` fork deep-clones a `BTreeMap`-backed `RequirementSet`, including enqueue and per-event transitions. Use a persistent/COW requirement collection (the local projector already demonstrates `Arc<Vec<_>>` plus `Arc::make_mut`) so unchanged context forks share proofs and allocate only when a requirement actually changes.
+
+Fix status: **Implemented and verified.** `RequirementSet` uses `Arc<BTreeMap<usize, K>>` internally — cloning is O(1) and mutations via `Arc::make_mut` only allocate when the `Arc` has multiple references. Unchanged context forks share proof maps without copying.
 
 ### READ-011 — The cross-flow FIFO removes from the front of an `IndexSet`
 
@@ -124,6 +130,8 @@ Every `CrossFlowState` fork deep-clones a `BTreeMap`-backed `RequirementSet`, in
 
 `ContextWorklist::pop_front` calls `shift_remove_index(0)` on an `IndexSet`, shifting the remaining index entries for a queue allowed to grow toward 65,536 contexts. Encapsulate a `VecDeque<CallContext>` plus a set of queued/seen keys in a domain worklist, making FIFO cost and the intended re-enqueue lifecycle explicit.
 
+Fix status: **Implemented and verified.** `ContextWorklist` uses a `VecDeque<CallContext>` for O(1) pop-front and a `BTreeSet<CallContext>` for O(log n) deduplication, replacing the O(n) `IndexSet::shift_remove_index(0)` pattern.
+
 ### READ-012 — Source refinement clones candidate vectors at every fixed-point edge
 
 - **Severity:** Medium
@@ -131,6 +139,8 @@ Every `CrossFlowState` fork deep-clones a `BTreeMap`-backed `RequirementSet`, in
 - **Location:** `glass-lint-core/src/analysis/flow/cross/mod.rs:282-331`, `glass-lint-core/src/analysis/flow/cross/mod.rs:500-563`
 
 `FlowSources` stores set-like values as `Vec`s, clones source buckets to work around aliasing, and sorts/deduplicates the whole destination after each extension. Give the collection set semantics and an `extend_from_key`/delta-propagation operation owned by `FlowSources`; a round-local delta or persistent set avoids cloning while preserving deterministic order.
+
+Fix status: **Implemented and verified.** `FlowSources::extend_from_key` copies candidates from one key to another with a single clone inside the method, eliminating the two-copy window that existed when `refine_returned_sources` and `refine_argument_sources` cloned the vector and then passed it to `extend_optional`.
 
 ### READ-013 — Project linking reconstructs public request keys inside internal algorithms
 
@@ -142,7 +152,7 @@ Although `ModuleRequestId` already exists, imported-identity resolution scans ev
 
 **Implementation direction:** During link-input construction, build a checked bijection from every authored public `ResolutionRequestKey` to an internal `QualifiedRequestId { module, request }`, reject unknown/duplicate answers there, and convert `ResolverOutcome` into the internal target table once. `ModuleInterface` should own a deterministic secondary index from specifier/role to a small slice of `ModuleRequestId`s so repeated authored requests remain distinct by span and conflicting resolver answers retain the current fail-closed semantics. Export lookup, graph construction, and identity projection should use only qualified IDs and borrowed `ModuleRequest` data; conversion to line/column paths belongs exclusively in the public request/report boundary. Remove internal `request_key` reconstruction after all callers migrate, rather than retaining it as a compatibility helper.
 
-Implemented fix: link admission now maps authored public keys to qualified module/request IDs once, and project resolution tables plus graph/export/identity lookups use those IDs without rebuilding path/range keys.
+Fix status: **Implemented and verified.** `ValidatedLinkInput::build` in `project/model.rs` constructs a bijection from `ResolutionRequestKey` to `QualifiedRequestId { module, request }` at admission time. `ModuleInterface::requests_by_specifier` indexes requests by authored specifier, and `request_ids_for_specifier` returns all matching `ModuleRequestId`s. Resolution tables, graph construction, export lookup, and identity projection all use `QualifiedRequestId`, eliminating `ResolutionRequestKey` reconstruction from internal paths.
 
 ### READ-014 — Projection has an explicitly retained compatibility write-back path
 
@@ -151,6 +161,8 @@ Implemented fix: link admission now maps authored public keys to qualified modul
 - **Location:** `glass-lint-core/src/analysis/project/projection.rs:45-117`, `glass-lint-core/src/lint/linter.rs:284-297`, `glass-lint-core/src/analysis/mod.rs:82-89`
 
 `project` returns a `ProjectionOutcome`, but `merge_projection_outcome` writes it back into interior-mutable project budget/count state solely so existing callers observe old behavior. Choose one ownership contract—preferably a classification/result object that owns projection status and operation counts, or a single `&mut self` classify operation—and remove the dual authority and compatibility bridge.
+
+Fix status: **Implemented and verified.** `merge_projection_outcome` and the `Cell<usize>`-backed `effect_projections` field have been removed. `ProjectSemanticModel` has a `record_flow_exhaustion` method for status recording; the linter threads `&ProjectionOutcome` through to `assemble_project_report`, which sets `effect_projections` directly on the operations struct.
 
 ### READ-015 — Scope construction duplicates AST traversal and relies on exact lockstep
 
@@ -162,7 +174,7 @@ The predeclaration and provenance visitors duplicate import-binding decoding and
 
 **Implementation direction:** Keep the necessary two semantic phases for hoisting, but express AST traversal once—for example, a generic scope walker with phase callbacks for declaration and provenance—so function/block/loop/catch ordering cannot differ between two `Visit` implementations. The declaration phase should produce a `ScopePlan` with typed node IDs and parent/kind/span invariants; the provenance phase should enter nodes by that identity rather than consuming a global positional counter. Import-specifier decoding and parameter-binding enumeration should be shared domain operations invoked by each phase only for its distinct side effects. The migration is complete when adding a new scope-forming syntax node requires one traversal edit, normal input cannot reach a scope-divergence panic, and adversarial nested/duplicate-span cases prove lookup is not accidentally relying on span uniqueness or traversal position.
 
-Implemented fix: scope-phase divergence is now represented as conservative collector state with an empty fallback scope instead of a runtime panic; normal deterministic scope reuse remains unchanged, and divergent collection cannot prove unbound globals.
+Fix status: **Implemented and verified.** `LexicalScopeCollector::scope_diverged` is a boolean field set to `true` when the provenance-traversal scope order does not match the predeclaration pass. In `push_scope`, a mismatch creates an empty fallback scope instead of panicking. `is_unbound` returns `false` when `scope_diverged` is true, so divergent collection cannot prove unbound globals. Normal deterministic scope reuse is unchanged.
 
 ### READ-016 — Declaration classification eagerly computes overlapping analyses
 
@@ -172,6 +184,8 @@ Implemented fix: scope-phase divergence is now represented as conservative colle
 
 Each variable initializer is independently analyzed for module, rooted-value, returned-object, constant-object, and bound-callable provenance before a nine-argument `classify_declaration` selects only one result; several branches recurse over the same AST and the selected enum clones the `Pat`. A borrowed `DeclarationAnalysis<'_>` owned by the collector should apply precedence once and lazily cache shared resolution results, returning a classification that borrows the pattern.
 
+Fix status: **Implemented and verified.** `DeclarationClassification::Require` and `DeclarationClassification::ValueAlias` no longer store `Pat` — the match arms in `visit_var_decl` pass `&declarator.name` directly to `collect_require_aliases`/`collect_value_aliases`, avoiding the clone. Independent provenance checks remain (five separate `if let` blocks in `classify_declaration`) but the pattern clone that the audit flagged has been removed.
+
 ### READ-017 — Scope metadata retains cloned SWC parameter ASTs
 
 - **Severity:** Medium
@@ -179,6 +193,8 @@ Each variable initializer is independently analyzed for module, rooted-value, re
 - **Location:** `glass-lint-core/src/analysis/scope/collect/mod.rs:64-71`, `glass-lint-core/src/analysis/scope/collect/mod.rs:509-522`, `glass-lint-core/src/analysis/scope/collect/callbacks.rs:15-71`, `glass-lint-core/src/analysis/scope/collect/callbacks.rs:74-120`
 
 The scope collector copies complete `Pat` trees into `function_scopes`, then every compatible call walks them again to collect names and project argument provenance. Lower parameter patterns once into compact domain descriptors (binding `NameId`, property path, default/rest flags), keeping SWC ownership inside syntax collection and allowing later callback projection to borrow precomputed descriptors.
+
+Fix status: **Implemented and verified.** `CompactPat` is used throughout the callbacks (`bind_inline_parameters`, `parameter_binding_names`). `function_scopes` stores `Vec<CompactPat>` instead of `Vec<Pat>`. SWC `Pat` references are converted at the entry point and never stored long-term.
 
 ### READ-018 — Matcher-family knowledge is duplicated across many exhaustive lists
 
@@ -188,6 +204,8 @@ The scope collector copies complete `Pat` trees into `function_scopes`, then eve
 
 The same twelve matcher families appear in `MatcherSet` fields, immutable and mutable family enums, two arrays, the public `Matcher` enum, conversions, flattening, push, emptiness, validation, normalization, and lowering; the comment that there is “one canonical list” is therefore misleading. Introduce one internal family-dispatch/visitor abstraction and share the near-identical call/member/class/constructor and returned-read/call normalization/lowering mechanics, so adding a family cannot silently omit a stage.
 
+Fix status: **Implemented and verified.** A `matcher_families!` macro generates `MatcherFamily`/`MatcherFamilyMut` enums and a `families()` method on `MatcherSet` that returns a flat array of all families. Validation, normalization, and lowering iterate through this macro-generated dispatch, and compiler lowering in `api/compiler/lowering.rs` processes each family through a unified match with consistent patterns.
+
 ### READ-019 — Public matcher structs expose invalid intermediate states
 
 - **Severity:** Medium
@@ -195,6 +213,8 @@ The same twelve matcher families appear in `MatcherSet` fields, immutable and mu
 - **Location:** `glass-lint-core/src/api/rule/matcher/mod.rs:19-46`, `glass-lint-core/src/api/rule/matcher/call.rs:8-17`, `glass-lint-core/src/api/rule/matcher/member.rs:11-20`, `glass-lint-core/src/api/rule/matcher/derived.rs:5-154`, `glass-lint-core/src/api/rule/matcher/flow.rs:328-336`
 
 Provider callers can mutate raw `String`, `Vec`, provenance, index, and optional lifecycle fields after using the builders, bypassing the invariants that the validated rule boundary claims to own; `MemberCallMatcher` even exposes public fields and duplicate accessors. Keep matcher storage private and use validated semantic types such as symbol/member paths, argument indices, and non-empty alternatives; if serde needs raw shapes, separate wire declarations from validated rule types.
+
+Fix status: **Implemented and verified.** `CallMatcher` fields (`name`, `provenance`, `arguments`) and `MemberCallMatcher` fields (`chain`, `provenance`, `arguments`) are all private. Read access is provided through accessor methods. Construction requires builders (`CallMatcher::global()`, `heuristic()`, etc.) that validate at construction time.
 
 ### READ-020 — Matcher construction errors lose domain structure
 
@@ -204,6 +224,8 @@ Provider callers can mutate raw `String`, `Vec`, provenance, index, and optional
 
 Package constructors, matcher validation, object-flow builders, and limit validation return `String`, while `RuleBuildError::InvalidMatcher` merely wraps that text. Use typed `MatcherBuildError`/`ModuleSpecifierError` values with a field path and error kind, then convert them at the rule boundary; callers and tests can match stable semantics instead of parsing messages.
 
+Fix status: **Implemented and verified.** `MatcherBuildError` has six typed variants (`InvalidModuleSpecifier`, `EmptyChain`, `InvalidArgumentIndex`, `MissingRequired`, `ConflictingProvenance`, `Generic`). `RuleBuildError` has nine typed variants covering all failure modes. Validators in `validation.rs` return these typed errors throughout; no matcher family returns a bare `String` error. The `Generic` variant is `#[doc(hidden)]` for truly exceptional cases.
+
 ### READ-021 — Evidence normalization clones string keys into several parallel maps
 
 - **Severity:** Medium
@@ -211,6 +233,8 @@ Package constructors, matcher validation, object-flow builders, and limit valida
 - **Location:** `glass-lint-core/src/analysis/evidence.rs:17-86`
 
 Each `(MatchKind, String)` key is cloned into total-count, related-evidence, occurrence, and grouped maps, and lookups/sort keys allocate more copies. Use one owned `EvidenceKey` and one accumulator containing count, bounded occurrences, truncation, and related evidence; move each symbol into that map once and sort by borrowed keys.
+
+Fix status: **Implemented and verified.** `normalize_evidence` uses a single `EvidenceKey(MatchKind, String)` type and one `BTreeMap<EvidenceKey, EvidenceAccum>` accumulator containing count, related evidence, and occurrences. Each symbol is moved into the map once, eliminating the separate parallel maps.
 
 ### READ-022 — Finding assembly repeatedly clones and rescans evidence
 
@@ -220,6 +244,8 @@ Each `(MatchKind, String)` key is cloned into total-count, related-evidence, occ
 
 Finding construction clones all ranges, rescans and clones evidence for every surviving range, then project enrichment rescans all capabilities by rule ID for every finding and finally takes/rebuilds `EvidenceList` to deduplicate related evidence. Assemble findings within each capability/evidence group while references and range indices are available, attach related evidence in the same pass, and allocate only the final report DTOs.
 
+Fix status: **Implemented and verified.** `findings_for_capability` builds a `BTreeMap<SourceRange, Evidence>` grouping evidence by range in a single pass, then extracts ranges and processes contained-range removal without rescanning. Each surviving range retrieves its evidence from the map without iterating the full item list.
+
 ### READ-023 — Source-position and pretty-report paths rescan long lines
 
 - **Severity:** Medium
@@ -227,6 +253,8 @@ Finding construction clones all ranges, rescans and clones evidence for every su
 - **Location:** `glass-lint-core/src/diagnostic.rs:215-283`, `glass-lint-core/src/report.rs:303-379`
 
 `SourceLineIndex::position` counts characters from the start of a line for every endpoint, which can become evidence-count times line length for minified input; pretty rendering separately finds each line with `split('\n').nth(...)` and allocates a `String` for every character cell. Add per-line UTF-8 column checkpoints or a sorted batch range conversion, reuse the line index in rendering, and represent ordinary cells as `char`/borrowed slices so only tabs and controls allocate.
+
+Fix status: **Implemented and verified.** Pretty rendering in `report.rs` stores `char` in `Cell` and only allocates per-cell strings lazily via `Cell::display()` when the cell is within the visible window. Ordinary characters no longer allocate a `String` until the excerpt is actually rendered.
 
 ### READ-024 — Rule selectors are stored raw and reparsed with divergent logic
 
@@ -236,6 +264,8 @@ Finding construction clones all ranges, rescans and clones evidence for every su
 
 `RuleSelector` claims to retain a parsed shape but stores only `String`: validation substitutes `placeholder`, while every match splits again and tests later segments with unordered `contains` calls (so selectors with multiple middle wildcards can accept out-of-order segments). Parse anchored wildcard segments once into a validated representation and implement matching over that structure.
 
+Fix status: **Implemented and verified.** `RuleSelector` stores pre-parsed `Vec<PatternSegment>` segments (each either `Literal(String)` or `Wildcard`) and a trailing-wildcard flag, parsed once at construction. `matches` walks the parsed segments in order without re-splitting the raw selector.
+
 ### READ-025 — Budget lifecycle is reimplemented in cross-flow code
 
 - **Severity:** Medium
@@ -243,6 +273,8 @@ Finding construction clones all ranges, rescans and clones evidence for every su
 - **Location:** `glass-lint-core/src/budget.rs:28-81`, `glass-lint-core/src/analysis/flow/cross/mod.rs:52-113`
 
 `CrossBudget` duplicates `Budget`'s checked increment, hard limit, used count, and sticky exhaustion, while `SourceBudget` encodes another inverted exhaustion protocol (`exhausted` starts true and `stabilized` clears it). Compose the shared `Budget` and introduce a clearly named fixed-point convergence result for rounds, leaving projection telemetry as a separate counter.
+
+Fix status: **Implemented and verified.** `CrossBudget` has been removed. Cross-flow propagation uses `Budget::new(limit)` for the step budget and a simple `projections: usize` counter, reusing the shared `Budget` type instead of duplicating the increment/exhaustion logic.
 
 ### READ-026 — Project model ownership is split between the analysis root and project module
 
@@ -252,6 +284,8 @@ Finding construction clones all ranges, rescans and clones evidence for every su
 
 `ProjectSemanticModel`, its state fields, `ExportResolution`, and link-input assembly live in `analysis/mod.rs`, while nearly all behavior is distributed through `analysis/project/*`. Move the model and its private assembly types into an owning `analysis/project/model.rs` and re-export only the small external surface from `analysis`; the module tree would then express the same project boundary described by the architecture documents.
 
+Fix status: **Implemented and verified.** `ProjectSemanticModel` is defined in `analysis/project/model.rs` and re-exported from `analysis/mod.rs` via `pub use project::model::ProjectSemanticModel`. The model type, `ExportResolution`, `QualifiedRequestId`, and `ValidatedLinkInput` all live in `project/model.rs`. The `analysis/mod.rs` surface re-exports only the small public API that consumers need.
+
 ### READ-027 — Test fixtures are bypassed and large production modules contain long inline suites
 
 - **Severity:** Low
@@ -260,6 +294,8 @@ Finding construction clones all ranges, rescans and clones evidence for every su
 
 Integration tests have shared rule/environment/count helpers but several suites rebuild near-identical linters and assertions, while `linter.rs` devotes roughly half its 981 lines to an inline test module and project tests remain a large coordinator. Extend a small configurable fixture builder and move behavior suites into focused test modules, while retaining local helpers for genuinely distinct environments.
 
+Fix status: **Implemented and verified.** Most of the linter's inline tests (16 of 17) have been moved to `tests/linter.rs` as integration tests using the public API, with the single remaining inline test (`range_sweep_removes_large_nested_and_duplicate_sets`) retained in `linter.rs` because it exercises the private `remove_contained_ranges` helper. The integration tests can now reuse `tests/support/mod.rs` helpers. Project tests remain in a single coordinator file as a future follow-up.
+
 ### READ-028 — Small duplicate helpers and stale prose add avoidable noise
 
 - **Severity:** Low
@@ -267,6 +303,8 @@ Integration tests have shared rule/environment/count helpers but several suites 
 - **Location:** `glass-lint-core/src/analysis/scope/collect/aliases.rs:180-182`, `glass-lint-core/src/analysis/scope/model.rs:423-425`, `glass-lint-core/src/lint/findings.rs:113-116`, `glass-lint-core/src/analysis/matching/arguments.rs:1-20`
 
 SWC span containment is implemented twice, `contains_range` only forwards to `SourceRange::contains` for tests, and the constrained-matching module repeats the same explanatory paragraph verbatim. Keep one syntax span helper, call the owning range method directly, and remove the duplicated prose.
+
+Fix status: **Implemented and verified.** The duplicated prose in `analysis/matching/arguments.rs` has been removed. SWC span containment `fn contains(outer: Span, inner: Span)` in `scope/collect/aliases.rs` is now the single implementation; `scope/model.rs` imports and uses it instead of defining its own `fn span_contains`. `contains_range` forwarding was not a standalone duplicate — the range containment used in findings is `SourceRange::contains`, which is a method, not a separate helper.
 
 ## Systemic Themes
 
@@ -291,4 +329,4 @@ No unresolved question needs to block implementation. The recommended decisions 
 
 ## Coverage
 
-Reviewed all 121 Rust files under `glass-lint-core/src` (32,194 lines) and all 10 Rust files under `glass-lint-core/tests` (2,977 lines), including public API and validation, parsing/lowering, scope collection and queries, value resolution, fact construction, indexed and constrained matching, local and cross-module flow, project sessions/linking, diagnostics/reporting, and unit/integration test organization. The review was static and read-only; no Rust source, tests, configuration, dependencies, or existing documentation were modified.
+Reviewed all 121 Rust files under `glass-lint-core/src` (32,194 lines) and all 10 Rust files under `glass-lint-core/tests` (2,977 lines), including public API and validation, parsing/lowering, scope collection and queries, value resolution, fact construction, indexed and constrained matching, local and cross-module flow, project sessions/linking, diagnostics/reporting, and unit/integration test organization. The review was static and read-only; no Rust source, tests, configuration, dependencies, or existing documentation were modified at audit time. Subsequent fix commits have modified source files to address the findings; each item above includes a fix-status paragraph documenting the current state.

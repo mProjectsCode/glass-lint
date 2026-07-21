@@ -2,14 +2,15 @@
 
 use std::collections::BTreeMap;
 
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 use swc_common::Span;
-use swc_ecma_ast::{CallExpr, Callee, Expr, ObjectPatProp, Pat};
+use swc_ecma_ast::{CallExpr, Callee, Expr, Pat};
 
+use super::{compact_pat, CompactPat};
 use crate::analysis::{
     name::{NameId, NameTableCtx},
     scope::{BindingProvenance, ScopeId, ScopedName, collect::LexicalScopeCollector},
-    syntax::{member_property_name, property_name},
+    syntax::member_property_name,
 };
 
 impl LexicalScopeCollector<'_> {
@@ -61,11 +62,9 @@ impl LexicalScopeCollector<'_> {
     /// Return every binding introduced by a parameter pattern in stable order.
     /// Destructuring can bind the same name through several syntactic paths;
     /// sorting and deduplicating keeps the call projection deterministic.
-    fn parameter_binding_names(pattern: &Pat) -> Vec<SmolStr> {
+    fn parameter_binding_names(pattern: &CompactPat) -> Vec<SmolStr> {
         let mut names = Vec::new();
-        crate::analysis::syntax::walk_pat_ident_bindings(pattern, &mut |ident| {
-            names.push(ident.sym.to_smolstr());
-        });
+        collect_compact_binding_names(pattern, &mut names);
         names.sort();
         names.dedup();
         names
@@ -76,63 +75,43 @@ impl LexicalScopeCollector<'_> {
     /// must not infer aliases from a shape that the collector cannot prove.
     pub(super) fn project_parameter_pattern(
         names: NameTableCtx<'_>,
-        pattern: &Pat,
+        pattern: &CompactPat,
         value: &BindingProvenance,
         output: &mut BTreeMap<SmolStr, BindingProvenance>,
     ) {
         match pattern {
-            Pat::Ident(ident) => {
-                output.insert(ident.id.sym.to_smolstr(), value.clone());
+            CompactPat::Ident(name) => {
+                output.insert(name.clone(), value.clone());
             }
-            Pat::Assign(assign) => {
-                Self::project_parameter_pattern(names, &assign.left, value, output);
+            CompactPat::Assign(inner) => {
+                Self::project_parameter_pattern(names, inner, value, output);
             }
-            Pat::Object(object) => {
+            CompactPat::Object(props) => {
                 let BindingProvenance::StaticObjectValues(values) = value else {
                     return;
                 };
-                for property in &object.props {
-                    match property {
-                        ObjectPatProp::KeyValue(property) => {
-                            let Some(key) = property_name(&property.key) else {
-                                continue;
-                            };
-                            let Some(key) = names.lookup(key.as_str()) else {
-                                continue;
-                            };
-                            let Some(target) = values.get(&key) else {
-                                continue;
-                            };
-                            Self::project_parameter_pattern(
-                                names,
-                                &property.value,
-                                &BindingProvenance::ValueAlias {
-                                    target: target.clone(),
-                                },
-                                output,
-                            );
-                        }
-                        ObjectPatProp::Assign(property) => {
-                            if let Some(key) = names.lookup(property.key.sym.as_ref())
-                                && let Some(target) = values.get(&key)
-                            {
-                                output.insert(
-                                    property.key.sym.to_smolstr(),
-                                    BindingProvenance::ValueAlias {
-                                        target: target.clone(),
-                                    },
-                                );
-                            }
-                        }
-                        ObjectPatProp::Rest(_) => {}
-                    }
+                for (key, sub_pat) in props {
+                    let Some(key) = names.lookup(key.as_str()) else {
+                        continue;
+                    };
+                    let Some(target) = values.get(&key) else {
+                        continue;
+                    };
+                    Self::project_parameter_pattern(
+                        names,
+                        sub_pat,
+                        &BindingProvenance::ValueAlias {
+                            target: target.clone(),
+                        },
+                        output,
+                    );
                 }
             }
-            Pat::Array(_) | Pat::Rest(_) | Pat::Invalid(_) | Pat::Expr(_) => {}
+            CompactPat::Array | CompactPat::Rest(_) | CompactPat::Other => {}
         }
     }
 
-    fn function_for_call(&self, mut scope: ScopeId, name: NameId) -> Option<&(ScopeId, Vec<Pat>)> {
+    fn function_for_call(&self, mut scope: ScopeId, name: NameId) -> Option<&(ScopeId, Vec<CompactPat>)> {
         loop {
             if let Some(function) = self.function_scopes.get(&(scope, name)) {
                 return Some(function);
@@ -164,7 +143,8 @@ impl LexicalScopeCollector<'_> {
         let mut bindings = BTreeMap::new();
         for (parameter, argument) in parameters.into_iter().zip(arguments) {
             if let Some(argument) = argument {
-                Self::project_parameter_pattern(self.names, parameter, &argument, &mut bindings);
+                let compact = compact_pat(parameter);
+                Self::project_parameter_pattern(self.names, &compact, &argument, &mut bindings);
             }
         }
         if !bindings.is_empty() {
@@ -263,5 +243,18 @@ impl LexicalScopeCollector<'_> {
                 .first()
                 .and_then(|arg| self.argument_provenance(&arg.expr))],
         );
+    }
+}
+
+fn collect_compact_binding_names(pattern: &CompactPat, names: &mut Vec<SmolStr>) {
+    match pattern {
+        CompactPat::Ident(name) => names.push(name.clone()),
+        CompactPat::Assign(inner) | CompactPat::Rest(inner) => collect_compact_binding_names(inner, names),
+        CompactPat::Object(props) => {
+            for sub in props.values() {
+                collect_compact_binding_names(sub, names);
+            }
+        }
+        CompactPat::Array | CompactPat::Other => {}
     }
 }

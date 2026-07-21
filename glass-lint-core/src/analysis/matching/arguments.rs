@@ -11,13 +11,6 @@
 //! as ordinary indexed clauses. A project overlay may strengthen a proven
 //! module identity or static string, but unknown and qualified-local identities
 //! remain non-matches.
-//!
-//! Evaluation uses a single clause predicate evaluator shared with the
-//! index-based path.  Indexes produce candidate `FactId`s so every candidate
-//! follows the same semantic path.  When the occurrence index cannot represent
-//! a clause's predicate (e.g. member-call property names that the scope
-//! collector did not intern), candidate selection falls back to scanning the
-//! fact stream once.
 
 use std::collections::BTreeMap;
 
@@ -393,11 +386,13 @@ fn namespace_member_matches(
 impl MatcherEvaluator<'_> {
     fn constraints_match(&self, constraints: &[QueryConstraint], args: &[CallArgInfo]) -> bool {
         constraints.iter().all(|constraint| match constraint {
-            QueryConstraint::Argument(argument) => args.get(argument.index).is_some_and(|value| {
-                argument
-                    .matcher
-                    .matches(&self.argument_with_overlay(value), self.names)
-            }),
+            QueryConstraint::Argument(argument) => {
+                args.get(argument.index()).is_some_and(|value| {
+                    argument
+                        .matcher()
+                        .matches(&self.argument_with_overlay(value), self.names)
+                })
+            }
         })
     }
 
@@ -458,10 +453,10 @@ mod tests {
     }
 
     fn exact_argument(value: &str) -> Box<[QueryConstraint]> {
-        Box::new([QueryConstraint::Argument(ArgumentConstraint {
-            index: 0,
-            matcher: ValueMatcher::static_string().equals(value).into(),
-        })])
+        Box::new([QueryConstraint::Argument(ArgumentConstraint::new(
+            0,
+            ValueMatcher::static_string().equals(value),
+        ))])
     }
 
     fn clause(

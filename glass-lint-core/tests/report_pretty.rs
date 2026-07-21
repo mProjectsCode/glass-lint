@@ -12,6 +12,12 @@ fn path(path: &str) -> ProjectRelativePath {
     ProjectRelativePath::new(path).unwrap()
 }
 
+fn line_starts(source: &str) -> Vec<usize> {
+    let mut starts = vec![0];
+    starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
+    starts
+}
+
 fn location(range: SourceRange) -> SourceLocation {
     SourceLocation {
         path: path("main.js"),
@@ -108,6 +114,7 @@ fn can_hide_source_excerpts_for_evidence_rows() {
         diagnostics: vec![],
     };
 
+    let line_starts = line_starts("fetch('x');");
     let rendered = PrettyReport::new(
         &report,
         "main.js",
@@ -116,6 +123,7 @@ fn can_hide_source_excerpts_for_evidence_rows() {
             show_evidence_source: false,
             ..PrettyOptions::default()
         },
+        &line_starts,
     )
     .to_string();
 
@@ -132,6 +140,7 @@ fn renders_empty_reports_without_extra_output() {
         findings: vec![],
         diagnostics: vec![],
     };
+    let line_starts = line_starts("");
     assert_eq!(
         PrettyReport::new(
             &report,
@@ -142,6 +151,7 @@ fn renders_empty_reports_without_extra_output() {
                 color: false,
                 show_evidence_source: true,
             },
+            &line_starts,
         )
         .to_string(),
         ""
@@ -162,8 +172,9 @@ fn renders_terminal_controls_visibly() {
         }],
         diagnostics: vec![],
     };
+    let line_starts = line_starts("x");
     let output =
-        PrettyReport::new(&report, "bad\u{1b}[x.js", "x", PrettyOptions::default()).to_string();
+        PrettyReport::new(&report, "bad\u{1b}[x.js", "x", PrettyOptions::default(), &line_starts).to_string();
     assert!(output.contains("bad\\u{001b}[x.js"));
     assert!(output.contains("message\\u{001b}[31m"));
 }
@@ -183,6 +194,7 @@ fn bounds_long_excerpt() {
         diagnostics: vec![],
     };
     let source = format!("{}fetch('x')", "x".repeat(200));
+    let line_starts = line_starts(&source);
     let rendered = PrettyReport::new(
         &report,
         "main.js",
@@ -192,6 +204,7 @@ fn bounds_long_excerpt() {
             color: false,
             show_evidence_source: true,
         },
+        &line_starts,
     )
     .to_string();
     assert!(
@@ -215,6 +228,7 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
         }],
         diagnostics: vec![],
     };
+    let line_starts = line_starts("\t\tconst 😀 = true;\n");
     let rendered = PrettyReport::new(
         &report,
         "main.js",
@@ -224,6 +238,7 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
             color: false,
             show_evidence_source: true,
         },
+        &line_starts,
     )
     .to_string();
     let excerpt_lines = rendered
@@ -248,7 +263,8 @@ fn renders_missing_source_lines_without_panicking() {
         }],
         diagnostics: vec![],
     };
-    let rendered = PrettyReport::new(&report, "main.js", "", PrettyOptions::default()).to_string();
+    let line_starts = line_starts("");
+    let rendered = PrettyReport::new(&report, "main.js", "", PrettyOptions::default(), &line_starts).to_string();
     assert!(rendered.contains("error[test:missing] missing"));
     assert!(rendered.contains("main.js:99:1 - match"));
 }
@@ -267,6 +283,7 @@ fn renders_colored_findings_when_enabled() {
         }],
         diagnostics: vec![],
     };
+    let line_starts = line_starts("x();");
     let rendered = PrettyReport::new(
         &report,
         "main.js",
@@ -276,6 +293,7 @@ fn renders_colored_findings_when_enabled() {
             color: true,
             show_evidence_source: true,
         },
+        &line_starts,
     )
     .to_string();
     assert!(rendered.contains("\u{1b}[31merror\u{1b}[0m"));

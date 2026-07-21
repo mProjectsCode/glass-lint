@@ -39,23 +39,28 @@ pub struct PrettyReport<'a> {
     filename: &'a str,
     source: &'a str,
     options: PrettyOptions,
+    line_starts: &'a [usize],
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 /// Borrowed report/source input used by grouped rendering.
 pub struct PrettyFile<'a> {
     report: &'a FileReport,
     filename: &'a str,
     source: &'a str,
+    line_starts: Vec<usize>,
 }
 
 impl<'a> PrettyFile<'a> {
     /// Pair a report with its authored filename and source text.
     pub fn new(report: &'a FileReport, filename: &'a str, source: &'a str) -> Self {
+        let mut line_starts = vec![0];
+        line_starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
         Self {
             report,
             filename,
             source,
+            line_starts,
         }
     }
 }
@@ -168,8 +173,14 @@ impl<'a> PrettyReports<'a> {
                     PrettyReport::style(self.options.color, Style::new().dim(), message)
                 )?;
                 if evidence.is_none() || self.options.show_evidence_source {
-                    PrettyReport::new(file.report, file.filename, file.source, self.options)
-                        .excerpt(range, 4, f)?;
+                    PrettyReport::new(
+                        file.report,
+                        file.filename,
+                        file.source,
+                        self.options,
+                        &file.line_starts,
+                    )
+                    .excerpt(range, 4, f)?;
                 }
             }
         }
@@ -291,12 +302,14 @@ impl<'a> PrettyReport<'a> {
         filename: &'a str,
         source: &'a str,
         options: PrettyOptions,
+        line_starts: &'a [usize],
     ) -> Self {
         Self {
             report,
             filename,
             source,
             options,
+            line_starts,
         }
     }
 
@@ -306,11 +319,16 @@ impl<'a> PrettyReport<'a> {
         indent: usize,
         out: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        let line_no = range.start().line() as usize;
-        let Some(line) = self.source.split('\n').nth(line_no.saturating_sub(1)) else {
+        let line_idx = range.start().line().saturating_sub(1) as usize;
+        let Some(&line_start) = self.line_starts.get(line_idx) else {
             return Ok(());
         };
-        let line = line.trim_end_matches('\r');
+        let line_end = self
+            .line_starts
+            .get(line_idx + 1)
+            .copied()
+            .unwrap_or(self.source.len());
+        let line = self.source[line_start..line_end].trim_end_matches(['\r', '\n']);
         // The excerpt gutter is part of the configured display budget.
         let width = self.options.max_width.saturating_sub(indent).max(1);
         let gutter = " ".repeat(indent);
@@ -319,13 +337,7 @@ impl<'a> PrettyReport<'a> {
             .scan(0usize, |column, ch| {
                 let width = display_width(ch, *column);
                 let cell = Cell {
-                    text: if ch == '\t' {
-                        " ".repeat(width)
-                    } else if ch.is_control() {
-                        format!("\\u{{{:04x}}}", ch as u32)
-                    } else {
-                        ch.to_string()
-                    },
+                    ch,
                     start: *column,
                     width,
                 };
@@ -345,7 +357,7 @@ impl<'a> PrettyReport<'a> {
             text.push_str("...");
         }
         for cell in &cells[window_start..window_end] {
-            text.push_str(&cell.text);
+            text.push_str(&cell.display());
         }
         if trailing {
             text.push_str("...");
@@ -375,16 +387,32 @@ impl<'a> PrettyReport<'a> {
 
 #[derive(Clone, Debug)]
 struct Cell {
-    text: String,
+    ch: char,
     start: usize,
     width: usize,
+}
+
+impl Cell {
+    fn display(&self) -> String {
+        if self.ch == '\t' {
+            " ".repeat(self.width)
+        } else if self.ch.is_control() {
+            format!("\\u{{{:04x}}}", self.ch as u32)
+        } else {
+            let mut buf = String::with_capacity(self.ch.len_utf8());
+            buf.push(self.ch);
+            buf
+        }
+    }
 }
 
 fn display_width(ch: char, column: usize) -> usize {
     if ch == '\t' {
         4 - (column % 4)
     } else {
-        measure_text_width(&ch.to_string())
+        let mut buf = String::with_capacity(ch.len_utf8());
+        buf.push(ch);
+        measure_text_width(&buf)
     }
 }
 

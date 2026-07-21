@@ -46,6 +46,7 @@ impl FactBuilder<'_> {
                     callee_name: None,
                     call_provenance: resolved.call,
                     syntactic_chain: None,
+                    syntactic_path: None,
                     rooted_chain: None,
                     module_member: None,
                     returned_member: None,
@@ -94,6 +95,10 @@ impl FactBuilder<'_> {
         let result = self.call_result(span);
         let effective_args = self.effective_call_args(&resolved, args);
         let callee_name = self.intern_name(resolved.callee_name.as_deref());
+        let syntactic_path = resolved
+            .syntactic_chain
+            .as_ref()
+            .and_then(|path| self.name_path(path));
         self.emit(
             FactKind::Call,
             span,
@@ -105,6 +110,7 @@ impl FactBuilder<'_> {
                 callee_name,
                 call_provenance: resolved.call_provenance,
                 syntactic_chain: resolved.syntactic_chain,
+                syntactic_path,
                 rooted_chain: self.rooted_path(resolved.rooted_chain.as_ref()),
                 module_member: resolved.module_member,
                 returned_member: self.returned_path(resolved.returned_member.as_ref()),
@@ -396,8 +402,11 @@ impl FactBuilder<'_> {
                 let Some(resolved) = self.resolve_call_callee(target) else {
                     return;
                 };
+                let chain = chain.unwrap_or_default().without_this_prefix();
+                let chain_path = self.name_path(&chain);
                 let unwrap = Some(Box::new(CallUnwrap {
-                    chain: chain.unwrap_or_default().without_this_prefix(),
+                    chain,
+                    chain_path,
                     effective_args,
                 }));
                 self.emit_call(span, resolved, args, unwrap);
@@ -412,8 +421,11 @@ impl FactBuilder<'_> {
                 let Some(resolved) = self.resolve_call_callee(target) else {
                     return;
                 };
+                let chain = chain.unwrap_or_default().without_this_prefix();
+                let chain_path = self.name_path(&chain);
                 let unwrap = Some(Box::new(CallUnwrap {
-                    chain: chain.unwrap_or_default().without_this_prefix(),
+                    chain,
+                    chain_path,
                     effective_args,
                 }));
                 self.emit_call(span, resolved, args, unwrap);

@@ -4,15 +4,38 @@
 //! lifecycle. They become immutable predicates over semantic facts after
 //! validation and compilation.
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 
-use crate::api::rule::{matcher::MemberCallMatcher, validation::validate_object_flow};
+use crate::api::rule::{
+    MatcherBuildError, matcher::MemberCallMatcher, validation::validate_object_flow,
+};
 
 /// A context-independent predicate over an argument value.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ValueMatcher {
     /// Predicate family and payload.
-    pub kind: ValueMatcherKind,
+    pub(crate) kind: ValueMatcherKind,
+}
+
+impl ValueMatcher {
+    /// Borrow the value matcher kind.
+    pub fn kind(&self) -> &ValueMatcherKind {
+        &self.kind
+    }
+
+    pub(crate) fn normalize(&mut self) {
+        if let ValueMatcherKind::StaticString(predicate) = &mut self.kind {
+            match predicate {
+                StaticStringPredicate::Any => {}
+                StaticStringPredicate::Exact(values)
+                | StaticStringPredicate::Prefix(values)
+                | StaticStringPredicate::ContainsAny(values)
+                | StaticStringPredicate::ContainsAll(values) => {
+                    crate::api::rule::matcher::normalize_strings(values);
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -148,6 +171,19 @@ impl ArgumentMatcher {
             value,
         }
     }
+
+    pub(crate) fn normalize(&mut self) {
+        match self {
+            Self::Value(value) => value.normalize(),
+            Self::ObjectKeys(keys) | Self::RootedExpressions(keys) => {
+                crate::api::rule::matcher::normalize_strings(keys);
+            }
+            Self::ObjectPropertyValue { property, value } => {
+                *property = property.trim().to_string();
+                value.normalize();
+            }
+        }
+    }
 }
 
 impl From<ValueMatcher> for ArgumentMatcher {
@@ -159,22 +195,54 @@ impl From<ValueMatcher> for ArgumentMatcher {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ArgumentConstraint {
     /// Zero-based argument position.
-    pub index: usize,
+    index: usize,
     /// Predicate required at that position.
-    pub matcher: ArgumentMatcher,
+    matcher: ArgumentMatcher,
+}
+
+impl ArgumentConstraint {
+    pub fn new(index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
+        Self {
+            index,
+            matcher: matcher.into(),
+        }
+    }
+
+    /// Return the zero-based argument position.
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    /// Borrow the argument predicate.
+    pub fn matcher(&self) -> &ArgumentMatcher {
+        &self.matcher
+    }
+
+    pub fn normalize_all(arguments: &mut Vec<Self>) {
+        for argument in arguments.iter_mut() {
+            argument.matcher.normalize();
+        }
+        arguments.sort_by_key(|argument| argument.index);
+        arguments.dedup();
+    }
 }
 
 /// A call that returns the object tracked by an [`ObjectFlowMatcher`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectSourceMatcher {
     /// Source call identity and argument constraints.
-    pub call: MemberCallMatcher,
+    call: MemberCallMatcher,
 }
 
 impl ObjectSourceMatcher {
     #[must_use]
     pub fn returned_by(call: MemberCallMatcher) -> Self {
         Self { call }
+    }
+
+    /// Borrow the source call matcher.
+    pub fn call(&self) -> &MemberCallMatcher {
+        &self.call
     }
 }
 
@@ -211,6 +279,19 @@ impl ObjectEventMatcher {
             },
         }
     }
+
+    pub(crate) fn normalize(&mut self) {
+        match self {
+            Self::PropertyWrite { property, value } => {
+                *property = property.trim().to_smolstr();
+                value.normalize();
+            }
+            Self::MemberCall { member, arguments } => {
+                *member = member.trim().to_string();
+                ArgumentConstraint::normalize_all(arguments);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -223,10 +304,7 @@ impl ObjectEventBuilder {
     #[must_use]
     pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
         if let ObjectEventMatcher::MemberCall { arguments, .. } = &mut self.event {
-            arguments.push(ArgumentConstraint {
-                index,
-                matcher: matcher.into(),
-            });
+            arguments.push(ArgumentConstraint::new(index, matcher));
         }
         self
     }
@@ -271,6 +349,15 @@ impl FlowCondition {
     pub fn event(event: impl Into<ObjectEventMatcher>) -> Self {
         Self::AllOf(vec![event.into()])
     }
+
+    pub(crate) fn normalize(&mut self) {
+        let events = match self {
+            Self::AnyOf(events) | Self::AllOf(events) => events,
+        };
+        for event in events {
+            event.normalize();
+        }
+    }
 }
 
 /// The point at which a configured object produces evidence.
@@ -293,6 +380,17 @@ impl FlowCompletion {
         I: IntoIterator<Item = FlowSinkMatcher>,
     {
         Self::AnySink(sinks.into_iter().collect())
+    }
+
+    pub(crate) fn normalize(&mut self) {
+        if let Self::AnySink(sinks) = self {
+            for sink in sinks {
+                match sink {
+                    FlowSinkMatcher::ArgumentOf { call, .. }
+                    | FlowSinkMatcher::AnyArgumentOf { call } => call.normalize(),
+                }
+            }
+        }
     }
 }
 
@@ -327,13 +425,13 @@ impl FlowSinkMatcher {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectFlowMatcher {
     /// Evidence symbol for the completed flow.
-    pub symbol: String,
+    symbol: String,
     /// Calls that produce tracked objects.
-    pub sources: Vec<ObjectSourceMatcher>,
+    sources: Vec<ObjectSourceMatcher>,
     /// Configuration condition.
-    pub condition: Option<FlowCondition>,
+    condition: Option<FlowCondition>,
     /// Completion/emission mode.
-    pub completion: Option<FlowCompletion>,
+    completion: Option<FlowCompletion>,
 }
 
 impl ObjectFlowMatcher {
@@ -345,6 +443,39 @@ impl ObjectFlowMatcher {
             condition: None,
             completion: None,
             invalid_operation: None,
+        }
+    }
+
+    /// Borrow the evidence symbol.
+    pub fn symbol(&self) -> &str {
+        &self.symbol
+    }
+
+    /// Borrow the object-producing sources.
+    pub fn sources(&self) -> &[ObjectSourceMatcher] {
+        &self.sources
+    }
+
+    /// Borrow the optional configuration condition.
+    pub fn condition(&self) -> Option<&FlowCondition> {
+        self.condition.as_ref()
+    }
+
+    /// Borrow the optional completion mode.
+    pub fn completion(&self) -> Option<&FlowCompletion> {
+        self.completion.as_ref()
+    }
+
+    pub(crate) fn normalize(&mut self) {
+        self.symbol = self.symbol.trim().to_string();
+        for source in &mut self.sources {
+            source.call.normalize();
+        }
+        if let Some(condition) = &mut self.condition {
+            condition.normalize();
+        }
+        if let Some(completion) = &mut self.completion {
+            completion.normalize();
         }
     }
 }
@@ -396,9 +527,9 @@ impl ObjectFlowMatcherBuilder {
     }
 
     /// Validate and build the complete object-flow matcher.
-    pub fn build(self) -> Result<ObjectFlowMatcher, String> {
-        if let Some(error) = self.invalid_operation {
-            return Err(error.into());
+    pub fn build(self) -> Result<ObjectFlowMatcher, MatcherBuildError> {
+        if self.invalid_operation.is_some() {
+            return Err(MatcherBuildError::ConflictingProvenance);
         }
         let matcher = ObjectFlowMatcher {
             symbol: self.symbol,
@@ -439,7 +570,7 @@ mod tests {
             .configured_by(FlowCondition::any_of(Vec::<ObjectEventMatcher>::new()))
             .complete_at(FlowCompletion::configuration())
             .build();
-        assert!(empty.unwrap_err().contains("alternatives"));
+        assert!(matches!(empty.unwrap_err(), MatcherBuildError::EmptyChain));
 
         let duplicate = ObjectFlowMatcher::builder("duplicate")
             .source(source())
@@ -453,6 +584,9 @@ mod tests {
             )))
             .complete_at(FlowCompletion::configuration())
             .build();
-        assert!(duplicate.unwrap_err().contains("configured_by"));
+        assert!(matches!(
+            duplicate.unwrap_err(),
+            MatcherBuildError::ConflictingProvenance
+        ));
     }
 }

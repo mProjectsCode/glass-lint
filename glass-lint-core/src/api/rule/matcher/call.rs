@@ -1,7 +1,7 @@
 //! Callable matcher declarations and provenance modes.
 
 use crate::api::rule::{
-    ModuleSpecifierPattern,
+    MatcherBuildError, ModuleSpecifierPattern,
     matcher::{ArgumentConstraint, ArgumentMatcher, ValueMatcher},
 };
 
@@ -9,14 +9,29 @@ use crate::api::rule::{
 /// Matcher for a callable symbol and optional argument predicates.
 pub struct CallMatcher {
     /// Callable name or rooted symbol spelling.
-    pub name: String,
+    name: String,
     /// Required call provenance mode.
-    pub provenance: SymbolProvenance,
+    provenance: SymbolProvenance,
     /// Predicates attached to zero-based argument positions.
-    pub arguments: Vec<ArgumentConstraint>,
+    arguments: Vec<ArgumentConstraint>,
 }
 
 impl CallMatcher {
+    /// Borrow the callable name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Borrow the provenance mode.
+    pub fn provenance(&self) -> &SymbolProvenance {
+        &self.provenance
+    }
+
+    /// Borrow the argument predicates.
+    pub fn arguments(&self) -> &[ArgumentConstraint] {
+        &self.arguments
+    }
+
     /// Construct a spelling-based heuristic matcher.
     pub fn heuristic(name: impl Into<String>) -> Self {
         Self::new(name, SymbolProvenance::Any)
@@ -40,7 +55,7 @@ impl CallMatcher {
     pub fn package_export(
         module: impl Into<String>,
         export: impl Into<String>,
-    ) -> Result<Self, String> {
+    ) -> Result<Self, MatcherBuildError> {
         Ok(Self::new(
             export,
             SymbolProvenance::PackageModuleExport {
@@ -60,10 +75,7 @@ impl CallMatcher {
     #[must_use]
     /// Add a predicate for one argument position.
     pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
-        self.arguments.push(ArgumentConstraint {
-            index,
-            matcher: matcher.into(),
-        });
+        self.arguments.push(ArgumentConstraint::new(index, matcher));
         self
     }
 
@@ -132,6 +144,12 @@ impl CallMatcher {
             SymbolProvenance::PackageModuleExport { module } => (module.as_str(), &self.name),
         }
     }
+
+    pub fn normalize(&mut self) {
+        self.name = self.name.trim().to_string();
+        self.provenance.normalize();
+        ArgumentConstraint::normalize_all(&mut self.arguments);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,4 +166,12 @@ pub enum SymbolProvenance {
     PackageModuleExport {
         module: ModuleSpecifierPattern,
     },
+}
+
+impl SymbolProvenance {
+    pub fn normalize(&mut self) {
+        if let Self::ModuleExport { module } = self {
+            *module = module.trim().to_string();
+        }
+    }
 }

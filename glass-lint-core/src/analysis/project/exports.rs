@@ -9,9 +9,11 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use crate::{
     analysis::{
-        BTreeSet, ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId,
-        ProjectSemanticModel, QualifiedRequestId, SymbolCallProvenance, module,
+        BTreeSet, ExportResolution, LinkedModuleTarget, ModuleId,
+        ProjectSemanticModel, QualifiedRequestId, module,
         module::{DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
+        project::model::MAX_EXPORT_DEPTH,
+        syntax::SymbolCallProvenance,
     },
     project::is_internal_module_request as is_internal_request,
 };

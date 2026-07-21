@@ -13,7 +13,7 @@ use crate::{
     Environment,
     analysis::{
         name::{NameId, NameTableCtx},
-        scope::collect::{PropertyAliasAssignment, RootedPropertyMutation},
+        scope::collect::{PropertyAliasAssignment, RootedPropertyMutation, aliases::contains},
         syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
         value::{BindingId, BindingKey, BindingVersion, FunctionId, NamePath, SymbolPath},
     },
@@ -395,7 +395,7 @@ impl<'a> ScopeGraph<'a> {
         else {
             return ScopeId::from(0);
         };
-        while !span_contains(self.scopes[scope.index()].span, span) {
+        while !contains(self.scopes[scope.index()].span, span) {
             let Some(parent) = self.scopes[scope.index()].parent else {
                 return ScopeId::from(0);
             };
@@ -418,10 +418,6 @@ pub(super) struct ScopeGraphParts<'a> {
     pub(super) function_aliases: BTreeMap<ScopedName, FunctionId>,
     pub(super) parameter_aliases: BTreeMap<(FunctionId, NameId), BindingProvenance>,
     pub(super) mutable_static_objects: std::collections::BTreeSet<ScopedName>,
-}
-
-fn span_contains(outer: Span, inner: Span) -> bool {
-    outer.lo <= inner.lo && outer.hi >= inner.hi
 }
 
 #[derive(Debug, Clone)]

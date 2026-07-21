@@ -24,7 +24,18 @@ pub enum RuleBuildError {
     /// Category failed taxonomy validation.
     InvalidCategory(String),
     /// A matcher failed shape/provenance validation.
-    InvalidMatcher(String),
+    InvalidMatcher(MatcherBuildError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MatcherBuildError {
+    InvalidModuleSpecifier(String),
+    EmptyChain,
+    InvalidArgumentIndex(usize),
+    MissingRequired,
+    ConflictingProvenance,
+    #[doc(hidden)]
+    Generic(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +65,37 @@ impl fmt::Display for RuleBuildError {
 }
 
 impl Error for RuleBuildError {}
+
+impl fmt::Display for MatcherBuildError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidModuleSpecifier(value) => {
+                write!(formatter, "invalid module specifier `{value}`")
+            }
+            Self::EmptyChain => formatter.write_str("member chain must not be empty"),
+            Self::InvalidArgumentIndex(index) => {
+                write!(formatter, "argument index {index} exceeds maximum")
+            }
+            Self::MissingRequired => formatter.write_str("required field is missing"),
+            Self::ConflictingProvenance => formatter.write_str("conflicting provenance modes"),
+            Self::Generic(value) => formatter.write_str(value),
+        }
+    }
+}
+
+impl Error for MatcherBuildError {}
+
+impl From<String> for MatcherBuildError {
+    fn from(value: String) -> Self {
+        Self::Generic(value)
+    }
+}
+
+impl From<&str> for MatcherBuildError {
+    fn from(value: &str) -> Self {
+        Self::Generic(value.to_owned())
+    }
+}
 
 impl fmt::Display for CompiledCatalogError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {

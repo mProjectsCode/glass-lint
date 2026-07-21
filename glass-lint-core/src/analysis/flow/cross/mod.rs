@@ -6,9 +6,7 @@
 
 mod propagation;
 
-use std::collections::{BTreeMap, BTreeSet};
-
-use indexmap::IndexSet;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use crate::{
     analysis::{
@@ -25,6 +23,7 @@ use crate::{
         classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},
         compiler::{CompiledObjectFlow, CompiledRuleSelection},
     },
+    budget::Budget,
     project::ModuleId,
 };
 
@@ -46,40 +45,6 @@ impl EvidenceRole {
             Self::Requirement => "flow requirement",
             Self::Sink => "flow sink",
         }
-    }
-}
-
-#[derive(Debug, Default)]
-/// Global work budget for qualified flow propagation.
-///
-/// Exhaustion invalidates the collected evidence because a partial cross-file
-/// result cannot distinguish “not reached” from “not analyzed.”
-struct CrossBudget {
-    /// Number of propagation steps consumed.
-    steps: usize,
-    /// Number of contexts projected into evidence.
-    projections: usize,
-    /// Whether the hard step limit was reached.
-    exhausted: bool,
-    limit: usize,
-}
-
-impl CrossBudget {
-    fn step(&mut self) -> bool {
-        // Cross-module propagation is monotone but can fan out through helper
-        // chains; stop before that fan-out can make analysis unbounded.
-        self.steps = match self.steps.checked_add(1) {
-            Some(value) if value <= self.limit => value,
-            _ => {
-                self.exhausted = true;
-                return false;
-            }
-        };
-        true
-    }
-
-    fn projection(&mut self) {
-        self.projections = self.projections.saturating_add(1);
     }
 }
 
@@ -138,24 +103,33 @@ pub(super) struct CallContext {
     pub(super) crossed: bool,
 }
 
+/// Deduplicating FIFO worklist for bounded interprocedural contexts.
+///
+/// Uses `VecDeque` for O(1) pop-front and a `BTreeSet` for O(log n) dedup,
+/// avoiding the O(n) shift cost of `IndexSet::shift_remove_index(0)`.
 #[derive(Default)]
-/// Deduplicating insertion-ordered worklist for bounded interprocedural
-/// contexts.
 struct ContextWorklist {
-    contexts: IndexSet<CallContext>,
+    /// FIFO queue of pending contexts.
+    queue: VecDeque<CallContext>,
+    /// Seen-set for O(log n) deduplication.
+    seen: BTreeSet<CallContext>,
 }
 
 impl ContextWorklist {
     pub(super) fn push(&mut self, context: CallContext) {
-        self.contexts.insert(context);
+        if self.seen.insert(context.clone()) {
+            self.queue.push_back(context);
+        }
     }
 
     pub(super) fn pop_front(&mut self) -> Option<CallContext> {
-        self.contexts.shift_remove_index(0)
+        let context = self.queue.pop_front()?;
+        self.seen.remove(&context);
+        Some(context)
     }
 
     pub(super) fn len(&self) -> usize {
-        self.contexts.len()
+        self.queue.len()
     }
 
     pub(super) fn enqueue_parameters(
@@ -314,12 +288,14 @@ impl FlowSources {
         entry.len() != before
     }
 
-    fn extend_optional(
-        &mut self,
-        key: SourceKey,
-        candidates: Option<Vec<SourceCandidate>>,
-    ) -> bool {
-        candidates.is_some_and(|candidates| self.extend(key, candidates))
+    /// Copy candidates from `from` key to `to` key, cloning only the source
+    /// vector once instead of cloning in both the caller and the extend path.
+    /// Returns whether new candidates were added at `to`.
+    fn extend_from_key(&mut self, to: SourceKey, from: &SourceKey) -> bool {
+        let Some(candidates) = self.0.get(from).cloned() else {
+            return false;
+        };
+        self.extend(to, candidates)
     }
 
     fn normalize(&mut self) {
@@ -355,13 +331,11 @@ pub(in crate::analysis) fn collect(
     let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows);
     let mut worklist = ContextWorklist::seed(project, &sources);
 
-    let mut budget = CrossBudget {
-        limit: project.flow_limit(),
-        ..Default::default()
-    };
+    let mut step_budget = Budget::new(project.flow_limit());
+    let mut projections = 0usize;
     while let Some(context) = worklist.pop_front() {
-        budget.projection();
-        if !budget.step() {
+        projections = projections.saturating_add(1);
+        if !step_budget.try_push() {
             break;
         }
         let Some(effect) = project.effect(context.module, context.function) else {
@@ -405,7 +379,7 @@ pub(in crate::analysis) fn collect(
             break;
         }
     }
-    let exhausted = return_budget_exhausted || budget.exhausted || worklist.len() >= MAX_CONTEXTS;
+    let exhausted = return_budget_exhausted || step_budget.exhausted() || worklist.len() >= MAX_CONTEXTS;
     if exhausted {
         for values in evidence.values_mut() {
             for rule in values {
@@ -413,7 +387,7 @@ pub(in crate::analysis) fn collect(
             }
         }
     }
-    (evidence, exhausted, budget.projections)
+    (evidence, exhausted, projections)
 }
 
 impl FlowSources {
@@ -515,16 +489,10 @@ impl FlowSources {
             let returned_root = target
                 .value_root(returned.value())
                 .unwrap_or_else(|| returned.value());
-            let candidates = self
-                .get(&SourceKey::new(
-                    target_module,
-                    target_function,
-                    returned_root,
-                ))
-                .cloned();
-            changed |= self.extend_optional(
+            let from = SourceKey::new(target_module, target_function, returned_root);
+            changed |= self.extend_from_key(
                 SourceKey::new(caller_module, caller_effect, call_result),
-                candidates,
+                &from,
             );
         }
         changed
@@ -551,12 +519,10 @@ impl FlowSources {
             let root = effect
                 .value_root(argument.value())
                 .unwrap_or_else(|| argument.value());
-            let candidates = self
-                .get(&SourceKey::new(caller_module, effect.id(), root))
-                .cloned();
-            changed |= self.extend_optional(
+            let from = SourceKey::new(caller_module, effect.id(), root);
+            changed |= self.extend_from_key(
                 SourceKey::new(caller_module, effect.id(), call.result()),
-                candidates,
+                &from,
             );
         }
         changed

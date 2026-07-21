@@ -106,15 +106,9 @@ impl ProjectSemanticModel {
         )
     }
 
-    /// Merge projection side effects back into this project model.
-    ///
-    /// This exists so that existing callers that read `operation_counts` or
-    /// `is_complete` after classification continue to see consistent values
-    /// without requiring a full refactor of every call site.  New callers
-    /// should prefer to consume the `ProjectionOutcome` directly.
-    pub(crate) fn merge_projection_outcome(&mut self, outcome: &ProjectionOutcome) {
+    /// Record flow exhaustion status from a projection outcome.
+    pub(crate) fn record_flow_exhaustion(&mut self, outcome: &ProjectionOutcome) {
         if outcome.flow_exhausted {
-            self.flow_budget.mark_exhausted();
             self.status.record(
                 StatusScope::Project,
                 IncompleteReason::BudgetExhausted {
@@ -124,7 +118,6 @@ impl ProjectSemanticModel {
                 },
             );
         }
-        self.effect_projections.set(outcome.effect_projections);
     }
 }
 

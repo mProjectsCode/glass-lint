@@ -3,6 +3,7 @@
 use std::{
     collections::BTreeMap,
     hash::{Hash, Hasher},
+    sync::Arc,
 };
 
 use crate::analysis::facts::FactId;
@@ -12,11 +13,14 @@ use crate::analysis::facts::FactId;
 ///
 /// The map is intentionally typed by `K` so local fact IDs and qualified
 /// module events cannot be confused during joins.
-pub(super) struct RequirementSet<K = FactId>(BTreeMap<usize, K>);
+///
+/// Uses `Arc` internally so cloning is O(1) and mutations via [`make_mut`]
+/// only allocate when the `Arc` has multiple references.
+pub(super) struct RequirementSet<K = FactId>(Arc<BTreeMap<usize, K>>);
 
 impl<K: Hash> Hash for RequirementSet<K> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for (k, v) in &self.0 {
+        for (k, v) in self.0.iter() {
             k.hash(state);
             v.hash(state);
         }
@@ -25,19 +29,19 @@ impl<K: Hash> Hash for RequirementSet<K> {
 
 impl<K> Default for RequirementSet<K> {
     fn default() -> Self {
-        Self(BTreeMap::new())
+        Self(Arc::new(BTreeMap::new()))
     }
 }
 
-impl<K: PartialEq> RequirementSet<K> {
+impl<K: Clone> RequirementSet<K> {
     /// Replace the proof for a requirement key.
     pub(super) fn insert(&mut self, parameter: usize, value: K) {
-        self.0.insert(parameter, value);
+        Arc::make_mut(&mut self.0).insert(parameter, value);
     }
 
     /// Remove one parameter requirement after invalidation.
     pub(super) fn remove(&mut self, parameter: usize) {
-        self.0.remove(&parameter);
+        Arc::make_mut(&mut self.0).remove(&parameter);
     }
 
     /// Number of currently proven requirements.
@@ -59,7 +63,7 @@ impl<K: PartialEq> RequirementSet<K> {
     /// The evidence value is path-local, so only the typed requirement key is
     /// part of this intersection.
     pub(super) fn intersect_keys(&mut self, other: &Self) {
-        self.0
-            .retain(|parameter, _| other.0.contains_key(parameter));
+        let map = Arc::make_mut(&mut self.0);
+        map.retain(|parameter, _| other.0.contains_key(parameter));
     }
 }
