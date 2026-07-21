@@ -492,6 +492,21 @@ pub struct ToolResult {
     pub operational_errors: Vec<String>,
 }
 
+impl ToolResult {
+    #[must_use]
+    pub fn skipped(version: String, skip_reason: Option<String>) -> Self {
+        Self {
+            version,
+            skipped: true,
+            skip_reason,
+            passed: true,
+            findings: vec![],
+            mismatches: vec![],
+            operational_errors: vec![],
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize)]
 pub struct SuiteReport {
     /// Serialized report schema version.

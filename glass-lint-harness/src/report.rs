@@ -8,7 +8,17 @@
 use anyhow::Result;
 use glass_lint_core::AnalysisReport;
 
-use crate::types::SuiteReport;
+use crate::types::{CaseResult, SuiteReport, ToolResult};
+
+#[allow(dead_code)]
+fn active_tool_runs(
+    report: &SuiteReport,
+) -> impl Iterator<Item = (&CaseResult, &str, &ToolResult)> {
+    report
+        .cases
+        .iter()
+        .flat_map(|case| case.adapters.iter().map(move |(name, result)| (case, name.as_str(), result)))
+}
 
 #[must_use]
 pub fn render_suite_summary(report: &SuiteReport) -> String {

@@ -76,13 +76,21 @@ impl<'a> ProjectDiscovery<'a> {
         selection: &Path,
         root: &Path,
     ) -> Result<(), ProjectLoadError> {
-        if paths.iter().any(|path| !inside_root(root, path)) {
+        let mut outside = false;
+        paths.retain(|path| {
+            if inside_root(root, path) {
+                true
+            } else {
+                outside = true;
+                false
+            }
+        });
+        if outside {
             return Err(ProjectLoadError::SelectionOutsideRoot {
                 selection: selection.to_path_buf(),
                 root: root.to_path_buf(),
             });
         }
-        paths.retain(|path| inside_root(root, path));
         paths.sort();
         paths.dedup();
         if paths.len() > self.options.max_files {
@@ -99,7 +107,7 @@ impl<'a> ProjectDiscovery<'a> {
             .sort_by_file_name();
         for entry in walker
             .into_iter()
-            .filter_entry(|entry| self.include_dir(entry))
+            .filter_entry(|entry| self.accept_entry(entry))
         {
             self.check_timeout()?;
             visited = visited.saturating_add(1);
@@ -108,11 +116,13 @@ impl<'a> ProjectDiscovery<'a> {
                     self.options.max_visited_entries,
                 ));
             }
-            let entry = entry.map_err(|error| ProjectLoadError::Io {
-                path: error.path().unwrap_or(directory).to_path_buf(),
-                source: error
+            let entry = entry.map_err(|error| {
+                let path = error.path().unwrap_or(directory).to_path_buf();
+                let message = error.to_string();
+                let source = error
                     .into_io_error()
-                    .unwrap_or_else(|| std::io::Error::other("directory traversal failed")),
+                    .unwrap_or_else(|| std::io::Error::other(message));
+                ProjectLoadError::Io { path, source }
             })?;
             if entry.file_type().is_file()
                 && is_supported_runtime_source(entry.path(), &self.options.extensions)
@@ -240,7 +250,7 @@ impl<'a> ProjectDiscovery<'a> {
         Ok(())
     }
 
-    fn include_dir(&self, entry: &DirEntry) -> bool {
+    fn accept_entry(&self, entry: &DirEntry) -> bool {
         !entry.file_type().is_dir()
             || entry
                 .file_name()
@@ -257,7 +267,8 @@ impl<'a> ProjectDiscovery<'a> {
                 root: canonical_root,
             });
         }
-        crate::corpus::SourceCorpus::new(self.options)?.load_source_file(root, path)
+        crate::corpus::SourceCorpus::new_unchecked(self.options)
+            .load_source_file_at(&canonical_root, &canonical_path)
     }
 
     fn check_timeout(&self) -> Result<(), ProjectLoadError> {
@@ -288,18 +299,8 @@ fn read_tsconfig_path_extends(
         path: config.to_path_buf(),
         source,
     })?;
-    json_strip_comments::strip(&mut text).map_err(|error| {
-        ProjectLoadError::InvalidOptions(crate::ProjectOptionError::Message(format!(
-            "parse {}: {error}",
-            config.display()
-        )))
-    })?;
-    let parsed: Value = serde_json::from_str(&text).map_err(|error| {
-        ProjectLoadError::InvalidOptions(crate::ProjectOptionError::Message(format!(
-            "parse {}: {error}",
-            config.display()
-        )))
-    })?;
+    json_strip_comments::strip(&mut text).map_err(|error| parse_error(config, error))?;
+    let parsed: Value = serde_json::from_str(&text).map_err(|error| parse_error(config, error))?;
     let mut effective = Value::Object(serde_json::Map::new());
     if let Some(extends) = parsed.get("extends").and_then(Value::as_str)
         && let Some(parent) = resolve_tsconfig_extends(config, extends, fallback_directory)
@@ -353,6 +354,13 @@ pub fn excluded_path(root: &Path, path: &Path, excluded: &BTreeSet<String>) -> b
 }
 
 pub use crate::corpus::is_supported_runtime_source;
+
+fn parse_error(config: &Path, error: impl std::fmt::Display) -> ProjectLoadError {
+    ProjectLoadError::InvalidOptions(crate::ProjectOptionError::Message(format!(
+        "parse {}: {error}",
+        config.display()
+    )))
+}
 
 fn tsconfig_pattern_matches(pattern: &str, relative: &str) -> bool {
     let pattern = pattern.replace('\\', "/");

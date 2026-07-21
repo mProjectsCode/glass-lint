@@ -74,21 +74,21 @@ pub fn electron_config() -> LinterConfig {
     )
 }
 
+const PROVIDER_PREFIXES: [&str; 4] = ["js:", "browser:", "node:", "electron:"];
+
 #[must_use]
-/// Collect stable disclosure categories for findings in the JavaScript
-/// namespace.
 pub fn disclosures_for_report(report: &AnalysisReport) -> BTreeSet<&'static str> {
     report
         .files
         .iter()
         .flat_map(|file| file.findings.iter())
         .flat_map(|finding| {
-            finding
-                .rule_id
-                .as_str()
-                .strip_prefix("js:")
+            let id = finding.rule_id.as_str();
+            PROVIDER_PREFIXES
+                .iter()
+                .find_map(|prefix| id.strip_prefix(prefix))
                 .into_iter()
-                .flat_map(|id| disclosures::for_rule(id).iter().copied())
+                .flat_map(|unprefixed| disclosures::for_rule(unprefixed).iter().copied())
         })
         .collect()
 }

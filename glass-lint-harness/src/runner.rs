@@ -43,15 +43,7 @@ pub fn run_suite(
                 timings.insert(adapter.name().into(), tool_start.elapsed());
                 tools.insert(
                     adapter.name().into(),
-                    ToolResult {
-                        version,
-                        skipped: true,
-                        skip_reason: Some("tool not configured for this case".into()),
-                        passed: true,
-                        findings: vec![],
-                        mismatches: vec![],
-                        operational_errors: vec![],
-                    },
+                    ToolResult::skipped(version, Some("tool not configured for this case".into())),
                 );
                 continue;
             };
@@ -60,15 +52,7 @@ pub fn run_suite(
                 timings.insert(adapter.name().into(), tool_start.elapsed());
                 tools.insert(
                     adapter.name().into(),
-                    ToolResult {
-                        version,
-                        skipped: true,
-                        skip_reason: Some(reason),
-                        passed: true,
-                        findings: vec![],
-                        mismatches: vec![],
-                        operational_errors: vec![],
-                    },
+                    ToolResult::skipped(version, Some(reason)),
                 );
                 continue;
             }

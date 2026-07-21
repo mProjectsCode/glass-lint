@@ -170,7 +170,7 @@ struct ProjectManifest {
     tool: BTreeMap<String, ProjectToolManifest>,
 }
 
-#[derive(Debug, Default, serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Deserialize)]
 struct ProjectMetadata {
     id: Option<String>,
     description: Option<String>,
@@ -213,44 +213,21 @@ struct ProjectToolManifest {
     rules: Vec<String>,
 }
 
-fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
+fn parse_project_manifest(directory: &Path) -> Result<(ProjectManifest, ProjectMetadata)> {
     let manifest_path = directory.join("case.toml");
     let manifest: ProjectManifest = toml::from_str(
         &fs::read_to_string(&manifest_path)
             .with_context(|| format!("read {}", manifest_path.display()))?,
     )
     .with_context(|| format!("parse {}", manifest_path.display()))?;
-    let metadata = manifest.case.or(manifest.project).unwrap_or_default();
-    let relative_directory = directory.strip_prefix(root).unwrap_or(directory);
-    let default_id = relative_directory.to_string_lossy().replace('\\', "/");
+    let metadata = manifest.case.as_ref().or(manifest.project.as_ref()).cloned().unwrap_or_default();
+    Ok((manifest, metadata))
+}
 
-    let mut paths: Vec<_> = WalkDir::new(directory)
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .filter(|entry| {
-            entry.file_type().is_file()
-                && entry.file_name() != "case.toml"
-                && SourceLanguage::is_supported_filename(&entry.path().to_string_lossy())
-        })
-        .map(walkdir::DirEntry::into_path)
-        .collect();
-    paths.sort();
-    let files = load_project_files(directory, paths)?;
-    if files.is_empty() {
-        bail!(
-            "project case {} contains no runtime sources",
-            directory.display()
-        );
-    }
-    let entries = if metadata.entries.is_empty() {
-        vec![files[0].path.clone()]
-    } else {
-        metadata.entries.clone()
-    };
-
-    let resolutions = manifest
-        .resolution
+fn build_resolutions(
+    resolutions: Vec<ProjectResolutionManifest>,
+) -> Result<Vec<AdapterResolution>> {
+    resolutions
         .into_iter()
         .map(|resolution| {
             let result = match resolution.outcome {
@@ -287,7 +264,40 @@ fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
                 result,
             })
         })
-        .collect::<Result<Vec<_>>>()?;
+        .collect()
+}
+
+fn load_project_case(root: &Path, directory: &Path) -> Result<Case> {
+    let (manifest, metadata) = parse_project_manifest(directory)?;
+    let relative_directory = directory.strip_prefix(root).unwrap_or(directory);
+    let default_id = relative_directory.to_string_lossy().replace('\\', "/");
+
+    let mut paths: Vec<_> = WalkDir::new(directory)
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|entry| {
+            entry.file_type().is_file()
+                && entry.file_name() != "case.toml"
+                && SourceLanguage::is_supported_filename(&entry.path().to_string_lossy())
+        })
+        .map(walkdir::DirEntry::into_path)
+        .collect();
+    paths.sort();
+    let files = load_project_files(directory, paths)?;
+    if files.is_empty() {
+        bail!(
+            "project case {} contains no runtime sources",
+            directory.display()
+        );
+    }
+    let entries = if metadata.entries.is_empty() {
+        vec![files[0].path.clone()]
+    } else {
+        metadata.entries.clone()
+    };
+
+    let resolutions = build_resolutions(manifest.resolution)?;
 
     let tools = load_project_tools(directory, &manifest.tool, &files)?;
 

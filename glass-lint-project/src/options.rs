@@ -162,8 +162,7 @@ impl ProjectLoadOptionsBuilder {
     }
 
     pub fn build(self) -> Result<ValidatedProjectLoadOptions, ProjectLoadError> {
-        self.options.validate()?;
-        Ok(ValidatedProjectLoadOptions(self.options))
+        self.options.validated()
     }
 }
 
@@ -240,16 +239,16 @@ impl ProjectLoadOptions {
             || self
                 .extensions
                 .iter()
-                .any(|extension| !valid_extension(extension))
+                .any(|extension| !Self::valid_extension(extension))
         {
             return Err(ProjectLoadError::InvalidOptions(
                 ProjectOptionError::InvalidExtensions,
             ));
         }
         if self.extension_aliases.iter().any(|(extension, aliases)| {
-            !valid_extension(extension)
+            !Self::valid_extension(extension)
                 || aliases.is_empty()
-                || aliases.iter().any(|alias| !valid_extension(alias))
+                || aliases.iter().any(|alias| !Self::valid_extension(alias))
         }) {
             return Err(ProjectLoadError::InvalidOptions(
                 ProjectOptionError::InvalidExtensionAliases,
@@ -259,10 +258,12 @@ impl ProjectLoadOptions {
     }
 }
 
-fn valid_extension(extension: &str) -> bool {
-    extension.len() >= 2
-        && extension.starts_with('.')
-        && !extension
-            .chars()
-            .any(|character| character == '/' || character == '\\' || character == '\0')
+impl ProjectLoadOptions {
+    fn valid_extension(extension: &str) -> bool {
+        extension.len() >= 2
+            && extension.starts_with('.')
+            && !extension
+                .chars()
+                .any(|character| character == '/' || character == '\\' || character == '\0')
+    }
 }

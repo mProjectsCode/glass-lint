@@ -33,6 +33,12 @@ impl<'a> SourceCorpus<'a> {
         Ok(Self { options })
     }
 
+    /// Create a corpus view without re-validating options. Only use when
+    /// options are already known to be valid (e.g., after `ValidatedProjectLoadOptions`).
+    pub fn new_unchecked(options: &'a ProjectLoadOptions) -> Self {
+        Self { options }
+    }
+
     /// Discover supported files in deterministic path order.
     pub fn discover(&self, roots: &[PathBuf]) -> Result<Vec<PathBuf>, ProjectLoadError> {
         self.discover_filtered(roots, |_| true)
@@ -45,22 +51,9 @@ impl<'a> SourceCorpus<'a> {
         mut include: impl FnMut(&Path) -> bool,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut paths = BTreeSet::new();
-        let mut visited = 0usize;
         for root in roots {
-            let metadata = fs::symlink_metadata(root).map_err(|source| ProjectLoadError::Io {
-                path: root.clone(),
-                source,
-            })?;
-            if metadata.file_type().is_symlink() && !self.options.follow_symlinks {
+            let Some(metadata) = self.resolve_root(root)? else {
                 continue;
-            }
-            let metadata = if metadata.file_type().is_symlink() {
-                fs::metadata(root).map_err(|source| ProjectLoadError::Io {
-                    path: root.clone(),
-                    source,
-                })?
-            } else {
-                metadata
             };
             if metadata.is_file() {
                 if is_supported_runtime_source(root, &self.options.extensions) && include(root) {
@@ -76,45 +69,75 @@ impl<'a> SourceCorpus<'a> {
                     )),
                 ));
             }
-            let walker = WalkDir::new(root)
-                .follow_links(self.options.follow_symlinks)
-                .sort_by_file_name()
-                .into_iter()
-                .filter_entry(|entry| {
-                    !entry.file_type().is_dir()
-                        || !self
-                            .options
-                            .excluded_directories
-                            .contains(&entry.file_name().to_string_lossy().to_string())
-                });
-            for entry in walker {
-                visited = visited.saturating_add(1);
-                if visited > self.options.max_visited_entries {
-                    return Err(ProjectLoadError::TooManyEntries(
-                        self.options.max_visited_entries,
-                    ));
-                }
-                let entry = entry.map_err(|error| ProjectLoadError::Io {
-                    path: error.path().unwrap_or(root).to_path_buf(),
-                    source: error
-                        .into_io_error()
-                        .unwrap_or_else(|| std::io::Error::other("directory traversal failed")),
-                })?;
-                if entry.file_type().is_file()
-                    && is_supported_runtime_source(entry.path(), &self.options.extensions)
-                    && include(entry.path())
-                {
-                    paths.insert(entry.into_path());
-                    if paths.len() > self.options.max_files {
-                        return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
-                    }
+            self.collect_directory_entries(root, &mut include, &mut paths)?;
+        }
+        debug_assert!(paths.len() <= self.options.max_files);
+        Ok(paths.into_iter().collect())
+    }
+
+    fn resolve_root(&self, root: &Path) -> Result<Option<fs::Metadata>, ProjectLoadError> {
+        let metadata = fs::symlink_metadata(root).map_err(|source| ProjectLoadError::Io {
+            path: root.to_path_buf(),
+            source,
+        })?;
+        if metadata.file_type().is_symlink() && !self.options.follow_symlinks {
+            return Ok(None);
+        }
+        let metadata = if metadata.file_type().is_symlink() {
+            fs::metadata(root).map_err(|source| ProjectLoadError::Io {
+                path: root.to_path_buf(),
+                source,
+            })?
+        } else {
+            metadata
+        };
+        Ok(Some(metadata))
+    }
+
+    fn collect_directory_entries(
+        &self,
+        root: &Path,
+        include: &mut impl FnMut(&Path) -> bool,
+        paths: &mut BTreeSet<PathBuf>,
+    ) -> Result<(), ProjectLoadError> {
+        let mut visited = 0usize;
+        let walker = WalkDir::new(root)
+            .follow_links(self.options.follow_symlinks)
+            .sort_by_file_name()
+            .into_iter()
+            .filter_entry(|entry| {
+                !entry.file_type().is_dir()
+                    || !self
+                        .options
+                        .excluded_directories
+                        .contains(&entry.file_name().to_string_lossy().to_string())
+            });
+        for entry in walker {
+            visited = visited.saturating_add(1);
+            if visited > self.options.max_visited_entries {
+                return Err(ProjectLoadError::TooManyEntries(
+                    self.options.max_visited_entries,
+                ));
+            }
+            let entry = entry.map_err(|error| {
+                let path = error.path().unwrap_or(root).to_path_buf();
+                let message = error.to_string();
+                let source = error
+                    .into_io_error()
+                    .unwrap_or_else(|| std::io::Error::other(message));
+                ProjectLoadError::Io { path, source }
+            })?;
+            if entry.file_type().is_file()
+                && is_supported_runtime_source(entry.path(), &self.options.extensions)
+                && include(entry.path())
+            {
+                paths.insert(entry.into_path());
+                if paths.len() > self.options.max_files {
+                    return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
                 }
             }
         }
-        if paths.len() > self.options.max_files {
-            return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
-        }
-        Ok(paths.into_iter().collect())
+        Ok(())
     }
 
     /// Read one supported source file after enforcing the byte budget.
@@ -176,16 +199,24 @@ impl<'a> SourceCorpus<'a> {
             path: path.to_path_buf(),
             source,
         })?;
-        if canonical_path.strip_prefix(&canonical_root).is_err() {
+        self.load_source_file_at(&canonical_root, &canonical_path)
+    }
+
+    pub fn load_source_file_at(
+        &self,
+        canonical_root: &Path,
+        canonical_path: &Path,
+    ) -> Result<SourceFile, ProjectLoadError> {
+        if canonical_path.strip_prefix(canonical_root).is_err() {
             return Err(ProjectLoadError::SelectionOutsideRoot {
-                selection: path.to_path_buf(),
-                root: canonical_root,
+                selection: canonical_path.to_path_buf(),
+                root: canonical_root.to_path_buf(),
             });
         }
-        let file = self.load(&canonical_path)?;
+        let file = self.load(canonical_path)?;
         let relative = canonical_path
-            .strip_prefix(&canonical_root)
-            .unwrap_or(&canonical_path)
+            .strip_prefix(canonical_root)
+            .unwrap_or(canonical_path)
             .to_string_lossy()
             .replace('\\', "/");
         Ok(SourceFile::new(relative, file.source)?)

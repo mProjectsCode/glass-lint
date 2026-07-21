@@ -88,13 +88,6 @@ pub fn rule() -> Rule {
         .matcher(rooted_global_traversal("Object.getOwnPropertySymbols"))
         .matcher(rooted_global_traversal("Object.getOwnPropertyDescriptors"))
         .matcher(rooted_global_traversal("Reflect.ownKeys"))
-        .matcher(rooted_global_traversal("Object.keys"))
-        .matcher(rooted_global_traversal("Object.entries"))
-        .matcher(rooted_global_traversal("Object.values"))
-        .matcher(rooted_global_traversal("Object.getOwnPropertyNames"))
-        .matcher(rooted_global_traversal("Object.getOwnPropertySymbols"))
-        .matcher(rooted_global_traversal("Object.getOwnPropertyDescriptors"))
-        .matcher(rooted_global_traversal("Reflect.ownKeys"))
         .build()
         .unwrap()
 }

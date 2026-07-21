@@ -73,23 +73,36 @@ pub fn run(args: ProfileArgs) -> Result<bool> {
 }
 
 fn print_report(report: &ProfileSummary, quiet: bool) {
-    // Keep per-input detail optional while always printing the aggregate summary
-    // needed by scripts and interactive users.
     if !quiet {
-        for input in &report.workload_results {
-            match &input.error {
-                Some(error) => eprintln!("input {}: {}", input.path.display(), error),
-                None => eprintln!(
-                    "  {}: {:.1?} ({} finding(s), {} diagnostic(s))",
-                    input.path.display(),
-                    input.measured_elapsed,
-                    input.findings,
-                    input.diagnostics
-                ),
-            }
+        print_input_details(report);
+    }
+    print_aggregate_summary(report);
+    if let ProfileCorpusIdentity::Verified(digest) = &report.workload.corpus {
+        println!(
+            "Manifest: sha256 {digest}, {} verified byte(s)",
+            report.bytes
+        );
+    }
+    print_phase_timings(report);
+    print_slowest_inputs(report);
+}
+
+fn print_input_details(report: &ProfileSummary) {
+    for input in &report.workload_results {
+        match &input.error {
+            Some(error) => eprintln!("input {}: {}", input.path.display(), error),
+            None => eprintln!(
+                "  {}: {:.1?} ({} finding(s), {} diagnostic(s))",
+                input.path.display(),
+                input.measured_elapsed,
+                input.findings,
+                input.diagnostics
+            ),
         }
     }
+}
 
+fn print_aggregate_summary(report: &ProfileSummary) {
     println!(
         "Profile: {} input(s), {} byte(s), {} run(s), {} finding(s), {} parse/analysis diagnostic(s), {} error(s), setup {:.1?}, lint wall {:.1?}, total {:.1?}",
         report.inputs,
@@ -106,12 +119,6 @@ fn print_report(report: &ProfileSummary, quiet: bool) {
         "Median measured repetition: {:.1?}",
         report.median_repetition_duration
     );
-    if let ProfileCorpusIdentity::Verified(digest) = &report.workload.corpus {
-        println!(
-            "Manifest: sha256 {digest}, {} verified byte(s)",
-            report.bytes
-        );
-    }
     for (index, repetition) in report.repetitions.iter().enumerate() {
         println!(
             "Repetition {}: {:.1?}, {} finding(s), {} diagnostic(s), {:?}, runs {:?}, evidence {}, operations files={} requests={} edges={} exports={} scc_rounds={} effect_projections={} evidence={}",
@@ -131,6 +138,9 @@ fn print_report(report: &ProfileSummary, quiet: bool) {
             repetition.operation_counts.evidence,
         );
     }
+}
+
+fn print_phase_timings(report: &ProfileSummary) {
     println!(
         "Phases: discovery {:.1?}, reads {:.1?}, parse/local {:.1?}, resolution {:.1?}, linking/matching {:.1?}",
         report.phase_timings.discovery,
@@ -149,8 +159,10 @@ fn print_report(report: &ProfileSummary, quiet: bool) {
         report.operation_counts.effect_projections,
         report.operation_counts.evidence,
     );
+}
 
-    let mut slowest = report.workload_results.iter().collect::<Vec<_>>();
+fn print_slowest_inputs(report: &ProfileSummary) {
+    let mut slowest: Vec<_> = report.workload_results.iter().collect();
     slowest.sort_by(|left, right| {
         right
             .measured_elapsed

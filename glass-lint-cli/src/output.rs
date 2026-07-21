@@ -24,10 +24,14 @@ pub struct FileOutput {
     pub source: String,
 }
 
+fn stdout_writer() -> io::BufWriter<io::StdoutLock<'static>> {
+    io::BufWriter::new(io::stdout().lock())
+}
+
 /// Write the selected rule metadata and never request a failing exit status.
 pub fn write_rules(config: &Config) -> Result<bool> {
     let metadata = crate::config::catalog(config.cli.provider, config.cli.profile).metadata();
-    let mut stdout = io::BufWriter::new(io::stdout().lock());
+    let mut stdout = stdout_writer();
     write_rules_to(config, &metadata, &mut stdout)?;
     stdout.flush()?;
     Ok(false)
@@ -35,14 +39,14 @@ pub fn write_rules(config: &Config) -> Result<bool> {
 
 /// Write reports for independently linted snippet files.
 pub fn write_report(config: &Config, files: &[FileOutput]) -> Result<()> {
-    let mut stdout = io::BufWriter::new(io::stdout().lock());
+    let mut stdout = stdout_writer();
     write_report_to(config, files, &mut stdout)?;
     stdout.flush().map_err(Into::into)
 }
 
 /// Write a report produced by resolver-aware project analysis.
 pub fn write_project_report(config: &Config, report: &AnalysisReport) -> Result<()> {
-    let mut stdout = io::BufWriter::new(io::stdout().lock());
+    let mut stdout = stdout_writer();
     write_project_report_to(config, report, &mut stdout)?;
     stdout.flush().map_err(Into::into)
 }
@@ -50,7 +54,7 @@ pub fn write_project_report(config: &Config, report: &AnalysisReport) -> Result<
 /// Write the human-readable input mode before analysis begins.
 pub fn write_mode(config: &Config, mode: &str, path: &Path) -> Result<()> {
     if matches!(config.cli.output, OutputFormat::Pretty) {
-        let mut stdout = io::BufWriter::new(io::stdout().lock());
+        let mut stdout = stdout_writer();
         writeln!(
             stdout,
             "mode: {} ({})",
@@ -89,14 +93,14 @@ fn write_rules_to<W: Write>(config: &Config, metadata: &[RuleMetadata], out: &mu
                 .to_string(),
         ]);
         for rule in metadata {
-            table.push([
+            table.push(Row::new([
                 rule.id.to_string(),
                 severity_style(rule.default_severity)
                     .force_styling(color)
                     .apply_to(rule.default_severity)
                     .to_string(),
                 rule.description.clone(),
-            ])?;
+            ]))?;
         }
         table.write(out)?;
     }
@@ -112,10 +116,18 @@ fn severity_style(severity: glass_lint_core::Severity) -> Style {
     }
 }
 
+struct Row(Vec<String>);
+
+impl Row {
+    fn new(values: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        Self(values.into_iter().map(Into::into).collect())
+    }
+}
+
 /// Width-aware plain-text table used by human-readable CLI listings.
 struct Table {
     headers: Vec<String>,
-    rows: Vec<Vec<String>>,
+    rows: Vec<Row>,
 }
 
 impl Table {
@@ -130,16 +142,11 @@ impl Table {
         }
     }
 
-    fn push<I, S>(&mut self, row: I) -> Result<()>
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        let row = row.into_iter().map(Into::into).collect::<Vec<_>>();
-        if row.len() != self.headers.len() {
+    fn push(&mut self, row: Row) -> Result<()> {
+        if row.0.len() != self.headers.len() {
             bail!(
                 "table row has {} columns; expected {}",
-                row.len(),
+                row.0.len(),
                 self.headers.len()
             );
         }
@@ -154,14 +161,14 @@ impl Table {
             .map(|cell| measure_text_width(cell))
             .collect::<Vec<_>>();
         for row in &self.rows {
-            for (width, cell) in widths.iter_mut().zip(row) {
+            for (width, cell) in widths.iter_mut().zip(&row.0) {
                 *width = (*width).max(measure_text_width(cell));
             }
         }
 
         Self::write_row(&self.headers, &widths, out)?;
         for row in &self.rows {
-            Self::write_row(row, &widths, out)?;
+            Self::write_row(&row.0, &widths, out)?;
         }
         Ok(())
     }
@@ -400,7 +407,7 @@ mod tests {
     #[test]
     fn table_aligns_columns_without_padding_the_last_column() {
         let mut table = Table::new(["ID", "SEVERITY", "DESCRIPTION"]);
-        table.push(["x", "warning", "short"]).unwrap();
+        table.push(Row::new(["x", "warning", "short"])).unwrap();
 
         let mut output = Vec::new();
         table.write(&mut output).unwrap();

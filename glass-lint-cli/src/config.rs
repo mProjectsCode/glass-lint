@@ -230,11 +230,12 @@ pub fn load(args: &Args) -> Result<Config> {
         bail!("unsupported config version {version}; expected 2")
     }
 
-    validate(Config {
+    Config {
         version,
         core: raw.core,
         cli: raw.cli,
-    })
+    }
+    .validate()
 }
 
 fn config_format(path: &Path) -> Result<&'static str> {
@@ -257,17 +258,18 @@ fn discover_from_cwd() -> Result<Option<(String, &'static str)>> {
     }
 }
 
-fn validate(config: Config) -> Result<Config> {
-    config.project_load_options()?;
-    if config.cli.pretty_max_width < 20 {
-        bail!("pretty_max_width must be at least 20")
+impl Config {
+    fn validate(self) -> Result<Self> {
+        self.project_load_options()?;
+        if self.cli.pretty_max_width < 20 {
+            bail!("pretty_max_width must be at least 20")
+        }
+        let catalog = catalog(self.cli.provider, self.cli.profile);
+        self.core
+            .validate(&catalog)
+            .map_err(|error| anyhow::anyhow!("rule/provider mismatch: {error}"))?;
+        Ok(self)
     }
-    let catalog = catalog(config.cli.provider, config.cli.profile);
-    config
-        .core
-        .validate(&catalog)
-        .map_err(|error| anyhow::anyhow!("rule/provider mismatch: {error}"))?;
-    Ok(config)
 }
 
 impl Config {
@@ -460,7 +462,7 @@ mod tests {
     fn project_timeout_is_validated_at_the_cli_boundary() {
         let mut config = Config::default();
         config.cli.project.max_timeout_ms = 0;
-        let error = validate(config).unwrap_err();
+        let error = config.validate().unwrap_err();
         assert!(error.to_string().contains("max_timeout_ms"));
     }
 

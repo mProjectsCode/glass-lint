@@ -7,7 +7,8 @@ use std::{
 };
 
 use glass_lint_core::{
-    AnalysisReport, Linter, ResolutionRequest, ResolutionRequestKind, ResolverOutcome,
+    AnalysisReport, Linter, ProjectRelativePath, ResolutionRequest, ResolutionRequestKind,
+    ResolverOutcome,
 };
 
 use crate::{
@@ -256,7 +257,7 @@ impl ProjectPaths {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct PathWorkQueue(VecDeque<PathBuf>);
 impl PathWorkQueue {
     fn extend(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
@@ -286,13 +287,13 @@ impl AdmissionSet {
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
 struct ResolutionCacheKey {
-    importer: String,
+    importer: ProjectRelativePath,
     kind: ResolutionRequestKind,
     request: String,
 }
 
 impl ResolutionCacheKey {
-    fn new(importer: String, kind: ResolutionRequestKind, request: String) -> Self {
+    fn new(importer: ProjectRelativePath, kind: ResolutionRequestKind, request: String) -> Self {
         Self {
             importer,
             kind,
@@ -434,7 +435,7 @@ impl<'a> ProjectLoadState<'a> {
         for request in requests {
             self.check_timeout()?;
             let cache_key = ResolutionCacheKey::new(
-                request.key.importer.to_string(),
+                request.key.importer.clone(),
                 request.key.kind,
                 request.request.clone(),
             );
@@ -486,19 +487,17 @@ impl<'a> ProjectLoadState<'a> {
 
     fn finish(self, metrics: &mut ProjectLoadMetrics) -> Result<AnalysisReport, ProjectLoadError> {
         self.check_timeout()?;
-        let deadline = self.deadline;
-        let link_start = Instant::now();
-        let (report, linking, matching) = self.session.finish_with_timings()?;
-        if Instant::now() > deadline {
-            return Err(ProjectLoadError::Timeout);
-        }
-        metrics.linking += linking;
-        metrics.matching += matching;
-        metrics.linking_and_matching += link_start.elapsed();
-        Ok(report)
+        self.finish_inner(metrics)
     }
 
     fn finish_partial(
+        self,
+        metrics: &mut ProjectLoadMetrics,
+    ) -> Result<AnalysisReport, ProjectLoadError> {
+        self.finish_inner(metrics)
+    }
+
+    fn finish_inner(
         self,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<AnalysisReport, ProjectLoadError> {
