@@ -1,12 +1,49 @@
-use std::path::PathBuf;
+use std::{ops::Deref, path::PathBuf, sync::Arc};
 
 use crate::{SourceLanguage, project::types::ProjectRelativePath};
+
+/// Shared source text admitted once at the project boundary.
+///
+/// The public project DTO still serializes as a string, but every internal
+/// consumer clones only this cheap handle instead of copying the source.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
+pub struct SourceText(Arc<str>);
+
+impl SourceText {
+    pub fn new(source: impl Into<Arc<str>>) -> Self {
+        Self(source.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for SourceText {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl From<String> for SourceText {
+    fn from(source: String) -> Self {
+        Self::new(Arc::<str>::from(source))
+    }
+}
+
+impl From<&str> for SourceText {
+    fn from(source: &str) -> Self {
+        Self::new(Arc::<str>::from(source))
+    }
+}
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
 pub struct SourceFile {
     pub path: ProjectRelativePath,
     pub language: SourceLanguage,
-    pub source: String,
+    pub source: SourceText,
 }
 
 impl SourceFile {
@@ -19,7 +56,7 @@ impl SourceFile {
         Ok(Self {
             language: SourceLanguage::from_filename(&path),
             path,
-            source: source.into(),
+            source: source.into().into(),
         })
     }
 }

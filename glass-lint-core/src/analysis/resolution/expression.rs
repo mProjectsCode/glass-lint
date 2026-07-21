@@ -26,8 +26,8 @@ impl Resolver<'_> {
             range: ident.span.into(),
             symbol: ident.sym.to_smolstr(),
         };
-        if let Some(value) = self.state.borrow().resolved_values.get(&key).cloned() {
-            return value;
+        if let Some(value) = self.state.borrow().resolved_values.get(&key) {
+            return value.as_ref().clone();
         }
         if !self.state.borrow_mut().resolving.insert(key.clone()) {
             return Self::unknown_with_reason(UnknownReason::Cycle);
@@ -115,8 +115,8 @@ impl Resolver<'_> {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };
-        if let Some(value) = self.state.borrow().resolved_values.get(&key).cloned() {
-            return value;
+        if let Some(value) = self.state.borrow().resolved_values.get(&key) {
+            return value.as_ref().clone();
         }
         if !self.state.borrow_mut().resolving.insert(key.clone()) {
             return Self::unknown_with_reason(UnknownReason::Cycle);
@@ -224,7 +224,7 @@ impl Resolver<'_> {
         self.state
             .borrow_mut()
             .resolved_values
-            .insert(key.clone(), value);
+            .insert(key.clone(), std::sync::Arc::new(value));
         self.state.borrow_mut().resolving.remove(key);
     }
 

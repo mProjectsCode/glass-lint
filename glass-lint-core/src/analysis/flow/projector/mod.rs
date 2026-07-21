@@ -87,8 +87,6 @@ struct ObjectFlowProjector<'rules, 'stream> {
     /// Call results are indexed once so later assignments can start a flow
     /// without rescanning the fact stream.
     calls_by_result: BTreeMap<ValueId, SourceCall>,
-    /// Evidence uses the exact fact that established a match as its anchor.
-    fact_spans: BTreeMap<FactId, crate::ByteRange>,
     /// Evidence is grouped and deduplicated by the flow-specific evidence
     /// owner.
     flow_evidence: FlowEvidence,
@@ -124,19 +122,12 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 _ => None,
             })
             .collect();
-        let fact_spans = stream
-            .facts()
-            .iter()
-            .map(|fact| (fact.id, fact.span))
-            .collect();
-
         Self {
             stream,
             names,
             flow_index,
             helpers,
             calls_by_result,
-            fact_spans,
             flow_evidence: FlowEvidence::new(rule_count),
             flow_state: FlowStateTable::default(),
             next_object_id: 0,

@@ -10,7 +10,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::{
     analysis::{
         BTreeSet, ExportResolution, LinkedModuleTarget, MAX_EXPORT_DEPTH, ModuleId,
-        ProjectSemanticModel, ResolutionRequestKey, SymbolCallProvenance, module,
+        ProjectSemanticModel, QualifiedRequestId, SymbolCallProvenance, module,
         module::{DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
     },
     project::is_internal_module_request as is_internal_request,
@@ -81,7 +81,7 @@ impl ProjectSemanticModel {
                 else {
                     return ExportResolution::Unknown;
                 };
-                let Some(key) = self.request_key(module, request) else {
+                let Some(key) = self.request_id(module, request) else {
                     return ExportResolution::Unknown;
                 };
                 match self.resolutions.get(&key) {
@@ -111,17 +111,21 @@ impl ProjectSemanticModel {
         authored_module: &SmolStr,
         authored_export: &SmolStr,
     ) -> ExportResolution {
-        let requests = self
+        let Some(interface) = self
             .modules
             .get(&importer)
-            .into_iter()
-            .flat_map(|module| module.local().interface().requests())
+            .map(|module| module.local().interface())
+        else {
+            return ExportResolution::Unknown;
+        };
+        let requests = interface
+            .request_ids_for_specifier(authored_module)
+            .filter_map(|request| interface.request(request))
             .filter(|request| {
-                request.specifier() == authored_module
-                    && matches!(
-                        request.role(),
-                        ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
-                    )
+                matches!(
+                    request.role(),
+                    ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
+                )
             })
             .collect::<Vec<_>>();
         if requests.is_empty() {
@@ -140,7 +144,7 @@ impl ProjectSemanticModel {
         // selecting the first source-order request.
         let mut resolved = None;
         for request in requests {
-            let Some(key) = self.request_key(importer, request) else {
+            let Some(key) = self.request_id(importer, request) else {
                 return ExportResolution::Unknown;
             };
             let candidate = match self.resolutions.get(&key) {
@@ -177,19 +181,16 @@ impl ProjectSemanticModel {
         resolved.unwrap_or(ExportResolution::Unknown)
     }
 
-    /// Build the stable public resolution key for one local request.
-    pub(in crate::analysis) fn request_key(
+    /// Return the stable internal identity for one local request.
+    pub(in crate::analysis) fn request_id(
         &self,
         module: ModuleId,
         request: &module::ModuleRequest,
-    ) -> Option<ResolutionRequestKey> {
-        Some(ResolutionRequestKey {
-            importer: self.modules[&module].path().clone(),
-            kind: request.kind(),
-            range: self.modules[&module]
-                .source_context()
-                .range(request.span())
-                .ok()?,
+    ) -> Option<QualifiedRequestId> {
+        self.modules.get(&module)?;
+        Some(QualifiedRequestId {
+            module,
+            request: request.id(),
         })
     }
 
@@ -226,7 +227,7 @@ impl ProjectSemanticModel {
                 saw_unknown = true;
                 continue;
             };
-            let Some(key) = self.request_key(module, request) else {
+            let Some(key) = self.request_id(module, request) else {
                 saw_unknown = true;
                 continue;
             };
@@ -274,7 +275,7 @@ impl ProjectSemanticModel {
         else {
             return ExportResolution::Unknown;
         };
-        let Some(key) = self.request_key(module, request) else {
+        let Some(key) = self.request_id(module, request) else {
             return ExportResolution::Unknown;
         };
         match self.resolutions.get(&key) {

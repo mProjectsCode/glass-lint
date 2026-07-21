@@ -37,7 +37,7 @@ pub use project::{
     AnalysisSession, Diagnostic, DiagnosticCode, Evidence, EvidenceList, FileReport, Finding,
     ProjectInput, ProjectInputError, ProjectRelativePath, ReportCombineError, ReportCompletion,
     ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile,
-    SourceLocation, is_internal_module_request,
+    SourceLocation, SourceText, is_internal_module_request,
 };
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible_text};
 pub use rule_id::RuleId;

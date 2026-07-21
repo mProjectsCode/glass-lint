@@ -332,9 +332,12 @@ use crate::{
         SemanticArtifact, SharedSemanticArtifact,
     },
     project::{
-        AnalysisReport, ProjectInput, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
+        AnalysisReport, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
         ResolverOutcome, SourceFile,
-        input::{normalize_relative, normalize_resolution_key, normalize_result, normalize_root},
+        input::{
+            ValidatedProjectInput, normalize_relative, normalize_resolution_key, normalize_result,
+            normalize_root,
+        },
         tables::{ResolutionTable, SourceTable},
     },
 };
@@ -435,6 +438,13 @@ impl<'a> AnalysisSession<'a> {
         self.sources.insert(source)
     }
 
+    pub(crate) fn admit_validated_source(
+        &mut self,
+        source: SourceFile,
+    ) -> Result<(), ProjectInputError> {
+        self.sources.insert(source)
+    }
+
     /// Analyze one previously admitted source and return its authored requests.
     pub fn analyze_source(
         &mut self,
@@ -449,6 +459,14 @@ impl<'a> AnalysisSession<'a> {
         observer: &dyn ExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         let path = normalize_relative(path.as_ref())?;
+        self.analyze_admitted_source_with_observer(&path, observer)
+    }
+
+    fn analyze_admitted_source_with_observer(
+        &mut self,
+        path: &ProjectRelativePath,
+        observer: &dyn ExecutionObserver,
+    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         let source = self
             .sources
             .get(path.as_str())
@@ -469,7 +487,14 @@ impl<'a> AnalysisSession<'a> {
                 lowered
             }
         };
-        Ok(self.record_lowered(&path, lowered))
+        Ok(self.record_lowered(path, lowered))
+    }
+
+    pub(crate) fn analyze_admitted_source(
+        &mut self,
+        path: &ProjectRelativePath,
+    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+        self.analyze_admitted_source_with_observer(path, &NoopExecutionObserver)
     }
 
     #[cfg(test)]
@@ -609,7 +634,8 @@ impl<'a> AnalysisSession<'a> {
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         let path = normalize_relative(&source.path)?.to_string();
         self.admit_source(source)?;
-        self.analyze_source(path)
+        let path = ProjectRelativePath::new(path)?;
+        self.analyze_admitted_source(&path)
     }
 
     /// Record a resolver answer only for an authored module request.
@@ -626,6 +652,14 @@ impl<'a> AnalysisSession<'a> {
         self.resolutions.insert(key, result)
     }
 
+    pub(crate) fn record_validated_resolution(
+        &mut self,
+        key: ResolutionRequestKey,
+        result: ResolverOutcome,
+    ) -> Result<(), ProjectInputError> {
+        self.resolutions.insert(key, result)
+    }
+
     /// Link the staged project and return its report.
     pub fn finish(self) -> Result<AnalysisReport, ProjectInputError> {
         self.finish_with_timings().map(|(report, _, _)| report)
@@ -635,12 +669,11 @@ impl<'a> AnalysisSession<'a> {
     pub fn finish_with_timings(
         self,
     ) -> Result<(AnalysisReport, std::time::Duration, std::time::Duration), ProjectInputError> {
-        let input = ProjectInput {
+        let input = ValidatedProjectInput {
             root: self.root,
             sources: self.sources.into_values().collect(),
             resolutions: self.resolutions.into_values().collect(),
-        }
-        .validate()?;
+        };
         self.linter.finish_analyzed_project(
             input,
             self.artifacts.analyzed,

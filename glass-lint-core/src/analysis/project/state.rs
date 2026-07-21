@@ -7,10 +7,7 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use crate::{
-    analysis::{ExportResolution, ModuleId},
-    project::ResolutionRequestKey,
-};
+use crate::analysis::{ExportResolution, ModuleId, QualifiedRequestId};
 
 #[derive(Debug, Default)]
 /// Deterministic internal-module graph and its SCC decomposition.
@@ -18,7 +15,7 @@ pub(in crate::analysis) struct ModuleGraph {
     /// Outgoing internal edges by importer.
     forward: BTreeMap<ModuleId, Vec<ModuleId>>,
     /// Authored request keys that justify each collapsed edge.
-    provenance: BTreeMap<(ModuleId, ModuleId), Vec<ResolutionRequestKey>>,
+    provenance: BTreeMap<(ModuleId, ModuleId), Vec<QualifiedRequestId>>,
     /// Sorted strongly connected components of the graph.
     components: Vec<Vec<ModuleId>>,
 }
@@ -33,7 +30,7 @@ impl ModuleGraph {
         &mut self,
         from: ModuleId,
         to: ModuleId,
-        request: ResolutionRequestKey,
+        request: QualifiedRequestId,
     ) -> bool {
         self.ensure_node(from);
         self.provenance.entry((from, to)).or_default().push(request);

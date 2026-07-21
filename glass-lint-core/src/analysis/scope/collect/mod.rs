@@ -78,6 +78,8 @@ pub(super) struct LexicalScopeCollector<'a> {
     reuse_scopes: bool,
     predeclared_scope_order: Vec<usize>,
     next_predeclared_scope: usize,
+    /// A phase mismatch is a conservative incomplete analysis, not a panic.
+    scope_diverged: bool,
     #[cfg(test)]
     scope_reuse_steps: usize,
 }
@@ -137,6 +139,7 @@ impl<'a> LexicalScopeCollector<'a> {
             reuse_scopes: false,
             predeclared_scope_order: Vec::new(),
             next_predeclared_scope: 0,
+            scope_diverged: false,
             #[cfg(test)]
             scope_reuse_steps: 0,
         }
@@ -152,6 +155,7 @@ impl<'a> LexicalScopeCollector<'a> {
         program.visit_children_with(&mut visitor);
         self.reuse_scopes = true;
         self.next_predeclared_scope = 0;
+        self.scope_diverged = false;
         #[cfg(test)]
         {
             self.scope_reuse_steps = 0;
@@ -378,29 +382,34 @@ impl<'a> LexicalScopeCollector<'a> {
         });
     }
 
-    /// Enter a predeclared scope, asserting traversal order matches the pass.
+    /// Enter a predeclared scope, conservatively handling phase divergence.
     fn push_scope(&mut self, span: Span, kind: ScopeKind) {
         if self.reuse_scopes {
             let parent = self.current_scope();
-            let Some(&index) = self
+            let index = self
                 .predeclared_scope_order
                 .get(self.next_predeclared_scope)
-            else {
-                panic!("normal traversal entered more scopes than predeclaration");
-            };
-            self.next_predeclared_scope += 1;
-            let matches_predeclared = self.scopes[index].parent == Some(parent)
-                && self.scopes[index].span == span
-                && self.scopes[index].kind == kind;
-            debug_assert!(
-                matches_predeclared,
-                "normal traversal must consume its matching predeclared scope"
-            );
-            assert!(
-                matches_predeclared,
-                "normal traversal scope order diverged from predeclaration"
-            );
-            self.stack.push(index);
+                .copied();
+            let matches_predeclared = index.is_some_and(|index| {
+                self.scopes[index].parent == Some(parent)
+                    && self.scopes[index].span == span
+                    && self.scopes[index].kind == kind
+            });
+            self.next_predeclared_scope = self.next_predeclared_scope.saturating_add(1);
+            if matches_predeclared {
+                self.stack.push(index.expect("checked matching scope"));
+            } else {
+                self.scope_diverged = true;
+                let index = self.scopes.len();
+                self.scopes.push(LexicalScope {
+                    span,
+                    depth: self.stack.len(),
+                    kind,
+                    parent: Some(parent),
+                    bindings: BTreeMap::new(),
+                });
+                self.stack.push(index);
+            }
             #[cfg(test)]
             {
                 self.scope_reuse_steps += 1;
@@ -471,7 +480,7 @@ impl<'a> LexicalScopeCollector<'a> {
     }
 
     fn is_unbound(&self, name: &str) -> bool {
-        self.visible_binding(name).is_none()
+        !self.scope_diverged && self.visible_binding(name).is_none()
     }
 
     fn rooted_expr_name(&self, expr: &Expr) -> Option<SymbolPath> {

@@ -20,9 +20,9 @@ impl FactBuilder<'_> {
         let resolved = self.resolver.resolve_expr(expr);
         let value = resolved.id;
         let provenance = resolved.call;
-        let (base_value, base_path) = self.expression_projection(expr);
+        let (base_value, base_path) = self.expression_projection(expr, Some(value));
         let mut projections = Vec::new();
-        self.collect_value_projections(expr, PathId::EMPTY, &mut projections);
+        self.collect_value_projections(expr, PathId::EMPTY, &mut projections, Some(value));
         if projections.is_empty() {
             projections.push(ValueProjection {
                 path: PathId::EMPTY,
@@ -44,7 +44,10 @@ impl FactBuilder<'_> {
             value,
             base_value,
             base_path,
-            static_string: self.resolver.static_string_expr(expr),
+            static_string: self
+                .resolver
+                .static_string_value(value)
+                .or_else(|| self.resolver.static_string_expr(expr)),
             object_keys,
             property_strings,
             rooted_chain: self
@@ -81,10 +84,14 @@ impl FactBuilder<'_> {
     /// Return the value identity and static property path represented by an
     /// expression. A computed or otherwise unprovable key invalidates the
     /// projection instead of guessing which property was read.
-    pub(super) fn expression_projection(&mut self, expr: &Expr) -> (ValueId, PathId) {
+    pub(super) fn expression_projection(
+        &mut self,
+        expr: &Expr,
+        known_value: Option<ValueId>,
+    ) -> (ValueId, PathId) {
         match expr {
             Expr::Member(member) => {
-                let (base, path) = self.expression_projection(&member.obj);
+                let (base, path) = self.expression_projection(&member.obj, None);
                 let Some(property) = member_property_name(&member.prop) else {
                     return (ValueId::UNKNOWN, PathId::EMPTY);
                 };
@@ -98,12 +105,20 @@ impl FactBuilder<'_> {
                 };
                 (base, path)
             }
-            Expr::Paren(paren) => self.expression_projection(&paren.expr),
+            Expr::Paren(paren) => self.expression_projection(&paren.expr, known_value),
             Expr::Seq(sequence) => sequence.exprs.last().map_or_else(
-                || (self.resolver.resolve_expr(expr).id, PathId::EMPTY),
-                |last| self.expression_projection(last),
+                || {
+                    (
+                        known_value.unwrap_or_else(|| self.resolver.resolve_expr(expr).id),
+                        PathId::EMPTY,
+                    )
+                },
+                |last| self.expression_projection(last, known_value),
             ),
-            _ => (self.resolver.resolve_expr(expr).id, PathId::EMPTY),
+            _ => (
+                known_value.unwrap_or_else(|| self.resolver.resolve_expr(expr).id),
+                PathId::EMPTY,
+            ),
         }
     }
 
@@ -114,10 +129,11 @@ impl FactBuilder<'_> {
         expr: &Expr,
         path: PathId,
         output: &mut Vec<ValueProjection>,
+        known_value: Option<ValueId>,
     ) {
         output.push(ValueProjection {
             path,
-            value: self.resolver.resolve_expr(expr).id,
+            value: known_value.unwrap_or_else(|| self.resolver.resolve_expr(expr).id),
         });
         match expr {
             Expr::Object(object) => {
@@ -132,7 +148,7 @@ impl FactBuilder<'_> {
                         continue;
                     };
                     let path = self.append_path(path, PathSegmentInput::Property(name.as_str()));
-                    self.collect_value_projections(&property.value, path, output);
+                    self.collect_value_projections(&property.value, path, output, None);
                 }
             }
             Expr::Array(array) => {
@@ -142,13 +158,15 @@ impl FactBuilder<'_> {
                         continue;
                     };
                     let path = self.append_path(path, PathSegmentInput::Index(index));
-                    self.collect_value_projections(&element.expr, path, output);
+                    self.collect_value_projections(&element.expr, path, output, None);
                 }
             }
-            Expr::Paren(paren) => self.collect_value_projections(&paren.expr, path, output),
+            Expr::Paren(paren) => {
+                self.collect_value_projections(&paren.expr, path, output, known_value);
+            }
             Expr::Seq(sequence) => {
                 if let Some(last) = sequence.exprs.last() {
-                    self.collect_value_projections(last, path, output);
+                    self.collect_value_projections(last, path, output, known_value);
                 }
             }
             _ => {}

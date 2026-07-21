@@ -26,11 +26,11 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         SymbolPath,
-        facts::{CallUnwrap, SemanticFact},
+        facts::{ArgumentView, CallUnwrap, SemanticFact},
         matching::{
             CallArgInfo, ClassificationEvidence, FactPayload, FactStream, LinkedModuleIdentity,
-            ModuleExportKey, ModuleIdentityMap, Occurrence, SymbolCallProvenance,
-            push_owned_evidence,
+            ModuleExportKey, ModuleIdentityMap, ModuleOccurrenceOverlay, Occurrence,
+            OccurrenceIndexes, SymbolCallProvenance, push_owned_evidence,
         },
         name::NameTable,
         syntax::SymbolMemberProvenance,
@@ -60,21 +60,23 @@ impl<'a> MatcherEvaluator<'a> {
         }
     }
 
-    fn argument_with_overlay(&self, argument: &CallArgInfo) -> CallArgInfo {
-        let mut argument = argument.clone();
+    fn argument_with_overlay<'b>(&'b self, argument: &'b CallArgInfo) -> ArgumentView<'b> {
+        let mut view = ArgumentView::new(argument);
         if let Some(result_identities) = self.result_identities
             && let Some(identity) = result_identities.get(&argument.value)
+            && let LinkedModuleIdentity::StaticString { value } = identity
         {
-            apply_identity_to_argument(&mut argument, identity);
+            view = view.with_static_string(value);
         }
         if let Some(identities) = self.identities
             && let SymbolCallProvenance::ModuleExport { module, export } = &argument.provenance
             && let Some(identity) =
                 identities.get(&ModuleExportKey::new(module.clone(), export.clone()))
+            && let LinkedModuleIdentity::StaticString { value } = identity
         {
-            apply_identity_to_argument(&mut argument, identity);
+            view = view.with_static_string(value);
         }
-        argument
+        view
     }
 
     fn overlaid_call_provenance(
@@ -174,9 +176,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                let linked_args: Vec<CallArgInfo> =
-                    args.iter().map(|a| self.argument_with_overlay(a)).collect();
-                constraints_match(&clause.constraints, &linked_args, self.names)
+                self.constraints_match(&clause.constraints, args)
             }
             _ => false,
         }
@@ -190,8 +190,10 @@ impl<'a> MatcherEvaluator<'a> {
 /// of how candidates were collected.
 pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay(
     stream: &FactStream,
+    indexes: &OccurrenceIndexes,
     clauses: &[(usize, &QueryClause)],
     evidence: &mut [Vec<ClassificationEvidence>],
+    overlay: Option<&ModuleOccurrenceOverlay>,
     identities: Option<&ModuleIdentityMap>,
     result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
 ) {
@@ -199,19 +201,17 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
         return;
     };
     let evaluator = MatcherEvaluator::new(names, identities, result_identities);
+    let mut fallback = Vec::new();
     for (rule_index, clause) in clauses {
-        let candidates: Vec<Occurrence> = stream
-            .facts()
-            .iter()
-            .filter(|fact| evaluator.fact_matches_clause(fact, clause))
-            .map(|fact| Occurrence::new(fact.id, fact.span))
-            .collect();
-
-        if candidates.is_empty() {
+        let Some(candidates) = indexes.occurrences_for_clause(clause, overlay, names) else {
+            fallback.push((*rule_index, clause));
             continue;
-        }
-
-        for occurrence in candidates {
+        };
+        for occurrence in candidates.into_iter().filter(|occurrence| {
+            stream
+                .fact(occurrence.event())
+                .is_some_and(|fact| evaluator.fact_matches_clause(fact, clause))
+        }) {
             push_owned_evidence(
                 &mut evidence[*rule_index],
                 clause.evidence.kind,
@@ -220,17 +220,19 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
             );
         }
     }
-}
-
-fn apply_identity_to_argument(argument: &mut CallArgInfo, identity: &LinkedModuleIdentity) {
-    if let LinkedModuleIdentity::StaticString { value } = identity {
-        argument.static_string = Some(value.clone());
-    }
-    if let LinkedModuleIdentity::External { module, export } = identity {
-        argument.provenance = SymbolCallProvenance::ModuleExport {
-            module: module.clone(),
-            export: export.clone(),
-        };
+    // Unsupported index shapes are intentionally handled by one shared scan,
+    // rather than rescanning the fact stream once per constrained clause.
+    for fact in stream.facts() {
+        for (rule_index, clause) in &fallback {
+            if evaluator.fact_matches_clause(fact, clause) {
+                push_owned_evidence(
+                    &mut evidence[*rule_index],
+                    clause.evidence.kind,
+                    clause.evidence.symbol.clone(),
+                    std::iter::once(Occurrence::new(fact.id, fact.span)),
+                );
+            }
+        }
     }
 }
 
@@ -389,38 +391,27 @@ fn namespace_member_matches(
 }
 
 impl MatcherEvaluator<'_> {
+    fn constraints_match(&self, constraints: &[QueryConstraint], args: &[CallArgInfo]) -> bool {
+        constraints.iter().all(|constraint| match constraint {
+            QueryConstraint::Argument(argument) => args.get(argument.index).is_some_and(|value| {
+                argument
+                    .matcher
+                    .matches(&self.argument_with_overlay(value), self.names)
+            }),
+        })
+    }
+
     fn check_constrained_args(
         &self,
         clause: &QueryClause,
         args: &[CallArgInfo],
         unwrap: Option<&CallUnwrap>,
     ) -> bool {
-        let linked_args: Vec<CallArgInfo> =
-            args.iter().map(|a| self.argument_with_overlay(a)).collect();
         unwrap.map_or_else(
-            || constraints_match(&clause.constraints, &linked_args, self.names),
-            |unwrap| {
-                let linked_effective: Vec<CallArgInfo> = unwrap
-                    .effective_args
-                    .iter()
-                    .map(|a| self.argument_with_overlay(a))
-                    .collect();
-                constraints_match(&clause.constraints, &linked_effective, self.names)
-            },
+            || self.constraints_match(&clause.constraints, args),
+            |unwrap| self.constraints_match(&clause.constraints, &unwrap.effective_args),
         )
     }
-}
-
-fn constraints_match(
-    constraints: &[QueryConstraint],
-    args: &[CallArgInfo],
-    names: &NameTable,
-) -> bool {
-    constraints.iter().all(|constraint| match constraint {
-        QueryConstraint::Argument(argument) => args
-            .get(argument.index)
-            .is_some_and(|value| argument.matcher.matches(value, names)),
-    })
 }
 
 #[cfg(test)]
@@ -517,12 +508,14 @@ mod tests {
             SubjectConstraint::Direct,
             "client.open",
         );
-        let _index = build_index(&stream);
+        let index = build_index(&stream);
         let mut evidence = vec![Vec::new()];
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
+            &index,
             &[(0, &call), (0, &member)],
             &mut evidence,
+            None,
             None,
             None,
         );
@@ -570,12 +563,14 @@ mod tests {
             },
             "pkg:Client.send",
         );
-        let _index = build_index(&stream);
+        let index = build_index(&stream);
         let mut evidence = vec![Vec::new()];
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
+            &index,
             &[(0, &returned), (0, &instance)],
             &mut evidence,
+            None,
             None,
             None,
         );
@@ -598,12 +593,14 @@ mod tests {
         assert_eq!(clauses.len(), 1, "equivalent clauses compile once");
 
         let stream = stream("fetch('/api');\nfetch('/api');", &Environment::default());
-        let _index = build_index(&stream);
+        let index = build_index(&stream);
         let mut evidence = vec![Vec::new()];
         compute_constrained_evidence_from_stream_with_overlay(
             &stream,
+            &index,
             &[(0, &clauses[0])],
             &mut evidence,
+            None,
             None,
             None,
         );
@@ -658,7 +655,7 @@ mod tests {
             )
             .argument_with_overlay(&argument)
             .static_string,
-            Some("https://example.test".into())
+            Some("https://example.test")
         );
     }
 }

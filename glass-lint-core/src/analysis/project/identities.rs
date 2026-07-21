@@ -149,7 +149,7 @@ impl ProjectSemanticModel {
             let Some(request) = interface.request(*request_index) else {
                 continue;
             };
-            let Some(key) = self.request_key(module, request) else {
+            let Some(key) = self.request_id(module, request) else {
                 continue;
             };
             if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key) {
@@ -162,7 +162,7 @@ impl ProjectSemanticModel {
 
     /// Resolve a namespace request without guessing at unsupported targets.
     fn resolve_namespace(&self, module: ModuleId, request: &ModuleRequest) -> ExportResolution {
-        let Some(key) = self.request_key(module, request) else {
+        let Some(key) = self.request_id(module, request) else {
             return ExportResolution::Unknown;
         };
         match self.resolutions.get(&key) {

@@ -21,7 +21,7 @@ pub use types::{
     DiagnosticCode, Evidence, FileReport, Finding, LinkedModuleTarget, ModuleId, ProjectInput,
     ProjectInputError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
     ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceLocation,
-    is_internal_module_request,
+    SourceText, is_internal_module_request,
 };
 
 #[cfg(test)]

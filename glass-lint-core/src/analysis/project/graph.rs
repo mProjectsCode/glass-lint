@@ -93,7 +93,7 @@ impl ProjectSemanticModel {
     fn validate_imported_exports(&mut self) {
         for module in self.modules.values() {
             for request in module.local().interface().requests() {
-                let Some(key) = self.request_key(module.id(), request) else {
+                let Some(key) = self.request_id(module.id(), request) else {
                     continue;
                 };
                 let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key)
@@ -121,11 +121,13 @@ impl ProjectSemanticModel {
                             code: crate::project::types::DiagnosticKind::MissingImportedExport
                                 .into(),
                             message: format!("module does not export `{imported}`"),
-                            location: Some(crate::SourceLocation {
-                                path: ProjectRelativePath::from_normalized(
-                                    module.path().to_string(),
-                                ),
-                                range: key.range.clone(),
+                            location: self.modules.get(&module.id()).and_then(|module| {
+                                Some(crate::SourceLocation {
+                                    path: ProjectRelativePath::from_normalized(
+                                        module.path().to_string(),
+                                    ),
+                                    range: module.source_context().range(request.span()).ok()?,
+                                })
                             }),
                         }),
                         Some(_) => {}
@@ -140,13 +142,16 @@ impl ProjectSemanticModel {
         let mut edge_budget = crate::budget::Budget::new(self.link_limit());
         for module in self.modules.values() {
             self.graph.ensure_node(module.id());
-            for request in module.authored_requests() {
-                let Some(resolution) = self.resolutions.get(&request.key) else {
-                    if is_internal_request(&request.request) {
+            for request in module.local().interface().requests() {
+                let Some(request_id) = self.request_id(module.id(), request) else {
+                    continue;
+                };
+                let Some(resolution) = self.resolutions.get(&request_id) else {
+                    if is_internal_request(request.specifier()) {
                         self.status.record(
                             crate::analysis::status::StatusScope::File(module.path().clone()),
                             IncompleteReason::MissingInternalResolution {
-                                request: request.request.clone(),
+                                request: request.specifier().to_string(),
                             },
                         );
                     }
@@ -154,25 +159,24 @@ impl ProjectSemanticModel {
                 };
                 if let LinkedModuleTarget::Internal { id, .. } = resolution {
                     if edge_budget.try_push() {
-                        self.graph
-                            .insert_edge(module.id(), *id, request.key.clone());
+                        self.graph.insert_edge(module.id(), *id, request_id);
                     } else {
                         self.link_budget.mark_exhausted();
                     }
                 } else if matches!(resolution, LinkedModuleTarget::Missing)
-                    && is_internal_request(&request.request)
+                    && is_internal_request(request.specifier())
                 {
                     self.status.record(
                         crate::analysis::status::StatusScope::File(module.path().clone()),
                         IncompleteReason::MissingInternalResolution {
-                            request: request.request.clone(),
+                            request: request.specifier().to_string(),
                         },
                     );
                 } else if matches!(resolution, LinkedModuleTarget::OutsideProject { .. }) {
                     self.status.record(
                         crate::analysis::status::StatusScope::File(module.path().clone()),
                         IncompleteReason::UnsupportedResolution {
-                            request: request.request.clone(),
+                            request: request.specifier().to_string(),
                             kind: crate::analysis::status::ResolutionKind::OutsideProject,
                         },
                     );
@@ -180,7 +184,7 @@ impl ProjectSemanticModel {
                     self.status.record(
                         crate::analysis::status::StatusScope::File(module.path().clone()),
                         IncompleteReason::UnsupportedResolution {
-                            request: request.request.clone(),
+                            request: request.specifier().to_string(),
                             kind: crate::analysis::status::ResolutionKind::Unsupported,
                         },
                     );

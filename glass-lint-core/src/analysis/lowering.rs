@@ -51,19 +51,23 @@ pub(in crate::analysis) struct SpanNormalizer {
     /// Length of the authored source in bytes.
     len: u32,
     /// Retained source text for boundary validation, when available.
-    text: Option<Arc<str>>,
+    text: Option<crate::SourceText>,
     /// True when the source text is entirely ASCII; boundary checks are then
     /// redundant since every byte position is a valid UTF-8 boundary.
     is_ascii: bool,
 }
 
 impl SpanNormalizer {
-    pub(in crate::analysis) fn new(source_start: swc_common::BytePos, source: &str) -> Self {
+    pub(in crate::analysis) fn new(
+        source_start: swc_common::BytePos,
+        source: impl Into<crate::SourceText>,
+    ) -> Self {
+        let source = source.into();
         let is_ascii = source.is_ascii();
         Self {
             start: source_start.0,
             len: u32::try_from(source.len()).unwrap_or(u32::MAX),
-            text: Some(Arc::from(source)),
+            text: Some(source),
             is_ascii,
         }
     }
@@ -122,7 +126,7 @@ pub fn lower_source(
         source.language,
         linter.analysis_limits().syntax_depth,
     )?;
-    let coordinates = SpanNormalizer::new(parsed.source_start, &source.source);
+    let coordinates = SpanNormalizer::new(parsed.source_start, source.source.clone());
     let semantic = lower_program(
         &parsed.program,
         linter.analysis_environment(),

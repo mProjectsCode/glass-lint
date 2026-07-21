@@ -1,6 +1,6 @@
 //! Provider-neutral diagnostic and serialized report data types.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -216,7 +216,7 @@ impl<'de> Deserialize<'de> for Position {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceLineIndex {
     starts: Vec<usize>,
-    source: Arc<str>,
+    source: crate::SourceText,
 }
 
 impl SourceLineIndex {
@@ -227,8 +227,17 @@ impl SourceLineIndex {
         starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
         Self {
             starts,
-            source: Arc::from(source),
+            source: source.into(),
         }
+    }
+
+    /// Build an index while retaining the source allocation admitted by the
+    /// project boundary.
+    #[must_use]
+    pub fn from_text(source: crate::SourceText) -> Self {
+        let mut starts = vec![0];
+        starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
+        Self { starts, source }
     }
 
     /// Convert a validated byte offset into a one-based display position.

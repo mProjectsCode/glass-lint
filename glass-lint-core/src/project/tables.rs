@@ -6,7 +6,8 @@
 use std::{collections::BTreeMap, ops::Index};
 
 use crate::project::{
-    Evidence, ProjectInputError, ResolutionRequestKey, ResolverOutcome, SourceFile,
+    Evidence, ProjectInputError, ProjectRelativePath, ResolutionRequestKey, ResolverOutcome,
+    SourceFile,
 };
 
 /// Identity-stable evidence collection with insertion-order preservation.
@@ -112,15 +113,15 @@ impl<'a> IntoIterator for &'a EvidenceList {
 }
 
 #[derive(Debug, Default)]
-pub struct SourceTable(BTreeMap<String, SourceFile>);
+pub struct SourceTable(BTreeMap<ProjectRelativePath, SourceFile>);
 
 impl SourceTable {
     /// Insert one normalized source path, rejecting replacement of an existing
     /// source.
     pub fn insert(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
-        let path = source.path.to_string();
+        let path = source.path.clone();
         if self.0.contains_key(&path) {
-            return Err(ProjectInputError::DuplicateSource(path));
+            return Err(ProjectInputError::DuplicateSource(path.to_string()));
         }
         self.0.insert(path, source);
         Ok(())

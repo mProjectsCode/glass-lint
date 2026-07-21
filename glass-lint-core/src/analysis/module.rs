@@ -67,6 +67,7 @@ pub struct ReExportBinding {
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Authored module request before filesystem resolution.
 pub struct ModuleRequest {
+    id: ModuleRequestId,
     /// Source span of the literal specifier.
     span: ByteRange,
     /// Resolver classification requested by the syntax.
@@ -110,6 +111,11 @@ impl ReExportBinding {
 }
 
 impl ModuleRequest {
+    /// Stable identity within the owning module interface.
+    pub fn id(&self) -> ModuleRequestId {
+        self.id
+    }
+
     /// Return the literal specifier span.
     pub fn span(&self) -> ByteRange {
         self.span
@@ -153,6 +159,7 @@ pub enum ModuleExport {
 /// Matcher-independent imports, exports, locals, and static exported values.
 pub struct ModuleInterface {
     requests: Vec<ModuleRequest>,
+    requests_by_specifier: BTreeMap<SmolStr, Vec<ModuleRequestId>>,
     exports: BTreeMap<SmolStr, ModuleExport>,
     star_exports: Vec<ModuleRequestId>,
     locals: BTreeSet<SmolStr>,
@@ -189,11 +196,16 @@ impl ModuleInterface {
     ) -> ModuleRequestId {
         let index = ModuleRequestId(self.requests.len());
         self.requests.push(ModuleRequest {
+            id: index,
             span,
             kind,
             specifier: specifier.into(),
             role,
         });
+        self.requests_by_specifier
+            .entry(self.requests[index.index()].specifier.clone())
+            .or_default()
+            .push(index);
         index
     }
 
@@ -263,6 +275,17 @@ impl ModuleInterface {
     /// Borrow one request by its stable local index.
     pub fn request(&self, index: ModuleRequestId) -> Option<&ModuleRequest> {
         self.requests.get(index.index())
+    }
+
+    /// Return request IDs authored with one literal specifier in source order.
+    pub(in crate::analysis) fn request_ids_for_specifier(
+        &self,
+        specifier: &str,
+    ) -> impl Iterator<Item = ModuleRequestId> + '_ {
+        self.requests_by_specifier
+            .get(specifier)
+            .into_iter()
+            .flat_map(|requests| requests.iter().copied())
     }
 
     /// Iterate deferred star-export request indices.

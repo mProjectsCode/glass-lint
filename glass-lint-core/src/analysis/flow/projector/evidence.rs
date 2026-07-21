@@ -207,7 +207,10 @@ impl ObjectFlowProjector<'_, '_> {
                     evidence_truncated: false,
                     occurrences: vec![
                         crate::api::classification::ClassificationEvidenceOccurrence {
-                            span: self.fact_spans.get(&anchor).copied().unwrap_or_default(),
+                            span: self
+                                .stream
+                                .fact(anchor)
+                                .map_or(crate::ByteRange::empty(), |fact| fact.span),
                             fact: Some(anchor.0),
                         },
                     ],

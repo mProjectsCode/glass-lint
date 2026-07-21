@@ -9,7 +9,7 @@ use crate::{
         catalog::RuleCatalog,
         selection::{LintConfigError, RuleBaseline, RuleSelection, RuleState},
     },
-    project::ModuleId,
+    project::{ModuleId, input::ValidatedProjectInput},
 };
 
 type AnalyzedModules = BTreeMap<crate::ProjectRelativePath, LocalArtifact>;
@@ -201,7 +201,7 @@ impl Linter {
     /// assert_eq!(report.files.len(), 1);
     /// ```
     pub fn lint_project(&self, input: ProjectInput) -> Result<AnalysisReport, ProjectInputError> {
-        let input = input.validate()?;
+        let input = input.admit()?;
         tracing::info!(
             target: "glass_lint::project",
             files = input.sources.len(),
@@ -210,10 +210,12 @@ impl Linter {
         );
         let mut session = self.begin_analysis(input.root)?;
         for source in input.sources {
-            session.add_source(source)?;
+            let path = source.path.clone();
+            session.admit_validated_source(source)?;
+            session.analyze_admitted_source(&path)?;
         }
         for (key, result) in input.resolutions {
-            session.record_resolution(key, result)?;
+            session.record_validated_resolution(key, result)?;
         }
         session.finish()
     }
@@ -250,11 +252,10 @@ impl Linter {
     /// observers of the same report-producing path.
     pub(crate) fn finish_analyzed_project(
         &self,
-        input: ProjectInput,
+        input: ValidatedProjectInput,
         analyzed: AnalyzedModules,
         parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
     ) -> Result<(AnalysisReport, std::time::Duration, std::time::Duration), ProjectInputError> {
-        let input = input.validate()?;
         let ProjectFileState {
             mut files,
             parse_paths,
@@ -380,7 +381,7 @@ impl Linter {
     }
 
     fn initialize_project_files(
-        input: &ProjectInput,
+        input: &ValidatedProjectInput,
         parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
     ) -> ProjectFileState {
         let parse_paths = parse_diagnostics

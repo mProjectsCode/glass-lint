@@ -19,10 +19,7 @@ use smol_str::SmolStr;
 use crate::{
     AnalysisDiagnostic, ProjectRelativePath,
     budget::BudgetTracker,
-    project::{
-        LinkedModuleTarget, ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey,
-        ResolverOutcome,
-    },
+    project::{LinkedModuleTarget, ModuleId, ProjectInputError, ResolverOutcome},
 };
 
 mod evidence;
@@ -57,6 +54,8 @@ use project::projection::ProjectionOutcome;
 use status::AnalysisStatus;
 use syntax::SymbolCallProvenance;
 
+use crate::project::input::ValidatedProjectInput;
+
 const MAX_EXPORT_DEPTH: usize = 1024;
 const MAX_EXPORT_ENTRIES: usize = 1_000_000;
 const MAX_SCC_SIZE: usize = 4_096;
@@ -69,7 +68,7 @@ pub struct ProjectSemanticModel {
     /// Locally analyzed modules keyed by stable module ID.
     modules: BTreeMap<ModuleId, ProjectModule>,
     /// Authored request resolutions keyed by importer/span/kind.
-    resolutions: BTreeMap<ResolutionRequestKey, LinkedModuleTarget>,
+    resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
     /// Fixed-point export identities for linked modules.
     exports: ExportTable,
     /// Internal module graph and strongly connected components.
@@ -87,6 +86,12 @@ pub struct ProjectSemanticModel {
     effect_projections: Cell<usize>,
     link_limit: usize,
     flow_limit: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(in crate::analysis) struct QualifiedRequestId {
+    pub(in crate::analysis) module: ModuleId,
+    pub(in crate::analysis) request: module::ModuleRequestId,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -107,12 +112,12 @@ enum ExportResolution {
 
 struct ValidatedLinkInput {
     modules: BTreeMap<ModuleId, ProjectModule>,
-    resolutions: BTreeMap<ResolutionRequestKey, LinkedModuleTarget>,
+    resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
 }
 
 impl ValidatedLinkInput {
     fn build(
-        input: ProjectInput,
+        input: ValidatedProjectInput,
         mut analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
     ) -> Result<Self, ProjectInputError> {
         let ids = input.module_ids();
@@ -129,11 +134,23 @@ impl ValidatedLinkInput {
 
         let authored = modules
             .values()
-            .flat_map(ProjectModule::authored_requests)
-            .map(|request| request.key)
-            .collect::<BTreeSet<_>>();
+            .flat_map(|module| {
+                module
+                    .authored_requests_with_ids()
+                    .into_iter()
+                    .map(move |(request, authored)| {
+                        (
+                            authored.key,
+                            QualifiedRequestId {
+                                module: module.id(),
+                                request,
+                            },
+                        )
+                    })
+            })
+            .collect::<BTreeMap<_, _>>();
         for (key, _) in &input.resolutions {
-            if !authored.contains(key) {
+            if !authored.contains_key(key) {
                 return Err(ProjectInputError::UnknownRequest(key.clone()));
             }
         }
@@ -160,7 +177,13 @@ impl ValidatedLinkInput {
         let resolutions = input
             .resolutions
             .into_iter()
-            .map(|(key, result)| resolve_record(key, result, &ids))
+            .map(|(key, result)| {
+                let request = authored
+                    .get(&key)
+                    .copied()
+                    .ok_or_else(|| ProjectInputError::UnknownRequest(key.clone()))?;
+                Ok((request, resolve_record(result, &ids)?))
+            })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         Ok(Self {
             modules,
@@ -170,10 +193,9 @@ impl ValidatedLinkInput {
 }
 
 fn resolve_record(
-    key: ResolutionRequestKey,
     result: ResolverOutcome,
     ids: &BTreeMap<ProjectRelativePath, ModuleId>,
-) -> Result<(ResolutionRequestKey, LinkedModuleTarget), ProjectInputError> {
+) -> Result<LinkedModuleTarget, ProjectInputError> {
     let resolved = match result {
         ResolverOutcome::Internal { path } => {
             let Some(id) = ids.get(&path).copied() else {
@@ -187,7 +209,7 @@ fn resolve_record(
         ResolverOutcome::OutsideProject { path } => LinkedModuleTarget::OutsideProject { path },
         ResolverOutcome::Unsupported { reason } => LinkedModuleTarget::Unsupported { reason },
     };
-    Ok((key, resolved))
+    Ok(resolved)
 }
 
 impl ProjectSemanticModel {
@@ -238,12 +260,11 @@ impl ProjectSemanticModel {
     /// caller-supplied resolution results. Export identities are resolved
     /// to a fixed point; flow overlays are prepared for matcher projection.
     /// Diagnoses missing or misaligned resolutions and bounded budgets.
-    pub fn link_with_limits(
-        input: ProjectInput,
+    pub(crate) fn link_with_limits(
+        input: ValidatedProjectInput,
         analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
         limits: &crate::AnalysisLimits,
     ) -> Result<Self, ProjectInputError> {
-        let input = input.validate()?;
         let validated = ValidatedLinkInput::build(input, analyzed)?;
 
         let mut project = Self {

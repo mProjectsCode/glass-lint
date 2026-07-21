@@ -63,17 +63,19 @@ impl ProjectSemanticModel {
                 let identities = self.module_identities(module.id());
                 let result_identities = self.call_result_identities(module.id());
                 let overlay = index.module_overlay(&identities);
+                let projected = module.local().facts().project(
+                    module.local().effects(),
+                    &matchers,
+                    Some(&identities),
+                    Some(&result_identities),
+                    Some(&overlay),
+                );
                 (
                     module.id(),
                     ProjectModuleProjection {
                         index,
                         overlay,
-                        projected: module.local().facts().project(
-                            module.local().effects(),
-                            &matchers,
-                            Some(&identities),
-                            Some(&result_identities),
-                        ),
+                        projected,
                     },
                 )
             })

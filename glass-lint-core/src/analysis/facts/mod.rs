@@ -11,7 +11,10 @@ use std::{collections::BTreeMap, sync::Arc};
 use crate::{
     analysis::{
         flow::{effect::FunctionEffects, projector as object_flow},
-        matching::{self, LinkedModuleIdentity, ModuleIdentityMap, OccurrenceIndexes},
+        matching::{
+            self, LinkedModuleIdentity, ModuleIdentityMap, ModuleOccurrenceOverlay,
+            OccurrenceIndexes,
+        },
         module::ModuleInterface,
         value::ValueId,
     },
@@ -84,6 +87,7 @@ impl SemanticFacts {
         matchers: &CompiledRuleSelection<'_>,
         identities: Option<&ModuleIdentityMap>,
         result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
+        overlay: Option<&ModuleOccurrenceOverlay>,
     ) -> Vec<Vec<crate::api::classification::ClassificationEvidence>> {
         let constrained_clauses = matchers
             .selected_matchers()
@@ -115,8 +119,10 @@ impl SemanticFacts {
         }
         matching::compute_constrained_evidence_from_stream_with_overlay(
             &self.stream,
+            &self.index,
             &constrained_clauses,
             &mut projected_evidence,
+            overlay,
             identities,
             result_identities,
         );

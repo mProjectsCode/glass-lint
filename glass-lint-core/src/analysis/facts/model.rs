@@ -157,6 +157,28 @@ pub(in crate::analysis) struct CallArgInfo {
     pub(in crate::analysis) provenance: SymbolCallProvenance,
 }
 
+/// Borrowed argument data used while matching project overlays. The call
+/// fact remains the owner of rich shape/projection data; only the small
+/// identity fields that a link overlay can strengthen are replaced.
+pub(in crate::analysis) struct ArgumentView<'a> {
+    pub(in crate::analysis) argument: &'a CallArgInfo,
+    pub(in crate::analysis) static_string: Option<&'a str>,
+}
+
+impl<'a> ArgumentView<'a> {
+    pub(in crate::analysis) fn new(argument: &'a CallArgInfo) -> Self {
+        Self {
+            argument,
+            static_string: None,
+        }
+    }
+
+    pub(in crate::analysis) fn with_static_string(mut self, value: &'a str) -> Self {
+        self.static_string = Some(value);
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// One statically addressable value reachable from an argument or parameter.
 pub(in crate::analysis) struct ValueProjection {

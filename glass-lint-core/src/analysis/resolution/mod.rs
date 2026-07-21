@@ -16,6 +16,7 @@ mod expression;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet},
+    sync::Arc,
 };
 
 use smol_str::SmolStr;
@@ -108,7 +109,7 @@ struct ResolverState {
     fresh_values: BTreeMap<ParserSpanKey, ValueId>,
     /// Cached expression resolutions keyed by source position. Resolution
     /// is position-sensitive and idempotent.
-    resolved_values: BTreeMap<ResolutionKey, ResolvedValue>,
+    resolved_values: BTreeMap<ResolutionKey, Arc<ResolvedValue>>,
     /// Active lookups used to break recursive resolution cycles.
     resolving: BTreeSet<ResolutionKey>,
 }

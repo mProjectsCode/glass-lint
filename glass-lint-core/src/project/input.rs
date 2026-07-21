@@ -11,9 +11,24 @@ use crate::project::{
 };
 
 impl ProjectInput {
+    /// Admit the public DTO into the normalized, internal project stage.
+    pub(crate) fn admit(self) -> Result<ValidatedProjectInput, ProjectInputError> {
+        let input = self.validate_inner()?;
+        Ok(ValidatedProjectInput {
+            root: input.root,
+            sources: input.sources,
+            resolutions: input.resolutions,
+        })
+    }
+
     /// Canonicalizes project identities and validates all cross-record
     /// references.
-    pub fn validate(mut self) -> Result<Self, ProjectInputError> {
+    pub fn validate(self) -> Result<Self, ProjectInputError> {
+        let admitted = self.validate_inner()?;
+        Ok(admitted)
+    }
+
+    fn validate_inner(mut self) -> Result<Self, ProjectInputError> {
         if self.sources.len() > 100_000 {
             return Err(ProjectInputError::BudgetExceeded("source count".into()));
         }
@@ -57,8 +72,44 @@ impl ProjectInput {
         Ok(self)
     }
 
-    /// Assign stable IDs from the normalized path order used by the linker.
+    /// Assign stable IDs from normalized path order for callers that inspect
+    /// the validated DTO directly.
+    #[cfg(test)]
     #[must_use]
+    pub(crate) fn module_ids(&self) -> BTreeMap<ProjectRelativePath, ModuleId> {
+        let mut paths = self
+            .sources
+            .iter()
+            .map(|source| source.path.clone())
+            .collect::<Vec<_>>();
+        paths.sort();
+        paths
+            .into_iter()
+            .enumerate()
+            .map(|(index, path)| {
+                (
+                    path,
+                    ModuleId::new(
+                        u32::try_from(index).expect("module count exceeds ModuleId range"),
+                    ),
+                )
+            })
+            .collect()
+    }
+}
+
+/// Project records after path, target, duplicate, and cross-reference
+/// validation. This type is crate-private by design: public callers continue
+/// to exchange `ProjectInput`, while canonical analysis stages cannot
+/// accidentally re-run admission validation.
+#[derive(Debug)]
+pub(crate) struct ValidatedProjectInput {
+    pub(crate) root: PathBuf,
+    pub(crate) sources: Vec<crate::SourceFile>,
+    pub(crate) resolutions: Vec<(ResolutionRequestKey, ResolverOutcome)>,
+}
+
+impl ValidatedProjectInput {
     pub(crate) fn module_ids(&self) -> BTreeMap<ProjectRelativePath, ModuleId> {
         let mut paths = self
             .sources

@@ -31,7 +31,7 @@ impl LocatedSourceContext {
     pub(crate) fn new(source: &crate::SourceFile) -> Self {
         Self {
             path: source.path.clone(),
-            lines: Arc::new(crate::SourceLineIndex::new(&source.source)),
+            lines: Arc::new(crate::SourceLineIndex::from_text(source.source.clone())),
         }
     }
 
@@ -47,7 +47,7 @@ impl LocatedSourceContext {
 /// Rule selection is intentionally absent: artifacts are matcher-independent.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactCacheKey {
-    source: Arc<str>,
+    source: crate::SourceText,
     language: crate::SourceLanguage,
     normalization_mode: &'static str,
     environment: crate::Environment,
@@ -91,7 +91,7 @@ impl ArtifactCacheKey {
         engine_version: &'static str,
     ) -> Self {
         Self {
-            source: Arc::from(source.source.as_str()),
+            source: source.source.clone(),
             language: source.language,
             normalization_mode,
             environment: environment.clone(),
@@ -329,11 +329,29 @@ impl ProjectModule {
         &self.local
     }
 
-    /// Return this module's authored requests with source-qualified keys.
-    pub(crate) fn authored_requests(&self) -> Vec<crate::ResolutionRequest> {
-        self.local
+    pub(crate) fn authored_requests_with_ids(
+        &self,
+    ) -> Vec<(
+        crate::analysis::module::ModuleRequestId,
+        crate::ResolutionRequest,
+    )> {
+        self.local()
             .interface()
-            .authored_requests(self.path(), &self.source_context().lines)
+            .requests()
+            .filter_map(|request| {
+                Some((
+                    request.id(),
+                    crate::ResolutionRequest {
+                        key: crate::ResolutionRequestKey {
+                            importer: self.path().clone(),
+                            kind: request.kind(),
+                            range: self.source_context().range(request.span()).ok()?,
+                        },
+                        request: request.specifier().to_string(),
+                    },
+                ))
+            })
+            .collect()
     }
 }
 
