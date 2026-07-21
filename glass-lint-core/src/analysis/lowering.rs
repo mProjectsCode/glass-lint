@@ -42,9 +42,15 @@ impl From<swc_common::Span> for ParserSpanKey {
 }
 
 #[derive(Clone, Debug, Default)]
+/// Converts SWC `BytePos` spans to zero-based `ByteRange` values relative to
+/// the authored source text. Validation ensures the result is within bounds
+/// and on UTF-8 character boundaries.
 pub(in crate::analysis) struct SpanNormalizer {
+    /// SWC `BytePos` value assigned to authored byte offset zero.
     start: u32,
+    /// Length of the authored source in bytes.
     len: u32,
+    /// Retained source text for boundary validation, when available.
     text: Option<Arc<str>>,
 }
 
@@ -94,6 +100,9 @@ pub struct LoweredSource {
     pub(crate) semantic: Arc<SemanticArtifact>,
 }
 
+/// Lower one source file into an immutable semantic artifact. Parsing,
+/// scope collection, fact construction, and effect extraction all happen in
+/// one pass. The result is ready for project linking and matcher projection.
 pub fn lower_source(
     linter: &crate::Linter,
     source: &SourceFile,
@@ -117,6 +126,9 @@ pub fn lower_source(
     })
 }
 
+/// Lower an already-parsed SWC program into a `SemanticArtifact`. Used
+/// by both the main lowering path and by tests that need fine-grained
+/// control over limits or name budgets.
 pub fn lower_program(
     program: &Program,
     environment: &crate::Environment,

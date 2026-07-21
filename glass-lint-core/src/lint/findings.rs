@@ -1,4 +1,9 @@
 //! Conversion of semantic evidence into located lint findings.
+//!
+//! This layer converts the matcher-independent `ClassificationResult` into
+//! rule-specific `Finding` values with stable source locations, evidence
+//! items, and range containment checks. Range policy and report assembly
+//! are kept separate from semantic fact construction.
 
 use crate::{
     Evidence, Finding, ProjectRelativePath, SourceLocation,

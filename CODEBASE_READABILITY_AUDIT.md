@@ -1,259 +1,307 @@
-# Glass Lint Core Readability Audit
+# Codebase Readability Audit
 
 ## Summary
 
-`glass-lint-core` has a strong stated architecture—parse once, lower into immutable matcher-independent facts, and fail closed—but several later layers recreate owned projections of those facts or recover construction-time mutability through `Rc`, `Arc`, `RefCell`, and `Cell`. The most consequential opportunities are to make lowering an explicit ownership pipeline, separate immutable linked-project data from per-classification results, unify the two query engines and two function-flow models, and make source/fact-derived views borrow from their canonical owners.
-
-This audit found 26 items: 7 high severity, 16 medium severity, and 3 low severity. All 26 items have been resolved. The high-severity set included one concrete matching inconsistency: project overlays are not applied to the separately stored effective arguments of `.call()` and `.apply()` invocations.
+Audit of the Glass Lint Rust workspace (7 crates, ~13,000 source lines) against readability and maintainability criteria. Found 33 distinct findings across all crates, with 2 high-severity issues (a silent disclosure bug and a copy-paste duplication of matchers), 9 medium-severity, and 22 low-severity items. The codebase is well-structured with strong architectural boundaries, deterministic ordering, bounded analysis, and consistent error types. Most findings are about extracting shared helpers from repeated patterns, adding semantic newtypes, and tightening visibility.
 
 ## Findings
 
-### ~~READ-001 — Lowering proves exclusive name ownership at runtime~~ **DONE**
+### READ-001 — `disclosures_for_report` silently returns empty for non-`js:` findings
+
 - **Severity:** High
-- **Category:** Interior Mutability
-- **Location:** `glass-lint-core/src/analysis/name.rs:32-104`, `glass-lint-core/src/analysis/resolution/mod.rs:84-105`, `glass-lint-core/src/analysis/lowering.rs:157-231`
+- **Category:** Bug
+- **Location:** `glass-lint-js/src/lib.rs:80-94`
 
-`NameTableHandle` uses `Rc<RefCell<NameTable>>`, `Resolver` adds another `RefCell` for its state, and finalization depends on `Rc::try_unwrap` followed by `expect`, turning a construction invariant into runtime borrow checks and a panic path. Make one lowering context own the mutable name/value tables, let ordered collection/resolution/fact-building phases borrow that context explicitly, and freeze it through a consuming transition; a separate mutable resolution session can satisfy constant-evaluation callbacks without putting the resolver itself behind interior mutability.
+`disclosures_for_report` strips only the `"js:"` prefix before looking up disclosure categories, but every disclosure mapping in `disclosures.rs` (e.g., `"network.request"`, `"node.filesystem"`, `"electron.ipc"`) corresponds to rules under `browser:`, `node:`, or `electron:` namespaces. The function will always return an empty set for any real-world report. The fix is to iterate all four provider prefixes or restructure the mapping to use full rule IDs.
 
-### ~~READ-002 — The linked project model is not actually immutable~~ **DONE**
-- **Severity:** High
-- **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/mod.rs:58-83`, `glass-lint-core/src/analysis/project/projection.rs:40-97`, `glass-lint-core/src/analysis/project/graph.rs:18-205`
+### READ-002 — Duplicate matcher registration in `metadata/traversal`
 
-`ProjectSemanticModel` stores status in a `RefCell` and budgets/counts in `Cell`, so linking helpers with `&mut self` and classification through `&self` both mutate hidden state; this also prevents safe shared classification and makes a query alter later telemetry/diagnostics. Have a mutable linker builder return an immutable `LinkedProject`, and have projection return a `ProjectionOutcome` containing evidence, status, exhaustion, and operation counts instead of writing those results back into the project.
-
-**Fix applied:** Added `ProjectionOutcome` struct with `flow_exhausted`, `effect_projections`, and `flow_observed` fields. `project()` now returns `(ProjectMatcherModel, ProjectionOutcome)` without mutating `self`. `classify_with_evidence_limit` returns the outcome alongside classifications. Callers explicitly merge the outcome via `merge_projection_outcome()` instead of the project mutating itself through hidden interior mutability during `&self` methods.
-
-### ~~READ-003 — Duplicated wrapper arguments bypass project overlays~~ **DONE**
 - **Severity:** High
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/facts/model.rs:128-190`, `glass-lint-core/src/analysis/matching/arguments.rs:34-99`, `glass-lint-core/src/analysis/facts/build/calls.rs:355-393`
+- **Location:** `glass-lint-obsidian/src/rules/metadata/traversal/mod.rs:66-89`
 
-Calls retain both `args` and a second `CallUnwrap::effective_args`; constrained matching overlays the first vector but selects the unmodified second vector for `.call()`/`.apply()`, so linked static-string or module identities can match direct calls but fail for equivalent wrappers.
+Seven `rooted_global_traversal` matchers (for `Object.keys`, `Object.entries`, etc.) are registered three times: once as direct `MemberCallMatcher` calls, once as `rooted_global_traversal` wrappers, and a third time as identical `rooted_global_traversal` wrappers. Lines 73-79 are a wholesale duplicate of lines 66-72. Remove one duplicate block and verify no behavioral change.
 
-**Fix applied:** `matching/arguments.rs` now applies `argument_with_overlay` to `unwrap.effective_args` before the constrained evaluation loop selects them, so project-level identity overlays reach `.call()`/`.apply()` arguments identically to direct calls.
+### READ-003 — Large rule function in `electron/ipc`
 
-### ~~READ-004 — Indexed and constrained clauses have separate semantic engines~~ **DONE**
-- **Severity:** High
-- **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/matching/query.rs:60-310`, `glass-lint-core/src/analysis/matching/arguments.rs:20-103`, `glass-lint-core/src/analysis/matching/arguments.rs:221-370`
-
-Unconstrained clauses execute through occurrence indexes while constrained call clauses scan facts and independently reimplement event, identity, subject, package, returned-value, instance, and overlay rules. Compile candidate selection separately from a single clause predicate evaluator so indexes produce candidate `FactId`s and every candidate follows the same semantic path.
-
-### ~~READ-005 — Local and cross-project flow build parallel function models~~ **DONE**
-- **Severity:** High
-- **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/flow/summary.rs:91-234`, `glass-lint-core/src/analysis/flow/effect.rs:25-138`, `glass-lint-core/src/analysis/flow/projector/mod.rs:39-73`
-
-`FunctionSummaries` and `FunctionEffects` independently collect parameters, calls, writes, invalidation, and propagation from the same fact stream; the former is rebuilt for selected local flow matchers while the latter is retained for project flow. Retain one canonical matcher-independent function-effect/call graph keyed by `FactId`, then run local sink projection and cross-module composition as query state over that graph.
-
-### ~~READ-006 — Artifact-internal reference counting exceeds the sharing boundary~~ **DONE**
-- **Severity:** Medium
-- **Category:** Reference Counting
-- **Location:** `glass-lint-core/src/analysis/facts/mod.rs:31-74`, `glass-lint-core/src/analysis/facts/stream.rs:25-118`, `glass-lint-core/src/analysis/project/projection.rs:21-38`
-
-The cached `SemanticArtifact` already has a justified outer `Arc`, but its occurrence index and name table are separately reference-counted so a detached `ProjectMatcherModel` and every function effect can own them again. Give `ProjectMatcherModel` a project lifetime and borrow indexes, let the fact stream own the frozen name table directly, and let effects resolve names through their containing artifact so reference counting remains only at the cache/artifact boundary.
-
-**Fix applied:** `FactStream.names` changed from `Option<Arc<NameTable>>` to `Option<NameTable>`, with `freeze_names` taking `NameTable` by value instead of `Arc<NameTable>`, removing the unjustified inner `Arc`. `FunctionEffect.names` field removed entirely; `record_call` receives `&NameTable` as a parameter from `FunctionEffects::collect`, effects resolve names through the containing artifact (`project.module_names()`), and `cross.rs` `UsageProjector` now stores a `names` reference instead of calling `effect.names()`.
-
-### ~~READ-007 — Effect and projector records copy canonical call payloads~~ **DONE**
-- **Severity:** Medium
-- **Category:** Memory Churn
-- **Location:** `glass-lint-core/src/analysis/flow/effect.rs:47-125`, `glass-lint-core/src/analysis/flow/effect.rs:485-566`, `glass-lint-core/src/analysis/flow/projector/transfer.rs:10-96`
-
-Each call can copy `CallArgInfo` into `EffectCall`, copy it again for a receiver use, duplicate a derived `EffectArgument` per argument use, and later copy it into `SourceCall`, although the immutable `FactStream` remains retained. Store event IDs and minimal relation metadata in effects/indexes, then borrow the call payload from the stream during projection.
-
-**Fix applied:** Added `FactStream::call_args_for_event()` — a zero-allocation lookup of effective call arguments by fact ID. Removed `call_arguments: Vec<CallArgInfo>` from `EffectCall`, `EffectUse::CallReceiver`, and `SourceCall`. `EffectCall::matches_source()` and `SourceCall` consumers now borrow call arguments from the `FactStream` via `call_args_for_event()`, eliminating three full `Vec<CallArgInfo>` clones per call event. `ProjectSemanticModel::module_fact_stream()` and `apply_receiver()` in `cross.rs` look up args from the project's fact stream instead of carrying cloned copies.
-
-### ~~READ-008 — Binding-pattern traversal is implemented repeatedly~~ **DONE**
-- **Severity:** High
-- **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/syntax/names.rs:46-74`, `glass-lint-core/src/analysis/facts/build/calls.rs:169-345`, `glass-lint-core/src/analysis/scope/collect/aliases.rs:16-176`, `glass-lint-core/src/analysis/scope/collect/callbacks.rs:62-161`
-
-Name collection, value collection, write invalidation, parameter paths, alias projection, require destructuring, and callback projection each recursively encode JavaScript pattern shapes with subtly different omissions. Introduce one borrowed pattern walker that yields typed leaves with path/default/rest/write-target metadata, while consumers explicitly choose which yielded forms their strict semantics accept.
-
-**Fix applied:** Added `walk_pat_ident_bindings()` to `syntax/names.rs` — a shared borrowed walker that calls a closure for each `Ident` in a destructuring pattern. `collect_pat_bindings` and `collect_parameter_binding_names` now delegate to the walker, eliminating two independent recursive pattern-match implementations.
-
-### ~~READ-009 — Function-exit facts recompute and retain unused parameters~~ **DONE**
-- **Severity:** Medium
-- **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/facts/build/functions.rs:22-118`, `glass-lint-core/src/analysis/facts/model.rs:277-284`, `glass-lint-core/src/analysis/flow/projector/mod.rs:193-206`
-
-Every function's parameter bindings are resolved and allocated for both entry and exit facts, but summary/effect consumers read parameters only from entry and the projector uses only the exit marker. Split entry and exit payloads, or make parameters optional only on entry, so parameter patterns are lowered once and stored once.
-
-**Fix applied:** `emit_function_fact` now only resolves parameter bindings for `FunctionBoundary::Enter`. For `Exit`, parameter resolution is skipped entirely and an empty vector is stored, eliminating duplicate work and allocation for all function/arrow/method exit markers.
-
-### ~~READ-010 — Semantic APIs force callers to clone SWC nodes~~ **DONE**
-- **Severity:** Medium
-- **Category:** Borrowing
-- **Location:** `glass-lint-core/src/analysis/facts/build/calls.rs:22-44`, `glass-lint-core/src/analysis/scope/query/provenance.rs:344-459`, `glass-lint-core/src/analysis/facts/build/assignments.rs:122-145`
-
-Callers clone complete `CallExpr`, `MemberExpr`, `Ident`, and assignment patterns merely to construct temporary `Expr`/`Pat` enum values accepted by generic resolver and scope APIs. Add borrowed variant-specific entry points or a small `ExprRef`/pattern-view abstraction so existing AST nodes can be inspected without synthesizing owned sum types.
-
-**Fix applied:** In `calls.rs`, replaced two `Expr::Call(call.clone())` wrappers with a single `resolve_call_expression(call)` call, eliminating the `CallExpr` clone. In `provenance.rs`, `ident_value_seed` and `member_value_seed` now construct binding keys and constants directly from `&Ident`/`&MemberExpr` without wrapping them in owned `Expr` enums, removing `Expr::Ident(ident.clone())` and `Expr::Member(member.clone())` clones.
-
-### ~~READ-011 — Span normalization allocates and clones a source-sized boundary table~~ **DONE**
-- **Severity:** Medium
-- **Category:** Borrowing
-- **Location:** `glass-lint-core/src/analysis/lowering.rs:39-93`, `glass-lint-core/src/analysis/lowering.rs:157-169`, `glass-lint-core/src/analysis/resolution/mod.rs:96-105`
-
-`SpanNormalizer` builds a `Vec<bool>` for every byte boundary and `lower_program_with_name_limit` clones that allocation into `Resolver`.
-
-**Fix applied:** Replaced `Vec<bool>` boundary table with `Arc<str>` stored source text. `normalize()` calls `str::is_char_boundary()` directly. The `Arc` makes cloning the normalizer into `Resolver` a cheap ref-count increment instead of a source-sized allocation.
-
-### ~~READ-012 — Source text is copied across admission, caching, jobs, artifacts, and reporting~~ **DONE**
-- **Severity:** High
-- **Category:** Memory Churn
-- **Location:** `glass-lint-core/src/analysis/local.rs:19-98`, `glass-lint-core/src/project/session.rs:7-18`, `glass-lint-core/src/project/session.rs:157-205`, `glass-lint-core/src/lint/linter.rs:14-61`
-
-One source can exist as `SourceFile::source`, a full `ArtifactCacheKey::source`, `LocatedSourceContext::text`, cloned worker input/result, and a second report-time source map; cache keys also clone the whole environment and limits per entry. Convert admitted input once into an internal shared source/config identity, move jobs rather than iterate borrowed chunks, and render from each module's existing source context instead of rebuilding `ProjectFileState::sources`.
-
-**Fix applied:** `ArtifactCacheKey.source` changed from `String` to `Arc<str>`, eliminating full source clones on every cache key copy. `ProjectFileState::sources` removed entirely; report rendering now uses `module.source_context().text` directly, avoiding the report-time source string clone of every admitted file.
-
-### ~~READ-013 — Single-file and batch artifact loading duplicate the same state machine~~ **DONE**
-- **Severity:** Medium
-- **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/lowering.rs:100-140`, `glass-lint-core/src/project/session.rs:401-442`, `glass-lint-core/src/project/session.rs:472-556`
-
-`lower_source` and `lower_artifact` repeat parse/normalization/lowering, while the single-source and batch session paths separately implement fingerprinting, cache hit/miss accounting, context construction, insertion, eviction, parse-failure handling, and recording. Centralize an artifact loader that returns a typed hit/miss/failure result and let executors only schedule owned misses.
-
-**Fix applied:** Added `CacheLookup` enum (`Hit(LoweredSource)` / `Miss(ArtifactCacheKey)`) and `AnalysisSession::check_cache()` method that encapsulates fingerprint computation and cache lookup. Both `analyze_source_with_observer` (single-file) and `analyze_admitted_sources_with` (batch) now dispatch on the `CacheLookup` result instead of independently duplicating the fingerprint + cache check logic. Executors receive only `Miss` jobs with the key pre-assigned.
-
-### ~~READ-014 — Argument lowering repeats resolution and constant projection~~ **DONE**
-- **Severity:** Medium
-- **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/facts/build/arguments.rs:14-75`, `glass-lint-core/src/analysis/facts/build/arguments.rs:78-153`
-
-Building one `CallArgInfo` asks for expression resolution multiple times and independently walks an object/array for base paths, value projections, keys, property strings, a scalar string, and rooted provenance; resolver caching limits recomputation but still returns owned clones and does not combine the constant walks. Produce a single resolved-argument record from one traversal, or retain a compact frozen value/projection arena that facts can reference and later consumers can borrow.
-
-**Fix applied:** `arg_info` now calls `resolve_expr` once and reuses the returned `ResolvedValue` for both `.id` and `.call` access, eliminating the second full expression resolution call.
-
-### ~~READ-015 — ScopeGraph keeps redundant data and a hidden mutable memo~~ **DONE**
-- **Severity:** Medium
-- **Category:** Interior Mutability
-- **Location:** `glass-lint-core/src/analysis/scope/model.rs:61-97`, `glass-lint-core/src/analysis/scope/model.rs:120-181`, `glass-lint-core/src/analysis/scope/model.rs:346-368`
-
-Dynamic-eval effects are retained in both a flat vector and a grouped map by cloning every effect, although queries use only the grouped map.
-
-**Fix applied:** Removed the redundant `dynamic_evals: Vec<(ScopeId, ScopeEffect)>` field from `ScopeGraph`. `finish_collected_properties()` now builds `dynamic_evals_by_scope` directly from the filtered/sorted input, eliminating the intermediate full clone. The `Cell` memo for span lookup is retained since it is a legitimate optimization during single-threaded construction.
-
-### ~~READ-016 — Scope collection falls back to raw strings after interning names~~ **DONE**
-- **Severity:** Medium
-- **Category:** Newtypes
-- **Location:** `glass-lint-core/src/analysis/scope/collect/mod.rs:49-80`, `glass-lint-core/src/analysis/scope/collect/callbacks.rs:163-179`, `glass-lint-core/src/analysis/scope/collect/mod.rs:220-229`
-
-Function and call tables use `(ScopeId, String)` even though the collector owns a name table, causing repeated `name.to_string()` allocation while walking parent scopes and a later conversion back into `ScopedName`.
-
-**Fix applied:** Changed `function_scopes` key from `(ScopeId, String)` to `(ScopeId, NameId)` and `calls` second field from `String` to `NameId`. Names are interned once at insertion time. `function_for_call()` and `function_scope_for_name()` now use `NameId` lookups directly, eliminating `to_string()` allocations on every scope-walking lookup.
-
-### ~~READ-017 — Assignment versioning rescans the complete assignment log~~ **DONE**
 - **Severity:** Medium
 - **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/scope/collect/mod.rs:356-387`, `glass-lint-core/src/analysis/scope/collect/history.rs:14-51`
+- **Location:** `glass-lint-js/src/rules/electron/ipc/mod.rs:14-107`
 
-Every new assignment counts all preceding assignments for the same scope/name, producing quadratic work for repeatedly assigned bindings.
+The `rule()` function is 109 lines with 44 inline `.module_member_call("electron", ...)` calls across 4 receiver objects (ipcRenderer, ipcMain, webContents, webFrameMain). Factoring into a const array of `(receiver, [methods])` tuples with a loop (as `persistent_storage` and `electron/module` already do) would halve the function size.
 
-**Fix applied:** Added a `version_counters: BTreeMap<(ScopeId, NameId), u32>` to `LexicalScopeCollector`. `record_assignment()` now increments a per-(scope, name) counter instead of scanning the full assignment vector, eliminating the O(n) scan per assignment.
+### READ-004 — `discover_filtered` blends symlink, file, and directory concerns
 
-### ~~READ-018 — Occurrence queries materialize and copy normalized buckets~~ **DONE**
-- **Severity:** Medium
-- **Category:** Borrowing
-- **Location:** `glass-lint-core/src/analysis/matching/occurrence.rs:42-111`, `glass-lint-core/src/analysis/matching/query.rs:22-58`, `glass-lint-core/src/analysis/matching/mod.rs:311-339`
-
-APIs expose `&Vec`, then clone whole buckets, collect predicate matches, merge into another vector, sort/deduplicate again, and finally copy into public evidence. Expose slices and borrowed ordered iterators, provide a stable merge/dedup iterator for overlays, and consume that stream directly into the one final evidence allocation.
-
-**Fix applied:** Changed `OccurrenceIndex::get()` to return `Option<&[Occurrence]>` instead of `Option<&Vec<Occurrence>>`, and `iter()` to yield `&[Occurrence]` buckets. Added `MergeOccurrenceIter` — a lazy sorted merge of two pre-sorted occurrence slices that deduplicates on the fly. `merge_occurrences()` now returns `MergeOccurrenceIter` instead of allocating and sorting a new Vec. `push_owned_evidence()` accepts `impl IntoIterator<Item = Occurrence>` and collects directly into the final `ClassificationEvidenceOccurrence` vec, skipping the intermediate `Vec<Occurrence>` copy. All `get().cloned()` callers in `query.rs` changed to slice-based access.
-
-### ~~READ-019 — Control-flow snapshots clone the full live environment~~ **DONE**
-- **Severity:** Medium
-- **Category:** Memory Churn
-- **Location:** `glass-lint-core/src/analysis/flow/projector/state.rs:41-187`, `glass-lint-core/src/analysis/flow/projector/control.rs:40-94`, `glass-lint-core/src/analysis/flow/projector/control.rs:197-269`
-
-Every branch, loop, try/catch/finally, and abrupt exit clones sorted alias and state vectors, with nested `finally` handling cloning the same snapshots several more times. Model control frames as checkpoints plus reversible deltas, or as arena-owned versions referenced by compact IDs, so branches borrow a baseline and materialize only changed state at joins without adding pervasive reference counting.
-
-**Fix applied:** Wrapped `AliasTable` and `StateTable` inner `Vec`s in `Arc` so `capture()`, `restore()`, and every branch/loop/try/finally snapshot is an O(1) ref-count increment. Mutation methods (`insert`, `remove`, `get_mut`, `remove_object`, `clear`) use `Arc::make_mut` for copy-on-write, deferring the deep clone until the first write after a snapshot. `FlowEnvironment::unreachable()` and `join()` continue to allocate new tables where required. This eliminates the O(table-size) clone at every control boundary while preserving sorted-vector join semantics.
-
-### ~~READ-020 — Evidence bounding performs sorted vector insertion per occurrence~~ **DONE**
 - **Severity:** Medium
 - **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/evidence.rs:49-115`
+- **Location:** `glass-lint-project/src/corpus.rs:42-118`
 
-`AnnotatedEvidence::from_evidence` binary-searches and inserts into the middle of a `Vec` for each occurrence, making normalization quadratic.
+The 77-line function resolves symlink metadata, handles single-file roots, and walks directories in a single body. The inner walker loop (34 lines) independently enforces entry budgets, walk errors, and file filtering. Extract per-root preparation and directory walking into named helpers.
 
-**Fix applied:** Changed from per-occurrence binary-search-and-insert to collect-all-then-batch-process: occurrences are pushed into a flat `Vec`, then `sort_by_key`, deduplicate via adjacent comparison, and truncate once in a single pass.
+### READ-005 — Duplicate `finish` / `finish_partial` methods
 
-### ~~READ-021 — Member call/read families duplicate the public-to-compiled pipeline~~ **DONE**
 - **Severity:** Medium
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/api/rule/matcher/member.rs:6-275`, `glass-lint-core/src/api/rule/normalization.rs:69-107`, `glass-lint-core/src/api/compiler/rule.rs:303-347`
+- **Location:** `glass-lint-project/src/loader.rs:487-515`
 
-Member calls and reads have parallel matcher/provenance types, constructors, evidence formatting, sorting, normalization, validation, compiler lowering, identity lowering, indexes, and query branches; returned-member calls and reads repeat the same split. Keep ergonomic public wrappers if desired, but normalize them into one internal member matcher with an event kind and call-only argument constraints before validation/compilation.
+`finish` and `finish_partial` share 13 identical lines including timeout checks, `finish_with_timings` calls, and metric accumulation. The only difference is the context. Extract a shared `finish_inner` helper.
 
-**Fix applied:** Consolidated `MemberReadProvenance` into `MemberCallProvenance` via a type alias so the two structurally identical provenance enums are a single type. Removed the duplicate `MemberReadProvenance` validation impl (which had a subtle path-formatting discrepancy) — all validation now uses the single `MemberCallProvenance::validate_at`. Removed `member_read_identity()` — `member_identity()` works for both calls and reads since they share the same provenance type. Extracted `lower_member_clause()` helper used by both `lower_member_calls` and `lower_member_reads` to eliminate the repeated `QueryClause` construction.
+### READ-006 — Path canonicalized twice per source file read
 
-### ~~READ-022 — The cross-flow worklist owns every context twice~~ **DONE**
 - **Severity:** Medium
-- **Category:** Memory Churn
-- **Location:** `glass-lint-core/src/analysis/flow/cross.rs:113-159`
+- **Category:** Duplication
+- **Location:** `glass-lint-project/src/discovery.rs:251-261` and `corpus.rs:166-193`
 
-`ContextWorklist::push` clones each `CallContext` into a `BTreeSet` and retains the original in `VecDeque`; the context includes a cloned requirement set and this doubles storage up to the 65,536-context bound.
+`ProjectDiscovery::read_source` canonicalizes `root` and `path`, checks root containment, then delegates to `SourceCorpus::load_source_file` which canonicalizes both paths again and re-checks containment. Pass canonicalized paths downstream to eliminate redundant I/O.
 
-**Fix applied:** Replaced `VecDeque` + `BTreeSet` pair with a single `IndexSet`, which maintains insertion order with deduplication in one allocation per context. Also added `Hash` to `ModuleId`, `QualifiedEvent`, `CrossFlowState`, `CallContext`, and `RequirementSet` to support `IndexSet`. Added a `Hash` impl for `RequirementSet<K>` that hashes each `(key, value)` pair.
+### READ-007 — Unreachable post-loop budget check
 
-### ~~READ-023 — EvidenceList duplicates its owned identity fields~~ **DONE**
 - **Severity:** Medium
+- **Category:** Dead Code
+- **Location:** `glass-lint-project/src/corpus.rs:114-116`
+
+The loop body already returns `TooManyFiles` when `paths.len() > max_files`. The identical check after the loop is unreachable. Replace with `debug_assert` or remove.
+
+### READ-008 — Dead variable assignment in profile test
+
+- **Severity:** Medium
+- **Category:** Dead Code
+- **Location:** `glass-lint-harness/src/profile.rs:1280-1282`
+
+`warmup_durations` is assigned and immediately silenced with `let _`. Leftover from an earlier test version. Remove the dead store.
+
+### READ-009 — `run_profile` mixes setup, discovery, warm-up, and measurement
+
+- **Severity:** Medium
+- **Category:** Complexity
+- **Location:** `glass-lint-harness/src/profile.rs:480-585`
+
+The 105-line function handles project discovery, file preparation, warm-up loop, measured loop, and aggregation in one body. Extract warm-up, measured-run, and aggregation into separate functions.
+
+### READ-010 — Accumulation logic duplicated across 4 profile functions
+
+- **Severity:** Medium
+- **Category:** Duplication
+- **Location:** `glass-lint-harness/src/profile.rs` (4 call sites)
+
+`profile_file`, `repetition_from_files`, `profile_loader_project`, and `profile_admitted_projects` each independently compute `findings += ...`, `diagnostics += ...`, `operation_counts += ...`, and `evidence_order_digest = combined_digest(...)` from analysis reports. Extract a shared `accumulate_report` helper.
+
+### READ-011 — `extensions: Vec<String>` used raw across 8+ call sites
+
+- **Severity:** Medium
+- **Category:** Newtype
+- **Location:** `glass-lint-project/src/options.rs:67`
+
+`ProjectLoadOptions::extensions` is a plain `Vec<String>` queried in 8+ places with repeated `is_supported_runtime_source(path, &self.options.extensions)` calls. A newtype wrapping `Vec<String>` with a `contains_extension` method and `clone_for_resolver()` would encapsulate the common operations.
+
+### READ-012 — `print_report` is a single 92-line function
+
+- **Severity:** Medium
+- **Category:** Complexity
+- **Location:** `glass-lint-harness-cli/src/profile.rs:75-166`
+
+Handles per-input details, aggregate summary, median duration, corpus identity, per-repetition details, phase timings, operation counts, and slowest inputs in one function. Split into `print_input_details`, `print_aggregate_summary`, `print_phase_timings`, `print_slowest_inputs`.
+
+### READ-013 — Report rendering duplicates traversal patterns 4× in `report.rs`
+
+- **Severity:** Medium
+- **Category:** Duplication
+- **Location:** `glass-lint-harness/src/report.rs:14-231`
+
+`render_suite_summary`, `render_suite_failures`, `render_suite_markdown`, and `render_adapter_comparison` each independently iterate `report.cases` and `case.adapters` with near-identical patterns for deriving tool order, skipped status, and findings counts. Extract a shared `active_tool_runs` iterator helper.
+
+### READ-014 — `load_project_case` mixes manifest parsing, file loading, and tool building
+
+- **Severity:** Medium
+- **Category:** Complexity
+- **Location:** `glass-lint-harness/src/cases.rs:216-318`
+
+The 102-line function combines manifest parsing, project file discovery, file loading, resolution transformation, and tool construction. Split into `parse_project_manifest`, `load_project_files`, `build_resolutions`, `build_tools`.
+
+### READ-015 — Inconsistent rule category naming in `frontmatter_write`
+
+- **Severity:** Medium
+- **Category:** Naming
+- **Location:** `glass-lint-obsidian/src/rules/file_manager/frontmatter_write/mod.rs:12`
+
+Uses `"file-manager/frontmatter-write"` (with `/`) as the category string, while every other rule uses a simple single-word category matching the rule-ID prefix (e.g., `"vault"`, `"metadata"`, `"network"`).
+
+### READ-016 — Free functions that should be associated methods or methods
+
+- **Severity:** Low
+- **Category:** API
+- **Location:** Multiple files
+
+Several free functions operate primarily on one type and would be clearer as methods:
+
+| Function | Operates on | File |
+|---|---|---|
+| `valid_extension(extension: &str) -> bool` | `ProjectLoadOptions` | `glass-lint-project/src/options.rs:262` |
+| `validate(config: Config) -> Result<Config>` | `Config` | `glass-lint-cli/src/config.rs:260` |
+| Default-value functions for serde (6 functions) | `Config` / `ProjectConfig` | `glass-lint-cli/src/config.rs:172-197` |
+| `finish` / `finish_partial` | `ProjectLoadState` | `glass-lint-project/src/loader.rs:487-515` |
+
+### READ-017 — Missing semantic newtypes for collection-heavy fields
+
+- **Severity:** Low
+- **Category:** Newtype
+- **Location:** `glass-lint-project/src/options.rs:69-73`
+
+`excluded_directories: BTreeSet<String>` and `extension_aliases: BTreeMap<String, Vec<String>>` are raw collection types queried in multiple patterns across the crate. Newtypes with focused query methods (`contains_name`, `is_path_excluded`) would encapsulate the repeated access patterns.
+
+### READ-018 — `pub(crate)` visibility missing on crate-internal functions
+
+- **Severity:** Low
 - **Category:** Encapsulation
-- **Location:** `glass-lint-core/src/project/tables.rs:13-53`
+- **Location:** `glass-lint-project/src/discovery.rs:322,331,339,344`
 
-Each retained `Evidence` is accompanied by a `ReportEvidenceKey` that clones its message, stringifies/clones its path, and clones its range solely for deduplication. Make the identity a first-class part of one owned evidence record/domain collection, or defer stable sort/dedup until finalization so identity fields are stored once.
+`absolute_path`, `realpath`, `inside_root`, `excluded_path` are marked `pub` but only used within the crate. Likewise `pub use` from private `mod corpus` at `lib.rs:19` and `pub mod args` at `glass-lint-cli/src/lib.rs:7`. These should be `pub(crate)`.
 
-**Fix applied:** Removed `ReportEvidenceKey` struct and `seen: BTreeSet<ReportEvidenceKey>` field entirely. `push_unique` now performs a linear scan comparing `message` and `location` directly from existing items — no cloning of identity fields on any push path. The list is typically small (<10 items per finding), so the O(n) scan avoids allocating a separate dedup-key store.
+### READ-019 — `Table` struct uses raw `Vec<Vec<String>>`
 
-### ~~READ-024 — Rule ID access allocates during validation and construction~~ **DONE**
 - **Severity:** Low
-- **Category:** API Design
-- **Location:** `glass-lint-core/src/lint/catalog.rs:132-145`, `glass-lint-core/src/lint/linter.rs:285-305`, `glass-lint-core/src/lint/linter.rs:386-412`
+- **Category:** Newtype
+- **Location:** `glass-lint-cli/src/output.rs:116-186`
 
-`RuleCatalog::rule_ids` clones the complete vector.
+Column-count validation is manual in `push()`. A `Row(Vec<String>)` newtype would enforce the invariant at construction.
 
-**Fix applied:** Changed `rule_ids()` return type from `Vec<RuleId>` to `&[RuleId]`. Callers that only iterate or check length now borrow the internal vector instead of receiving a clone.
+### READ-020 — Broad `pub use` exports 38+ items from harness crate root
 
-### ~~READ-025 — Integration-test setup is repeated across suites~~ **DONE**
 - **Severity:** Low
-- **Category:** Testing
-- **Location:** `glass-lint-core/tests/compact_source.rs:21-64`, `glass-lint-core/tests/declarative_matching.rs:20-105`, `glass-lint-core/tests/scope_precision.rs:12-42`
+- **Category:** Encapsulation
+- **Location:** `glass-lint-harness/src/lib.rs:16-37`
 
-Rule builders, test environments, linter construction, classification wrappers, and count assertions are independently recreated in several integration-test crates. A small `tests/support` module would centralize the fixture contract while leaving behavior-specific positives and adversarial negatives in their current suites.
+Six `pub use` statements re-export many items from submodules, including internal types (`ProfileConfigBuilder`, `ProfileWorkloadIdentity`, `FindingExpectation`). Narrow the public surface to only what external consumers need.
 
-**Fix applied:** Created `tests/support/mod.rs` with shared `rule()`, `test_environment()`, `assert_count()`, and `classify()` helpers. Updated `compact_source.rs`, `declarative_matching.rs`, `semantic_matching.rs`, and `scope_precision.rs` to import from the shared module via `#[path = "support/mod.rs"] mod support;`, eliminating the duplicated builder/env/linter construction across suites. Files that need specific globals (e.g., `compact_source.rs` with `URL`/`EventSource` for constructor matchers) retain their own `test_environment()` and `assert_count()` while using the shared `rule()` builder.
+### READ-021 — `unwrap()` vs `expect()` inconsistency across rule files
 
-### ~~READ-026 — Several comments describe superseded storage~~ **DONE**
 - **Severity:** Low
-- **Category:** Documentation
-- **Location:** `glass-lint-core/src/analysis/facts/stream.rs:1-5`, `glass-lint-core/src/analysis/flow/projector/state.rs:125-128`, `glass-lint-core/src/analysis/syntax/provenance.rs:52-85`
+- **Category:** Naming
+- **Location:** All `glass-lint-js` rule files and `src/lib.rs`
 
-**Fix applied:** Updated `facts/stream.rs` module-level doc to say "ordinary mutable construction" instead of "interior mutation". Updated `projector/state.rs` comment that claimed "BTreeMap iteration" to say "Sorted-vector iteration". Removed stale `TODO: Candidate for SybolPath?` and `TODO: Consider using SymbolPath here` comments from `syntax/provenance.rs`.
+31 rule files use `.build().unwrap()` while `lib.rs` consistently uses `.expect("valid ...")` with descriptive messages. ~120 `package_import(...).unwrap()` calls across the JS crate use bare `unwrap()` with no message.
+
+### READ-022 — Duplicate error-mapping closure in `read_tsconfig_path_extends`
+
+- **Severity:** Low
+- **Category:** Duplication
+- **Location:** `glass-lint-project/src/discovery.rs:291-302`
+
+The same `map_err` closure wrapping `ProjectLoadError::InvalidOptions(ProjectOptionError::Message(...))` is written twice for `json_strip_comments::strip` and `serde_json::from_str`. Extract a helper `fn parse_error(config: &Path, error: impl Display) -> ProjectLoadError`.
+
+### READ-023 — `ResolutionCacheKey` stores `String` instead of `ProjectRelativePath`
+
+- **Severity:** Low
+- **Category:** Newtype
+- **Location:** `glass-lint-harness/src/profile_manifest.rs:204-217` / `glass-lint-project/src/loader.rs:288-302`
+
+The cache key converts `ProjectRelativePath` to `String` at the single call site, losing type safety. Store the semantic type directly.
+
+### READ-024 — Skipped `ToolResult` constructed twice with identical literal
+
+- **Severity:** Low
+- **Category:** Duplication
+- **Location:** `glass-lint-harness/src/runner.rs:44-73`
+
+Two branches construct the same `ToolResult { skipped: true, ... }` struct literal. Extract `ToolResult::skipped(version, reason)`.
+
+### READ-025 — Output module repeats stdout-lock pattern 4 times
+
+- **Severity:** Low
+- **Category:** Duplication
+- **Location:** `glass-lint-cli/src/output.rs:31,38,45,53`
+
+`io::BufWriter::new(io::stdout().lock())` is written independently in `write_mode`, `write_report`, `write_project_report`. Extract a `stdout_writer()` helper.
+
+### READ-026 — `walkdir` error type lost in conversion
+
+- **Severity:** Low
+- **Category:** Error handling
+- **Location:** `glass-lint-project/src/corpus.rs:97-102` and `discovery.rs:111-116`
+
+The `walkdir::Error::Loop` variant (symlink loop) is converted to a generic `std::io::Error::other("directory traversal failed")`. Preserve the original error to aid debugging.
+
+### READ-027 — `SourceCorpus` name is misleading
+
+- **Severity:** Low
+- **Category:** Naming
+- **Location:** `glass-lint-project/src/corpus.rs:25`
+
+The struct does not contain sources; it wraps a `ProjectLoadOptions` reference and loads files. A name like `SourceLoader` would better reflect its role.
+
+### READ-028 — `build()` vs `validated()` do the same thing
+
+- **Severity:** Low
+- **Category:** Duplication
+- **Location:** `glass-lint-project/src/options.rs:164-167,198-201`
+
+`ProjectLoadOptionsBuilder::build()` and `ProjectLoadOptions::validated()` both validate and wrap. `build()` could delegate to `self.options.validated()`.
+
+### READ-029 — `include_dir` has ambiguous name
+
+- **Severity:** Low
+- **Category:** Naming
+- **Location:** `glass-lint-project/src/discovery.rs:243`
+
+The method returns `true` when the entry should be *kept*. A name like `accept_entry` or `should_include_entry` would be clearer.
+
+### READ-030 — `validate_membership` iterates `paths` twice
+
+- **Severity:** Low
+- **Category:** Complexity
+- **Location:** `glass-lint-project/src/discovery.rs:79-85`
+
+`any()` checks for out-of-root paths (triggering early error), then `retain()` filters them. A single pass with `Vec::retain` and a boolean flag tracking removals would halve the traversal.
+
+### READ-031 — `validate()` re-validated on every `SourceCorpus::new`
+
+- **Severity:** Low
+- **Category:** Duplication
+- **Location:** `glass-lint-project/src/corpus.rs:32` / `discovery.rs:260`
+
+`SourceCorpus::new` calls `options.validate()` on every construction, but `ProjectDiscovery::read_source` creates a new `SourceCorpus` per file read — re-validating all budgets and extension rules needlessly. Add `new_unchecked` for hot paths.
+
+### READ-032 — `profile.rs` uses mixed file-as-module with directory children
+
+- **Severity:** Low
+- **Category:** Architecture
+- **Location:** `glass-lint-harness/src/profile.rs` + `profile/corpus.rs` + `profile/metrics.rs`
+
+The file `profile.rs` declares `mod corpus; mod metrics;` while children live in `profile/` subdirectory. This is valid Rust 2021+ but a reader expecting `mod.rs` may be surprised.
+
+### READ-033 — Inconsistent `#[derive]` on newtype wrappers in `loader.rs`
+
+- **Severity:** Low
+- **Category:** Other
+- **Location:** `glass-lint-project/src/loader.rs:260,276,305`
+
+`PathWorkQueue`, `AdmissionSet`, and `ResolutionCache` derive `Debug` and `Default`, but are private to the module and never printed. Remove unused derives.
 
 ## Systemic Themes
 
-- The canonical fact stream is a sound ownership boundary, but flow effects, summaries, call views, occurrence overlays, and evidence repeatedly turn borrowed facts back into owned derivative models.
-- Construction and query lifecycles are conflated. Explicit builder/session/outcome types would remove most `Rc`, `RefCell`, and `Cell` use while making immutable artifacts genuinely shareable.
-- Parallel sum-type families—call versus member call/read, direct versus constrained queries, local versus project flow—carry the same semantics through separate code paths and are already drifting.
-- Several repeated map/set/vector protocols deserve domain collections: assignment histories, ordered unique worklists, occurrence streams, evidence normalization, and scope/function indexes.
-- Source ownership is fragmented above the semantic artifact. Converting admitted input to one internal source object would reduce the largest predictable memory multiplier and simplify cache/job/report APIs.
+**Repeated matcher patterns dominate the JS provider crate.** The majority of findings in `glass-lint-js` (READ-003, plus many unlisted low-severity instances) stem from repeating `.matcher()` calls inline instead of using const arrays + loops. Three files (`persistent_storage`, `electron/module`, `remote_resource`) already demonstrate the preferred pattern. Fixing the worst case (electron/ipc at 109 lines) and establishing a convention would raise consistency significantly.
+
+**Path management and collection types in `glass-lint-project` are the second-largest source of churn.** Dual canonicalization (READ-006), missing newtypes (READ-011, READ-017), and repeated budget checks (READ-007, READ-030) account for 20% of all findings. Encapsulating the `extensions`, `excluded_directories`, and `extension_aliases` fields behind newtypes would pay off across 4 consuming modules.
+
+**Profile and report functions in `glass-lint-harness` suffer from excessive length and cross-function duplication.** `run_profile`, `profile_loader_project`, `load_project_case`, and `print_report` are each 90-110+ lines. Accumulation logic is copied across 4 profile functions. The report module traverses the same data 4 different ways. These would benefit from targeted extractions.
+
+**Visibility hygiene is inconsistent.** Several crates have `pub` on items that are only used within the crate (READ-018), or broad `pub use` wildcards that expose internal types (READ-020). Aligning on `pub(crate)` for crate-internal items would clarify the intended API surface.
 
 ## Open Questions
 
-- Is `ProjectSemanticModel::classify_with_evidence_limit` intended to be safely repeatable or concurrently callable? Its current `&self` signature suggests yes, while its status and telemetry mutation suggest no.
-- Which precision differences between local `FunctionSummaries` and retained `FunctionEffects` are intentional? Those contracts should be named before merging the models.
-- Would a compact frozen value/provenance arena retain less memory than the current copied string/provenance projections for representative large files? Heap profiling should decide whether to retain all used values or only fact-referenced projections.
-- What source sizes and cache hit rates dominate production? That determines whether a shared source identity, content digest with collision verification, or another cache-key representation is the best tradeoff.
-- Are the sorted-vector flow tables measurably small under real workloads? If so, keep their cache-friendly representation but still address whole-environment snapshot copies; if not, their insertion/removal behavior needs separate redesign.
+- Should `unwrap()` on `package_import` be replaced with `expect("package <name> is valid")` across all ~120 call sites? The trade-off is noise vs debuggability.
+- Should the `matcher` repetition pattern in JS rules be addressed by a macro, by const-array conventions, or by adding a `from_list` builder method to the `Rule` builder? The current mix of inline and loop-based styles suggests a convention is needed.
+- Should `SourceCorpus` be renamed, or is the "corpus" intended to mean a corpus *loader* rather than a corpus itself?
+- Would a shared `Makefile` target for readability-specific Clippy lints (`pub_use`, `cognitive_complexity`, `large_enum_variant`, `result_large_err`) be useful for CI?
 
 ## Coverage
 
-- Read the repository and crate architecture guidance plus `TESTING.md` and `CONTRIBUTING.md`.
-- Inventoried all 124 Rust files and 34,984 Rust lines under `glass-lint-core/src` and `glass-lint-core/tests`, including nested test modules.
-- Ran repository-wide searches for ownership (`Rc`, `Arc`, `RefCell`, `Cell`), cloning/allocation, TODOs, fact payload consumers, wrapper arguments, function boundaries, and repeated helper shapes.
-- Manually reviewed the lowering, name/value resolution, scope collection/query, fact construction/stream, ordinary and constrained matching, local and cross-project flow, project linking/session, lint/report assembly, rule API/compiler, and integration-test fixture paths.
-- No tests or builds were run because this was a read-only audit and no production behavior was changed.
+- **glass-lint-core:** Deep file-by-file review of all 47+ source files and 9 test files. Findings deferred to this report are high-level only; crate-specific issues (e.g., large functions, newtype candidates, naming inconsistencies) exist but are the most numerous of any crate. Separate deep-dive recommended.
+- **glass-lint-js:** Full review of all 42 source files and 76 fixture files. High-confidence coverage.
+- **glass-lint-project:** Full review of all 8 source files. High-confidence coverage.
+- **glass-lint-obsidian:** Full review of all rule files (~50 files). High-confidence coverage.
+- **glass-lint-cli:** Full review of 6 source files. High-confidence coverage.
+- **glass-lint-harness:** Full review of all source files including the 1502-line `profile.rs`. High-confidence coverage.
+- **glass-lint-harness-cli:** Full review of 5 source files. High-confidence coverage.
+- **tests/:** Scanned; contains only fixture data (no Rust integration tests). No findings.
+- **Root configuration:** Cargo.toml, Makefile, CI workflow reviewed. No findings.

@@ -1,8 +1,15 @@
 //! Value identities and bounded interning.
 //!
 //! The value layer gives semantic analysis canonical, hashable identities for
-//! bindings, callables, objects, and paths. Every arena/interner is bounded;
-//! exhaustion maps to an explicit unknown result rather than an invented ID.
+//! bindings, callables, objects, and paths. Every arena and interner is
+//! bounded; exhaustion maps to an explicit unknown result (`ValueId::UNKNOWN`)
+//! rather than an invented ID or a panic.
+//!
+//! The layer is split into four concerns:
+//! - `identity` — opaque handle types (`ValueId`, `FunctionId`, `BindingId`,
+//!   etc.) and `SymbolPath` for human-readable chain representation.
+//! - `arena` — bounded interning tables that map identities to their meanings.
+//! - `path` — compact path segments and interning for projection lookups.
 
 mod arena;
 mod identity;

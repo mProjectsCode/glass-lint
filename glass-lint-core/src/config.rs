@@ -15,6 +15,7 @@ pub struct CoreConfig {
     /// Baseline and ordered overrides for the assembled provider catalogs.
     #[serde(default)]
     pub selection: RuleSelection,
+    /// Parser and semantic operation bounds for cost-controlled analysis.
     #[serde(default)]
     pub limits: AnalysisLimits,
 }

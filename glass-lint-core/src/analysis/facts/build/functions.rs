@@ -34,7 +34,7 @@ impl FactBuilder<'_> {
         boundary: FunctionBoundary,
     ) {
         let scope = self.scope_at(span);
-        let id = self.resolver.function_id_for_scope(scope);
+        let id = self.resolver.function_scope_at(scope);
         let parameter_bindings = match boundary {
             FunctionBoundary::Enter => {
                 let mut bindings = Vec::new();

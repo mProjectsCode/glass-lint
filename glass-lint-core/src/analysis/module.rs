@@ -158,8 +158,8 @@ pub struct ModuleInterface {
     locals: BTreeSet<SmolStr>,
     unknown_exports: bool,
     function_exports: BTreeMap<SmolStr, FunctionId>,
-    // TODO: why is this limited to strings? Should this not be extended to arbitrary static
-    // values?
+    /// Static strings exported by the module. Limited to strings for
+    /// bounded cross-module flow; other static types are not propagated.
     static_strings: BTreeMap<SmolStr, String>,
 }
 

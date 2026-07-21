@@ -42,8 +42,9 @@ impl TelemetryOptions {
 }
 
 impl TelemetryLevel {
-    /// Keep verbose output scoped to Glass Lint. Dependencies such as
-    /// `oxc_resolver` have useful diagnostics, but their debug spans include
+    /// Produce an `EnvFilter`-compatible directive string that keeps verbose
+    /// output scoped to Glass Lint crates. Dependencies such as `oxc_resolver`
+    /// have useful diagnostics at info level, but their debug spans include
     /// implementation details (notably the complete `ResolveOptions`) that
     /// are not actionable at the CLI.
     fn filter(self) -> String {

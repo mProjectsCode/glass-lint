@@ -316,27 +316,6 @@ impl FunctionEffects {
                     return_value,
                     ..
                 } => effect.record_return(*return_value, &value_provenance, &mut budget),
-                FactPayload::Control { kind, .. }
-                    if !matches!(
-                        kind,
-                        ControlKind::BranchStart
-                            | ControlKind::BranchThen
-                            | ControlKind::BranchElse
-                            | ControlKind::BranchEnd
-                            | ControlKind::LoopStart { .. }
-                            | ControlKind::LoopUpdate
-                            | ControlKind::LoopEnd
-                            | ControlKind::SwitchStart
-                            | ControlKind::SwitchCase { .. }
-                            | ControlKind::SwitchEnd
-                            | ControlKind::TryStart
-                            | ControlKind::CatchStart
-                            | ControlKind::FinallyStart
-                            | ControlKind::TryEnd
-                            | ControlKind::Break
-                            | ControlKind::Continue
-                            | ControlKind::Return
-                    ) => {}
                 _ => {}
             }
             effect.mark_unsupported_control(&fact.payload);

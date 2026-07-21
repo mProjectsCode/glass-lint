@@ -16,8 +16,14 @@ pub struct Environment {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+/// Membership policy for a global object's promoted identities.
 enum GlobalObjectMembers {
+    /// This object promotes all currently configured globals as callable
+    /// identities. Used for the current-realm global object and fully trusted
+    /// aliases.
     ConfiguredGlobals,
+    /// Only the listed names are promoted from this foreign-realm object.
+    /// Used for window-like objects from another security context.
     Restricted(BTreeSet<String>),
 }
 
@@ -138,7 +144,9 @@ impl Environment {
         Ok(())
     }
 
-    /// Merge another environment into this one without discarding additions.
+    /// Merge another environment into this one. The union is additive: global
+    /// bindings and objects from `other` are added; a `ConfiguredGlobals`
+    /// entry in either side wins over `Restricted` for the same name.
     pub fn extend(&mut self, other: &Self) {
         self.global_bindings
             .extend(other.global_bindings.iter().cloned());

@@ -72,14 +72,17 @@ impl ByteRange {
         Self { start: 0, end: 0 }
     }
 
+    /// Zero-based byte offset of the first byte in this range.
     pub const fn start(self) -> u32 {
         self.start
     }
 
+    /// Zero-based byte offset immediately after the last byte in this range.
     pub const fn end(self) -> u32 {
         self.end
     }
 
+    /// Number of bytes covered by this range.
     pub const fn len(self) -> u32 {
         self.end - self.start
     }
@@ -172,6 +175,7 @@ pub struct Position {
 }
 
 impl Position {
+    /// Construct a one-based display position, rejecting zero values.
     pub const fn new(line: u32, column: u32) -> Result<Self, InvalidPosition> {
         if line == 0 {
             Err(InvalidPosition::ZeroLine)
@@ -182,10 +186,12 @@ impl Position {
         }
     }
 
+    /// One-based source line number.
     pub const fn line(&self) -> u32 {
         self.line
     }
 
+    /// One-based Unicode display column.
     pub const fn column(&self) -> u32 {
         self.column
     }
@@ -303,6 +309,7 @@ pub struct SourceRange {
 }
 
 impl SourceRange {
+    /// Construct a source range, rejecting reversed start/end positions.
     pub fn new(start: Position, end: Position) -> Result<Self, ReversedSourcePositionRange> {
         if start <= end {
             Ok(Self { start, end })
@@ -311,10 +318,12 @@ impl SourceRange {
         }
     }
 
+    /// Inclusive start position of this source range.
     pub const fn start(&self) -> &Position {
         &self.start
     }
 
+    /// Exclusive end position of this source range.
     pub const fn end(&self) -> &Position {
         &self.end
     }
@@ -343,13 +352,15 @@ impl<'de> Deserialize<'de> for SourceRange {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 /// Provider rule metadata exposed to front ends and integrations.
 pub struct RuleMetadata {
-    /// Stable rule ID.
+    /// Stable namespaced rule identifier.
     pub id: RuleId,
-    /// Provider-facing description.
+    /// Provider-facing description of what the rule detects.
     pub description: String,
-    /// Default report severity.
+    /// Default severity assigned when the rule reports a finding.
     pub default_severity: Severity,
-    /// Stable message templates keyed by message ID.
+    /// Stable message templates keyed by message ID. Each entry maps a
+    /// message identifier (e.g. `"detected"`) to a human-readable template
+    /// string used for report output.
     #[serde(default)]
     pub messages: BTreeMap<String, String>,
 }

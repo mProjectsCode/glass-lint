@@ -108,7 +108,11 @@ pub fn parse(source: &str, filename: &str) -> Result<ParsedSource, ParseDiagnost
     )
 }
 
-/// Parse with an explicit structural nesting limit.
+/// Parse a source string with an explicit structural nesting limit.
+///
+/// TypeScript sources are parsed by SWC then lowered: the resolver pass runs,
+/// TypeScript syntax is stripped, and the result is treated as JavaScript for
+/// semantic purposes. JavaScript sources pass through without transformation.
 pub fn parse_with_language_and_depth(
     source: &str,
     filename: &str,

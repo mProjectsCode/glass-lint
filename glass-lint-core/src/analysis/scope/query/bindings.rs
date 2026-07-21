@@ -6,11 +6,6 @@ use crate::analysis::scope::query::{
 };
 
 impl ScopeGraph<'_> {
-    /// Whether a name is configured as a host global.
-    pub(in crate::analysis) fn is_configured_global(&self, name: &str) -> bool {
-        self.is_global(name)
-    }
-
     /// Resolve the binding provenance visible at a use position.
     pub(in crate::analysis) fn binding_at(
         &self,

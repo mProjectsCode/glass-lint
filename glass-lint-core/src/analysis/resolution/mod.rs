@@ -39,6 +39,12 @@ use crate::{
 use crate::{Environment, analysis::name::NameTable};
 
 #[derive(Debug, Clone)]
+/// The complete result of resolving one expression.
+///
+/// A resolved value carries the interned abstract value ID, all available
+/// provenances (callable, member, returned-member, bound-arguments), and
+/// both the syntactic and rooted chain spellings. Fields default to absent
+/// or local so a new resolution path cannot accidentally inherit provenance.
 pub(super) struct ResolvedValue {
     /// The interned abstract value. `UNKNOWN` is reserved for expressions the
     /// resolver cannot describe precisely enough to match.
@@ -89,26 +95,38 @@ enum ResolutionKey {
 }
 
 #[derive(Debug, Default)]
+/// Mutable state owned by the resolver during expression resolution.
+///
+/// The resolver keeps these lifecycles together so their borrow order is
+/// explicit at the boundary and no interior-mutation tricks are needed.
 struct ResolverState {
-    /// Interned values and binding identities.
+    /// Interned value arena and binding identities.
     values: ValueTable,
-    /// Fresh object values reused by checked source range.
+    /// Fresh object values cached by checked source range to avoid
+    /// allocating duplicate identities for the same syntactic object.
     fresh_values: BTreeMap<ParserSpanKey, ValueId>,
-    /// Cached expression resolutions keyed by source position.
+    /// Cached expression resolutions keyed by source position. Resolution
+    /// is position-sensitive and idempotent.
     resolved_values: BTreeMap<ResolutionKey, ResolvedValue>,
     /// Active lookups used to break recursive resolution cycles.
     resolving: BTreeSet<ResolutionKey>,
 }
 
 #[derive(Debug)]
+/// Position-sensitive expression resolution.
+///
+/// The resolver is the single adapter from low-level scope and binding facts
+/// to the versioned values consumed by matchers. Resolution is cached by
+/// source position; recursive lookups are guarded. Unknown values, cycles,
+/// and exhausted arena entries become local/unknown provenance.
 pub(super) struct Resolver<'a> {
     /// Scope/provenance seeds from the lexical collection pass.
     scopes: ScopeGraph<'a>,
+    /// Interned name table for artifact-local identity management.
     names: NameTableCtx<'a>,
+    /// SWC-to-domain span conversion and validation.
     coordinates: SpanNormalizer,
-    /// Cohesive mutable state for value interning, caching, and recursion
-    /// guards. Keeping these lifecycles together makes their borrow order
-    /// explicit at the resolver boundary.
+    /// Mutable state for value interning, caching, and recursion guards.
     state: RefCell<ResolverState>,
 }
 

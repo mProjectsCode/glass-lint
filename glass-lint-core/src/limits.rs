@@ -5,16 +5,24 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct AnalysisLimits {
+    /// Maximum bracket/paren/brace nesting depth allowed before a source is
+    /// rejected. Checked lexically before any AST allocation.
     #[serde(default = "default_syntax_depth")]
     pub syntax_depth: usize,
+    /// Maximum number of fact-building operations (declarations, calls,
+    /// references, etc.) permitted per file.
     #[serde(default = "default_semantic_operations")]
     pub semantic_operations: usize,
+    /// Maximum number of function-effect extraction steps per file.
     #[serde(default = "default_effect_operations")]
     pub effect_operations: usize,
+    /// Maximum number of evidence items retained per matched rule.
     #[serde(default = "default_evidence_items")]
     pub evidence_items: usize,
+    /// Maximum number of export-linking resolution steps across the project.
     #[serde(default = "default_link_operations")]
     pub link_operations: usize,
+    /// Maximum number of cross-module flow projection steps.
     #[serde(default = "default_flow_operations")]
     pub flow_operations: usize,
 }

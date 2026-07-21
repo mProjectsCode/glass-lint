@@ -185,7 +185,7 @@ impl Resolver<'_> {
                     && path
                         .first_segment()
                         .and_then(|root| self.scopes.resolve_name_id(root))
-                        .is_some_and(|root| self.scopes.is_configured_global(root.as_str())) =>
+                        .is_some_and(|root| self.scopes.is_global(root.as_str())) =>
             {
                 SymbolCallProvenance::Global {
                     name: self

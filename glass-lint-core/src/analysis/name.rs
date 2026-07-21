@@ -12,7 +12,12 @@ use crate::analysis::value::{NamePath, SymbolPath};
 pub(in crate::analysis) const MAX_NAMES: usize = 1 << 20;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-/// An artifact-local name identity. It is meaningful only with its table.
+/// An artifact-local name identity.
+///
+/// `NameId` values are opaque and meaningful only with the `NameTable` that
+/// produced them. They may be compared for equality within the same artifact
+/// but must not be shared across artifacts or persisted. Textual ordering
+/// and cross-artifact interfaces continue to use strings.
 pub(in crate::analysis) struct NameId(u32);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -78,11 +78,11 @@ impl Resolver<'_> {
         self.scopes.scope_at(span)
     }
 
-    pub(in crate::analysis) fn function_id_for_scope(
+    pub(in crate::analysis) fn function_scope_at(
         &self,
         scope: ScopeId,
     ) -> crate::analysis::value::FunctionId {
-        self.scopes.function_id_for_scope(scope)
+        self.scopes.function_scope_at(scope)
     }
 
     pub(in crate::analysis) fn function_id_for_expr(

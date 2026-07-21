@@ -38,6 +38,8 @@ mod value;
 
 pub use value::SymbolPath;
 
+/// Normalize a dot-separated chain into its canonical symbol-path form.
+/// Used by the public `canonical-symbol-path` rule API.
 pub fn canonical_symbol_path(value: &str) -> String {
     self::value::SymbolPath::from_chain(value).to_string()
 }
@@ -228,6 +230,10 @@ impl ProjectSemanticModel {
         }
     }
 
+    /// Build a linked project model from already-analyzed modules and
+    /// caller-supplied resolution results. Export identities are resolved
+    /// to a fixed point; flow overlays are prepared for matcher projection.
+    /// Diagnoses missing or misaligned resolutions and bounded budgets.
     pub fn link_with_limits(
         input: ProjectInput,
         analyzed: BTreeMap<crate::ProjectRelativePath, LocalArtifact>,

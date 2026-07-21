@@ -219,7 +219,7 @@ impl<'a> ScopeGraph<'a> {
         }
     }
 
-    pub(super) fn is_global(&self, name: &str) -> bool {
+    pub(in crate::analysis) fn is_global(&self, name: &str) -> bool {
         self.environment.is_global(name)
     }
 

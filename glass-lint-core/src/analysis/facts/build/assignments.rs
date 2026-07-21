@@ -100,7 +100,6 @@ impl FactBuilder<'_> {
                 FactKind::PropertyWrite,
                 assignment.span(),
                 FactPayload::PropertyWrite {
-                    target,
                     receiver,
                     property,
                     static_value: self.resolver.static_string_expr(&assignment.right),

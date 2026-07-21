@@ -76,10 +76,13 @@ impl InstanceCallable {
     }
 }
 
-/// The single authoritative semantic fact builder. After the lexical scope
-/// prepass, this visitor walks the AST exactly once and emits an immutable
-/// `FactStream` containing all semantic facts and a matcher-independent module
-/// interface.
+/// The single authoritative semantic fact builder.
+///
+/// After the lexical scope prepass, this visitor walks the AST exactly once
+/// and emits an immutable `FactStream` containing all semantic facts and a
+/// matcher-independent module interface. The builder owns traversal state,
+/// call-result tracking, and instance-level callable resolution — all of
+/// which are discarded when `into_parts()` finalizes the stream.
 pub struct FactBuilder<'a> {
     /// Scope and provenance answers are prepared before this AST walk.
     resolver: &'a Resolver<'a>,
@@ -201,7 +204,7 @@ impl<'a> FactBuilder<'a> {
         let fact = SemanticFact::new(
             id,
             span,
-            self.resolver.function_id_for_scope(scope),
+            self.resolver.function_scope_at(scope),
             kind,
             payload,
         );

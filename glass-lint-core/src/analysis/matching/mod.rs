@@ -58,7 +58,12 @@ pub struct OccurrenceIndexes {
 }
 
 #[derive(Debug, Default)]
-/// Additional project identities layered over an immutable local index.
+/// Project-link overlays layered over an immutable local occurrence index.
+///
+/// When the project linker resolves a module-level identity to an external
+/// module or global, the local module-prefixed occurrence is masked and its
+/// corresponding external-prefixed entry is injected into the overlay so
+/// matchers can query by the resolved identity.
 pub(in crate::analysis) struct ModuleOccurrenceOverlay {
     masked: std::collections::BTreeSet<ModuleExportKey>,
     call_indexes: CallIndexes,
@@ -70,14 +75,26 @@ pub(in crate::analysis) struct ModuleOccurrenceOverlay {
 
 #[derive(Debug, Default)]
 /// Call occurrences partitioned by confidence/provenance level.
+///
+/// Each sub-index represents a different resolution provenance. A single call
+/// site may appear in more than one index when its identity can be established
+/// at multiple confidence levels (e.g. a rooted global alias).
 pub(super) struct CallIndexes {
+    /// Calls resolved through lexical name lookup (local or imported).
     calls: NameOccurrences,
+    /// Calls resolved to a configured global binding.
     global_calls: Occurrences,
+    /// Calls resolved to a module export identity.
     module_calls: ModuleOccurrences,
 }
 
 #[derive(Clone, Debug, Default)]
-/// Member call/read occurrences partitioned by rooted and module identity.
+/// Member call/read occurrences partitioned by provenance level.
+///
+/// Member chains are indexed at multiple confidence levels: syntactic (as
+/// written), rooted (following aliases to a known global), module-export
+/// (resolved through import/export), returned (from a known call result), and
+/// instance (on a known superclass).
 pub(super) struct MemberIndexes {
     calls: OccurrenceIndex<NamePath>,
     rooted_calls: OccurrenceIndex<NamePath>,

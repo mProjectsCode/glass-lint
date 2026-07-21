@@ -17,11 +17,6 @@ impl ScopeGraph<'_> {
         FunctionId(0)
     }
 
-    /// Return the canonical function identity for a scope.
-    pub(in crate::analysis) fn function_id_for_scope(&self, scope: ScopeId) -> FunctionId {
-        self.function_scope_at(scope)
-    }
-
     /// Resolve a function identifier/alias if it was not reassigned before use.
     pub(in crate::analysis) fn function_id_for_expr(&self, expr: &Expr) -> Option<FunctionId> {
         let Expr::Ident(ident) = expr else {

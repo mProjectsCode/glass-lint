@@ -5,9 +5,16 @@
 //! direct aliases, selected static shapes, and prior assignments. Unknown or
 //! mutable cases intentionally resolve to local/absent provenance.
 //!
-//! Collection is split into declaration prepass, source-order provenance, and
-//! immutable query indexes. Binding IDs and assignment versions make later
-//! queries position-sensitive without rebuilding the AST.
+//! Collection is split into three phases:
+//! 1. Declaration prepass (predeclare) — all hoisted and block-scoped
+//!    declarations are registered before any initializer is visited, so a
+//!    use-before-decl resolves as local/TDZ rather than an unshadowed global.
+//! 2. Source-order visitation — initializers, expressions, and nested scopes
+//!    are visited in AST order.
+//! 3. Freeze — the collected graph is sealed into an immutable query index.
+//!
+//! Binding IDs and assignment versions make position-sensitive queries
+//! possible without rebuilding the AST for each lookup.
 
 use collect::LexicalScopeCollector;
 use swc_common::Spanned;

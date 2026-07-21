@@ -138,6 +138,9 @@ pub struct SharedSemanticArtifact {
 /// Bounded cache of successfully lowered artifacts owned by a reusable runtime.
 /// Parse failures are deliberately not cached; successfully lowered artifacts,
 /// including exhausted ones, are safe to reuse because their status is data.
+///
+/// The cache is a simple FIFO vector with a fixed capacity. Lookups are linear
+/// but the cache is small (64 entries) and comparison is by full key equality.
 #[derive(Default)]
 pub struct ArtifactCache {
     entries: Vec<(ArtifactCacheKey, SharedSemanticArtifact)>,

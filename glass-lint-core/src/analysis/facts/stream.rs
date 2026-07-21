@@ -29,7 +29,7 @@ pub(in crate::analysis) struct FactStream {
     facts: Vec<SemanticFact>,
     /// Interned property/index paths used by argument projections.
     paths: PathInterner,
-    /// Frozen table owned directly by the stream.
+    /// Frozen name table owned directly by the stream after lowering.
     names: Option<NameTable>,
     /// False after any ID, budget, or append invariant is violated.
     valid: bool,

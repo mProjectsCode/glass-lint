@@ -27,6 +27,11 @@ impl BudgetTracker {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 /// Monotonic operation counter with a hard upper bound.
+///
+/// A budget tracks three dimensions: the configured limit, the number of
+/// operations already charged, and whether an attempted charge has exceeded
+/// the bound. Once exhausted, a budget stays exhausted and rejects all
+/// future charges.
 pub struct Budget {
     /// Maximum permitted operation count.
     limit: usize,

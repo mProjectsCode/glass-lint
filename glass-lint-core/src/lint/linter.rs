@@ -301,9 +301,13 @@ impl RuleSelection {
 /// [`Linter::new`].
 #[derive(Clone, Debug)]
 pub struct LinterConfig {
+    /// Provider rule catalogs to combine into the unified analysis catalog.
     catalogs: Vec<RuleCatalog>,
+    /// Host environment for global and global-object lookups.
     environment: Environment,
+    /// Baseline and per-rule overrides for the combined catalog.
     selection: RuleSelection,
+    /// Parser and semantic operation bounds.
     limits: crate::AnalysisLimits,
 }
 
@@ -335,13 +339,20 @@ impl LinterConfig {
 }
 
 /// Immutable catalog plus sorted enabled-rule indexes for lint execution.
+///
+/// The linter owns the combined rule catalog, host environment, enabled-rule
+/// set, analysis limits, and a shared bounded artifact cache. It is `Send`
+/// and `Sync` and can be cloned cheaply (the cache handle is `Arc<Mutex>`).
 pub struct Linter {
     /// Validated rule catalog and compiled matcher plans.
     catalog: RuleCatalog,
+    /// Host environment used during semantic fact construction.
     environment: Environment,
-    /// Enabled rule indexes in deterministic order.
+    /// Enabled rule indexes in deterministic catalog order.
     enabled: Vec<crate::api::classification::RuleIndex>,
+    /// Parser and semantic operation bounds.
     limits: crate::AnalysisLimits,
+    /// Shared bounded cache of successfully lowered artifacts.
     artifact_cache: crate::analysis::ArtifactCacheHandle,
 }
 
@@ -372,8 +383,10 @@ impl Linter {
         AnalysisSession::new(self, root)
     }
 
-    /// Construct a linter from validated catalogs, one complete environment,
-    /// rule selection, and analysis limits.
+    /// Construct a linter from validated catalogs, environment, rule
+    /// selection, and analysis limits. Catalogs are combined into one
+    /// unified catalog (rejecting duplicate fully-qualified IDs), rule
+    /// overrides are applied in declaration order, and limits are validated.
     pub fn new(config: LinterConfig) -> Result<Self, LintConfigError> {
         let catalog = RuleCatalog::combine(config.catalogs).map_err(|error| match error {
             ProviderCatalogError::InvalidRule(id, _) => {

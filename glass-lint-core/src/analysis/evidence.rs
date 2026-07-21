@@ -33,8 +33,9 @@ fn evidence_order(item: &EvidenceOccurrence) -> (u32, u32, u32, MatchKind, usize
     )
 }
 
-/// Intermediate evidence representation that separates sorting/bounding from
-/// the public grouped shape and preserves related evidence by symbol group.
+/// Intermediate evidence representation that separates sorting, bounding, and
+/// symbol-grouping from the public grouped shape. Related evidence is preserved
+/// by symbol group so cross-module events remain attached to their primary.
 pub(super) struct AnnotatedEvidence {
     /// Occurrences before final sorting, deduplication, and bounding.
     occurrences: Vec<EvidenceOccurrence>,
@@ -42,7 +43,10 @@ pub(super) struct AnnotatedEvidence {
     symbols: Vec<String>,
     /// Related evidence retained for each symbol group.
     related: BTreeMap<usize, Vec<RelatedClassificationEvidence>>,
+    /// Total count of source events per symbol group, tracked independently
+    /// from the bounded occurrence list.
     total_counts: BTreeMap<usize, usize>,
+    /// Set when occurrences were truncated to the evidence limit.
     evidence_truncated: bool,
 }
 

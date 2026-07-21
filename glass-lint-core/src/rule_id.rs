@@ -30,6 +30,12 @@ impl RuleId {
         Ok(Self(value))
     }
 
+    /// Validate one segment of a namespaced rule ID.
+    ///
+    /// A valid part contains only lowercase ASCII letters, digits, hyphens,
+    /// and underscores. When `allow_dot` is true (for the name portion),
+    /// periods are also permitted to support hierarchical names. Leading and
+    /// trailing separators are rejected; consecutive dots are rejected.
     fn valid_part(part: &str, allow_dot: bool) -> bool {
         !part.is_empty()
             && part.chars().enumerate().all(|(index, character)| {
