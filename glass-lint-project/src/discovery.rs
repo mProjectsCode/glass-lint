@@ -124,9 +124,7 @@ impl<'a> ProjectDiscovery<'a> {
                     .unwrap_or_else(|| std::io::Error::other(message));
                 ProjectLoadError::Io { path, source }
             })?;
-            if entry.file_type().is_file()
-                && self.options.supports(entry.path())
-            {
+            if entry.file_type().is_file() && self.options.supports(entry.path()) {
                 entries.push(entry.into_path());
                 if entries.len() > self.options.max_files {
                     return Err(ProjectLoadError::TooManyFiles(self.options.max_files));

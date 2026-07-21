@@ -6,10 +6,10 @@
 #![allow(clippy::cast_possible_truncation, clippy::zero_sized_map_values)]
 
 mod config;
-mod types;
-mod runner;
 mod corpus;
 mod metrics;
+mod runner;
+mod types;
 
 pub use config::{
     ProfileCatalogProvider, ProfileConfig, ProfileConfigBuilder, ProfileCorpusIdentity,
@@ -24,12 +24,17 @@ pub use types::{
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::Cell, fs, num::NonZeroUsize, path::{Path, PathBuf}, time::Duration};
+    use std::{
+        cell::Cell,
+        fs,
+        num::NonZeroUsize,
+        path::{Path, PathBuf},
+        time::Duration,
+    };
 
     use glass_lint_core::ReportCompletion;
 
-    use super::types::MeasuredRepetitionAccumulator;
-    use super::*;
+    use super::{types::MeasuredRepetitionAccumulator, *};
 
     fn temp_root() -> crate::test_support::TempDir {
         crate::test_support::TempDir::new()

@@ -14,10 +14,13 @@ use smol_str::SmolStr;
 
 use crate::{
     analysis::{
-        facts::{ControlKind, FactId, FactPayload, FactStream, ParameterBinding, SemanticFact},
+        facts::{
+            CallArgInfo, CallUnwrap, ControlKind, FactId, FactPayload, FactStream,
+            ParameterBinding, SemanticFact,
+        },
         flow::table::FunctionTable,
         syntax::SymbolCallProvenance,
-        value::{FunctionId, NamePath, PathId, ValueId},
+        value::{FunctionId, NamePath, PathId, SymbolPath, ValueId},
     },
     budget::Budget,
 };
@@ -472,34 +475,14 @@ impl FunctionEffect {
             return;
         };
 
-        let (chain, call_args) = unwrap.as_deref().map_or_else(
-            || {
-                (
-                    rooted_chain.clone().or_else(|| {
-                        syntactic_chain
-                            .as_ref()
-                            .and_then(|path| NamePath::from_symbol_path(path, names))
-                    }),
-                    args.as_slice(),
-                )
-            },
-            |unwrap| {
-                (
-                    NamePath::from_symbol_path(&unwrap.chain, names),
-                    unwrap.effective_args.as_slice(),
-                )
-            },
+        let (chain, call_args) = Self::call_chain_and_args(
+            unwrap.as_deref(),
+            rooted_chain.as_ref(),
+            syntactic_chain.as_ref(),
+            args,
+            names,
         );
-        let arguments = call_args
-            .iter()
-            .enumerate()
-            .map(|(index, argument)| EffectArgument {
-                index,
-                value: argument.base_value,
-                path: argument.base_path,
-                parameter: self.parameter_for(argument.base_value),
-            })
-            .collect::<Vec<_>>();
+        let arguments = self.build_effect_arguments(call_args);
         if budget.try_push() {
             self.calls.push(EffectCall {
                 event: fact.id,
@@ -537,6 +520,44 @@ impl FunctionEffect {
             });
         }
         self.value_roots.entry(*result).or_insert(*result);
+    }
+
+    fn call_chain_and_args<'a>(
+        unwrap: Option<&'a CallUnwrap>,
+        rooted_chain: Option<&NamePath>,
+        syntactic_chain: Option<&SymbolPath>,
+        args: &'a [CallArgInfo],
+        names: &crate::analysis::name::NameTable,
+    ) -> (Option<NamePath>, &'a [CallArgInfo]) {
+        unwrap.map_or_else(
+            || {
+                (
+                    rooted_chain.cloned().or_else(|| {
+                        syntactic_chain.and_then(|path| NamePath::from_symbol_path(path, names))
+                    }),
+                    args,
+                )
+            },
+            |unwrap| {
+                (
+                    NamePath::from_symbol_path(&unwrap.chain, names),
+                    unwrap.effective_args.as_slice(),
+                )
+            },
+        )
+    }
+
+    fn build_effect_arguments(&self, call_args: &[CallArgInfo]) -> Vec<EffectArgument> {
+        call_args
+            .iter()
+            .enumerate()
+            .map(|(index, argument)| EffectArgument {
+                index,
+                value: argument.base_value,
+                path: argument.base_path,
+                parameter: self.parameter_for(argument.base_value),
+            })
+            .collect()
     }
 
     fn record_copy(&mut self, target: ValueId, source: ValueId) {

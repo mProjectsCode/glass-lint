@@ -186,11 +186,15 @@ impl ContextWorklist {
 
     fn seed(project: &ProjectSemanticModel, sources: &FlowSources) -> Self {
         let mut worklist = Self::default();
-        // A returned value gets a fresh caller-side identity and therefore
-        // needs a direct context even when no qualified call consumes it.
+        worklist.seed_from_sources(project, sources);
+        worklist.seed_from_calls(project, sources);
+        worklist
+    }
+
+    fn seed_from_sources(&mut self, project: &ProjectSemanticModel, sources: &FlowSources) {
         for (key, candidates) in sources.iter() {
             for candidate in candidates {
-                worklist.push(CallContext {
+                self.push(CallContext {
                     module: key.module,
                     function: key.function,
                     parameter: None,
@@ -207,6 +211,9 @@ impl ContextWorklist {
                 });
             }
         }
+    }
+
+    fn seed_from_calls(&mut self, project: &ProjectSemanticModel, sources: &FlowSources) {
         for module in project.modules() {
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
@@ -238,7 +245,7 @@ impl ContextWorklist {
                                 },
                                 requirements: RequirementSet::default(),
                             };
-                            worklist.enqueue_parameters(
+                            self.enqueue_parameters(
                                 project,
                                 target_module,
                                 target_function,
@@ -251,7 +258,6 @@ impl ContextWorklist {
                 }
             }
         }
-        worklist
     }
 }
 
@@ -416,6 +422,17 @@ impl FlowSources {
         flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
     ) -> (Self, bool) {
         let mut sources = Self::default();
+        sources.collect_candidates(project, flows);
+        let budget_exhausted = sources.refine_through_calls(project);
+        sources.normalize();
+        (sources, budget_exhausted)
+    }
+
+    fn collect_candidates(
+        &mut self,
+        project: &ProjectSemanticModel,
+        flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
+    ) {
         for module in project.modules() {
             let Some(names) = module.local().facts().names() else {
                 continue;
@@ -425,7 +442,7 @@ impl FlowSources {
                 for call in effect.calls() {
                     for (flow_id, flow) in flows {
                         if call.matches_source(flow, stream, names) {
-                            sources.add(
+                            self.add(
                                 SourceKey::new(module.id(), effect.id(), call.result()),
                                 SourceCandidate {
                                     flow: *flow_id,
@@ -437,9 +454,11 @@ impl FlowSources {
                 }
             }
         }
-        // Returned parameter/object identities are composed before invocation
-        // contexts are seeded. The bounded monotone loop also handles forwarding
-        // helpers without revisiting an AST.
+    }
+
+    /// Propagate source identities through returned parameter/object references
+    /// and call arguments until a fixed point or the round limit is reached.
+    fn refine_through_calls(&mut self, project: &ProjectSemanticModel) -> bool {
         let mut budget = SourceBudget::new();
         while budget.next_round() {
             let mut changed = false;
@@ -458,47 +477,15 @@ impl FlowSources {
                         let Some(target) = project.effect(target_module, target_function) else {
                             continue;
                         };
-                        for returned in target
-                            .returns()
-                            .iter()
-                            .filter(|returned| returned.parameter().is_none())
-                        {
-                            let returned_root = target
-                                .value_root(returned.value())
-                                .unwrap_or_else(|| returned.value());
-                            let candidates = sources
-                                .get(&SourceKey::new(
-                                    target_module,
-                                    target_function,
-                                    returned_root,
-                                ))
-                                .cloned();
-                            changed |= sources.extend_optional(
-                                SourceKey::new(module.id(), effect.id(), call.result()),
-                                candidates,
-                            );
-                        }
-                        for argument in call.arguments() {
-                            if !argument.is_root()
-                                || !target.returns().iter().any(|returned| {
-                                    returned.parameter().is_some_and(|parameter| {
-                                        parameter.index() == argument.index() && parameter.is_root()
-                                    })
-                                })
-                            {
-                                continue;
-                            }
-                            let root = effect
-                                .value_root(argument.value())
-                                .unwrap_or_else(|| argument.value());
-                            let candidates = sources
-                                .get(&SourceKey::new(module.id(), effect.id(), root))
-                                .cloned();
-                            changed |= sources.extend_optional(
-                                SourceKey::new(module.id(), effect.id(), call.result()),
-                                candidates,
-                            );
-                        }
+                        changed |= self.refine_returned_sources(
+                            module.id(),
+                            effect.id(),
+                            call.result(),
+                            target,
+                            target_module,
+                            target_function,
+                        );
+                        changed |= self.refine_argument_sources(module.id(), effect, call, target);
                     }
                 }
             }
@@ -507,8 +494,72 @@ impl FlowSources {
                 break;
             }
         }
-        sources.normalize();
-        (sources, budget.exhausted)
+        budget.exhausted
+    }
+
+    fn refine_returned_sources(
+        &mut self,
+        caller_module: ModuleId,
+        caller_effect: FunctionId,
+        call_result: ValueId,
+        target: &FunctionEffect,
+        target_module: ModuleId,
+        target_function: FunctionId,
+    ) -> bool {
+        let mut changed = false;
+        for returned in target
+            .returns()
+            .iter()
+            .filter(|returned| returned.parameter().is_none())
+        {
+            let returned_root = target
+                .value_root(returned.value())
+                .unwrap_or_else(|| returned.value());
+            let candidates = self
+                .get(&SourceKey::new(
+                    target_module,
+                    target_function,
+                    returned_root,
+                ))
+                .cloned();
+            changed |= self.extend_optional(
+                SourceKey::new(caller_module, caller_effect, call_result),
+                candidates,
+            );
+        }
+        changed
+    }
+
+    fn refine_argument_sources(
+        &mut self,
+        caller_module: ModuleId,
+        effect: &FunctionEffect,
+        call: &crate::analysis::flow::effect::EffectCall,
+        target: &FunctionEffect,
+    ) -> bool {
+        let mut changed = false;
+        for argument in call.arguments() {
+            if !argument.is_root()
+                || !target.returns().iter().any(|returned| {
+                    returned.parameter().is_some_and(|parameter| {
+                        parameter.index() == argument.index() && parameter.is_root()
+                    })
+                })
+            {
+                continue;
+            }
+            let root = effect
+                .value_root(argument.value())
+                .unwrap_or_else(|| argument.value());
+            let candidates = self
+                .get(&SourceKey::new(caller_module, effect.id(), root))
+                .cloned();
+            changed |= self.extend_optional(
+                SourceKey::new(caller_module, effect.id(), call.result()),
+                candidates,
+            );
+        }
+        changed
     }
 }
 
@@ -634,7 +685,10 @@ pub(super) fn related_evidence(
     related
 }
 
-pub(super) fn related_event(event: &QualifiedEvent, role: EvidenceRole) -> RelatedClassificationEvidence {
+pub(super) fn related_event(
+    event: &QualifiedEvent,
+    role: EvidenceRole,
+) -> RelatedClassificationEvidence {
     RelatedClassificationEvidence {
         module: event.module.get(),
         event: event.fact.0,

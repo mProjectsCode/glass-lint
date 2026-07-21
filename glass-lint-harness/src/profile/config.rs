@@ -1,7 +1,4 @@
-use std::{
-    num::NonZeroUsize,
-    path::PathBuf,
-};
+use std::{num::NonZeroUsize, path::PathBuf};
 
 use anyhow::{Result, bail};
 

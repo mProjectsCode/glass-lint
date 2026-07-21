@@ -269,57 +269,8 @@ impl FunctionSummaries {
                     .map(|summary| summary.parameters.clone())
                     .unwrap_or_default();
                 for call_id in calls {
-                    let Some(FactPayload::Call {
-                        target_function,
-                        args,
-                        ..
-                    }) = stream.fact(*call_id).map(|fact| &fact.payload)
-                    else {
-                        continue;
-                    };
-                    let Some(target) = *target_function else {
-                        continue;
-                    };
-                    let Some(target_summary) = self.get(target).cloned() else {
-                        continue;
-                    };
-                    if !target_summary.is_invocation_compatible(stream, args) {
-                        continue;
-                    }
-                    for sink in target_summary.sinks {
-                        let Some(target_parameter) =
-                            target_summary.parameters.iter().find(|parameter| {
-                                parameter.parameter_index == sink.parameter_index()
-                                    && (sink.path().matches_base(stream.paths(), parameter.path)
-                                        || (parameter.rest
-                                            && sink
-                                                .path()
-                                                .starts_with_base(stream.paths(), parameter.path)))
-                            })
-                        else {
-                            continue;
-                        };
-                        let Some(argument) =
-                            target_parameter.project_argument_at(stream, args, sink.path())
-                        else {
-                            continue;
-                        };
-                        let Some(caller_parameter) = caller_parameters.iter().find(|parameter| {
-                            !parameter.rest
-                                && parameter.value != ValueId::UNKNOWN
-                                && parameter.value == argument
-                        }) else {
-                            continue;
-                        };
-                        let projection = FunctionSinkSummary {
-                            flow: sink.flow(),
-                            parameter_index: caller_parameter.parameter_index,
-                            path: SummaryPath::base(caller_parameter.path),
-                        };
-                        if let Some(caller_summary) = self.by_id.get_mut(caller) {
-                            changed |= caller_summary.add_sink(projection);
-                        }
-                    }
+                    changed |=
+                        self.propagate_call_sinks(*call_id, caller, &caller_parameters, stream);
                 }
             }
             if !changed {
@@ -327,6 +278,81 @@ impl FunctionSummaries {
             }
         }
     }
+
+    fn propagate_call_sinks(
+        &mut self,
+        call_id: FactId,
+        caller: FunctionId,
+        caller_parameters: &[ParameterBinding],
+        stream: &FactStream,
+    ) -> bool {
+        let Some((target, args)) = resolve_call_target(call_id, stream) else {
+            return false;
+        };
+        let Some(target_summary) = self.get(target).cloned() else {
+            return false;
+        };
+        if !target_summary.is_invocation_compatible(stream, args) {
+            return false;
+        }
+        let mut changed = false;
+        for sink in target_summary.sinks {
+            if let Some(projection) = try_project_sink(
+                &target_summary.parameters,
+                caller_parameters,
+                &sink,
+                stream,
+                args,
+            ) && let Some(caller_summary) = self.by_id.get_mut(caller)
+            {
+                changed |= caller_summary.add_sink(projection);
+            }
+        }
+        changed
+    }
+}
+
+fn resolve_call_target(
+    call_id: FactId,
+    stream: &FactStream,
+) -> Option<(FunctionId, &[CallArgInfo])> {
+    let FactPayload::Call {
+        target_function,
+        args,
+        ..
+    } = &stream.fact(call_id)?.payload
+    else {
+        return None;
+    };
+    Some(((*target_function)?, args))
+}
+
+/// Try to map a target function's sink onto a caller parameter.
+///
+/// Returns `Some(projection)` when the sink's parameter index and path match a
+/// target parameter, its argument projects to a concrete caller parameter
+/// value, and that value is a non-rest, known parameter.
+fn try_project_sink(
+    target_parameters: &[ParameterBinding],
+    caller_parameters: &[ParameterBinding],
+    sink: &FunctionSinkSummary,
+    stream: &FactStream,
+    args: &[CallArgInfo],
+) -> Option<FunctionSinkSummary> {
+    let target_parameter = target_parameters.iter().find(|parameter| {
+        parameter.parameter_index == sink.parameter_index()
+            && (sink.path().matches_base(stream.paths(), parameter.path)
+                || (parameter.rest && sink.path().starts_with_base(stream.paths(), parameter.path)))
+    })?;
+    let argument = target_parameter.project_argument_at(stream, args, sink.path())?;
+    let caller_parameter = caller_parameters.iter().find(|parameter| {
+        !parameter.rest && parameter.value != ValueId::UNKNOWN && parameter.value == argument
+    })?;
+    Some(FunctionSinkSummary {
+        flow: sink.flow(),
+        parameter_index: caller_parameter.parameter_index,
+        path: SummaryPath::base(caller_parameter.path),
+    })
 }
 
 impl FunctionSummary {

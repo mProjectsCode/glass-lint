@@ -4,25 +4,19 @@
 //! sources and explicit resolver outcomes, and reports retain normalized paths
 //! and source ranges for deterministic downstream rendering.
 
-use std::{
-    borrow::Borrow,
-    ops::Deref,
-    path::Path,
-};
+use std::{borrow::Borrow, ops::Deref, path::Path};
 
 mod input;
 mod report;
 
-pub use report::{
-    AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary,
-    Diagnostic, DiagnosticCode, Evidence, FileReport, Finding, ReportCompletion,
-    SourceLocation,
-};
-pub use report::DiagnosticKind;
-
 pub use input::{
     LinkedModuleTarget, ModuleId, ProjectInput, ProjectInputError, ResolutionRequest,
     ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile,
+};
+pub use report::{
+    AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,
+    DiagnosticCode, DiagnosticKind, Evidence, FileReport, Finding, ReportCompletion,
+    SourceLocation,
 };
 
 /// Whether a module request uses syntax that denotes an authored/internal

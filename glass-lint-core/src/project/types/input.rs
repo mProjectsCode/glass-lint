@@ -76,11 +76,19 @@ pub enum LinkedModuleTarget {
         id: ModuleId,
         path: ProjectRelativePath,
     },
-    External { package: String },
-    Builtin { name: String },
+    External {
+        package: String,
+    },
+    Builtin {
+        name: String,
+    },
     Missing,
-    OutsideProject { path: String },
-    Unsupported { reason: String },
+    OutsideProject {
+        path: String,
+    },
+    Unsupported {
+        reason: String,
+    },
 }
 
 /// Unvalidated caller-supplied project sources and resolver answers.

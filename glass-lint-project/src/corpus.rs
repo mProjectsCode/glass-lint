@@ -223,4 +223,3 @@ impl<'a> SourceCorpus<'a> {
         Ok(SourceFile::new(relative, file.source)?)
     }
 }
-

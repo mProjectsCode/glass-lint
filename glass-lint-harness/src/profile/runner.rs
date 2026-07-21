@@ -19,18 +19,18 @@ use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
 
 use crate::{
     builtins::{self, BuiltinProfile},
-    profile::config::{
-        ProfileCatalogProvider, ProfileConfig, ProfileCorpusIdentity, ProfileWorkload,
-        ProfileWorkloadIdentity, RuleSelectionProfile, validate_config,
-    },
-    profile::corpus::{discover_profile_files, sample_paths},
-    profile::metrics::{
-        accumulate_report, combined_digest, median_duration, repetition_from_files,
-    },
-    profile::types::{
-        MeasuredRepetitionAccumulator, PreparedFile, ProfileLinter, ProfileOperationCounts,
-        ProfilePhaseTimings, ProfileRepetitionSummary, ProfileSummary, ProfileTotals,
-        ProfileWorkloadSummary, project_run_outcome, sum_operation_counts,
+    profile::{
+        config::{
+            ProfileCatalogProvider, ProfileConfig, ProfileCorpusIdentity, ProfileWorkload,
+            ProfileWorkloadIdentity, RuleSelectionProfile, validate_config,
+        },
+        corpus::{discover_profile_files, sample_paths},
+        metrics::{accumulate_report, combined_digest, median_duration, repetition_from_files},
+        types::{
+            MeasuredRepetitionAccumulator, PreparedFile, ProfileLinter, ProfileOperationCounts,
+            ProfilePhaseTimings, ProfileRepetitionSummary, ProfileSummary, ProfileTotals,
+            ProfileWorkloadSummary, project_run_outcome, sum_operation_counts,
+        },
     },
     profile_manifest::verify_profile_manifest,
 };
@@ -405,8 +405,7 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
             let mut run_completions = Vec::with_capacity(linters.len());
             let mut evidence_digests = Vec::new();
             for ProfileLinter(linter) in &linters {
-                let report =
-                    admitted_project_run(&root, &prepared, linter, config.workers.get())?;
+                let report = admitted_project_run(&root, &prepared, linter, config.workers.get())?;
                 accumulate_report(
                     &report,
                     &mut repetition_findings,
@@ -504,8 +503,7 @@ fn selected_profile_paths(
             Some(verified.total_bytes),
         ));
     }
-    let mut paths =
-        discover_profile_files(&config.paths, &config.include, &config.exclude)?;
+    let mut paths = discover_profile_files(&config.paths, &config.include, &config.exclude)?;
     if let Some(sample) = config.sample {
         sample_paths(&mut paths, sample, config.seed);
     }
@@ -641,25 +639,24 @@ fn profile_file(
     }
 }
 
-fn aggregate_workload_results(
-    results: Vec<ProfileWorkloadSummary>,
-) -> Vec<ProfileWorkloadSummary> {
+fn aggregate_workload_results(results: Vec<ProfileWorkloadSummary>) -> Vec<ProfileWorkloadSummary> {
     let mut aggregated = BTreeMap::<PathBuf, ProfileWorkloadSummary>::new();
     for result in results {
-        let entry = aggregated
-            .entry(result.path.clone())
-            .or_insert_with(|| ProfileWorkloadSummary {
-                path: result.path.clone(),
-                bytes: result.bytes,
-                findings: 0,
-                diagnostics: 0,
-                measured_elapsed: Duration::ZERO,
-                completion: ReportCompletion::Complete,
-                run_completions: Vec::new(),
-                operation_counts: ProfileOperationCounts::default(),
-                evidence_order_digest: String::new(),
-                error: None,
-            });
+        let entry =
+            aggregated
+                .entry(result.path.clone())
+                .or_insert_with(|| ProfileWorkloadSummary {
+                    path: result.path.clone(),
+                    bytes: result.bytes,
+                    findings: 0,
+                    diagnostics: 0,
+                    measured_elapsed: Duration::ZERO,
+                    completion: ReportCompletion::Complete,
+                    run_completions: Vec::new(),
+                    operation_counts: ProfileOperationCounts::default(),
+                    evidence_order_digest: String::new(),
+                    error: None,
+                });
         entry.findings = entry.findings.saturating_add(result.findings);
         entry.diagnostics = entry.diagnostics.saturating_add(result.diagnostics);
         entry.measured_elapsed = entry

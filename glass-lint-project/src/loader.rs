@@ -524,10 +524,7 @@ impl<'a> ProjectLoadState<'a> {
             metrics.edges = self.counters.edges;
             let target = self.root.join(path);
             if target.exists()
-                && !self
-                    .discovery
-                    .options()
-                    .excludes_path(&self.root, &target)
+                && !self.discovery.options().excludes_path(&self.root, &target)
                 && self.discovery.options().supports(&target)
             {
                 self.queue.push(target);

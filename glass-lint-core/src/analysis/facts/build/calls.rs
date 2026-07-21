@@ -92,37 +92,7 @@ impl FactBuilder<'_> {
         unwrap: Option<Box<CallUnwrap>>,
     ) {
         let result = self.call_result(span);
-        let mut effective_args = resolved
-            .bound_arguments
-            .as_deref()
-            .map(|arguments| {
-                arguments
-                    .iter()
-                    .map(|argument| {
-                        argument.as_ref().map_or_else(
-                            || CallArgInfo {
-                                value: ValueId::UNKNOWN,
-                                base_value: ValueId::UNKNOWN,
-                                base_path: PathId::EMPTY,
-                                static_string: None,
-                                object_keys: None,
-                                property_strings: Vec::new(),
-                                rooted_chain: None,
-                                projections: vec![ValueProjection {
-                                    path: PathId::EMPTY,
-                                    value: ValueId::UNKNOWN,
-                                }],
-                                spread: false,
-                                provenance: SymbolCallProvenance::Local,
-                            },
-                            FactBuilder::bound_arg_info,
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-        effective_args.extend(self.args_info(args));
-
+        let effective_args = self.effective_call_args(&resolved, args);
         let callee_name = self.intern_name(resolved.callee_name.as_deref());
         self.emit(
             FactKind::Call,
@@ -144,6 +114,47 @@ impl FactBuilder<'_> {
                 unwrap,
             },
         );
+    }
+
+    fn effective_call_args(
+        &mut self,
+        resolved: &ResolvedCallee,
+        args: &[ExprOrSpread],
+    ) -> Vec<CallArgInfo> {
+        let mut effective_args = resolved
+            .bound_arguments
+            .as_deref()
+            .map(|arguments| {
+                arguments
+                    .iter()
+                    .map(|argument| {
+                        argument
+                            .as_ref()
+                            .map_or_else(Self::default_call_arg, Self::bound_arg_info)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        effective_args.extend(self.args_info(args));
+        effective_args
+    }
+
+    fn default_call_arg() -> CallArgInfo {
+        CallArgInfo {
+            value: ValueId::UNKNOWN,
+            base_value: ValueId::UNKNOWN,
+            base_path: PathId::EMPTY,
+            static_string: None,
+            object_keys: None,
+            property_strings: Vec::new(),
+            rooted_chain: None,
+            projections: vec![ValueProjection {
+                path: PathId::EMPTY,
+                value: ValueId::UNKNOWN,
+            }],
+            spread: false,
+            provenance: SymbolCallProvenance::Local,
+        }
     }
 
     /// Return the stable value identity representing a call's result.
@@ -294,57 +305,68 @@ impl FactBuilder<'_> {
             }
             Pat::Object(object) => {
                 for property in &object.props {
-                    match property {
-                        swc_ecma_ast::ObjectPatProp::KeyValue(property) => {
-                            let Some(name) = crate::analysis::syntax::property_name(&property.key)
-                            else {
-                                continue;
-                            };
-                            let path =
-                                self.append_path(path, PathSegmentInput::Property(name.as_str()));
-                            self.parameter_bindings(
-                                &property.value,
-                                parameter_index,
-                                path,
-                                default,
-                                rest,
-                                output,
-                            );
-                        }
-                        swc_ecma_ast::ObjectPatProp::Assign(property) => {
-                            let path = self.append_path(
-                                path,
-                                PathSegmentInput::Property(property.key.sym.as_ref()),
-                            );
-                            output.push(ParameterBinding {
-                                parameter_index,
-                                path,
-                                value: self.resolver.resolve_ident(&property.key.id).id,
-                                default: property
-                                    .value
-                                    .as_deref()
-                                    .map(|value| self.resolver.resolve_expr(value).id),
-                                rest,
-                            });
-                        }
-                        swc_ecma_ast::ObjectPatProp::Rest(property) => {
-                            // Rest objects cannot be represented as a precise
-                            // single value. Keep the binding so calls using it
-                            // fail closed instead of being confused with the
-                            // enclosing object.
-                            self.parameter_bindings(
-                                &property.arg,
-                                parameter_index,
-                                path,
-                                default,
-                                true,
-                                output,
-                            );
-                        }
-                    }
+                    self.record_object_pat_property(
+                        property,
+                        parameter_index,
+                        path,
+                        default,
+                        rest,
+                        output,
+                    );
                 }
             }
             Pat::Expr(_) | Pat::Invalid(_) => {}
+        }
+    }
+
+    fn record_object_pat_property(
+        &mut self,
+        property: &swc_ecma_ast::ObjectPatProp,
+        parameter_index: usize,
+        path: PathId,
+        default: Option<ValueId>,
+        rest: bool,
+        output: &mut Vec<ParameterBinding>,
+    ) {
+        match property {
+            swc_ecma_ast::ObjectPatProp::KeyValue(property) => {
+                let Some(name) = crate::analysis::syntax::property_name(&property.key) else {
+                    return;
+                };
+                let path = self.append_path(path, PathSegmentInput::Property(name.as_str()));
+                self.parameter_bindings(
+                    &property.value,
+                    parameter_index,
+                    path,
+                    default,
+                    rest,
+                    output,
+                );
+            }
+            swc_ecma_ast::ObjectPatProp::Assign(property) => {
+                let path =
+                    self.append_path(path, PathSegmentInput::Property(property.key.sym.as_ref()));
+                output.push(ParameterBinding {
+                    parameter_index,
+                    path,
+                    value: self.resolver.resolve_ident(&property.key.id).id,
+                    default: property
+                        .value
+                        .as_deref()
+                        .map(|value| self.resolver.resolve_expr(value).id),
+                    rest,
+                });
+            }
+            swc_ecma_ast::ObjectPatProp::Rest(property) => {
+                self.parameter_bindings(
+                    &property.arg,
+                    parameter_index,
+                    path,
+                    default,
+                    true,
+                    output,
+                );
+            }
         }
     }
 
@@ -471,59 +493,40 @@ impl FactBuilder<'_> {
                 let resolved = self.resolver.resolve_ident(ident);
                 let extracted = self.extracted_instance_callable(resolved.id);
                 let instance_class = extracted.as_ref().map(InstanceCallable::class_identity);
-                Some(ResolvedCallee {
-                    value: resolved.id,
-                    receiver: None,
-                    callee_span: self.byte_range(ident.span)?,
-                    callee_name: Some(ident.sym.to_smolstr()),
-                    call_provenance: resolved.call.clone(),
-                    syntactic_chain: extracted.map(|callable| callable.member().clone()),
-                    rooted_chain: resolved.rooted_chain,
-                    module_member: resolved.module_member.clone(),
-                    returned_member: resolved.returned_member,
-                    bound_arguments: resolved.bound_arguments,
-                    instance_class,
-                    target_function: self.resolver.function_id_for_expr(effective),
-                })
+                let syntactic_chain = extracted.map(|callable| callable.member().clone());
+                let callee_span = self.byte_range(ident.span)?;
+                let callee_name = Some(ident.sym.to_smolstr());
+                let target_function = self.resolver.function_id_for_expr(effective);
+                let mut callee =
+                    ResolvedCallee::from_resolved(resolved, callee_span, target_function);
+                callee.callee_name = callee_name;
+                callee.syntactic_chain = syntactic_chain;
+                callee.instance_class = instance_class;
+                Some(callee)
             }
             Expr::Member(member) => self.resolve_member_callee(member),
             Expr::OptChain(chain) => {
                 if let OptChainBase::Member(member) = &*chain.base {
-                    self.resolve_member_callee(member)
-                } else {
-                    let resolved = self.resolver.resolve_expr(effective);
-                    Some(ResolvedCallee {
-                        value: resolved.id,
-                        receiver: None,
-                        callee_span: self.byte_range(effective.span())?,
-                        callee_name: None,
-                        call_provenance: resolved.call.clone(),
-                        syntactic_chain: None,
-                        rooted_chain: resolved.rooted_chain,
-                        module_member: resolved.module_member.clone(),
-                        returned_member: resolved.returned_member,
-                        bound_arguments: resolved.bound_arguments,
-                        instance_class: None,
-                        target_function: self.resolver.function_id_for_expr(effective),
-                    })
+                    return self.resolve_member_callee(member);
                 }
+                let resolved = self.resolver.resolve_expr(effective);
+                let callee_span = self.byte_range(effective.span())?;
+                let target_function = self.resolver.function_id_for_expr(effective);
+                Some(ResolvedCallee::from_resolved(
+                    resolved,
+                    callee_span,
+                    target_function,
+                ))
             }
             _ => {
                 let resolved = self.resolver.resolve_expr(effective);
-                Some(ResolvedCallee {
-                    value: resolved.id,
-                    receiver: None,
-                    callee_span: self.byte_range(effective.span())?,
-                    callee_name: None,
-                    call_provenance: resolved.call.clone(),
-                    syntactic_chain: None,
-                    rooted_chain: resolved.rooted_chain,
-                    module_member: resolved.module_member.clone(),
-                    returned_member: resolved.returned_member,
-                    bound_arguments: resolved.bound_arguments,
-                    instance_class: None,
-                    target_function: self.resolver.function_id_for_expr(effective),
-                })
+                let callee_span = self.byte_range(effective.span())?;
+                let target_function = self.resolver.function_id_for_expr(effective);
+                Some(ResolvedCallee::from_resolved(
+                    resolved,
+                    callee_span,
+                    target_function,
+                ))
             }
         }
     }
@@ -536,20 +539,14 @@ impl FactBuilder<'_> {
             .instance_member_available(member)
             .then(|| self.instance_class_for_receiver(&member.obj))
             .flatten();
-        Some(ResolvedCallee {
-            value: resolved.id,
-            receiver: Some(self.resolver.resolve_expr(&member.obj).id),
-            callee_span: self.byte_range(member.span)?,
-            callee_name: None,
-            call_provenance: resolved.call.clone(),
-            syntactic_chain,
-            rooted_chain: resolved.rooted_chain,
-            module_member: resolved.module_member.clone(),
-            returned_member: resolved.returned_member,
-            bound_arguments: resolved.bound_arguments,
-            instance_class,
-            target_function: self.resolver.function_id_for_expr(&member.obj),
-        })
+        let receiver = Some(self.resolver.resolve_expr(&member.obj).id);
+        let callee_span = self.byte_range(member.span)?;
+        let target_function = self.resolver.function_id_for_expr(&member.obj);
+        let mut callee = ResolvedCallee::from_resolved(resolved, callee_span, target_function);
+        callee.syntactic_chain = syntactic_chain;
+        callee.receiver = receiver;
+        callee.instance_class = instance_class;
+        Some(callee)
     }
 
     pub(super) fn instance_class_for_receiver(
@@ -658,4 +655,27 @@ pub(super) struct ResolvedCallee {
     bound_arguments: Option<Vec<Option<BoundArgument>>>,
     instance_class: Option<(SmolStr, SmolStr)>,
     target_function: Option<FunctionId>,
+}
+
+impl ResolvedCallee {
+    fn from_resolved(
+        resolved: crate::analysis::resolution::ResolvedValue,
+        callee_span: crate::ByteRange,
+        target_function: Option<FunctionId>,
+    ) -> Self {
+        Self {
+            value: resolved.id,
+            receiver: None,
+            callee_span,
+            callee_name: None,
+            call_provenance: resolved.call,
+            syntactic_chain: None,
+            rooted_chain: resolved.rooted_chain,
+            module_member: resolved.module_member,
+            returned_member: resolved.returned_member,
+            bound_arguments: resolved.bound_arguments,
+            instance_class: None,
+            target_function,
+        }
+    }
 }

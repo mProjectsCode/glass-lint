@@ -2,6 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use smol_str::SmolStr;
 
+use super::{
+    CallContext, ContextWorklist, CrossFlowState, QualifiedEvent, chain_matches, effect_use_event,
+    emit, usage_matches_context,
+};
 use crate::{
     analysis::{
         ProjectSemanticModel,
@@ -9,16 +13,8 @@ use crate::{
         flow::effect::{EffectUse, FunctionEffect},
         name::NameTable,
     },
-    api::{
-        classification::ClassificationEvidence,
-        compiler::CompiledObjectFlow,
-    },
+    api::{classification::ClassificationEvidence, compiler::CompiledObjectFlow},
     project::ModuleId,
-};
-
-use super::{
-    CallContext, ContextWorklist, CrossFlowState,
-    QualifiedEvent, chain_matches, effect_use_event, emit, usage_matches_context,
 };
 
 pub(super) struct UsageProjector<'a> {
@@ -112,7 +108,8 @@ impl UsageProjector<'_> {
         };
         let mut next = self.state.clone();
         for (index, requirement) in self.flow.requirements.iter().enumerate() {
-            if let crate::api::compiler::CompiledObjectRequirement::MemberCall { member, arguments } = requirement
+            if let crate::api::compiler::CompiledObjectRequirement::MemberCall { member, arguments } =
+                requirement
                 && chain_matches(chain, member, self.names)
                 && arguments.iter().all(|matcher| {
                     call_args

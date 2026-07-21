@@ -15,6 +15,6 @@ pub(crate) use catalog::CompiledCatalog;
 pub(crate) use object_flow::{
     CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
 };
-pub(crate) use rule::{CompiledRule, CompiledRuleSelection};
 #[cfg(test)]
 pub(crate) use rule::CompiledMatcherPlan;
+pub(crate) use rule::{CompiledRule, CompiledRuleSelection};

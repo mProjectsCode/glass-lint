@@ -21,6 +21,8 @@
 
 use std::collections::BTreeMap;
 
+use smol_str::SmolStr;
+
 use crate::{
     analysis::{
         SymbolPath,
@@ -150,11 +152,7 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                self.check_constrained_args(
-                    clause,
-                    args,
-                    unwrap.as_deref(),
-                )
+                self.check_constrained_args(clause, args, unwrap.as_deref())
             }
             EventPredicate::MemberCall { member } => {
                 if !member_subject_matches(
@@ -176,10 +174,8 @@ impl<'a> MatcherEvaluator<'a> {
                 ) {
                     return false;
                 }
-                let linked_args: Vec<CallArgInfo> = args
-                    .iter()
-                    .map(|a| self.argument_with_overlay(a))
-                    .collect();
+                let linked_args: Vec<CallArgInfo> =
+                    args.iter().map(|a| self.argument_with_overlay(a)).collect();
                 constraints_match(&clause.constraints, &linked_args, self.names)
             }
             _ => false,
@@ -331,49 +327,66 @@ fn member_identity_matches(
         (
             IdentityConstraint::ModuleExport { module, export },
             SubjectConstraint::InstanceOf { .. },
-        ) => {
-            let FactPayload::Call { instance_class, .. } = &fact.payload else {
-                return false;
-            };
-            instance_class
-                .as_ref()
-                .is_some_and(|(found_module, found_export)| {
-                    found_module == module && found_export == export
-                })
-                && syntactic_chain.and_then(|s| s.last_segment()) == member.last_segment()
-        }
+        ) => instance_class_and_chain_match(
+            fact,
+            syntactic_chain,
+            member,
+            |found_module| found_module == module,
+            export,
+        ),
         (
             IdentityConstraint::PackageModuleExport { module, export },
             SubjectConstraint::InstanceOf { .. },
-        ) => {
-            let FactPayload::Call { instance_class, .. } = &fact.payload else {
-                return false;
-            };
-            instance_class
-                .as_ref()
-                .is_some_and(|(found_module, found_export)| {
-                    module.matches(found_module) && found_export == export
-                })
-                && syntactic_chain.and_then(|s| s.last_segment()) == member.last_segment()
-        }
+        ) => instance_class_and_chain_match(
+            fact,
+            syntactic_chain,
+            member,
+            |found_module| module.matches(found_module),
+            export,
+        ),
         (IdentityConstraint::ModuleNamespace { module }, SubjectConstraint::Direct) => {
-            matches!(
-                module_member,
-                Some(SymbolMemberProvenance::ModuleNamespace {
-                    module: found_module, member: found_member
-                }) if found_module == module && member.eq_chain(found_member)
-            )
+            namespace_member_matches(module_member.as_ref(), member, |found_module| {
+                found_module == module
+            })
         }
         (IdentityConstraint::PackageModuleNamespace { module }, SubjectConstraint::Direct) => {
-            matches!(
-                module_member,
-                Some(SymbolMemberProvenance::ModuleNamespace {
-                    module: found_module, member: found_member
-                }) if module.matches(found_module) && member.eq_chain(found_member)
-            )
+            namespace_member_matches(module_member.as_ref(), member, |found_module| {
+                module.matches(found_module)
+            })
         }
         _ => false,
     }
+}
+
+fn instance_class_and_chain_match(
+    fact: &SemanticFact,
+    syntactic_chain: Option<&SymbolPath>,
+    member: &SymbolPath,
+    module_matches: impl FnOnce(&SmolStr) -> bool,
+    export: &SmolStr,
+) -> bool {
+    let FactPayload::Call { instance_class, .. } = &fact.payload else {
+        return false;
+    };
+    instance_class
+        .as_ref()
+        .is_some_and(|(found_module, found_export)| {
+            module_matches(found_module) && found_export == export
+        })
+        && syntactic_chain.and_then(|s| s.last_segment()) == member.last_segment()
+}
+
+fn namespace_member_matches(
+    module_member: Option<&SymbolMemberProvenance>,
+    member: &SymbolPath,
+    module_matches: impl FnOnce(&SmolStr) -> bool,
+) -> bool {
+    matches!(
+        module_member,
+        Some(SymbolMemberProvenance::ModuleNamespace {
+            module: found_module, member: found_member
+        }) if module_matches(found_module) && member.eq_chain(found_member)
+    )
 }
 
 impl MatcherEvaluator<'_> {
@@ -383,10 +396,8 @@ impl MatcherEvaluator<'_> {
         args: &[CallArgInfo],
         unwrap: Option<&CallUnwrap>,
     ) -> bool {
-        let linked_args: Vec<CallArgInfo> = args
-            .iter()
-            .map(|a| self.argument_with_overlay(a))
-            .collect();
+        let linked_args: Vec<CallArgInfo> =
+            args.iter().map(|a| self.argument_with_overlay(a)).collect();
         unwrap.map_or_else(
             || constraints_match(&clause.constraints, &linked_args, self.names),
             |unwrap| {
@@ -641,9 +652,13 @@ mod tests {
             },
         };
         assert_eq!(
-            MatcherEvaluator::new(&crate::analysis::name::NameTable::default(), Some(&identities), None)
-                .argument_with_overlay(&argument)
-                .static_string,
+            MatcherEvaluator::new(
+                &crate::analysis::name::NameTable::default(),
+                Some(&identities),
+                None
+            )
+            .argument_with_overlay(&argument)
+            .static_string,
             Some("https://example.test".into())
         );
     }

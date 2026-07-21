@@ -25,7 +25,8 @@ impl ProjectResolver {
     /// Build import and CommonJS resolvers under one project root.
     pub fn new(root: &Path, selection: &ProjectSelection, options: &ProjectLoadOptions) -> Self {
         let import = Resolver::new(Self::build_options(root, selection, options, false));
-        let require = import.clone_with_options(Self::build_options(root, selection, options, true));
+        let require =
+            import.clone_with_options(Self::build_options(root, selection, options, true));
         Self {
             root: root.to_path_buf(),
             options: options.clone(),

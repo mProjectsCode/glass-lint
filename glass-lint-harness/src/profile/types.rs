@@ -1,19 +1,13 @@
-use std::{
-    path::PathBuf,
-    sync::Arc,
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::Result;
-use glass_lint_core::{
-    AnalysisOperationCounts, AnalysisReport, Linter, ReportCompletion,
-};
+use glass_lint_core::{AnalysisOperationCounts, AnalysisReport, Linter, ReportCompletion};
 use glass_lint_project::ProjectPhaseTimings;
 
-use crate::profile::config::{
-    ProfileCorpusIdentity, ProfileWorkloadIdentity,
+use crate::profile::{
+    config::{ProfileCorpusIdentity, ProfileWorkloadIdentity},
+    metrics::{combined_digest, evidence_order_digest, report_operation_counts},
 };
-use crate::profile::metrics::{combined_digest, evidence_order_digest, report_operation_counts};
 
 #[derive(Clone, Debug)]
 pub struct ProfileWorkloadSummary {
