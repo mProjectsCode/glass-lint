@@ -8,8 +8,10 @@ mod catalog;
 mod findings;
 mod linter;
 mod ranges;
+mod selection;
 
 pub use catalog::{ProviderCatalogError, RuleCatalog};
-pub use linter::{
-    LintConfigError, Linter, LinterConfig, RuleBaseline, RuleOverride, RuleSelection, RuleState,
+pub use selection::{
+    LintConfigError, RuleBaseline, RuleOverride, RuleSelection, RuleState,
 };
+pub use linter::{Linter, LinterConfig};

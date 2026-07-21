@@ -38,14 +38,22 @@ impl RuleId {
     /// trailing separators are rejected; consecutive dots are rejected.
     fn valid_part(part: &str, allow_dot: bool) -> bool {
         !part.is_empty()
-            && part.chars().enumerate().all(|(index, character)| {
-                (index > 0 && character.is_ascii_digit())
-                    || character.is_ascii_lowercase()
-                    || character == '-'
-                    || character == '_'
-                    || (allow_dot && character == '.')
-            })
-            && !part.starts_with(['-', '_', '.'])
+            && Self::valid_characters(part, allow_dot)
+            && Self::valid_boundaries(part)
+    }
+
+    fn valid_characters(part: &str, allow_dot: bool) -> bool {
+        part.chars().enumerate().all(|(index, character)| {
+            (index > 0 && character.is_ascii_digit())
+                || character.is_ascii_lowercase()
+                || character == '-'
+                || character == '_'
+                || (allow_dot && character == '.')
+        })
+    }
+
+    fn valid_boundaries(part: &str) -> bool {
+        !part.starts_with(['-', '_', '.'])
             && !part.ends_with(['-', '_', '.'])
             && !part.contains("..")
     }

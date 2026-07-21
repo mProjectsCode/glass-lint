@@ -425,7 +425,6 @@ mod tests {
     use crate::{
         Environment,
         analysis::{
-            evidence::AnnotatedEvidence,
             facts::{CallArgInfo, FactStream, build::build_test_stream},
             lowering::SpanNormalizer,
             matching::{LinkedModuleIdentity, OccurrenceIndexes},
@@ -610,10 +609,8 @@ mod tests {
                 .iter()
                 .all(|item| !item.occurrences[0].span.is_empty())
         );
-        evidence[0].reverse();
-        let normalized =
-            AnnotatedEvidence::from_evidence(std::mem::take(&mut evidence[0]), usize::MAX)
-                .into_evidence();
+        let mut normalized = std::mem::take(&mut evidence[0]);
+        crate::analysis::evidence::normalize_evidence(&mut normalized, usize::MAX);
         assert_eq!(normalized.len(), 1);
         assert_eq!(normalized[0].count, 2);
         assert_eq!(normalized[0].occurrences.len(), 2);

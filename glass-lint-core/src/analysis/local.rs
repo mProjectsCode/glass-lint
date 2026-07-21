@@ -24,7 +24,6 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct LocatedSourceContext {
     pub(crate) path: crate::project::ProjectRelativePath,
-    pub(crate) text: Arc<str>,
     pub(crate) lines: Arc<crate::SourceLineIndex>,
 }
 
@@ -32,7 +31,6 @@ impl LocatedSourceContext {
     pub(crate) fn new(source: &crate::SourceFile) -> Self {
         Self {
             path: source.path.clone(),
-            text: Arc::from(source.source.as_str()),
             lines: Arc::new(crate::SourceLineIndex::new(&source.source)),
         }
     }
@@ -41,7 +39,7 @@ impl LocatedSourceContext {
         &self,
         span: crate::ByteRange,
     ) -> Result<crate::SourceRange, crate::InvalidSourceBoundary> {
-        self.lines.try_range(&self.text, span)
+        self.lines.try_range(span)
     }
 }
 
@@ -333,11 +331,9 @@ impl ProjectModule {
 
     /// Return this module's authored requests with source-qualified keys.
     pub(crate) fn authored_requests(&self) -> Vec<crate::ResolutionRequest> {
-        self.local.interface().authored_requests(
-            self.path(),
-            &self.source_context().lines,
-            &self.source_context().text,
-        )
+        self.local
+            .interface()
+            .authored_requests(self.path(), &self.source_context().lines)
     }
 }
 

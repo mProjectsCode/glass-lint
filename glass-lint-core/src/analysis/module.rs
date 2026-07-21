@@ -300,7 +300,6 @@ impl ModuleInterface {
         &self,
         importer: &str,
         lines: &crate::SourceLineIndex,
-        source: &str,
     ) -> Vec<ResolutionRequest> {
         self.requests
             .iter()
@@ -309,7 +308,7 @@ impl ModuleInterface {
                     key: ResolutionRequestKey {
                         importer: ProjectRelativePath::from_normalized(importer.to_string()),
                         kind: request.kind(),
-                        range: lines.try_range(source, request.span()).ok()?,
+                        range: lines.try_range(request.span()).ok()?,
                     },
                     request: request.specifier().to_string(),
                 })

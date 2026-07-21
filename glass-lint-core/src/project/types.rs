@@ -400,40 +400,41 @@ impl Diagnostic {
         Self::Project(diagnostic)
     }
 
+    fn inner(&self) -> (&str, &str, Option<&ProjectRelativePath>, Option<&SourceRange>) {
+        match self {
+            Self::Parse { path, diagnostic } => (
+                diagnostic.code.as_str(),
+                &diagnostic.message,
+                Some(path),
+                diagnostic.range.as_ref(),
+            ),
+            Self::Project(diagnostic) => (
+                diagnostic.code.as_str(),
+                &diagnostic.message,
+                diagnostic.location.as_ref().map(|loc| &loc.path),
+                diagnostic.location.as_ref().map(|loc| &loc.range),
+            ),
+        }
+    }
+
     #[must_use]
     pub fn code(&self) -> &str {
-        match self {
-            Self::Parse { diagnostic, .. } => diagnostic.code.as_str(),
-            Self::Project(diagnostic) => diagnostic.code.as_str(),
-        }
+        self.inner().0
     }
 
     #[must_use]
     pub fn message(&self) -> &str {
-        match self {
-            Self::Parse { diagnostic, .. } => &diagnostic.message,
-            Self::Project(diagnostic) => &diagnostic.message,
-        }
+        self.inner().1
     }
 
     #[must_use]
     pub fn path(&self) -> Option<&ProjectRelativePath> {
-        match self {
-            Self::Parse { path, .. } => Some(path),
-            Self::Project(diagnostic) => {
-                diagnostic.location.as_ref().map(|location| &location.path)
-            }
-        }
+        self.inner().2
     }
 
     #[must_use]
     pub fn range(&self) -> Option<&SourceRange> {
-        match self {
-            Self::Parse { diagnostic, .. } => diagnostic.range.as_ref(),
-            Self::Project(diagnostic) => {
-                diagnostic.location.as_ref().map(|location| &location.range)
-            }
-        }
+        self.inner().3
     }
 
     #[must_use]

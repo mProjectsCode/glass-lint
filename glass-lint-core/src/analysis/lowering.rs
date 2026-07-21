@@ -144,6 +144,53 @@ pub fn lower_program(
     )
 }
 
+fn check_facts_budget(
+    stream: &facts::FactStream,
+    resolver: &resolution::Resolver,
+    limits: &crate::AnalysisLimits,
+) -> Option<IncompleteReason> {
+    let name_exhausted = resolver.name_table_exhausted();
+    if stream.budget_exhausted()
+        || stream.path_exhausted()
+        || (resolver.value_arena_exhausted() && !name_exhausted)
+        || (!stream.is_structurally_valid() && !stream.name_exhausted())
+    {
+        Some(IncompleteReason::BudgetExhausted {
+            component: AnalysisComponent::Facts,
+            limit: limits.semantic_operations,
+            observed: Some(stream.facts().len()),
+        })
+    } else {
+        None
+    }
+}
+
+fn check_invalid_parser_span(stream: &facts::FactStream) -> Option<IncompleteReason> {
+    stream
+        .invalid_parser_span()
+        .then_some(IncompleteReason::InvalidParserSpan)
+}
+
+fn check_name_exhaustion(resolver: &resolution::Resolver) -> Option<IncompleteReason> {
+    resolver.name_exhaustion().map(|exhaustion| {
+        IncompleteReason::NameExhausted {
+            limit: exhaustion.limit,
+            attempted: exhaustion.attempted,
+        }
+    })
+}
+
+fn check_effects_budget(
+    effects: &FunctionEffects,
+    limits: &crate::AnalysisLimits,
+) -> Option<IncompleteReason> {
+    effects.budget_exhausted().then_some(IncompleteReason::BudgetExhausted {
+        component: AnalysisComponent::Effects,
+        limit: limits.effect_operations,
+        observed: Some(effects.operation_count()),
+    })
+}
+
 fn lower_program_with_name_limit(
     program: &Program,
     environment: &crate::Environment,
@@ -151,8 +198,6 @@ fn lower_program_with_name_limit(
     coordinates: &SpanNormalizer,
     name_limit: usize,
 ) -> SemanticArtifact {
-    // The lowering function owns the RefCell<NameTable> and passes a borrowed
-    // NameTableCtx to every phase. No Rc, no try_unwrap, no panic path.
     let name_table = RefCell::new(NameTable::with_max_entries(name_limit));
     let names = NameTableCtx(&name_table);
     let scopes = ScopeGraph::collect_with_environment(program, environment, names);
@@ -163,37 +208,17 @@ fn lower_program_with_name_limit(
 
     let (mut stream, interface) = builder.into_parts();
     let mut status = AnalysisStatus::default();
-    let name_exhausted = resolver.name_table_exhausted();
-    // Scope collection, resolution, value interning, and path projection are
-    // all local semantic work. Their bounded failures are intentionally
-    // aggregated under the Facts component so retained-prefix policy has one
-    // typed status boundary rather than several sentinel booleans.
-    if stream.budget_exhausted()
-        || stream.path_exhausted()
-        || (resolver.value_arena_exhausted() && !name_exhausted)
-        || (!stream.is_structurally_valid() && !stream.name_exhausted())
-    {
-        status.record(
-            StatusScope::Project,
-            IncompleteReason::BudgetExhausted {
-                component: AnalysisComponent::Facts,
-                limit: limits.semantic_operations,
-                observed: Some(stream.facts().len()),
-            },
-        );
+
+    if let Some(reason) = check_facts_budget(&stream, &resolver, limits) {
+        status.record(StatusScope::Project, reason);
     }
-    if stream.invalid_parser_span() {
-        status.record(StatusScope::Project, IncompleteReason::InvalidParserSpan);
+    if let Some(reason) = check_invalid_parser_span(&stream) {
+        status.record(StatusScope::Project, reason);
     }
-    if let Some(exhaustion) = resolver.name_exhaustion() {
-        status.record(
-            StatusScope::Project,
-            IncompleteReason::NameExhausted {
-                limit: exhaustion.limit,
-                attempted: exhaustion.attempted,
-            },
-        );
+    if let Some(reason) = check_name_exhaustion(&resolver) {
+        status.record(StatusScope::Project, reason);
     }
+
     let export_origins = interface
         .exports()
         .filter_map(|(_, export)| match export {
@@ -212,8 +237,6 @@ fn lower_program_with_name_limit(
         stream.mark_name_exhausted();
     }
 
-    // Release the resolver (and its NameTableCtx borrow) so the name_table
-    // can be taken out of its RefCell.
     drop(resolver);
     stream
         .freeze_names(name_table.into_inner())
@@ -221,15 +244,8 @@ fn lower_program_with_name_limit(
 
     let facts = SemanticFacts::from_lowering(stream, interface, environment);
     let effects = FunctionEffects::collect(facts.stream(), limits.effect_operations);
-    if effects.budget_exhausted() {
-        status.record(
-            StatusScope::Project,
-            IncompleteReason::BudgetExhausted {
-                component: AnalysisComponent::Effects,
-                limit: limits.effect_operations,
-                observed: Some(effects.operation_count()),
-            },
-        );
+    if let Some(reason) = check_effects_budget(&effects, limits) {
+        status.record(StatusScope::Project, reason);
     }
 
     SemanticArtifact::from_lowering(facts, export_origins, effects, status)

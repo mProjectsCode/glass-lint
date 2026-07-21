@@ -1,6 +1,6 @@
 //! Provider-neutral diagnostic and serialized report data types.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
@@ -216,7 +216,7 @@ impl<'de> Deserialize<'de> for Position {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceLineIndex {
     starts: Vec<usize>,
-    source_len: usize,
+    source: Arc<str>,
 }
 
 impl SourceLineIndex {
@@ -227,19 +227,19 @@ impl SourceLineIndex {
         starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
         Self {
             starts,
-            source_len: source.len(),
+            source: Arc::from(source),
         }
     }
 
     /// Convert a validated byte offset into a one-based display position.
-    fn position(&self, source: &str, offset: usize) -> Position {
+    fn position(&self, offset: usize) -> Position {
         let line = self
             .starts
             .partition_point(|start| *start <= offset)
             .saturating_sub(1);
         Position::new(
             line.try_into().unwrap_or(u32::MAX).saturating_add(1),
-            source[self.starts[line]..offset]
+            self.source[self.starts[line]..offset]
                 .chars()
                 .count()
                 .try_into()
@@ -251,10 +251,10 @@ impl SourceLineIndex {
 
     /// Convert a byte start and length through this source's cached index.
     #[must_use]
-    fn range(&self, source: &str, start: usize, length: usize) -> SourceRange {
+    fn range(&self, start: usize, length: usize) -> SourceRange {
         SourceRange::new(
-            self.position(source, start),
-            self.position(source, start.saturating_add(length)),
+            self.position(start),
+            self.position(start.saturating_add(length)),
         )
         .expect("ordered byte offsets produce ordered source positions")
     }
@@ -266,30 +266,23 @@ impl SourceLineIndex {
     ///
     /// let source = "éx";
     /// let index = SourceLineIndex::new(source);
-    /// let range = index
-    ///     .try_range(source, ByteRange::new(0, 2).unwrap())
-    ///     .unwrap();
+    /// let range = index.try_range(ByteRange::new(0, 2).unwrap()).unwrap();
     /// assert_eq!(range.start().line(), 1);
-    /// assert!(
-    ///     index
-    ///         .try_range(source, ByteRange::new(1, 2).unwrap())
-    ///         .is_err()
-    /// );
+    /// assert!(index.try_range(ByteRange::new(1, 2).unwrap()).is_err());
     /// ```
     pub fn try_range(
         &self,
-        source: &str,
         range: ByteRange,
     ) -> Result<SourceRange, InvalidSourceBoundary> {
         let start = usize::try_from(range.start).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
         let end = usize::try_from(range.end).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
-        if source.len() != self.source_len || end > source.len() {
+        if end > self.source.len() {
             return Err(InvalidSourceBoundary::OutOfBounds);
         }
-        if !source.is_char_boundary(start) || !source.is_char_boundary(end) {
+        if !self.source.is_char_boundary(start) || !self.source.is_char_boundary(end) {
             return Err(InvalidSourceBoundary::NotCharacterBoundary);
         }
-        Ok(self.range(source, start, end - start))
+        Ok(self.range(start, end - start))
     }
 }
 
@@ -386,12 +379,12 @@ mod tests {
     fn line_index_converts_unicode_crlf_and_eof_positions() {
         let source = "é\r\nfetch();\n";
         let index = SourceLineIndex::new(source);
-        let range = index.range(source, 4, 5);
+        let range = index.range(4, 5);
         assert_eq!(range.start.line, 2);
         assert_eq!(range.start.column, 1);
         assert_eq!(range.end.line, 2);
         assert_eq!(range.end.column, 6);
-        let eof = index.position(source, source.len());
+        let eof = index.position(source.len());
         assert_eq!((eof.line, eof.column), (3, 1));
     }
 
@@ -400,16 +393,16 @@ mod tests {
         let source = "aé\r\n🙂z";
         let index = SourceLineIndex::new(source);
         let range = index
-            .try_range(source, ByteRange::new(5, 10).unwrap())
+            .try_range(ByteRange::new(5, 10).unwrap())
             .unwrap();
         assert_eq!((range.start.line, range.start.column), (2, 1));
         assert_eq!((range.end.line, range.end.column), (2, 3));
         assert_eq!(
-            index.try_range(source, ByteRange::new(2, 3).unwrap()),
+            index.try_range(ByteRange::new(2, 3).unwrap()),
             Err(InvalidSourceBoundary::NotCharacterBoundary)
         );
         assert_eq!(
-            index.try_range(source, ByteRange::new(0, 99).unwrap()),
+            index.try_range(ByteRange::new(0, 99).unwrap()),
             Err(InvalidSourceBoundary::OutOfBounds)
         );
     }
@@ -419,19 +412,19 @@ mod tests {
         let source = "last";
         let index = SourceLineIndex::new(source);
         let first = index
-            .try_range(source, ByteRange::new(0, 1).unwrap())
+            .try_range(ByteRange::new(0, 1).unwrap())
             .unwrap();
         assert_eq!((first.start.line, first.start.column), (1, 1));
         let last = index
-            .try_range(source, ByteRange::new(3, 4).unwrap())
+            .try_range(ByteRange::new(3, 4).unwrap())
             .unwrap();
         assert_eq!((last.end.line, last.end.column), (1, 5));
         let eof = index
-            .try_range(source, ByteRange::new(4, 4).unwrap())
+            .try_range(ByteRange::new(4, 4).unwrap())
             .unwrap();
         assert_eq!((eof.start.line, eof.start.column), (1, 5));
         let empty = SourceLineIndex::new("");
-        let range = empty.try_range("", ByteRange::empty()).unwrap();
+        let range = empty.try_range(ByteRange::empty()).unwrap();
         assert_eq!((range.start.line, range.start.column), (1, 1));
     }
 
@@ -441,7 +434,6 @@ mod tests {
         let index = SourceLineIndex::new(source);
         assert_eq!(
             index.try_range(
-                source,
                 ByteRange::new(1, u32::try_from(source.len()).unwrap().saturating_add(1)).unwrap(),
             ),
             Err(InvalidSourceBoundary::OutOfBounds)

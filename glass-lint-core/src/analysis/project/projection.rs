@@ -110,10 +110,10 @@ impl ProjectSemanticModel {
     /// `is_complete` after classification continue to see consistent values
     /// without requiring a full refactor of every call site.  New callers
     /// should prefer to consume the `ProjectionOutcome` directly.
-    pub(crate) fn merge_projection_outcome(&self, outcome: &ProjectionOutcome) {
+    pub(crate) fn merge_projection_outcome(&mut self, outcome: &ProjectionOutcome) {
         if outcome.flow_exhausted {
             self.flow_budget.mark_exhausted();
-            self.status.borrow_mut().record(
+            self.status.record(
                 StatusScope::Project,
                 IncompleteReason::BudgetExhausted {
                     component: AnalysisComponent::Flow,
@@ -162,6 +162,7 @@ impl ProjectMatcherModel<'_> {
             evidence.extend_from_slice(projected);
         }
 
-        evidence::AnnotatedEvidence::from_evidence(evidence, evidence_limit).into_evidence()
+        evidence::normalize_evidence(&mut evidence, evidence_limit);
+        evidence
     }
 }

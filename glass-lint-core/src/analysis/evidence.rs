@@ -1,172 +1,87 @@
 //! Deterministic evidence annotation, bounding, grouping, and sorting.
 
-use std::collections::{BTreeMap, btree_map::Entry};
+use std::collections::BTreeMap;
 
 #[cfg(test)]
 use crate::api::rule::Rule;
 use crate::{
-    ByteRange,
-    analysis::facts::FactId,
     api::classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},
 };
 
-#[derive(Debug, PartialEq, Eq)]
-/// One rule match retained until evidence is bounded and regrouped.
-pub(super) struct EvidenceOccurrence {
-    /// Fact identity used as the primary deterministic ordering key.
-    event: Option<FactId>,
-    /// Source location, including synthetic locations when no fact exists.
-    span: ByteRange,
-    /// Semantic match category shown in the public evidence.
-    kind: MatchKind,
-    /// Interned `(kind, symbol)` group used to merge equivalent entries.
-    symbol_group: usize,
-}
+/// Sort, deduplicate, bound, and normalize evidence occurrences in place.
+///
+/// Within each `(kind, symbol)` group, occurrences are sorted by source
+/// location, deduplicated, and truncated to `limit`. The `count` field
+/// retains the original total (not the bounded count) so callers can report
+/// how many events were found even when only a subset is shown.
+pub(super) fn normalize_evidence(
+    evidence: &mut Vec<ClassificationEvidence>,
+    limit: usize,
+) {
+    let mut all = Vec::new();
+    let mut total_counts = BTreeMap::<(MatchKind, String), usize>::new();
+    let mut related_map = BTreeMap::<(MatchKind, String), Vec<RelatedClassificationEvidence>>::new();
 
-fn evidence_order(item: &EvidenceOccurrence) -> (u32, u32, u32, MatchKind, usize) {
-    (
-        item.span.start(),
-        item.span.end(),
-        item.event.map_or(u32::MAX, |event| event.0),
-        item.kind,
-        item.symbol_group,
-    )
-}
-
-/// Intermediate evidence representation that separates sorting, bounding, and
-/// symbol-grouping from the public grouped shape. Related evidence is preserved
-/// by symbol group so cross-module events remain attached to their primary.
-pub(super) struct AnnotatedEvidence {
-    /// Occurrences before final sorting, deduplication, and bounding.
-    occurrences: Vec<EvidenceOccurrence>,
-    /// Symbols indexed by the compact group IDs in `occurrences`.
-    symbols: Vec<String>,
-    /// Related evidence retained for each symbol group.
-    related: BTreeMap<usize, Vec<RelatedClassificationEvidence>>,
-    /// Total count of source events per symbol group, tracked independently
-    /// from the bounded occurrence list.
-    total_counts: BTreeMap<usize, usize>,
-    /// Set when occurrences were truncated to the evidence limit.
-    evidence_truncated: bool,
-}
-
-impl AnnotatedEvidence {
-    /// Convert rule-local evidence into sortable occurrences while retaining
-    /// the symbol table needed to reconstruct grouped output later.
-    pub(super) fn from_evidence(evidence: Vec<ClassificationEvidence>, limit: usize) -> Self {
-        let mut symbols = Vec::with_capacity(evidence.len());
-        let mut groups = BTreeMap::<(MatchKind, String), usize>::new();
-        let mut raw_occurrences = Vec::new();
-        let mut related = BTreeMap::new();
-        let mut total_counts = BTreeMap::new();
-        for evidence in evidence {
-            let ClassificationEvidence {
-                kind,
-                symbol,
-                occurrences: source_occurrences,
-                related: evidence_related,
-                ..
-            } = evidence;
-            let symbol_group = match groups.entry((kind, symbol.clone())) {
-                Entry::Occupied(group) => *group.get(),
-                Entry::Vacant(entry) => {
-                    let group = symbols.len();
-                    entry.insert(group);
-                    symbols.push(symbol);
-                    group
-                }
-            };
-            *total_counts.entry(symbol_group).or_default() += evidence.count as usize;
-            related
-                .entry(symbol_group)
-                .or_insert_with(Vec::new)
-                .extend(evidence_related);
-            for occurrence in source_occurrences
-                .into_iter()
-                .filter(|occurrence| !occurrence.span.is_empty())
-            {
-                raw_occurrences.push(EvidenceOccurrence {
-                    event: occurrence.fact.map(FactId),
-                    span: occurrence.span,
-                    kind,
-                    symbol_group,
-                });
+    for item in evidence.drain(..) {
+        let key = (item.kind, item.symbol.clone());
+        *total_counts.entry(key.clone()).or_default() += item.count as usize;
+        related_map.entry(key.clone()).or_default().extend(item.related);
+        for occurrence in item.occurrences {
+            if !occurrence.span.is_empty() {
+                all.push((key.clone(), occurrence));
             }
         }
-        raw_occurrences.sort_by_key(evidence_order);
-        let mut occurrences = Vec::with_capacity(raw_occurrences.len().min(limit));
-        let mut evidence_truncated = false;
-        for occurrence in raw_occurrences {
-            if occurrences.last().is_some_and(|last| last == &occurrence) {
-                continue;
+    }
+
+    all.sort_by_key(|(key, occurrence)| {
+        (
+            key.0,
+            occurrence.span.start(),
+            occurrence.span.end(),
+            occurrence.fact.unwrap_or(u32::MAX),
+        )
+    });
+    all.dedup();
+
+    let mut truncated = false;
+    let mut grouped: BTreeMap<(MatchKind, String), Vec<_>> = BTreeMap::new();
+    for (key, occurrence) in all {
+        if grouped.len() < limit || grouped.contains_key(&key) {
+            let entry = grouped.entry(key.clone()).or_default();
+            if entry.len() < limit {
+                entry.push(occurrence);
+            } else {
+                truncated = true;
             }
-            if occurrences.len() >= limit {
-                evidence_truncated = true;
-                break;
-            }
-            occurrences.push(occurrence);
+        } else {
+            truncated = true;
         }
-        Self {
+    }
+
+    for ((kind, ref symbol), occurrences) in grouped {
+        let total = total_counts.get(&(kind, symbol.clone())).copied().unwrap_or(occurrences.len());
+        evidence.push(ClassificationEvidence {
+            kind,
+            symbol: symbol.clone(),
+            count: u32::try_from(total).unwrap_or(u32::MAX),
+            evidence_truncated: truncated,
             occurrences,
-            symbols,
-            related,
-            total_counts,
-            evidence_truncated,
-        }
-    }
-
-    /// Sort, bound, deduplicate, and regroup occurrences into public evidence.
-    pub(super) fn into_evidence(self) -> Vec<ClassificationEvidence> {
-        let mut grouped = BTreeMap::<(MatchKind, usize), Vec<(Option<FactId>, ByteRange)>>::new();
-        for occurrence in &self.occurrences {
-            grouped
-                .entry((occurrence.kind, occurrence.symbol_group))
-                .or_default()
-                .push((occurrence.event, occurrence.span));
-        }
-        let mut normalized = grouped
-            .into_iter()
-            .map(
-                |((kind, symbol_group), occurrences)| ClassificationEvidence {
-                    kind,
-                    symbol: self.symbols[symbol_group].clone(),
-                    count: u32::try_from(
-                        self.total_counts
-                            .get(&symbol_group)
-                            .copied()
-                            .unwrap_or(occurrences.len()),
-                    )
-                    .unwrap_or(u32::MAX),
-                    evidence_truncated: self.evidence_truncated,
-                    occurrences: occurrences
-                        .iter()
-                        .map(|(event, span)| {
-                            crate::api::classification::ClassificationEvidenceOccurrence {
-                                span: *span,
-                                fact: event.map(|event| event.0),
-                            }
-                        })
-                        .collect(),
-                    related: self.related.get(&symbol_group).cloned().unwrap_or_default(),
-                },
-            )
-            .collect::<Vec<_>>();
-        normalized.sort_by_key(|item| {
-            (
-                item.occurrences
-                    .first()
-                    .map(|occurrence| (occurrence.span.start(), occurrence.span.end())),
-                item.kind,
-                item.symbol.clone(),
-            )
+            related: related_map.remove(&(kind, symbol.clone())).unwrap_or_default(),
         });
-        normalized
     }
+    evidence.sort_by_key(|item| {
+        (
+            item.occurrences.first().map(|o| (o.span.start(), o.span.end())),
+            item.kind,
+            item.symbol.clone(),
+        )
+    });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ByteRange;
 
     fn evidence(symbol: &str, spans: &[u32]) -> ClassificationEvidence {
         ClassificationEvidence {
@@ -189,36 +104,30 @@ mod tests {
 
     #[test]
     fn symbol_groups_preserve_order_and_merge_only_equal_symbols() {
-        let normalized = AnnotatedEvidence::from_evidence(
-            vec![
-                evidence("request", &[2, 4]),
-                evidence("request", &[6]),
-                evidence("other", &[8]),
-            ],
-            Rule::EVIDENCE_LIMIT,
-        )
-        .into_evidence();
-        assert_eq!(normalized.len(), 2);
-        assert_eq!(normalized[0].symbol, "request");
-        assert_eq!(normalized[0].count, 3);
-        assert_eq!(normalized[1].symbol, "other");
-        assert_eq!(normalized[1].occurrences[0].fact, Some(8));
+        let mut evidence = vec![
+            evidence("request", &[2, 4]),
+            evidence("request", &[6]),
+            evidence("other", &[8]),
+        ];
+        normalize_evidence(&mut evidence, Rule::EVIDENCE_LIMIT);
+        assert_eq!(evidence.len(), 2);
+        assert_eq!(evidence[0].symbol, "request");
+        assert_eq!(evidence[0].count, 3);
+        assert_eq!(evidence[1].symbol, "other");
+        assert_eq!(evidence[1].occurrences[0].fact, Some(8));
     }
 
     #[test]
     fn truncation_preserves_exact_count_and_marker() {
-        let normalized = AnnotatedEvidence::from_evidence(
-            vec![evidence(
-                "request",
-                &(0..(Rule::EVIDENCE_LIMIT + 4))
-                    .map(|value| u32::try_from(value).unwrap() + 2)
-                    .collect::<Vec<_>>(),
-            )],
-            Rule::EVIDENCE_LIMIT,
-        )
-        .into_evidence();
-        assert_eq!(normalized[0].count as usize, Rule::EVIDENCE_LIMIT + 4);
-        assert_eq!(normalized[0].occurrences.len(), Rule::EVIDENCE_LIMIT);
-        assert!(normalized[0].evidence_truncated);
+        let mut evidence = vec![evidence(
+            "request",
+            &(0..(Rule::EVIDENCE_LIMIT + 4))
+                .map(|value| u32::try_from(value).unwrap() + 2)
+                .collect::<Vec<_>>(),
+        )];
+        normalize_evidence(&mut evidence, Rule::EVIDENCE_LIMIT);
+        assert_eq!(evidence[0].count as usize, Rule::EVIDENCE_LIMIT + 4);
+        assert_eq!(evidence[0].occurrences.len(), Rule::EVIDENCE_LIMIT);
+        assert!(evidence[0].evidence_truncated);
     }
 }

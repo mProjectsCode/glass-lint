@@ -270,7 +270,12 @@ impl OccurrenceIndexes {
                         continue;
                     };
                     overlay.masked.insert(key.clone());
-                    target_entry(&identity, occurrences, target, global_target.as_deref_mut());
+                    ModuleOccurrenceOverlay::target_entry(
+                        &identity,
+                        occurrences,
+                        target,
+                        global_target.as_deref_mut(),
+                    );
                 }
             };
         remap_occurrences(
@@ -300,29 +305,31 @@ impl OccurrenceIndexes {
     }
 }
 
-fn target_entry(
-    identity: &LinkedModuleIdentity,
-    occurrences: &[Occurrence],
-    target: &mut ModuleOccurrences,
-    global_target: Option<&mut Occurrences>,
-) {
-    match identity {
-        LinkedModuleIdentity::External { module, export } => {
-            let key = ModuleExportKey::new(module.clone(), export.clone());
-            for occurrence in occurrences {
-                target.push_occurrence(key.clone(), *occurrence);
-            }
-        }
-        LinkedModuleIdentity::Global { name } => {
-            if let Some(global_target) = global_target {
+impl ModuleOccurrenceOverlay {
+    fn target_entry(
+        identity: &LinkedModuleIdentity,
+        occurrences: &[Occurrence],
+        target: &mut ModuleOccurrences,
+        global_target: Option<&mut Occurrences>,
+    ) {
+        match identity {
+            LinkedModuleIdentity::External { module, export } => {
+                let key = ModuleExportKey::new(module.clone(), export.clone());
                 for occurrence in occurrences {
-                    global_target.push_occurrence(name.clone(), *occurrence);
+                    target.push_occurrence(key.clone(), *occurrence);
                 }
             }
+            LinkedModuleIdentity::Global { name } => {
+                if let Some(global_target) = global_target {
+                    for occurrence in occurrences {
+                        global_target.push_occurrence(name.clone(), *occurrence);
+                    }
+                }
+            }
+            LinkedModuleIdentity::Qualified { .. }
+            | LinkedModuleIdentity::StaticString { .. }
+            | LinkedModuleIdentity::Unknown => {}
         }
-        LinkedModuleIdentity::Qualified { .. }
-        | LinkedModuleIdentity::StaticString { .. }
-        | LinkedModuleIdentity::Unknown => {}
     }
 }
 

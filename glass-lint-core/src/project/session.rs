@@ -28,21 +28,28 @@ trait LocalJobExecutor {
     );
 }
 
+#[derive(Clone, Copy, Debug)]
+enum ExecutionEvent {
+    Submitted,
+    Started,
+    Finished,
+    Merged,
+    ParseAttempted,
+    LowerAttempted,
+    CacheHit,
+    CacheMiss,
+    CacheInserted,
+    CacheEvicted,
+}
+
 trait ExecutionObserver: Send + Sync {
-    fn submitted(&self) {}
-    fn started(&self) {}
-    fn finished(&self) {}
-    fn merged(&self) {}
-    fn parse_attempted(&self) {}
-    fn lower_attempted(&self) {}
-    fn cache_hit(&self) {}
-    fn cache_miss(&self) {}
-    fn cache_inserted(&self) {}
-    fn cache_evicted(&self) {}
+    fn observe(&self, event: ExecutionEvent);
 }
 
 struct NoopExecutionObserver;
-impl ExecutionObserver for NoopExecutionObserver {}
+impl ExecutionObserver for NoopExecutionObserver {
+    fn observe(&self, _event: ExecutionEvent) {}
+}
 
 #[cfg(test)]
 pub(super) struct CountingExecutionObserver {
@@ -100,46 +107,41 @@ impl CountingExecutionObserver {
 
 #[cfg(test)]
 impl ExecutionObserver for CountingExecutionObserver {
-    fn submitted(&self) {
-        let value = self.outstanding.fetch_add(1, Ordering::SeqCst) + 1;
-        Self::peak(&self.peak_outstanding, value);
-    }
-
-    fn started(&self) {
-        let value = self.active.fetch_add(1, Ordering::SeqCst) + 1;
-        Self::peak(&self.peak_active, value);
-    }
-
-    fn finished(&self) {
-        self.active.fetch_sub(1, Ordering::SeqCst);
-    }
-
-    fn merged(&self) {
-        self.outstanding.fetch_sub(1, Ordering::SeqCst);
-    }
-
-    fn parse_attempted(&self) {
-        self.parse_attempts.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn lower_attempted(&self) {
-        self.lower_attempts.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn cache_hit(&self) {
-        self.cache_hits.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn cache_miss(&self) {
-        self.cache_misses.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn cache_inserted(&self) {
-        self.cache_inserts.fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn cache_evicted(&self) {
-        self.cache_evictions.fetch_add(1, Ordering::SeqCst);
+    fn observe(&self, event: ExecutionEvent) {
+        match event {
+            ExecutionEvent::Submitted => {
+                let value = self.outstanding.fetch_add(1, Ordering::SeqCst) + 1;
+                Self::peak(&self.peak_outstanding, value);
+            }
+            ExecutionEvent::Started => {
+                let value = self.active.fetch_add(1, Ordering::SeqCst) + 1;
+                Self::peak(&self.peak_active, value);
+            }
+            ExecutionEvent::Finished => {
+                self.active.fetch_sub(1, Ordering::SeqCst);
+            }
+            ExecutionEvent::Merged => {
+                self.outstanding.fetch_sub(1, Ordering::SeqCst);
+            }
+            ExecutionEvent::ParseAttempted => {
+                self.parse_attempts.fetch_add(1, Ordering::SeqCst);
+            }
+            ExecutionEvent::LowerAttempted => {
+                self.lower_attempts.fetch_add(1, Ordering::SeqCst);
+            }
+            ExecutionEvent::CacheHit => {
+                self.cache_hits.fetch_add(1, Ordering::SeqCst);
+            }
+            ExecutionEvent::CacheMiss => {
+                self.cache_misses.fetch_add(1, Ordering::SeqCst);
+            }
+            ExecutionEvent::CacheInserted => {
+                self.cache_inserts.fetch_add(1, Ordering::SeqCst);
+            }
+            ExecutionEvent::CacheEvicted => {
+                self.cache_evictions.fetch_add(1, Ordering::SeqCst);
+            }
+        }
     }
 }
 
@@ -168,7 +170,7 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
         let bound = outstanding_job_bound(worker_limit);
         for batch in jobs.chunks(bound) {
             for _ in batch {
-                observer.submitted();
+                observer.observe(ExecutionEvent::Submitted);
             }
             let batch_results = std::thread::scope(|scope| {
                 let mut handles = Vec::new();
@@ -181,12 +183,12 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
                                 source: job.source.clone(),
                                 key: job.key.clone(),
                                 result: {
-                                    observer.started();
-                                    observer.parse_attempted();
-                                    observer.lower_attempted();
+                                    observer.observe(ExecutionEvent::Started);
+                                    observer.observe(ExecutionEvent::ParseAttempted);
+                                    observer.observe(ExecutionEvent::LowerAttempted);
                                     let result = crate::analysis::lower_source(linter, &job.source)
                                         .map(|ls| ls.semantic);
-                                    observer.finished();
+                                    observer.observe(ExecutionEvent::Finished);
                                     result
                                 },
                             })
@@ -237,12 +239,12 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
         };
         for index in indexes {
             let job = jobs[index].take().expect("release index is unique");
-            observer.submitted();
-            observer.started();
-            observer.parse_attempted();
-            observer.lower_attempted();
+            observer.observe(ExecutionEvent::Submitted);
+            observer.observe(ExecutionEvent::Started);
+            observer.observe(ExecutionEvent::ParseAttempted);
+            observer.observe(ExecutionEvent::LowerAttempted);
             let result = crate::analysis::lower_source(linter, &job.source).map(|ls| ls.semantic);
-            observer.finished();
+            observer.observe(ExecutionEvent::Finished);
             release(LocalJobResult {
                 path: job.path,
                 source: job.source,
@@ -276,11 +278,9 @@ impl AnalysisArtifacts {
         lowered: LoweredSource,
     ) -> Vec<ResolutionRequest> {
         let local = LocalArtifact::new(lowered.source.clone(), lowered.semantic);
-        let requests = local.interface().authored_requests(
-            path,
-            &local.source_context().lines,
-            &local.source_context().text,
-        );
+        let requests = local
+            .interface()
+            .authored_requests(path, &local.source_context().lines);
         for request in &requests {
             self.authored_requests
                 .insert(request.key.clone(), request.clone());
@@ -319,9 +319,9 @@ fn insert_and_notify(
             semantic: Arc::clone(semantic),
         },
     );
-    observer.cache_inserted();
+    observer.observe(ExecutionEvent::CacheInserted);
     if evicted {
-        observer.cache_evicted();
+        observer.observe(ExecutionEvent::CacheEvicted);
     }
 }
 
@@ -400,11 +400,11 @@ impl<'a> AnalysisSession<'a> {
         let key = self.artifact_fingerprint(source);
         self.artifact_cache.get(&key).map_or_else(
             || {
-                observer.cache_miss();
+                observer.observe(ExecutionEvent::CacheMiss);
                 CacheLookup::Miss(key)
             },
             |cached| {
-                observer.cache_hit();
+                observer.observe(ExecutionEvent::CacheHit);
                 CacheLookup::Hit(cached_lowered_source(source, &cached))
             },
         )
@@ -456,8 +456,8 @@ impl<'a> AnalysisSession<'a> {
         let lowered = match self.check_cache(source, observer) {
             CacheLookup::Hit(lowered) => lowered,
             CacheLookup::Miss(key) => {
-                observer.parse_attempted();
-                observer.lower_attempted();
+                observer.observe(ExecutionEvent::ParseAttempted);
+                observer.observe(ExecutionEvent::LowerAttempted);
                 let lowered = match crate::analysis::lower_source(self.linter, source) {
                     Ok(lowered) => lowered,
                     Err(error) => {
@@ -536,16 +536,7 @@ impl<'a> AnalysisSession<'a> {
         let mut release = |result: LocalJobResult| {
             match result.result {
                 Ok(artifact) => {
-                    let evicted = artifact_cache.insert(
-                        result.key,
-                        SharedSemanticArtifact {
-                            semantic: Arc::clone(&artifact),
-                        },
-                    );
-                    observer.cache_inserted();
-                    if evicted {
-                        observer.cache_evicted();
-                    }
+                    insert_and_notify(&artifact_cache, result.key, &artifact, observer);
                     requests.extend(artifacts.record_lowered(
                         &result.path,
                         LoweredSource {
@@ -558,7 +549,7 @@ impl<'a> AnalysisSession<'a> {
                     artifacts.record_parse_failure(result.path, error);
                 }
             }
-            observer.merged();
+            observer.observe(ExecutionEvent::Merged);
         };
         executor.execute(uncached, worker_count, self.linter, observer, &mut release);
         requests.sort_by(|left, right| {

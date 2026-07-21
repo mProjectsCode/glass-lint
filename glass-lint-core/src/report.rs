@@ -71,9 +71,220 @@ impl<'a> PrettyReports<'a> {
     pub fn new(files: &'a [PrettyFile<'a>], options: PrettyOptions) -> Self {
         Self { files, options }
     }
+
+    fn write_files(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let wrote_group = self.write_rule_groups(f)?;
+        self.write_parse_diagnostics(wrote_group, f)
+    }
+
+    fn write_rule_groups(&self, f: &mut fmt::Formatter<'_>) -> Result<bool, fmt::Error> {
+        let mut groups = BTreeMap::new();
+        for file in self.files {
+            for finding in &file.report.findings {
+                let entries = groups.entry(&finding.rule_id).or_insert_with(Vec::new);
+                if finding.evidence.is_empty() {
+                    entries.push((file, finding, None));
+                } else {
+                    entries.extend(
+                        finding
+                            .evidence
+                            .iter()
+                            .map(|evidence| (file, finding, Some(evidence))),
+                    );
+                }
+            }
+        }
+
+        let mut wrote_group = false;
+        for entries in groups.values_mut() {
+            entries.sort_by(|left, right| {
+                let left_range = left
+                    .2
+                    .and_then(|evidence| evidence.location.as_ref())
+                    .map_or(&left.1.location.range, |location| &location.range);
+                let right_range = right
+                    .2
+                    .and_then(|evidence| evidence.location.as_ref())
+                    .map_or(&right.1.location.range, |location| &location.range);
+                (
+                    left.0.filename,
+                    left_range.start().line(),
+                    left_range.start().column(),
+                    left_range.end().line(),
+                    left_range.end().column(),
+                )
+                    .cmp(&(
+                        right.0.filename,
+                        right_range.start().line(),
+                        right_range.start().column(),
+                        right_range.end().line(),
+                        right_range.end().column(),
+                    ))
+            });
+            if wrote_group {
+                writeln!(f)?;
+            }
+            wrote_group = true;
+            let finding = entries[0].1;
+            writeln!(
+                f,
+                "{}[{}] {}",
+                PrettyReport::style(
+                    self.options.color,
+                    match finding.severity {
+                        crate::Severity::Info => Style::new().green(),
+                        crate::Severity::Warning => Style::new().yellow(),
+                        crate::Severity::Error => Style::new().red(),
+                    },
+                    finding.severity.to_string(),
+                ),
+                PrettyReport::style(
+                    self.options.color,
+                    Style::new().cyan(),
+                    finding.rule_id.to_string(),
+                ),
+                visible_text(&finding.message)
+            )?;
+
+            for (file, finding, evidence) in entries {
+                let range = evidence
+                    .and_then(|evidence| evidence.location.as_ref())
+                    .map_or(&finding.location.range, |location| &location.range);
+
+                let message = format!(
+                    "  {}:{}:{} - {}",
+                    visible_text(file.filename),
+                    range.start().line(),
+                    range.start().column(),
+                    evidence.map_or_else(
+                        || "match".to_string(),
+                        |evidence| format!("evidence: {}", visible_text(&evidence.message)),
+                    ),
+                );
+
+                writeln!(
+                    f,
+                    "{}",
+                    PrettyReport::style(self.options.color, Style::new().dim(), message)
+                )?;
+                if evidence.is_none() || self.options.show_evidence_source {
+                    PrettyReport::new(file.report, file.filename, file.source, self.options)
+                        .excerpt(range, 4, f)?;
+                }
+            }
+        }
+
+        Ok(wrote_group)
+    }
+
+    fn write_parse_diagnostics(
+        &self,
+        leading_blank: bool,
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        let mut diagnostics = self
+            .files
+            .iter()
+            .flat_map(|file| {
+                file.report
+                    .diagnostics
+                    .iter()
+                    .filter_map(move |diagnostic| {
+                        let crate::Diagnostic::Parse { diagnostic, .. } = diagnostic else {
+                            return None;
+                        };
+                        Some((file, diagnostic))
+                    })
+            })
+            .collect::<Vec<_>>();
+        diagnostics.sort_by_key(|(file, diagnostic)| {
+            (
+                file.filename,
+                diagnostic.range.as_ref().map(|range| {
+                    (
+                        range.start().line(),
+                        range.start().column(),
+                        range.end().line(),
+                        range.end().column(),
+                    )
+                }),
+                diagnostic.code.as_str(),
+            )
+        });
+        if !diagnostics.is_empty() {
+            if leading_blank {
+                writeln!(f)?;
+            }
+            writeln!(f, "parse diagnostics")?;
+        }
+        for (file, diagnostic) in diagnostics {
+            if let Some(range) = &diagnostic.range {
+                writeln!(
+                    f,
+                    "  {}:{}:{}: {}[{}]: {}",
+                    visible_text(file.filename),
+                    range.start().line(),
+                    range.start().column(),
+                    PrettyReport::style(self.options.color, Style::new().red(), "parse"),
+                    diagnostic.code,
+                    visible_text(&diagnostic.message)
+                )?;
+            } else {
+                writeln!(
+                    f,
+                    "  {}: {}[{}]: {}",
+                    visible_text(file.filename),
+                    PrettyReport::style(self.options.color, Style::new().red(), "parse"),
+                    diagnostic.code,
+                    visible_text(&diagnostic.message)
+                )?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a> PrettyReport<'a> {
+    /// Select a visible window of cells for the excerpt display, returning
+    /// the window range and whether leading/trailing ellipsis markers are
+    /// needed.
+    fn select_window(
+        cells: &[Cell],
+        total_width: usize,
+        start: usize,
+        width: usize,
+    ) -> (usize, usize, bool, bool) {
+        if total_width <= width {
+            return (0, cells.len(), false, false);
+        }
+        let marker = 3;
+        let content_width = width.saturating_sub(marker * 2).max(1);
+        let center = cells
+            .iter()
+            .position(|cell| cell.start + cell.width > start)
+            .unwrap_or(cells.len());
+        let mut first = center.saturating_sub(content_width / 2);
+        let mut last = first;
+        let mut used = 0;
+        while last < cells.len() && used + cells[last].width <= content_width {
+            used += cells[last].width;
+            last += 1;
+        }
+        while first > 0 && used + cells[first - 1].width <= content_width {
+            first -= 1;
+            used += cells[first].width;
+        }
+        while first < last && cells[first].start + cells[first].width <= start {
+            first += 1;
+        }
+        if first == last && !cells.is_empty() {
+            first = center.min(cells.len() - 1);
+            last = first + 1;
+        }
+        (first, last, first > 0, last < cells.len())
+    }
+
     /// Construct a renderer for one report and source file.
     pub fn new(
         report: &'a FileReport,
@@ -127,7 +338,7 @@ impl<'a> PrettyReport<'a> {
         let start = range.start().column().saturating_sub(1) as usize;
         let end = (range.end().column().saturating_sub(1) as usize).max(start + 1);
         let (window_start, window_end, leading, trailing) =
-            select_window(&cells, total_width, start, width);
+            Self::select_window(&cells, total_width, start, width);
 
         let mut text = String::new();
         if leading {
@@ -169,42 +380,6 @@ struct Cell {
     width: usize,
 }
 
-fn select_window(
-    cells: &[Cell],
-    total_width: usize,
-    start: usize,
-    width: usize,
-) -> (usize, usize, bool, bool) {
-    if total_width <= width {
-        return (0, cells.len(), false, false);
-    }
-    let marker = 3;
-    let content_width = width.saturating_sub(marker * 2).max(1);
-    let center = cells
-        .iter()
-        .position(|cell| cell.start + cell.width > start)
-        .unwrap_or(cells.len());
-    let mut first = center.saturating_sub(content_width / 2);
-    let mut last = first;
-    let mut used = 0;
-    while last < cells.len() && used + cells[last].width <= content_width {
-        used += cells[last].width;
-        last += 1;
-    }
-    while first > 0 && used + cells[first - 1].width <= content_width {
-        first -= 1;
-        used += cells[first].width;
-    }
-    while first < last && cells[first].start + cells[first].width <= start {
-        first += 1;
-    }
-    if first == last && !cells.is_empty() {
-        first = center.min(cells.len() - 1);
-        last = first + 1;
-    }
-    (first, last, first > 0, last < cells.len())
-}
-
 fn display_width(ch: char, column: usize) -> usize {
     if ch == '\t' {
         4 - (column % 4)
@@ -234,194 +409,14 @@ pub fn visible_text(value: &str) -> String {
 impl Display for PrettyReport<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let file = PrettyFile::new(self.report, self.filename, self.source);
-        write_files(&[file], self.options, f)
+        PrettyReports::new(&[file], self.options).write_files(f)
     }
 }
 
 impl Display for PrettyReports<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_files(self.files, self.options, f)
+        self.write_files(f)
     }
-}
-
-fn write_files(
-    files: &[PrettyFile<'_>],
-    options: PrettyOptions,
-    f: &mut fmt::Formatter<'_>,
-) -> fmt::Result {
-    let wrote_group = write_rule_groups(files, options, f)?;
-    write_parse_diagnostics(files, options, wrote_group, f)
-}
-
-fn write_rule_groups(
-    files: &[PrettyFile<'_>],
-    options: PrettyOptions,
-    f: &mut fmt::Formatter<'_>,
-) -> Result<bool, fmt::Error> {
-    let mut groups = BTreeMap::new();
-    for file in files {
-        for finding in &file.report.findings {
-            let entries = groups.entry(&finding.rule_id).or_insert_with(Vec::new);
-            if finding.evidence.is_empty() {
-                entries.push((file, finding, None));
-            } else {
-                entries.extend(
-                    finding
-                        .evidence
-                        .iter()
-                        .map(|evidence| (file, finding, Some(evidence))),
-                );
-            }
-        }
-    }
-
-    let mut wrote_group = false;
-    for entries in groups.values_mut() {
-        entries.sort_by(|left, right| {
-            let left_range = left
-                .2
-                .and_then(|evidence| evidence.location.as_ref())
-                .map_or(&left.1.location.range, |location| &location.range);
-            let right_range = right
-                .2
-                .and_then(|evidence| evidence.location.as_ref())
-                .map_or(&right.1.location.range, |location| &location.range);
-            (
-                left.0.filename,
-                left_range.start().line(),
-                left_range.start().column(),
-                left_range.end().line(),
-                left_range.end().column(),
-            )
-                .cmp(&(
-                    right.0.filename,
-                    right_range.start().line(),
-                    right_range.start().column(),
-                    right_range.end().line(),
-                    right_range.end().column(),
-                ))
-        });
-        if wrote_group {
-            writeln!(f)?;
-        }
-        wrote_group = true;
-        let finding = entries[0].1;
-        writeln!(
-            f,
-            "{}[{}] {}",
-            PrettyReport::style(
-                options.color,
-                match finding.severity {
-                    crate::Severity::Info => Style::new().green(),
-                    crate::Severity::Warning => Style::new().yellow(),
-                    crate::Severity::Error => Style::new().red(),
-                },
-                finding.severity.to_string(),
-            ),
-            PrettyReport::style(
-                options.color,
-                Style::new().cyan(),
-                finding.rule_id.to_string(),
-            ),
-            visible_text(&finding.message)
-        )?;
-
-        for (file, finding, evidence) in entries {
-            let range = evidence
-                .and_then(|evidence| evidence.location.as_ref())
-                .map_or(&finding.location.range, |location| &location.range);
-
-            let message = format!(
-                "  {}:{}:{} - {}",
-                visible_text(file.filename),
-                range.start().line(),
-                range.start().column(),
-                evidence.map_or_else(
-                    || "match".to_string(),
-                    |evidence| format!("evidence: {}", visible_text(&evidence.message)),
-                ),
-            );
-
-            writeln!(
-                f,
-                "{}",
-                PrettyReport::style(options.color, Style::new().dim(), message)
-            )?;
-            if evidence.is_none() || options.show_evidence_source {
-                PrettyReport::new(file.report, file.filename, file.source, options)
-                    .excerpt(range, 4, f)?;
-            }
-        }
-    }
-
-    Ok(wrote_group)
-}
-
-fn write_parse_diagnostics(
-    files: &[PrettyFile<'_>],
-    options: PrettyOptions,
-    leading_blank: bool,
-    f: &mut fmt::Formatter<'_>,
-) -> fmt::Result {
-    let mut diagnostics = files
-        .iter()
-        .flat_map(|file| {
-            file.report
-                .diagnostics
-                .iter()
-                .filter_map(move |diagnostic| {
-                    let crate::Diagnostic::Parse { diagnostic, .. } = diagnostic else {
-                        return None;
-                    };
-                    Some((file, diagnostic))
-                })
-        })
-        .collect::<Vec<_>>();
-    diagnostics.sort_by_key(|(file, diagnostic)| {
-        (
-            file.filename,
-            diagnostic.range.as_ref().map(|range| {
-                (
-                    range.start().line(),
-                    range.start().column(),
-                    range.end().line(),
-                    range.end().column(),
-                )
-            }),
-            diagnostic.code.as_str(),
-        )
-    });
-    if !diagnostics.is_empty() {
-        if leading_blank {
-            writeln!(f)?;
-        }
-        writeln!(f, "parse diagnostics")?;
-    }
-    for (file, diagnostic) in diagnostics {
-        if let Some(range) = &diagnostic.range {
-            writeln!(
-                f,
-                "  {}:{}:{}: {}[{}]: {}",
-                visible_text(file.filename),
-                range.start().line(),
-                range.start().column(),
-                PrettyReport::style(options.color, Style::new().red(), "parse"),
-                diagnostic.code,
-                visible_text(&diagnostic.message)
-            )?;
-        } else {
-            writeln!(
-                f,
-                "  {}: {}[{}]: {}",
-                visible_text(file.filename),
-                PrettyReport::style(options.color, Style::new().red(), "parse"),
-                diagnostic.code,
-                visible_text(&diagnostic.message)
-            )?;
-        }
-    }
-
-    Ok(())
 }
 
 impl PrettyReport<'_> {

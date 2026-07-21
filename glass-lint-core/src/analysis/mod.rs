@@ -16,10 +16,10 @@ use std::{
 use project::state::{ExportTable, ModuleGraph};
 use smol_str::SmolStr;
 
-use crate::project::{
+use crate::{AnalysisDiagnostic, ProjectRelativePath, budget::BudgetTracker, project::{
     LinkedModuleTarget, ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey,
     ResolverOutcome,
-};
+}};
 
 mod evidence;
 mod facts;
@@ -73,12 +73,12 @@ pub struct ProjectSemanticModel {
     /// Number of export-linking refinement rounds.
     link_rounds: usize,
     /// Project diagnostics accumulated during linking and budgets.
-    diagnostics: Vec<crate::AnalysisDiagnostic>,
-    status: std::cell::RefCell<AnalysisStatus>,
+    diagnostics: Vec<AnalysisDiagnostic>,
+    status: AnalysisStatus,
     /// Budget used by cross-module flow projection.
-    flow_budget: crate::budget::BudgetTracker,
+    flow_budget: BudgetTracker,
     /// Budget used by export identity linking.
-    link_budget: crate::budget::BudgetTracker,
+    link_budget: BudgetTracker,
     /// Count of effect projections performed for operation telemetry.
     effect_projections: Cell<usize>,
     link_limit: usize,
@@ -109,7 +109,7 @@ struct ValidatedLinkInput {
 impl ValidatedLinkInput {
     fn build(
         input: ProjectInput,
-        mut analyzed: BTreeMap<crate::ProjectRelativePath, LocalArtifact>,
+        mut analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
     ) -> Result<Self, ProjectInputError> {
         let ids = input.module_ids();
         let mut modules = BTreeMap::new();
@@ -168,7 +168,7 @@ impl ValidatedLinkInput {
 fn resolve_record(
     key: ResolutionRequestKey,
     result: ResolverOutcome,
-    ids: &BTreeMap<crate::ProjectRelativePath, ModuleId>,
+    ids: &BTreeMap<ProjectRelativePath, ModuleId>,
 ) -> Result<(ResolutionRequestKey, LinkedModuleTarget), ProjectInputError> {
     let resolved = match result {
         ResolverOutcome::Internal { path } => {
@@ -221,9 +221,9 @@ impl ProjectSemanticModel {
             },
             link_rounds: 0,
             diagnostics: Vec::new(),
-            status: std::cell::RefCell::new(status),
-            flow_budget: crate::budget::BudgetTracker::default(),
-            link_budget: crate::budget::BudgetTracker::default(),
+            status,
+            flow_budget: BudgetTracker::default(),
+            link_budget: BudgetTracker::default(),
             effect_projections: Cell::new(0),
             link_limit: limits.link_operations,
             flow_limit: limits.flow_operations,
@@ -236,7 +236,7 @@ impl ProjectSemanticModel {
     /// Diagnoses missing or misaligned resolutions and bounded budgets.
     pub fn link_with_limits(
         input: ProjectInput,
-        analyzed: BTreeMap<crate::ProjectRelativePath, LocalArtifact>,
+        analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
         limits: &crate::AnalysisLimits,
     ) -> Result<Self, ProjectInputError> {
         let input = input.validate()?;
@@ -249,9 +249,9 @@ impl ProjectSemanticModel {
             graph: ModuleGraph::default(),
             link_rounds: 0,
             diagnostics: Vec::new(),
-            status: std::cell::RefCell::new(AnalysisStatus::default()),
-            flow_budget: crate::budget::BudgetTracker::default(),
-            link_budget: crate::budget::BudgetTracker::default(),
+            status: AnalysisStatus::default(),
+            flow_budget: BudgetTracker::default(),
+            link_budget: BudgetTracker::default(),
             effect_projections: Cell::new(0),
             link_limit: limits.link_operations,
             flow_limit: limits.flow_operations,
@@ -261,7 +261,7 @@ impl ProjectSemanticModel {
         Ok(project)
     }
 
-    fn propagate_local_status(&self) {
+    fn propagate_local_status(&mut self) {
         let local_statuses = self
             .modules
             .values()
@@ -269,10 +269,9 @@ impl ProjectSemanticModel {
             .collect::<Vec<_>>();
         for (module, status) in self.modules.values().zip(local_statuses) {
             self.status
-                .borrow_mut()
                 .extend(&status.for_file(module.path()));
             if module.local().interface().is_unknown() {
-                self.status.borrow_mut().record(
+                self.status.record(
                     status::StatusScope::File(module.path().clone()),
                     status::IncompleteReason::UnsupportedModuleInterface {
                         kind: status::ModuleInterfaceKind::CommonJsExports,
@@ -389,12 +388,12 @@ impl ProjectSemanticModel {
     }
 
     /// Borrow diagnostics produced during project linking and analysis.
-    pub fn diagnostics(&self) -> &[crate::AnalysisDiagnostic] {
+    pub fn diagnostics(&self) -> &[AnalysisDiagnostic] {
         &self.diagnostics
     }
 
     pub(crate) fn is_complete(&self) -> bool {
-        self.status.borrow().is_complete()
+        self.status.is_complete()
     }
 
     pub(crate) fn status_diagnostics(
@@ -402,15 +401,15 @@ impl ProjectSemanticModel {
     ) -> (
         Vec<(
             crate::project::ProjectRelativePath,
-            crate::AnalysisDiagnostic,
+            AnalysisDiagnostic,
         )>,
-        Vec<crate::AnalysisDiagnostic>,
+        Vec<AnalysisDiagnostic>,
     ) {
-        self.status.borrow().diagnostics()
+        self.status.diagnostics()
     }
 
     pub(crate) fn record_parse_failure(
-        &self,
+        &mut self,
         path: crate::project::ProjectRelativePath,
         code: &str,
     ) {
@@ -419,7 +418,7 @@ impl ProjectSemanticModel {
             "syntax_depth_exceeded" => status::ParseFailureKind::SyntaxDepth,
             _ => status::ParseFailureKind::Syntax,
         };
-        self.status.borrow_mut().record(
+        self.status.record(
             status::StatusScope::File(path),
             status::IncompleteReason::ParseFailure { kind },
         );

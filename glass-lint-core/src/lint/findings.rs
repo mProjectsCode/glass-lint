@@ -20,13 +20,12 @@ impl Linter {
         &self,
         classification: &ClassificationResult,
         lines: &SourceLineIndex,
-        source: &str,
         path: &str,
     ) -> Vec<Finding> {
         classification
             .capabilities()
             .iter()
-            .flat_map(|capability| self.findings_for_capability(capability, lines, source, path))
+            .flat_map(|capability| self.findings_for_capability(capability, lines, path))
             .collect()
     }
 
@@ -34,7 +33,6 @@ impl Linter {
         &self,
         capability: &MatchedCapability,
         lines: &SourceLineIndex,
-        source: &str,
         path: &str,
     ) -> Vec<Finding> {
         let Some(rule_id) = self.catalog().rule_id(capability.rule_index).cloned() else {
@@ -49,7 +47,7 @@ impl Linter {
                     .iter()
                     .map(|occurrence| occurrence.span)
                     .filter(|span| !span.is_empty())
-                    .filter_map(|span| Self::report_evidence(evidence, span, lines, source, path))
+                    .filter_map(|span| Self::report_evidence(evidence, span, lines, path))
             })
             .collect();
 
@@ -97,10 +95,9 @@ impl Linter {
         evidence: &ClassificationEvidence,
         span: crate::ByteRange,
         lines: &SourceLineIndex,
-        source: &str,
         path: &str,
     ) -> Option<Evidence> {
-        let range = lines.try_range(source, span).ok()?;
+        let range = lines.try_range(span).ok()?;
         Some(Evidence {
             message: format!("{} of \"{}\"", evidence.kind().as_str(), evidence.symbol()),
             count: evidence.count,

@@ -11,8 +11,8 @@ use smol_str::SmolStr;
 /// Electron, and provider-injected names belong in provider configurations.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Environment {
-    global_bindings: BTreeSet<String>,
-    global_objects: BTreeMap<String, GlobalObjectMembers>,
+    global_bindings: BTreeSet<SmolStr>,
+    global_objects: BTreeMap<SmolStr, GlobalObjectMembers>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -24,7 +24,7 @@ enum GlobalObjectMembers {
     ConfiguredGlobals,
     /// Only the listed names are promoted from this foreign-realm object.
     /// Used for window-like objects from another security context.
-    Restricted(BTreeSet<String>),
+    Restricted(BTreeSet<SmolStr>),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -56,7 +56,7 @@ impl Environment {
     ///
     /// Environment entries represent bindings, not member paths, so dots and
     /// other punctuation are intentionally rejected here.
-    fn validated_identifier(name: String) -> Result<String, EnvironmentError> {
+    fn validated_identifier(name: &str) -> Result<SmolStr, EnvironmentError> {
         let valid = !name.is_empty()
             && name.chars().enumerate().all(|(index, character)| {
                 if index == 0 {
@@ -66,8 +66,8 @@ impl Environment {
                 }
             });
         valid
-            .then_some(name.clone())
-            .ok_or(EnvironmentError { name })
+            .then_some(SmolStr::from(name))
+            .ok_or_else(|| EnvironmentError { name: name.into() })
     }
 
     /// A conservative, host-independent ECMAScript environment.
@@ -75,10 +75,10 @@ impl Environment {
     pub fn ecmascript() -> Self {
         let global_bindings = ECMASCRIPT_GLOBALS
             .iter()
-            .map(|name| (*name).to_string())
+            .map(|name| SmolStr::from(*name))
             .collect();
         let global_objects = BTreeMap::from([(
-            "globalThis".to_string(),
+            SmolStr::from("globalThis"),
             GlobalObjectMembers::ConfiguredGlobals,
         )]);
         Self {
@@ -89,7 +89,7 @@ impl Environment {
 
     /// Add a global binding supplied by the host environment.
     pub fn add_global(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
-        let name = Self::validated_identifier(name.into())?;
+        let name = Self::validated_identifier(&name.into())?;
         self.global_bindings.insert(name);
         Ok(())
     }
@@ -111,7 +111,7 @@ impl Environment {
     /// A global-object alias is also a global binding. Direct properties of
     /// this object can share callable identity with configured global bindings.
     pub fn add_global_object(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
-        let name = Self::validated_identifier(name.into())?;
+        let name = Self::validated_identifier(&name.into())?;
         self.global_bindings.insert(name.clone());
         self.global_objects
             .insert(name, GlobalObjectMembers::ConfiguredGlobals);
@@ -133,10 +133,10 @@ impl Environment {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let name = Self::validated_identifier(name.into())?;
+        let name = Self::validated_identifier(&name.into())?;
         let members = members
             .into_iter()
-            .map(|member| Self::validated_identifier(member.into()))
+            .map(|member| Self::validated_identifier(&member.into()))
             .collect::<Result<BTreeSet<_>, _>>()?;
         self.global_bindings.insert(name.clone());
         self.global_objects
@@ -171,12 +171,12 @@ impl Environment {
 
     /// Iterate configured global binding names in deterministic order.
     pub fn global_bindings(&self) -> impl Iterator<Item = &str> {
-        self.global_bindings.iter().map(String::as_str)
+        self.global_bindings.iter().map(SmolStr::as_str)
     }
 
     /// Iterate configured global-object aliases in deterministic order.
     pub fn global_objects(&self) -> impl Iterator<Item = &str> {
-        self.global_objects.keys().map(String::as_str)
+        self.global_objects.keys().map(SmolStr::as_str)
     }
 
     /// Whether a name is configured as a global binding.

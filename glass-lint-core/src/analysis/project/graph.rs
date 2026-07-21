@@ -67,7 +67,7 @@ impl ProjectSemanticModel {
         if changed {
             self.exports.mark_unknown();
             self.link_budget.mark_exhausted();
-            self.status.borrow_mut().record(
+            self.status.record(
                 crate::analysis::status::StatusScope::Project,
                 IncompleteReason::BudgetExhausted {
                     component: AnalysisComponent::Linking,
@@ -77,7 +77,7 @@ impl ProjectSemanticModel {
             );
         }
         if self.link_budget.is_exhausted() {
-            self.status.borrow_mut().record(
+            self.status.record(
                 crate::analysis::status::StatusScope::Project,
                 IncompleteReason::BudgetExhausted {
                     component: AnalysisComponent::Linking,
@@ -110,7 +110,7 @@ impl ProjectSemanticModel {
                     match self.lookup_export(*id, imported, &mut std::collections::BTreeSet::new())
                     {
                         Some(ExportResolution::Ambiguous) => {
-                            self.status.borrow_mut().record(
+                            self.status.record(
                                 crate::analysis::status::StatusScope::File(module.path().clone()),
                                 IncompleteReason::AmbiguousStarExport {
                                     request: imported.to_string(),
@@ -143,7 +143,7 @@ impl ProjectSemanticModel {
             for request in module.authored_requests() {
                 let Some(resolution) = self.resolutions.get(&request.key) else {
                     if is_internal_request(&request.request) {
-                        self.status.borrow_mut().record(
+                        self.status.record(
                             crate::analysis::status::StatusScope::File(module.path().clone()),
                             IncompleteReason::MissingInternalResolution {
                                 request: request.request.clone(),
@@ -162,14 +162,14 @@ impl ProjectSemanticModel {
                 } else if matches!(resolution, LinkedModuleTarget::Missing)
                     && is_internal_request(&request.request)
                 {
-                    self.status.borrow_mut().record(
+                    self.status.record(
                         crate::analysis::status::StatusScope::File(module.path().clone()),
                         IncompleteReason::MissingInternalResolution {
                             request: request.request.clone(),
                         },
                     );
                 } else if matches!(resolution, LinkedModuleTarget::OutsideProject { .. }) {
-                    self.status.borrow_mut().record(
+                    self.status.record(
                         crate::analysis::status::StatusScope::File(module.path().clone()),
                         IncompleteReason::UnsupportedResolution {
                             request: request.request.clone(),
@@ -177,7 +177,7 @@ impl ProjectSemanticModel {
                         },
                     );
                 } else if matches!(resolution, LinkedModuleTarget::Unsupported { .. }) {
-                    self.status.borrow_mut().record(
+                    self.status.record(
                         crate::analysis::status::StatusScope::File(module.path().clone()),
                         IncompleteReason::UnsupportedResolution {
                             request: request.request.clone(),
