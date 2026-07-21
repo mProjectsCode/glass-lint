@@ -21,16 +21,18 @@ use crate::{
 pub(in crate::analysis) struct FactId(pub(in crate::analysis) u32);
 
 impl FactId {
+    #[cfg(test)]
     pub(in crate::analysis) fn from_index(index: usize) -> Option<Self> {
-        (index < MAX_FACTS)
-            .then(|| u32::try_from(index).ok().map(Self))
-            .flatten()
+        if index < MAX_FACTS {
+            Some(Self(u32::try_from(index).ok()?))
+        } else {
+            None
+        }
     }
 
     pub(in crate::analysis) fn index(self) -> Option<usize> {
-        usize::try_from(self.0)
-            .ok()
-            .filter(|index| *index < MAX_FACTS)
+        let idx = self.0 as usize;
+        if idx < MAX_FACTS { Some(idx) } else { None }
     }
 }
 

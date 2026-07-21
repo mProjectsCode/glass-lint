@@ -239,7 +239,7 @@ fn syntax_depth(source: &str) -> usize {
             index += 1;
             continue;
         }
-        if byte == b'\'' || byte == b'"' || byte == b'`' {
+        if matches!(byte, b'\'' | b'"' | b'`') {
             quote = Some(byte);
             index += 1;
             continue;

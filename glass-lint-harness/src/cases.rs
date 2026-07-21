@@ -220,7 +220,12 @@ fn parse_project_manifest(directory: &Path) -> Result<(ProjectManifest, ProjectM
             .with_context(|| format!("read {}", manifest_path.display()))?,
     )
     .with_context(|| format!("parse {}", manifest_path.display()))?;
-    let metadata = manifest.case.as_ref().or(manifest.project.as_ref()).cloned().unwrap_or_default();
+    let metadata = manifest
+        .case
+        .as_ref()
+        .or(manifest.project.as_ref())
+        .cloned()
+        .unwrap_or_default();
     Ok((manifest, metadata))
 }
 

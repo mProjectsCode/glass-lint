@@ -1,6 +1,6 @@
 //! Position-sensitive identifier, member, and expression resolution.
 
-use smol_str::SmolStr;
+use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
     SymbolPath,
@@ -24,7 +24,7 @@ impl Resolver<'_> {
     fn resolve_ident_uncached(&self, ident: &Ident) -> ResolvedValue {
         let key = ResolutionKey::Ident {
             range: ident.span.into(),
-            symbol: ident.sym.to_string(),
+            symbol: ident.sym.to_smolstr(),
         };
         if let Some(value) = self.state.borrow().resolved_values.get(&key).cloned() {
             return value;

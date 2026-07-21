@@ -51,6 +51,14 @@ impl Default for Environment {
     }
 }
 
+fn is_js_identifier_start(c: char) -> bool {
+    c == '$' || c == '_' || c.is_ascii_alphabetic()
+}
+
+fn is_js_identifier_continue(c: char) -> bool {
+    c == '$' || c == '_' || c.is_ascii_alphanumeric()
+}
+
 impl Environment {
     /// Validate one JavaScript binding name.
     ///
@@ -60,9 +68,9 @@ impl Environment {
         let valid = !name.is_empty()
             && name.chars().enumerate().all(|(index, character)| {
                 if index == 0 {
-                    character == '$' || character == '_' || character.is_ascii_alphabetic()
+                    is_js_identifier_start(character)
                 } else {
-                    character == '$' || character == '_' || character.is_ascii_alphanumeric()
+                    is_js_identifier_continue(character)
                 }
             });
         valid

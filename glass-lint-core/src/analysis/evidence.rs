@@ -2,11 +2,11 @@
 
 use std::collections::BTreeMap;
 
+use crate::api::classification::{
+    ClassificationEvidence, MatchKind, RelatedClassificationEvidence,
+};
 #[cfg(test)]
 use crate::api::rule::Rule;
-use crate::{
-    api::classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},
-};
 
 /// Sort, deduplicate, bound, and normalize evidence occurrences in place.
 ///
@@ -14,18 +14,19 @@ use crate::{
 /// location, deduplicated, and truncated to `limit`. The `count` field
 /// retains the original total (not the bounded count) so callers can report
 /// how many events were found even when only a subset is shown.
-pub(super) fn normalize_evidence(
-    evidence: &mut Vec<ClassificationEvidence>,
-    limit: usize,
-) {
+pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, limit: usize) {
     let mut all = Vec::new();
     let mut total_counts = BTreeMap::<(MatchKind, String), usize>::new();
-    let mut related_map = BTreeMap::<(MatchKind, String), Vec<RelatedClassificationEvidence>>::new();
+    let mut related_map =
+        BTreeMap::<(MatchKind, String), Vec<RelatedClassificationEvidence>>::new();
 
     for item in evidence.drain(..) {
         let key = (item.kind, item.symbol.clone());
         *total_counts.entry(key.clone()).or_default() += item.count as usize;
-        related_map.entry(key.clone()).or_default().extend(item.related);
+        related_map
+            .entry(key.clone())
+            .or_default()
+            .extend(item.related);
         for occurrence in item.occurrences {
             if !occurrence.span.is_empty() {
                 all.push((key.clone(), occurrence));
@@ -59,19 +60,26 @@ pub(super) fn normalize_evidence(
     }
 
     for ((kind, ref symbol), occurrences) in grouped {
-        let total = total_counts.get(&(kind, symbol.clone())).copied().unwrap_or(occurrences.len());
+        let total = total_counts
+            .get(&(kind, symbol.clone()))
+            .copied()
+            .unwrap_or(occurrences.len());
         evidence.push(ClassificationEvidence {
             kind,
             symbol: symbol.clone(),
             count: u32::try_from(total).unwrap_or(u32::MAX),
             evidence_truncated: truncated,
             occurrences,
-            related: related_map.remove(&(kind, symbol.clone())).unwrap_or_default(),
+            related: related_map
+                .remove(&(kind, symbol.clone()))
+                .unwrap_or_default(),
         });
     }
     evidence.sort_by_key(|item| {
         (
-            item.occurrences.first().map(|o| (o.span.start(), o.span.end())),
+            item.occurrences
+                .first()
+                .map(|o| (o.span.start(), o.span.end())),
             item.kind,
             item.symbol.clone(),
         )

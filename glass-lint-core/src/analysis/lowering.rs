@@ -52,14 +52,19 @@ pub(in crate::analysis) struct SpanNormalizer {
     len: u32,
     /// Retained source text for boundary validation, when available.
     text: Option<Arc<str>>,
+    /// True when the source text is entirely ASCII; boundary checks are then
+    /// redundant since every byte position is a valid UTF-8 boundary.
+    is_ascii: bool,
 }
 
 impl SpanNormalizer {
     pub(in crate::analysis) fn new(source_start: swc_common::BytePos, source: &str) -> Self {
+        let is_ascii = source.is_ascii();
         Self {
             start: source_start.0,
             len: u32::try_from(source.len()).unwrap_or(u32::MAX),
             text: Some(Arc::from(source)),
+            is_ascii,
         }
     }
 
@@ -70,6 +75,7 @@ impl SpanNormalizer {
             start: span.lo.0,
             len: span.hi.0.saturating_sub(span.lo.0),
             text: None,
+            is_ascii: false,
         }
     }
 
@@ -79,8 +85,11 @@ impl SpanNormalizer {
     ) -> Result<crate::ByteRange, InvalidParserSpan> {
         let offset = span.lo.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
         let end = span.hi.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
-        if end > self.len
-            || self.text.as_ref().is_some_and(|source| {
+        if end > self.len {
+            return Err(InvalidParserSpan);
+        }
+        if !self.is_ascii
+            && self.text.as_ref().is_some_and(|source| {
                 let offset = offset as usize;
                 let end = end as usize;
                 offset > source.len()
@@ -172,23 +181,25 @@ fn check_invalid_parser_span(stream: &facts::FactStream) -> Option<IncompleteRea
 }
 
 fn check_name_exhaustion(resolver: &resolution::Resolver) -> Option<IncompleteReason> {
-    resolver.name_exhaustion().map(|exhaustion| {
-        IncompleteReason::NameExhausted {
+    resolver
+        .name_exhaustion()
+        .map(|exhaustion| IncompleteReason::NameExhausted {
             limit: exhaustion.limit,
             attempted: exhaustion.attempted,
-        }
-    })
+        })
 }
 
 fn check_effects_budget(
     effects: &FunctionEffects,
     limits: &crate::AnalysisLimits,
 ) -> Option<IncompleteReason> {
-    effects.budget_exhausted().then_some(IncompleteReason::BudgetExhausted {
-        component: AnalysisComponent::Effects,
-        limit: limits.effect_operations,
-        observed: Some(effects.operation_count()),
-    })
+    effects
+        .budget_exhausted()
+        .then_some(IncompleteReason::BudgetExhausted {
+            component: AnalysisComponent::Effects,
+            limit: limits.effect_operations,
+            observed: Some(effects.operation_count()),
+        })
 }
 
 fn lower_program_with_name_limit(

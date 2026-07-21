@@ -37,9 +37,7 @@ impl RuleId {
     /// periods are also permitted to support hierarchical names. Leading and
     /// trailing separators are rejected; consecutive dots are rejected.
     fn valid_part(part: &str, allow_dot: bool) -> bool {
-        !part.is_empty()
-            && Self::valid_characters(part, allow_dot)
-            && Self::valid_boundaries(part)
+        !part.is_empty() && Self::valid_characters(part, allow_dot) && Self::valid_boundaries(part)
     }
 
     fn valid_characters(part: &str, allow_dot: bool) -> bool {

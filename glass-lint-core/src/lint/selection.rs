@@ -4,9 +4,7 @@
 //! that enable or disable rules by pattern. Selectors support `*` wildcards
 //! for matching groups of rules.
 
-use crate::RuleId;
-
-use super::catalog::RuleCatalog;
+use crate::{RuleId, lint::catalog::RuleCatalog};
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Default, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]

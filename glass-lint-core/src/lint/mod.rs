@@ -11,7 +11,5 @@ mod ranges;
 mod selection;
 
 pub use catalog::{ProviderCatalogError, RuleCatalog};
-pub use selection::{
-    LintConfigError, RuleBaseline, RuleOverride, RuleSelection, RuleState,
-};
 pub use linter::{Linter, LinterConfig};
+pub use selection::{LintConfigError, RuleBaseline, RuleOverride, RuleSelection, RuleState};

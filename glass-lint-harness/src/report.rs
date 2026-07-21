@@ -14,10 +14,11 @@ use crate::types::{CaseResult, SuiteReport, ToolResult};
 fn active_tool_runs(
     report: &SuiteReport,
 ) -> impl Iterator<Item = (&CaseResult, &str, &ToolResult)> {
-    report
-        .cases
-        .iter()
-        .flat_map(|case| case.adapters.iter().map(move |(name, result)| (case, name.as_str(), result)))
+    report.cases.iter().flat_map(|case| {
+        case.adapters
+            .iter()
+            .map(move |(name, result)| (case, name.as_str(), result))
+    })
 }
 
 #[must_use]

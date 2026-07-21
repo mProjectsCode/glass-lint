@@ -18,6 +18,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
 };
 
+use smol_str::SmolStr;
 #[cfg(test)]
 use swc_ecma_ast::Program;
 use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr};
@@ -88,7 +89,7 @@ enum ResolutionKey {
     /// Identifier lookup keyed by a checked source range and spelling.
     Ident {
         range: ParserSpanKey,
-        symbol: String,
+        symbol: SmolStr,
     },
     /// Member lookup keyed by its checked source range.
     Member { range: ParserSpanKey },

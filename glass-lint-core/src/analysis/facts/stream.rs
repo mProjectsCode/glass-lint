@@ -57,7 +57,7 @@ impl FactStream {
             self.valid = false;
             return;
         }
-        if fact.id() != FactId::from_index(self.facts.len()).unwrap_or(FactId(u32::MAX)) {
+        if fact.id().0 as usize != self.facts.len() {
             // A gap or duplicate ID would make indexed lookup disagree with
             // traversal order, so the whole stream becomes untrusted.
             self.valid = false;

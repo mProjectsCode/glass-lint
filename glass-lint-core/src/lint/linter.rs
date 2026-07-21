@@ -5,8 +5,10 @@ use crate::{
     ProviderCatalogError, REPORT_VERSION, RuleId,
     analysis::{LocalArtifact, ProjectSemanticModel},
     api::classification::ClassificationResult,
-    lint::catalog::RuleCatalog,
-    lint::selection::{LintConfigError, RuleBaseline, RuleSelection, RuleState},
+    lint::{
+        catalog::RuleCatalog,
+        selection::{LintConfigError, RuleBaseline, RuleSelection, RuleState},
+    },
     project::ModuleId,
 };
 
@@ -363,7 +365,12 @@ impl Linter {
             parse_paths,
         } = initialize_project_files(&input, parse_diagnostics);
 
-        tracing::debug!(target: "glass_lint::project::link", modules = analyzed.len(), resolutions = input.resolutions.len(), "stage started");
+        tracing::debug!(
+            target: "glass_lint::project::link",
+            modules = analyzed.len(),
+            resolutions = input.resolutions.len(),
+            "stage started"
+        );
         let linking_start = std::time::Instant::now();
         let mut project = ProjectSemanticModel::link_with_limits(input, analyzed, &self.limits)?;
         for (path, code) in parse_paths {
@@ -371,7 +378,14 @@ impl Linter {
         }
         let linking_elapsed = linking_start.elapsed();
         let link_counts = project.operation_counts(0);
-        tracing::info!(target: "glass_lint::project::link", files = link_counts.files, requests = link_counts.requests, edges = link_counts.edges, elapsed = ?linking_elapsed, "stage finished");
+        tracing::info!(
+            target: "glass_lint::project::link",
+            files = link_counts.files,
+            requests = link_counts.requests,
+            edges = link_counts.edges,
+            elapsed = ?linking_elapsed,
+            "stage finished"
+        );
         let matching_start = std::time::Instant::now();
         tracing::debug!(target: "glass_lint::project::matching", rules = self.enabled.len(), "stage started");
         let (classifications, projection_outcome) = project.classify_with_evidence_limit(
@@ -388,7 +402,15 @@ impl Linter {
         let report = assemble_project_report(&project, files, diagnostics);
 
         let summary = report.summary();
-        tracing::info!(target: "glass_lint::project::matching", files = report.operations.files, findings = summary.findings, evidence = report.operations.evidence, diagnostics = report.diagnostics.len() + summary.parse_diagnostics, elapsed = ?matching_elapsed, "stage finished");
+        tracing::info!(
+            target: "glass_lint::project::matching",
+            files = report.operations.files,
+            findings = summary.findings,
+            evidence = report.operations.evidence,
+            diagnostics = report.diagnostics.len() + summary.parse_diagnostics,
+            elapsed = ?matching_elapsed,
+            "stage finished"
+        );
 
         Ok((report, linking_elapsed, matching_elapsed))
     }
@@ -469,8 +491,11 @@ mod tests {
     use crate::{
         Position, SourceRange,
         api::rule::{Confidence, Matcher, Rule, Severity},
-        lint::{findings::contains_range, ranges::remove_contained_ranges},
-        lint::selection::{LintConfigError, RuleBaseline, RuleOverride, RuleSelection, RuleState},
+        lint::{
+            findings::contains_range,
+            ranges::remove_contained_ranges,
+            selection::{LintConfigError, RuleBaseline, RuleOverride, RuleSelection, RuleState},
+        },
     };
     fn catalog() -> RuleCatalog {
         let rule = Rule::builder("network.fetch")

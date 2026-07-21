@@ -137,12 +137,12 @@ impl<'a> FactBuilder<'a> {
     }
 
     fn next_fact_id(&mut self) -> Option<FactId> {
-        if self.next_id as usize >= self.max_facts {
+        let idx = self.next_id;
+        if idx as usize >= self.max_facts {
             return None;
         }
-        let id = FactId::from_index(self.next_id as usize)?;
-        self.next_id = self.next_id.checked_add(1)?;
-        Some(id)
+        self.next_id = self.next_id.wrapping_add(1);
+        Some(FactId(idx))
     }
 
     fn scope_at(&self, span: Span) -> ScopeId {

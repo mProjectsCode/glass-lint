@@ -16,10 +16,14 @@ use std::{
 use project::state::{ExportTable, ModuleGraph};
 use smol_str::SmolStr;
 
-use crate::{AnalysisDiagnostic, ProjectRelativePath, budget::BudgetTracker, project::{
-    LinkedModuleTarget, ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey,
-    ResolverOutcome,
-}};
+use crate::{
+    AnalysisDiagnostic, ProjectRelativePath,
+    budget::BudgetTracker,
+    project::{
+        LinkedModuleTarget, ModuleId, ProjectInput, ProjectInputError, ResolutionRequestKey,
+        ResolverOutcome,
+    },
+};
 
 mod evidence;
 mod facts;
@@ -268,8 +272,7 @@ impl ProjectSemanticModel {
             .map(|module| module.local().status().clone())
             .collect::<Vec<_>>();
         for (module, status) in self.modules.values().zip(local_statuses) {
-            self.status
-                .extend(&status.for_file(module.path()));
+            self.status.extend(&status.for_file(module.path()));
             if module.local().interface().is_unknown() {
                 self.status.record(
                     status::StatusScope::File(module.path().clone()),
@@ -399,10 +402,7 @@ impl ProjectSemanticModel {
     pub(crate) fn status_diagnostics(
         &self,
     ) -> (
-        Vec<(
-            crate::project::ProjectRelativePath,
-            AnalysisDiagnostic,
-        )>,
+        Vec<(crate::project::ProjectRelativePath, AnalysisDiagnostic)>,
         Vec<AnalysisDiagnostic>,
     ) {
         self.status.diagnostics()

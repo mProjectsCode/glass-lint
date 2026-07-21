@@ -400,7 +400,14 @@ impl Diagnostic {
         Self::Project(diagnostic)
     }
 
-    fn inner(&self) -> (&str, &str, Option<&ProjectRelativePath>, Option<&SourceRange>) {
+    fn inner(
+        &self,
+    ) -> (
+        &str,
+        &str,
+        Option<&ProjectRelativePath>,
+        Option<&SourceRange>,
+    ) {
         match self {
             Self::Parse { path, diagnostic } => (
                 diagnostic.code.as_str(),

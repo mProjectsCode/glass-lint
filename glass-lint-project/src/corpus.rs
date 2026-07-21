@@ -34,7 +34,8 @@ impl<'a> SourceCorpus<'a> {
     }
 
     /// Create a corpus view without re-validating options. Only use when
-    /// options are already known to be valid (e.g., after `ValidatedProjectLoadOptions`).
+    /// options are already known to be valid (e.g., after
+    /// `ValidatedProjectLoadOptions`).
     pub fn new_unchecked(options: &'a ProjectLoadOptions) -> Self {
         Self { options }
     }

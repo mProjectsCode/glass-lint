@@ -247,57 +247,7 @@ impl FunctionSummaries {
             };
             summary.calls.clone_from(call_ids);
             for call_id in call_ids {
-                let Some(FactPayload::Call {
-                    syntactic_chain,
-                    rooted_chain,
-                    args,
-                    ..
-                }) = stream.fact(*call_id).map(|fact| &fact.payload)
-                else {
-                    continue;
-                };
-                let syntactic_name = syntactic_chain.as_ref().and_then(|path| {
-                    crate::analysis::value::NamePath::from_symbol_path(path, stream.names()?)
-                });
-                let Some(chain) = rooted_chain.as_ref().or(syntactic_name.as_ref()) else {
-                    continue;
-                };
-                for flow_id in flow_index.sink_ids(chain).into_iter().flatten() {
-                    let Some(flow) = flow_index.get(*flow_id) else {
-                        continue;
-                    };
-                    for sink in &flow.sinks {
-                        if !sink.member_calls.iter().any(|member| {
-                            stream.names().is_some_and(|names| {
-                                crate::analysis::value::NamePath::from_symbol_path(member, names)
-                                    .is_some_and(|member| member == *chain)
-                            })
-                        }) {
-                            continue;
-                        }
-                        for argument_index in sink.args.present_indices(args.len()) {
-                            let Some(argument) = args.get(argument_index) else {
-                                continue;
-                            };
-                            let Some(parameter) = summary.parameters.iter().find(|parameter| {
-                                parameter.value != ValueId::UNKNOWN
-                                    && parameter.value == argument.base_value
-                            }) else {
-                                continue;
-                            };
-                            let Some(path) =
-                                SummaryPath::join(paths, parameter.path, argument.base_path)
-                            else {
-                                continue;
-                            };
-                            summary.add_sink(FunctionSinkSummary {
-                                flow: *flow_id,
-                                parameter_index: parameter.parameter_index,
-                                path,
-                            });
-                        }
-                    }
-                }
+                summary.collect_sinks_for_call(stream, flow_index, paths, *call_id);
             }
         }
     }
@@ -443,6 +393,67 @@ impl FunctionSummary {
             }
         }
         true
+    }
+}
+
+impl FunctionSummary {
+    fn collect_sinks_for_call(
+        &mut self,
+        stream: &FactStream,
+        flow_index: &FlowIndex<'_>,
+        paths: &PathInterner,
+        call_id: FactId,
+    ) {
+        let Some(FactPayload::Call {
+            syntactic_chain,
+            rooted_chain,
+            args,
+            ..
+        }) = stream.fact(call_id).map(|fact| &fact.payload)
+        else {
+            return;
+        };
+        let syntactic_name = syntactic_chain.as_ref().and_then(|path| {
+            crate::analysis::value::NamePath::from_symbol_path(path, stream.names()?)
+        });
+        let Some(chain) = rooted_chain.as_ref().or(syntactic_name.as_ref()) else {
+            return;
+        };
+        for flow_id in flow_index.sink_ids(chain).into_iter().flatten() {
+            let Some(flow) = flow_index.get(*flow_id) else {
+                continue;
+            };
+            for sink in &flow.sinks {
+                if !sink.member_calls.iter().any(|member| {
+                    stream.names().is_some_and(|names| {
+                        crate::analysis::value::NamePath::from_symbol_path(member, names)
+                            .is_some_and(|member| member == *chain)
+                    })
+                }) {
+                    continue;
+                }
+                for argument_index in sink.args.present_indices(args.len()) {
+                    let Some(argument) = args.get(argument_index) else {
+                        continue;
+                    };
+                    let Some(parameter) = self.parameters.iter().find(|parameter| {
+                        parameter.value != ValueId::UNKNOWN
+                            && parameter.value == argument.base_value
+                    }) else {
+                        continue;
+                    };
+                    let Some(path) = SummaryPath::join(paths, parameter.path, argument.base_path)
+                    else {
+                        continue;
+                    };
+                    self.add_sink(FunctionSinkSummary {
+                        flow: *flow_id,
+                        parameter_index: parameter.parameter_index,
+                        path,
+                    });
+                }
+            }
+        }
     }
 }
 

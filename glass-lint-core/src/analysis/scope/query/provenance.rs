@@ -293,12 +293,11 @@ impl ScopeGraph<'_> {
                 };
                 let root = path.without_bind_suffix().unwrap_or_else(|| path.clone());
                 if root.is_root()
-                    && root
-                        .first_segment()
-                        .is_some_and(|root| self.is_global(root))
+                    && let Some(root_segment) = root.first_segment()
+                    && self.is_global(root_segment)
                 {
                     SymbolCallProvenance::Global {
-                        name: root.first_segment().unwrap().to_smolstr(),
+                        name: root_segment.to_smolstr(),
                     }
                 } else {
                     self.module_export_for_chain(&path.to_string(), span)
@@ -310,12 +309,11 @@ impl ScopeGraph<'_> {
                     return SymbolCallProvenance::Local;
                 };
                 if path.is_root()
-                    && path
-                        .first_segment()
-                        .is_some_and(|root| self.is_global(root))
+                    && let Some(root_segment) = path.first_segment()
+                    && self.is_global(root_segment)
                 {
                     SymbolCallProvenance::Global {
-                        name: path.first_segment().unwrap().to_smolstr(),
+                        name: root_segment.to_smolstr(),
                     }
                 } else {
                     self.module_export_for_chain(&path.to_string(), span)

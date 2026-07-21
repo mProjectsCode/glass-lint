@@ -34,11 +34,28 @@ const RECEIVERS: &[(&str, &[&str])] = &[
     ),
     (
         "webContents",
-        &["send", "sendToFrame", "postMessage", "on", "once", "removeListener", "off", "removeAllListeners"],
+        &[
+            "send",
+            "sendToFrame",
+            "postMessage",
+            "on",
+            "once",
+            "removeListener",
+            "off",
+            "removeAllListeners",
+        ],
     ),
     (
         "webFrameMain",
-        &["send", "postMessage", "on", "once", "removeListener", "off", "removeAllListeners"],
+        &[
+            "send",
+            "postMessage",
+            "on",
+            "once",
+            "removeListener",
+            "off",
+            "removeAllListeners",
+        ],
     ),
 ];
 
@@ -58,8 +75,10 @@ pub fn rule() -> Rule {
         .confidence(Confidence::High);
     for &(receiver, methods) in RECEIVERS {
         for &method in methods {
-            builder = builder
-                .matcher(Matcher::module_member_call("electron", format!("{receiver}.{method}")));
+            builder = builder.matcher(Matcher::module_member_call(
+                "electron",
+                format!("{receiver}.{method}"),
+            ));
         }
     }
     builder.build().unwrap()

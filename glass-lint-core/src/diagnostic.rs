@@ -270,10 +270,7 @@ impl SourceLineIndex {
     /// assert_eq!(range.start().line(), 1);
     /// assert!(index.try_range(ByteRange::new(1, 2).unwrap()).is_err());
     /// ```
-    pub fn try_range(
-        &self,
-        range: ByteRange,
-    ) -> Result<SourceRange, InvalidSourceBoundary> {
+    pub fn try_range(&self, range: ByteRange) -> Result<SourceRange, InvalidSourceBoundary> {
         let start = usize::try_from(range.start).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
         let end = usize::try_from(range.end).map_err(|_| InvalidSourceBoundary::OutOfBounds)?;
         if end > self.source.len() {
@@ -392,9 +389,7 @@ mod tests {
     fn retained_ranges_reject_non_boundary_and_past_eof() {
         let source = "aé\r\n🙂z";
         let index = SourceLineIndex::new(source);
-        let range = index
-            .try_range(ByteRange::new(5, 10).unwrap())
-            .unwrap();
+        let range = index.try_range(ByteRange::new(5, 10).unwrap()).unwrap();
         assert_eq!((range.start.line, range.start.column), (2, 1));
         assert_eq!((range.end.line, range.end.column), (2, 3));
         assert_eq!(
@@ -411,17 +406,11 @@ mod tests {
     fn line_index_handles_empty_and_eof_ranges() {
         let source = "last";
         let index = SourceLineIndex::new(source);
-        let first = index
-            .try_range(ByteRange::new(0, 1).unwrap())
-            .unwrap();
+        let first = index.try_range(ByteRange::new(0, 1).unwrap()).unwrap();
         assert_eq!((first.start.line, first.start.column), (1, 1));
-        let last = index
-            .try_range(ByteRange::new(3, 4).unwrap())
-            .unwrap();
+        let last = index.try_range(ByteRange::new(3, 4).unwrap()).unwrap();
         assert_eq!((last.end.line, last.end.column), (1, 5));
-        let eof = index
-            .try_range(ByteRange::new(4, 4).unwrap())
-            .unwrap();
+        let eof = index.try_range(ByteRange::new(4, 4).unwrap()).unwrap();
         assert_eq!((eof.start.line, eof.start.column), (1, 5));
         let empty = SourceLineIndex::new("");
         let range = empty.try_range(ByteRange::empty()).unwrap();
