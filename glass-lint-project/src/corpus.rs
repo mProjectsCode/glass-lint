@@ -8,9 +8,8 @@ use std::{
 };
 
 use glass_lint_core::SourceFile;
-use walkdir::WalkDir;
 
-use crate::{error::ProjectLoadError, options::ProjectLoadOptions};
+use crate::{error::ProjectLoadError, options::ProjectLoadOptions, walk};
 
 #[derive(Clone, Debug)]
 pub struct CorpusFile {
@@ -101,41 +100,11 @@ impl<'a> SourceCorpus<'a> {
         include: &mut impl FnMut(&Path) -> bool,
         paths: &mut BTreeSet<PathBuf>,
     ) -> Result<(), ProjectLoadError> {
-        let mut visited = 0usize;
-        let walker = WalkDir::new(root)
-            .follow_links(self.options.follow_symlinks)
-            .sort_by_file_name()
-            .into_iter()
-            .filter_entry(|entry| {
-                !entry.file_type().is_dir()
-                    || !self
-                        .options
-                        .excluded_directories
-                        .contains(&entry.file_name().to_string_lossy().to_string())
-            });
-        for entry in walker {
-            visited = visited.saturating_add(1);
-            if visited > self.options.max_visited_entries {
-                return Err(ProjectLoadError::TooManyEntries(
-                    self.options.max_visited_entries,
-                ));
-            }
-            let entry = entry.map_err(|error| {
-                let path = error.path().unwrap_or(root).to_path_buf();
-                let message = error.to_string();
-                let source = error
-                    .into_io_error()
-                    .unwrap_or_else(|| std::io::Error::other(message));
-                ProjectLoadError::Io { path, source }
-            })?;
-            if entry.file_type().is_file()
-                && self.options.supports(entry.path())
-                && include(entry.path())
-            {
-                paths.insert(entry.into_path());
-                if paths.len() > self.options.max_files {
-                    return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
-                }
+        let found = walk::collect_files(self.options, root, None, include)?;
+        for path in found {
+            paths.insert(path);
+            if paths.len() > self.options.max_files {
+                return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
             }
         }
         Ok(())

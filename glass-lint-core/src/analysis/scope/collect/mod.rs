@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use history::AssignmentHistory;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{BytePos, Span};
-use swc_ecma_ast::{ArrowExpr, Expr, Function, ObjectPatProp, Pat, VarDeclKind};
+use swc_ecma_ast::{ArrowExpr, Expr, Function, ImportDecl, ObjectPatProp, Pat, VarDeclKind};
 use swc_ecma_visit::VisitWith;
 
 use crate::{
@@ -27,7 +27,7 @@ use crate::{
         },
         syntax::{
             collect_pat_bindings, function_prototype_builtin, is_function_constructor_member,
-            member_property_name, member_root_identifier, property_name,
+            member_property_name, member_root_identifier, module_export_name, property_name,
         },
         value::{BindingId, BindingVersion, FunctionId, NamePath, SymbolPath},
     },
@@ -76,8 +76,9 @@ pub(super) struct LexicalScopeCollector<'a> {
     /// Per (scope, name) counter to avoid rescanniing all assignments.
     version_counters: BTreeMap<(ScopeId, NameId), u32>,
     reuse_scopes: bool,
-    predeclared_scope_order: Vec<usize>,
-    next_predeclared_scope: usize,
+    /// Typed scope plan built during predeclare and consumed by the main
+    /// visitor, replacing positional index–based synchronization.
+    scope_plan: ScopePlan,
     /// A phase mismatch is a conservative incomplete analysis, not a panic.
     scope_diverged: bool,
     #[cfg(test)]
@@ -101,6 +102,58 @@ pub(super) struct RootedPropertyMutation {
     pub(super) scope: ScopeId,
     pub(super) receiver: NamePath,
     pub(super) property: Option<NameId>,
+}
+
+/// One scope-forming syntax node recorded during the predeclare pass.
+///
+/// Each entry maps to one `push_scope` call during predeclare. The main
+/// visitor consumes the plan in order to locate the correct predeclared scope
+/// for each `push_scope`, replacing the previous positional index–based
+/// synchronization.
+#[derive(Debug, Clone, Copy)]
+struct ScopePlanEntry {
+    scope_index: usize,
+}
+
+/// Ordered record of scope structure built during predeclare and validated
+/// during the main visitor pass.
+#[derive(Debug)]
+struct ScopePlan {
+    entries: Vec<ScopePlanEntry>,
+    cursor: usize,
+}
+
+impl ScopePlan {
+    fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            cursor: 0,
+        }
+    }
+
+    fn push(&mut self, scope_index: usize) {
+        self.entries.push(ScopePlanEntry { scope_index });
+    }
+
+    fn advance(&mut self) -> Option<&ScopePlanEntry> {
+        let entry = self.entries.get(self.cursor);
+        self.cursor = self.cursor.saturating_add(1);
+        entry
+    }
+
+    #[cfg(test)]
+    fn is_at_end(&self) -> bool {
+        self.cursor >= self.entries.len()
+    }
+
+    #[cfg(test)]
+    fn entries_len(&self) -> usize {
+        self.entries.len()
+    }
+
+    fn reset(&mut self) {
+        self.cursor = 0;
+    }
 }
 
 /// Compact parameter pattern descriptor that avoids cloning SWC Pat ASTs.
@@ -178,8 +231,7 @@ impl<'a> LexicalScopeCollector<'a> {
             name_exhausted: false,
             version_counters: BTreeMap::new(),
             reuse_scopes: false,
-            predeclared_scope_order: Vec::new(),
-            next_predeclared_scope: 0,
+            scope_plan: ScopePlan::new(),
             scope_diverged: false,
             #[cfg(test)]
             scope_reuse_steps: 0,
@@ -195,7 +247,7 @@ impl<'a> LexicalScopeCollector<'a> {
         let mut visitor = predeclare::PredeclareVisitor { collector: self };
         program.visit_children_with(&mut visitor);
         self.reuse_scopes = true;
-        self.next_predeclared_scope = 0;
+        self.scope_plan.reset();
         self.scope_diverged = false;
         #[cfg(test)]
         {
@@ -361,6 +413,47 @@ impl<'a> LexicalScopeCollector<'a> {
         self.scopes[scope.index()].bindings.insert(name, provenance);
     }
 
+    /// Insert all bindings from an import declaration into `scope`.
+    ///
+    /// Shared by the predeclare and main-visitor passes so import-handling
+    /// logic has a single maintenance point.
+    pub(super) fn insert_import(&mut self, scope: ScopeId, import: &ImportDecl) {
+        let import_module = import.src.value.to_string_lossy().to_smolstr();
+        for specifier in &import.specifiers {
+            match specifier {
+                swc_ecma_ast::ImportSpecifier::Named(named) => {
+                    let local = named.local.sym.to_smolstr();
+                    let export = named
+                        .imported
+                        .as_ref()
+                        .map_or_else(|| local.clone(), module_export_name);
+                    self.insert(
+                        scope,
+                        local,
+                        BindingProvenance::ModuleExport {
+                            module: import_module.clone(),
+                            export,
+                        },
+                    );
+                }
+                swc_ecma_ast::ImportSpecifier::Namespace(namespace) => self.insert(
+                    scope,
+                    namespace.local.sym.to_smolstr(),
+                    BindingProvenance::ModuleNamespace {
+                        module: import_module.clone(),
+                    },
+                ),
+                swc_ecma_ast::ImportSpecifier::Default(default) => self.insert(
+                    scope,
+                    default.local.sym.to_smolstr(),
+                    BindingProvenance::ModuleNamespace {
+                        module: import_module.clone(),
+                    },
+                ),
+            }
+        }
+    }
+
     fn name_id(&self, name: &str) -> Option<crate::analysis::name::NameId> {
         self.names.lookup(name)
     }
@@ -427,18 +520,25 @@ impl<'a> LexicalScopeCollector<'a> {
     fn push_scope(&mut self, span: Span, kind: ScopeKind) {
         if self.reuse_scopes {
             let parent = self.current_scope();
-            let index = self
-                .predeclared_scope_order
-                .get(self.next_predeclared_scope)
-                .copied();
-            let matches_predeclared = index.is_some_and(|index| {
-                self.scopes[index].parent == Some(parent)
+            if let Some(entry) = self.scope_plan.advance() {
+                let index = entry.scope_index;
+                if self.scopes[index].parent == Some(parent)
                     && self.scopes[index].span == span
                     && self.scopes[index].kind == kind
-            });
-            self.next_predeclared_scope = self.next_predeclared_scope.saturating_add(1);
-            if matches_predeclared {
-                self.stack.push(index.expect("checked matching scope"));
+                {
+                    self.stack.push(index);
+                } else {
+                    self.scope_diverged = true;
+                    let index = self.scopes.len();
+                    self.scopes.push(LexicalScope {
+                        span,
+                        depth: self.stack.len(),
+                        kind,
+                        parent: Some(parent),
+                        bindings: BTreeMap::new(),
+                    });
+                    self.stack.push(index);
+                }
             } else {
                 self.scope_diverged = true;
                 let index = self.scopes.len();
@@ -466,7 +566,7 @@ impl<'a> LexicalScopeCollector<'a> {
             parent: Some(parent),
             bindings: BTreeMap::new(),
         });
-        self.predeclared_scope_order.push(index);
+        self.scope_plan.push(index);
         self.stack.push(index);
     }
 
@@ -649,13 +749,13 @@ mod tests {
         let mut collector = LexicalScopeCollector::new(parsed.program.span());
         collector.predeclare(&parsed.program);
         parsed.program.visit_children_with(&mut collector);
-        assert_eq!(
-            collector.next_predeclared_scope,
-            collector.predeclared_scope_order.len()
+        assert!(
+            collector.scope_plan.is_at_end(),
+            "main visitor consumed all scope plan entries"
         );
         assert_eq!(
             collector.scope_reuse_steps,
-            collector.predeclared_scope_order.len()
+            collector.scope_plan.entries_len()
         );
         collector
     }
@@ -740,7 +840,7 @@ mod tests {
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();
         collector.reuse_scopes = true;
-        collector.next_predeclared_scope = 0;
+        collector.scope_plan.reset();
 
         collector.push_scope(span, ScopeKind::Block);
         let first = collector.current_scope();

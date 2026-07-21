@@ -88,14 +88,14 @@ impl ValidatedLinkInput {
         input: ValidatedProjectInput,
         mut analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
     ) -> Result<Self, ProjectInputError> {
-        let ids = input.module_ids();
+        let ids = &input.module_ids;
         let mut modules = BTreeMap::new();
-        for source in &input.sources {
-            let Some(local) = analyzed.remove(&source.path) else {
+        for path in input.sources.keys() {
+            let Some(local) = analyzed.remove(path) else {
                 continue;
             };
-            let Some(id) = ids.get(&source.path).copied() else {
-                return Err(ProjectInputError::InvalidTarget(source.path.to_string()));
+            let Some(id) = ids.get(path).copied() else {
+                return Err(ProjectInputError::InvalidTarget(path.to_string()));
             };
             modules.insert(id, ProjectModule::new(id, local));
         }
@@ -117,7 +117,7 @@ impl ValidatedLinkInput {
                     })
             })
             .collect::<BTreeMap<_, _>>();
-        for (key, _) in &input.resolutions {
+        for key in input.resolutions.keys() {
             if !authored.contains_key(key) {
                 return Err(ProjectInputError::UnknownRequest(key.clone()));
             }
@@ -150,7 +150,7 @@ impl ValidatedLinkInput {
                     .get(&key)
                     .copied()
                     .ok_or_else(|| ProjectInputError::UnknownRequest(key.clone()))?;
-                Ok((request, resolve_record(result, &ids)?))
+                Ok((request, resolve_record(result, ids)?))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         Ok(Self {

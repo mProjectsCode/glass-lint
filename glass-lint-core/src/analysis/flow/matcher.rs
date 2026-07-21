@@ -5,28 +5,31 @@ use crate::{
         facts::{ArgumentView, CallArgInfo},
         name::NameTable,
     },
-    api::rule::{ArgumentMatcher, StaticStringPredicate, ValueMatcher, ValueMatcherKind},
+    api::rule::{
+        matcher::StaticStringPredicateKind, ArgumentMatcher, ValueMatcher, ValueMatcherKind,
+    },
 };
 
 impl ValueMatcher {
     /// Match a value against a known static string without widening unknowns.
     pub(in crate::analysis) fn matches_static(&self, value: &str) -> bool {
         match &self.kind {
-            ValueMatcherKind::Any | ValueMatcherKind::StaticString(StaticStringPredicate::Any) => {
-                true
-            }
-            ValueMatcherKind::StaticString(StaticStringPredicate::Exact(values)) => {
-                values.iter().any(|expected| expected == value)
-            }
-            ValueMatcherKind::StaticString(StaticStringPredicate::Prefix(prefixes)) => {
-                prefixes.iter().any(|prefix| value.starts_with(prefix))
-            }
-            ValueMatcherKind::StaticString(StaticStringPredicate::ContainsAny(markers)) => {
-                markers.iter().any(|marker| value.contains(marker))
-            }
-            ValueMatcherKind::StaticString(StaticStringPredicate::ContainsAll(markers)) => {
-                markers.iter().all(|marker| value.contains(marker))
-            }
+            ValueMatcherKind::Any => true,
+            ValueMatcherKind::StaticString(predicate) => match &predicate.kind {
+                StaticStringPredicateKind::Any => true,
+                StaticStringPredicateKind::Exact(values) => {
+                    values.iter().any(|expected| expected == value)
+                }
+                StaticStringPredicateKind::Prefix(prefixes) => {
+                    prefixes.iter().any(|prefix| value.starts_with(prefix))
+                }
+                StaticStringPredicateKind::ContainsAny(markers) => {
+                    markers.iter().any(|marker| value.contains(marker))
+                }
+                StaticStringPredicateKind::ContainsAll(markers) => {
+                    markers.iter().all(|marker| value.contains(marker))
+                }
+            },
         }
     }
 

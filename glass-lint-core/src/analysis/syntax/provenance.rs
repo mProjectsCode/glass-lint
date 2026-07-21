@@ -45,6 +45,18 @@ pub(in crate::analysis) enum SymbolCallProvenance {
     Unknown(UnknownReason),
 }
 
+impl SymbolCallProvenance {
+    /// Return a cloned `(module, export)` tuple when this provenance is a
+    /// `ModuleExport`, allowing callers to construct lookup keys without
+    /// matching on the variant themselves.
+    pub(in crate::analysis) fn module_export_tuple(&self) -> Option<(SmolStr, SmolStr)> {
+        match self {
+            Self::ModuleExport { module, export } => Some((module.clone(), export.clone())),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Provenance of a member access rooted in a module namespace.
 pub(in crate::analysis) enum SymbolMemberProvenance {

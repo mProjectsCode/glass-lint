@@ -14,6 +14,20 @@ use crate::analysis::{
 };
 
 impl Resolver<'_> {
+    /// Narrow query: return only the interned value ID for an identifier,
+    /// avoiding a clone of the full `ResolvedValue` on cache hits.
+    #[allow(dead_code)]
+    pub(in crate::analysis) fn resolve_ident_id(&self, ident: &Ident) -> ValueId {
+        let key = ResolutionKey::Ident {
+            range: ident.span.into(),
+            symbol: ident.sym.to_smolstr(),
+        };
+        if let Some(cached) = self.state.borrow().resolved_values.get(&key) {
+            return cached.id;
+        }
+        self.resolve_ident(ident).id
+    }
+
     /// Returns a CommonJS module only when the callee is proven to be the
     /// unshadowed global loader. Import collection and alias provenance both
     /// depend on this conservative distinction.

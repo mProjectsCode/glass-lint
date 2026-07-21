@@ -22,10 +22,10 @@ struct EvidenceAccum {
 
 /// Sort, deduplicate, bound, and normalize evidence occurrences in place.
 ///
-/// Within each `(kind, symbol)` group, occurrences are sorted by source
-/// location, deduplicated, and truncated to `limit`. The `count` field
-/// retains the original total (not the bounded count) so callers can report
-/// how many events were found even when only a subset is shown.
+/// Within each `(kind, symbol)` group, occurrences are sorted and deduplicated.
+/// The `count` field retains the original total so callers can report how many
+/// events were found even when only a subset is shown.  Truncation applies
+/// both per group and to the total number of groups.
 pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, limit: usize) {
     let mut acc: BTreeMap<EvidenceKey, EvidenceAccum> = BTreeMap::new();
 
@@ -45,8 +45,10 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
         }
     }
 
-    // Sort and deduplicate occurrences within each key.
-    for (_, accum) in acc.iter_mut() {
+    // Sort and deduplicate occurrences within each key, then apply the
+    // per-group occurrence limit directly so caller-owned storage is reused.
+    let mut any_truncated = false;
+    for accum in acc.values_mut() {
         accum.occurrences.sort_by_key(|occurrence| {
             (
                 occurrence.span.start(),
@@ -55,60 +57,29 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
             )
         });
         accum.occurrences.dedup();
-    }
-
-    // Collect into a flat buffer maintaining the key for grouping.
-    let mut flat: Vec<(EvidenceKey, crate::api::classification::ClassificationEvidenceOccurrence)> =
-        Vec::new();
-    for (key, accum) in &acc {
-        for occurrence in &accum.occurrences {
-            flat.push((key.clone(), occurrence.clone()));
-        }
-    }
-    flat.sort_by_key(|(key, occurrence)| {
-        (
-            key.0,
-            occurrence.span.start(),
-            occurrence.span.end(),
-            occurrence.fact.unwrap_or(u32::MAX),
-        )
-    });
-    flat.dedup();
-
-    let mut truncated = false;
-    let mut grouped: BTreeMap<EvidenceKey, Vec<_>> = BTreeMap::new();
-    for (key, occurrence) in flat {
-        if grouped.len() < limit || grouped.contains_key(&key) {
-            let entry = grouped.entry(key).or_default();
-            if entry.len() < limit {
-                entry.push(occurrence);
-            } else {
-                truncated = true;
-            }
-        } else {
-            truncated = true;
+        if accum.occurrences.len() > limit {
+            accum.occurrences.truncate(limit);
+            any_truncated = true;
         }
     }
 
-    for (key, occurrences) in grouped {
-        let total = acc
-            .get(&key)
-            .map(|a| a.total_count)
-            .unwrap_or(occurrences.len());
-        let related = acc
-            .get_mut(&key)
-            .map(|a| std::mem::take(&mut a.related))
-            .unwrap_or_default();
-        evidence.push(ClassificationEvidence {
+    // Build evidence items sorted by (first_span, kind, symbol) so the
+    // global group limit selects the earliest groups in a stable order.
+    // This replaces the old flat-vec / rebuild cycle that cloned every
+    // string-bearing key for each occurrence and then looked back into the
+    // accumulator map.
+    let mut sorted: Vec<ClassificationEvidence> = acc
+        .into_iter()
+        .map(|(key, accum)| ClassificationEvidence {
             kind: key.0,
             symbol: key.1,
-            count: u32::try_from(total).unwrap_or(u32::MAX),
-            evidence_truncated: truncated,
-            occurrences,
-            related,
-        });
-    }
-    evidence.sort_by_key(|item| {
+            count: u32::try_from(accum.total_count).unwrap_or(u32::MAX),
+            evidence_truncated: any_truncated,
+            occurrences: accum.occurrences,
+            related: accum.related,
+        })
+        .collect();
+    sorted.sort_by_key(|item| {
         (
             item.occurrences
                 .first()
@@ -117,6 +88,19 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
             item.symbol.clone(),
         )
     });
+
+    // Apply the global group limit.
+    if sorted.len() > limit {
+        sorted.truncate(limit);
+        any_truncated = true;
+    }
+    if any_truncated {
+        for item in &mut sorted {
+            item.evidence_truncated = true;
+        }
+    }
+
+    *evidence = sorted;
 }
 
 #[cfg(test)]

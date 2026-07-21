@@ -5,7 +5,7 @@
 //! items, and range containment checks. Range policy and report assembly
 //! are kept separate from semantic fact construction.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     Evidence, EvidenceList, Finding, ProjectRelativePath, SourceLocation, SourceRange,
@@ -66,7 +66,7 @@ impl Linter {
         remove_contained_ranges(&mut ranges);
 
         // Build findings: group evidence by the containing range
-        let path_owned = path.to_owned();
+        let path_shared: Arc<str> = Arc::from(path);
         ranges
             .into_iter()
             .map(|range| {
@@ -76,7 +76,7 @@ impl Linter {
                     .map(|(item_range, evidence)| {
                         let mut ev = evidence.clone();
                         ev.location = Some(SourceLocation {
-                            path: ProjectRelativePath::from_normalized(path_owned.clone()),
+                            path: ProjectRelativePath::from_normalized(Arc::clone(&path_shared)),
                             range: item_range.clone(),
                         });
                         ev
@@ -88,7 +88,7 @@ impl Linter {
                     message: capability.label().into(),
                     severity: capability.severity(),
                     location: SourceLocation {
-                        path: ProjectRelativePath::from_normalized(path_owned.clone()),
+                        path: ProjectRelativePath::from_normalized(Arc::clone(&path_shared)),
                         range,
                     },
                     evidence: local_evidence,

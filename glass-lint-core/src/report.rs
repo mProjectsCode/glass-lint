@@ -357,7 +357,7 @@ impl<'a> PrettyReport<'a> {
             text.push_str("...");
         }
         for cell in &cells[window_start..window_end] {
-            text.push_str(&cell.display());
+            let _ = cell.write_display(&mut text);
         }
         if trailing {
             text.push_str("...");
@@ -393,16 +393,17 @@ struct Cell {
 }
 
 impl Cell {
-    fn display(&self) -> String {
+    fn write_display(&self, out: &mut impl fmt::Write) -> fmt::Result {
         if self.ch == '\t' {
-            " ".repeat(self.width)
+            for _ in 0..self.width {
+                out.write_char(' ')?;
+            }
         } else if self.ch.is_control() {
-            format!("\\u{{{:04x}}}", self.ch as u32)
+            write!(out, "\\u{{{:04x}}}", self.ch as u32)?;
         } else {
-            let mut buf = String::with_capacity(self.ch.len_utf8());
-            buf.push(self.ch);
-            buf
+            out.write_char(self.ch)?;
         }
+        Ok(())
     }
 }
 
@@ -410,9 +411,9 @@ fn display_width(ch: char, column: usize) -> usize {
     if ch == '\t' {
         4 - (column % 4)
     } else {
-        let mut buf = String::with_capacity(ch.len_utf8());
-        buf.push(ch);
-        measure_text_width(&buf)
+        let mut buf = [0u8; 4];
+        let s = ch.encode_utf8(&mut buf);
+        measure_text_width(s)
     }
 }
 

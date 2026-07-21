@@ -25,12 +25,12 @@ impl ValueMatcher {
 
     pub(crate) fn normalize(&mut self) {
         if let ValueMatcherKind::StaticString(predicate) = &mut self.kind {
-            match predicate {
-                StaticStringPredicate::Any => {}
-                StaticStringPredicate::Exact(values)
-                | StaticStringPredicate::Prefix(values)
-                | StaticStringPredicate::ContainsAny(values)
-                | StaticStringPredicate::ContainsAll(values) => {
+            match &mut predicate.kind {
+                StaticStringPredicateKind::Any => {}
+                StaticStringPredicateKind::Exact(values)
+                | StaticStringPredicateKind::Prefix(values)
+                | StaticStringPredicateKind::ContainsAny(values)
+                | StaticStringPredicateKind::ContainsAll(values) => {
                     crate::api::rule::matcher::normalize_strings(values);
                 }
             }
@@ -46,23 +46,30 @@ pub enum ValueMatcherKind {
     StaticString(StaticStringPredicate),
 }
 
+/// Internal kind of a static-string predicate.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum StaticStringPredicate {
-    /// Accept any proven static string.
+pub(crate) enum StaticStringPredicateKind {
     Any,
-    /// Match exact values.
     Exact(Vec<String>),
-    /// Match one of the configured prefixes.
     Prefix(Vec<String>),
-    /// Match at least one configured substring.
     ContainsAny(Vec<String>),
-    /// Match every configured substring.
     ContainsAll(Vec<String>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct StaticStringPredicate {
+    pub(crate) kind: StaticStringPredicateKind,
+}
+
+impl StaticStringPredicate {
+    pub(crate) fn new(kind: StaticStringPredicateKind) -> Self {
+        Self { kind }
+    }
+}
+
 impl ValueMatcher {
-    fn with_static_predicate(mut self, predicate: StaticStringPredicate) -> Self {
-        self.kind = ValueMatcherKind::StaticString(predicate);
+    fn with_static_predicate(mut self, kind: StaticStringPredicateKind) -> Self {
+        self.kind = ValueMatcherKind::StaticString(StaticStringPredicate::new(kind));
         self
     }
 
@@ -77,14 +84,15 @@ impl ValueMatcher {
     /// Starts a predicate that requires a proven static string.
     #[must_use]
     pub fn static_string() -> Self {
+        let kind = StaticStringPredicateKind::Any;
         Self {
-            kind: ValueMatcherKind::StaticString(StaticStringPredicate::Any),
+            kind: ValueMatcherKind::StaticString(StaticStringPredicate::new(kind)),
         }
     }
 
     #[must_use]
     pub fn equals(self, value: impl Into<String>) -> Self {
-        self.with_static_predicate(StaticStringPredicate::Exact(vec![value.into()]))
+        self.with_static_predicate(StaticStringPredicateKind::Exact(vec![value.into()]))
     }
 
     #[must_use]
@@ -93,7 +101,7 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.with_static_predicate(StaticStringPredicate::Exact(
+        self.with_static_predicate(StaticStringPredicateKind::Exact(
             values.into_iter().map(Into::into).collect(),
         ))
     }
@@ -104,7 +112,7 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.with_static_predicate(StaticStringPredicate::Prefix(
+        self.with_static_predicate(StaticStringPredicateKind::Prefix(
             values.into_iter().map(Into::into).collect(),
         ))
     }
@@ -115,7 +123,7 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.with_static_predicate(StaticStringPredicate::ContainsAny(
+        self.with_static_predicate(StaticStringPredicateKind::ContainsAny(
             values.into_iter().map(Into::into).collect(),
         ))
     }
@@ -126,7 +134,7 @@ impl ValueMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        self.with_static_predicate(StaticStringPredicate::ContainsAll(
+        self.with_static_predicate(StaticStringPredicateKind::ContainsAll(
             values.into_iter().map(Into::into).collect(),
         ))
     }

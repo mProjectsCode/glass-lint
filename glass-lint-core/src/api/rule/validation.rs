@@ -8,7 +8,7 @@
 use crate::api::rule::matcher::{
     ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
     MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, ObjectEventMatcher,
-    ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicate, SymbolProvenance, ValueMatcher,
+    ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicateKind, SymbolProvenance, ValueMatcher,
     ValueMatcherKind,
 };
 use crate::api::rule::MatcherBuildError;
@@ -255,12 +255,12 @@ impl ValueMatcher {
     /// Validate the payload-specific invariants of a value predicate.
     fn validate_at(&self, path: &str) -> Result<(), MatcherBuildError> {
         if let ValueMatcherKind::StaticString(predicate) = &self.kind {
-            match predicate {
-                StaticStringPredicate::Any => Ok(()),
-                StaticStringPredicate::Exact(values)
-                | StaticStringPredicate::Prefix(values)
-                | StaticStringPredicate::ContainsAny(values)
-                | StaticStringPredicate::ContainsAll(values) => {
+            match &predicate.kind {
+                StaticStringPredicateKind::Any => Ok(()),
+                StaticStringPredicateKind::Exact(values)
+                | StaticStringPredicateKind::Prefix(values)
+                | StaticStringPredicateKind::ContainsAny(values)
+                | StaticStringPredicateKind::ContainsAll(values) => {
                     validate_non_empty_strings_at(values, path)
                 }
             }

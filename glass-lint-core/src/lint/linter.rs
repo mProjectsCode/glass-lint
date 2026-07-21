@@ -91,12 +91,6 @@ impl Clone for Linter {
 }
 
 impl Linter {
-    #[cfg(test)]
-    fn lint(&self, source: &str, filename: &str) -> AnalysisReport {
-        self.lint_snippet(source, filename)
-            .expect("test fixture path is valid")
-    }
-
     /// Starts a deterministic project collection session.
     pub fn begin_analysis(
         &self,
@@ -209,8 +203,7 @@ impl Linter {
             "project analysis started"
         );
         let mut session = self.begin_analysis(input.root)?;
-        for source in input.sources {
-            let path = source.path.clone();
+        for (path, source) in input.sources {
             session.admit_validated_source(source)?;
             session.analyze_admitted_source(&path)?;
         }
@@ -347,6 +340,28 @@ impl Linter {
         module: &crate::analysis::ProjectModule,
         classification: &ClassificationResult,
     ) -> Vec<crate::Finding> {
+        let mut related_by_rule: BTreeMap<crate::RuleId, Vec<crate::Evidence>> =
+            BTreeMap::new();
+        for capability in classification.capabilities() {
+            let Some(rule_id) = self.catalog.rule_id(capability.rule_index).cloned() else {
+                continue;
+            };
+            let related: Vec<_> = capability
+                .evidence()
+                .iter()
+                .flat_map(|evidence| &evidence.related)
+                .filter_map(|related| {
+                    let mut evidence = project
+                        .fact_location(ModuleId::new(related.module), related.event)?;
+                    evidence.message.clone_from(&related.symbol);
+                    Some(evidence)
+                })
+                .collect();
+            if !related.is_empty() {
+                related_by_rule.insert(rule_id, related);
+            }
+        }
+
         self.findings_for(
             classification,
             &module.source_context().lines,
@@ -355,26 +370,9 @@ impl Linter {
         .into_iter()
         .map(|finding| {
             let mut project_finding = finding;
-            let finding_rule_id = project_finding.rule_id.clone();
-            let related = classification
-                .capabilities()
-                .iter()
-                .filter(|capability| {
-                    self.catalog
-                        .rule_id(capability.rule_index)
-                        .is_some_and(|id| id == &finding_rule_id)
-                })
-                .flat_map(crate::api::classification::MatchedCapability::evidence)
-                .flat_map(|evidence| &evidence.related)
-                .filter_map(|related| {
-                    project
-                        .fact_location(ModuleId::new(related.module), related.event)
-                        .map(|mut location| {
-                            location.message.clone_from(&related.symbol);
-                            location
-                        })
-                });
-            project_finding.append_related(related);
+            if let Some(related) = related_by_rule.remove(&project_finding.rule_id) {
+                project_finding.append_related(related);
+            }
             project_finding
         })
         .collect()
@@ -390,7 +388,7 @@ impl Linter {
             .collect::<Vec<_>>();
         let mut files = input
             .sources
-            .iter()
+            .values()
             .map(|source| {
                 (
                     source.path.clone(),

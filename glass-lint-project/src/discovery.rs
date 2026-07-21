@@ -9,11 +9,11 @@ use std::{
 
 use glass_lint_core::SourceFile;
 use serde_json::Value;
-use walkdir::{DirEntry, WalkDir};
 
 use crate::{
     error::ProjectLoadError,
     options::{ProjectLoadOptions, ProjectSelection},
+    walk,
 };
 
 /// Discovers the bounded set of source files that belongs to a selection.
@@ -100,38 +100,10 @@ impl<'a> ProjectDiscovery<'a> {
     }
 
     fn discover(&self, directory: &Path) -> Result<Vec<PathBuf>, ProjectLoadError> {
-        let mut entries = Vec::new();
-        let mut visited = 0usize;
-        let walker = WalkDir::new(directory)
-            .follow_links(self.options.follow_symlinks)
-            .sort_by_file_name();
-        for entry in walker
-            .into_iter()
-            .filter_entry(|entry| self.accept_entry(entry))
-        {
-            self.check_timeout()?;
-            visited = visited.saturating_add(1);
-            if visited > self.options.max_visited_entries {
-                return Err(ProjectLoadError::TooManyEntries(
-                    self.options.max_visited_entries,
-                ));
-            }
-            let entry = entry.map_err(|error| {
-                let path = error.path().unwrap_or(directory).to_path_buf();
-                let message = error.to_string();
-                let source = error
-                    .into_io_error()
-                    .unwrap_or_else(|| std::io::Error::other(message));
-                ProjectLoadError::Io { path, source }
-            })?;
-            if entry.file_type().is_file() && self.options.supports(entry.path()) {
-                entries.push(entry.into_path());
-                if entries.len() > self.options.max_files {
-                    return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
-                }
-            }
-        }
-        Ok(entries)
+        // The shared walker already applies excluded-directory filtering
+        // and extension support checks, so the include predicate accepts
+        // every entry that reaches it.
+        walk::collect_files(self.options, directory, self.deadline, &mut |_| true)
     }
 
     fn discover_tsconfig(
@@ -248,14 +220,6 @@ impl<'a> ProjectDiscovery<'a> {
         Ok(())
     }
 
-    fn accept_entry(&self, entry: &DirEntry) -> bool {
-        !entry.file_type().is_dir()
-            || entry
-                .file_name()
-                .to_str()
-                .is_none_or(|name| !self.options.excluded_directories.contains(name))
-    }
-
     pub fn read_source(&self, root: &Path, path: &Path) -> Result<SourceFile, ProjectLoadError> {
         let canonical_root = realpath(root)?;
         let canonical_path = realpath(path)?;
@@ -269,15 +233,6 @@ impl<'a> ProjectDiscovery<'a> {
             .load_source_file_at(&canonical_root, &canonical_path)
     }
 
-    fn check_timeout(&self) -> Result<(), ProjectLoadError> {
-        if self
-            .deadline
-            .is_some_and(|deadline| Instant::now() > deadline)
-        {
-            return Err(ProjectLoadError::Timeout);
-        }
-        Ok(())
-    }
 }
 
 fn patterns<'a>(config: &'a Value, key: &str) -> Option<Vec<&'a str>> {

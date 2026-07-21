@@ -14,7 +14,7 @@ use crate::analysis::{
         BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
         FactKind, FactPayload, InstanceCallable, MemberExpr, OptChainBase, ParameterBinding, Pat,
         PathId, PathSegmentInput, Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance,
-        ValueId, ValueProjection, VisitWith, effective_callee_expr, member_property_name,
+        ValueId, VisitWith, effective_callee_expr, member_property_name,
     },
     value::FunctionId,
 };
@@ -146,21 +146,7 @@ impl FactBuilder<'_> {
     }
 
     fn default_call_arg() -> CallArgInfo {
-        CallArgInfo {
-            value: ValueId::UNKNOWN,
-            base_value: ValueId::UNKNOWN,
-            base_path: PathId::EMPTY,
-            static_string: None,
-            object_keys: None,
-            property_strings: Vec::new(),
-            rooted_chain: None,
-            projections: vec![ValueProjection {
-                path: PathId::EMPTY,
-                value: ValueId::UNKNOWN,
-            }],
-            spread: false,
-            provenance: SymbolCallProvenance::Local,
-        }
+        CallArgInfo::unknown()
     }
 
     /// Return the stable value identity representing a call's result.
@@ -467,21 +453,7 @@ impl FactBuilder<'_> {
                 .map(|values| {
                     values
                         .into_iter()
-                        .map(|v| CallArgInfo {
-                            value: ValueId::UNKNOWN,
-                            base_value: ValueId::UNKNOWN,
-                            base_path: PathId::EMPTY,
-                            static_string: Some(v),
-                            object_keys: None,
-                            property_strings: Vec::new(),
-                            rooted_chain: None,
-                            projections: vec![ValueProjection {
-                                path: PathId::EMPTY,
-                                value: ValueId::UNKNOWN,
-                            }],
-                            spread: false,
-                            provenance: SymbolCallProvenance::Local,
-                        })
+                        .map(CallArgInfo::with_static_string)
                         .collect()
                 }),
         }

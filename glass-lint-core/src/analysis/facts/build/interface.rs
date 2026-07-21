@@ -201,12 +201,8 @@ impl FactBuilder<'_> {
             ResolutionRequestKind::StaticImport,
             source.value.to_string_lossy(),
             ModuleRequestRole::ReExport {
-                bindings: export
-                    .specifiers
+                bindings: specifiers
                     .iter()
-                    .filter(|specifier| {
-                        !matches!(specifier, ExportSpecifier::Named(named) if named.is_type_only)
-                    })
                     .map(|specifier| match specifier {
                         ExportSpecifier::Named(named) => ReExportBinding::new(
                             module_export_name(&named.orig),
@@ -366,7 +362,7 @@ impl FactBuilder<'_> {
             return;
         }
         if self.is_commonjs_name(&member.obj, COMMONJS_EXPORTS) {
-            self.record_exports_assignment(assignment, property);
+            self.record_commonjs_property_export(assignment, property);
             return;
         }
         let Expr::Member(parent) = &*member.obj else {
@@ -382,7 +378,7 @@ impl FactBuilder<'_> {
             self.interface.mark_unknown_exports();
             return;
         };
-        self.record_named_module_export(assignment, property);
+        self.record_commonjs_property_export(assignment, Some(property));
     }
 
     fn is_commonjs_name(&self, expr: &swc_ecma_ast::Expr, name: &str) -> bool {
@@ -440,7 +436,7 @@ impl FactBuilder<'_> {
         }
     }
 
-    fn record_exports_assignment(
+    fn record_commonjs_property_export(
         &mut self,
         assignment: &swc_ecma_ast::AssignExpr,
         property: Option<SmolStr>,
@@ -449,30 +445,6 @@ impl FactBuilder<'_> {
             self.interface.mark_unknown_exports();
             return;
         };
-        let export = match &*assignment.right {
-            Expr::Ident(ident) => {
-                self.add_function_export_if_name(&property, ident.sym.as_ref(), assignment.span());
-                ModuleExport::Local {
-                    name: ident.sym.to_smolstr(),
-                }
-            }
-            expr => {
-                self.add_function_export_if_expr(&property, expr);
-                if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = expr {
-                    self.interface
-                        .add_static_string(property.clone(), value.value.to_string_lossy());
-                }
-                ModuleExport::Value
-            }
-        };
-        self.interface.add_export(property, export);
-    }
-
-    fn record_named_module_export(
-        &mut self,
-        assignment: &swc_ecma_ast::AssignExpr,
-        property: SmolStr,
-    ) {
         let export = match &*assignment.right {
             Expr::Ident(ident) => {
                 self.add_function_export_if_name(&property, ident.sym.as_ref(), assignment.span());

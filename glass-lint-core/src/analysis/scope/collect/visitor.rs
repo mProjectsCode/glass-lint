@@ -4,12 +4,12 @@
 //! use-position facts that survive lexical shadowing, reassignment, and
 //! unsupported dynamic forms.
 
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 use swc_common::Spanned;
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CatchClause, ClassDecl, Expr,
-    FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, ImportDecl, ImportSpecifier, ObjectPatProp,
-    Pat, SimpleAssignTarget, SwitchStmt, VarDecl, VarDeclKind, VarDeclarator, WithStmt,
+    FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, ImportDecl, ObjectPatProp, Pat,
+    SimpleAssignTarget, SwitchStmt, VarDecl, VarDeclKind, VarDeclarator, WithStmt,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
@@ -22,7 +22,7 @@ use crate::analysis::{
     },
     syntax::{
         function_prototype_builtin, member_expression_chain, member_property_name,
-        member_root_identifier, module_export_name, property_name,
+        member_root_identifier, property_name,
     },
     value::NamePath,
 };
@@ -52,63 +52,56 @@ fn classify_declaration(
         _ => None,
     };
 
+    let Some(init) = init else {
+        return DeclarationClassification::None;
+    };
+
+    // Evaluate in priority order, computing each provenance form only when
+    // higher-priority forms do not match. Previously all six forms were
+    // computed eagerly, walking the expression AST independently for each.
+    //
     // Priority 1: bound_callable_provenance
-    if let Some(init) = init
-        && let (Some(name), Some(provenance)) = (name(), collector.bound_callable_provenance(init))
-    {
+    if let (Some(name), Some(provenance)) = (name(), collector.bound_callable_provenance(init)) {
         return DeclarationClassification::Binding { name, provenance };
     }
 
     // Priority 2: module_alias_provenance (Binding path)
-    if let Some(init) = init
-        && let Some(module_alias) = collector.module_alias_provenance(init)
-    {
+    if let Some(provenance) = collector.module_alias_provenance(init) {
         if let Some(name) = name() {
-            return DeclarationClassification::Binding { name, provenance: module_alias };
+            return DeclarationClassification::Binding { name, provenance };
         }
-        if let BindingProvenance::ModuleNamespace { module } = module_alias {
-            return DeclarationClassification::Require {
-                module,
-            };
+        if let BindingProvenance::ModuleNamespace { module } = provenance {
+            return DeclarationClassification::Require { module };
         }
     }
 
     // Priority 3: require_module_expr_name
-    if let Some(init) = init
-        && let Some(module) = collector.require_module_expr_name(init)
-    {
-        return DeclarationClassification::Require {
-            module,
-        };
+    if let Some(module) = collector.require_module_expr_name(init) {
+        return DeclarationClassification::Require { module };
     }
 
     // Priority 4: const_value (static_object_values then const_provenance)
-    if let Some(init) = init
-        && let (Some(name), Some(provenance)) = (
-            name(),
-            collector.static_object_values(init).or_else(|| collector.const_provenance(init)),
-        )
+    if let (Some(name), Some(provenance)) = (name(), collector.static_object_values(init)
+        .or_else(|| collector.const_provenance(init)))
     {
         return DeclarationClassification::Binding { name, provenance };
     }
 
+    // Priorities 5 and 6 both need rooted_path, so compute it once here.
+    let rooted_path = collector.rooted_name_path(init);
+
     // Priority 5: returned_object_provenance (only if value_alias is not root)
-    if let Some(init) = init
-        && let value_alias = collector.rooted_name_path(init)
-        && value_alias.as_ref().is_none_or(|target| !target.is_root())
+    if rooted_path.as_ref().is_none_or(|target| !target.is_root())
         && let (Some(name), Some(provenance)) = (name(), collector.returned_object_provenance(init))
     {
         return DeclarationClassification::Binding { name, provenance };
     }
 
     // Priority 6: value_alias (only if not derived_function_pattern)
-    if let Some(init) = init
-        && !derived_function_pattern
-        && let Some(target) = collector.rooted_name_path(init)
+    if !derived_function_pattern
+        && let Some(target) = rooted_path
     {
-        return DeclarationClassification::ValueAlias {
-            target,
-        };
+        return DeclarationClassification::ValueAlias { target };
     }
 
     DeclarationClassification::None
@@ -116,43 +109,7 @@ fn classify_declaration(
 
 impl Visit for LexicalScopeCollector<'_> {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
-        let scope = self.current_scope();
-        let module = import.src.value.to_string_lossy().to_smolstr();
-        for specifier in &import.specifiers {
-            match specifier {
-                ImportSpecifier::Named(named) => {
-                    let local = named.local.sym.to_smolstr();
-                    let export = named
-                        .imported
-                        .as_ref()
-                        .map_or_else(|| local.clone(), module_export_name);
-                    self.insert(
-                        scope,
-                        local,
-                        BindingProvenance::ModuleExport {
-                            module: module.clone(),
-                            export,
-                        },
-                    );
-                }
-                ImportSpecifier::Namespace(namespace) => self.insert(
-                    scope,
-                    namespace.local.sym.to_string(),
-                    BindingProvenance::ModuleNamespace {
-                        module: module.clone(),
-                    },
-                ),
-                ImportSpecifier::Default(default) => {
-                    self.insert(
-                        scope,
-                        default.local.sym.to_string(),
-                        BindingProvenance::ModuleNamespace {
-                            module: module.clone(),
-                        },
-                    );
-                }
-            }
-        }
+        self.insert_import(self.current_scope(), import);
     }
 
     fn visit_var_decl(&mut self, var_decl: &VarDecl) {
@@ -207,13 +164,15 @@ impl Visit for LexicalScopeCollector<'_> {
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
-        let rooted_alias = self.rooted_name_path(&assignment.right);
         let provenance = self
             .bound_callable_provenance(&assignment.right)
             .or_else(|| self.module_alias_provenance(&assignment.right))
             .or_else(|| self.returned_object_provenance(&assignment.right))
             .or_else(|| self.const_provenance(&assignment.right))
-            .or_else(|| rooted_alias.map(|target| BindingProvenance::ValueAlias { target }))
+            .or_else(|| {
+                self.rooted_name_path(&assignment.right)
+                    .map(|target| BindingProvenance::ValueAlias { target })
+            })
             .unwrap_or(BindingProvenance::Local);
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {

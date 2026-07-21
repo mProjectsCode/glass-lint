@@ -177,36 +177,12 @@ impl FactBuilder<'_> {
     /// representation as a source-level argument.
     pub(super) fn bound_arg_info(argument: &BoundArgument) -> CallArgInfo {
         match argument {
-            BoundArgument::StaticString(value) => CallArgInfo {
-                value: ValueId::UNKNOWN,
-                base_value: ValueId::UNKNOWN,
-                base_path: PathId::EMPTY,
-                static_string: Some(value.clone()),
-                object_keys: None,
-                property_strings: Vec::new(),
-                rooted_chain: None,
-                projections: vec![ValueProjection {
-                    path: PathId::EMPTY,
-                    value: ValueId::UNKNOWN,
-                }],
-                spread: false,
-                provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
-            },
-            BoundArgument::RootedExpression(chain) => CallArgInfo {
-                value: ValueId::UNKNOWN,
-                base_value: ValueId::UNKNOWN,
-                base_path: PathId::EMPTY,
-                static_string: None,
-                object_keys: None,
-                property_strings: Vec::new(),
-                rooted_chain: Some(chain.clone()),
-                projections: vec![ValueProjection {
-                    path: PathId::EMPTY,
-                    value: ValueId::UNKNOWN,
-                }],
-                spread: false,
-                provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
-            },
+            BoundArgument::StaticString(value) => {
+                CallArgInfo::with_static_string(value.clone())
+            }
+            BoundArgument::RootedExpression(chain) => {
+                CallArgInfo::with_rooted_chain(chain.clone())
+            }
         }
     }
 

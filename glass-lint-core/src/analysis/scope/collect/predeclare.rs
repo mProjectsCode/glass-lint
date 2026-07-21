@@ -2,19 +2,23 @@
 //!
 //! This pass runs before provenance collection so lexical and hoisted names
 //! are known at every source position, including uses before declarations.
+//!
+//! This pass only inserts bindings (imports, hoisted declarations, parameters).
+//! Scope structure (block, for, switch, with, catch, function, arrow) is
+//! created through the shared `LexicalScopeCollector::push_scope`/`pop_scope`
+//! methods, which also build the typed `ScopePlan` consumed by the main
+//! source-order visitor. Import bindings are inserted through the shared
+//! `LexicalScopeCollector::insert_import` helper so both passes share one
+//! maintenance point.
 
-use smol_str::ToSmolStr;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, BlockStmt, CatchClause, ClassDecl, ClassExpr, FnDecl, ForInStmt, ForOfStmt, ForStmt,
-    Function, ImportDecl, ImportSpecifier, Param, SwitchStmt, VarDecl, WithStmt,
+    Function, ImportDecl, Param, SwitchStmt, VarDecl, WithStmt,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use crate::analysis::{
-    scope::{BindingProvenance, ScopeKind, collect::LexicalScopeCollector},
-    syntax::module_export_name,
-};
+use crate::analysis::scope::{ScopeKind, collect::LexicalScopeCollector};
 
 pub(super) struct PredeclareVisitor<'a, 'b> {
     /// Collector whose scope tree and hoisted bindings this pass populates.
@@ -22,45 +26,6 @@ pub(super) struct PredeclareVisitor<'a, 'b> {
 }
 
 impl PredeclareVisitor<'_, '_> {
-    /// Insert import bindings before ordinary source-order traversal.
-    fn insert_import(&mut self, import: &ImportDecl) {
-        let scope = self.collector.current_scope();
-        let module = import.src.value.to_string_lossy().to_smolstr();
-        for specifier in &import.specifiers {
-            match specifier {
-                ImportSpecifier::Named(named) => {
-                    let local = named.local.sym.to_smolstr();
-                    let export = named
-                        .imported
-                        .as_ref()
-                        .map_or_else(|| local.clone(), module_export_name);
-                    self.collector.insert(
-                        scope,
-                        local,
-                        BindingProvenance::ModuleExport {
-                            module: module.clone(),
-                            export,
-                        },
-                    );
-                }
-                ImportSpecifier::Namespace(namespace) => self.collector.insert(
-                    scope,
-                    namespace.local.sym.to_smolstr(),
-                    BindingProvenance::ModuleNamespace {
-                        module: module.clone(),
-                    },
-                ),
-                ImportSpecifier::Default(default) => self.collector.insert(
-                    scope,
-                    default.local.sym.to_smolstr(),
-                    BindingProvenance::ModuleNamespace {
-                        module: module.clone(),
-                    },
-                ),
-            }
-        }
-    }
-
     /// Enter a function scope and predeclare all parameter bindings.
     fn push_function(&mut self, span: Span, parameters: &[Param]) {
         self.collector.push_scope(span, ScopeKind::Function);
@@ -79,7 +44,8 @@ impl PredeclareVisitor<'_, '_> {
 
 impl Visit for PredeclareVisitor<'_, '_> {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
-        self.insert_import(import);
+        let scope = self.collector.current_scope();
+        self.collector.insert_import(scope, import);
     }
 
     fn visit_var_decl(&mut self, declaration: &VarDecl) {

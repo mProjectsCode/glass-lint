@@ -15,6 +15,7 @@ mod error;
 mod loader;
 mod options;
 mod resolver;
+mod walk;
 
 pub use corpus::{CorpusFile, SourceCorpus};
 pub use error::{ProjectLoadError, ProjectOptionError};

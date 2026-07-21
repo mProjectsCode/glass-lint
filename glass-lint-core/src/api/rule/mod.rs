@@ -20,7 +20,7 @@ pub use matcher::{
     FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, Matcher, MatcherSet,
     MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, ObjectEventMatcher,
     ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher,
-    StaticStringPredicate, SymbolProvenance, ValueMatcher, ValueMatcherKind,
+    SymbolProvenance, ValueMatcher, ValueMatcherKind,
 };
 pub use module::ModuleSpecifierPattern;
 pub use taxonomy::{Category, Confidence};

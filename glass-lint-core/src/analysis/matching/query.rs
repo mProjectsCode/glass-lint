@@ -9,8 +9,8 @@ use smol_str::ToSmolStr;
 use crate::{
     analysis::{
         matching::{
-            ClassificationEvidence, ModuleExportKey, ModuleOccurrenceOverlay, Occurrence,
-            OccurrenceIndexes,
+            CandidateOccurrences, ClassificationEvidence, ModuleExportKey,
+            ModuleOccurrenceOverlay, Occurrence, OccurrenceIndexes,
             occurrence::{MergeOccurrenceIter, ModuleOccurrences, OccurrenceIndex},
             push_owned_evidence,
         },
@@ -21,41 +21,59 @@ use crate::{
     },
 };
 
-fn merge_occurrences<'a>(
-    base: Option<&'a [Occurrence]>,
-    overlay: Option<&'a [Occurrence]>,
-) -> MergeOccurrenceIter<'a> {
-    MergeOccurrenceIter::new(base.unwrap_or_default(), overlay.unwrap_or_default())
-}
-
-fn module_occurrences<K: Ord>(
-    base: &OccurrenceIndex<K>,
-    overlay: Option<&OccurrenceIndex<K>>,
+fn module_occurrences<'a, K: Ord>(
+    base: &'a OccurrenceIndex<K>,
+    overlay: Option<&'a OccurrenceIndex<K>>,
     masked: bool,
     key: &K,
-) -> Option<Vec<Occurrence>> {
-    overlay
-        .and_then(|overlay| overlay.get(key))
-        .map(<[Occurrence]>::to_vec)
-        .or_else(|| {
-            (!masked)
-                .then(|| base.get(key))
-                .flatten()
-                .map(<[Occurrence]>::to_vec)
-        })
+) -> Option<CandidateOccurrences<'a>> {
+    if let Some(overlay_slice) = overlay.and_then(|overlay| overlay.get(key)) {
+        return Some(CandidateOccurrences::Indexed(overlay_slice));
+    }
+    if !masked && let Some(base_slice) = base.get(key) {
+        return Some(CandidateOccurrences::Indexed(base_slice));
+    }
+    None
 }
 
-fn package_occurrences(
-    base: &ModuleOccurrences,
-    overlay: Option<&ModuleOccurrences>,
-    masked: Option<&BTreeSet<ModuleExportKey>>,
+fn package_occurrences<'a>(
+    base: &'a ModuleOccurrences,
+    overlay: Option<&'a ModuleOccurrences>,
+    masked: Option<&'a BTreeSet<ModuleExportKey>>,
     mut matches: impl FnMut(&ModuleExportKey) -> bool,
-) -> Option<Vec<Occurrence>> {
-    let base =
-        base.matching(|key| matches(key) && masked.is_none_or(|masked| !masked.contains(key)));
-    let overlay = overlay.and_then(|overlay| overlay.matching(|key| matches(key)));
-    let merged: Vec<_> = merge_occurrences(base.as_deref(), overlay.as_deref()).collect();
-    (!merged.is_empty()).then_some(merged)
+) -> Option<CandidateOccurrences<'a>> {
+    let base_matches = base.matching(|key| {
+        matches(key) && masked.is_none_or(|masked| !masked.contains(key))
+    });
+    let overlay_matches =
+        overlay.and_then(|overlay| overlay.matching(|key| matches(key)));
+    let mut merged = if let Some(CandidateOccurrences::Scanned(vec)) = base_matches {
+        vec
+    } else {
+        Vec::new()
+    };
+    if let Some(CandidateOccurrences::Scanned(vec)) = overlay_matches {
+        merged.extend(vec);
+    }
+    if merged.is_empty() {
+        return None;
+    }
+    Some(CandidateOccurrences::Scanned(merged))
+}
+
+fn merged_or_indexed<'a>(
+    base: Option<&'a [Occurrence]>,
+    overlay: Option<&'a [Occurrence]>,
+) -> Option<CandidateOccurrences<'a>> {
+    match (base, overlay) {
+        (Some(base_slice), Some(overlay_slice)) => Some(CandidateOccurrences::Merged(
+            MergeOccurrenceIter::new(base_slice, overlay_slice),
+        )),
+        (Some(slice), None) | (None, Some(slice)) => {
+            Some(CandidateOccurrences::Indexed(slice))
+        }
+        (None, None) => None,
+    }
 }
 
 impl OccurrenceIndexes {
@@ -68,10 +86,10 @@ impl OccurrenceIndexes {
         self.evidence_for_with_overlay(plan, None, &self.test_names)
     }
 
-    pub(in crate::analysis) fn evidence_for_with_overlay(
-        &self,
+    pub(in crate::analysis) fn evidence_for_with_overlay<'a>(
+        &'a self,
         plan: &QueryPlan,
-        overlay: Option<&ModuleOccurrenceOverlay>,
+        overlay: Option<&'a ModuleOccurrenceOverlay>,
         names: &crate::analysis::name::NameTable,
     ) -> Vec<ClassificationEvidence> {
         let mut evidence = Vec::new();
@@ -79,13 +97,14 @@ impl OccurrenceIndexes {
             if !clause.constraints.is_empty() {
                 continue;
             }
-            let occurrences = self.occurrences_for_clause(clause, overlay, names);
-            push_owned_evidence(
-                &mut evidence,
-                clause.evidence.kind,
-                clause.evidence.symbol.clone(),
-                occurrences.into_iter().flatten(),
-            );
+            if let Some(occurrences) = self.occurrences_for_clause(clause, overlay, names) {
+                push_owned_evidence(
+                    &mut evidence,
+                    clause.evidence.kind,
+                    clause.evidence.symbol.clone(),
+                    occurrences,
+                );
+            }
         }
         evidence.sort_by_key(|item| {
             let first = item.occurrences.first().map(|occurrence| occurrence.span);
@@ -94,24 +113,24 @@ impl OccurrenceIndexes {
         evidence
     }
 
-    pub(in crate::analysis) fn occurrences_for_clause(
-        &self,
+    pub(in crate::analysis) fn occurrences_for_clause<'a>(
+        &'a self,
         clause: &QueryClause,
-        overlay: Option<&ModuleOccurrenceOverlay>,
+        overlay: Option<&'a ModuleOccurrenceOverlay>,
         names: &crate::analysis::name::NameTable,
-    ) -> Option<Vec<Occurrence>> {
+    ) -> Option<CandidateOccurrences<'a>> {
         if !matches!(clause.subject, SubjectConstraint::Direct) {
             return self.occurrences_for_subject(clause, overlay, names);
         }
         self.occurrences_for_event(clause, overlay, names)
     }
 
-    fn occurrences_for_subject(
-        &self,
+    fn occurrences_for_subject<'a>(
+        &'a self,
         clause: &QueryClause,
-        _overlay: Option<&ModuleOccurrenceOverlay>,
+        _overlay: Option<&'a ModuleOccurrenceOverlay>,
         names: &crate::analysis::name::NameTable,
-    ) -> Option<Vec<Occurrence>> {
+    ) -> Option<CandidateOccurrences<'a>> {
         match (&clause.event, &clause.subject) {
             (EventPredicate::MemberCall { member }, SubjectConstraint::ReturnedFrom { .. }) => {
                 self.members.returned_calls.matching(|key| {
@@ -157,26 +176,22 @@ impl OccurrenceIndexes {
     }
 
     #[allow(clippy::too_many_lines)]
-    fn occurrences_for_event(
-        &self,
+    fn occurrences_for_event<'a>(
+        &'a self,
         clause: &QueryClause,
-        overlay: Option<&ModuleOccurrenceOverlay>,
+        overlay: Option<&'a ModuleOccurrenceOverlay>,
         names: &crate::analysis::name::NameTable,
-    ) -> Option<Vec<Occurrence>> {
+    ) -> Option<CandidateOccurrences<'a>> {
         match &clause.event {
             EventPredicate::Call => match &clause.identity {
                 IdentityConstraint::Any { name, .. } => names
                     .lookup(name)
                     .and_then(|id| self.call_indexes.calls.get(&id))
-                    .map(<[Occurrence]>::to_vec),
-                IdentityConstraint::Global { name, .. } => {
-                    let merged: Vec<_> = merge_occurrences(
-                        self.call_indexes.global_calls.get(name),
-                        overlay.and_then(|overlay| overlay.call_indexes.global_calls.get(name)),
-                    )
-                    .collect();
-                    (!merged.is_empty()).then_some(merged)
-                }
+                    .map(CandidateOccurrences::Indexed),
+                IdentityConstraint::Global { name, .. } => merged_or_indexed(
+                    self.call_indexes.global_calls.get(name),
+                    overlay.and_then(|overlay| overlay.call_indexes.global_calls.get(name)),
+                ),
                 IdentityConstraint::ModuleExport { module, export } => {
                     let key = ModuleExportKey::new(module.clone(), export.clone());
                     module_occurrences(
@@ -186,24 +201,28 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleExport { module, export } => package_occurrences(
-                    &self.call_indexes.module_calls,
-                    overlay.map(|overlay| &overlay.call_indexes.module_calls),
-                    overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && key.export() == export,
-                ),
+                IdentityConstraint::PackageModuleExport { module, export } => {
+                    package_occurrences(
+                        &self.call_indexes.module_calls,
+                        overlay.map(|overlay| &overlay.call_indexes.module_calls),
+                        overlay.map(|overlay| &overlay.masked),
+                        |key| module.matches(key.module()) && key.export() == export,
+                    )
+                }
                 _ => None,
             },
             EventPredicate::MemberCall { member } => match &clause.identity {
                 IdentityConstraint::Any { .. } => {
                     crate::analysis::value::NamePath::from_symbol_path(member, names)
                         .and_then(|member| self.members.calls.get(&member))
-                        .map(<[Occurrence]>::to_vec)
+                        .map(CandidateOccurrences::Indexed)
                 }
                 IdentityConstraint::Rooted { path } => {
                     let expected = NamePath::from_symbol_path(path, names)?;
                     self.members.rooted_calls.matching(|key| {
-                        expected.matches_global_object_alias_with(key, names, &self.environment)
+                        expected.matches_global_object_alias_with(
+                            key, names, &self.environment,
+                        )
                     })
                 }
                 IdentityConstraint::ModuleNamespace { module } => {
@@ -215,24 +234,28 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleNamespace { module } => package_occurrences(
-                    &self.members.module_calls,
-                    overlay.map(|overlay| &overlay.member_calls),
-                    overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && member.eq_chain(key.export()),
-                ),
+                IdentityConstraint::PackageModuleNamespace { module } => {
+                    package_occurrences(
+                        &self.members.module_calls,
+                        overlay.map(|overlay| &overlay.member_calls),
+                        overlay.map(|overlay| &overlay.masked),
+                        |key| module.matches(key.module()) && member.eq_chain(key.export()),
+                    )
+                }
                 _ => None,
             },
             EventPredicate::MemberRead { member } => match &clause.identity {
                 IdentityConstraint::Any { .. } => {
                     crate::analysis::value::NamePath::from_symbol_path(member, names)
                         .and_then(|member| self.members.reads.get(&member))
-                        .map(<[Occurrence]>::to_vec)
+                        .map(CandidateOccurrences::Indexed)
                 }
                 IdentityConstraint::Rooted { path } => {
                     let expected = NamePath::from_symbol_path(path, names)?;
                     self.members.rooted_reads.matching(|key| {
-                        expected.matches_global_object_alias_with(key, names, &self.environment)
+                        expected.matches_global_object_alias_with(
+                            key, names, &self.environment,
+                        )
                     })
                 }
                 IdentityConstraint::ModuleNamespace { module } => {
@@ -244,12 +267,14 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleNamespace { module } => package_occurrences(
-                    &self.members.module_reads,
-                    overlay.map(|overlay| &overlay.member_reads),
-                    overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && member.eq_chain(key.export()),
-                ),
+                IdentityConstraint::PackageModuleNamespace { module } => {
+                    package_occurrences(
+                        &self.members.module_reads,
+                        overlay.map(|overlay| &overlay.member_reads),
+                        overlay.map(|overlay| &overlay.masked),
+                        |key| module.matches(key.module()) && member.eq_chain(key.export()),
+                    )
+                }
                 _ => None,
             },
             EventPredicate::ClassReference => match &clause.identity {
@@ -257,7 +282,7 @@ impl OccurrenceIndexes {
                     .constructions
                     .classes
                     .get(name)
-                    .map(<[Occurrence]>::to_vec),
+                    .map(CandidateOccurrences::Indexed),
                 IdentityConstraint::ModuleExport { module, export } => {
                     let key = ModuleExportKey::new(module.clone(), export.clone());
                     module_occurrences(
@@ -267,24 +292,26 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleExport { module, export } => package_occurrences(
-                    &self.constructions.module_classes,
-                    overlay.map(|overlay| &overlay.module_classes),
-                    overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && key.export() == export,
-                ),
+                IdentityConstraint::PackageModuleExport { module, export } => {
+                    package_occurrences(
+                        &self.constructions.module_classes,
+                        overlay.map(|overlay| &overlay.module_classes),
+                        overlay.map(|overlay| &overlay.masked),
+                        |key| module.matches(key.module()) && key.export() == export,
+                    )
+                }
                 _ => None,
             },
             EventPredicate::Construct => match &clause.identity {
                 IdentityConstraint::Any { name, .. } => names
                     .lookup(name)
                     .and_then(|id| self.constructions.constructors.get(&id))
-                    .map(<[Occurrence]>::to_vec),
+                    .map(CandidateOccurrences::Indexed),
                 IdentityConstraint::Global { name, .. } => self
                     .constructions
                     .global_constructors
                     .get(name)
-                    .map(<[Occurrence]>::to_vec),
+                    .map(CandidateOccurrences::Indexed),
                 IdentityConstraint::ModuleExport { module, export } => {
                     let key = ModuleExportKey::new(module.clone(), export.clone());
                     module_occurrences(
@@ -294,12 +321,14 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleExport { module, export } => package_occurrences(
-                    &self.constructions.module_constructors,
-                    overlay.map(|overlay| &overlay.module_constructors),
-                    overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && key.export() == export,
-                ),
+                IdentityConstraint::PackageModuleExport { module, export } => {
+                    package_occurrences(
+                        &self.constructions.module_constructors,
+                        overlay.map(|overlay| &overlay.module_constructors),
+                        overlay.map(|overlay| &overlay.masked),
+                        |key| module.matches(key.module()) && key.export() == export,
+                    )
+                }
                 _ => None,
             },
             EventPredicate::Import => match &clause.identity {
@@ -307,11 +336,12 @@ impl OccurrenceIndexes {
                     .literals
                     .imports
                     .get(&predicate.to_smolstr())
-                    .map(<[Occurrence]>::to_vec),
-                IdentityConstraint::PackageSpecifier { pattern } => self
-                    .literals
-                    .imports
-                    .matching(|specifier| pattern.matches(specifier)),
+                    .map(CandidateOccurrences::Indexed),
+                IdentityConstraint::PackageSpecifier { pattern } => {
+                    self.literals
+                        .imports
+                        .matching(|specifier| pattern.matches(specifier))
+                }
                 _ => None,
             },
             EventPredicate::StringReference => match &clause.identity {

@@ -157,6 +157,44 @@ pub(in crate::analysis) struct CallArgInfo {
     pub(in crate::analysis) provenance: SymbolCallProvenance,
 }
 
+impl CallArgInfo {
+    /// Default unknown argument with the empty root projection. Used for
+    /// missing bound arguments, spread content, and unresolved values.
+    pub(in crate::analysis) fn unknown() -> Self {
+        Self {
+            value: ValueId::UNKNOWN,
+            base_value: ValueId::UNKNOWN,
+            base_path: PathId::EMPTY,
+            static_string: None,
+            object_keys: None,
+            property_strings: Vec::new(),
+            rooted_chain: None,
+            projections: vec![ValueProjection {
+                path: PathId::EMPTY,
+                value: ValueId::UNKNOWN,
+            }],
+            spread: false,
+            provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
+        }
+    }
+
+    /// Argument with a statically known string value.
+    pub(in crate::analysis) fn with_static_string(value: String) -> Self {
+        Self {
+            static_string: Some(value),
+            ..Self::unknown()
+        }
+    }
+
+    /// Argument whose value was a rooted expression chain.
+    pub(in crate::analysis) fn with_rooted_chain(chain: NamePath) -> Self {
+        Self {
+            rooted_chain: Some(chain),
+            ..Self::unknown()
+        }
+    }
+}
+
 /// Borrowed argument data used while matching project overlays. The call
 /// fact remains the owner of rich shape/projection data; only the small
 /// identity fields that a link overlay can strengthen are replaced.

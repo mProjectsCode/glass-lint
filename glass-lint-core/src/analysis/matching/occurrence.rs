@@ -13,6 +13,52 @@ use crate::{
     analysis::{facts::FactId, name::NameId, value::NamePath},
 };
 
+/// A borrowed, merged, or owned collection of candidate occurrences.
+///
+/// Exact indexed lookups borrow the normalized slice without allocation.
+/// Merged lookups iterate two sorted slices without allocation. Scanned
+/// lookups (package queries, predicate scans) still own a `Vec` because
+/// they combine multiple index buckets.
+pub(in crate::analysis) enum CandidateOccurrences<'a> {
+    Indexed(&'a [Occurrence]),
+    Merged(MergeOccurrenceIter<'a>),
+    Scanned(Vec<Occurrence>),
+}
+
+/// Iterator over candidate occurrences from any lookup strategy.
+pub(in crate::analysis) enum CandidateOccurrenceIter<'a> {
+    Indexed(core::iter::Copied<core::slice::Iter<'a, Occurrence>>),
+    Merged(MergeOccurrenceIter<'a>),
+    Scanned(std::vec::IntoIter<Occurrence>),
+}
+
+impl Iterator for CandidateOccurrenceIter<'_> {
+    type Item = Occurrence;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Indexed(iter) => iter.next(),
+            Self::Merged(iter) => iter.next(),
+            Self::Scanned(iter) => iter.next(),
+        }
+    }
+}
+
+impl<'a> IntoIterator for CandidateOccurrences<'a> {
+    type Item = Occurrence;
+    type IntoIter = CandidateOccurrenceIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            Self::Indexed(slice) => {
+                CandidateOccurrenceIter::Indexed(slice.iter().copied())
+            }
+            Self::Merged(iter) => CandidateOccurrenceIter::Merged(iter),
+            Self::Scanned(vec) => CandidateOccurrenceIter::Scanned(vec.into_iter()),
+        }
+    }
+}
+
 /// Typed occurrence storage. Keeping insertion and normalization in one
 /// container prevents semantic collectors from inventing subtly different
 /// span ordering or duplicate policies for each provenance view.
@@ -73,18 +119,21 @@ impl<K: Ord> OccurrenceIndex<K> {
     }
 
     /// Collect occurrences from all buckets satisfying one identity
-    /// predicate, returning no result when the predicate matches nothing.
+    /// predicate.
     pub(super) fn matching(
         &self,
         mut predicate: impl FnMut(&K) -> bool,
-    ) -> Option<Vec<Occurrence>> {
+    ) -> Option<CandidateOccurrences<'_>> {
         let occurrences = self
             .0
             .iter()
             .filter(|(key, _)| predicate(key))
             .flat_map(|(_, values)| values.iter().copied())
             .collect::<Vec<_>>();
-        (!occurrences.is_empty()).then_some(occurrences)
+        if occurrences.is_empty() {
+            return None;
+        }
+        Some(CandidateOccurrences::Scanned(occurrences))
     }
 
     /// Append an already constructed occurrence before normalization.

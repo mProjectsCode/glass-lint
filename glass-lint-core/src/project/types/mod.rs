@@ -4,7 +4,7 @@
 //! sources and explicit resolver outcomes, and reports retain normalized paths
 //! and source ranges for deterministic downstream rendering.
 
-use std::{borrow::Borrow, ops::Deref, path::Path};
+use std::{borrow::Borrow, ops::Deref, path::Path, sync::Arc};
 
 mod input;
 mod report;
@@ -27,9 +27,18 @@ pub fn is_internal_module_request(request: &str) -> bool {
 
 /// A normalized project-relative path whose representation cannot be mutated
 /// back into an absolute or escaping path by callers.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash, serde::Serialize)]
-#[serde(transparent)]
-pub struct ProjectRelativePath(String);
+///
+/// The inner text is reference-counted so that cloning the path at high-fanout
+/// boundaries (cache keys, evidence locations, finding reports) copies only a
+/// handle rather than the complete string payload.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
+pub struct ProjectRelativePath(Arc<str>);
+
+impl serde::Serialize for ProjectRelativePath {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.0)
+    }
+}
 
 impl<'de> serde::Deserialize<'de> for ProjectRelativePath {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -47,8 +56,8 @@ impl ProjectRelativePath {
         crate::project::input::normalize_relative(path)
     }
 
-    pub(crate) fn from_normalized(path: String) -> Self {
-        Self(path)
+    pub(crate) fn from_normalized(path: impl Into<Arc<str>>) -> Self {
+        Self(path.into())
     }
 
     pub fn as_str(&self) -> &str {
@@ -78,7 +87,7 @@ impl AsRef<str> for ProjectRelativePath {
 
 impl AsRef<Path> for ProjectRelativePath {
     fn as_ref(&self) -> &Path {
-        Path::new(&self.0)
+        Path::new(self.as_str())
     }
 }
 

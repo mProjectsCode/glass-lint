@@ -26,8 +26,8 @@ use crate::{
 mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
 use occurrence::{
-    InstanceMemberKey, ModuleOccurrences, NameOccurrences, Occurrence, OccurrenceIndex,
-    Occurrences, ReturnedMemberKey,
+    CandidateOccurrences, InstanceMemberKey, ModuleOccurrences, NameOccurrences, Occurrence,
+    OccurrenceIndex, Occurrences, ReturnedMemberKey,
 };
 mod arguments;
 pub(in crate::analysis) use arguments::compute_constrained_evidence_from_stream_with_overlay;
@@ -139,6 +139,30 @@ pub(in crate::analysis) enum LinkedModuleIdentity {
     StaticString { value: String },
     /// Resolution was ambiguous or unsupported.
     Unknown,
+}
+
+impl LinkedModuleIdentity {
+    /// Convert to a call provenance when this identity maps to an external
+    /// module export or a known global. Returns `None` for qualified,
+    /// static-string, and unknown identities.
+    pub(in crate::analysis) fn to_call_provenance(&self) -> Option<SymbolCallProvenance> {
+        match self {
+            Self::External { module, export } => Some(SymbolCallProvenance::ModuleExport {
+                module: module.clone(),
+                export: export.clone(),
+            }),
+            Self::Global { name } => Some(SymbolCallProvenance::Global { name: name.clone() }),
+            Self::Qualified { .. } | Self::StaticString { .. } | Self::Unknown => None,
+        }
+    }
+
+    /// Return the static string value when this identity is a `StaticString`.
+    pub(in crate::analysis) fn static_string_value(&self) -> Option<&str> {
+        match self {
+            Self::StaticString { value } => Some(value.as_str()),
+            _ => None,
+        }
+    }
 }
 
 pub(in crate::analysis) type ModuleIdentityMap = BTreeMap<ModuleExportKey, LinkedModuleIdentity>;

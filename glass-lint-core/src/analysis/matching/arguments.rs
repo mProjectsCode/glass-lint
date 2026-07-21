@@ -22,8 +22,9 @@ use crate::{
         facts::{ArgumentView, CallUnwrap, SemanticFact},
         matching::{
             CallArgInfo, ClassificationEvidence, FactPayload, FactStream, LinkedModuleIdentity,
-            ModuleExportKey, ModuleIdentityMap, ModuleOccurrenceOverlay, Occurrence,
-            OccurrenceIndexes, SymbolCallProvenance, push_owned_evidence,
+            ModuleExportKey, ModuleIdentityMap,
+            ModuleOccurrenceOverlay, Occurrence, OccurrenceIndexes, SymbolCallProvenance,
+            push_owned_evidence,
         },
         name::NameTable,
         syntax::SymbolMemberProvenance,
@@ -53,19 +54,30 @@ impl<'a> MatcherEvaluator<'a> {
         }
     }
 
+    /// Look up the resolved identity for a module-export provenance.
+    ///
+    /// Centralizes the `module_export_tuple` → `ModuleExportKey` → map lookup
+    /// chain that was previously duplicated in both the argument-overlay and
+    /// call-provenance paths.
+    fn lookup_identity(
+        &self,
+        provenance: &SymbolCallProvenance,
+    ) -> Option<&LinkedModuleIdentity> {
+        let (module, export) = provenance.module_export_tuple()?;
+        self.identities?.get(&ModuleExportKey::new(module, export))
+    }
+
     fn argument_with_overlay<'b>(&'b self, argument: &'b CallArgInfo) -> ArgumentView<'b> {
         let mut view = ArgumentView::new(argument);
         if let Some(result_identities) = self.result_identities
-            && let Some(identity) = result_identities.get(&argument.value)
-            && let LinkedModuleIdentity::StaticString { value } = identity
+            && let Some(value) = result_identities
+                .get(&argument.value)
+                .and_then(LinkedModuleIdentity::static_string_value)
         {
             view = view.with_static_string(value);
         }
-        if let Some(identities) = self.identities
-            && let SymbolCallProvenance::ModuleExport { module, export } = &argument.provenance
-            && let Some(identity) =
-                identities.get(&ModuleExportKey::new(module.clone(), export.clone()))
-            && let LinkedModuleIdentity::StaticString { value } = identity
+        if let Some(identity) = self.lookup_identity(&argument.provenance)
+            && let Some(value) = identity.static_string_value()
         {
             view = view.with_static_string(value);
         }
@@ -79,37 +91,14 @@ impl<'a> MatcherEvaluator<'a> {
     ) -> SymbolCallProvenance {
         if let Some(result_identities) = self.result_identities
             && let Some(identity) = result_identities.get(&callee)
+            && let Some(provenance) = identity.to_call_provenance()
         {
-            return match identity {
-                LinkedModuleIdentity::External { module, export } => {
-                    SymbolCallProvenance::ModuleExport {
-                        module: module.clone(),
-                        export: export.clone(),
-                    }
-                }
-                LinkedModuleIdentity::Global { name } => {
-                    SymbolCallProvenance::Global { name: name.clone() }
-                }
-                _ => raw.clone(),
-            };
+            return provenance;
         }
-        if let SymbolCallProvenance::ModuleExport { module, export } = raw
-            && let Some(identities) = self.identities
-            && let Some(identity) =
-                identities.get(&ModuleExportKey::new(module.clone(), export.clone()))
+        if let Some(identity) = self.lookup_identity(raw)
+            && let Some(provenance) = identity.to_call_provenance()
         {
-            return match identity {
-                LinkedModuleIdentity::External { module, export } => {
-                    SymbolCallProvenance::ModuleExport {
-                        module: module.clone(),
-                        export: export.clone(),
-                    }
-                }
-                LinkedModuleIdentity::Global { name } => {
-                    SymbolCallProvenance::Global { name: name.clone() }
-                }
-                _ => raw.clone(),
-            };
+            return provenance;
         }
         raw.clone()
     }

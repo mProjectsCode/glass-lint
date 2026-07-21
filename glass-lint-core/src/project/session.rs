@@ -4,6 +4,8 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc};
 
+use crate::project::ModuleId;
+
 struct LocalJob {
     path: ProjectRelativePath,
     source: SourceFile,
@@ -168,29 +170,43 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
         release: &mut dyn FnMut(LocalJobResult),
     ) {
         let bound = outstanding_job_bound(worker_limit);
-        for batch in jobs.chunks(bound) {
-            for _ in batch {
+        let mut remaining = jobs;
+        while !remaining.is_empty() {
+            let take = bound.min(remaining.len());
+            let batch: Vec<LocalJob> = remaining.drain(..take).collect();
+            let batch_size = batch.len();
+            for _ in 0..batch_size {
                 observer.observe(ExecutionEvent::Submitted);
+            }
+            let chunk_size = batch_size.max(1).div_ceil(worker_limit.get());
+            // Split the owned batch into owned per-worker chunks so each
+            // worker moves job fields into LocalJobResult without cloning.
+            let mut worker_chunks: Vec<Vec<LocalJob>> = Vec::new();
+            let mut remaining_batch = batch;
+            while !remaining_batch.is_empty() {
+                let take = chunk_size.min(remaining_batch.len());
+                worker_chunks.push(remaining_batch.drain(..take).collect());
             }
             let batch_results = std::thread::scope(|scope| {
                 let mut handles = Vec::new();
-                for chunk in batch.chunks(batch.len().max(1).div_ceil(worker_limit.get())) {
+                for worker_jobs in worker_chunks {
                     handles.push(scope.spawn(move || {
-                        chunk
-                            .iter()
-                            .map(|job| LocalJobResult {
-                                path: job.path.clone(),
-                                source: job.source.clone(),
-                                key: job.key.clone(),
-                                result: {
-                                    observer.observe(ExecutionEvent::Started);
-                                    observer.observe(ExecutionEvent::ParseAttempted);
-                                    observer.observe(ExecutionEvent::LowerAttempted);
-                                    let result = crate::analysis::lower_source(linter, &job.source)
+                        worker_jobs
+                            .into_iter()
+                            .map(|job| {
+                                observer.observe(ExecutionEvent::Started);
+                                observer.observe(ExecutionEvent::ParseAttempted);
+                                observer.observe(ExecutionEvent::LowerAttempted);
+                                let result =
+                                    crate::analysis::lower_source(linter, &job.source)
                                         .map(|ls| ls.semantic);
-                                    observer.observe(ExecutionEvent::Finished);
-                                    result
-                                },
+                                observer.observe(ExecutionEvent::Finished);
+                                LocalJobResult {
+                                    path: job.path,
+                                    source: job.source,
+                                    key: job.key,
+                                    result,
+                                }
                             })
                             .collect::<Vec<_>>()
                     }));
@@ -669,10 +685,29 @@ impl<'a> AnalysisSession<'a> {
     pub fn finish_with_timings(
         self,
     ) -> Result<(AnalysisReport, std::time::Duration, std::time::Duration), ProjectInputError> {
+        let sources: BTreeMap<ProjectRelativePath, crate::SourceFile> = self
+            .sources
+            .into_values()
+            .map(|source| (source.path.clone(), source))
+            .collect();
+        let module_ids = sources
+            .keys()
+            .enumerate()
+            .map(|(index, path)| {
+                (
+                    path.clone(),
+                    ModuleId::new(
+                        u32::try_from(index).expect("module count exceeds ModuleId range"),
+                    ),
+                )
+            })
+            .collect();
+        let resolutions: BTreeMap<_, _> = self.resolutions.into_values().collect();
         let input = ValidatedProjectInput {
             root: self.root,
-            sources: self.sources.into_values().collect(),
-            resolutions: self.resolutions.into_values().collect(),
+            sources,
+            resolutions,
+            module_ids,
         };
         self.linter.finish_analyzed_project(
             input,

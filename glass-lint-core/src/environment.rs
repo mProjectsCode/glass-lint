@@ -1,6 +1,9 @@
 //! Explicit host-environment semantics used by provenance analysis.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use smol_str::SmolStr;
 
@@ -9,13 +12,21 @@ use smol_str::SmolStr;
 ///
 /// The default contains only stable ECMAScript globals. Browser, Node.js,
 /// Electron, and provider-injected names belong in provider configurations.
-#[derive(Clone, Debug, Eq, PartialEq)]
+///
+/// Cloning is cheap: only the shared `Arc` handle is copied. Equality compares
+/// the inner value, so cache-key semantics are preserved.
+#[derive(Debug)]
 pub struct Environment {
+    inner: Arc<EnvironmentInner>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct EnvironmentInner {
     global_bindings: BTreeSet<SmolStr>,
     global_objects: BTreeMap<SmolStr, GlobalObjectMembers>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 /// Membership policy for a global object's promoted identities.
 enum GlobalObjectMembers {
     /// This object promotes all currently configured globals as callable
@@ -26,6 +37,22 @@ enum GlobalObjectMembers {
     /// Used for window-like objects from another security context.
     Restricted(BTreeSet<SmolStr>),
 }
+
+impl Clone for Environment {
+    fn clone(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+        }
+    }
+}
+
+impl PartialEq for Environment {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner) || *self.inner == *other.inner
+    }
+}
+
+impl Eq for Environment {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Error returned for a malformed host binding identifier.
@@ -60,6 +87,14 @@ fn is_js_identifier_continue(c: char) -> bool {
 }
 
 impl Environment {
+    fn inner(&self) -> &EnvironmentInner {
+        &self.inner
+    }
+
+    fn inner_mut(&mut self) -> &mut EnvironmentInner {
+        Arc::make_mut(&mut self.inner)
+    }
+
     /// Validate one JavaScript binding name.
     ///
     /// Environment entries represent bindings, not member paths, so dots and
@@ -90,15 +125,17 @@ impl Environment {
             GlobalObjectMembers::ConfiguredGlobals,
         )]);
         Self {
-            global_bindings,
-            global_objects,
+            inner: Arc::new(EnvironmentInner {
+                global_bindings,
+                global_objects,
+            }),
         }
     }
 
     /// Add a global binding supplied by the host environment.
     pub fn add_global(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
         let name = Self::validated_identifier(&name.into())?;
-        self.global_bindings.insert(name);
+        self.inner_mut().global_bindings.insert(name);
         Ok(())
     }
 
@@ -120,8 +157,10 @@ impl Environment {
     /// this object can share callable identity with configured global bindings.
     pub fn add_global_object(&mut self, name: impl Into<String>) -> Result<(), EnvironmentError> {
         let name = Self::validated_identifier(&name.into())?;
-        self.global_bindings.insert(name.clone());
-        self.global_objects
+        let inner = self.inner_mut();
+        inner.global_bindings.insert(name.clone());
+        inner
+            .global_objects
             .insert(name, GlobalObjectMembers::ConfiguredGlobals);
         Ok(())
     }
@@ -146,8 +185,10 @@ impl Environment {
             .into_iter()
             .map(|member| Self::validated_identifier(&member.into()))
             .collect::<Result<BTreeSet<_>, _>>()?;
-        self.global_bindings.insert(name.clone());
-        self.global_objects
+        let inner = self.inner_mut();
+        inner.global_bindings.insert(name.clone());
+        inner
+            .global_objects
             .insert(name, GlobalObjectMembers::Restricted(members));
         Ok(())
     }
@@ -156,17 +197,22 @@ impl Environment {
     /// bindings and objects from `other` are added; a `ConfiguredGlobals`
     /// entry in either side wins over `Restricted` for the same name.
     pub fn extend(&mut self, other: &Self) {
-        self.global_bindings
-            .extend(other.global_bindings.iter().cloned());
-        for (name, other_members) in &other.global_objects {
-            match (self.global_objects.get_mut(name), other_members) {
+        let inner = self.inner_mut();
+        let other_inner = other.inner();
+        inner
+            .global_bindings
+            .extend(other_inner.global_bindings.iter().cloned());
+        for (name, other_members) in &other_inner.global_objects {
+            match (inner.global_objects.get_mut(name), other_members) {
                 (None, _) => {
-                    self.global_objects
+                    inner
+                        .global_objects
                         .insert(name.clone(), other_members.clone());
                 }
                 (Some(GlobalObjectMembers::ConfiguredGlobals), _)
                 | (_, GlobalObjectMembers::ConfiguredGlobals) => {
-                    self.global_objects
+                    inner
+                        .global_objects
                         .insert(name.clone(), GlobalObjectMembers::ConfiguredGlobals);
                 }
                 (
@@ -179,22 +225,22 @@ impl Environment {
 
     /// Iterate configured global binding names in deterministic order.
     pub fn global_bindings(&self) -> impl Iterator<Item = &str> {
-        self.global_bindings.iter().map(SmolStr::as_str)
+        self.inner().global_bindings.iter().map(SmolStr::as_str)
     }
 
     /// Iterate configured global-object aliases in deterministic order.
     pub fn global_objects(&self) -> impl Iterator<Item = &str> {
-        self.global_objects.keys().map(SmolStr::as_str)
+        self.inner().global_objects.keys().map(SmolStr::as_str)
     }
 
     /// Whether a name is configured as a global binding.
     pub fn is_global(&self, name: &str) -> bool {
-        self.global_bindings.contains(name)
+        self.inner().global_bindings.contains(name)
     }
 
     /// Whether a global object promotes a member to a callable identity.
     pub fn is_global_member(&self, object: &str, member: &str) -> bool {
-        match self.global_objects.get(object) {
+        match self.inner().global_objects.get(object) {
             Some(GlobalObjectMembers::ConfiguredGlobals) => self.is_global(member),
             Some(GlobalObjectMembers::Restricted(members)) => members.contains(member),
             None => false,
@@ -210,8 +256,8 @@ impl Environment {
         }
         matches!(
             (
-                self.global_objects.get(left),
-                self.global_objects.get(right)
+                self.inner().global_objects.get(left),
+                self.inner().global_objects.get(right)
             ),
             (
                 Some(GlobalObjectMembers::ConfiguredGlobals),
@@ -249,7 +295,7 @@ impl Environment {
     }
 
     fn is_global_object(&self, name: &str) -> bool {
-        self.global_objects.contains_key(name)
+        self.inner().global_objects.contains_key(name)
     }
 }
 

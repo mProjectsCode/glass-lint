@@ -71,69 +71,6 @@ impl ProjectLoadOutcome {
     }
 }
 
-/// Shared timing phase fields for loading and profiling.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-struct ProjectPhases {
-    discovery: Duration,
-    reads: Duration,
-    parse_and_local_analysis: Duration,
-    resolution: Duration,
-    linking_and_matching: Duration,
-    linking: Duration,
-    matching: Duration,
-    total: Duration,
-}
-
-impl std::ops::AddAssign for ProjectPhases {
-    fn add_assign(&mut self, rhs: Self) {
-        self.discovery = self.discovery.saturating_add(rhs.discovery);
-        self.reads = self.reads.saturating_add(rhs.reads);
-        self.parse_and_local_analysis = self
-            .parse_and_local_analysis
-            .saturating_add(rhs.parse_and_local_analysis);
-        self.resolution = self.resolution.saturating_add(rhs.resolution);
-        self.linking_and_matching = self
-            .linking_and_matching
-            .saturating_add(rhs.linking_and_matching);
-        self.linking = self.linking.saturating_add(rhs.linking);
-        self.matching = self.matching.saturating_add(rhs.matching);
-        self.total = self.total.saturating_add(rhs.total);
-    }
-}
-
-/// Bounded construction counters and phase timings for profiling.
-///
-/// Loader-owned discovery, reads, parsing, and resolution are separated from
-/// core-reported linking/matching phases; `total` covers the complete load
-/// operation.
-#[derive(Clone, Debug, Default)]
-pub struct ProjectLoadMetrics {
-    /// Time spent selecting and discovering files.
-    pub discovery: Duration,
-    /// Time spent reading source bytes.
-    pub reads: Duration,
-    /// Time spent parsing and locally analyzing sources.
-    pub parse_and_local_analysis: Duration,
-    /// Time spent resolving module requests.
-    pub resolution: Duration,
-    /// End-to-end linking and matching time at the core boundary.
-    pub linking_and_matching: Duration,
-    /// Link-only phase reported by core.
-    pub linking: Duration,
-    /// Matcher-only phase reported by core.
-    pub matching: Duration,
-    /// Total elapsed load time.
-    pub total: Duration,
-    /// Number of admitted source files.
-    pub files: usize,
-    /// Number of resolver requests observed.
-    pub requests: usize,
-    /// Number of internal edges observed.
-    pub edges: usize,
-    /// Total source bytes read.
-    pub bytes: u64,
-}
-
 /// Phase timings shared with harness profiling reports.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ProjectPhaseTimings {
@@ -147,77 +84,52 @@ pub struct ProjectPhaseTimings {
     pub total: Duration,
 }
 
-impl ProjectPhaseTimings {
-    fn phases(&self) -> ProjectPhases {
-        ProjectPhases {
-            discovery: self.discovery,
-            reads: self.reads,
-            parse_and_local_analysis: self.parse_and_local_analysis,
-            resolution: self.resolution,
-            linking: self.linking,
-            linking_and_matching: self.linking_and_matching,
-            matching: self.matching,
-            total: self.total,
-        }
+impl std::ops::AddAssign for ProjectPhaseTimings {
+    fn add_assign(&mut self, rhs: Self) {
+        self.discovery = self.discovery.saturating_add(rhs.discovery);
+        self.reads = self.reads.saturating_add(rhs.reads);
+        self.parse_and_local_analysis = self
+            .parse_and_local_analysis
+            .saturating_add(rhs.parse_and_local_analysis);
+        self.resolution = self.resolution.saturating_add(rhs.resolution);
+        self.linking = self.linking.saturating_add(rhs.linking);
+        self.linking_and_matching = self
+            .linking_and_matching
+            .saturating_add(rhs.linking_and_matching);
+        self.matching = self.matching.saturating_add(rhs.matching);
+        self.total = self.total.saturating_add(rhs.total);
     }
 }
 
-impl std::ops::AddAssign for ProjectPhaseTimings {
-    fn add_assign(&mut self, rhs: Self) {
-        let mut phases = self.phases();
-        phases += rhs.phases();
-        self.discovery = phases.discovery;
-        self.reads = phases.reads;
-        self.parse_and_local_analysis = phases.parse_and_local_analysis;
-        self.resolution = phases.resolution;
-        self.linking = phases.linking;
-        self.linking_and_matching = phases.linking_and_matching;
-        self.matching = phases.matching;
-        self.total = phases.total;
-    }
+/// Bounded construction counters and phase timings for profiling.
+///
+/// Embeds [`ProjectPhaseTimings`] directly so that the eight duration fields
+/// have one authoritative representation across timings, metrics, and
+/// phase-timing conversions.
+#[derive(Clone, Debug, Default)]
+pub struct ProjectLoadMetrics {
+    /// Phase durations embedded directly as the canonical timing record.
+    pub timings: ProjectPhaseTimings,
+    /// Number of admitted source files.
+    pub files: usize,
+    /// Number of resolver requests observed.
+    pub requests: usize,
+    /// Number of internal edges observed.
+    pub edges: usize,
+    /// Total source bytes read.
+    pub bytes: u64,
 }
 
 impl ProjectLoadMetrics {
-    fn phases(&self) -> ProjectPhases {
-        ProjectPhases {
-            discovery: self.discovery,
-            reads: self.reads,
-            parse_and_local_analysis: self.parse_and_local_analysis,
-            resolution: self.resolution,
-            linking: self.linking,
-            linking_and_matching: self.linking_and_matching,
-            matching: self.matching,
-            total: self.total,
-        }
-    }
-
     #[must_use]
     pub fn phase_timings(&self) -> ProjectPhaseTimings {
-        ProjectPhaseTimings {
-            discovery: self.discovery,
-            reads: self.reads,
-            parse_and_local_analysis: self.parse_and_local_analysis,
-            resolution: self.resolution,
-            linking: self.linking,
-            linking_and_matching: self.linking_and_matching,
-            matching: self.matching,
-            total: self.total,
-        }
+        self.timings
     }
 }
 
 impl std::ops::AddAssign for ProjectLoadMetrics {
     fn add_assign(&mut self, rhs: Self) {
-        let mut phases = self.phases();
-        phases += rhs.phases();
-        self.discovery = phases.discovery;
-        self.reads = phases.reads;
-        self.parse_and_local_analysis = phases.parse_and_local_analysis;
-        self.resolution = phases.resolution;
-        self.linking_and_matching = phases.linking_and_matching;
-        self.linking = phases.linking;
-        self.matching = phases.matching;
-        self.total = phases.total;
+        self.timings += rhs.timings;
         self.files = self.files.saturating_add(rhs.files);
         self.requests = self.requests.saturating_add(rhs.requests);
         self.edges = self.edges.saturating_add(rhs.edges);
@@ -245,7 +157,7 @@ impl ProjectLoader {
         let mut metrics = ProjectLoadMetrics::default();
         let total_start = Instant::now();
         let mut outcome = self.load_project_with_outcome(linter, selection, &mut metrics)?;
-        metrics.total = total_start.elapsed();
+        metrics.timings.total = total_start.elapsed();
         outcome.metrics = metrics;
         Ok(outcome)
     }
@@ -259,7 +171,7 @@ impl ProjectLoader {
         let discovery_start = Instant::now();
         let deadline = Instant::now() + Duration::from_millis(self.options.max_timeout_ms);
         let paths = ProjectPaths::from_selection(&self.options, selection, deadline)?;
-        metrics.discovery += discovery_start.elapsed();
+        metrics.timings.discovery += discovery_start.elapsed();
 
         let mut build =
             ProjectLoadState::new(linter, &self.options, paths.root, selection, deadline)?;
@@ -457,7 +369,7 @@ impl<'a> ProjectLoadState<'a> {
 
         let read_start = Instant::now();
         let source = self.discovery.read_source(&self.root, &path)?;
-        metrics.reads += read_start.elapsed();
+        metrics.timings.reads += read_start.elapsed();
         let source_bytes = u64::try_from(source.source.len()).unwrap_or(u64::MAX);
         self.counters.source_bytes = self.counters.source_bytes.saturating_add(source_bytes);
         if self.counters.source_bytes > self.discovery.options().max_project_source_bytes {
@@ -471,7 +383,7 @@ impl<'a> ProjectLoadState<'a> {
         let source_path = source.path.to_string();
         self.session.admit_source(source)?;
         let requests = self.session.analyze_source(source_path)?;
-        metrics.parse_and_local_analysis += parse_start.elapsed();
+        metrics.timings.parse_and_local_analysis += parse_start.elapsed();
         metrics.bytes = metrics.bytes.saturating_add(source_bytes);
         metrics.files = self.admitted.len();
 
@@ -498,7 +410,7 @@ impl<'a> ProjectLoadState<'a> {
             } else {
                 let resolve_start = Instant::now();
                 let result = self.resolver.resolve(&request);
-                metrics.resolution += resolve_start.elapsed();
+                metrics.timings.resolution += resolve_start.elapsed();
                 self.resolved.insert(cache_key, result.clone());
                 result
             };
@@ -554,9 +466,9 @@ impl<'a> ProjectLoadState<'a> {
         if Instant::now() > deadline {
             return Err(ProjectLoadError::Timeout);
         }
-        metrics.linking += linking;
-        metrics.matching += matching;
-        metrics.linking_and_matching += link_start.elapsed();
+        metrics.timings.linking += linking;
+        metrics.timings.matching += matching;
+        metrics.timings.linking_and_matching += link_start.elapsed();
         Ok(report)
     }
 }
