@@ -8,16 +8,13 @@
 //! prevents a complete summary. Invalid summaries are not used for qualified
 //! propagation, preserving fail-closed behavior across module boundaries.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
 use crate::{
     analysis::{
-        facts::{
-            CallArgInfo, ControlKind, FactId, FactPayload, FactStream, ParameterBinding,
-            SemanticFact,
-        },
+        facts::{ControlKind, FactId, FactPayload, FactStream, ParameterBinding, SemanticFact},
         flow::table::FunctionTable,
         syntax::SymbolCallProvenance,
         value::{FunctionId, NamePath, PathId, ValueId},
@@ -64,8 +61,6 @@ pub(in crate::analysis) struct EffectCall {
     provenance: SymbolCallProvenance,
     /// Arguments projected to parameter paths.
     arguments: Vec<EffectArgument>,
-    /// Original pre-computed argument predicates for matching.
-    call_arguments: Vec<CallArgInfo>,
 }
 
 #[derive(Clone, Debug)]
@@ -100,8 +95,6 @@ pub(in crate::analysis) enum EffectUse {
         chain: Option<NamePath>,
         /// Receiver parameter consumed by the member call.
         receiver: ParameterRef,
-        /// Pre-computed arguments at the member call.
-        call_arguments: Vec<CallArgInfo>,
     },
 }
 
@@ -124,7 +117,6 @@ pub struct FunctionEffect {
     /// Source-order value copies. Project flow uses this to connect a source
     /// call result through local declarations before a qualified call.
     value_roots: BTreeMap<ValueId, ValueId>,
-    names: Arc<crate::analysis::name::NameTable>,
 }
 
 #[derive(Clone, Debug)]
@@ -197,23 +189,22 @@ impl EffectCall {
         &self.arguments
     }
 
-    pub(in crate::analysis) fn call_arguments(&self) -> &[CallArgInfo] {
-        &self.call_arguments
-    }
-
     pub(in crate::analysis) fn matches_source(
         &self,
         flow: &crate::api::compiler::CompiledObjectFlow,
+        stream: &FactStream,
         names: &crate::analysis::name::NameTable,
     ) -> bool {
+        let Some(args) = stream.call_args_for_event(self.event) else {
+            return false;
+        };
         flow.sources.iter().any(|source| {
             self.chain().is_some_and(|chain| {
                 NamePath::from_symbol_path(&source.member_call, names)
                     .is_some_and(|member| member == *chain)
             }) && source.provenance.matches_rooted(self.is_rooted())
                 && source.arguments.iter().all(|matcher| {
-                    self.call_arguments()
-                        .get(matcher.index)
+                    args.get(matcher.index)
                         .is_some_and(|argument| matcher.matcher.matches(argument, names))
                 })
         })
@@ -276,6 +267,9 @@ impl FunctionEffects {
         if !stream.is_valid() {
             return effects;
         }
+        let Some(names) = stream.names() else {
+            return effects;
+        };
         let mut budget = Budget::new(limit);
         let mut value_provenance = BTreeMap::new();
         effects.initialize(stream, &mut budget);
@@ -316,7 +310,7 @@ impl FunctionEffects {
                     static_value.as_ref(),
                     &mut budget,
                 ),
-                FactPayload::Call { .. } => effect.record_call(fact, &mut budget),
+                FactPayload::Call { .. } => effect.record_call(fact, &mut budget, names),
                 FactPayload::Control {
                     kind: ControlKind::Return,
                     return_value,
@@ -353,10 +347,9 @@ impl FunctionEffects {
     }
 
     fn initialize(&mut self, stream: &FactStream, budget: &mut Budget) {
-        let Some(names) = stream.names_arc() else {
+        if stream.names().is_none() {
             return;
-        };
-        let names = Arc::clone(names);
+        }
         for fact in stream.facts() {
             let FactPayload::Function {
                 id,
@@ -383,7 +376,6 @@ impl FunctionEffects {
                         .iter()
                         .map(|parameter| (parameter.value, parameter.value))
                         .collect(),
-                    names: names.clone(),
                 },
             );
         }
@@ -398,7 +390,6 @@ impl FunctionEffects {
                     returns: Vec::new(),
                     invalid: false,
                     value_roots: BTreeMap::new(),
-                    names,
                 },
             );
         }
@@ -406,10 +397,6 @@ impl FunctionEffects {
 }
 
 impl FunctionEffect {
-    pub(in crate::analysis) fn names(&self) -> &crate::analysis::name::NameTable {
-        self.names.as_ref()
-    }
-
     fn record_property_write(
         &mut self,
         event: FactId,
@@ -485,7 +472,12 @@ impl FunctionEffect {
         }
     }
 
-    fn record_call(&mut self, fact: &SemanticFact, budget: &mut Budget) {
+    fn record_call(
+        &mut self,
+        fact: &SemanticFact,
+        budget: &mut Budget,
+        names: &crate::analysis::name::NameTable,
+    ) {
         let FactPayload::Call {
             syntactic_chain,
             rooted_chain,
@@ -507,14 +499,14 @@ impl FunctionEffect {
                     rooted_chain.clone().or_else(|| {
                         syntactic_chain
                             .as_ref()
-                            .and_then(|path| NamePath::from_symbol_path(path, self.names()))
+                            .and_then(|path| NamePath::from_symbol_path(path, names))
                     }),
                     args.as_slice(),
                 )
             },
             |unwrap| {
                 (
-                    NamePath::from_symbol_path(&unwrap.chain, self.names()),
+                    NamePath::from_symbol_path(&unwrap.chain, names),
                     unwrap.effective_args.as_slice(),
                 )
             },
@@ -538,7 +530,6 @@ impl FunctionEffect {
                 result: *result,
                 provenance: call_provenance.clone(),
                 arguments: arguments.clone(),
-                call_arguments: call_args.to_vec(),
             });
         } else {
             self.invalid = true;
@@ -549,7 +540,6 @@ impl FunctionEffect {
                     event: fact.id,
                     chain: chain.clone(),
                     receiver,
-                    call_arguments: call_args.to_vec(),
                 });
             } else {
                 self.invalid = true;

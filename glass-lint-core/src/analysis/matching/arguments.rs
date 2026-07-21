@@ -71,7 +71,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
                 &mut evidence[*rule_index],
                 clause.evidence.kind,
                 clause.evidence.symbol.clone(),
-                Some(vec![occurrence]),
+                std::iter::once(occurrence),
             );
         }
     }

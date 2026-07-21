@@ -5,17 +5,13 @@
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog,
-    rules::{Builder, Confidence, Matcher, Rule, Severity},
+    rules::{Matcher, Rule},
 };
 
-/// Build a strict rule so scope tests observe only proven global provenance.
-fn rule(id: &str) -> Builder {
-    Rule::builder(id)
-        .description(id)
-        .category("test")
-        .severity(Severity::Info)
-        .confidence(Confidence::High)
-}
+#[path = "support/mod.rs"]
+mod support;
+
+use support::rule;
 
 /// Assert exact findings and reject parser diagnostics before checking
 /// semantics.

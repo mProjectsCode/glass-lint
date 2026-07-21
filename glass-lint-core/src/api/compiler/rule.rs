@@ -13,10 +13,9 @@ use crate::{
         rule::{
             ArgumentConstraint, ClassMatcher, ConstructorMatcher, FlowCompletion, FlowCondition,
             FlowSinkMatcher, InstanceMemberCallMatcher, MatcherFamily, MatcherSet,
-            MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, MemberReadProvenance,
-            ModuleSpecifierPattern, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher,
-            ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, Rule, SymbolProvenance,
-            ValueMatcher,
+            MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, ModuleSpecifierPattern,
+            ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher,
+            ReturnedMemberReadMatcher, Rule, SymbolProvenance, ValueMatcher,
         },
     },
     rules::CallMatcher,
@@ -309,27 +308,27 @@ fn lower_calls(values: &[CallMatcher]) -> Vec<QueryClause> {
 fn lower_member_calls(values: &[MemberCallMatcher]) -> Vec<QueryClause> {
     values
         .iter()
-        .map(|member| QueryClause {
-            identity: member_identity(&member.chain, &member.provenance),
-            event: EventPredicate::MemberCall {
-                member: SymbolPath::from(member.chain.as_str()),
-            },
-            subject: SubjectConstraint::Direct,
-            constraints: member
+        .map(|member| {
+            let constraints = member
                 .arguments
                 .iter()
                 .cloned()
                 .map(QueryConstraint::Argument)
                 .collect::<Vec<_>>()
-                .into_boxed_slice(),
-            evidence: EvidenceDescriptor {
-                kind: if member.arguments.is_empty() {
+                .into_boxed_slice();
+            lower_member_clause(
+                member_identity(&member.chain, &member.provenance),
+                EventPredicate::MemberCall {
+                    member: SymbolPath::from(member.chain.as_str()),
+                },
+                constraints,
+                if member.arguments.is_empty() {
                     MatchKind::MemberCall
                 } else {
                     MatchKind::CallArgument
                 },
-                symbol: member.evidence_symbol(),
-            },
+                member.evidence_symbol(),
+            )
         })
         .collect()
 }
@@ -337,19 +336,34 @@ fn lower_member_calls(values: &[MemberCallMatcher]) -> Vec<QueryClause> {
 fn lower_member_reads(values: &[MemberReadMatcher]) -> Vec<QueryClause> {
     values
         .iter()
-        .map(|read| QueryClause {
-            identity: member_read_identity(&read.chain, &read.provenance),
-            event: EventPredicate::MemberRead {
-                member: SymbolPath::from(read.chain.as_str()),
-            },
-            subject: SubjectConstraint::Direct,
-            constraints: Box::new([]),
-            evidence: EvidenceDescriptor {
-                kind: MatchKind::MemberRead,
-                symbol: read.evidence_symbol(),
-            },
+        .map(|read| {
+            lower_member_clause(
+                member_identity(read.chain.as_str(), &read.provenance),
+                EventPredicate::MemberRead {
+                    member: SymbolPath::from(read.chain.as_str()),
+                },
+                Box::new([]),
+                MatchKind::MemberRead,
+                read.evidence_symbol(),
+            )
         })
         .collect()
+}
+
+fn lower_member_clause(
+    identity: IdentityConstraint,
+    event: EventPredicate,
+    constraints: Box<[QueryConstraint]>,
+    kind: MatchKind,
+    symbol: String,
+) -> QueryClause {
+    QueryClause {
+        identity,
+        event,
+        subject: SubjectConstraint::Direct,
+        constraints,
+        evidence: EvidenceDescriptor { kind, symbol },
+    }
 }
 
 fn lower_literals(
@@ -523,26 +537,6 @@ fn member_identity(chain: &str, provenance: &MemberCallProvenance) -> IdentityCo
             module: module.to_smolstr(),
         },
         MemberCallProvenance::PackageModuleNamespace { module } => {
-            IdentityConstraint::PackageModuleNamespace {
-                module: module.clone(),
-            }
-        }
-    }
-}
-
-fn member_read_identity(chain: &str, provenance: &MemberReadProvenance) -> IdentityConstraint {
-    match provenance {
-        MemberReadProvenance::Any => IdentityConstraint::Any {
-            name: chain.to_smolstr(),
-            strength: IdentityStrength::Heuristic,
-        },
-        MemberReadProvenance::Rooted => IdentityConstraint::Rooted {
-            path: SymbolPath::from(chain),
-        },
-        MemberReadProvenance::ModuleNamespace { module } => IdentityConstraint::ModuleNamespace {
-            module: module.to_smolstr(),
-        },
-        MemberReadProvenance::PackageModuleNamespace { module } => {
             IdentityConstraint::PackageModuleNamespace {
                 module: module.clone(),
             }

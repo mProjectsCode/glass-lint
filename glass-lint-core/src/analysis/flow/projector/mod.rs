@@ -232,18 +232,15 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             rooted_chain.as_ref(),
             syntactic_chain.as_ref(),
             callee_name.and_then(|id| self.stream.resolve_name(id)),
-            args,
             unwrap.as_deref(),
         ) {
-            self.record_configuration(
-                *receiver,
-                source.chain(),
-                source.arguments(),
-                source.event(),
-            );
+            let effective_args = unwrap
+                .as_deref()
+                .map_or(args.as_slice(), |u| u.effective_args.as_slice());
+            self.record_configuration(*receiver, source.chain(), effective_args, source.event());
             self.record_sinks(
                 source.chain(),
-                source.arguments(),
+                effective_args,
                 source.event(),
                 source.has_rooted_provenance(),
             );

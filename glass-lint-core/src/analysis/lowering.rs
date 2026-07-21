@@ -117,25 +117,6 @@ pub fn lower_source(
     })
 }
 
-pub fn lower_artifact(
-    linter: &crate::Linter,
-    source: &SourceFile,
-) -> Result<SemanticArtifact, ParseDiagnostic> {
-    let parsed = crate::parse::parse_with_language_and_depth(
-        &source.source,
-        &source.path,
-        source.language,
-        linter.analysis_limits().syntax_depth,
-    )?;
-    let coordinates = SpanNormalizer::new(parsed.source_start, &source.source);
-    Ok(lower_program(
-        &parsed.program,
-        linter.analysis_environment(),
-        linter.analysis_limits(),
-        &coordinates,
-    ))
-}
-
 pub fn lower_program(
     program: &Program,
     environment: &crate::Environment,
@@ -223,7 +204,7 @@ fn lower_program_with_name_limit(
     // can be taken out of its RefCell.
     drop(resolver);
     stream
-        .freeze_names(Arc::new(name_table.into_inner()))
+        .freeze_names(name_table.into_inner())
         .expect("Stream already owns a NameTable");
 
     let facts = SemanticFacts::from_lowering(stream, interface, environment);

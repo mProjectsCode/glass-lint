@@ -46,7 +46,7 @@ pub use local::{
     ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, ProjectModule,
     SemanticArtifact, SharedSemanticArtifact,
 };
-pub use lowering::{LoweredSource, lower_artifact, lower_source};
+pub use lowering::{LoweredSource, lower_source};
 use project::projection::ProjectionOutcome;
 use status::AnalysisStatus;
 use syntax::SymbolCallProvenance;
@@ -286,6 +286,22 @@ impl ProjectSemanticModel {
         function: crate::analysis::value::FunctionId,
     ) -> Option<&crate::analysis::flow::effect::FunctionEffect> {
         self.modules.get(&module)?.local().effects().get(function)
+    }
+
+    /// Borrow the name table for a module's local artifact.
+    pub(in crate::analysis) fn module_names(
+        &self,
+        module: ModuleId,
+    ) -> Option<&crate::analysis::name::NameTable> {
+        self.modules.get(&module)?.local().facts().names()
+    }
+
+    /// Borrow the fact stream for a module's local artifact.
+    pub(in crate::analysis) fn module_fact_stream(
+        &self,
+        module: ModuleId,
+    ) -> Option<&crate::analysis::facts::FactStream> {
+        Some(self.modules.get(&module)?.local().facts().stream())
     }
 
     pub(in crate::analysis) fn fact(

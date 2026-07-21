@@ -368,6 +368,9 @@ pub(in crate::analysis) fn collect(
         };
         let mut current_state = context.state.clone();
         let mut propagated_calls = BTreeSet::new();
+        let names = project
+            .module_names(context.module)
+            .expect("module has names");
         UsageProjector {
             project,
             evidence: &mut evidence,
@@ -377,6 +380,7 @@ pub(in crate::analysis) fn collect(
             state: &mut current_state,
             propagated: &mut propagated_calls,
             worklist: &mut worklist,
+            names,
         }
         .project();
         CallPropagation {
@@ -414,6 +418,7 @@ struct UsageProjector<'a> {
     state: &'a mut CrossFlowState,
     propagated: &'a mut BTreeSet<FactId>,
     worklist: &'a mut ContextWorklist,
+    names: &'a crate::analysis::name::NameTable,
 }
 
 impl UsageProjector<'_> {
@@ -440,12 +445,9 @@ impl UsageProjector<'_> {
                     static_value,
                     ..
                 } => self.apply_property(*event, property.as_ref(), static_value.as_ref()),
-                EffectUse::CallReceiver {
-                    event,
-                    chain,
-                    call_arguments,
-                    ..
-                } => self.apply_receiver(*event, chain.as_ref(), call_arguments),
+                EffectUse::CallReceiver { event, chain, .. } => {
+                    self.apply_receiver(*event, chain.as_ref());
+                }
                 EffectUse::CallArgument {
                     event,
                     chain,
@@ -484,20 +486,26 @@ impl UsageProjector<'_> {
         *self.state = next;
     }
 
-    fn apply_receiver(
-        &mut self,
-        event: FactId,
-        chain: Option<&crate::analysis::value::NamePath>,
-        call_arguments: &[crate::analysis::facts::CallArgInfo],
-    ) {
+    fn apply_receiver(&mut self, event: FactId, chain: Option<&crate::analysis::value::NamePath>) {
+        let Some(call_args) = self
+            .project
+            .module_names(self.context.module)
+            .and_then(|_| {
+                self.project
+                    .module_fact_stream(self.context.module)?
+                    .call_args_for_event(event)
+            })
+        else {
+            return;
+        };
         let mut next = self.state.clone();
         for (index, requirement) in self.flow.requirements.iter().enumerate() {
             if let CompiledObjectRequirement::MemberCall { member, arguments } = requirement
-                && chain_matches(chain, member, self.effect.names())
+                && chain_matches(chain, member, self.names)
                 && arguments.iter().all(|matcher| {
-                    call_arguments.get(matcher.index).is_some_and(|argument| {
-                        matcher.matcher.matches(argument, self.effect.names())
-                    })
+                    call_args
+                        .get(matcher.index)
+                        .is_some_and(|argument| matcher.matcher.matches(argument, self.names))
                 })
             {
                 next.requirements.insert(
@@ -522,7 +530,7 @@ impl UsageProjector<'_> {
     ) {
         if self.flow.sink_matches(
             chain
-                .and_then(|chain| chain.to_symbol_path(self.effect.names()))
+                .and_then(|chain| chain.to_symbol_path(self.names))
                 .as_ref(),
             rooted,
             argument,
@@ -566,10 +574,14 @@ impl FlowSources {
     ) -> (Self, bool) {
         let mut sources = Self::default();
         for module in project.modules() {
+            let Some(names) = module.local().facts().names() else {
+                continue;
+            };
+            let stream = module.local().facts().stream();
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
                     for (flow_id, flow) in flows {
-                        if call.matches_source(flow, effect.names()) {
+                        if call.matches_source(flow, stream, names) {
                             sources.add(
                                 SourceKey::new(module.id(), effect.id(), call.result()),
                                 SourceCandidate {

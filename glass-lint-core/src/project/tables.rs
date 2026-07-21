@@ -3,28 +3,25 @@
 //! The wrappers centralize duplicate detection and preserve insertion order for
 //! evidence while using ordered maps for deterministic project traversal.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    ops::Index,
-};
+use std::{collections::BTreeMap, ops::Index};
 
 use crate::project::{
     Evidence, ProjectInputError, ResolutionRequestKey, ResolverOutcome, SourceFile,
 };
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-struct ReportEvidenceKey {
-    message: String,
-    location: Option<(String, crate::SourceRange)>,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize)]
+/// Identity-stable evidence collection with insertion-order preservation.
+///
+/// Duplicates are identified by message and location using a linear scan of
+/// existing items. The list is typically small (<10 items), so the linear scan
+/// avoids allocating a separate dedup-key store that would clone identity
+/// fields from every pushed item.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
 pub struct EvidenceList {
     /// Evidence in the order in which it was first observed.
     items: Vec<Evidence>,
-    #[serde(skip)]
-    seen: BTreeSet<ReportEvidenceKey>,
 }
+
+impl Eq for EvidenceList {}
 
 impl<'de> serde::Deserialize<'de> for EvidenceList {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -41,22 +38,21 @@ impl<'de> serde::Deserialize<'de> for EvidenceList {
 }
 
 impl EvidenceList {
-    /// Add evidence unless an identical typed record is already present.
+    /// Add evidence unless an identical record is already present.
+    ///
+    /// Identity is determined by message and location only, matching the
+    /// deduplication semantics used during report assembly. A linear scan of
+    /// existing items avoids cloning identity fields into a separate store.
     pub fn push_unique(&mut self, item: Evidence) {
-        let key = ReportEvidenceKey {
-            message: item.message.clone(),
-            location: item
-                .location
-                .as_ref()
-                .map(|location| (location.path.to_string(), location.range.clone())),
-        };
-        if self.seen.insert(key) {
+        if !self
+            .items
+            .iter()
+            .any(|existing| existing.message == item.message && existing.location == item.location)
+        {
             self.items.push(item);
         }
     }
 
-    /// Borrow evidence without exposing mutation that could invalidate
-    /// deduplication.
     pub fn as_slice(&self) -> &[Evidence] {
         &self.items
     }

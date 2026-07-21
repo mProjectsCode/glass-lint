@@ -7,9 +7,9 @@
 
 use crate::api::rule::matcher::{
     ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
-    MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, MemberReadProvenance,
-    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicate,
-    SymbolProvenance, ValueMatcher, ValueMatcherKind,
+    MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, ObjectEventMatcher,
+    ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicate, SymbolProvenance, ValueMatcher,
+    ValueMatcherKind,
 };
 
 const MAX_ARGUMENT_INDEX: usize = 1 << 20;
@@ -332,15 +332,6 @@ impl MemberCallProvenance {
     fn validate_at(&self, path: &str) -> Result<(), String> {
         if let Self::ModuleNamespace { module } = self {
             validate_name_at(module, &format!("{path}.module"))?;
-        }
-        Ok(())
-    }
-}
-
-impl MemberReadProvenance {
-    fn validate_at(&self, path: &str) -> Result<(), String> {
-        if let Self::ModuleNamespace { module } = self {
-            validate_name_at(module, path)?;
         }
         Ok(())
     }

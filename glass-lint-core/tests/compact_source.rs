@@ -7,24 +7,16 @@
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog,
-    rules::{
-        Builder, CallMatcher, Confidence, Matcher, MemberCallMatcher, Rule, RuleBuildError,
-        Severity, ValueMatcher,
-    },
+    rules::{CallMatcher, Matcher, MemberCallMatcher, Rule, RuleBuildError, ValueMatcher},
 };
 
 #[path = "compact_source/constructors.rs"]
 mod constructors;
 
-/// Build a high-confidence test rule so each case exercises the public catalog
-/// path.
-fn rule(id: &str) -> Builder {
-    Rule::builder(id)
-        .description(id)
-        .category("test")
-        .severity(Severity::Info)
-        .confidence(Confidence::High)
-}
+#[path = "support/mod.rs"]
+mod support;
+
+use support::rule;
 
 /// Run one compact source through a fresh catalog and assert exact findings.
 fn assert_count(source: &str, rule: Rule, expected: usize) {

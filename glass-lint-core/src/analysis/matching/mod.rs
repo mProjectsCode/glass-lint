@@ -313,16 +313,10 @@ pub(super) fn push_owned_evidence(
     evidence: &mut Vec<ClassificationEvidence>,
     kind: MatchKind,
     symbol: String,
-    occurrences: Option<Vec<Occurrence>>,
+    occurrences: impl IntoIterator<Item = Occurrence>,
 ) {
-    let Some(occurrences) = occurrences else {
-        return;
-    };
-    if occurrences.is_empty() {
-        return;
-    }
     let occurrences: Vec<_> = occurrences
-        .iter()
+        .into_iter()
         .map(
             |occurrence| crate::api::classification::ClassificationEvidenceOccurrence {
                 span: occurrence.span(),
@@ -330,6 +324,9 @@ pub(super) fn push_owned_evidence(
             },
         )
         .collect();
+    if occurrences.is_empty() {
+        return;
+    }
     evidence.push(ClassificationEvidence {
         kind,
         symbol,

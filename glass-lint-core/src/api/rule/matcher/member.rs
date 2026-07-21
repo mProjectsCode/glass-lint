@@ -159,7 +159,7 @@ impl MemberCallMatcher {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-/// Provenance requirement for a member call.
+/// Provenance requirement for a member call or read.
 pub enum MemberCallProvenance {
     /// Accept any member spelling/provenance.
     Any,
@@ -173,6 +173,9 @@ pub enum MemberCallProvenance {
         module: ModuleSpecifierPattern,
     },
 }
+
+/// Provenance requirement for a member read (alias for `MemberProvenance`).
+pub type MemberReadProvenance = MemberCallProvenance;
 
 impl MemberCallProvenance {
     /// Test whether this mode accepts a rooted occurrence.
@@ -255,20 +258,4 @@ impl MemberReadMatcher {
             }
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// Provenance requirement for a member read.
-pub enum MemberReadProvenance {
-    /// Accept any member spelling/provenance.
-    Any,
-    /// Require a rooted identity.
-    Rooted,
-    /// Require a member of an imported module namespace.
-    ModuleNamespace {
-        module: String,
-    },
-    PackageModuleNamespace {
-        module: ModuleSpecifierPattern,
-    },
 }

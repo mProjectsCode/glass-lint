@@ -5,7 +5,7 @@
 //! keys, which is the precision boundary that prevents path-local facts from
 //! leaking after a control-flow merge.
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, sync::Arc};
 
 use crate::{
     analysis::{
@@ -59,63 +59,61 @@ pub(super) struct FlowStateTable {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct AliasTable(Vec<(ValueId, ObjectId)>);
+struct AliasTable(Arc<Vec<(ValueId, ObjectId)>>);
 
 impl AliasTable {
-    fn position(&self, value: ValueId) -> Result<usize, usize> {
-        self.0.binary_search_by_key(&value, |(key, _)| *key)
-    }
-
     fn get(&self, value: ValueId) -> Option<ObjectId> {
-        self.position(value).ok().map(|index| self.0[index].1)
+        let pos = self.0.binary_search_by_key(&value, |(k, _)| *k).ok()?;
+        Some(self.0[pos].1)
     }
 
     fn insert(&mut self, value: ValueId, object: ObjectId) {
-        match self.position(value) {
-            Ok(index) => self.0[index].1 = object,
-            Err(index) => self.0.insert(index, (value, object)),
+        let vec = Arc::make_mut(&mut self.0);
+        match vec.binary_search_by_key(&value, |(k, _)| *k) {
+            Ok(index) => vec[index].1 = object,
+            Err(index) => vec.insert(index, (value, object)),
         }
     }
 
     fn remove(&mut self, value: ValueId) -> Option<ObjectId> {
-        self.position(value)
-            .ok()
-            .map(|index| self.0.remove(index).1)
+        let vec = Arc::make_mut(&mut self.0);
+        let pos = vec.binary_search_by_key(&value, |(k, _)| *k).ok()?;
+        Some(vec.remove(pos).1)
     }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct StateTable(Vec<(FlowStateKey, FlowState)>);
+struct StateTable(Arc<Vec<(FlowStateKey, FlowState)>>);
 
 impl StateTable {
-    fn position(&self, key: FlowStateKey) -> Result<usize, usize> {
-        self.0.binary_search_by_key(&key, |(key, _)| *key)
-    }
-
     fn get(&self, key: FlowStateKey) -> Option<&FlowState> {
-        self.position(key).ok().map(|index| &self.0[index].1)
+        let pos = self.0.binary_search_by_key(&key, |(k, _)| *k).ok()?;
+        Some(&self.0[pos].1)
     }
 
     fn get_mut(&mut self, key: FlowStateKey) -> Option<&mut FlowState> {
-        self.position(key).ok().map(|index| &mut self.0[index].1)
+        let vec = Arc::make_mut(&mut self.0);
+        let pos = vec.binary_search_by_key(&key, |(k, _)| *k).ok()?;
+        Some(&mut vec[pos].1)
     }
 
     fn insert(&mut self, state: FlowState) {
         let key = state.key();
-        match self.position(key) {
-            Ok(index) => self.0[index].1 = state,
-            Err(index) => self.0.insert(index, (key, state)),
+        let vec = Arc::make_mut(&mut self.0);
+        match vec.binary_search_by_key(&key, |(k, _)| *k) {
+            Ok(index) => vec[index].1 = state,
+            Err(index) => vec.insert(index, (key, state)),
         }
     }
 
     fn remove_object(&mut self, object: ObjectId) {
-        self.0.retain(|(key, _)| key.object != object);
+        Arc::make_mut(&mut self.0).retain(|(key, _)| key.object != object);
     }
 }
 impl FlowStateTable {
     pub(super) fn clear(&mut self) {
-        self.aliases.0.clear();
-        self.states.0.clear();
+        self.aliases = AliasTable::default();
+        self.states = StateTable::default();
     }
 
     pub(super) fn object_for(&self, value: ValueId) -> Option<ObjectId> {
@@ -283,7 +281,7 @@ impl FlowEnvironment {
         if !right.is_reachable() {
             return left.clone();
         }
-        let aliases = AliasTable(
+        let aliases = AliasTable(Arc::new(
             left.aliases
                 .0
                 .iter()
@@ -291,8 +289,8 @@ impl FlowEnvironment {
                     (right.aliases.get(*binding) == Some(*object)).then_some((*binding, *object))
                 })
                 .collect(),
-        );
-        let states = StateTable(
+        ));
+        let states = StateTable(Arc::new(
             left.states
                 .0
                 .iter()
@@ -303,7 +301,7 @@ impl FlowEnvironment {
                     Some((*key, state))
                 })
                 .collect(),
-        );
+        ));
         Self {
             aliases,
             states,

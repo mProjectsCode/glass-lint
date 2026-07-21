@@ -184,9 +184,8 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
                                     observer.started();
                                     observer.parse_attempted();
                                     observer.lower_attempted();
-                                    let result =
-                                        crate::analysis::lower_artifact(linter, &job.source)
-                                            .map(Arc::new);
+                                    let result = crate::analysis::lower_source(linter, &job.source)
+                                        .map(|ls| ls.semantic);
                                     observer.finished();
                                     result
                                 },
@@ -242,7 +241,7 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
             observer.started();
             observer.parse_attempted();
             observer.lower_attempted();
-            let result = crate::analysis::lower_artifact(linter, &job.source).map(Arc::new);
+            let result = crate::analysis::lower_source(linter, &job.source).map(|ls| ls.semantic);
             observer.finished();
             release(LocalJobResult {
                 path: job.path,
@@ -295,11 +294,42 @@ pub(super) const fn outstanding_job_bound(worker_limit: NonZeroUsize) -> usize {
     worker_limit.get().saturating_mul(2)
 }
 
+/// Outcome of looking up a source in the artifact cache.
+enum CacheLookup {
+    Hit(LoweredSource),
+    Miss(ArtifactCacheKey),
+}
+
+fn cached_lowered_source(source: &SourceFile, cached: &SharedSemanticArtifact) -> LoweredSource {
+    LoweredSource {
+        source: LocatedSourceContext::new(source),
+        semantic: Arc::clone(&cached.semantic),
+    }
+}
+
+fn insert_and_notify(
+    cache: &ArtifactCacheHandle,
+    key: ArtifactCacheKey,
+    semantic: &Arc<SemanticArtifact>,
+    observer: &dyn ExecutionObserver,
+) {
+    let evicted = cache.insert(
+        key,
+        SharedSemanticArtifact {
+            semantic: Arc::clone(semantic),
+        },
+    );
+    observer.cache_inserted();
+    if evicted {
+        observer.cache_evicted();
+    }
+}
+
 use crate::{
     Linter, ParseDiagnostic, ProjectRelativePath,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
-        SharedSemanticArtifact,
+        SemanticArtifact, SharedSemanticArtifact,
     },
     project::{
         AnalysisReport, ProjectInput, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
@@ -364,6 +394,22 @@ impl<'a> AnalysisSession<'a> {
         )
     }
 
+    /// Check the artifact cache for a source, returning either a cached
+    /// lowered source or the key needed to lower and cache it.
+    fn check_cache(&self, source: &SourceFile, observer: &dyn ExecutionObserver) -> CacheLookup {
+        let key = self.artifact_fingerprint(source);
+        self.artifact_cache.get(&key).map_or_else(
+            || {
+                observer.cache_miss();
+                CacheLookup::Miss(key)
+            },
+            |cached| {
+                observer.cache_hit();
+                CacheLookup::Hit(cached_lowered_source(source, &cached))
+            },
+        )
+    }
+
     /// Start an empty parse-once project session under a canonical root.
     pub fn new(
         linter: &'a Linter,
@@ -407,35 +453,21 @@ impl<'a> AnalysisSession<'a> {
             .sources
             .get(path.as_str())
             .ok_or_else(|| ProjectInputError::InvalidPath(path.to_string()))?;
-        let key = self.artifact_fingerprint(source);
-        let lowered = if let Some(cached) = self.artifact_cache.get(&key) {
-            observer.cache_hit();
-            LoweredSource {
-                source: LocatedSourceContext::new(source),
-                semantic: Arc::clone(&cached.semantic),
+        let lowered = match self.check_cache(source, observer) {
+            CacheLookup::Hit(lowered) => lowered,
+            CacheLookup::Miss(key) => {
+                observer.parse_attempted();
+                observer.lower_attempted();
+                let lowered = match crate::analysis::lower_source(self.linter, source) {
+                    Ok(lowered) => lowered,
+                    Err(error) => {
+                        self.artifacts.record_parse_failure(path.clone(), error);
+                        return Ok(Vec::new());
+                    }
+                };
+                insert_and_notify(&self.artifact_cache, key, &lowered.semantic, observer);
+                lowered
             }
-        } else {
-            observer.cache_miss();
-            observer.parse_attempted();
-            observer.lower_attempted();
-            let lowered = match crate::analysis::lower_source(self.linter, source) {
-                Ok(lowered) => lowered,
-                Err(error) => {
-                    self.artifacts.record_parse_failure(path.clone(), error);
-                    return Ok(Vec::new());
-                }
-            };
-            let evicted = self.artifact_cache.insert(
-                key,
-                SharedSemanticArtifact {
-                    semantic: Arc::clone(&lowered.semantic),
-                },
-            );
-            observer.cache_inserted();
-            if evicted {
-                observer.cache_evicted();
-            }
-            lowered
         };
         Ok(self.record_lowered(&path, lowered))
     }
@@ -488,23 +520,14 @@ impl<'a> AnalysisSession<'a> {
         let mut requests = Vec::new();
         let mut uncached = Vec::new();
         for (path, source) in pending {
-            let key = self.artifact_fingerprint(&source);
-            if let Some(cached) = self.artifact_cache.get(&key) {
-                observer.cache_hit();
-                requests.extend(self.record_lowered(
-                    &ProjectRelativePath::new(path)?,
-                    LoweredSource {
-                        source: LocatedSourceContext::new(&source),
-                        semantic: Arc::clone(&cached.semantic),
-                    },
-                ));
-            } else {
-                observer.cache_miss();
-                uncached.push(LocalJob {
-                    path: ProjectRelativePath::new(path)?,
-                    source,
-                    key,
-                });
+            let path = ProjectRelativePath::new(path)?;
+            match self.check_cache(&source, observer) {
+                CacheLookup::Hit(lowered) => {
+                    requests.extend(self.record_lowered(&path, lowered));
+                }
+                CacheLookup::Miss(key) => {
+                    uncached.push(LocalJob { path, source, key });
+                }
             }
         }
 

@@ -4,8 +4,6 @@
 //! budget. Query callers receive an immutable view. Path interning happens
 //! during ordinary mutable construction, not through interior mutation.
 
-use std::sync::Arc;
-
 #[cfg(test)]
 use crate::analysis::facts::FactKind;
 use crate::analysis::{
@@ -31,8 +29,8 @@ pub(in crate::analysis) struct FactStream {
     facts: Vec<SemanticFact>,
     /// Interned property/index paths used by argument projections.
     paths: PathInterner,
-    /// Frozen table shared by all local semantic consumers.
-    names: Option<Arc<NameTable>>,
+    /// Frozen table owned directly by the stream.
+    names: Option<NameTable>,
     /// False after any ID, budget, or append invariant is violated.
     valid: bool,
     /// Typed construction outcomes that make the retained stream incomplete.
@@ -98,10 +96,7 @@ impl FactStream {
         self.issues.insert(FactStreamIssue::NameExhausted);
     }
 
-    pub(in crate::analysis) fn freeze_names(
-        &mut self,
-        names: Arc<NameTable>,
-    ) -> Result<(), Arc<NameTable>> {
+    pub(in crate::analysis) fn freeze_names(&mut self, names: NameTable) -> Result<(), NameTable> {
         if self.names.is_some() {
             return Err(names);
         }
@@ -110,10 +105,6 @@ impl FactStream {
     }
 
     pub(in crate::analysis) fn names(&self) -> Option<&NameTable> {
-        self.names.as_deref()
-    }
-
-    pub(in crate::analysis) fn names_arc(&self) -> Option<&Arc<NameTable>> {
         self.names.as_ref()
     }
 
@@ -171,6 +162,22 @@ impl FactStream {
             .collect()
     }
 
+    /// Borrow the effective call arguments for a call event from the stream.
+    pub(in crate::analysis) fn call_args_for_event(
+        &self,
+        event: crate::analysis::facts::FactId,
+    ) -> Option<&[crate::analysis::facts::CallArgInfo]> {
+        let fact = self.fact(event)?;
+        match &fact.payload {
+            crate::analysis::facts::FactPayload::Call { args, unwrap, .. } => Some(
+                unwrap
+                    .as_deref()
+                    .map_or(args.as_slice(), |u| u.effective_args.as_slice()),
+            ),
+            _ => None,
+        }
+    }
+
     /// Borrow all facts in the exact order in which the builder emitted them.
     pub(in crate::analysis) fn facts(&self) -> &[SemanticFact] {
         &self.facts
@@ -206,10 +213,8 @@ mod tests {
     #[test]
     fn names_can_only_be_frozen_once() {
         let mut stream = FactStream::new();
-        let first = std::sync::Arc::new(NameTable::default());
-        let second = std::sync::Arc::new(NameTable::default());
-        assert!(stream.freeze_names(first).is_ok());
-        assert!(stream.freeze_names(second).is_err());
+        assert!(stream.freeze_names(NameTable::default()).is_ok());
+        assert!(stream.freeze_names(NameTable::default()).is_err());
         assert!(stream.names().is_some());
     }
 }

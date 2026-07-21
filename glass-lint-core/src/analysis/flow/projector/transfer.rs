@@ -16,8 +16,6 @@ use crate::analysis::{
 pub(super) struct SourceCall {
     /// Rooted or syntactic chain selected as the matcher lookup key.
     chain: NamePath,
-    /// Effective arguments after any call/apply wrapper has been removed.
-    args: Vec<CallArgInfo>,
     /// Original fact used for deterministic evidence anchoring.
     fact_id: FactId,
     /// Whether the original call had rooted provenance.
@@ -38,7 +36,6 @@ impl SourceCall {
             rooted_chain,
             syntactic_chain,
             callee_name,
-            args,
             unwrap,
             ..
         } = &fact.payload
@@ -51,7 +48,6 @@ impl SourceCall {
             rooted_chain.as_ref(),
             syntactic_chain.as_ref(),
             callee_name.and_then(|id| stream.resolve_name(id)),
-            args,
             unwrap.as_deref(),
         )
     }
@@ -63,38 +59,28 @@ impl SourceCall {
         rooted_chain: Option<&NamePath>,
         syntactic_chain: Option<&crate::analysis::SymbolPath>,
         callee_name: Option<&str>,
-        args: &[CallArgInfo],
         unwrap: Option<&crate::analysis::facts::CallUnwrap>,
     ) -> Option<Self> {
-        let (chain, args) = unwrap.map_or_else(
+        let chain = unwrap.map_or_else(
             || {
-                (
-                    rooted_chain
-                        .cloned()
-                        .or_else(|| {
-                            syntactic_chain.and_then(|path| NamePath::from_symbol_path(path, names))
+                rooted_chain
+                    .cloned()
+                    .or_else(|| {
+                        syntactic_chain.and_then(|path| NamePath::from_symbol_path(path, names))
+                    })
+                    .or_else(|| {
+                        callee_name.and_then(|name| {
+                            NamePath::from_symbol_path(
+                                &crate::analysis::SymbolPath::from(name),
+                                names,
+                            )
                         })
-                        .or_else(|| {
-                            callee_name.and_then(|name| {
-                                NamePath::from_symbol_path(
-                                    &crate::analysis::SymbolPath::from(name),
-                                    names,
-                                )
-                            })
-                        }),
-                    args.to_vec(),
-                )
+                    })
             },
-            |unwrap| {
-                (
-                    NamePath::from_symbol_path(&unwrap.chain, names),
-                    unwrap.effective_args.clone(),
-                )
-            },
+            |unwrap| NamePath::from_symbol_path(&unwrap.chain, names),
         );
         Some(Self {
             chain: chain?,
-            args,
             fact_id,
             rooted: rooted_chain.is_some(),
         })
@@ -102,10 +88,6 @@ impl SourceCall {
 
     pub(super) fn chain(&self) -> &NamePath {
         &self.chain
-    }
-
-    pub(super) fn arguments(&self) -> &[CallArgInfo] {
-        &self.args
     }
 
     pub(super) fn event(&self) -> FactId {
@@ -124,9 +106,10 @@ impl ObjectFlowProjector<'_, '_> {
             return;
         }
         if let Some(call) = self.calls_by_result.get(&source).cloned()
+            && let Some(args) = self.stream.call_args_for_event(call.event())
             && let Some((object, states)) = self.match_source(
                 call.chain(),
-                call.arguments(),
+                args,
                 call.event(),
                 call.has_rooted_provenance(),
             )

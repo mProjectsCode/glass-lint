@@ -49,7 +49,7 @@ impl LocatedSourceContext {
 /// Rule selection is intentionally absent: artifacts are matcher-independent.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactCacheKey {
-    source: String,
+    source: Arc<str>,
     language: crate::SourceLanguage,
     normalization_mode: &'static str,
     environment: crate::Environment,
@@ -93,7 +93,7 @@ impl ArtifactCacheKey {
         engine_version: &'static str,
     ) -> Self {
         Self {
-            source: source.source.clone(),
+            source: Arc::from(source.source.as_str()),
             language: source.language,
             normalization_mode,
             environment: environment.clone(),

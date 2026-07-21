@@ -227,7 +227,7 @@ impl<'a> FactBuilder<'a> {
     #[cfg(test)]
     pub(super) fn into_stream(self) -> FactStream {
         let mut stream = self.stream;
-        let _ = stream.freeze_names(std::sync::Arc::new(self.resolver.name_snapshot()));
+        let _ = stream.freeze_names(self.resolver.name_snapshot());
         stream
     }
 
@@ -257,7 +257,7 @@ pub fn build_test_stream<'a>(
     let mut builder = FactBuilder::new(resolver);
     program.visit_with(&mut builder);
     let mut stream = builder.into_stream();
-    let _ = stream.freeze_names(std::sync::Arc::new(resolver.name_snapshot()));
+    let _ = stream.freeze_names(resolver.name_snapshot());
     stream
 }
 

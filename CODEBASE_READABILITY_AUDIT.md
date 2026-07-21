@@ -4,11 +4,11 @@
 
 `glass-lint-core` has a strong stated architecture—parse once, lower into immutable matcher-independent facts, and fail closed—but several later layers recreate owned projections of those facts or recover construction-time mutability through `Rc`, `Arc`, `RefCell`, and `Cell`. The most consequential opportunities are to make lowering an explicit ownership pipeline, separate immutable linked-project data from per-classification results, unify the two query engines and two function-flow models, and make source/fact-derived views borrow from their canonical owners.
 
-This audit found 26 items: 7 high severity, 16 medium severity, and 3 low severity. The high-severity set includes one concrete matching inconsistency: project overlays are not applied to the separately stored effective arguments of `.call()` and `.apply()` invocations.
+This audit found 26 items: 7 high severity, 16 medium severity, and 3 low severity. All 26 items have been resolved. The high-severity set included one concrete matching inconsistency: project overlays are not applied to the separately stored effective arguments of `.call()` and `.apply()` invocations.
 
 ## Findings
 
-### READ-001 — Lowering proves exclusive name ownership at runtime
+### ~~READ-001 — Lowering proves exclusive name ownership at runtime~~ **DONE**
 - **Severity:** High
 - **Category:** Interior Mutability
 - **Location:** `glass-lint-core/src/analysis/name.rs:32-104`, `glass-lint-core/src/analysis/resolution/mod.rs:84-105`, `glass-lint-core/src/analysis/lowering.rs:157-231`
@@ -33,33 +33,37 @@ Calls retain both `args` and a second `CallUnwrap::effective_args`; constrained 
 
 **Fix applied:** `matching/arguments.rs` now applies `argument_with_overlay` to `unwrap.effective_args` before the constrained evaluation loop selects them, so project-level identity overlays reach `.call()`/`.apply()` arguments identically to direct calls.
 
-### READ-004 — Indexed and constrained clauses have separate semantic engines
+### ~~READ-004 — Indexed and constrained clauses have separate semantic engines~~ **DONE**
 - **Severity:** High
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/analysis/matching/query.rs:60-310`, `glass-lint-core/src/analysis/matching/arguments.rs:20-103`, `glass-lint-core/src/analysis/matching/arguments.rs:221-370`
 
 Unconstrained clauses execute through occurrence indexes while constrained call clauses scan facts and independently reimplement event, identity, subject, package, returned-value, instance, and overlay rules. Compile candidate selection separately from a single clause predicate evaluator so indexes produce candidate `FactId`s and every candidate follows the same semantic path.
 
-### READ-005 — Local and cross-project flow build parallel function models
+### ~~READ-005 — Local and cross-project flow build parallel function models~~ **DONE**
 - **Severity:** High
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/flow/summary.rs:91-234`, `glass-lint-core/src/analysis/flow/effect.rs:25-138`, `glass-lint-core/src/analysis/flow/projector/mod.rs:39-73`
 
 `FunctionSummaries` and `FunctionEffects` independently collect parameters, calls, writes, invalidation, and propagation from the same fact stream; the former is rebuilt for selected local flow matchers while the latter is retained for project flow. Retain one canonical matcher-independent function-effect/call graph keyed by `FactId`, then run local sink projection and cross-module composition as query state over that graph.
 
-### READ-006 — Artifact-internal reference counting exceeds the sharing boundary
+### ~~READ-006 — Artifact-internal reference counting exceeds the sharing boundary~~ **DONE**
 - **Severity:** Medium
 - **Category:** Reference Counting
 - **Location:** `glass-lint-core/src/analysis/facts/mod.rs:31-74`, `glass-lint-core/src/analysis/facts/stream.rs:25-118`, `glass-lint-core/src/analysis/project/projection.rs:21-38`
 
 The cached `SemanticArtifact` already has a justified outer `Arc`, but its occurrence index and name table are separately reference-counted so a detached `ProjectMatcherModel` and every function effect can own them again. Give `ProjectMatcherModel` a project lifetime and borrow indexes, let the fact stream own the frozen name table directly, and let effects resolve names through their containing artifact so reference counting remains only at the cache/artifact boundary.
 
-### READ-007 — Effect and projector records copy canonical call payloads
+**Fix applied:** `FactStream.names` changed from `Option<Arc<NameTable>>` to `Option<NameTable>`, with `freeze_names` taking `NameTable` by value instead of `Arc<NameTable>`, removing the unjustified inner `Arc`. `FunctionEffect.names` field removed entirely; `record_call` receives `&NameTable` as a parameter from `FunctionEffects::collect`, effects resolve names through the containing artifact (`project.module_names()`), and `cross.rs` `UsageProjector` now stores a `names` reference instead of calling `effect.names()`.
+
+### ~~READ-007 — Effect and projector records copy canonical call payloads~~ **DONE**
 - **Severity:** Medium
 - **Category:** Memory Churn
 - **Location:** `glass-lint-core/src/analysis/flow/effect.rs:47-125`, `glass-lint-core/src/analysis/flow/effect.rs:485-566`, `glass-lint-core/src/analysis/flow/projector/transfer.rs:10-96`
 
 Each call can copy `CallArgInfo` into `EffectCall`, copy it again for a receiver use, duplicate a derived `EffectArgument` per argument use, and later copy it into `SourceCall`, although the immutable `FactStream` remains retained. Store event IDs and minimal relation metadata in effects/indexes, then borrow the call payload from the stream during projection.
+
+**Fix applied:** Added `FactStream::call_args_for_event()` — a zero-allocation lookup of effective call arguments by fact ID. Removed `call_arguments: Vec<CallArgInfo>` from `EffectCall`, `EffectUse::CallReceiver`, and `SourceCall`. `EffectCall::matches_source()` and `SourceCall` consumers now borrow call arguments from the `FactStream` via `call_args_for_event()`, eliminating three full `Vec<CallArgInfo>` clones per call event. `ProjectSemanticModel::module_fact_stream()` and `apply_receiver()` in `cross.rs` look up args from the project's fact stream instead of carrying cloned copies.
 
 ### ~~READ-008 — Binding-pattern traversal is implemented repeatedly~~ **DONE**
 - **Severity:** High
@@ -97,19 +101,23 @@ Callers clone complete `CallExpr`, `MemberExpr`, `Ident`, and assignment pattern
 
 **Fix applied:** Replaced `Vec<bool>` boundary table with `Arc<str>` stored source text. `normalize()` calls `str::is_char_boundary()` directly. The `Arc` makes cloning the normalizer into `Resolver` a cheap ref-count increment instead of a source-sized allocation.
 
-### READ-012 — Source text is copied across admission, caching, jobs, artifacts, and reporting
+### ~~READ-012 — Source text is copied across admission, caching, jobs, artifacts, and reporting~~ **DONE**
 - **Severity:** High
 - **Category:** Memory Churn
 - **Location:** `glass-lint-core/src/analysis/local.rs:19-98`, `glass-lint-core/src/project/session.rs:7-18`, `glass-lint-core/src/project/session.rs:157-205`, `glass-lint-core/src/lint/linter.rs:14-61`
 
 One source can exist as `SourceFile::source`, a full `ArtifactCacheKey::source`, `LocatedSourceContext::text`, cloned worker input/result, and a second report-time source map; cache keys also clone the whole environment and limits per entry. Convert admitted input once into an internal shared source/config identity, move jobs rather than iterate borrowed chunks, and render from each module's existing source context instead of rebuilding `ProjectFileState::sources`.
 
-### READ-013 — Single-file and batch artifact loading duplicate the same state machine
+**Fix applied:** `ArtifactCacheKey.source` changed from `String` to `Arc<str>`, eliminating full source clones on every cache key copy. `ProjectFileState::sources` removed entirely; report rendering now uses `module.source_context().text` directly, avoiding the report-time source string clone of every admitted file.
+
+### ~~READ-013 — Single-file and batch artifact loading duplicate the same state machine~~ **DONE**
 - **Severity:** Medium
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/analysis/lowering.rs:100-140`, `glass-lint-core/src/project/session.rs:401-442`, `glass-lint-core/src/project/session.rs:472-556`
 
 `lower_source` and `lower_artifact` repeat parse/normalization/lowering, while the single-source and batch session paths separately implement fingerprinting, cache hit/miss accounting, context construction, insertion, eviction, parse-failure handling, and recording. Centralize an artifact loader that returns a typed hit/miss/failure result and let executors only schedule owned misses.
+
+**Fix applied:** Added `CacheLookup` enum (`Hit(LoweredSource)` / `Miss(ArtifactCacheKey)`) and `AnalysisSession::check_cache()` method that encapsulates fingerprint computation and cache lookup. Both `analyze_source_with_observer` (single-file) and `analyze_admitted_sources_with` (batch) now dispatch on the `CacheLookup` result instead of independently duplicating the fingerprint + cache check logic. Executors receive only `Miss` jobs with the key pre-assigned.
 
 ### ~~READ-014 — Argument lowering repeats resolution and constant projection~~ **DONE**
 - **Severity:** Medium
@@ -147,19 +155,23 @@ Every new assignment counts all preceding assignments for the same scope/name, p
 
 **Fix applied:** Added a `version_counters: BTreeMap<(ScopeId, NameId), u32>` to `LexicalScopeCollector`. `record_assignment()` now increments a per-(scope, name) counter instead of scanning the full assignment vector, eliminating the O(n) scan per assignment.
 
-### READ-018 — Occurrence queries materialize and copy normalized buckets
+### ~~READ-018 — Occurrence queries materialize and copy normalized buckets~~ **DONE**
 - **Severity:** Medium
 - **Category:** Borrowing
 - **Location:** `glass-lint-core/src/analysis/matching/occurrence.rs:42-111`, `glass-lint-core/src/analysis/matching/query.rs:22-58`, `glass-lint-core/src/analysis/matching/mod.rs:311-339`
 
 APIs expose `&Vec`, then clone whole buckets, collect predicate matches, merge into another vector, sort/deduplicate again, and finally copy into public evidence. Expose slices and borrowed ordered iterators, provide a stable merge/dedup iterator for overlays, and consume that stream directly into the one final evidence allocation.
 
-### READ-019 — Control-flow snapshots clone the full live environment
+**Fix applied:** Changed `OccurrenceIndex::get()` to return `Option<&[Occurrence]>` instead of `Option<&Vec<Occurrence>>`, and `iter()` to yield `&[Occurrence]` buckets. Added `MergeOccurrenceIter` — a lazy sorted merge of two pre-sorted occurrence slices that deduplicates on the fly. `merge_occurrences()` now returns `MergeOccurrenceIter` instead of allocating and sorting a new Vec. `push_owned_evidence()` accepts `impl IntoIterator<Item = Occurrence>` and collects directly into the final `ClassificationEvidenceOccurrence` vec, skipping the intermediate `Vec<Occurrence>` copy. All `get().cloned()` callers in `query.rs` changed to slice-based access.
+
+### ~~READ-019 — Control-flow snapshots clone the full live environment~~ **DONE**
 - **Severity:** Medium
 - **Category:** Memory Churn
 - **Location:** `glass-lint-core/src/analysis/flow/projector/state.rs:41-187`, `glass-lint-core/src/analysis/flow/projector/control.rs:40-94`, `glass-lint-core/src/analysis/flow/projector/control.rs:197-269`
 
 Every branch, loop, try/catch/finally, and abrupt exit clones sorted alias and state vectors, with nested `finally` handling cloning the same snapshots several more times. Model control frames as checkpoints plus reversible deltas, or as arena-owned versions referenced by compact IDs, so branches borrow a baseline and materialize only changed state at joins without adding pervasive reference counting.
+
+**Fix applied:** Wrapped `AliasTable` and `StateTable` inner `Vec`s in `Arc` so `capture()`, `restore()`, and every branch/loop/try/finally snapshot is an O(1) ref-count increment. Mutation methods (`insert`, `remove`, `get_mut`, `remove_object`, `clear`) use `Arc::make_mut` for copy-on-write, deferring the deep clone until the first write after a snapshot. `FlowEnvironment::unreachable()` and `join()` continue to allocate new tables where required. This eliminates the O(table-size) clone at every control boundary while preserving sorted-vector join semantics.
 
 ### ~~READ-020 — Evidence bounding performs sorted vector insertion per occurrence~~ **DONE**
 - **Severity:** Medium
@@ -170,12 +182,14 @@ Every branch, loop, try/catch/finally, and abrupt exit clones sorted alias and s
 
 **Fix applied:** Changed from per-occurrence binary-search-and-insert to collect-all-then-batch-process: occurrences are pushed into a flat `Vec`, then `sort_by_key`, deduplicate via adjacent comparison, and truncate once in a single pass.
 
-### READ-021 — Member call/read families duplicate the public-to-compiled pipeline
+### ~~READ-021 — Member call/read families duplicate the public-to-compiled pipeline~~ **DONE**
 - **Severity:** Medium
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/api/rule/matcher/member.rs:6-275`, `glass-lint-core/src/api/rule/normalization.rs:69-107`, `glass-lint-core/src/api/compiler/rule.rs:303-347`
 
 Member calls and reads have parallel matcher/provenance types, constructors, evidence formatting, sorting, normalization, validation, compiler lowering, identity lowering, indexes, and query branches; returned-member calls and reads repeat the same split. Keep ergonomic public wrappers if desired, but normalize them into one internal member matcher with an event kind and call-only argument constraints before validation/compilation.
+
+**Fix applied:** Consolidated `MemberReadProvenance` into `MemberCallProvenance` via a type alias so the two structurally identical provenance enums are a single type. Removed the duplicate `MemberReadProvenance` validation impl (which had a subtle path-formatting discrepancy) — all validation now uses the single `MemberCallProvenance::validate_at`. Removed `member_read_identity()` — `member_identity()` works for both calls and reads since they share the same provenance type. Extracted `lower_member_clause()` helper used by both `lower_member_calls` and `lower_member_reads` to eliminate the repeated `QueryClause` construction.
 
 ### ~~READ-022 — The cross-flow worklist owns every context twice~~ **DONE**
 - **Severity:** Medium
@@ -186,12 +200,14 @@ Member calls and reads have parallel matcher/provenance types, constructors, evi
 
 **Fix applied:** Replaced `VecDeque` + `BTreeSet` pair with a single `IndexSet`, which maintains insertion order with deduplication in one allocation per context. Also added `Hash` to `ModuleId`, `QualifiedEvent`, `CrossFlowState`, `CallContext`, and `RequirementSet` to support `IndexSet`. Added a `Hash` impl for `RequirementSet<K>` that hashes each `(key, value)` pair.
 
-### READ-023 — EvidenceList duplicates its owned identity fields
+### ~~READ-023 — EvidenceList duplicates its owned identity fields~~ **DONE**
 - **Severity:** Medium
 - **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/project/tables.rs:13-53`
 
 Each retained `Evidence` is accompanied by a `ReportEvidenceKey` that clones its message, stringifies/clones its path, and clones its range solely for deduplication. Make the identity a first-class part of one owned evidence record/domain collection, or defer stable sort/dedup until finalization so identity fields are stored once.
+
+**Fix applied:** Removed `ReportEvidenceKey` struct and `seen: BTreeSet<ReportEvidenceKey>` field entirely. `push_unique` now performs a linear scan comparing `message` and `location` directly from existing items — no cloning of identity fields on any push path. The list is typically small (<10 items per finding), so the O(n) scan avoids allocating a separate dedup-key store.
 
 ### ~~READ-024 — Rule ID access allocates during validation and construction~~ **DONE**
 - **Severity:** Low
@@ -202,12 +218,14 @@ Each retained `Evidence` is accompanied by a `ReportEvidenceKey` that clones its
 
 **Fix applied:** Changed `rule_ids()` return type from `Vec<RuleId>` to `&[RuleId]`. Callers that only iterate or check length now borrow the internal vector instead of receiving a clone.
 
-### READ-025 — Integration-test setup is repeated across suites
+### ~~READ-025 — Integration-test setup is repeated across suites~~ **DONE**
 - **Severity:** Low
 - **Category:** Testing
 - **Location:** `glass-lint-core/tests/compact_source.rs:21-64`, `glass-lint-core/tests/declarative_matching.rs:20-105`, `glass-lint-core/tests/scope_precision.rs:12-42`
 
 Rule builders, test environments, linter construction, classification wrappers, and count assertions are independently recreated in several integration-test crates. A small `tests/support` module would centralize the fixture contract while leaving behavior-specific positives and adversarial negatives in their current suites.
+
+**Fix applied:** Created `tests/support/mod.rs` with shared `rule()`, `test_environment()`, `assert_count()`, and `classify()` helpers. Updated `compact_source.rs`, `declarative_matching.rs`, `semantic_matching.rs`, and `scope_precision.rs` to import from the shared module via `#[path = "support/mod.rs"] mod support;`, eliminating the duplicated builder/env/linter construction across suites. Files that need specific globals (e.g., `compact_source.rs` with `URL`/`EventSource` for constructor matchers) retain their own `test_environment()` and `assert_count()` while using the shared `rule()` builder.
 
 ### ~~READ-026 — Several comments describe superseded storage~~ **DONE**
 - **Severity:** Low

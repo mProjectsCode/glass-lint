@@ -120,7 +120,6 @@ impl NameTable {
     // The first slice stores IDs before a textual matcher lookup needs this
     // conversion; keep the checked boundary here rather than exposing table
     // storage or a spelling fallback.
-    #[allow(dead_code)]
     pub(in crate::analysis) fn resolve(&self, id: NameId) -> Option<&str> {
         self.names
             .get_index(usize::try_from(id.0).ok()?)

@@ -52,13 +52,13 @@ impl<K: Ord> Default for OccurrenceIndex<K> {
 }
 
 impl<K: Ord> OccurrenceIndex<K> {
-    /// Look up one normalized occurrence bucket.
-    pub(super) fn get<Q>(&self, key: &Q) -> Option<&Vec<Occurrence>>
+    /// Look up one normalized occurrence bucket as a slice.
+    pub(super) fn get<Q>(&self, key: &Q) -> Option<&[Occurrence]>
     where
         K: std::borrow::Borrow<Q>,
         Q: Ord + ?Sized,
     {
-        self.0.get(key)
+        self.0.get(key).map(Vec::as_slice)
     }
 
     /// Whether no occurrence buckets are present.
@@ -68,8 +68,8 @@ impl<K: Ord> OccurrenceIndex<K> {
     }
 
     /// Iterate over keys and normalized occurrence buckets.
-    pub(super) fn iter(&self) -> impl Iterator<Item = (&K, &Vec<Occurrence>)> {
-        self.0.iter()
+    pub(super) fn iter(&self) -> impl Iterator<Item = (&K, &[Occurrence])> {
+        self.0.iter().map(|(k, v)| (k, v.as_slice()))
     }
 
     /// Collect occurrences from all buckets satisfying one identity
@@ -187,6 +187,76 @@ impl ModuleExportKey {
 
     pub(in crate::analysis) fn wildcard(module: impl Into<SmolStr>) -> Self {
         Self::new(module, "*")
+    }
+}
+
+/// Lazy merge of two sorted, deduplicated occurrence slices.
+///
+/// Both inputs must already be sorted by `(event, span.start(), span.end())`
+/// and free of internal duplicates. The merge yields every element in global
+/// order and skips duplicates that appear in both inputs.
+#[derive(Debug, Clone)]
+pub(in crate::analysis) struct MergeOccurrenceIter<'a> {
+    left: &'a [Occurrence],
+    right: &'a [Occurrence],
+    left_pos: usize,
+    right_pos: usize,
+}
+
+impl<'a> MergeOccurrenceIter<'a> {
+    pub(super) fn new(left: &'a [Occurrence], right: &'a [Occurrence]) -> Self {
+        Self {
+            left,
+            right,
+            left_pos: 0,
+            right_pos: 0,
+        }
+    }
+}
+
+impl Iterator for MergeOccurrenceIter<'_> {
+    type Item = Occurrence;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let left_done = self.left_pos >= self.left.len();
+        let right_done = self.right_pos >= self.right.len();
+        match (left_done, right_done) {
+            (true, true) => None,
+            (true, false) => {
+                let item = self.right[self.right_pos];
+                self.right_pos += 1;
+                Some(item)
+            }
+            (false, true) => {
+                let item = self.left[self.left_pos];
+                self.left_pos += 1;
+                Some(item)
+            }
+            (false, false) => {
+                let l = &self.left[self.left_pos];
+                let r = &self.right[self.right_pos];
+                let ordering = (l.event, l.span.start(), l.span.end()).cmp(&(
+                    r.event,
+                    r.span.start(),
+                    r.span.end(),
+                ));
+                match ordering {
+                    std::cmp::Ordering::Less => {
+                        self.left_pos += 1;
+                        Some(*l)
+                    }
+                    std::cmp::Ordering::Greater => {
+                        self.right_pos += 1;
+                        Some(*r)
+                    }
+                    std::cmp::Ordering::Equal => {
+                        self.left_pos += 1;
+                        self.right_pos += 1;
+                        Some(*l)
+                    }
+                }
+            }
+        }
     }
 }
 

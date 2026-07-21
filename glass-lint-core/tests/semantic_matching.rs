@@ -3,45 +3,32 @@
 //! These cases exercise patterns found in production JavaScript while requiring
 //! the matcher to prove each match without falling back to name-only matching.
 
-use glass_lint_core::{
-    Environment, Linter, LinterConfig, RuleCatalog,
-    rules::{
-        CallMatcher, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
-        MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
-        Severity, ValueMatcher,
-    },
+use glass_lint_core::rules::{
+    CallMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher, MemberCallMatcher,
+    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
 };
+
+#[path = "support/mod.rs"]
+mod support;
 
 /// Execute one matcher through a fresh strict catalog and return its count.
 fn findings(source: &str, matcher: Matcher) -> usize {
-    let rule = Rule::builder("semantic.match")
-        .description("semantic matcher")
-        .category("test")
-        .severity(Severity::Info)
-        .confidence(Confidence::High)
+    let rule = support::rule("semantic.match")
         .matcher(matcher)
         .build()
         .unwrap();
-    let environment = test_environment();
-    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-    Linter::new(LinterConfig::new(vec![catalog], environment))
-        .unwrap()
-        .lint_snippet(source, "semantic-matching.js")
-        .unwrap()
-        .files[0]
+    let environment = support::test_environment();
+    let catalog = glass_lint_core::RuleCatalog::new("test", vec![rule]).unwrap();
+    glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+        vec![catalog],
+        environment,
+    ))
+    .unwrap()
+    .lint_snippet(source, "semantic-matching.js")
+    .unwrap()
+    .files[0]
         .findings
         .len()
-}
-
-/// Supply only the provider roots needed by the semantic fixtures.
-fn test_environment() -> Environment {
-    let mut environment = Environment::default();
-    environment
-        .add_globals([
-            "app", "client", "document", "fetch", "host", "require", "vault",
-        ])
-        .unwrap();
-    environment
 }
 
 /// Assert the exact match count for a provenance or value-flow scenario.

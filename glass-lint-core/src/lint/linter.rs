@@ -12,7 +12,6 @@ use crate::{
 type AnalyzedModules = BTreeMap<crate::ProjectRelativePath, LocalArtifact>;
 
 struct ProjectFileState {
-    sources: BTreeMap<crate::ProjectRelativePath, String>,
     files: BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
     parse_paths: Vec<(crate::ProjectRelativePath, String)>,
 }
@@ -21,22 +20,18 @@ fn initialize_project_files(
     input: &ProjectInput,
     parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
 ) -> ProjectFileState {
-    let sources = input
-        .sources
-        .iter()
-        .map(|source| (source.path.clone(), source.source.clone()))
-        .collect::<BTreeMap<_, _>>();
     let parse_paths = parse_diagnostics
         .iter()
         .map(|(path, diagnostic)| (path.clone(), diagnostic.code.as_str().to_owned()))
         .collect::<Vec<_>>();
-    let mut files = sources
-        .keys()
-        .map(|path| {
+    let mut files = input
+        .sources
+        .iter()
+        .map(|source| {
             (
-                path.clone(),
+                source.path.clone(),
                 crate::FileReport {
-                    path: path.clone(),
+                    path: source.path.clone(),
                     findings: Vec::new(),
                     diagnostics: Vec::new(),
                 },
@@ -54,11 +49,7 @@ fn initialize_project_files(
             },
         );
     }
-    ProjectFileState {
-        sources,
-        files,
-        parse_paths,
-    }
+    ProjectFileState { files, parse_paths }
 }
 
 fn attach_project_diagnostics(
@@ -530,7 +521,6 @@ impl Linter {
     ) -> Result<(AnalysisReport, std::time::Duration, std::time::Duration), ProjectInputError> {
         let input = input.validate()?;
         let ProjectFileState {
-            sources,
             mut files,
             parse_paths,
         } = initialize_project_files(&input, parse_diagnostics);
@@ -554,7 +544,7 @@ impl Linter {
         );
         project.merge_projection_outcome(&projection_outcome);
         let matching_elapsed = matching_start.elapsed();
-        self.populate_project_files(&project, &classifications, &sources, &mut files);
+        self.populate_project_files(&project, &classifications, &mut files);
 
         let diagnostics = attach_project_diagnostics(&project, &mut files);
         let report = assemble_project_report(&project, files, diagnostics);
@@ -569,18 +559,13 @@ impl Linter {
         &self,
         project: &ProjectSemanticModel,
         classifications: &BTreeMap<ModuleId, ClassificationResult>,
-        sources: &BTreeMap<crate::ProjectRelativePath, String>,
         files: &mut BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
     ) {
         for module in project.modules() {
             let Some(classification) = classifications.get(&module.id()) else {
                 continue;
             };
-            let Some(source) = sources.get(module.path()) else {
-                continue;
-            };
-            let mut findings =
-                self.project_findings_for_module(project, module, classification, source);
+            let mut findings = self.project_findings_for_module(project, module, classification);
             findings.sort_by_key(|finding| {
                 (
                     finding.location.range.start().line(),
@@ -605,12 +590,11 @@ impl Linter {
         project: &ProjectSemanticModel,
         module: &crate::analysis::ProjectModule,
         classification: &ClassificationResult,
-        source: &str,
     ) -> Vec<crate::Finding> {
         self.findings_for(
             classification,
             &module.source_context().lines,
-            source,
+            module.source_context().text.as_ref(),
             module.path(),
         )
         .into_iter()

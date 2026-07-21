@@ -8,14 +8,18 @@ use std::collections::BTreeSet;
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog,
     rules::{
-        CallMatcher, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
-        MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
-        Severity, ValueMatcher,
+        CallMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher, MemberCallMatcher,
+        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, ValueMatcher,
     },
 };
 
 #[path = "declarative_matching/flow.rs"]
 mod flow;
+
+#[path = "support/mod.rs"]
+mod support;
+
+use support::rule;
 
 struct Classification {
     finding_count: usize,
@@ -26,15 +30,6 @@ impl Classification {
     fn has_capability(&self, id: &str) -> bool {
         self.rule_ids.contains(&format!("test:{id}"))
     }
-}
-
-/// Build a consistent high-confidence rule for one declarative capability.
-fn rule(id: &str) -> glass_lint_core::rules::Builder {
-    Rule::builder(id)
-        .description(id)
-        .category("test")
-        .severity(Severity::Info)
-        .confidence(Confidence::High)
 }
 
 /// Construct the multi-step flow used by source/configuration/sink tests.
@@ -60,19 +55,22 @@ fn script_insertion_flow() -> Matcher {
 
 /// Lint one source with exactly the supplied rules and record matched IDs.
 fn classify(source: &str, rules: &[Rule]) -> Classification {
-    classify_with_environment(source, rules, test_environment())
+    classify_with_environment(source, rules, support::test_environment())
 }
 
 fn classify_with_environment(
     source: &str,
     rules: &[Rule],
-    environment: Environment,
+    environment: glass_lint_core::Environment,
 ) -> Classification {
-    let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
-    let report = Linter::new(LinterConfig::new(vec![catalog], environment))
-        .unwrap()
-        .lint_snippet(source, "matcher.js")
-        .unwrap();
+    let catalog = glass_lint_core::RuleCatalog::new("test", rules.to_vec()).unwrap();
+    let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+        vec![catalog],
+        environment,
+    ))
+    .unwrap()
+    .lint_snippet(source, "matcher.js")
+    .unwrap();
     Classification {
         finding_count: report.files[0].findings.len(),
         rule_ids: report.files[0]
@@ -81,27 +79,6 @@ fn classify_with_environment(
             .map(|finding| finding.rule_id.as_str().to_owned())
             .collect(),
     }
-}
-
-/// Configure only globals that the declarative cases are allowed to trust.
-fn test_environment() -> Environment {
-    let mut environment = Environment::default();
-    environment
-        .add_globals([
-            "app",
-            "client",
-            "document",
-            "fetch",
-            "host",
-            "navigator",
-            "require",
-            "vault",
-        ])
-        .unwrap();
-    for object in ["window", "self", "global"] {
-        environment.add_global_object(object).unwrap();
-    }
-    environment
 }
 
 #[test]
@@ -127,7 +104,7 @@ fn canonicalizes_configured_global_object_aliases_for_rooted_members() {
 
 #[test]
 fn rooted_configured_global_member_calls_match_direct_globals() {
-    let mut environment = test_environment();
+    let mut environment = support::test_environment();
     environment.add_global("crypto").unwrap();
     let catalog = RuleCatalog::new(
         "test",
@@ -148,7 +125,7 @@ fn rooted_configured_global_member_calls_match_direct_globals() {
 
 #[test]
 fn rooted_global_member_survives_unrelated_crypto_imports() {
-    let mut environment = test_environment();
+    let mut environment = support::test_environment();
     environment.add_global("crypto").unwrap();
     let rules = [rule("crypto")
         .matcher(Matcher::rooted_member_call("crypto.subtle.digest"))
