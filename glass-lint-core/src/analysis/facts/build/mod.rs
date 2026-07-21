@@ -108,7 +108,7 @@ impl<'a> FactBuilder<'a> {
     }
 
     pub(super) fn rooted_path(&self, path: Option<&SymbolPath>) -> Option<NamePath> {
-        path.and_then(|path| self.name_path(path))
+        path.and_then(|path| self.name_path(&path.without_this_prefix()))
     }
 
     pub(super) fn returned_path(

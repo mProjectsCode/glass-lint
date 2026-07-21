@@ -171,9 +171,7 @@ impl OccurrenceIndexes {
             self.members.calls.push(chain, fact.id, span);
         }
         if let Some(chain) = rooted_chain {
-            self.members
-                .rooted_calls
-                .push(chain.without_this_prefix(names), fact.id, span);
+            self.members.rooted_calls.push(chain.clone(), fact.id, span);
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
             self.call_indexes.module_calls.push(
@@ -222,9 +220,7 @@ impl OccurrenceIndexes {
             self.members
                 .calls
                 .push(chain.clone(), fact.id, *callee_span);
-            self.members
-                .rooted_calls
-                .push(chain.without_this_prefix(names), fact.id, *callee_span);
+            self.members.rooted_calls.push(chain, fact.id, *callee_span);
         }
     }
 
@@ -247,7 +243,7 @@ impl OccurrenceIndexes {
         if let Some(chain) = rooted_chain {
             self.members
                 .rooted_reads
-                .push(chain.without_this_prefix(names), fact.id, fact.span);
+                .push(chain.clone(), fact.id, fact.span);
         }
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, member }) = module_member {
             self.members.module_reads.push(

@@ -50,7 +50,7 @@ impl FactBuilder<'_> {
             rooted_chain: self
                 .resolver
                 .rooted_expr_chain(expr)
-                .and_then(|path| self.name_path(&path)),
+                .and_then(|path| self.name_path(&path.without_this_prefix())),
             projections,
             spread: false,
             provenance,

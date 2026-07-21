@@ -397,7 +397,7 @@ impl FactBuilder<'_> {
                     return;
                 };
                 let unwrap = Some(Box::new(CallUnwrap {
-                    chain: chain.unwrap_or_default(),
+                    chain: chain.unwrap_or_default().without_this_prefix(),
                     effective_args,
                 }));
                 self.emit_call(span, resolved, args, unwrap);
@@ -413,7 +413,7 @@ impl FactBuilder<'_> {
                     return;
                 };
                 let unwrap = Some(Box::new(CallUnwrap {
-                    chain: chain.unwrap_or_default(),
+                    chain: chain.unwrap_or_default().without_this_prefix(),
                     effective_args,
                 }));
                 self.emit_call(span, resolved, args, unwrap);

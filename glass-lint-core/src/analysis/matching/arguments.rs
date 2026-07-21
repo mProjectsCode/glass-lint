@@ -306,10 +306,9 @@ fn member_identity_matches(
         }
         (IdentityConstraint::Rooted { path }, SubjectConstraint::Direct) => rooted_chain
             .is_some_and(|chain| {
-                let canonical = chain.without_this_prefix(names);
-                NamePath::from_symbol_path(path, names).is_some_and(|path| canonical == path)
+                NamePath::from_symbol_path(path, names).is_some_and(|path| chain == &path)
                     && NamePath::from_symbol_path(member, names)
-                        .is_some_and(|member| canonical == member)
+                        .is_some_and(|member| chain == &member)
             }),
         (IdentityConstraint::Rooted { path }, SubjectConstraint::ReturnedFrom { .. }) => {
             let FactPayload::Call {
