@@ -82,7 +82,7 @@ struct ObjectFlowProjector<'rules, 'stream> {
     stream: &'stream FactStream,
     names: &'stream NameTable,
     flow_index: FlowIndex<'rules>,
-    helpers: FunctionSummaries,
+    helpers: FunctionSummaries<'stream>,
     /// Call results are indexed once so later assignments can start a flow
     /// without rescanning the fact stream.
     calls_by_result: BTreeMap<ValueId, FactId>,
@@ -107,7 +107,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         stream: &'stream FactStream,
         names: &'stream NameTable,
         flow_index: FlowIndex<'rules>,
-        helpers: FunctionSummaries,
+        helpers: FunctionSummaries<'stream>,
         rule_count: usize,
         limits: FlowLimits,
     ) -> Self {

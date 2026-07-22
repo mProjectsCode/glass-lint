@@ -9,8 +9,11 @@
 //! dynamic arguments, missing paths, or incompatible invocations do not create
 //! a projected sink. Recursive propagation stops at a fixed point or its
 //! explicit round bound.
-
-use std::collections::HashMap;
+//!
+//! Path storage uses one shared [`ParentPathStore`] for the summary overlay.
+//! A [`SummaryPathId`] is either a frozen [`PathId`] reference (no copying)
+//! or an overlay node created during a join.  The overlay is bounded by
+//! [`MAX_OVERLAY_NODES`]; exhaustion fails closed.
 
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
@@ -19,11 +22,15 @@ use crate::analysis::{
         index::{FlowId, FlowIndex},
         table::FunctionTable,
     },
-    value::{FunctionId, PathId, PathInterner, PathSegment, Value, ValueId, ValueTable},
+    value::{
+        FunctionId, ParentPathStore, PathId, PathInterner, PathNode, PathSegment, Value, ValueId,
+        ValueTable,
+    },
 };
 
 const MAX_SUMMARY_ROUNDS: usize = 64;
-const MAX_SUMMARY_PATH_NODES: usize = 1 << 20;
+const MAX_OVERLAY_NODES: usize = 4096;
+const OVERLAY_TAG: u32 = 1 << 31;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(super) struct SummaryPathId(u32);
@@ -35,77 +42,181 @@ impl SummaryPathId {
         self == Self::EMPTY
     }
 
-    fn index(self) -> Option<usize> {
-        usize::try_from(self.0)
-            .ok()
-            .filter(|index| *index < MAX_SUMMARY_PATH_NODES)
+    fn is_frozen(self) -> bool {
+        self.0 & OVERLAY_TAG == 0
+    }
+
+    fn from_path_id(id: PathId) -> Self {
+        Self(id.0)
     }
 }
 
-#[derive(Debug, Clone)]
-struct SummaryPathNode {
-    parent: SummaryPathId,
-    depth: u32,
-    segment: Option<PathSegment>,
+#[derive(Debug)]
+pub(super) struct SummaryPathStore<'a> {
+    frozen: &'a PathInterner,
+    overlay: ParentPathStore,
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct SummaryPathInterner {
-    nodes: Vec<SummaryPathNode>,
-    by_edge: HashMap<(SummaryPathId, PathSegment), SummaryPathId>,
-    frozen_map: HashMap<PathId, SummaryPathId>,
-}
-
-impl SummaryPathInterner {
-    fn new() -> Self {
+impl<'a> SummaryPathStore<'a> {
+    fn new(frozen: &'a PathInterner) -> Self {
         Self {
-            nodes: vec![SummaryPathNode {
-                parent: SummaryPathId::EMPTY,
-                depth: 0,
-                segment: None,
-            }],
-            by_edge: HashMap::new(),
-            frozen_map: HashMap::new(),
+            frozen,
+            overlay: ParentPathStore::new(MAX_OVERLAY_NODES),
         }
     }
 
-    fn append(&mut self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
-        let parent_index = parent.index()?;
-        if parent_index >= self.nodes.len() {
+    fn is_valid(&self, id: SummaryPathId) -> bool {
+        if id.is_frozen() {
+            self.frozen.store().is_valid(id.0)
+        } else {
+            self.overlay.is_valid(id.0 & !OVERLAY_TAG)
+        }
+    }
+
+    pub(super) fn intern_frozen(&self, path: PathId) -> Option<SummaryPathId> {
+        if !self.frozen.store().is_valid(path.0) {
             return None;
         }
-        if let Some(path) = self.by_edge.get(&(parent, segment.clone())) {
-            return Some(*path);
-        }
-        if self.nodes.len() >= MAX_SUMMARY_PATH_NODES {
+        Some(SummaryPathId::from_path_id(path))
+    }
+
+    pub(super) fn resolve_frozen(&self, path: PathId) -> Option<SummaryPathId> {
+        if !self.frozen.store().is_valid(path.0) {
             return None;
         }
-        let id = SummaryPathId(u32::try_from(self.nodes.len()).ok()?);
-        let depth = self.nodes[parent_index].depth.checked_add(1)?;
-        self.nodes.push(SummaryPathNode {
-            parent,
+        Some(SummaryPathId::from_path_id(path))
+    }
+
+    fn depth_impl(&self, id: u32, is_frozen: bool) -> Option<u32> {
+        if is_frozen {
+            self.frozen.store().depth(id)
+        } else {
+            self.overlay.depth(id & !OVERLAY_TAG)
+        }
+    }
+
+    pub(super) fn depth(&self, id: SummaryPathId) -> Option<u32> {
+        self.depth_impl(id.0, id.is_frozen())
+    }
+
+    fn parent_impl(&self, id: u32, is_frozen: bool) -> Option<u32> {
+        if is_frozen {
+            self.frozen.store().parent(id)
+        } else {
+            self.overlay.parent(id & !OVERLAY_TAG)
+        }
+    }
+
+    fn parent(&self, id: SummaryPathId) -> Option<SummaryPathId> {
+        let raw = self.parent_impl(id.0, id.is_frozen())?;
+        Some(SummaryPathId(raw))
+    }
+
+    pub(super) fn starts_with(&self, id: SummaryPathId, prefix: SummaryPathId) -> bool {
+        let Some(path_depth) = self.depth_impl(id.0, id.is_frozen()) else {
+            return false;
+        };
+        let Some(prefix_depth) = self.depth_impl(prefix.0, prefix.is_frozen()) else {
+            return false;
+        };
+        if prefix_depth > path_depth {
+            return false;
+        }
+        let mut current = id;
+        for _ in 0..(path_depth - prefix_depth) {
+            match self.parent(current) {
+                Some(next) => current = next,
+                None => return false,
+            }
+        }
+        current == prefix
+    }
+
+    #[allow(clippy::unused_self)]
+    pub(super) fn matches_frozen(&self, id: SummaryPathId, base: PathId) -> bool {
+        id == SummaryPathId::from_path_id(base)
+    }
+
+    pub(super) fn starts_with_frozen(&self, id: SummaryPathId, prefix: PathId) -> bool {
+        let prefix_id = SummaryPathId::from_path_id(prefix);
+        if !self.is_valid(prefix_id) {
+            return false;
+        }
+        self.starts_with(id, prefix_id)
+    }
+
+    fn segment_impl(&self, raw_id: u32) -> Option<&PathSegment> {
+        if raw_id == 0 || raw_id & OVERLAY_TAG == 0 {
+            self.frozen.store().segment(raw_id)
+        } else {
+            self.overlay.segment(raw_id & !OVERLAY_TAG)
+        }
+    }
+
+    fn segment(&self, id: SummaryPathId) -> Option<&PathSegment> {
+        self.segment_impl(id.0)
+    }
+
+    fn first_segment_of_impl(&self, raw_id: u32) -> Option<&PathSegment> {
+        if raw_id == 0 || raw_id & OVERLAY_TAG == 0 {
+            self.frozen.store().first_segment_of(raw_id)
+        } else {
+            self.overlay.first_segment_of(raw_id & !OVERLAY_TAG)
+        }
+    }
+
+    fn first_segment_of(&self, id: SummaryPathId) -> Option<&PathSegment> {
+        self.first_segment_of_impl(id.0)
+    }
+
+    pub(super) fn first_index(&self, id: SummaryPathId) -> Option<u32> {
+        match self.first_segment_of(id)? {
+            PathSegment::Index(index) => Some(*index),
+            PathSegment::Property(_) => None,
+        }
+    }
+
+    fn find_edge_impl(&self, parent: u32, segment: &PathSegment) -> Option<u32> {
+        if let Some(child) = self.overlay.by_edge.get(&(parent, segment.clone())) {
+            return Some(*child);
+        }
+        if parent & OVERLAY_TAG == 0
+            && let Some(child) = self.frozen.store().find_edge(parent, segment)
+        {
+            return Some(child);
+        }
+        None
+    }
+
+    fn find_edge(&self, parent: SummaryPathId, segment: &PathSegment) -> Option<SummaryPathId> {
+        self.find_edge_impl(parent.0, segment).map(SummaryPathId)
+    }
+
+    fn overlay_append(
+        &mut self,
+        parent: SummaryPathId,
+        segment: PathSegment,
+    ) -> Option<SummaryPathId> {
+        if self.overlay.node_count() >= self.overlay.max_nodes() {
+            return None;
+        }
+        let depth = self.depth(parent)?.checked_add(1)?;
+        let index = self.overlay.node_count();
+        let raw_id = u32::try_from(index).ok()? | OVERLAY_TAG;
+        self.overlay.nodes.push(PathNode {
+            parent: parent.0,
             depth,
             segment: Some(segment.clone()),
         });
-        self.by_edge.insert((parent, segment), id);
-        Some(id)
+        self.overlay.by_edge.insert((parent.0, segment), raw_id);
+        Some(SummaryPathId(raw_id))
     }
 
-    pub(super) fn intern_frozen(
-        &mut self,
-        frozen: &PathInterner,
-        path: PathId,
-    ) -> Option<SummaryPathId> {
-        if let Some(&existing) = self.frozen_map.get(&path) {
-            return Some(existing);
+    fn append(&mut self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
+        if let Some(child) = self.find_edge(parent, &segment) {
+            return Some(child);
         }
-        let segments = frozen.owned_segments(path)?;
-        let mut result = SummaryPathId::EMPTY;
-        for segment in segments {
-            result = self.append(result, segment)?;
-        }
-        self.frozen_map.insert(path, result);
-        Some(result)
+        self.overlay_append(parent, segment)
     }
 
     pub(super) fn join(
@@ -116,79 +227,10 @@ impl SummaryPathInterner {
         if suffix.is_empty() {
             return Some(prefix);
         }
-        let suffix_node = self.nodes.get(suffix.index()?)?;
-        let segment = suffix_node.segment.clone()?;
-        let parent_joined = self.join(prefix, suffix_node.parent)?;
-        if let Some(existing) = self.find_edge(parent_joined, &segment) {
-            return Some(existing);
-        }
+        let segment = self.segment_impl(suffix.0)?.clone();
+        let suffix_parent = self.parent_impl(suffix.0, suffix.is_frozen())?;
+        let parent_joined = self.join(prefix, SummaryPathId(suffix_parent))?;
         self.append(parent_joined, segment)
-    }
-
-    pub(super) fn resolve_frozen(&self, path: PathId) -> Option<SummaryPathId> {
-        self.frozen_map.get(&path).copied()
-    }
-
-    fn depth(&self, id: SummaryPathId) -> Option<u32> {
-        self.nodes.get(id.index()?).map(|node| node.depth)
-    }
-
-    pub(super) fn starts_with(&self, id: SummaryPathId, prefix: SummaryPathId) -> bool {
-        let Some(path_depth) = self.depth(id) else {
-            return false;
-        };
-        let Some(prefix_depth) = self.depth(prefix) else {
-            return false;
-        };
-        if prefix_depth > path_depth {
-            return false;
-        }
-        let mut current = id;
-        for _ in 0..(path_depth - prefix_depth) {
-            let Some(index) = current.index() else {
-                return false;
-            };
-            let Some(node) = self.nodes.get(index) else {
-                return false;
-            };
-            current = node.parent;
-        }
-        current == prefix
-    }
-
-    pub(super) fn matches_frozen(&self, id: SummaryPathId, base: PathId) -> bool {
-        self.frozen_map.get(&base).copied() == Some(id)
-    }
-
-    pub(super) fn starts_with_frozen(&self, id: SummaryPathId, prefix: PathId) -> bool {
-        if let Some(&prefix_id) = self.frozen_map.get(&prefix) {
-            return self.starts_with(id, prefix_id);
-        }
-        false
-    }
-
-    fn segment(&self, id: SummaryPathId) -> Option<&PathSegment> {
-        if id.is_empty() {
-            return None;
-        }
-        self.nodes.get(id.index()?)?.segment.as_ref()
-    }
-
-    fn first_segment_of(&self, id: SummaryPathId) -> Option<&PathSegment> {
-        let mut current = id;
-        let mut last = None;
-        while !current.is_empty() {
-            last = Some(self.segment(current)?);
-            current = self.nodes.get(current.index()?)?.parent;
-        }
-        last
-    }
-
-    pub(super) fn first_index(&self, id: SummaryPathId) -> Option<u32> {
-        match self.first_segment_of(id)? {
-            PathSegment::Index(index) => Some(*index),
-            PathSegment::Property(_) => None,
-        }
     }
 
     pub(super) fn without_first(&self, id: SummaryPathId) -> Option<SummaryPathId> {
@@ -196,28 +238,24 @@ impl SummaryPathInterner {
         self.rebuild_without_first(id)
     }
 
-    fn find_edge(&self, parent: SummaryPathId, segment: &PathSegment) -> Option<SummaryPathId> {
-        self.by_edge.get(&(parent, segment.clone())).copied()
-    }
-
     fn rebuild_without_first(&self, id: SummaryPathId) -> Option<SummaryPathId> {
-        let node = self.nodes.get(id.index()?)?;
-        let segment = self.segment(id)?;
-        if node.parent.is_empty() {
+        let node_parent = self.parent_impl(id.0, id.is_frozen())?;
+        let segment = self.segment_impl(id.0)?.clone();
+        if node_parent == 0 {
             return Some(SummaryPathId::EMPTY);
         }
-        let parent = self.rebuild_without_first(node.parent)?;
-        self.find_edge(parent, segment)
+        let parent = self.rebuild_without_first(SummaryPathId(node_parent))?;
+        self.find_edge(parent, &segment)
     }
 
     pub(super) fn owned_segments(&self, id: SummaryPathId) -> Option<Vec<PathSegment>> {
-        let depth = self.nodes.get(id.index()?)?.depth as usize;
-        let mut segments = Vec::with_capacity(depth);
+        let depth = self.depth(id)?;
+        let mut segments = Vec::with_capacity(depth as usize);
         let mut current = id;
         while !current.is_empty() {
-            let node = self.nodes.get(current.index()?)?;
-            segments.push(node.segment.clone()?);
-            current = node.parent;
+            segments.push(self.segment_impl(current.0)?.clone());
+            let next_parent = self.parent_impl(current.0, current.is_frozen())?;
+            current = SummaryPathId(next_parent);
         }
         segments.reverse();
         Some(segments)
@@ -295,27 +333,18 @@ impl FunctionSinkSummary {
     }
 }
 
-#[derive(Debug, Clone)]
-pub(super) struct FunctionSummaries {
+#[derive(Debug)]
+pub(super) struct FunctionSummaries<'a> {
     by_id: FunctionTable<FunctionSummary>,
-    paths: SummaryPathInterner,
+    paths: SummaryPathStore<'a>,
 }
 
-impl Default for FunctionSummaries {
-    fn default() -> Self {
-        Self {
-            by_id: FunctionTable::default(),
-            paths: SummaryPathInterner::new(),
-        }
-    }
-}
-
-impl FunctionSummaries {
+impl<'a> FunctionSummaries<'a> {
     pub(super) fn get(&self, id: FunctionId) -> Option<&FunctionSummary> {
         self.by_id.get(id)
     }
 
-    pub(super) fn path_interner(&self) -> &SummaryPathInterner {
+    pub(super) fn path_interner(&self) -> &SummaryPathStore<'a> {
         &self.paths
     }
 
@@ -324,12 +353,15 @@ impl FunctionSummaries {
     }
 
     pub(super) fn collect(
-        stream: &FactStream,
+        stream: &'a FactStream,
         effects: &FunctionEffects,
         flow_index: &FlowIndex<'_>,
     ) -> Self {
-        let mut summaries = Self::default();
-        summaries.collect_facts(effects, stream.paths());
+        let mut summaries = Self {
+            by_id: FunctionTable::default(),
+            paths: SummaryPathStore::new(stream.paths()),
+        };
+        summaries.collect_facts(effects);
         summaries.collect_direct_sinks(stream, flow_index);
         summaries.propagate_sinks(stream);
         for (_, summary) in summaries.by_id.iter_mut() {
@@ -338,11 +370,11 @@ impl FunctionSummaries {
         summaries
     }
 
-    fn collect_facts(&mut self, effects: &FunctionEffects, frozen: &PathInterner) {
+    fn collect_facts(&mut self, effects: &FunctionEffects) {
         for effect in effects.iter_effects() {
             if self.get(effect.id()).is_none() {
                 for param in effect.parameters() {
-                    self.paths.intern_frozen(frozen, param.path);
+                    self.paths.intern_frozen(param.path);
                 }
                 self.insert(FunctionSummary {
                     id: effect.id(),
@@ -483,7 +515,7 @@ fn try_project_sink(
     sink: &FunctionSinkSummary,
     stream: &FactStream,
     args: &[CallArgInfo],
-    paths: &SummaryPathInterner,
+    paths: &SummaryPathStore<'_>,
 ) -> Option<FunctionSinkSummary> {
     let target_parameter = target_parameters.iter().find(|parameter| {
         parameter.parameter_index == sink.parameter_index()
@@ -525,7 +557,7 @@ impl FunctionSummary {
         &self,
         stream: &FactStream,
         args: &[CallArgInfo],
-        paths: &SummaryPathInterner,
+        paths: &SummaryPathStore<'_>,
     ) -> bool {
         if args.iter().any(|argument| argument.spread) {
             return false;
@@ -566,7 +598,7 @@ impl FunctionSummary {
         &mut self,
         stream: &FactStream,
         flow_index: &FlowIndex<'_>,
-        paths: &mut SummaryPathInterner,
+        paths: &mut SummaryPathStore<'_>,
         call_id: FactId,
     ) {
         let Some(FactPayload::Call {
@@ -581,7 +613,6 @@ impl FunctionSummary {
         let Some(chain) = rooted_chain.as_ref().or(syntactic_path.as_ref()) else {
             return;
         };
-        let frozen = stream.paths();
         for flow_id in flow_index.sink_ids(chain).into_iter().flatten() {
             let Some(flow) = flow_index.get(*flow_id) else {
                 continue;
@@ -605,10 +636,10 @@ impl FunctionSummary {
                     }) else {
                         continue;
                     };
-                    let Some(prefix_id) = paths.intern_frozen(frozen, parameter.path) else {
+                    let Some(prefix_id) = paths.intern_frozen(parameter.path) else {
                         continue;
                     };
-                    let Some(suffix_id) = paths.intern_frozen(frozen, argument.base_path) else {
+                    let Some(suffix_id) = paths.intern_frozen(argument.base_path) else {
                         continue;
                     };
                     let Some(path) = paths.join(prefix_id, suffix_id) else {
@@ -630,7 +661,7 @@ impl ParameterBinding {
         &self,
         stream: &FactStream,
         args: &[CallArgInfo],
-        paths: &SummaryPathInterner,
+        paths: &SummaryPathStore<'_>,
     ) -> Option<ValueId> {
         let param_path = paths.resolve_frozen(self.path)?;
         self.project_argument_at(stream, args, paths, param_path)
@@ -640,7 +671,7 @@ impl ParameterBinding {
         &self,
         stream: &FactStream,
         args: &[CallArgInfo],
-        paths: &SummaryPathInterner,
+        paths: &SummaryPathStore<'_>,
         path: SummaryPathId,
     ) -> Option<ValueId> {
         let Some(argument) = args.get(self.parameter_index) else {
@@ -742,6 +773,226 @@ mod tests {
                 .filter(|summary| summary.parameters.len() == 1)
                 .count(),
             2
+        );
+    }
+
+    // ── Summary path store unit tests ────────────────────────────────────
+
+    fn make_frozen_paths() -> (PathInterner, u32) {
+        let mut frozen = PathInterner::new();
+        let a = frozen.append(PathId::EMPTY, PathSegment::Index(0)).unwrap();
+        let _b = frozen.append(a, PathSegment::Index(1)).unwrap();
+        let _c = frozen.append(a, PathSegment::Index(2)).unwrap();
+        (frozen, a.0)
+    }
+
+    #[test]
+    fn frozen_path_is_referenced_without_copy() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let store = SummaryPathStore::new(&frozen);
+        let s_id = store.intern_frozen(a_id).unwrap();
+        assert_eq!(s_id, SummaryPathId::from_path_id(a_id));
+        assert!(s_id.is_frozen());
+        assert_eq!(store.depth(s_id), Some(1));
+    }
+
+    #[test]
+    fn invalid_frozen_path_returns_none() {
+        let (frozen, _) = make_frozen_paths();
+        let store = SummaryPathStore::new(&frozen);
+        assert!(store.intern_frozen(PathId(u32::MAX)).is_none());
+        assert!(store.resolve_frozen(PathId(u32::MAX)).is_none());
+    }
+
+    #[test]
+    fn join_frozen_prefix_with_frozen_suffix_creates_overlay_node() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let b_id = PathId(a_raw + 1);
+        let mut store = SummaryPathStore::new(&frozen);
+        let prefix = store.intern_frozen(a_id).unwrap();
+        let suffix = store.intern_frozen(b_id).unwrap();
+        let joined = store.join(prefix, suffix).unwrap();
+        assert!(!joined.is_frozen());
+        assert!(!joined.is_empty());
+        // a = [Idx(0)], b = [Idx(0), Idx(1)], so join(a,b) = [Idx(0), Idx(0), Idx(1)]
+        // depth=3
+        assert_eq!(store.depth(joined), Some(3));
+    }
+
+    #[test]
+    fn join_with_empty_is_identity() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let mut store = SummaryPathStore::new(&frozen);
+        let prefix = store.intern_frozen(a_id).unwrap();
+        assert_eq!(store.join(prefix, SummaryPathId::EMPTY), Some(prefix));
+        assert_eq!(store.join(SummaryPathId::EMPTY, prefix), Some(prefix));
+    }
+
+    #[test]
+    fn frozen_reference_reused_by_multiple_summaries() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let store = SummaryPathStore::new(&frozen);
+        let id1 = store.intern_frozen(a_id).unwrap();
+        let id2 = store.intern_frozen(a_id).unwrap();
+        assert_eq!(id1, id2);
+    }
+
+    #[test]
+    fn starts_with_mixed_frozen_and_overlay() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let b_id = PathId(a_raw + 1);
+        let mut store = SummaryPathStore::new(&frozen);
+        let a = store.intern_frozen(a_id).unwrap();
+        let b = store.intern_frozen(b_id).unwrap();
+        let ab = store.join(a, b).unwrap();
+        // ab = [Idx(0)] joined with [Idx(0), Idx(1)] = [Idx(0), Idx(0), Idx(1)]
+        assert!(store.starts_with(ab, a));
+        // ab starts with itself
+        assert!(store.starts_with(ab, ab));
+    }
+
+    #[test]
+    fn matches_frozen_checks_identity() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let store = SummaryPathStore::new(&frozen);
+        assert!(store.matches_frozen(SummaryPathId::from_path_id(a_id), a_id));
+        assert!(!store.matches_frozen(SummaryPathId::from_path_id(a_id), PathId(a_raw + 10),));
+    }
+
+    #[test]
+    fn starts_with_frozen_checks_prefix() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let b_id = PathId(a_raw + 1);
+        let mut store = SummaryPathStore::new(&frozen);
+        let a = store.intern_frozen(a_id).unwrap();
+        let b = store.intern_frozen(b_id).unwrap();
+        let ab = store.join(a, b).unwrap();
+        assert!(store.starts_with_frozen(ab, a_id));
+        assert!(!store.starts_with_frozen(a, b_id));
+    }
+
+    #[test]
+    fn without_first_on_frozen() {
+        let (frozen, a_raw) = make_frozen_paths();
+        // ab = [Idx(0), Idx(1)]; after removing first, [Idx(1)] doesn't exist
+        // standalone
+        let ab_id = PathId(a_raw + 1);
+        let store = SummaryPathStore::new(&frozen);
+        let s_ab = SummaryPathId::from_path_id(ab_id);
+        assert!(store.without_first(s_ab).is_none());
+    }
+
+    #[test]
+    fn without_first_on_overlay() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let b_id = PathId(a_raw + 1);
+        let mut store = SummaryPathStore::new(&frozen);
+        let a = store.intern_frozen(a_id).unwrap();
+        let b = store.intern_frozen(b_id).unwrap();
+        let ab = store.join(a, b).unwrap();
+        // ab = join(a=[Idx(0)], b=[Idx(0), Idx(1)]) = [Idx(0), Idx(0), Idx(1)]
+        // without_first removes the first segment, leaving [Idx(0), Idx(1)] which is b
+        let result = store.without_first(ab).unwrap();
+        assert_eq!(result, b);
+    }
+
+    #[test]
+    fn owned_segments_on_frozen() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let ab_id = PathId(a_raw + 1);
+        let store = SummaryPathStore::new(&frozen);
+        let s_ab = SummaryPathId::from_path_id(ab_id);
+        let segs = store.owned_segments(s_ab).unwrap();
+        assert_eq!(segs, vec![PathSegment::Index(0), PathSegment::Index(1)]);
+    }
+
+    #[test]
+    fn owned_segments_on_joined_overlay() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let b_id = PathId(a_raw + 1);
+        let mut store = SummaryPathStore::new(&frozen);
+        let a = store.intern_frozen(a_id).unwrap();
+        let b = store.intern_frozen(b_id).unwrap();
+        let ab = store.join(a, b).unwrap();
+        // join(a=[Idx(0)], b=[Idx(0), Idx(1)]) = [Idx(0), Idx(0), Idx(1)]
+        let segs = store.owned_segments(ab).unwrap();
+        assert_eq!(
+            segs,
+            vec![
+                PathSegment::Index(0),
+                PathSegment::Index(0),
+                PathSegment::Index(1),
+            ]
+        );
+    }
+
+    #[test]
+    fn overlay_budget_exhaustion_fails_closed() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw);
+        let b_id = PathId(a_raw + 1);
+        let mut store = SummaryPathStore {
+            frozen: &frozen,
+            overlay: ParentPathStore::new(2),
+        };
+        let a = store.intern_frozen(a_id).unwrap();
+        let b = store.intern_frozen(b_id).unwrap();
+        assert!(store.join(a, b).is_none());
+    }
+
+    #[test]
+    fn empty_summary_path_has_no_segments() {
+        let (frozen, _) = make_frozen_paths();
+        let store = SummaryPathStore::new(&frozen);
+        assert_eq!(store.depth(SummaryPathId::EMPTY), Some(0));
+        assert_eq!(store.first_index(SummaryPathId::EMPTY), None);
+        assert_eq!(store.without_first(SummaryPathId::EMPTY), None);
+    }
+
+    #[test]
+    fn first_index_on_frozen_and_overlay() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let idx_id = PathId(a_raw);
+        let store = SummaryPathStore::new(&frozen);
+        let s_idx = SummaryPathId::from_path_id(idx_id);
+        assert_eq!(store.first_index(s_idx), Some(0));
+    }
+
+    #[test]
+    fn join_order_with_three_segments() {
+        let (frozen, a_raw) = make_frozen_paths();
+        let a_id = PathId(a_raw); // [Idx(0)]
+        let b_id = PathId(a_raw + 1); // [Idx(0), Idx(1)]
+        let c_id = PathId(a_raw + 2); // [Idx(0), Idx(2)]
+        let mut store = SummaryPathStore::new(&frozen);
+        let a = store.intern_frozen(a_id).unwrap();
+        let b = store.intern_frozen(b_id).unwrap();
+        let c = store.intern_frozen(c_id).unwrap();
+        // ab = join([Idx(0)], [Idx(0), Idx(1)]) = [Idx(0), Idx(0), Idx(1)]
+        let ab = store.join(a, b).unwrap();
+        // abc = join(ab, [Idx(0), Idx(2)]) = [Idx(0), Idx(0), Idx(1), Idx(0), Idx(2)]
+        let abc = store.join(ab, c).unwrap();
+        assert_eq!(store.depth(abc), Some(5));
+        assert!(store.starts_with(abc, a));
+        let segs = store.owned_segments(abc).unwrap();
+        assert_eq!(
+            segs,
+            vec![
+                PathSegment::Index(0),
+                PathSegment::Index(0),
+                PathSegment::Index(1),
+                PathSegment::Index(0),
+                PathSegment::Index(2),
+            ]
         );
     }
 }

@@ -1,12 +1,3 @@
-//! Bounded prefix-interned paths used by semantic projections.
-//!
-//! A path is stored leaf-first as parent links, but public operations expose
-//! segments in source order. The interner is the single place that translates
-//! between those representations.
-//!
-//! Shared prefixes are canonicalized by `(parent, segment)`, which bounds
-//! duplicate storage and makes path IDs suitable for equality and flow maps.
-
 use std::collections::HashMap;
 
 use crate::analysis::name::NameId;
@@ -15,7 +6,7 @@ const MAX_PATH_NODES: usize = 1 << 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Canonical ID of a path node; zero is the empty path.
-pub(in crate::analysis) struct PathId(u32);
+pub(in crate::analysis) struct PathId(pub(in crate::analysis) u32);
 
 impl PathId {
     /// Sentinel representing no path segments.
@@ -23,13 +14,6 @@ impl PathId {
 
     pub(in crate::analysis) fn is_empty(self) -> bool {
         self == Self::EMPTY
-    }
-
-    /// Whether this ID denotes the empty path.
-    fn index(self) -> Option<usize> {
-        usize::try_from(self.0)
-            .ok()
-            .filter(|index| *index < MAX_PATH_NODES)
     }
 }
 
@@ -50,57 +34,56 @@ pub(in crate::analysis) enum PathSegmentInput<'a> {
 }
 
 #[derive(Debug, Clone)]
-/// Parent-linked node in the canonical path trie.
-struct PathNode {
-    /// Parent path ID.
-    parent: PathId,
+/// Parent-linked node in a path trie.
+pub(in crate::analysis) struct PathNode {
+    /// Parent path ID (raw u32, may carry overlay tag in summary store).
+    pub(in crate::analysis) parent: u32,
     /// Number of segments from the root.
-    depth: u32,
+    pub(in crate::analysis) depth: u32,
     /// Segment leading from `parent` to this node.
-    segment: Option<PathSegment>,
+    pub(in crate::analysis) segment: Option<PathSegment>,
 }
 
-#[derive(Debug, Default)]
-/// Bounded canonical interner for static member/index paths.
-pub(in crate::analysis) struct PathInterner {
+#[derive(Debug)]
+/// Bounded parent-linked path trie shared by canonical and overlay stores.
+pub(in crate::analysis) struct ParentPathStore {
     /// Parent-linked path nodes, with node zero as the empty path.
-    nodes: Vec<PathNode>,
-    /// Addressable canonical edge lookup. The node retains its segment for
-    /// ID-to-segment queries, while this index avoids scanning sibling edges.
-    by_edge: HashMap<(PathId, PathSegment), PathId>,
+    pub(in crate::analysis) nodes: Vec<PathNode>,
+    /// Addressable canonical edge lookup.
+    pub(in crate::analysis) by_edge: HashMap<(u32, PathSegment), u32>,
+    max_nodes: usize,
 }
 
-impl PathInterner {
-    /// Create an interner containing only the empty root node.
-    pub(in crate::analysis) fn new() -> Self {
+impl ParentPathStore {
+    pub(in crate::analysis) fn new(max_nodes: usize) -> Self {
         Self {
             nodes: vec![PathNode {
-                parent: PathId::EMPTY,
+                parent: 0,
                 depth: 0,
                 segment: None,
             }],
             by_edge: HashMap::new(),
+            max_nodes,
         }
     }
 
-    /// Append one segment, reusing a shared edge or failing at the node bound.
-    pub(in crate::analysis) fn append(
-        &mut self,
-        parent: PathId,
-        segment: PathSegment,
-    ) -> Option<PathId> {
-        let parent_index = parent.index()?;
-        if parent_index >= self.nodes.len() {
+    pub(in crate::analysis) fn is_valid(&self, id: u32) -> bool {
+        let idx = id as usize;
+        idx < self.nodes.len()
+    }
+
+    pub(in crate::analysis) fn append(&mut self, parent: u32, segment: PathSegment) -> Option<u32> {
+        if !self.is_valid(parent) {
             return None;
         }
         if let Some(path) = self.by_edge.get(&(parent, segment.clone())) {
             return Some(*path);
         }
-        if self.nodes.len() >= MAX_PATH_NODES {
+        if self.nodes.len() >= self.max_nodes {
             return None;
         }
-        let id = PathId(u32::try_from(self.nodes.len()).ok()?);
-        let depth = self.nodes[parent_index].depth.checked_add(1)?;
+        let id = u32::try_from(self.nodes.len()).ok()?;
+        let depth = self.nodes[parent as usize].depth.checked_add(1)?;
         self.nodes.push(PathNode {
             parent,
             depth,
@@ -110,15 +93,15 @@ impl PathInterner {
         Some(id)
     }
 
-    /// Return the segment depth of a valid path.
-    #[allow(dead_code)]
-    pub(in crate::analysis) fn depth(&self, path: PathId) -> Option<u32> {
-        self.nodes.get(path.index()?).map(|node| node.depth)
+    pub(in crate::analysis) fn depth(&self, id: u32) -> Option<u32> {
+        self.nodes.get(id as usize).map(|node| node.depth)
     }
 
-    /// Whether `path` has `prefix` as its canonical root prefix.
-    #[allow(dead_code)]
-    pub(in crate::analysis) fn starts_with(&self, path: PathId, prefix: PathId) -> bool {
+    pub(in crate::analysis) fn parent(&self, id: u32) -> Option<u32> {
+        self.nodes.get(id as usize).map(|node| node.parent)
+    }
+
+    pub(in crate::analysis) fn starts_with(&self, path: u32, prefix: u32) -> bool {
         let Some(path_depth) = self.depth(path) else {
             return false;
         };
@@ -130,9 +113,7 @@ impl PathInterner {
         }
         let mut current = path;
         for _ in 0..(path_depth - prefix_depth) {
-            let Some(index) = current.index() else {
-                return false;
-            };
+            let index = current as usize;
             let Some(node) = self.nodes.get(index) else {
                 return false;
             };
@@ -141,29 +122,63 @@ impl PathInterner {
         current == prefix
     }
 
-    /// Borrow the final segment of a valid non-empty path.
-    #[cfg(test)]
-    pub(in crate::analysis) fn last(&self, path: PathId) -> Option<&PathSegment> {
-        self.segment(path)
-    }
-
-    fn segment(&self, path: PathId) -> Option<&PathSegment> {
-        let node = self.nodes.get(path.index()?)?;
-        if path.is_empty() {
+    pub(in crate::analysis) fn segment(&self, id: u32) -> Option<&PathSegment> {
+        if id == 0 {
             return None;
         }
-        node.segment.as_ref()
+        self.nodes.get(id as usize)?.segment.as_ref()
     }
 
-    /// Walk the parent chain from `path` to the root and collect segments in
-    /// source order into the caller-owned buffer. Returns `None` for invalid
-    /// paths; returns `Some(())` (possibly with an empty buffer) for the empty
-    /// root path.
-    fn collect_segments(&self, path: PathId, buf: &mut Vec<PathSegment>) -> Option<()> {
+    pub(in crate::analysis) fn first_segment_of(&self, id: u32) -> Option<&PathSegment> {
+        let mut current = id;
+        let mut last = None;
+        while current != 0 {
+            let node = self.nodes.get(current as usize)?;
+            last = Some(self.segment(current)?);
+            current = node.parent;
+        }
+        last
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn first_index(&self, id: u32) -> Option<u32> {
+        match self.first_segment_of(id)? {
+            PathSegment::Index(index) => Some(*index),
+            PathSegment::Property(_) => None,
+        }
+    }
+
+    pub(in crate::analysis) fn find_edge(&self, parent: u32, segment: &PathSegment) -> Option<u32> {
+        self.by_edge.get(&(parent, segment.clone())).copied()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn without_first(&self, id: u32) -> Option<u32> {
+        self.segment(id)?;
+        self.rebuild_without_first(id)
+    }
+
+    #[cfg(test)]
+    fn rebuild_without_first(&self, id: u32) -> Option<u32> {
+        let node = self.nodes.get(id as usize)?;
+        let segment = self.segment(id)?;
+        if node.parent == 0 {
+            return Some(0);
+        }
+        let parent = self.rebuild_without_first(node.parent)?;
+        self.find_edge(parent, segment)
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn collect_segments(
+        &self,
+        id: u32,
+        buf: &mut Vec<PathSegment>,
+    ) -> Option<()> {
         buf.clear();
-        let mut current = path;
-        while !current.is_empty() {
-            let node = self.nodes.get(current.index()?)?;
+        let mut current = id;
+        while current != 0 {
+            let node = self.nodes.get(current as usize)?;
             buf.push(self.segment(current)?.clone());
             current = node.parent;
         }
@@ -171,60 +186,65 @@ impl PathInterner {
         Some(())
     }
 
-    /// Return a summary-owned projection of a valid path.
-    pub(in crate::analysis) fn owned_segments(&self, path: PathId) -> Option<Vec<PathSegment>> {
-        let mut segments = Vec::new();
-        self.collect_segments(path, &mut segments)?;
-        Some(segments)
+    pub(in crate::analysis) fn node_count(&self) -> usize {
+        self.nodes.len()
     }
 
-    /// Return the first segment of a path by walking directly to the
-    /// leaf node. This avoids building a complete segment vector.
-    #[allow(dead_code)]
-    fn first_segment_of(&self, path: PathId) -> Option<&PathSegment> {
-        let mut current = path;
-        let mut last = None;
-        while !current.is_empty() {
-            let node = self.nodes.get(current.index()?)?;
-            last = Some(self.segment(current)?);
-            current = node.parent;
+    pub(in crate::analysis) fn max_nodes(&self) -> usize {
+        self.max_nodes
+    }
+}
+
+#[derive(Debug)]
+/// Bounded canonical interner for static member/index paths.
+pub(in crate::analysis) struct PathInterner {
+    store: ParentPathStore,
+}
+
+impl PathInterner {
+    /// Create an interner containing only the empty root node.
+    pub(in crate::analysis) fn new() -> Self {
+        Self {
+            store: ParentPathStore::new(MAX_PATH_NODES),
         }
-        last
     }
 
-    /// Return the first index segment of a valid path, if the first
-    /// segment is an array/index access.
+    /// Append one segment, reusing a shared edge or failing at the node bound.
+    pub(in crate::analysis) fn append(
+        &mut self,
+        parent: PathId,
+        segment: PathSegment,
+    ) -> Option<PathId> {
+        self.store.append(parent.0, segment).map(PathId)
+    }
+
+    /// Return the segment depth of a valid path.
     #[allow(dead_code)]
+    pub(in crate::analysis) fn depth(&self, path: PathId) -> Option<u32> {
+        self.store.depth(path.0)
+    }
+
+    /// Whether `path` has `prefix` as its canonical root prefix.
+    #[allow(dead_code)]
+    pub(in crate::analysis) fn starts_with(&self, path: PathId, prefix: PathId) -> bool {
+        self.store.starts_with(path.0, prefix.0)
+    }
+
+    /// Borrow the final segment of a valid non-empty path.
+    #[cfg(test)]
+    pub(in crate::analysis) fn last(&self, path: PathId) -> Option<&PathSegment> {
+        self.store.segment(path.0)
+    }
+
+    #[cfg(test)]
     pub(in crate::analysis) fn first_index(&self, path: PathId) -> Option<u32> {
-        match self.first_segment_of(path)? {
-            PathSegment::Index(index) => Some(*index),
-            PathSegment::Property(_) => None,
-        }
+        self.store.first_index(path.0)
     }
 
     /// Remove the first segment and recover the canonical remaining path.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(in crate::analysis) fn without_first(&self, path: PathId) -> Option<PathId> {
-        self.segment(path)?;
-        self.rebuild_without_first(path)
-    }
-
-    #[allow(dead_code)]
-    fn find_edge(&self, parent: PathId, segment: &PathSegment) -> Option<PathId> {
-        self.by_edge.get(&(parent, segment.clone())).copied()
-    }
-
-    /// Rebuild the canonical suffix while unwinding the parent chain. This
-    /// uses call-stack storage instead of materializing a segment vector.
-    #[allow(dead_code)]
-    fn rebuild_without_first(&self, path: PathId) -> Option<PathId> {
-        let node = self.nodes.get(path.index()?)?;
-        let segment = self.segment(path)?;
-        if node.parent.is_empty() {
-            return Some(PathId::EMPTY);
-        }
-        let parent = self.rebuild_without_first(node.parent)?;
-        self.find_edge(parent, segment)
+        self.store.without_first(path.0).map(PathId)
     }
 
     /// Append every segment of `suffix` to `prefix` through the interner,
@@ -237,7 +257,7 @@ impl PathInterner {
         suffix: PathId,
         buf: &mut Vec<PathSegment>,
     ) -> Option<PathId> {
-        self.collect_segments(suffix, buf)?;
+        self.store.collect_segments(suffix.0, buf)?;
         let mut result = prefix;
         for segment in buf.drain(..) {
             result = self.append(result, segment)?;
@@ -254,7 +274,13 @@ impl PathInterner {
 
     #[cfg(test)]
     pub(in crate::analysis) fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.store.node_count()
+    }
+
+    /// Borrow the underlying store (used by summary overlay for read-only
+    /// access).
+    pub(in crate::analysis) fn store(&self) -> &ParentPathStore {
+        &self.store
     }
 }
 
@@ -378,21 +404,15 @@ mod tests {
     fn without_first_on_multi_segment() {
         let mut paths = PathInterner::new();
         let mut names = NameTable::default();
-        // Build "b.c" first so the edges exist for re-interning.
         let b = paths
             .append(PathId::EMPTY, property(&mut names, "b"))
             .unwrap();
         let bc = paths.append(b, property(&mut names, "c")).unwrap();
-        // Now build "a.b.c" by appending to "a" using the "b.c" subtree.
         let a = paths
             .append(PathId::EMPTY, property(&mut names, "a"))
             .unwrap();
         let ab = paths.append(a, property(&mut names, "b")).unwrap();
         let abc = paths.append(ab, property(&mut names, "c")).unwrap();
-        // without_first("a.b.c") strips the first segment "a",
-        // then re-interns "b.c" from EMPTY.  The edges (EMPTY, "b")
-        // and (b, "c") already exist, so this yields the same PathId
-        // as `bc`.
         let result = paths.without_first(abc);
         assert_eq!(result, Some(bc));
         assert_eq!(paths.depth(bc), Some(2));
@@ -415,12 +435,9 @@ mod tests {
             .append(PathId::EMPTY, property(&mut names, "b"))
             .unwrap();
         let bc = paths.append(b, property(&mut names, "c")).unwrap();
-        // concat("a", "b.c") = "a.b.c"
         let abc = paths.concat(a, bc).unwrap();
         assert_eq!(paths.depth(abc), Some(3));
-        // "a.b.c" starts with "a" in the trie
         assert!(paths.starts_with(abc, a));
-        // "a.b.c" does NOT start with "b.c" (different subtree)
         assert!(!paths.starts_with(abc, bc));
     }
 
@@ -474,7 +491,6 @@ mod tests {
         let bc = paths.append(b, property(&mut names, "c")).unwrap();
         let abc = paths.concat(a, bc).unwrap();
         let before = paths.node_count();
-        // Re-concatenating the same segments should reuse edges
         let abc2 = paths.concat(a, bc).unwrap();
         assert_eq!(abc, abc2);
         assert_eq!(paths.node_count(), before);
