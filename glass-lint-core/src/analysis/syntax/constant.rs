@@ -73,6 +73,7 @@ impl ConstValue {
     }
 
     /// Return deterministic keys when this is a static object.
+    #[cfg(test)]
     pub(in crate::analysis) fn object_keys(&self) -> Option<Vec<SmolStr>> {
         match self {
             Self::Object(values) => Some(values.keys().cloned().collect()),

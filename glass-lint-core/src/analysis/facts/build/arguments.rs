@@ -3,201 +3,211 @@
 //! Projections preserve both the whole argument and statically addressable
 //! descendants; dynamic keys are intentionally represented as unknown.
 
-use smol_str::SmolStr;
-
 use crate::analysis::{
     SymbolPath,
     facts::build::{
         BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegmentInput,
-        ValueId, ValueProjection, member_property_name,
+        ValueId, member_property_name,
     },
+    syntax::constant as syntax_constant,
+    value::Value,
 };
+
+/// The one result produced for each argument walk. The expression value is
+/// retained in the frozen arena; the base pair is the only extra information
+/// needed to connect a member/parameter path during flow projection.
+struct ArgumentProjection {
+    value: ValueId,
+    base_value: ValueId,
+    base_path: PathId,
+}
+
+impl ArgumentProjection {
+    fn from_value(value: ValueId, path: PathId) -> Self {
+        Self {
+            value,
+            base_value: value,
+            base_path: path,
+        }
+    }
+
+    fn unknown() -> Self {
+        Self::from_value(ValueId::UNKNOWN, PathId::EMPTY)
+    }
+}
 
 impl FactBuilder<'_> {
     /// Resolve one argument into the scalar, rooted, and statically addressable
     /// views consumed by call matchers and parameter-path flow.
+    ///
+    /// One bounded resolution and one constant evaluation are performed; every
+    /// derived view (projections, keys, strings, provenance, rooted chain)
+    /// comes from the same two sources under one budget outcome.
     pub(super) fn arg_info(&mut self, expr: &Expr) -> CallArgInfo {
         let resolved = self.resolver.resolve_expr(expr);
-        let value = resolved.id;
-        let provenance = resolved.call;
-        let (base_value, base_path) = self.expression_projection(expr, Some(value));
-        let mut projections = Vec::new();
-        self.collect_value_projections(expr, PathId::EMPTY, &mut projections, Some(value));
-        if projections.is_empty() {
-            projections.push(ValueProjection {
-                path: PathId::EMPTY,
-                value,
-            });
+        let mut value = resolved.id;
+        let provenance = resolved.call.clone();
+
+        // Template literals and other expressions that the resolver does not
+        // intern as static strings are evaluated here and interned into the
+        // value table so frozen-table lookups find them.
+        if value == ValueId::UNKNOWN {
+            let const_value = syntax_constant::evaluate(expr, self.resolver);
+            if let Some(s) = const_value.string() {
+                let static_val = self
+                    .resolver
+                    .static_value(Value::StaticString(s.to_owned()));
+                value = static_val.id;
+            }
         }
-        let object_keys = self.resolver.object_keys_expr(expr).and_then(|keys| {
-            keys.into_iter()
-                .map(|key| self.intern_name(Some(key.as_str())))
-                .collect::<Option<Vec<_>>>()
-        });
-        let property_strings = self
-            .static_property_strings(expr)
-            .into_iter()
-            .map(|(key, value)| self.intern_name(Some(key.as_str())).map(|key| (key, value)))
-            .collect::<Option<Vec<_>>>()
-            .unwrap_or_default();
+
+        let projection = self.walk_argument_projections(expr, PathId::EMPTY, Some(value));
+
         CallArgInfo {
-            value,
-            base_value,
-            base_path,
-            static_string: self
-                .resolver
-                .static_string_value(value)
-                .or_else(|| self.resolver.static_string_expr(expr)),
-            object_keys,
-            property_strings,
-            rooted_chain: self
-                .resolver
-                .rooted_expr_chain(expr)
-                .and_then(|path| self.name_path(&path.without_this_prefix())),
-            projections,
+            value: projection.value,
+            base_value: projection.base_value,
+            base_path: projection.base_path,
             spread: false,
             provenance,
         }
     }
 
-    fn static_property_strings(&self, expr: &Expr) -> Vec<(SmolStr, String)> {
-        let Expr::Object(object) = expr else {
-            return Vec::new();
-        };
-        object
-            .props
-            .iter()
-            .filter_map(|property| {
-                let swc_ecma_ast::PropOrSpread::Prop(property) = property else {
-                    return None;
-                };
-                let swc_ecma_ast::Prop::KeyValue(property) = &**property else {
-                    return None;
-                };
-                let name = crate::analysis::syntax::property_name(&property.key)?;
-                let value = self.resolver.static_string_expr(&property.value)?;
-                Some((name, value))
-            })
-            .collect()
-    }
-
-    /// Return the value identity and static property path represented by an
-    /// expression. A computed or otherwise unprovable key invalidates the
-    /// projection instead of guessing which property was read.
-    pub(super) fn expression_projection(
-        &mut self,
-        expr: &Expr,
-        known_value: Option<ValueId>,
-    ) -> (ValueId, PathId) {
-        match expr {
-            Expr::Member(member) => {
-                let (base, path) = self.expression_projection(&member.obj, None);
-                let Some(property) = member_property_name(&member.prop) else {
-                    return (ValueId::UNKNOWN, PathId::EMPTY);
-                };
-                let path = if let Ok(index) = property.parse::<usize>() {
-                    let Ok(index) = u32::try_from(index) else {
-                        return (ValueId::UNKNOWN, PathId::EMPTY);
-                    };
-                    self.append_path(path, PathSegmentInput::Index(index))
-                } else {
-                    self.append_path(path, PathSegmentInput::Property(property.as_str()))
-                };
-                (base, path)
-            }
-            Expr::Paren(paren) => self.expression_projection(&paren.expr, known_value),
-            Expr::Seq(sequence) => sequence.exprs.last().map_or_else(
-                || {
-                    (
-                        known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
-                        PathId::EMPTY,
-                    )
-                },
-                |last| self.expression_projection(last, known_value),
-            ),
-            _ => (
-                known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
-                PathId::EMPTY,
-            ),
-        }
-    }
-
-    /// Flatten literal object and array descendants into bounded path/value
-    /// projections while retaining the root projection at every level.
-    pub(super) fn collect_value_projections(
+    /// Unified walk that simultaneously collects every descendant projection
+    /// and the outermost member-chain base projection in one bounded traversal.
+    ///
+    /// Returns `(base_value, base_path)` for the deepest non-member identity
+    /// (e.g., for `a.b.c` returns the identity of `a` and path `["b", "c"]`).
+    fn walk_argument_projections(
         &mut self,
         expr: &Expr,
         path: PathId,
-        output: &mut Vec<ValueProjection>,
         known_value: Option<ValueId>,
-    ) {
-        output.push(ValueProjection {
-            path,
-            value: known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
-        });
+    ) -> ArgumentProjection {
         match expr {
+            Expr::Member(member) => {
+                let value = known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr));
+                let base = self.walk_argument_projections(&member.obj, path, None);
+
+                let Some(property) = member_property_name(&member.prop) else {
+                    return ArgumentProjection::unknown();
+                };
+                let extended = if let Ok(index) = property.parse::<usize>() {
+                    let Ok(index) = u32::try_from(index) else {
+                        return ArgumentProjection::unknown();
+                    };
+                    self.append_path(base.base_path, PathSegmentInput::Index(index))
+                } else {
+                    self.append_path(
+                        base.base_path,
+                        PathSegmentInput::Property(property.as_str()),
+                    )
+                };
+                ArgumentProjection {
+                    value,
+                    base_value: base.base_value,
+                    base_path: extended,
+                }
+            }
             Expr::Object(object) => {
+                let mut entries = Vec::new();
                 for property in &object.props {
                     let swc_ecma_ast::PropOrSpread::Prop(property) = property else {
-                        continue;
+                        return ArgumentProjection::from_value(
+                            known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
+                            path,
+                        );
                     };
                     let swc_ecma_ast::Prop::KeyValue(property) = &**property else {
-                        continue;
+                        return ArgumentProjection::from_value(
+                            known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
+                            path,
+                        );
                     };
                     let Some(name) = crate::analysis::syntax::property_name(&property.key) else {
-                        continue;
+                        return ArgumentProjection::from_value(
+                            known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
+                            path,
+                        );
                     };
-                    let path = self.append_path(path, PathSegmentInput::Property(name.as_str()));
-                    self.collect_value_projections(&property.value, path, output, None);
+                    let child_path =
+                        self.append_path(path, PathSegmentInput::Property(name.as_str()));
+                    let child = self.walk_argument_projections(&property.value, child_path, None);
+                    let Some(name) = self.intern_name(Some(name.as_str())) else {
+                        return ArgumentProjection::unknown();
+                    };
+                    entries.push((name, child.value));
                 }
+                let value = self.resolver.static_value(Value::StaticObject(entries)).id;
+                ArgumentProjection::from_value(value, path)
             }
             Expr::Array(array) => {
+                let mut elements = Vec::with_capacity(array.elems.len());
                 for (index, element) in array.elems.iter().enumerate() {
-                    let Some(element) = element else { continue };
-                    let Ok(index) = u32::try_from(index) else {
+                    let Some(element) = element else {
+                        elements.push(ValueId::UNKNOWN);
                         continue;
                     };
-                    let path = self.append_path(path, PathSegmentInput::Index(index));
-                    self.collect_value_projections(&element.expr, path, output, None);
+                    let Ok(index) = u32::try_from(index) else {
+                        return ArgumentProjection::unknown();
+                    };
+                    let child_path = self.append_path(path, PathSegmentInput::Index(index));
+                    elements.push(
+                        self.walk_argument_projections(&element.expr, child_path, None)
+                            .value,
+                    );
                 }
+                let value = self.resolver.static_value(Value::StaticArray(elements)).id;
+                ArgumentProjection::from_value(value, path)
             }
-            Expr::Paren(paren) => {
-                self.collect_value_projections(&paren.expr, path, output, known_value);
-            }
+            Expr::Paren(paren) => self.walk_argument_projections(&paren.expr, path, known_value),
             Expr::Seq(sequence) => {
                 if let Some(last) = sequence.exprs.last() {
-                    self.collect_value_projections(last, path, output, known_value);
+                    self.walk_argument_projections(last, path, known_value)
+                } else {
+                    let value = known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr));
+                    ArgumentProjection::from_value(value, path)
                 }
             }
-            _ => {}
+            _ => {
+                let value = known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr));
+                ArgumentProjection::from_value(value, path)
+            }
         }
     }
 
     /// Convert an argument already bound by a callable wrapper into the same
     /// representation as a source-level argument.
-    pub(super) fn bound_arg_info(argument: &BoundArgument) -> CallArgInfo {
+    pub(super) fn bound_arg_info(&self, argument: &BoundArgument) -> CallArgInfo {
         match argument {
             BoundArgument::StaticString(value) => {
-                CallArgInfo::with_static_string(value.clone())
+                let resolved = self
+                    .resolver
+                    .static_value(crate::analysis::value::Value::StaticString(value.clone()));
+                CallArgInfo {
+                    value: resolved.id,
+                    ..CallArgInfo::unknown()
+                }
             }
             BoundArgument::RootedExpression(chain) => {
-                CallArgInfo::with_rooted_chain(chain.clone())
+                let resolved =
+                    self.resolver
+                        .static_value(crate::analysis::value::Value::RootedMember {
+                            path: chain.clone(),
+                        });
+                CallArgInfo {
+                    value: resolved.id,
+                    ..CallArgInfo::unknown()
+                }
             }
         }
     }
 
-    /// Resolve positional arguments, clearing their shape when a spread makes
-    /// the number and ownership of downstream arguments unknowable.
+    /// Resolve positional arguments.
     pub(super) fn args_info(&mut self, args: &[ExprOrSpread]) -> Vec<CallArgInfo> {
-        // A spread has no bounded positional shape, so retaining projections
-        // would falsely connect an individual property to a later parameter.
         args.iter()
             .map(|arg| {
                 let mut info = self.arg_info(&arg.expr);
                 info.spread = arg.spread.is_some();
-                if info.spread {
-                    info.projections.clear();
-                }
                 info
             })
             .collect()
@@ -213,8 +223,9 @@ impl FactBuilder<'_> {
                 .resolver
                 .resolve_ident(ident)
                 .rooted_chain
+                .clone()
                 .or_else(|| Some(SymbolPath::from(ident.sym.as_ref()))),
-            Expr::Member(member) => self.resolver.resolve_member(member).rooted_chain,
+            Expr::Member(member) => self.resolver.resolve_member(member).rooted_chain.clone(),
             _ => self.resolver.rooted_expr_chain(effective),
         }
     }

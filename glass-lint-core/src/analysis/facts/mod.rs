@@ -39,17 +39,20 @@ pub(in crate::analysis) struct SemanticFacts {
     stream: FactStream,
     index: Arc<OccurrenceIndexes>,
     interface: ModuleInterface,
-    values: ValueTable,
 }
 
 impl SemanticFacts {
     /// Assemble immutable indexes from the stream produced by lowering.
     pub(in crate::analysis) fn from_lowering(
-        stream: FactStream,
+        mut stream: FactStream,
         interface: ModuleInterface,
         environment: &crate::Environment,
         values: ValueTable,
     ) -> Self {
+        stream
+            .freeze_values(values)
+            .expect("FactStream already owns a ValueTable");
+
         // Project the fact stream into rule-independent occurrence indexes.
         let mut index = OccurrenceIndexes::with_environment(environment);
         if stream.is_valid() {
@@ -61,7 +64,6 @@ impl SemanticFacts {
             stream,
             index: Arc::new(index),
             interface,
-            values,
         }
     }
 
@@ -76,6 +78,11 @@ impl SemanticFacts {
 
     pub(in crate::analysis) fn shared_matcher_index(&self) -> Arc<OccurrenceIndexes> {
         Arc::clone(&self.index)
+    }
+
+    /// Borrow the frozen value arena for shape lookups by ValueId.
+    pub(in crate::analysis) fn values(&self) -> Option<&ValueTable> {
+        self.stream.values()
     }
 
     /// Borrow the module requests and export facts collected during the walk.
@@ -118,7 +125,10 @@ impl SemanticFacts {
 
         let mut projected_evidence = vec![Vec::new(); matchers.len()];
         if !self.stream.is_valid()
-            || self.values.get(ValueId::UNKNOWN).is_none()
+            || self
+                .values()
+                .and_then(|values| values.get(ValueId::UNKNOWN))
+                .is_none()
         {
             return projected_evidence;
         }
@@ -148,7 +158,7 @@ mod tests {
     use crate::{
         ByteRange,
         analysis::{
-            syntax::SymbolCallProvenance, facts::build::FactBuilder, resolution::Resolver,
+            facts::build::FactBuilder, resolution::Resolver, syntax::SymbolCallProvenance,
             value::FunctionId,
         },
         api::{compiler::CompiledMatcherPlan, rule::MatcherSet},
@@ -187,7 +197,6 @@ mod tests {
                 },
                 FactKind::Reference => FactPayload::Reference {
                     value: ValueId::UNKNOWN,
-                    static_string: None,
                     provenance: SymbolCallProvenance::Local,
                 },
                 FactKind::Function => FactPayload::Function {
@@ -296,7 +305,7 @@ mod tests {
                     &crate::Environment::default(),
                     values,
                 )
-                    .index
+                .index
             )
         };
 
@@ -330,7 +339,9 @@ mod tests {
 
         let mut builder = FactBuilder::new(&resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
-        let stream = builder.into_stream();
+        let mut stream = builder.into_stream();
+        let _ = stream.freeze_names(resolver.name_snapshot());
+        let _ = stream.freeze_values(resolver.value_snapshot());
         let mut index = OccurrenceIndexes::default();
         index.build_from_stream(&stream);
         index.normalize_occurrences();

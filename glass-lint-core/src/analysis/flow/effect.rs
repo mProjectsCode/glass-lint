@@ -74,12 +74,11 @@ pub(in crate::analysis) enum EffectUse {
         event: FactId,
         /// Written receiver when it aliases a parameter.
         receiver: Option<ParameterRef>,
-        /// Receiver/value identity observed at the write.
-        value: ValueId,
+        /// Receiver identity observed at the write, used for source-root
+        /// matching when no parameter context is active.
+        receiver_value: ValueId,
         /// Static property name, if proven.
         property: Option<SmolStr>,
-        /// Static string assigned to the property, if proven.
-        static_value: Option<String>,
     },
     CallArgument {
         /// Fact identity of the call.
@@ -131,8 +130,6 @@ pub(in crate::analysis) struct ReturnProjection {
     parameter: Option<ParameterRef>,
     /// Provenance retained for source matching.
     provenance: SymbolCallProvenance,
-    /// Static string carried by the returned value, if any.
-    static_string: Option<String>,
 }
 
 impl ParameterRef {
@@ -201,14 +198,18 @@ impl EffectCall {
         let Some(args) = stream.call_args_for_event(self.event) else {
             return false;
         };
+        let values = stream.values();
         flow.sources.iter().any(|source| {
             self.chain().is_some_and(|chain| {
                 NamePath::from_symbol_path(&source.member_call, names)
                     .is_some_and(|member| member == *chain)
             }) && source.provenance.matches_rooted(self.is_rooted())
                 && source.arguments.iter().all(|matcher| {
-                    args.get(matcher.index())
-                        .is_some_and(|argument| matcher.matcher().matches(argument, names))
+                    args.get(matcher.index()).is_some_and(|argument| {
+                        values.is_some_and(|values| {
+                            matcher.matcher().matches(argument, names, values)
+                        })
+                    })
                 })
         })
     }
@@ -225,10 +226,6 @@ impl ReturnProjection {
 
     pub(in crate::analysis) fn provenance(&self) -> &SymbolCallProvenance {
         &self.provenance
-    }
-
-    pub(in crate::analysis) fn static_string(&self) -> Option<&str> {
-        self.static_string.as_deref()
     }
 }
 
@@ -282,16 +279,9 @@ impl FunctionEffects {
                 continue;
             };
             match &fact.payload {
-                FactPayload::Reference {
-                    value,
-                    static_string,
-                    provenance,
-                } => effect.record_reference(
-                    *value,
-                    static_string.as_ref(),
-                    provenance,
-                    &mut value_provenance,
-                ),
+                FactPayload::Reference { value, provenance } => {
+                    effect.record_reference(*value, provenance, &mut value_provenance);
+                }
                 FactPayload::Declaration { target, source }
                 | FactPayload::Assignment {
                     target,
@@ -304,13 +294,11 @@ impl FunctionEffects {
                 FactPayload::PropertyWrite {
                     receiver,
                     property,
-                    static_value,
-                    ..
+                    value: _,
                 } => effect.record_property_write(
                     fact.id,
                     *receiver,
                     property.and_then(|id| stream.resolve_name(id)),
-                    static_value.as_ref(),
                     &mut budget,
                 ),
                 FactPayload::Call { .. } => effect.record_call(fact, &mut budget),
@@ -384,7 +372,6 @@ impl FunctionEffect {
         event: FactId,
         receiver: ValueId,
         property: Option<&str>,
-        static_value: Option<&String>,
         budget: &mut Budget,
     ) {
         if !budget.try_push() {
@@ -394,9 +381,8 @@ impl FunctionEffect {
         self.uses.push(EffectUse::PropertyWrite {
             event,
             receiver: self.parameter_for(receiver),
-            value: receiver,
+            receiver_value: receiver,
             property: property.map(SmolStr::new),
-            static_value: static_value.cloned(),
         });
     }
 }
@@ -454,11 +440,7 @@ impl FunctionEffect {
         }
     }
 
-    fn record_call(
-        &mut self,
-        fact: &SemanticFact,
-        budget: &mut Budget,
-    ) {
+    fn record_call(&mut self, fact: &SemanticFact, budget: &mut Budget) {
         let FactPayload::Call {
             syntactic_path,
             rooted_chain,
@@ -533,12 +515,7 @@ impl FunctionEffect {
                     args,
                 )
             },
-            |unwrap| {
-                (
-                    unwrap.chain_path.clone(),
-                    unwrap.effective_args.as_slice(),
-                )
-            },
+            |unwrap| (unwrap.chain_path.clone(), unwrap.effective_args.as_slice()),
         )
     }
 
@@ -588,11 +565,10 @@ impl FunctionEffect {
     fn record_reference(
         &mut self,
         value: ValueId,
-        static_string: Option<&String>,
         provenance: &SymbolCallProvenance,
-        value_provenance: &mut BTreeMap<ValueId, (SymbolCallProvenance, Option<String>)>,
+        value_provenance: &mut BTreeMap<ValueId, SymbolCallProvenance>,
     ) {
-        value_provenance.insert(value, (provenance.clone(), static_string.cloned()));
+        value_provenance.insert(value, provenance.clone());
         if value != ValueId::UNKNOWN {
             self.value_roots.entry(value).or_insert(value);
         }
@@ -601,7 +577,7 @@ impl FunctionEffect {
     fn record_return(
         &mut self,
         value: ValueId,
-        value_provenance: &BTreeMap<ValueId, (SymbolCallProvenance, Option<String>)>,
+        value_provenance: &BTreeMap<ValueId, SymbolCallProvenance>,
         budget: &mut Budget,
     ) {
         let parameter = self.parameter_for(value);
@@ -619,17 +595,12 @@ impl FunctionEffect {
         }
         let provenance = value_provenance
             .get(&value)
-            .map_or(SymbolCallProvenance::Local, |(provenance, _)| {
-                provenance.clone()
-            });
-        let static_string = value_provenance
-            .get(&value)
-            .and_then(|(_, value)| value.clone());
+            .cloned()
+            .unwrap_or(SymbolCallProvenance::Local);
         self.returns.push(ReturnProjection {
             value,
             parameter,
             provenance,
-            static_string,
         });
     }
 }

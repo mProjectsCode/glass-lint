@@ -25,9 +25,7 @@ fn compute_module_ids(
         .map(|(index, path)| {
             (
                 path.clone(),
-                ModuleId::new(
-                    u32::try_from(index).expect("module count exceeds ModuleId range"),
-                ),
+                ModuleId::new(u32::try_from(index).expect("module count exceeds ModuleId range")),
             )
         })
         .collect()
@@ -65,9 +63,7 @@ impl ProjectInput {
             return Err(ProjectInputError::BudgetExceeded("source count".into()));
         }
         if self.resolutions.len() > 500_000 {
-            return Err(ProjectInputError::BudgetExceeded(
-                "resolution count".into(),
-            ));
+            return Err(ProjectInputError::BudgetExceeded("resolution count".into()));
         }
         if self
             .sources
@@ -84,7 +80,9 @@ impl ProjectInput {
     }
 
     /// Validate and deduplicate sources, returning the canonical map.
-    fn validate_sources(&mut self) -> Result<BTreeMap<ProjectRelativePath, crate::SourceFile>, ProjectInputError> {
+    fn validate_sources(
+        &mut self,
+    ) -> Result<BTreeMap<ProjectRelativePath, crate::SourceFile>, ProjectInputError> {
         let mut sources = BTreeMap::new();
         for mut source in std::mem::take(&mut self.sources) {
             source.path = normalize_relative(&source.path)?;
@@ -105,9 +103,7 @@ impl ProjectInput {
         for (mut key, mut result) in std::mem::take(&mut self.resolutions) {
             normalize_resolution_key(&mut key)?;
             if !source_paths.contains(&key.importer) {
-                return Err(ProjectInputError::UnknownImporter(
-                    key.importer.to_string(),
-                ));
+                return Err(ProjectInputError::UnknownImporter(key.importer.to_string()));
             }
             normalize_result(&mut result)?;
             if resolutions.insert(key.clone(), result).is_some() {
@@ -135,9 +131,7 @@ impl ProjectInput {
         for (mut key, mut result) in self.resolutions {
             normalize_resolution_key(&mut key)?;
             if !source_paths.contains(&key.importer) {
-                return Err(ProjectInputError::UnknownImporter(
-                    key.importer.to_string(),
-                ));
+                return Err(ProjectInputError::UnknownImporter(key.importer.to_string()));
             }
             normalize_result(&mut result)?;
             if resolutions.insert(key.clone(), result).is_some() {
@@ -146,7 +140,6 @@ impl ProjectInput {
         }
         Ok((root, sources, resolutions))
     }
-
 }
 
 /// Project records after path, target, duplicate, and cross-reference

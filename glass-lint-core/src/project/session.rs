@@ -195,9 +195,8 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
                                 observer.observe(ExecutionEvent::Started);
                                 observer.observe(ExecutionEvent::ParseAttempted);
                                 observer.observe(ExecutionEvent::LowerAttempted);
-                                let result =
-                                    crate::analysis::lower_source(linter, &job.source)
-                                        .map(|ls| ls.semantic);
+                                let result = crate::analysis::lower_source(linter, &job.source)
+                                    .map(|ls| ls.semantic);
                                 observer.observe(ExecutionEvent::Finished);
                                 LocalJobResult {
                                     path: job.path,

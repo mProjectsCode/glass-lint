@@ -48,11 +48,8 @@ impl UsageProjector<'_> {
             .propagate();
             match usage {
                 EffectUse::PropertyWrite {
-                    event,
-                    property,
-                    static_value,
-                    ..
-                } => self.apply_property(*event, property.as_ref(), static_value.as_ref()),
+                    event, property, ..
+                } => self.apply_property(*event, property.as_ref()),
                 EffectUse::CallReceiver { event, chain, .. } => {
                     self.apply_receiver(*event, chain.as_ref());
                 }
@@ -66,12 +63,14 @@ impl UsageProjector<'_> {
         }
     }
 
-    fn apply_property(
-        &mut self,
-        event: FactId,
-        property: Option<&SmolStr>,
-        static_value: Option<&String>,
-    ) {
+    fn apply_property(&mut self, event: FactId, property: Option<&SmolStr>) {
+        let static_value = self
+            .project
+            .module_fact_stream(self.context.module)
+            .and_then(|stream| {
+                let value = stream.property_write_value(event)?;
+                stream.values()?.static_string(value)
+            });
         let mut next = self.state.clone();
         for (index, requirement) in self.flow.requirements.iter().enumerate() {
             if let crate::api::compiler::CompiledObjectRequirement::PropertyWrite {
@@ -79,7 +78,7 @@ impl UsageProjector<'_> {
                 value,
             } = requirement
                 && property == Some(expected)
-                && value.matches_flow_value(static_value.map(String::as_str))
+                && value.matches_flow_value(static_value)
             {
                 next.requirements.insert(
                     index,
@@ -99,13 +98,16 @@ impl UsageProjector<'_> {
             .project
             .module_names(self.context.module)
             .and_then(|_| {
-                self.project
-                    .module_fact_stream(self.context.module)?
-                    .call_args_for_event(event)
+                let stream = self.project.module_fact_stream(self.context.module)?;
+                stream.call_args_for_event(event)
             })
         else {
             return;
         };
+        let values = self
+            .project
+            .module_fact_stream(self.context.module)
+            .and_then(|s| s.values());
         let mut next = self.state.clone();
         for (index, requirement) in self.flow.requirements.iter().enumerate() {
             if let crate::api::compiler::CompiledObjectRequirement::MemberCall { member, arguments } =
@@ -114,7 +116,10 @@ impl UsageProjector<'_> {
                 && arguments.iter().all(|matcher| {
                     call_args
                         .get(matcher.index())
-                        .is_some_and(|argument| matcher.matcher().matches(argument, self.names))
+                        .is_some_and(|argument| match values {
+                            Some(values) => matcher.matcher().matches(argument, self.names, values),
+                            None => false,
+                        })
                 })
             {
                 next.requirements.insert(

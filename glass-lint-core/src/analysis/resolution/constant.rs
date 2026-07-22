@@ -1,36 +1,63 @@
 //! Constant value conversion for resolver-owned value identities.
 
+use std::collections::BTreeMap;
+
 use smol_str::SmolStr;
 
 use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, ValueId};
 
+/// Action extracted from a borrowed arena entry so the RefCell borrow
+/// is released before any recursive traversal.
+enum ConstAction {
+    Binding(ValueId),
+    String(String),
+    Number(usize),
+    Array(Vec<ValueId>),
+    Object(Vec<(crate::analysis::name::NameId, ValueId)>),
+    Unknown,
+}
+
 impl Resolver<'_> {
-    /// Read a bounded constant value from the abstract value arena.
+    /// Read a bounded constant value from the abstract value arena without
+    /// cloning the arena entry. The arena borrow is released before any
+    /// recursive call so the interleaving interner and constant reader
+    /// never hold overlapping borrows.
     pub(in crate::analysis) fn const_value(&self, id: ValueId) -> ConstValue {
-        let Some(value) = self.state.borrow().values.get(id).cloned() else {
-            return ConstValue::Unknown;
-        };
-        match value {
-            Value::Binding { target, .. } => self.const_value(target),
-            Value::StaticString(value) => ConstValue::String(value),
-            Value::StaticNumber(value) => ConstValue::NonNegativeInteger(value),
-            Value::StaticArray(values) => {
-                ConstValue::Array(values.into_iter().map(|id| self.const_value(id)).collect())
+        let action = {
+            let values = self.values.borrow();
+            let Some(value) = values.get(id) else {
+                return ConstValue::Unknown;
+            };
+            match value {
+                Value::Binding { target, .. } => ConstAction::Binding(*target),
+                Value::StaticString(value) => ConstAction::String(value.clone()),
+                Value::StaticNumber(value) => ConstAction::Number(*value),
+                Value::StaticArray(values) => ConstAction::Array(values.clone()),
+                Value::StaticObject(values) => ConstAction::Object(values.clone()),
+                _ => ConstAction::Unknown,
             }
-            Value::StaticObject(values) => {
-                let mut object = std::collections::BTreeMap::new();
-                for (key, value) in values {
+        };
+        match action {
+            ConstAction::Binding(target) => self.const_value(target),
+            ConstAction::String(value) => ConstValue::String(value),
+            ConstAction::Number(value) => ConstValue::NonNegativeInteger(value),
+            ConstAction::Array(ids) => {
+                ConstValue::Array(ids.into_iter().map(|id| self.const_value(id)).collect())
+            }
+            ConstAction::Object(entries) => {
+                let mut object = BTreeMap::new();
+                for (name_id, value_id) in entries {
                     let Some(key) = self
                         .names
-                        .with_mut(|names| names.resolve(key).map(SmolStr::new))
+                        .with_mut(|names| names.resolve(name_id).map(SmolStr::new))
                     else {
                         return ConstValue::Unknown;
                     };
-                    object.insert(key, self.const_value(value));
+                    object.insert(key, self.const_value(value_id));
                 }
                 ConstValue::Object(object)
             }
-            _ => ConstValue::Unknown,
+            ConstAction::Unknown => ConstValue::Unknown,
         }
     }
 
@@ -55,18 +82,13 @@ impl Resolver<'_> {
                     .into_iter()
                     .map(|(key, value)| (key, self.intern_const_value(value, None)))
                     .collect::<Vec<_>>();
-                let mut state = self.state.borrow_mut();
+                let mut arena = self.values.borrow_mut();
                 let id = self
                     .names
-                    .with_mut(|names| state.values.intern_static_object(values, names));
-                return binding.map_or(id, |key| {
-                    state.values.intern(Value::Binding { key, target: id })
-                });
+                    .with_mut(|names| arena.intern_static_object(values, names));
+                return binding.map_or(id, |key| arena.intern(Value::Binding { key, target: id }));
             }
         };
-        self.state
-            .borrow_mut()
-            .values
-            .intern_with_binding(value, binding)
+        self.values.borrow_mut().intern_with_binding(value, binding)
     }
 }

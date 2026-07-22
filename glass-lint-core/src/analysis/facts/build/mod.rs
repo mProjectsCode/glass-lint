@@ -33,7 +33,6 @@ use crate::{
         facts::{
             CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactId, FactKind, FactPayload,
             FactStream, FunctionBoundary, MAX_FACTS, ParameterBinding, SemanticFact,
-            ValueProjection,
         },
         module::ModuleInterface,
         resolution::Resolver,
@@ -261,6 +260,7 @@ pub fn build_test_stream<'a>(
     program.visit_with(&mut builder);
     let mut stream = builder.into_stream();
     let _ = stream.freeze_names(resolver.name_snapshot());
+    let _ = stream.freeze_values(resolver.value_snapshot());
     stream
 }
 
@@ -573,13 +573,8 @@ mod tests {
             .facts()
             .iter()
             .filter(|f| {
-                matches!(
-                    &f.payload,
-                    FactPayload::Reference {
-                        static_string: Some(_),
-                        ..
-                    }
-                )
+                matches!(&f.payload, FactPayload::Reference { value, .. }
+                    if resolver.static_string_value(*value).is_some())
             })
             .collect();
         assert!(!str_facts.is_empty(), "should have string literal facts");
@@ -587,12 +582,8 @@ mod tests {
             str_facts
                 .iter()
                 .filter_map(|f| {
-                    if let FactPayload::Reference {
-                        static_string: Some(value),
-                        ..
-                    } = &f.payload
-                    {
-                        Some(value.as_str())
+                    if let FactPayload::Reference { value, .. } = &f.payload {
+                        resolver.static_string_value(*value)
                     } else {
                         None
                     }

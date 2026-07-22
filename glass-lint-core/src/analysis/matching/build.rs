@@ -51,12 +51,22 @@ impl OccurrenceIndexes {
         }
         // This is the sole projection from semantic facts into shared matcher
         // indexes. Rule selection must happen later, in query code.
+        let values = stream.values();
         stream.facts().iter().for_each(|fact| {
-            self.record_fact(fact, stream.names().expect("valid stream has names"));
+            self.record_fact(
+                fact,
+                stream.names().expect("valid stream has names"),
+                values,
+            );
         });
     }
 
-    fn record_fact(&mut self, fact: &SemanticFact, names: &NameTable) {
+    fn record_fact(
+        &mut self,
+        fact: &SemanticFact,
+        names: &NameTable,
+        values: Option<&crate::analysis::value::ValueTable>,
+    ) {
         match &fact.payload {
             FactPayload::Call { .. } => self.record_call_fact(fact, names),
 
@@ -70,13 +80,19 @@ impl OccurrenceIndexes {
                     .push(module.clone().into(), fact.id, fact.span);
             }
 
-            FactPayload::Reference {
-                static_string: Some(value),
-                ..
-            } => {
-                self.literals
-                    .strings
-                    .push(value.clone().into(), fact.id, fact.span);
+            FactPayload::Reference { value, .. } => {
+                if let Some(static_string) =
+                    values
+                        .and_then(|v| v.get(*value))
+                        .and_then(|val| match val {
+                            crate::analysis::value::Value::StaticString(s) => Some(s),
+                            _ => None,
+                        })
+                {
+                    self.literals
+                        .strings
+                        .push(static_string.clone().into(), fact.id, fact.span);
+                }
             }
 
             FactPayload::Class {
@@ -100,15 +116,11 @@ impl OccurrenceIndexes {
                 }
             }
 
-            // Declaration, Assignment, PropertyWrite, Reference facts
-            // do not contribute to occurrence indexes.
+            // Declaration, Assignment, PropertyWrite, Function, Control
+            // facts do not contribute to occurrence indexes.
             FactPayload::Declaration { .. }
             | FactPayload::Assignment { .. }
             | FactPayload::PropertyWrite { .. }
-            | FactPayload::Reference {
-                static_string: None,
-                ..
-            }
             | FactPayload::Function { .. }
             | FactPayload::Control { .. } => {}
         }
@@ -218,7 +230,9 @@ impl OccurrenceIndexes {
             self.members
                 .calls
                 .push(chain.clone(), fact.id, *callee_span);
-            self.members.rooted_calls.push(chain.clone(), fact.id, *callee_span);
+            self.members
+                .rooted_calls
+                .push(chain.clone(), fact.id, *callee_span);
         }
     }
 

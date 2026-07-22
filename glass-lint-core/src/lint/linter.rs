@@ -288,7 +288,8 @@ impl Linter {
         self.populate_project_files(&project, &classifications, &mut files);
 
         let diagnostics = Self::attach_project_diagnostics(&project, &mut files);
-        let report = Self::assemble_project_report(&project, files, diagnostics, &projection_outcome);
+        let report =
+            Self::assemble_project_report(&project, files, diagnostics, &projection_outcome);
 
         let summary = report.summary();
         tracing::info!(
@@ -340,8 +341,7 @@ impl Linter {
         module: &crate::analysis::ProjectModule,
         classification: &ClassificationResult,
     ) -> Vec<crate::Finding> {
-        let mut related_by_rule: BTreeMap<crate::RuleId, Vec<crate::Evidence>> =
-            BTreeMap::new();
+        let mut related_by_rule: BTreeMap<crate::RuleId, Vec<crate::Evidence>> = BTreeMap::new();
         for capability in classification.capabilities() {
             let Some(rule_id) = self.catalog.rule_id(capability.rule_index).cloned() else {
                 continue;
@@ -351,8 +351,8 @@ impl Linter {
                 .iter()
                 .flat_map(|evidence| &evidence.related)
                 .filter_map(|related| {
-                    let mut evidence = project
-                        .fact_location(ModuleId::new(related.module), related.event)?;
+                    let mut evidence =
+                        project.fact_location(ModuleId::new(related.module), related.event)?;
                     evidence.message.clone_from(&related.symbol);
                     Some(evidence)
                 })

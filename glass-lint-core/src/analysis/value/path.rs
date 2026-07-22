@@ -205,9 +205,7 @@ impl PathInterner {
     }
 
     fn find_edge(&self, parent: PathId, segment: &PathSegment) -> Option<PathId> {
-        self.by_edge
-            .get(&(parent, segment.clone()))
-            .copied()
+        self.by_edge.get(&(parent, segment.clone())).copied()
     }
 
     /// Rebuild the canonical suffix while unwinding the parent chain. This

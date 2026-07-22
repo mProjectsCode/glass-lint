@@ -6,7 +6,7 @@ use smol_str::SmolStr;
 use swc_common::Span;
 use swc_ecma_ast::{CallExpr, Callee, Expr, Pat};
 
-use super::{compact_pat, CompactPat};
+use super::{CompactPat, compact_pat};
 use crate::analysis::{
     name::{NameId, NameTableCtx},
     scope::{BindingProvenance, ScopeId, ScopedName, collect::LexicalScopeCollector},
@@ -111,7 +111,11 @@ impl LexicalScopeCollector<'_> {
         }
     }
 
-    fn function_for_call(&self, mut scope: ScopeId, name: NameId) -> Option<&(ScopeId, Vec<CompactPat>)> {
+    fn function_for_call(
+        &self,
+        mut scope: ScopeId,
+        name: NameId,
+    ) -> Option<&(ScopeId, Vec<CompactPat>)> {
         loop {
             if let Some(function) = self.function_scopes.get(&(scope, name)) {
                 return Some(function);
@@ -249,7 +253,9 @@ impl LexicalScopeCollector<'_> {
 fn collect_compact_binding_names(pattern: &CompactPat, names: &mut Vec<SmolStr>) {
     match pattern {
         CompactPat::Ident(name) => names.push(name.clone()),
-        CompactPat::Assign(inner) | CompactPat::Rest(inner) => collect_compact_binding_names(inner, names),
+        CompactPat::Assign(inner) | CompactPat::Rest(inner) => {
+            collect_compact_binding_names(inner, names);
+        }
         CompactPat::Object(props) => {
             for sub in props.values() {
                 collect_compact_binding_names(sub, names);

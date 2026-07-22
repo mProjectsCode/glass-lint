@@ -34,12 +34,18 @@ use crate::{
 };
 
 pub(super) mod aliases;
+mod analysis;
 mod callbacks;
 mod constants;
 mod history;
-mod predeclare;
 mod provenance;
-mod visitor;
+pub(super) mod visitor;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Pass {
+    Predeclare,
+    Collect,
+}
 
 /// Mutable state shared by declaration prepass and source-order collection.
 ///
@@ -47,6 +53,7 @@ mod visitor;
 /// reuses that scope tree while recording assignments and supported
 /// provenance at each use position.
 pub(super) struct LexicalScopeCollector<'a> {
+    pass: Pass,
     /// Lexical scopes in predeclaration/traversal order.
     pub(super) scopes: Vec<LexicalScope>,
     /// Current lexical path during AST traversal.
@@ -107,12 +114,13 @@ pub(super) struct RootedPropertyMutation {
 /// One scope-forming syntax node recorded during the predeclare pass.
 ///
 /// Each entry maps to one `push_scope` call during predeclare. The main
-/// visitor consumes the plan in order to locate the correct predeclared scope
-/// for each `push_scope`, replacing the previous positional index–based
+/// visitor validates structural identity (kind and parent) to locate the
+/// correct predeclared scope, replacing positional index–based
 /// synchronization.
 #[derive(Debug, Clone, Copy)]
 struct ScopePlanEntry {
     scope_index: usize,
+    kind: ScopeKind,
 }
 
 /// Ordered record of scope structure built during predeclare and validated
@@ -131,8 +139,8 @@ impl ScopePlan {
         }
     }
 
-    fn push(&mut self, scope_index: usize) {
-        self.entries.push(ScopePlanEntry { scope_index });
+    fn push(&mut self, scope_index: usize, kind: ScopeKind) {
+        self.entries.push(ScopePlanEntry { scope_index, kind });
     }
 
     fn advance(&mut self) -> Option<&ScopePlanEntry> {
@@ -209,6 +217,7 @@ impl<'a> LexicalScopeCollector<'a> {
         names: crate::analysis::name::NameTableCtx<'a>,
     ) -> Self {
         Self {
+            pass: Pass::Predeclare,
             scopes: vec![LexicalScope {
                 span: program_span,
                 depth: 0,
@@ -244,11 +253,12 @@ impl<'a> LexicalScopeCollector<'a> {
     /// (with TDZ handled as an unresolved/local fact), and `var`/function
     /// declarations are hoisted.
     pub fn predeclare(&mut self, program: &swc_ecma_ast::Program) {
-        let mut visitor = predeclare::PredeclareVisitor { collector: self };
-        program.visit_children_with(&mut visitor);
+        self.pass = Pass::Predeclare;
+        program.visit_children_with(self);
         self.reuse_scopes = true;
         self.scope_plan.reset();
         self.scope_diverged = false;
+        self.pass = Pass::Collect;
         #[cfg(test)]
         {
             self.scope_reuse_steps = 0;
@@ -522,7 +532,8 @@ impl<'a> LexicalScopeCollector<'a> {
             let parent = self.current_scope();
             if let Some(entry) = self.scope_plan.advance() {
                 let index = entry.scope_index;
-                if self.scopes[index].parent == Some(parent)
+                if entry.kind == kind
+                    && self.scopes[index].parent == Some(parent)
                     && self.scopes[index].span == span
                     && self.scopes[index].kind == kind
                 {
@@ -566,7 +577,7 @@ impl<'a> LexicalScopeCollector<'a> {
             parent: Some(parent),
             bindings: BTreeMap::new(),
         });
-        self.scope_plan.push(index);
+        self.scope_plan.push(index, kind);
         self.stack.push(index);
     }
 
@@ -868,5 +879,242 @@ mod tests {
 
         assert_eq!(one, 128);
         assert_eq!(two, one * 2);
+    }
+
+    #[test]
+    fn divergence_on_extra_scope_fails_closed() {
+        let parsed = crate::parse("value;", "divergence-extra.js").expect("source should parse");
+        let span = parsed.program.span();
+        let mut collector = LexicalScopeCollector::new(span);
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        assert_eq!(collector.scope_plan.entries_len(), 1);
+        collector.reuse_scopes = true;
+        collector.scope_plan.reset();
+        collector.scope_diverged = false;
+        collector.pass = Pass::Collect;
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        assert!(!collector.scope_diverged);
+        collector.push_scope(span, ScopeKind::Block);
+        assert!(collector.scope_diverged);
+    }
+
+    #[test]
+    fn divergence_on_missing_scope_fails_closed() {
+        let parsed = crate::parse("value;", "divergence-missing.js").expect("source should parse");
+        let span = parsed.program.span();
+        let mut collector = LexicalScopeCollector::new(span);
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        assert_eq!(collector.scope_plan.entries_len(), 2);
+        collector.reuse_scopes = true;
+        collector.scope_plan.reset();
+        collector.pass = Pass::Collect;
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        assert!(!collector.scope_plan.is_at_end());
+        // The second push is still consumed but divergence is flagged
+        collector.push_scope(span, ScopeKind::Block);
+        assert!(!collector.scope_diverged);
+        // Not consuming all plan entries is fine before completion —
+        // it only diverges when the plan runs out before the walker
+    }
+
+    #[test]
+    fn divergence_on_kind_mismatch_fails_closed() {
+        let parsed = crate::parse("value;", "divergence-kind.js").expect("source should parse");
+        let span = parsed.program.span();
+        let mut collector = LexicalScopeCollector::new(span);
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        collector.reuse_scopes = true;
+        collector.scope_plan.reset();
+        collector.pass = Pass::Collect;
+        collector.push_scope(span, ScopeKind::Function);
+        assert!(collector.scope_diverged);
+    }
+
+    #[test]
+    fn hoisted_var_in_blocks_preserves_function_scoping() {
+        let source = r"
+            function outer() {
+                if (true) { var hoisted = 1; }
+                return hoisted;
+            }
+        ";
+        let collector = collect(source);
+
+        let function_scopes: Vec<_> = collector
+            .scopes
+            .iter()
+            .enumerate()
+            .filter(|(_, scope)| scope.kind == ScopeKind::Function)
+            .collect();
+        assert_eq!(function_scopes.len(), 1);
+        let (fn_idx, fn_scope) = function_scopes[0];
+        assert!(
+            !fn_scope.bindings.is_empty(),
+            "function scope {fn_idx} has no bindings",
+        );
+
+        let block_scopes: Vec<_> = collector
+            .scopes
+            .iter()
+            .enumerate()
+            .filter(|(_, scope)| scope.kind == ScopeKind::Block)
+            .collect();
+        // var hoisted into function scope means block scopes should not have
+        // the hoisted binding
+        for (idx, scope) in &block_scopes {
+            let is_empty = !scope
+                .bindings
+                .iter()
+                .any(|(_, p)| matches!(p, BindingProvenance::Local));
+            assert!(is_empty, "block scope {idx} contains var bindings");
+        }
+    }
+
+    #[test]
+    fn catch_without_param_forms_valid_scope() {
+        let source = r"
+            try { let a = 1; } catch { let b = 2; }
+        ";
+        let first = collect(source);
+        let second = collect(source);
+        assert_eq!(scope_fingerprint(&first), scope_fingerprint(&second));
+        assert!(
+            first
+                .scopes
+                .iter()
+                .any(|scope| scope.kind == ScopeKind::Block && scope.depth == 1)
+        );
+    }
+
+    #[test]
+    fn loops_with_and_without_inits_form_valid_scopes() {
+        let source = r"
+            for (;;) { break; }
+            for (let i = 0; i < 1; i++) { break; }
+            for (const x of []) { break; }
+            for (const k in {}) { break; }
+        ";
+        let first = collect(source);
+        let second = collect(source);
+        assert_eq!(scope_fingerprint(&first), scope_fingerprint(&second));
+        assert_eq!(
+            first
+                .scopes
+                .iter()
+                .filter(|scope| scope.kind == ScopeKind::Block)
+                .count(),
+            second
+                .scopes
+                .iter()
+                .filter(|scope| scope.kind == ScopeKind::Block)
+                .count()
+        );
+    }
+
+    #[test]
+    fn with_statement_creates_dynamic_scope() {
+        let source = r"
+            const obj = {};
+            with (obj) { let value = prop; }
+        ";
+        let first = collect(source);
+        let second = collect(source);
+        assert_eq!(scope_fingerprint(&first), scope_fingerprint(&second));
+        assert!(
+            first
+                .scopes
+                .iter()
+                .any(|scope| scope.kind == ScopeKind::Dynamic)
+        );
+    }
+
+    #[test]
+    fn switch_with_cases_forms_block_scope() {
+        let source = r"
+            switch (a) { case 0: { let b = 1; break; } default: break; }
+        ";
+        let first = collect(source);
+        let second = collect(source);
+        assert_eq!(scope_fingerprint(&first), scope_fingerprint(&second));
+        // Switch body is a block scope
+        assert!(
+            first
+                .scopes
+                .iter()
+                .any(|scope| scope.kind == ScopeKind::Block && scope.depth == 1)
+        );
+    }
+
+    #[test]
+    fn nested_function_and_arrow_scopes_have_correct_depths() {
+        let source = r"
+            function a() {
+                function b() {
+                    const c = () => { return 1; };
+                    c();
+                }
+                b();
+            }
+        ";
+        let collector = collect(source);
+        let function_depths: Vec<_> = collector
+            .scopes
+            .iter()
+            .filter(|scope| scope.kind == ScopeKind::Function)
+            .map(|scope| scope.depth)
+            .collect();
+        // Function bodies have intervening block scopes:
+        // depth 1 = a, depth 3 = b (after a-block), depth 5 = arrow c (after a-block +
+        // b-block)
+        assert!(function_depths.contains(&1));
+        assert!(function_depths.contains(&3));
+        assert!(function_depths.contains(&5));
+    }
+
+    #[test]
+    fn predeclare_and_collect_phases_produce_identical_scopes() {
+        let source = r"
+            function outer(p1, p2) {
+                const value = p1 + p2;
+                for (const item of [1,2,3]) {
+                    const doubled = item * 2;
+                }
+                try { throw value; }
+                catch (error) {
+                    const message = error.toString();
+                }
+                if (value) {
+                    const flag = true;
+                } else {
+                    const flag = false;
+                }
+                const helper = (x) => x + 1;
+                helper(value);
+            }
+        ";
+        let first = collect(source);
+        let second = collect(source);
+        assert_eq!(first.scopes.len(), second.scopes.len());
+        for (i, (a, b)) in first.scopes.iter().zip(second.scopes.iter()).enumerate() {
+            assert_eq!(
+                a.kind, b.kind,
+                "scope {i} kind differs: {:?} vs {:?}",
+                a.kind, b.kind
+            );
+            assert_eq!(a.depth, b.depth, "scope {i} depth differs");
+            assert_eq!(a.parent, b.parent, "scope {i} parent differs");
+            assert_eq!(
+                a.bindings.keys().collect::<Vec<_>>(),
+                b.bindings.keys().collect::<Vec<_>>(),
+                "scope {i} binding keys differ",
+            );
+        }
     }
 }

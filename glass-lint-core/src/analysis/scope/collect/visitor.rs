@@ -4,7 +4,6 @@
 //! use-position facts that survive lexical shadowing, reassignment, and
 //! unsupported dynamic forms.
 
-use smol_str::SmolStr;
 use swc_common::Spanned;
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CatchClause, ClassDecl, Expr,
@@ -18,94 +17,16 @@ use crate::analysis::{
         BindingProvenance, LexicalScopeCollector,
         ScopeEffect::DynamicEvaluation,
         ScopeId, ScopeKind,
-        collect::{PropertyAliasAssignment, RootedPropertyMutation},
+        collect::{
+            Pass, PropertyAliasAssignment, RootedPropertyMutation,
+            analysis::{DeclarationAnalysis, DeclarationClassification},
+        },
     },
     syntax::{
         function_prototype_builtin, member_expression_chain, member_property_name,
         member_root_identifier, property_name,
     },
-    value::NamePath,
 };
-
-enum DeclarationClassification {
-    Binding {
-        name: String,
-        provenance: BindingProvenance,
-    },
-    Require {
-        module: SmolStr,
-    },
-    ValueAlias {
-        target: NamePath,
-    },
-    None,
-}
-
-fn classify_declaration(
-    collector: &LexicalScopeCollector,
-    pattern: &Pat,
-    init: Option<&Expr>,
-    derived_function_pattern: bool,
-) -> DeclarationClassification {
-    let name = || match pattern {
-        Pat::Ident(ident) => Some(ident.id.sym.to_string()),
-        _ => None,
-    };
-
-    let Some(init) = init else {
-        return DeclarationClassification::None;
-    };
-
-    // Evaluate in priority order, computing each provenance form only when
-    // higher-priority forms do not match. Previously all six forms were
-    // computed eagerly, walking the expression AST independently for each.
-    //
-    // Priority 1: bound_callable_provenance
-    if let (Some(name), Some(provenance)) = (name(), collector.bound_callable_provenance(init)) {
-        return DeclarationClassification::Binding { name, provenance };
-    }
-
-    // Priority 2: module_alias_provenance (Binding path)
-    if let Some(provenance) = collector.module_alias_provenance(init) {
-        if let Some(name) = name() {
-            return DeclarationClassification::Binding { name, provenance };
-        }
-        if let BindingProvenance::ModuleNamespace { module } = provenance {
-            return DeclarationClassification::Require { module };
-        }
-    }
-
-    // Priority 3: require_module_expr_name
-    if let Some(module) = collector.require_module_expr_name(init) {
-        return DeclarationClassification::Require { module };
-    }
-
-    // Priority 4: const_value (static_object_values then const_provenance)
-    if let (Some(name), Some(provenance)) = (name(), collector.static_object_values(init)
-        .or_else(|| collector.const_provenance(init)))
-    {
-        return DeclarationClassification::Binding { name, provenance };
-    }
-
-    // Priorities 5 and 6 both need rooted_path, so compute it once here.
-    let rooted_path = collector.rooted_name_path(init);
-
-    // Priority 5: returned_object_provenance (only if value_alias is not root)
-    if rooted_path.as_ref().is_none_or(|target| !target.is_root())
-        && let (Some(name), Some(provenance)) = (name(), collector.returned_object_provenance(init))
-    {
-        return DeclarationClassification::Binding { name, provenance };
-    }
-
-    // Priority 6: value_alias (only if not derived_function_pattern)
-    if !derived_function_pattern
-        && let Some(target) = rooted_path
-    {
-        return DeclarationClassification::ValueAlias { target };
-    }
-
-    DeclarationClassification::None
-}
 
 impl Visit for LexicalScopeCollector<'_> {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
@@ -113,6 +34,16 @@ impl Visit for LexicalScopeCollector<'_> {
     }
 
     fn visit_var_decl(&mut self, var_decl: &VarDecl) {
+        if self.pass == Pass::Predeclare {
+            let scope = self.binding_scope(var_decl.kind);
+            for declarator in &var_decl.decls {
+                self.insert_pat_locals(scope, &declarator.name);
+                if let Some(init) = declarator.init.as_deref() {
+                    init.visit_with(self);
+                }
+            }
+            return;
+        }
         let scope = self.binding_scope(var_decl.kind);
         for declarator in &var_decl.decls {
             let mutable_object = var_decl.kind == VarDeclKind::Var
@@ -142,38 +73,31 @@ impl Visit for LexicalScopeCollector<'_> {
             let derived_function_pattern =
                 collect_derived_function_pattern(self, &declarator.name, init, scope);
 
-            match classify_declaration(
-                self,
-                &declarator.name,
-                init,
-                derived_function_pattern,
-            ) {
-                DeclarationClassification::Binding { name, provenance } => {
-                    self.insert(scope, name, provenance);
+            if let Some(init) = init {
+                let analysis = DeclarationAnalysis::new(self, init);
+                match analysis.classify_declaration(&declarator.name, derived_function_pattern) {
+                    DeclarationClassification::Binding { name, provenance } => {
+                        self.insert(scope, name, provenance);
+                    }
+                    DeclarationClassification::Require { module } => {
+                        self.collect_require_aliases(&declarator.name, module, scope);
+                    }
+                    DeclarationClassification::ValueAlias { target } => {
+                        self.collect_value_aliases(&declarator.name, &target, scope);
+                    }
+                    DeclarationClassification::None => {}
                 }
-                DeclarationClassification::Require { module } => {
-                    self.collect_require_aliases(&declarator.name, module, scope);
-                }
-                DeclarationClassification::ValueAlias { target } => {
-                    self.collect_value_aliases(&declarator.name, &target, scope);
-                }
-                DeclarationClassification::None => {}
             }
             visit_initializer(self, init);
         }
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
-        let provenance = self
-            .bound_callable_provenance(&assignment.right)
-            .or_else(|| self.module_alias_provenance(&assignment.right))
-            .or_else(|| self.returned_object_provenance(&assignment.right))
-            .or_else(|| self.const_provenance(&assignment.right))
-            .or_else(|| {
-                self.rooted_name_path(&assignment.right)
-                    .map(|target| BindingProvenance::ValueAlias { target })
-            })
-            .unwrap_or(BindingProvenance::Local);
+        if self.pass == Pass::Predeclare {
+            assignment.visit_children_with(self);
+            return;
+        }
+        let provenance = DeclarationAnalysis::new(self, &assignment.right).assignment_provenance();
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
                 if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
@@ -230,6 +154,10 @@ impl Visit for LexicalScopeCollector<'_> {
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
+        if self.pass == Pass::Predeclare {
+            call.visit_children_with(self);
+            return;
+        }
         self.record_modeled_callbacks(call);
         if let Callee::Expr(callee) = &call.callee
             && let Expr::Ident(callee) = &**callee
@@ -259,13 +187,15 @@ impl Visit for LexicalScopeCollector<'_> {
         self.insert_local(parent, fn_decl.ident.sym.to_string());
         self.push_scope(fn_decl.function.span, ScopeKind::Function);
         let scope = self.current_scope();
-        let parameters = Self::function_parameters(&fn_decl.function);
+        if self.pass == Pass::Collect {
+            let parameters = Self::function_parameters(&fn_decl.function);
+            if let Ok(name_id) = self.names.intern(fn_decl.ident.sym.as_ref()) {
+                self.function_scopes
+                    .insert((parent, name_id), (scope, parameters));
+            }
+        }
         for parameter in &fn_decl.function.params {
             self.insert_pat_locals(scope, &parameter.pat);
-        }
-        if let Ok(name_id) = self.names.intern(fn_decl.ident.sym.as_ref()) {
-            self.function_scopes
-                .insert((parent, name_id), (scope, parameters));
         }
         fn_decl.function.decorators.visit_with(self);
         fn_decl.function.body.visit_with(self);
@@ -284,7 +214,9 @@ impl Visit for LexicalScopeCollector<'_> {
         for param in &function.params {
             self.insert_pat_locals(scope, &param.pat);
         }
-        if let Some(bindings) = self.inline_parameters.get(&function.span.lo).cloned() {
+        if self.pass == Pass::Collect
+            && let Some(bindings) = self.inline_parameters.get(&function.span.lo).cloned()
+        {
             for (name, provenance) in bindings {
                 self.record_assignment(function.span, scope, name.as_str(), provenance);
             }
@@ -300,7 +232,9 @@ impl Visit for LexicalScopeCollector<'_> {
         for param in &arrow.params {
             self.insert_pat_locals(scope, param);
         }
-        if let Some(bindings) = self.inline_parameters.get(&arrow.span.lo).cloned() {
+        if self.pass == Pass::Collect
+            && let Some(bindings) = self.inline_parameters.get(&arrow.span.lo).cloned()
+        {
             for (name, provenance) in bindings {
                 self.record_assignment(arrow.span, scope, name.as_str(), provenance);
             }

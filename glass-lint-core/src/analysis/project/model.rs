@@ -6,6 +6,10 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
+use super::{
+    projection::ProjectionOutcome,
+    state::{ExportTable, ModuleGraph},
+};
 use crate::{
     AnalysisDiagnostic, ProjectRelativePath,
     analysis::{
@@ -16,8 +20,7 @@ use crate::{
         module::ModuleRequestId,
         name::NameTable,
         status::{
-            AnalysisStatus, IncompleteReason, ModuleInterfaceKind,
-            ParseFailureKind, StatusScope,
+            AnalysisStatus, IncompleteReason, ModuleInterfaceKind, ParseFailureKind, StatusScope,
         },
         syntax::SymbolCallProvenance,
         value::{FunctionId, ValueId},
@@ -32,11 +35,6 @@ use crate::{
         LinkedModuleTarget, ModuleId, ProjectInputError, ResolverOutcome,
         input::ValidatedProjectInput,
     },
-};
-
-use super::{
-    projection::ProjectionOutcome,
-    state::{ExportTable, ModuleGraph},
 };
 
 pub(super) const MAX_EXPORT_DEPTH: usize = 1024;
@@ -309,18 +307,12 @@ impl ProjectSemanticModel {
     }
 
     /// Borrow the name table for a module's local artifact.
-    pub(in crate::analysis) fn module_names(
-        &self,
-        module: ModuleId,
-    ) -> Option<&NameTable> {
+    pub(in crate::analysis) fn module_names(&self, module: ModuleId) -> Option<&NameTable> {
         self.modules.get(&module)?.local().facts().names()
     }
 
     /// Borrow the fact stream for a module's local artifact.
-    pub(in crate::analysis) fn module_fact_stream(
-        &self,
-        module: ModuleId,
-    ) -> Option<&FactStream> {
+    pub(in crate::analysis) fn module_fact_stream(&self, module: ModuleId) -> Option<&FactStream> {
         Some(self.modules.get(&module)?.local().facts().stream())
     }
 
@@ -355,11 +347,7 @@ impl ProjectSemanticModel {
     /// Convert a module/fact identity into reportable related evidence.
     pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<crate::Evidence> {
         let module = self.modules.get(&module)?;
-        let fact = module
-            .local()
-            .facts()
-            .stream()
-            .fact(FactId(fact))?;
+        let fact = module.local().facts().stream().fact(FactId(fact))?;
         let range = module.source_context().range(fact.span).ok()?;
         Some(crate::Evidence {
             message: "related semantic path event".into(),
@@ -418,11 +406,7 @@ impl ProjectSemanticModel {
         self.status.diagnostics()
     }
 
-    pub(crate) fn record_parse_failure(
-        &mut self,
-        path: ProjectRelativePath,
-        code: &str,
-    ) {
+    pub(crate) fn record_parse_failure(&mut self, path: ProjectRelativePath, code: &str) {
         let kind = match code {
             "source_too_large" => ParseFailureKind::SourceTooLarge,
             "syntax_depth_exceeded" => ParseFailureKind::SyntaxDepth,
@@ -465,10 +449,7 @@ impl ProjectSemanticModel {
         rules: &[Rule],
         selected: &[RuleIndex],
         evidence_limit: usize,
-    ) -> (
-        BTreeMap<ModuleId, ClassificationResult>,
-        ProjectionOutcome,
-    ) {
+    ) -> (BTreeMap<ModuleId, ClassificationResult>, ProjectionOutcome) {
         let (matcher_catalog, outcome) = self.project(catalog.to_matcher_catalog(selected));
         let results = self
             .modules()
@@ -487,17 +468,15 @@ impl ProjectSemanticModel {
                     if evidence.is_empty() {
                         continue;
                     }
-                    result
-                        .capabilities
-                        .push(MatchedCapability {
-                            rule_index: *rule_index,
-                            id: rule.id().to_string(),
-                            label: rule.description().to_string(),
-                            category: rule.category().clone(),
-                            severity: rule.severity(),
-                            confidence: rule.confidence(),
-                            evidence,
-                        });
+                    result.capabilities.push(MatchedCapability {
+                        rule_index: *rule_index,
+                        id: rule.id().to_string(),
+                        label: rule.description().to_string(),
+                        category: rule.category().clone(),
+                        severity: rule.severity(),
+                        confidence: rule.confidence(),
+                        evidence,
+                    });
                 }
                 (module.id(), result)
             })

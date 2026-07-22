@@ -153,8 +153,14 @@ impl ObjectFlowProjector<'_, '_> {
                             .is_some_and(|member| member == *chain)
                             && source.provenance.matches_rooted(rooted)
                             && source.arguments.iter().all(|matcher| {
-                                args.get(matcher.index())
-                                    .is_some_and(|arg| matcher.matcher().matches(arg, self.names))
+                                args.get(matcher.index()).is_some_and(|arg| {
+                                    match self.stream.values() {
+                                        Some(values) => {
+                                            matcher.matcher().matches(arg, self.names, values)
+                                        }
+                                        None => false,
+                                    }
+                                })
                             })
                     })
                 })

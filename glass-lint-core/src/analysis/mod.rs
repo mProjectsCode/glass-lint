@@ -41,7 +41,6 @@ pub use local::{
     SemanticArtifact, SharedSemanticArtifact,
 };
 pub use lowering::{LoweredSource, lower_source};
-
 pub use project::model::ProjectSemanticModel;
 pub(in crate::analysis) use project::model::{ExportResolution, QualifiedRequestId};
 

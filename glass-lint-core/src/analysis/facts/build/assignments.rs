@@ -82,9 +82,7 @@ impl FactBuilder<'_> {
         member.prop.visit_with(self);
         let resolved_member = self.resolver.resolve_member(member);
         let chain = self.resolver.member_expression_chain(member);
-        let syntactic_path = chain
-            .as_ref()
-            .and_then(|path| self.name_path(path));
+        let syntactic_path = chain.as_ref().and_then(|path| self.name_path(path));
         self.emit(
             FactKind::MemberRead,
             member.span(),
@@ -107,7 +105,7 @@ impl FactBuilder<'_> {
                 FactPayload::PropertyWrite {
                     receiver,
                     property,
-                    static_value: self.resolver.static_string_expr(&assignment.right),
+                    value: self.resolver.resolve_expr_id(&assignment.right),
                 },
             );
         } else {

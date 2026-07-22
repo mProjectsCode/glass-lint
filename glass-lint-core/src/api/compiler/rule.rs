@@ -373,9 +373,8 @@ mod tests {
         api::{
             classification::MatchKind,
             rule::{
-                CallMatcher, FlowCompletion, FlowCondition, Matcher, MatcherSet,
-                MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher,
-                ValueMatcher,
+                CallMatcher, FlowCompletion, FlowCondition, Matcher, MatcherSet, MemberCallMatcher,
+                ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
             },
         },
     };
@@ -404,9 +403,9 @@ mod tests {
             Matcher::global_constructor("URL"),
             Matcher::from(
                 ObjectFlowMatcher::builder("request")
-                    .source(ObjectSourceMatcher::returned_by(
-                        MemberCallMatcher::rooted("test.method"),
-                    ))
+                    .source(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(
+                        "test.method",
+                    )))
                     .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
                         "ready",
                         ValueMatcher::any_value(),

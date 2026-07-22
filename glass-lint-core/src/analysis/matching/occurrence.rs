@@ -45,14 +45,12 @@ impl Iterator for CandidateOccurrenceIter<'_> {
 }
 
 impl<'a> IntoIterator for CandidateOccurrences<'a> {
-    type Item = Occurrence;
     type IntoIter = CandidateOccurrenceIter<'a>;
+    type Item = Occurrence;
 
     fn into_iter(self) -> Self::IntoIter {
         match self {
-            Self::Indexed(slice) => {
-                CandidateOccurrenceIter::Indexed(slice.iter().copied())
-            }
+            Self::Indexed(slice) => CandidateOccurrenceIter::Indexed(slice.iter().copied()),
             Self::Merged(iter) => CandidateOccurrenceIter::Merged(iter),
             Self::Scanned(vec) => CandidateOccurrenceIter::Scanned(vec.into_iter()),
         }

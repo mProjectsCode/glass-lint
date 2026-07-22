@@ -55,15 +55,15 @@ impl ProjectSemanticModel {
                     SymbolCallProvenance::Global { name } => {
                         ExportResolution::Global { name: name.clone() }
                     }
-                    SymbolCallProvenance::Local => {
-                        returned
-                            .static_string()
-                            .map_or(ExportResolution::Unknown, |value| {
-                                ExportResolution::StaticString {
-                                    value: value.to_owned(),
-                                }
-                            })
-                    }
+                    SymbolCallProvenance::Local => self
+                        .module_fact_stream(target_module)
+                        .and_then(|stream| stream.values())
+                        .and_then(|values| values.static_string(returned.value()))
+                        .map_or(ExportResolution::Unknown, |value| {
+                            ExportResolution::StaticString {
+                                value: value.to_owned(),
+                            }
+                        }),
                     SymbolCallProvenance::Unknown(_) => ExportResolution::Unknown,
                 };
                 identities.insert(call.result(), resolution.into());

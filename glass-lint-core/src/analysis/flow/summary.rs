@@ -17,7 +17,7 @@ use crate::analysis::{
         index::{FlowId, FlowIndex},
         table::FunctionTable,
     },
-    value::{FunctionId, PathId, PathInterner, PathSegment, ValueId},
+    value::{FunctionId, PathId, PathInterner, PathSegment, Value, ValueId, ValueTable},
 };
 
 const MAX_SUMMARY_ROUNDS: usize = 64;
@@ -249,10 +249,7 @@ impl FunctionSummaries {
         }
     }
 
-    fn propagate_sinks(
-        &mut self,
-        stream: &FactStream,
-    ) {
+    fn propagate_sinks(&mut self, stream: &FactStream) {
         for _ in 0..MAX_SUMMARY_ROUNDS {
             let mut changed = false;
             let function_ids = self.by_id.iter().map(|(id, _)| id).collect::<Vec<_>>();
@@ -288,20 +285,17 @@ impl FunctionSummaries {
         };
         // Extract target data without cloning the full summary.
         let (target_parameters, target_sinks) = match self.get(target) {
-            Some(summary) if summary.is_invocation_compatible(stream, args) => {
-                (summary.parameters.clone(), summary.sinks().into_iter().cloned().collect::<Vec<_>>())
-            }
+            Some(summary) if summary.is_invocation_compatible(stream, args) => (
+                summary.parameters.clone(),
+                summary.sinks().into_iter().cloned().collect::<Vec<_>>(),
+            ),
             _ => return false,
         };
         let mut changed = false;
         for sink in &target_sinks {
-            if let Some(projection) = try_project_sink(
-                &target_parameters,
-                caller_parameters,
-                sink,
-                stream,
-                args,
-            ) && let Some(caller_summary) = self.by_id.get_mut(caller)
+            if let Some(projection) =
+                try_project_sink(&target_parameters, caller_parameters, sink, stream, args)
+                && let Some(caller_summary) = self.by_id.get_mut(caller)
             {
                 changed |= caller_summary.add_sink(projection);
             }
@@ -518,26 +512,60 @@ impl ParameterBinding {
             if path.is_empty() {
                 return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
             }
-            return argument
-                .projections
-                .iter()
-                .find(|projection| path.matches_base(stream.paths(), projection.path))
-                .map(|projection| projection.value)
-                .filter(|value| *value != ValueId::UNKNOWN);
+            return stream.values().and_then(|values| {
+                let segments = summary_path_segments(stream.paths(), &path);
+                value_at_path(values, argument.value, &segments)
+            });
         }
 
         if path.is_empty() {
             return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
         }
 
-        argument
-            .projections
-            .iter()
-            .find(|projection| path.matches_base(stream.paths(), projection.path))
-            .map(|projection| projection.value)
-            .filter(|value| *value != ValueId::UNKNOWN)
-            .or_else(|| self.default.filter(|value| *value != ValueId::UNKNOWN))
+        stream.values().map_or_else(
+            || self.default.filter(|value| *value != ValueId::UNKNOWN),
+            |values| {
+                let segments = summary_path_segments(stream.paths(), path);
+                let id = value_at_path(values, argument.value, &segments)
+                    .filter(|v| *v != ValueId::UNKNOWN);
+                id.or_else(|| self.default.filter(|value| *value != ValueId::UNKNOWN))
+            },
+        )
     }
+}
+
+fn summary_path_segments(paths: &PathInterner, path: &SummaryPath) -> Vec<PathSegment> {
+    match path {
+        SummaryPath::Base(id) => paths.owned_segments(*id).unwrap_or_default(),
+        SummaryPath::Owned(segments) => segments.clone(),
+    }
+}
+
+fn value_at_path(
+    values: &ValueTable,
+    value_id: ValueId,
+    segments: &[PathSegment],
+) -> Option<ValueId> {
+    let mut current = value_id;
+    for segment in segments {
+        let value = values.resolve(current)?;
+        // Follow binding chains before interpreting the shape at each level.
+        current = match value {
+            Value::StaticObject(entries) => match segment {
+                PathSegment::Property(name_id) => entries
+                    .iter()
+                    .find(|(k, _)| k == name_id)
+                    .map(|(_, v)| *v)?,
+                PathSegment::Index(_) => return None,
+            },
+            Value::StaticArray(elements) => match segment {
+                PathSegment::Index(index) => elements.get(*index as usize).copied()?,
+                PathSegment::Property(_) => return None,
+            },
+            _ => return None,
+        };
+    }
+    (current != ValueId::UNKNOWN).then_some(current)
 }
 
 #[cfg(test)]

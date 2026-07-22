@@ -180,10 +180,7 @@ impl ModuleIdentityMap {
         Self::default()
     }
 
-    pub(in crate::analysis) fn get(
-        &self,
-        key: &ModuleExportKey,
-    ) -> Option<&LinkedModuleIdentity> {
+    pub(in crate::analysis) fn get(&self, key: &ModuleExportKey) -> Option<&LinkedModuleIdentity> {
         self.get_parts(key.module(), key.export())
     }
 

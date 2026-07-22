@@ -379,7 +379,8 @@ pub(in crate::analysis) fn collect(
             break;
         }
     }
-    let exhausted = return_budget_exhausted || step_budget.exhausted() || worklist.len() >= MAX_CONTEXTS;
+    let exhausted =
+        return_budget_exhausted || step_budget.exhausted() || worklist.len() >= MAX_CONTEXTS;
     if exhausted {
         for values in evidence.values_mut() {
             for rule in values {
@@ -544,16 +545,21 @@ pub(super) fn usage_matches_context(
 ) -> bool {
     match usage {
         EffectUse::PropertyWrite {
-            receiver, value, ..
+            receiver,
+            receiver_value,
+            ..
         } => {
             receiver.as_ref().is_some_and(|parameter| {
                 context
                     .parameter
                     .is_some_and(|index| parameter.index() == index && parameter.is_root())
             }) || (context.parameter.is_none()
-                && context
-                    .source_root
-                    .is_some_and(|root| effect.value_root(*value).unwrap_or(*value) == root))
+                && context.source_root.is_some_and(|root| {
+                    effect
+                        .value_root(*receiver_value)
+                        .unwrap_or(*receiver_value)
+                        == root
+                }))
         }
         EffectUse::CallReceiver { receiver, .. } => context
             .parameter

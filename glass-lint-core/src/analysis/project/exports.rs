@@ -9,8 +9,8 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use crate::{
     analysis::{
-        BTreeSet, ExportResolution, LinkedModuleTarget, ModuleId,
-        ProjectSemanticModel, QualifiedRequestId, module,
+        BTreeSet, ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel,
+        QualifiedRequestId, module,
         module::{DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
         project::model::MAX_EXPORT_DEPTH,
         syntax::SymbolCallProvenance,

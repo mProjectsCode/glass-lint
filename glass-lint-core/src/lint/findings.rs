@@ -97,5 +97,3 @@ impl Linter {
             .collect()
     }
 }
-
-

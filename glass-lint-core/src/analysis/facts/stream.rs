@@ -31,6 +31,10 @@ pub(in crate::analysis) struct FactStream {
     paths: PathInterner,
     /// Frozen name table owned directly by the stream after lowering.
     names: Option<NameTable>,
+    /// Frozen value arena that remains authoritative for ValueId shapes after
+    /// the resolver is dropped. Consumers borrow immutable value shapes through
+    /// the stream instead of copying projections.
+    values: Option<crate::analysis::value::ValueTable>,
     /// False after any ID, budget, or append invariant is violated.
     valid: bool,
     /// Typed construction outcomes that make the retained stream incomplete.
@@ -45,6 +49,7 @@ impl FactStream {
             facts: Vec::new(),
             paths: PathInterner::new(),
             names: None,
+            values: None,
             valid: true,
             issues: std::collections::BTreeSet::new(),
         }
@@ -102,6 +107,24 @@ impl FactStream {
         }
         self.names = Some(names);
         Ok(())
+    }
+
+    /// Freeze the interning arena so artifact consumers can borrow value shapes
+    /// without re-evaluating or copying projections.
+    pub(in crate::analysis) fn freeze_values(
+        &mut self,
+        values: crate::analysis::value::ValueTable,
+    ) -> Result<(), crate::analysis::value::ValueTable> {
+        if self.values.is_some() {
+            return Err(values);
+        }
+        self.values = Some(values);
+        Ok(())
+    }
+
+    /// Borrow the frozen value arena for shape lookups by ValueId.
+    pub(in crate::analysis) fn values(&self) -> Option<&crate::analysis::value::ValueTable> {
+        self.values.as_ref()
     }
 
     pub(in crate::analysis) fn names(&self) -> Option<&NameTable> {
@@ -178,6 +201,17 @@ impl FactStream {
         }
     }
 
+    /// Borrow the assigned value identity from a property-write event.
+    pub(in crate::analysis) fn property_write_value(
+        &self,
+        event: crate::analysis::facts::FactId,
+    ) -> Option<crate::analysis::value::ValueId> {
+        match &self.fact(event)?.payload {
+            crate::analysis::facts::FactPayload::PropertyWrite { value, .. } => Some(*value),
+            _ => None,
+        }
+    }
+
     /// Borrow all facts in the exact order in which the builder emitted them.
     pub(in crate::analysis) fn facts(&self) -> &[SemanticFact] {
         &self.facts
@@ -216,5 +250,19 @@ mod tests {
         assert!(stream.freeze_names(NameTable::default()).is_ok());
         assert!(stream.freeze_names(NameTable::default()).is_err());
         assert!(stream.names().is_some());
+    }
+
+    #[test]
+    fn frozen_values_are_borrowed_by_artifact_local_id() {
+        use crate::analysis::value::{Value, ValueId, ValueTable};
+
+        let mut values = ValueTable::default();
+        let string = values.intern(Value::StaticString("from-arena".into()));
+        let mut stream = FactStream::new();
+        assert!(stream.freeze_values(values).is_ok());
+
+        let values = stream.values().expect("values should be frozen");
+        assert_eq!(values.static_string(string), Some("from-arena"));
+        assert!(values.get(ValueId(u32::MAX)).is_none());
     }
 }

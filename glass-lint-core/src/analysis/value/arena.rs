@@ -82,7 +82,7 @@ impl CallableValue {
 /// Bounded identity for an allocated object value.
 pub(in crate::analysis) struct ObjectId(pub(in crate::analysis) u32);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 /// Per-file canonical value arena with explicit capacity limits.
 pub(in crate::analysis) struct ValueTable {
     /// Insertion-ordered canonical storage. The set index is the value ID.
@@ -161,6 +161,26 @@ impl ValueTable {
     /// Borrow an interned value, rejecting malformed/out-of-range IDs.
     pub(in crate::analysis) fn get(&self, id: ValueId) -> Option<&Value> {
         self.values.get_index(usize::try_from(id.0).ok()?)
+    }
+
+    /// Follow a bounded binding chain to the concrete value shape.
+    pub(in crate::analysis) fn resolve(&self, id: ValueId) -> Option<&Value> {
+        let mut value = self.get(id)?;
+        for _ in 0..16 {
+            match value {
+                Value::Binding { target, .. } => value = self.get(*target)?,
+                _ => return Some(value),
+            }
+        }
+        None
+    }
+
+    /// Borrow a static string without materializing a duplicate projection.
+    pub(in crate::analysis) fn static_string(&self, id: ValueId) -> Option<&str> {
+        match self.resolve(id)? {
+            Value::StaticString(value) => Some(value),
+            _ => None,
+        }
     }
 
     pub(in crate::analysis) fn exhausted(&self) -> bool {

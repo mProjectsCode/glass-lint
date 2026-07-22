@@ -6,9 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use glass_lint_core::{
-    AnalysisReport, Linter, ResolutionRequest, ResolverOutcome,
-};
+use glass_lint_core::{AnalysisReport, Linter, ResolutionRequest, ResolverOutcome};
 
 use crate::{
     discovery::{ProjectDiscovery, absolute_path, inside_root, realpath},
@@ -257,11 +255,7 @@ impl ResolutionCache {
         self.0.get(key)
     }
 
-    fn insert(
-        &mut self,
-        key: glass_lint_core::ResolutionRequestKey,
-        result: ResolverOutcome,
-    ) {
+    fn insert(&mut self, key: glass_lint_core::ResolutionRequestKey, result: ResolverOutcome) {
         self.0.insert(key, result);
     }
 }

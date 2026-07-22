@@ -5,13 +5,15 @@
 //! field that failed so provider authors can correct the rule
 //! deterministically.
 
-use crate::api::rule::matcher::{
-    ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
-    MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, ObjectEventMatcher,
-    ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicateKind, SymbolProvenance, ValueMatcher,
-    ValueMatcherKind,
+use crate::api::rule::{
+    MatcherBuildError,
+    matcher::{
+        ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
+        MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, ObjectEventMatcher,
+        ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicateKind, SymbolProvenance,
+        ValueMatcher, ValueMatcherKind,
+    },
 };
-use crate::api::rule::MatcherBuildError;
 
 const MAX_ARGUMENT_INDEX: usize = 1 << 20;
 const MAX_EXPRESSION_NODES: usize = 4096;

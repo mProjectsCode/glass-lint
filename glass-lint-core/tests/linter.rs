@@ -5,8 +5,8 @@
 //! handles evidence bounding, and respects rule selection.
 
 use glass_lint_core::{
-    Environment, Linter, LinterConfig, LintConfigError, RuleCatalog, RuleId,
-    RuleBaseline, RuleOverride, RuleSelection, RuleState,
+    Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog, RuleId,
+    RuleOverride, RuleSelection, RuleState,
     project::types::DiagnosticKind,
     rules::{Confidence, Matcher, Rule, Severity},
 };
@@ -39,7 +39,11 @@ fn snippet(linter: &Linter, source: &str, filename: &str) -> glass_lint_core::An
 
 #[test]
 fn emits_one_located_finding_per_match() {
-    let report = snippet(&catalog_linter(catalog()), "fetch('/a');\nfetch('/b');", "input.js");
+    let report = snippet(
+        &catalog_linter(catalog()),
+        "fetch('/a');\nfetch('/b');",
+        "input.js",
+    );
     assert_eq!(report.files[0].findings.len(), 2);
     assert_eq!(report.files[0].findings[0].location.range.start().line(), 1);
     assert_eq!(report.files[0].findings[1].location.range.start().line(), 2);
@@ -77,7 +81,10 @@ fn findings_only_carry_evidence_for_their_own_location() {
         .build()
         .unwrap();
     let report = snippet(
-        &test_linter(RuleCatalog::new("test", vec![rule]).unwrap(), Environment::default()),
+        &test_linter(
+            RuleCatalog::new("test", vec![rule]).unwrap(),
+            Environment::default(),
+        ),
         "this.app.vault.create('a');\nthis.app.vault.createFolder('b');",
         "input.js",
     );
@@ -113,7 +120,9 @@ fn collapses_contained_ranges_for_same_rule() {
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .matcher(Matcher::rooted_member_read("app.metadataCache"))
-        .matcher(Matcher::rooted_member_call("app.metadataCache.getFileCache"))
+        .matcher(Matcher::rooted_member_call(
+            "app.metadataCache.getFileCache",
+        ))
         .build()
         .unwrap();
     let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
@@ -135,7 +144,10 @@ fn collapses_contained_ranges_for_same_rule() {
     assert_eq!(report.files[0].findings[0].evidence.len(), 2);
     assert!(report.files[0].findings[0].evidence.iter().all(|evidence| {
         evidence.location.as_ref().is_some_and(|location| {
-            report.files[0].findings[0].location.range.contains(&location.range)
+            report.files[0].findings[0]
+                .location
+                .range
+                .contains(&location.range)
         })
     }));
 }
@@ -177,10 +189,9 @@ fn ordered_rule_overrides_select_stable_catalog_indexes() {
     let selection = RuleSelection::new(RuleBaseline::None)
         .with_override(RuleOverride::new("test:*", RuleState::Enabled).unwrap())
         .with_override(RuleOverride::new("test:network.first", RuleState::Disabled).unwrap());
-    let linter = Linter::new(
-        LinterConfig::new(vec![catalog], Environment::default()).with_rules(selection),
-    )
-    .unwrap();
+    let linter =
+        Linter::new(LinterConfig::new(vec![catalog], Environment::default()).with_rules(selection))
+            .unwrap();
     assert_eq!(
         linter.enabled_rule_ids(),
         vec![RuleId::parse("test:network.second").unwrap()]
@@ -193,9 +204,7 @@ fn selectors_require_a_known_match() {
     let selection = RuleSelection::new(RuleBaseline::None)
         .with_override(RuleOverride::new("test:missing", RuleState::Enabled).unwrap());
     assert!(matches!(
-        Linter::new(
-            LinterConfig::new(vec![catalog], Environment::default()).with_rules(selection)
-        ),
+        Linter::new(LinterConfig::new(vec![catalog], Environment::default()).with_rules(selection)),
         Err(LintConfigError::UnknownRule(_))
     ));
 }
@@ -265,7 +274,11 @@ fn source_locations_handle_crlf_and_eof_without_byte_columns() {
 
 #[test]
 fn evidence_ranges_and_snippets_are_populated_for_unicode_source() {
-    let report = snippet(&catalog_linter(catalog()), "// é\nfetch('/x');", "unicode.js");
+    let report = snippet(
+        &catalog_linter(catalog()),
+        "// é\nfetch('/x');",
+        "unicode.js",
+    );
     let evidence = &report.files[0].findings[0].evidence[0];
     assert_eq!(
         evidence

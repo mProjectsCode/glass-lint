@@ -70,7 +70,7 @@ impl Resolver<'_> {
     pub(in crate::analysis) fn resolve_call_expression(
         &self,
         call: &swc_ecma_ast::CallExpr,
-    ) -> ResolvedValue {
+    ) -> std::sync::Arc<ResolvedValue> {
         if matches!(call.callee, Callee::Import(_))
             && let Some(Expr::Lit(Lit::Str(specifier))) = call.args.first().map(|arg| &*arg.expr)
         {
@@ -83,7 +83,7 @@ impl Resolver<'_> {
                 None,
                 None,
             );
-            return ResolvedValue {
+            return std::sync::Arc::new(ResolvedValue {
                 id,
                 rooted_chain: None,
                 call: self.call_provenance_for_value(id),
@@ -91,10 +91,8 @@ impl Resolver<'_> {
                 returned_member: None,
                 bound_arguments: None,
                 syntactic_chain: None,
-            };
+            });
         }
-        // Calls normally produce fresh, opaque values. `.bind` is the modeled
-        // exception because it preserves a callable's target and arguments.
         let Callee::Expr(callee) = &call.callee else {
             return Self::unknown();
         };
@@ -141,12 +139,8 @@ impl Resolver<'_> {
             }
             SymbolCallProvenance::Unknown(_) => Value::Unknown,
         };
-        let id = self
-            .state
-            .borrow_mut()
-            .values
-            .intern_with_binding(value, binding);
-        debug_assert!(self.state.borrow().values.get(id).is_some());
+        let id = self.values.borrow_mut().intern_with_binding(value, binding);
+        debug_assert!(self.values.borrow().get(id).is_some());
         id
     }
 
@@ -172,14 +166,11 @@ impl Resolver<'_> {
         }
         let mut current = id;
         loop {
-            let state = self.state.borrow();
-            let Some(value) = state.values.get(current) else {
+            let values = self.values.borrow();
+            let Some(value) = values.get(current) else {
                 return SymbolCallProvenance::Unknown(UnknownReason::Missing);
             };
             match value {
-                // Follow indirections while the arena entry remains borrowed;
-                // large arrays/objects are never cloned merely to inspect
-                // their outer variant.
                 Value::Binding { target, .. } => current = *target,
                 Value::Callable(callable) => current = callable.target(),
                 Value::Global(name) => {

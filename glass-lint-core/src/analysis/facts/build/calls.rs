@@ -44,7 +44,7 @@ impl FactBuilder<'_> {
                     result,
                     callee_span,
                     callee_name: None,
-                    call_provenance: resolved.call,
+                    call_provenance: resolved.call.clone(),
                     syntactic_chain: None,
                     syntactic_path: None,
                     rooted_chain: None,
@@ -127,26 +127,18 @@ impl FactBuilder<'_> {
         resolved: &ResolvedCallee,
         args: &[ExprOrSpread],
     ) -> Vec<CallArgInfo> {
-        let mut effective_args = resolved
-            .bound_arguments
-            .as_deref()
-            .map(|arguments| {
-                arguments
-                    .iter()
-                    .map(|argument| {
-                        argument
-                            .as_ref()
-                            .map_or_else(Self::default_call_arg, Self::bound_arg_info)
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let mut effective_args: Vec<CallArgInfo> = Vec::new();
+        if let Some(arguments) = resolved.bound_arguments.as_deref() {
+            for argument in arguments {
+                effective_args.push(
+                    argument
+                        .as_ref()
+                        .map_or_else(CallArgInfo::unknown, |arg| self.bound_arg_info(arg)),
+                );
+            }
+        }
         effective_args.extend(self.args_info(args));
         effective_args
-    }
-
-    fn default_call_arg() -> CallArgInfo {
-        CallArgInfo::unknown()
     }
 
     /// Return the stable value identity representing a call's result.
@@ -453,7 +445,15 @@ impl FactBuilder<'_> {
                 .map(|values| {
                     values
                         .into_iter()
-                        .map(CallArgInfo::with_static_string)
+                        .map(|s| {
+                            let resolved = self
+                                .resolver
+                                .static_value(crate::analysis::value::Value::StaticString(s));
+                            CallArgInfo {
+                                value: resolved.id,
+                                ..CallArgInfo::unknown()
+                            }
+                        })
                         .collect()
                 }),
         }
@@ -482,7 +482,7 @@ impl FactBuilder<'_> {
                 let callee_name = Some(ident.sym.to_smolstr());
                 let target_function = self.resolver.function_id_for_expr(effective);
                 let mut callee =
-                    ResolvedCallee::from_resolved(resolved, callee_span, target_function);
+                    ResolvedCallee::from_resolved(&resolved, callee_span, target_function);
                 callee.callee_name = callee_name;
                 callee.syntactic_chain = syntactic_chain;
                 callee.instance_class = instance_class;
@@ -497,7 +497,7 @@ impl FactBuilder<'_> {
                 let callee_span = self.byte_range(effective.span())?;
                 let target_function = self.resolver.function_id_for_expr(effective);
                 Some(ResolvedCallee::from_resolved(
-                    resolved,
+                    &resolved,
                     callee_span,
                     target_function,
                 ))
@@ -507,7 +507,7 @@ impl FactBuilder<'_> {
                 let callee_span = self.byte_range(effective.span())?;
                 let target_function = self.resolver.function_id_for_expr(effective);
                 Some(ResolvedCallee::from_resolved(
-                    resolved,
+                    &resolved,
                     callee_span,
                     target_function,
                 ))
@@ -526,7 +526,7 @@ impl FactBuilder<'_> {
         let receiver = Some(self.resolver.resolve_expr_id(&member.obj));
         let callee_span = self.byte_range(member.span)?;
         let target_function = self.resolver.function_id_for_expr(&member.obj);
-        let mut callee = ResolvedCallee::from_resolved(resolved, callee_span, target_function);
+        let mut callee = ResolvedCallee::from_resolved(&resolved, callee_span, target_function);
         callee.syntactic_chain = syntactic_chain;
         callee.receiver = receiver;
         callee.instance_class = instance_class;
@@ -643,7 +643,7 @@ pub(super) struct ResolvedCallee {
 
 impl ResolvedCallee {
     fn from_resolved(
-        resolved: crate::analysis::resolution::ResolvedValue,
+        resolved: &std::sync::Arc<crate::analysis::resolution::ResolvedValue>,
         callee_span: crate::ByteRange,
         target_function: Option<FunctionId>,
     ) -> Self {
@@ -652,12 +652,12 @@ impl ResolvedCallee {
             receiver: None,
             callee_span,
             callee_name: None,
-            call_provenance: resolved.call,
+            call_provenance: resolved.call.clone(),
             syntactic_chain: None,
-            rooted_chain: resolved.rooted_chain,
-            module_member: resolved.module_member,
-            returned_member: resolved.returned_member,
-            bound_arguments: resolved.bound_arguments,
+            rooted_chain: resolved.rooted_chain.clone(),
+            module_member: resolved.module_member.clone(),
+            returned_member: resolved.returned_member.clone(),
+            bound_arguments: resolved.bound_arguments.clone(),
             instance_class: None,
             target_function,
         }

@@ -12,6 +12,7 @@ pub use call::*;
 pub use derived::*;
 pub use flow::*;
 pub use member::*;
+
 use crate::api::rule::{MatcherBuildError, ModuleSpecifierPattern, validation};
 
 #[derive(Debug, Clone, Default)]
@@ -238,12 +239,9 @@ impl Matcher {
     ) -> Result<Self, MatcherBuildError> {
         let module = module.into();
         let pattern = ModuleSpecifierPattern::package(module.clone())?;
-        Ok(Self::InstanceMemberCall(InstanceMemberCallMatcher::with_package(
-            module,
-            pattern,
-            export,
-            member,
-        )))
+        Ok(Self::InstanceMemberCall(
+            InstanceMemberCallMatcher::with_package(module, pattern, export, member),
+        ))
     }
 }
 

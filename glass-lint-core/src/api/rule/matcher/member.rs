@@ -285,8 +285,7 @@ impl MemberReadMatcher {
     pub(crate) fn normalize(&mut self) {
         self.chain = crate::api::rule::matcher::normalize_member_chain(&self.chain);
         if self.provenance == MemberReadProvenance::Rooted {
-            self.chain =
-                crate::api::rule::matcher::canonical_rooted_chain(&self.chain).to_string();
+            self.chain = crate::api::rule::matcher::canonical_rooted_chain(&self.chain).to_string();
         }
         if let MemberReadProvenance::ModuleNamespace { module } = &mut self.provenance {
             *module = module.trim().to_string();

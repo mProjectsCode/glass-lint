@@ -173,8 +173,14 @@ fn renders_terminal_controls_visibly() {
         diagnostics: vec![],
     };
     let line_starts = line_starts("x");
-    let output =
-        PrettyReport::new(&report, "bad\u{1b}[x.js", "x", PrettyOptions::default(), &line_starts).to_string();
+    let output = PrettyReport::new(
+        &report,
+        "bad\u{1b}[x.js",
+        "x",
+        PrettyOptions::default(),
+        &line_starts,
+    )
+    .to_string();
     assert!(output.contains("bad\\u{001b}[x.js"));
     assert!(output.contains("message\\u{001b}[31m"));
 }
@@ -264,7 +270,14 @@ fn renders_missing_source_lines_without_panicking() {
         diagnostics: vec![],
     };
     let line_starts = line_starts("");
-    let rendered = PrettyReport::new(&report, "main.js", "", PrettyOptions::default(), &line_starts).to_string();
+    let rendered = PrettyReport::new(
+        &report,
+        "main.js",
+        "",
+        PrettyOptions::default(),
+        &line_starts,
+    )
+    .to_string();
     assert!(rendered.contains("error[test:missing] missing"));
     assert!(rendered.contains("main.js:99:1 - match"));
 }

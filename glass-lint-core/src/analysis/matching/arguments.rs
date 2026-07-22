@@ -23,12 +23,11 @@ use crate::{
         matching::{
             CallArgInfo, ClassificationEvidence, FactPayload, FactStream, LinkedModuleIdentity,
             ModuleIdentityMap, ModuleOccurrenceOverlay, Occurrence, OccurrenceIndexes,
-            SymbolCallProvenance,
-            push_owned_evidence,
+            SymbolCallProvenance, push_owned_evidence,
         },
         name::NameTable,
         syntax::SymbolMemberProvenance,
-        value::{NamePath, ValueId},
+        value::{NamePath, ValueId, ValueTable},
     },
     api::compiler::rule::{
         EventPredicate, IdentityConstraint, QueryClause, QueryConstraint, SubjectConstraint,
@@ -37,6 +36,7 @@ use crate::{
 
 struct MatcherEvaluator<'a> {
     names: &'a NameTable,
+    values: Option<&'a ValueTable>,
     identities: Option<&'a ModuleIdentityMap>,
     result_identities: Option<&'a BTreeMap<ValueId, LinkedModuleIdentity>>,
 }
@@ -44,11 +44,13 @@ struct MatcherEvaluator<'a> {
 impl<'a> MatcherEvaluator<'a> {
     fn new(
         names: &'a NameTable,
+        values: Option<&'a ValueTable>,
         identities: Option<&'a ModuleIdentityMap>,
         result_identities: Option<&'a BTreeMap<ValueId, LinkedModuleIdentity>>,
     ) -> Self {
         Self {
             names,
+            values,
             identities,
             result_identities,
         }
@@ -57,10 +59,7 @@ impl<'a> MatcherEvaluator<'a> {
     /// Look up the resolved identity for a module-export provenance.
     ///
     /// Look up module provenance without constructing a temporary owned key.
-    fn lookup_identity(
-        &self,
-        provenance: &SymbolCallProvenance,
-    ) -> Option<&LinkedModuleIdentity> {
+    fn lookup_identity(&self, provenance: &SymbolCallProvenance) -> Option<&LinkedModuleIdentity> {
         let (module, export) = provenance.module_export_parts()?;
         self.identities?.get_parts(module, export)
     }
@@ -180,7 +179,8 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     let Some(names) = stream.names() else {
         return;
     };
-    let evaluator = MatcherEvaluator::new(names, identities, result_identities);
+    let values = stream.values();
+    let evaluator = MatcherEvaluator::new(names, values, identities, result_identities);
     let mut fallback = Vec::new();
     for (rule_index, clause) in clauses {
         let Some(candidates) = indexes.occurrences_for_clause(clause, overlay, names) else {
@@ -375,9 +375,13 @@ impl MatcherEvaluator<'_> {
         constraints.iter().all(|constraint| match constraint {
             QueryConstraint::Argument(argument) => {
                 args.get(argument.index()).is_some_and(|value| {
-                    argument
-                        .matcher()
-                        .matches(&self.argument_with_overlay(value), self.names)
+                    self.values.is_some_and(|values| {
+                        argument.matcher().matches(
+                            &self.argument_with_overlay(value),
+                            self.names,
+                            values,
+                        )
+                    })
                 })
             }
         })
@@ -618,11 +622,6 @@ mod tests {
             value: ValueId(7),
             base_value: ValueId::UNKNOWN,
             base_path: PathId::EMPTY,
-            static_string: None,
-            object_keys: None,
-            property_strings: Vec::new(),
-            rooted_chain: None,
-            projections: Vec::new(),
             spread: false,
             provenance: SymbolCallProvenance::ModuleExport {
                 module: "api".into(),
@@ -632,6 +631,7 @@ mod tests {
         assert_eq!(
             MatcherEvaluator::new(
                 &crate::analysis::name::NameTable::default(),
+                None,
                 Some(&identities),
                 None
             )

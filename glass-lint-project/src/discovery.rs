@@ -221,10 +221,8 @@ impl<'a> ProjectDiscovery<'a> {
     }
 
     pub fn read_source(&self, root: &Path, path: &Path) -> Result<SourceFile, ProjectLoadError> {
-        crate::corpus::SourceCorpus::new_unchecked(self.options)
-            .load_source_file(root, path)
+        crate::corpus::SourceCorpus::new_unchecked(self.options).load_source_file(root, path)
     }
-
 }
 
 fn patterns<'a>(config: &'a Value, key: &str) -> Option<Vec<&'a str>> {

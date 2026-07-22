@@ -41,8 +41,7 @@ impl Visit for FactBuilder<'_> {
             ident.span(),
             FactPayload::Reference {
                 value: resolved.id,
-                static_string: None,
-                provenance: resolved.call,
+                provenance: resolved.call.clone(),
             },
         );
     }
@@ -52,9 +51,7 @@ impl Visit for FactBuilder<'_> {
         // property children are visited separately for their own references.
         let resolved = self.resolver.resolve_member(member);
         let chain = self.resolver.member_expression_chain(member);
-        let syntactic_path = chain
-            .as_ref()
-            .and_then(|path| self.name_path(path));
+        let syntactic_path = chain.as_ref().and_then(|path| self.name_path(path));
         self.emit(
             FactKind::MemberRead,
             member.span(),
@@ -188,9 +185,7 @@ impl Visit for FactBuilder<'_> {
             OptChainBase::Member(member) => {
                 let resolved = self.resolver.resolve_member(member);
                 let chain = self.resolver.member_expression_chain(member);
-                let syntactic_path = chain
-                    .as_ref()
-                    .and_then(|path| self.name_path(path));
+                let syntactic_path = chain.as_ref().and_then(|path| self.name_path(path));
                 self.emit(
                     FactKind::MemberRead,
                     member.span(),
@@ -216,9 +211,9 @@ impl Visit for FactBuilder<'_> {
         let (callee_name, provenance) =
             match &*new_expr.callee {
                 Expr::Ident(ident) => {
-                    let p = resolved.call;
+                    let p = resolved.call.clone();
                     (
-                        Some(resolved.rooted_chain.map_or_else(
+                        Some(resolved.rooted_chain.clone().map_or_else(
                             || ident.sym.to_smolstr(),
                             |chain| chain.to_string().into(),
                         )),
@@ -228,22 +223,22 @@ impl Visit for FactBuilder<'_> {
                 Expr::Member(member) => {
                     let member_resolved = self.resolver.resolve_member(member);
                     if let Some(SymbolMemberProvenance::ModuleNamespace {
-                        module,
-                        member: member_name,
+                        ref module,
+                        member: ref member_name,
                     }) = member_resolved.module_member
                     {
                         (
                             Some(member_name.clone()),
                             SymbolCallProvenance::ModuleExport {
-                                module,
-                                export: member_name,
+                                module: module.clone(),
+                                export: member_name.clone(),
                             },
                         )
                     } else {
-                        (None, resolved.call)
+                        (None, resolved.call.clone())
                     }
                 }
-                _ => (None, resolved.call),
+                _ => (None, resolved.call.clone()),
             };
         new_expr.visit_children_with(self);
         let Some(callee_span) = self.byte_range(callee_span) else {
@@ -309,16 +304,15 @@ impl Visit for FactBuilder<'_> {
     }
 
     fn visit_str(&mut self, value: &Str) {
-        let literal = value.value.to_string_lossy().to_string();
+        let id = self
+            .resolver
+            .resolve_expr(&Expr::Lit(swc_ecma_ast::Lit::Str(value.clone())))
+            .id;
         self.emit(
             FactKind::Reference,
             value.span(),
             FactPayload::Reference {
-                value: self
-                    .resolver
-                    .resolve_expr(&Expr::Lit(swc_ecma_ast::Lit::Str(value.clone())))
-                    .id,
-                static_string: Some(literal),
+                value: id,
                 provenance: SymbolCallProvenance::Local,
             },
         );
@@ -330,12 +324,14 @@ impl Visit for FactBuilder<'_> {
                 || quasi.raw.to_string(),
                 |value| value.to_string_lossy().to_string(),
             );
+            let resolved = self
+                .resolver
+                .static_value(crate::analysis::value::Value::StaticString(literal));
             self.emit(
                 FactKind::Reference,
                 quasi.span,
                 FactPayload::Reference {
-                    value: ValueId::UNKNOWN,
-                    static_string: Some(literal),
+                    value: resolved.id,
                     provenance: SymbolCallProvenance::Local,
                 },
             );

@@ -47,7 +47,9 @@ pub fn collect_files(
         }
         visited = visited.saturating_add(1);
         if visited > options.max_visited_entries {
-            return Err(ProjectLoadError::TooManyEntries(options.max_visited_entries));
+            return Err(ProjectLoadError::TooManyEntries(
+                options.max_visited_entries,
+            ));
         }
         let entry = entry.map_err(|error| {
             let path = error.path().unwrap_or(root).to_path_buf();
@@ -57,10 +59,7 @@ pub fn collect_files(
                 .unwrap_or_else(|| std::io::Error::other(message));
             ProjectLoadError::Io { path, source }
         })?;
-        if entry.file_type().is_file()
-            && options.supports(entry.path())
-            && include(entry.path())
-        {
+        if entry.file_type().is_file() && options.supports(entry.path()) && include(entry.path()) {
             entries.push(entry.into_path());
             if entries.len() > options.max_files {
                 return Err(ProjectLoadError::TooManyFiles(options.max_files));

@@ -97,13 +97,8 @@ enum ResolutionKey {
 }
 
 #[derive(Debug, Default)]
-/// Mutable state owned by the resolver during expression resolution.
-///
-/// The resolver keeps these lifecycles together so their borrow order is
-/// explicit at the boundary and no interior-mutation tricks are needed.
-struct ResolverState {
-    /// Interned value arena and binding identities.
-    values: ValueTable,
+/// Resolution cache and recursion guards.
+struct ResolverCache {
     /// Fresh object values cached by checked source range to avoid
     /// allocating duplicate identities for the same syntactic object.
     fresh_values: BTreeMap<ParserSpanKey, ValueId>,
@@ -128,8 +123,11 @@ pub(super) struct Resolver<'a> {
     names: NameTableCtx<'a>,
     /// SWC-to-domain span conversion and validation.
     coordinates: SpanNormalizer,
-    /// Mutable state for value interning, caching, and recursion guards.
-    state: RefCell<ResolverState>,
+    /// Interned value arena. Separated from the resolution cache so that
+    /// immutable queries can borrow arena entries without deep cloning.
+    values: RefCell<ValueTable>,
+    /// Resolution cache, fresh-object map, and recursion guard.
+    cache: RefCell<ResolverCache>,
 }
 
 impl Lookup for Resolver<'_> {
@@ -172,15 +170,19 @@ impl<'a> Resolver<'a> {
     /// Freeze the interning arena after lowering so artifact consumers retain
     /// the authoritative value shapes alongside the fact stream.
     pub(in crate::analysis) fn into_values(self) -> ValueTable {
-        self.state.into_inner().values
+        self.values.into_inner()
     }
 
     /// Convert a canonical member chain into the arena's structured value.
     /// Keeping this conversion beside `Resolver` ensures callers do not need
     /// to know how rooted values are represented internally.
     pub(super) fn rooted_value(&self, chain: &SymbolPath) -> Value {
+        // `this.` is syntax context rather than part of the provider-rooted
+        // identity. Canonicalize it before interning so aliases of
+        // `this.app.foo` share the same frozen value as `app.foo`.
+        let chain = chain.without_this_prefix();
         self.names
-            .lookup_path(chain)
+            .lookup_path(&chain)
             .map_or(Value::Unknown, |path| Value::RootedMember { path })
     }
 
@@ -235,7 +237,8 @@ impl<'a> Resolver<'a> {
             scopes,
             names,
             coordinates,
-            state: RefCell::new(ResolverState::default()),
+            values: RefCell::new(ValueTable::default()),
+            cache: RefCell::new(ResolverCache::default()),
         }
     }
 
@@ -283,7 +286,12 @@ impl<'a> Resolver<'a> {
     }
 
     pub(in crate::analysis) fn value_arena_exhausted(&self) -> bool {
-        self.state.borrow().values.exhausted()
+        self.values.borrow().exhausted()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn value_snapshot(&self) -> ValueTable {
+        self.values.borrow().clone()
     }
 
     pub(in crate::analysis) fn instance_member_available(&self, member: &MemberExpr) -> bool {
@@ -327,10 +335,8 @@ mod tests {
             scopes,
             names,
             coordinates: SpanNormalizer::default(),
-            state: RefCell::new(ResolverState {
-                values,
-                ..ResolverState::default()
-            }),
+            values: RefCell::new(values),
+            cache: RefCell::new(ResolverCache::default()),
         };
         assert_eq!(
             resolver.call_provenance_for_value(ValueId::UNKNOWN),
@@ -340,5 +346,158 @@ mod tests {
                 observed: None,
             })
         );
+    }
+
+    #[test]
+    fn const_value_follows_binding_chain_to_static_values() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let inner = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::StaticString("hello".into()));
+        let key = crate::analysis::value::BindingKey::new(
+            crate::analysis::value::BindingRoot::Global("test".into()),
+        );
+        let id = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::Binding { key, target: inner });
+
+        let result = resolver.const_value(id);
+        assert_eq!(result, ConstValue::String("hello".into()));
+    }
+
+    #[test]
+    fn const_value_materializes_static_arrays_with_nested_bindings() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let one = resolver.values.borrow_mut().intern(Value::StaticNumber(1));
+        let key = crate::analysis::value::BindingKey::new(
+            crate::analysis::value::BindingRoot::Global("x".into()),
+        );
+        let wrapped = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::Binding { key, target: one });
+        let two = resolver.values.borrow_mut().intern(Value::StaticNumber(2));
+        let array = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::StaticArray(vec![wrapped, two]));
+
+        let result = resolver.const_value(array);
+        assert_eq!(
+            result,
+            ConstValue::Array(vec![
+                ConstValue::NonNegativeInteger(1),
+                ConstValue::NonNegativeInteger(2),
+            ])
+        );
+    }
+
+    #[test]
+    fn const_value_returns_unknown_for_uninterned_id() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let result = resolver.const_value(ValueId(u32::MAX));
+        assert_eq!(result, ConstValue::Unknown);
+    }
+
+    #[test]
+    fn call_provenance_follows_binding_to_global() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let inner = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::Global("fetch".into()));
+        let key = crate::analysis::value::BindingKey::new(
+            crate::analysis::value::BindingRoot::Global("test".into()),
+        );
+        let id = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::Binding { key, target: inner });
+
+        assert_eq!(
+            resolver.call_provenance_for_value(id),
+            SymbolCallProvenance::Global {
+                name: "fetch".into()
+            }
+        );
+    }
+
+    #[test]
+    fn call_provenance_follows_multi_level_binding_chain() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let inner = resolver.values.borrow_mut().intern(Value::ModuleExport {
+            module: "mod".into(),
+            export: "fn".into(),
+        });
+        let key1 = crate::analysis::value::BindingKey::new(
+            crate::analysis::value::BindingRoot::Global("a".into()),
+        );
+        let mid = resolver.values.borrow_mut().intern(Value::Binding {
+            key: key1,
+            target: inner,
+        });
+        let key2 = crate::analysis::value::BindingKey::new(
+            crate::analysis::value::BindingRoot::Global("b".into()),
+        );
+        let id = resolver.values.borrow_mut().intern(Value::Binding {
+            key: key2,
+            target: mid,
+        });
+
+        assert_eq!(
+            resolver.call_provenance_for_value(id),
+            SymbolCallProvenance::ModuleExport {
+                module: "mod".into(),
+                export: "fn".into()
+            }
+        );
+    }
+
+    #[test]
+    fn value_exhaustion_distinguishes_unsupported_from_budget() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        assert!(!resolver.value_arena_exhausted());
+
+        let mut values = ValueTable::default();
+        for value in 0..MAX_VALUES {
+            let _ = values.intern(Value::StaticNumber(value));
+        }
+        assert!(values.exhausted());
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver {
+            scopes,
+            names,
+            coordinates: SpanNormalizer::default(),
+            values: RefCell::new(values),
+            cache: RefCell::new(ResolverCache::default()),
+        };
+        assert!(resolver.value_arena_exhausted());
     }
 }

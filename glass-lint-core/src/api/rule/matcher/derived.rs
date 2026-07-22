@@ -1,8 +1,6 @@
 //! Constructor, class, and returned/instance member matcher declarations.
 
-use crate::api::rule::{
-    MatcherBuildError, ModuleSpecifierPattern, matcher::SymbolProvenance,
-};
+use crate::api::rule::{MatcherBuildError, ModuleSpecifierPattern, matcher::SymbolProvenance};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Matcher for a constructor invocation.
@@ -201,11 +199,10 @@ impl ReturnedMemberCallMatcher {
     }
 
     fn normalize(&mut self) {
-        self.source =
-            crate::api::rule::matcher::canonical_rooted_chain(
-                &crate::api::rule::matcher::normalize_member_chain(&self.source),
-            )
-            .to_string();
+        self.source = crate::api::rule::matcher::canonical_rooted_chain(
+            &crate::api::rule::matcher::normalize_member_chain(&self.source),
+        )
+        .to_string();
         self.member = self.member.trim().to_string();
     }
 
@@ -249,11 +246,10 @@ impl ReturnedMemberReadMatcher {
     }
 
     fn normalize(&mut self) {
-        self.source =
-            crate::api::rule::matcher::canonical_rooted_chain(
-                &crate::api::rule::matcher::normalize_member_chain(&self.source),
-            )
-            .to_string();
+        self.source = crate::api::rule::matcher::canonical_rooted_chain(
+            &crate::api::rule::matcher::normalize_member_chain(&self.source),
+        )
+        .to_string();
         self.member = self.member.trim().to_string();
     }
 

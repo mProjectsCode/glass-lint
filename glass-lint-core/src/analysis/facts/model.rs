@@ -131,6 +131,10 @@ pub(in crate::analysis) enum FunctionBoundary {
 
 /// Pre-computed evaluation of a single argument at a call site.  Stored in
 /// the `Call` fact so argument predicates never need to reach back to the AST.
+///
+/// String values, object keys, rooted chains, and nested projections are all
+/// derivable from [`ValueId`] through the frozen [`ValueTable`] owned by the
+/// [`FactStream`]; this struct retains only the irreducible event data.
 #[derive(Debug, Clone)]
 pub(in crate::analysis) struct CallArgInfo {
     /// Value identity of the complete argument expression.
@@ -139,17 +143,6 @@ pub(in crate::analysis) struct CallArgInfo {
     pub(in crate::analysis) base_value: ValueId,
     /// Static path from `base_value` to the argument, if proven.
     pub(in crate::analysis) base_path: PathId,
-    /// Statically evaluated string value, when available.
-    pub(in crate::analysis) static_string: Option<String>,
-    /// Statically known keys of a finite object argument.
-    pub(in crate::analysis) object_keys: Option<Vec<NameId>>,
-    /// Statically known direct object-property string values.
-    pub(in crate::analysis) property_strings: Vec<(NameId, String)>,
-    /// Proven rooted member chain for this argument.
-    pub(in crate::analysis) rooted_chain: Option<NamePath>,
-    /// Values reachable from this argument through a statically known object
-    /// or array shape. The root is included with an empty path.
-    pub(in crate::analysis) projections: Vec<ValueProjection>,
     /// A spread argument is intentionally not projected: its arity and
     /// element identities are not known to the summary pass.
     pub(in crate::analysis) spread: bool,
@@ -158,39 +151,15 @@ pub(in crate::analysis) struct CallArgInfo {
 }
 
 impl CallArgInfo {
-    /// Default unknown argument with the empty root projection. Used for
-    /// missing bound arguments, spread content, and unresolved values.
+    /// Default unknown argument. Used for missing bound arguments, spread
+    /// content, and unresolved values.
     pub(in crate::analysis) fn unknown() -> Self {
         Self {
             value: ValueId::UNKNOWN,
             base_value: ValueId::UNKNOWN,
             base_path: PathId::EMPTY,
-            static_string: None,
-            object_keys: None,
-            property_strings: Vec::new(),
-            rooted_chain: None,
-            projections: vec![ValueProjection {
-                path: PathId::EMPTY,
-                value: ValueId::UNKNOWN,
-            }],
             spread: false,
             provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
-        }
-    }
-
-    /// Argument with a statically known string value.
-    pub(in crate::analysis) fn with_static_string(value: String) -> Self {
-        Self {
-            static_string: Some(value),
-            ..Self::unknown()
-        }
-    }
-
-    /// Argument whose value was a rooted expression chain.
-    pub(in crate::analysis) fn with_rooted_chain(chain: NamePath) -> Self {
-        Self {
-            rooted_chain: Some(chain),
-            ..Self::unknown()
         }
     }
 }
@@ -215,15 +184,6 @@ impl<'a> ArgumentView<'a> {
         self.static_string = Some(value);
         self
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// One statically addressable value reachable from an argument or parameter.
-pub(in crate::analysis) struct ValueProjection {
-    /// Interned property/index path from the argument root.
-    pub(in crate::analysis) path: PathId,
-    /// Value identity at that path.
-    pub(in crate::analysis) value: ValueId,
 }
 
 /// One binding introduced by a function parameter pattern. `path` identifies
@@ -260,13 +220,11 @@ pub(in crate::analysis) struct CallUnwrap {
 /// matcher-specific state.  All provenance is resolved once at build time.
 #[derive(Debug, Clone)]
 pub(in crate::analysis) enum FactPayload {
-    /// Identifier or literal reference. A static string is a projection of
-    /// this value/reference fact, not a parallel `StringLiteral` fact kind;
-    /// string matchers consume the projection through the occurrence index.
+    /// Identifier or literal reference. A static string is derivable from
+    /// the frozen [`ValueTable`] via [`ValueId`]; string matchers consume the
+    /// projection through the occurrence index.
     Reference {
         value: ValueId,
-        /// Constant string projection, if this reference is statically known.
-        static_string: Option<String>,
         /// Resolver-backed provenance of the referenced value.
         provenance: SymbolCallProvenance,
     },
@@ -305,8 +263,9 @@ pub(in crate::analysis) enum FactPayload {
         receiver: ValueId,
         /// Statically known property name, if the key is not dynamic.
         property: Option<NameId>,
-        /// Statically evaluated string assigned to the property.
-        static_value: Option<String>,
+        /// Identity of the assigned value; static string derived from frozen
+        /// [`ValueTable`].
+        value: ValueId,
     },
     /// Function or method call.
     Call {

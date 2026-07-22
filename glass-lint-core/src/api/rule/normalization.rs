@@ -10,10 +10,10 @@
 
 use crate::{
     api::rule::matcher::{
-        CallMatcher, ClassMatcher, ConstructorMatcher, InstanceMemberCallMatcher,
-        MatcherFamilyMut, MatcherSet, MemberCallMatcher, MemberCallProvenance,
-        MemberReadProvenance, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher,
-        normalize_flows, normalize_strings, SymbolProvenance,
+        CallMatcher, ClassMatcher, ConstructorMatcher, InstanceMemberCallMatcher, MatcherFamilyMut,
+        MatcherSet, MemberCallMatcher, MemberCallProvenance, MemberReadProvenance,
+        ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, SymbolProvenance, normalize_flows,
+        normalize_strings,
     },
     rules::MemberReadMatcher,
 };

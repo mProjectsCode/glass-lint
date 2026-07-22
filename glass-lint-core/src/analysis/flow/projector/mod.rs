@@ -166,16 +166,19 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             FactPayload::PropertyWrite {
                 receiver,
                 property,
-                static_value,
-                ..
+                value,
             } => {
                 if !self.reachable {
                     return;
                 }
+                let static_string = self
+                    .stream
+                    .values()
+                    .and_then(|values| values.static_string(*value));
                 self.record_property_write(
                     *receiver,
                     property.and_then(|id| self.stream.resolve_name(id)),
-                    static_value.as_deref(),
+                    static_string,
                     fact.id,
                 );
             }
