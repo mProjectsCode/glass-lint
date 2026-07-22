@@ -297,6 +297,37 @@ impl Environment {
     fn is_global_object(&self, name: &str) -> bool {
         self.inner().global_objects.contains_key(name)
     }
+
+    /// Append a deterministic byte representation for cache fingerprinting.
+    /// Iteration order follows BTreeSet/BTreeMap keys, which is stable.
+    pub(crate) fn write_fingerprint_bytes(&self, buf: &mut Vec<u8>) {
+        let inner = self.inner();
+        // Global bindings (sorted).
+        buf.extend_from_slice(&(inner.global_bindings.len() as u64).to_le_bytes());
+        for name in &inner.global_bindings {
+            buf.extend_from_slice(name.as_bytes());
+            buf.push(0u8);
+        }
+        // Global objects (sorted by name).
+        buf.extend_from_slice(&(inner.global_objects.len() as u64).to_le_bytes());
+        for (name, members) in &inner.global_objects {
+            buf.extend_from_slice(name.as_bytes());
+            buf.push(0u8);
+            match members {
+                GlobalObjectMembers::ConfiguredGlobals => {
+                    buf.push(0u8);
+                }
+                GlobalObjectMembers::Restricted(member_set) => {
+                    buf.push(1u8);
+                    buf.extend_from_slice(&(member_set.len() as u64).to_le_bytes());
+                    for member in member_set {
+                        buf.extend_from_slice(member.as_bytes());
+                        buf.push(0u8);
+                    }
+                }
+            }
+        }
+    }
 }
 
 const ECMASCRIPT_GLOBALS: &[&str] = &[

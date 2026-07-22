@@ -26,7 +26,7 @@ pub use diagnostic::{
     RuleMetadata, Severity, SourceLineIndex, SourceRange,
 };
 pub use environment::{Environment, EnvironmentError};
-pub use limits::AnalysisLimits;
+pub use limits::{AnalysisLimitError, AnalysisLimits};
 pub use lint::{
     LintConfigError, Linter, LinterConfig, ProviderCatalogError, RuleBaseline, RuleCatalog,
     RuleOverride, RuleSelection, RuleState,
@@ -34,11 +34,11 @@ pub use lint::{
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,
-    DiagnosticCode, Evidence, EvidenceList, FileReport, Finding, LocallyAnalyzedProject,
-    ProjectCollection, ProjectInput, ProjectInputError, ProjectRelativePath, ReportCombineError,
-    ReportCompletion, ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind,
-    ResolvedProject, ResolverOutcome, SourceAnalysis, SourceFile, SourceLocation, SourceText,
-    is_internal_module_request,
+    DiagnosticCode, Evidence, EvidenceList, FileReport, Finding, LocalExecutionError,
+    LocallyAnalyzedProject, ProjectCollection, ProjectInput, ProjectInputError,
+    ProjectRelativePath, ReportCombineError, ReportCompletion, ResolutionRequest,
+    ResolutionRequestKey, ResolutionRequestKind, ResolvedProject, ResolverOutcome, SourceAnalysis,
+    SourceFile, SourceLocation, SourceText, is_internal_module_request,
 };
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible_text};
 pub use rule_id::RuleId;

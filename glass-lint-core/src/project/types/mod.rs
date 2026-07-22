@@ -10,8 +10,9 @@ mod input;
 mod report;
 
 pub use input::{
-    LinkedModuleTarget, ModuleId, ProjectInput, ProjectInputError, ResolutionRequest,
-    ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceText,
+    LinkedModuleTarget, LocalExecutionError, ModuleId, ProjectInput, ProjectInputError,
+    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile,
+    SourceText,
 };
 pub use report::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,

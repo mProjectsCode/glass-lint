@@ -136,6 +136,25 @@ pub struct ProjectInput {
     pub resolutions: Vec<(ResolutionRequestKey, ResolverOutcome)>,
 }
 
+/// Errors from local job execution (worker panic, channel failure, etc.).
+/// Parse failures are returned as ordinary per-job results, not through this
+/// type.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LocalExecutionError {
+    /// A worker thread panicked during local analysis.
+    WorkerPanic,
+}
+
+impl std::fmt::Display for LocalExecutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WorkerPanic => write!(f, "analysis worker panicked"),
+        }
+    }
+}
+
+impl std::error::Error for LocalExecutionError {}
+
 /// Validation failures for project inputs and explicit resolver answers.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ProjectInputError {
@@ -146,7 +165,7 @@ pub enum ProjectInputError {
     InvalidTarget(String),
     UnknownRequest(ResolutionRequestKey),
     BudgetExceeded(String),
-    LocalExecution(String),
+    LocalExecution(LocalExecutionError),
 }
 
 impl std::fmt::Display for ProjectInputError {
@@ -167,8 +186,8 @@ impl std::fmt::Display for ProjectInputError {
                 key.importer
             ),
             Self::BudgetExceeded(message) => write!(f, "project input budget exceeded: {message}"),
-            Self::LocalExecution(message) => {
-                write!(f, "local analysis execution failed: {message}")
+            Self::LocalExecution(error) => {
+                write!(f, "local analysis execution failed: {error}")
             }
         }
     }

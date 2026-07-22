@@ -5,7 +5,7 @@
 //! this model later without revisiting the AST.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
 
@@ -20,6 +20,62 @@ use crate::{
     },
     project::ModuleId,
 };
+
+// ---- Deterministic FNV-1a hasher for cache fingerprints -------------------
+
+/// FNV-1a hash that is deterministic across processes (fixed seed).
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
+pub struct ArtifactFingerprint(u64);
+
+const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x100_0000_01b3;
+
+fn fnv_hash(bytes: &[u8]) -> u64 {
+    let mut h = FNV_OFFSET;
+    for &b in bytes {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(FNV_PRIME);
+    }
+    h
+}
+
+/// Current hash version – bump when the encoding of any fingerprint
+/// dimension changes so that cached artifacts from older versions are
+/// naturally evicted.
+const FINGERPRINT_VERSION: u64 = 1;
+
+impl ArtifactFingerprint {
+    /// Versioned deterministic hash of all artifact-affecting inputs.
+    /// Rule selection is intentionally excluded.
+    pub fn compute(
+        source: &crate::SourceText,
+        language: crate::SourceLanguage,
+        normalization_mode: &str,
+        environment: &crate::Environment,
+        limits: &crate::AnalysisLimits,
+        engine_version: &str,
+    ) -> Self {
+        // Collect all fields into one byte buffer so the hash is a single pass.
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&FINGERPRINT_VERSION.to_le_bytes());
+        buf.extend_from_slice(source.as_bytes());
+        buf.push(match language {
+            crate::SourceLanguage::JavaScript => 0u8,
+            crate::SourceLanguage::TypeScript => 1u8,
+        });
+        buf.extend_from_slice(normalization_mode.as_bytes());
+        buf.push(0u8); // separator
+        environment.write_fingerprint_bytes(&mut buf);
+        buf.extend_from_slice(&limits.syntax_depth().to_le_bytes());
+        buf.extend_from_slice(&limits.semantic_operations().to_le_bytes());
+        buf.extend_from_slice(&limits.effect_operations().to_le_bytes());
+        buf.extend_from_slice(&limits.evidence_items().to_le_bytes());
+        buf.extend_from_slice(&limits.link_operations().to_le_bytes());
+        buf.extend_from_slice(&limits.flow_operations().to_le_bytes());
+        buf.extend_from_slice(engine_version.as_bytes());
+        Self(fnv_hash(&buf))
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct LocatedSourceContext {
@@ -100,6 +156,18 @@ impl ArtifactCacheKey {
         }
     }
 
+    /// Compute the deterministic fingerprint for this key.
+    pub(crate) fn fingerprint(&self) -> ArtifactFingerprint {
+        ArtifactFingerprint::compute(
+            &self.source,
+            self.language,
+            self.normalization_mode,
+            &self.environment,
+            &self.limits,
+            self.engine_version,
+        )
+    }
+
     #[cfg(test)]
     pub(crate) fn for_engine_version(
         source: &crate::SourceFile,
@@ -133,15 +201,26 @@ pub struct SharedSemanticArtifact {
     pub semantic: Arc<SemanticArtifact>,
 }
 
-/// Bounded cache of successfully lowered artifacts owned by a reusable runtime.
-/// Parse failures are deliberately not cached; successfully lowered artifacts,
-/// including exhausted ones, are safe to reuse because their status is data.
+/// One entry in the artifact cache, retaining the full key for collision
+/// verification. A fingerprint match is not a hit until the full key matches.
+struct CacheEntry {
+    key: ArtifactCacheKey,
+    artifact: SharedSemanticArtifact,
+}
+
+/// Bounded FIFO artifact cache indexed by a deterministic fingerprint.
 ///
-/// The cache is a simple FIFO vector with a fixed capacity. Lookups are linear
-/// but the cache is small (64 entries) and comparison is by full key equality.
+/// Lookups compute the fingerprint before taking the lock; under the lock
+/// only the matching bucket is inspected. Each bucket holds entries whose
+/// fingerprints collide; an exact hit requires the full key to match.
+///
+/// The FIFO eviction policy is explicit: a `VecDeque` tracks insertion-order
+/// fingerprints so that eviction pops the oldest entry without shifting a
+/// vector or scanning unrelated buckets.
 #[derive(Default)]
 pub struct ArtifactCache {
-    entries: Vec<(ArtifactCacheKey, SharedSemanticArtifact)>,
+    buckets: HashMap<ArtifactFingerprint, Vec<CacheEntry>>,
+    fifo: VecDeque<ArtifactFingerprint>,
 }
 
 /// Synchronized runtime-owned cache. A poisoned mutex is recovered so an
@@ -150,12 +229,15 @@ pub struct ArtifactCache {
 pub struct ArtifactCacheHandle(Arc<Mutex<ArtifactCache>>);
 
 impl ArtifactCacheHandle {
+    /// Look up an artifact by fingerprint + full key verification.
+    /// The fingerprint is computed *before* acquiring the lock.
     pub fn get(&self, key: &ArtifactCacheKey) -> Option<SharedSemanticArtifact> {
+        let fp = key.fingerprint();
         let cache = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        cache.get(key)
+        cache.get(fp, key)
     }
 
     pub fn insert(&self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
@@ -168,42 +250,60 @@ impl ArtifactCacheHandle {
 
     #[cfg(test)]
     pub(crate) const fn capacity() -> usize {
-        ArtifactCache::capacity()
+        ArtifactCache::MAX_ENTRIES
     }
 }
 
 impl ArtifactCache {
     const MAX_ENTRIES: usize = 64;
 
-    pub fn get(&self, key: &ArtifactCacheKey) -> Option<SharedSemanticArtifact> {
-        self.entries
-            .iter()
-            .find(|(candidate, _)| candidate == key)
-            .map(|(_, artifact)| artifact.clone())
+    /// Look up by fingerprint then verify full key.
+    fn get(
+        &self,
+        fp: ArtifactFingerprint,
+        key: &ArtifactCacheKey,
+    ) -> Option<SharedSemanticArtifact> {
+        self.buckets.get(&fp)?.iter().find_map(|entry| {
+            if entry.key == *key {
+                Some(entry.artifact.clone())
+            } else {
+                None
+            }
+        })
     }
 
-    /// Insert or replace an artifact, returning whether the FIFO capacity
-    /// policy evicted the oldest distinct key.
-    pub fn insert(&mut self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
-        if let Some((_, existing)) = self
-            .entries
-            .iter_mut()
-            .find(|(candidate, _)| *candidate == key)
+    /// Insert or replace an artifact. Returns whether the FIFO policy evicted
+    /// the oldest entry. An exact-match replacement does not touch the FIFO
+    /// and never counts as eviction.
+    fn insert(&mut self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
+        let fp = key.fingerprint();
+        // Try to replace an exact existing key first.
+        if let Some(bucket) = self.buckets.get_mut(&fp)
+            && let Some(entry) = bucket.iter_mut().find(|e| e.key == key)
         {
-            *existing = artifact;
+            entry.artifact = artifact;
             return false;
         }
-        let evicted = self.entries.len() >= Self::MAX_ENTRIES;
-        if evicted {
-            self.entries.remove(0);
-        }
-        self.entries.push((key, artifact));
+        // New entry: enforce FIFO capacity before inserting.
+        let evicted = if self.fifo.len() >= Self::MAX_ENTRIES {
+            if let Some(oldest_fp) = self.fifo.pop_front()
+                && let Some(bucket) = self.buckets.get_mut(&oldest_fp)
+            {
+                bucket.remove(0);
+                if bucket.is_empty() {
+                    self.buckets.remove(&oldest_fp);
+                }
+            }
+            true
+        } else {
+            false
+        };
+        self.fifo.push_back(fp);
+        self.buckets
+            .entry(fp)
+            .or_default()
+            .push(CacheEntry { key, artifact });
         evicted
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn capacity() -> usize {
-        Self::MAX_ENTRIES
     }
 }
 

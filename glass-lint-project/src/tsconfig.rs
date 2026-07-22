@@ -152,11 +152,14 @@ impl TsconfigDto {
             _ => StringField::Absent,
         };
 
-        let references = value.get("references").and_then(Value::as_array).map_or_else(Vec::new, |arr| {
-            arr.iter()
-                .filter_map(|r| r.get("path").and_then(Value::as_str).map(String::from))
-                .collect()
-        });
+        let references = value
+            .get("references")
+            .and_then(Value::as_array)
+            .map_or_else(Vec::new, |arr| {
+                arr.iter()
+                    .filter_map(|r| r.get("path").and_then(Value::as_str).map(String::from))
+                    .collect()
+            });
 
         Self {
             extends,

@@ -21,11 +21,11 @@ pub struct CoreConfig {
 }
 
 impl CoreConfig {
-    /// Validate the selection and limits against a concrete catalog.
+    /// Validate the selection against a concrete catalog.
+    /// Limits are guaranteed valid by construction through
+    /// [`AnalysisLimits::new`] or deserialization and do not need
+    /// re-validation.
     pub fn validate(&self, catalog: &RuleCatalog) -> Result<(), LintConfigError> {
-        self.limits
-            .validate()
-            .map_err(LintConfigError::InvalidLimits)?;
         self.selection.validate_against(catalog)
     }
 }

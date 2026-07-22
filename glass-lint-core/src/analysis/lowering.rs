@@ -124,7 +124,7 @@ pub fn lower_source(
         &source.source,
         &source.path,
         source.language,
-        linter.analysis_limits().syntax_depth,
+        linter.analysis_limits().syntax_depth(),
     )?;
     let coordinates = SpanNormalizer::new(parsed.source_start, source.source.clone());
     let semantic = lower_program(
@@ -170,7 +170,7 @@ fn check_facts_budget(
     {
         Some(IncompleteReason::BudgetExhausted {
             component: AnalysisComponent::Facts,
-            limit: limits.semantic_operations,
+            limit: limits.semantic_operations(),
             observed: Some(stream.facts().len()),
         })
     } else {
@@ -201,7 +201,7 @@ fn check_effects_budget(
         .budget_exhausted()
         .then_some(IncompleteReason::BudgetExhausted {
             component: AnalysisComponent::Effects,
-            limit: limits.effect_operations,
+            limit: limits.effect_operations(),
             observed: Some(effects.operation_count()),
         })
 }
@@ -246,7 +246,7 @@ impl LocalLowering<'_> {
         let mut resolver = resolution::Resolver::new(scope_graph, coordinates.clone());
 
         let mut builder =
-            facts::build::FactBuilder::with_limit(&mut resolver, limits.semantic_operations);
+            facts::build::FactBuilder::with_limit(&mut resolver, limits.semantic_operations());
         VisitWith::visit_with(program, &mut builder);
 
         let built = builder.into_built_facts();
@@ -289,7 +289,7 @@ impl LocalLowering<'_> {
             .expect("Stream already owns a NameTable");
 
         let facts = SemanticFacts::from_lowering(stream, interface, environment, values);
-        let effects = FunctionEffects::collect(facts.stream(), limits.effect_operations);
+        let effects = FunctionEffects::collect(facts.stream(), limits.effect_operations());
         if let Some(reason) = check_effects_budget(&effects, limits) {
             status.record(StatusScope::Project, reason);
         }

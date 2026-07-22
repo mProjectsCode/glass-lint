@@ -44,10 +44,7 @@ impl ProjectLoadOutcome {
         }
     }
 
-    fn partial(
-        mut report: AnalysisReport,
-        reason: ProjectLoadError,
-    ) -> Self {
+    fn partial(mut report: AnalysisReport, reason: ProjectLoadError) -> Self {
         let code = glass_lint_core::DiagnosticCode::new("incomplete_project")
             .expect("incomplete_project is a valid diagnostic code");
         report.completion = glass_lint_core::ReportCompletion::Partial;

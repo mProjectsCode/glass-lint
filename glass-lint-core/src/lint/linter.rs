@@ -130,10 +130,8 @@ impl Linter {
                 enabled.push(crate::api::classification::RuleIndex::new(index));
             }
         }
-        config
-            .limits
-            .validate()
-            .map_err(LintConfigError::InvalidLimits)?;
+        // Limits are guaranteed valid by construction through
+        // `AnalysisLimits::new` or `Default`; no re-validation needed.
         Ok(Self {
             catalog,
             environment: config.environment,
@@ -285,7 +283,7 @@ impl Linter {
             self.catalog.compiled(),
             &self.catalog.rules,
             &self.enabled,
-            self.limits.evidence_items,
+            self.limits.evidence_items(),
         );
         project.record_flow_exhaustion(&projection_outcome);
         let matching_elapsed = matching_start.elapsed();

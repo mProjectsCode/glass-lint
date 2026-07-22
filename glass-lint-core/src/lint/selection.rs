@@ -4,7 +4,7 @@
 //! that enable or disable rules by pattern. Selectors support `*` wildcards
 //! for matching groups of rules.
 
-use crate::{RuleId, lint::catalog::RuleCatalog};
+use crate::{AnalysisLimitError, RuleId, lint::catalog::RuleCatalog};
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Default, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
@@ -232,7 +232,7 @@ pub enum LintConfigError {
     /// A catalog contains the same fully-qualified rule more than once.
     DuplicateRule(RuleId),
     /// Safety limits are invalid.
-    InvalidLimits(String),
+    InvalidLimits(AnalysisLimitError),
 }
 
 impl std::fmt::Display for LintConfigError {
@@ -241,7 +241,7 @@ impl std::fmt::Display for LintConfigError {
             Self::UnknownRule(id) => write!(f, "unknown rule `{id}`"),
             Self::InvalidSelector(message) => write!(f, "invalid rule selector: {message}"),
             Self::DuplicateRule(id) => write!(f, "duplicate rule `{id}`"),
-            Self::InvalidLimits(message) => write!(f, "invalid resource limits: {message}"),
+            Self::InvalidLimits(error) => write!(f, "invalid resource limits: {error}"),
         }
     }
 }

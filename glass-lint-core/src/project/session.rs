@@ -24,12 +24,12 @@ struct LocalJobResult {
 trait LocalJobExecutor {
     fn execute(
         &self,
-        jobs: Vec<LocalJob>,
+        jobs: Box<dyn Iterator<Item = LocalJob>>,
         worker_limit: NonZeroUsize,
         linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
-    ) -> Result<(), ProjectInputError>;
+    ) -> Result<(), LocalExecutionError>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -165,74 +165,74 @@ struct ThreadLocalJobExecutor;
 impl LocalJobExecutor for ThreadLocalJobExecutor {
     fn execute(
         &self,
-        jobs: Vec<LocalJob>,
+        mut jobs: Box<dyn Iterator<Item = LocalJob>>,
         worker_limit: NonZeroUsize,
         linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
-    ) -> Result<(), ProjectInputError> {
+    ) -> Result<(), LocalExecutionError> {
         let bound = outstanding_job_bound(worker_limit);
-        let mut remaining = VecDeque::from(jobs);
-        while !remaining.is_empty() {
-            let take = bound.min(remaining.len());
-            let batch: Vec<LocalJob> = (0..take).filter_map(|_| remaining.pop_front()).collect();
+        loop {
+            let batch: Vec<LocalJob> = jobs.by_ref().take(bound).collect();
+            if batch.is_empty() {
+                return Ok(());
+            }
             let batch_size = batch.len();
             for _ in 0..batch_size {
                 observer.observe(ExecutionEvent::Submitted);
             }
-            let chunk_size = batch_size.max(1).div_ceil(worker_limit.get());
-            // Split the owned batch into owned per-worker chunks so each
-            // worker moves job fields into LocalJobResult without cloning.
-            let mut worker_chunks: Vec<Vec<LocalJob>> = Vec::new();
-            let mut remaining_batch = VecDeque::from(batch);
-            while !remaining_batch.is_empty() {
-                let take = chunk_size.min(remaining_batch.len());
-                worker_chunks.push(
-                    (0..take)
-                        .filter_map(|_| remaining_batch.pop_front())
-                        .collect(),
-                );
-            }
-            let batch_results: Result<Vec<LocalJobResult>, ProjectInputError> =
+            // Shared work queue: workers pop jobs one at a time instead of
+            // receiving pre-partitioned per-worker Vec batches.
+            let queue = std::sync::Mutex::new(VecDeque::from(batch));
+            let batch_results: Result<Vec<LocalJobResult>, LocalExecutionError> =
                 std::thread::scope(|scope| {
                     let mut handles = Vec::new();
-                    for worker_jobs in worker_chunks {
-                        handles.push(scope.spawn(move || {
-                            worker_jobs
-                                .into_iter()
-                                .map(|job| {
-                                    observer.observe(ExecutionEvent::Started);
-                                    observer.observe(ExecutionEvent::ParseAttempted);
-                                    observer.observe(ExecutionEvent::LowerAttempted);
-                                    let result = crate::analysis::lower_source(linter, &job.source)
-                                        .map(|ls| ls.semantic);
-                                    observer.observe(ExecutionEvent::Finished);
-                                    LocalJobResult {
-                                        path: job.path,
-                                        source: job.source,
-                                        key: job.key,
-                                        result,
+                    let worker_count = worker_limit.get().min(batch_size);
+                    for _ in 0..worker_count {
+                        handles.push(scope.spawn(|| {
+                            let mut results = Vec::new();
+                            loop {
+                                let job = {
+                                    let mut q = queue
+                                        .lock()
+                                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                                    q.pop_front()
+                                };
+                                match job {
+                                    Some(job) => {
+                                        observer.observe(ExecutionEvent::Started);
+                                        observer.observe(ExecutionEvent::ParseAttempted);
+                                        observer.observe(ExecutionEvent::LowerAttempted);
+                                        let result =
+                                            crate::analysis::lower_source(linter, &job.source)
+                                                .map(|ls| ls.semantic);
+                                        observer.observe(ExecutionEvent::Finished);
+                                        results.push(LocalJobResult {
+                                            path: job.path,
+                                            source: job.source,
+                                            key: job.key,
+                                            result,
+                                        });
                                     }
-                                })
-                                .collect::<Vec<_>>()
+                                    None => break,
+                                }
+                            }
+                            results
                         }));
                     }
-                    handles
-                        .into_iter()
-                        .try_fold(Vec::new(), |mut results, handle| {
-                            let worker_results = handle.join().map_err(|_| {
-                                ProjectInputError::LocalExecution("analysis worker panicked".into())
-                            })?;
-                            results.extend(worker_results);
-                            Ok::<_, ProjectInputError>(results)
-                        })
+                    handles.into_iter().try_fold(Vec::new(), |mut all, handle| {
+                        let worker_results = handle
+                            .join()
+                            .map_err(|_| LocalExecutionError::WorkerPanic)?;
+                        all.extend(worker_results);
+                        Ok::<_, LocalExecutionError>(all)
+                    })
                 });
             let batch_results = batch_results?;
             for result in batch_results {
                 release(result);
             }
         }
-        Ok(())
     }
 }
 
@@ -251,21 +251,22 @@ pub(super) struct ControlledLocalJobExecutor(ControlledReleaseOrder);
 impl LocalJobExecutor for ControlledLocalJobExecutor {
     fn execute(
         &self,
-        jobs: Vec<LocalJob>,
+        jobs: Box<dyn Iterator<Item = LocalJob>>,
         _worker_limit: NonZeroUsize,
         linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
-    ) -> Result<(), ProjectInputError> {
-        let mut jobs = jobs.into_iter().map(Some).collect::<Vec<_>>();
+    ) -> Result<(), LocalExecutionError> {
+        let all: Vec<_> = jobs.collect();
         let indexes: Vec<usize> = match self.0 {
-            ControlledReleaseOrder::Forward => (0..jobs.len()).collect(),
-            ControlledReleaseOrder::Reverse => (0..jobs.len()).rev().collect(),
-            ControlledReleaseOrder::Interleaved => (0..jobs.len())
+            ControlledReleaseOrder::Forward => (0..all.len()).collect(),
+            ControlledReleaseOrder::Reverse => (0..all.len()).rev().collect(),
+            ControlledReleaseOrder::Interleaved => (0..all.len())
                 .step_by(2)
-                .chain((1..jobs.len()).step_by(2))
+                .chain((1..all.len()).step_by(2))
                 .collect(),
         };
+        let mut jobs: Vec<_> = all.into_iter().map(Some).collect();
         for index in indexes {
             let job = jobs[index].take().expect("release index is unique");
             observer.observe(ExecutionEvent::Submitted);
@@ -372,7 +373,7 @@ fn insert_and_notify(
 }
 
 use crate::{
-    Linter, ParseDiagnostic, ProjectRelativePath,
+    Linter, LocalExecutionError, ParseDiagnostic, ProjectRelativePath,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
         SemanticArtifact, SharedSemanticArtifact,
@@ -610,7 +611,6 @@ impl<'a> ProjectCollection<'a> {
         self.analyze_pending_sources(workers.get())
     }
 
-    #[allow(clippy::unnecessary_wraps)]
     fn analyze_pending_sources_with<E: LocalJobExecutor>(
         &mut self,
         worker_count: usize,
@@ -661,7 +661,15 @@ impl<'a> ProjectCollection<'a> {
             }
             observer.observe(ExecutionEvent::Merged);
         };
-        executor.execute(uncached, worker_count, self.linter, observer, &mut release)?;
+        executor
+            .execute(
+                Box::new(uncached.into_iter()),
+                worker_count,
+                self.linter,
+                observer,
+                &mut release,
+            )
+            .map_err(ProjectInputError::LocalExecution)?;
         requests.sort_by(|left, right| {
             (
                 left.key.importer.as_str(),

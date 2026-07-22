@@ -77,10 +77,7 @@ fn ambiguous_report() -> AnalysisReport {
 fn status_policy_matrix_has_expected_scope_and_completion() {
     let linter = test_linter();
     let syntax = lint_one(&linter, "syntax.js", "function {");
-    let depth_limits = AnalysisLimits {
-        syntax_depth: 1,
-        ..AnalysisLimits::default()
-    };
+    let depth_limits = AnalysisLimits::default().with_syntax_depth(1).unwrap();
     let depth = lint_one(
         &configured_linter(depth_limits),
         "depth.js",
@@ -187,7 +184,7 @@ fn proven_missing_export_is_diagnostic_but_complete() {
 
 fn assert_limit_triplet(
     configure: fn(AnalysisLimits) -> crate::Linter,
-    component: fn(&mut AnalysisLimits) -> &mut usize,
+    setter: fn(&mut AnalysisLimits, usize),
     required: usize,
     code: &str,
     scope: Option<&str>,
@@ -200,7 +197,7 @@ fn assert_limit_triplet(
         (required + 1, ReportCompletion::Complete),
     ] {
         let mut limits = AnalysisLimits::default();
-        *component(&mut limits) = limit;
+        setter(&mut limits, limit);
         let report = analyze(&configure(limits));
         assert_eq!(report.completion, expected, "{code} limit={limit}");
         if expected == ReportCompletion::Partial {
@@ -231,7 +228,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
     };
     assert_limit_triplet(
         configured_linter,
-        |limits| &mut limits.semantic_operations,
+        AnalysisLimits::set_semantic_operations,
         7,
         "semantic_budget_exhausted",
         Some("main.js"),
@@ -242,7 +239,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
         |linter: &crate::Linter| lint_one(linter, "main.js", "function f(value) { return value; }");
     assert_limit_triplet(
         configured_linter,
-        |limits| &mut limits.effect_operations,
+        AnalysisLimits::set_effect_operations,
         3,
         "effect_size_budget_exhausted",
         Some("main.js"),
@@ -263,7 +260,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
     };
     assert_limit_triplet(
         configured_linter,
-        |limits| &mut limits.link_operations,
+        AnalysisLimits::set_link_operations,
         2,
         "graph_link_budget_exhausted",
         None,
@@ -287,7 +284,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
     };
     assert_limit_triplet(
         configured_flow_linter,
-        |limits| &mut limits.flow_operations,
+        AnalysisLimits::set_flow_operations,
         2,
         "flow_link_budget_exhausted",
         None,

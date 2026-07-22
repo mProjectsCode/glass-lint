@@ -119,10 +119,9 @@ fn session_retry_does_not_cache_parse_failure() {
 
 #[test]
 fn session_reuses_exhausted_artifact_with_partial_status() {
-    let limits = AnalysisLimits {
-        semantic_operations: 1,
-        ..AnalysisLimits::default()
-    };
+    let limits = AnalysisLimits::default()
+        .with_semantic_operations(1)
+        .unwrap();
     let linter = test_linter_with_limits(limits);
     let mut session = linter.begin_project("/project").unwrap();
     session
@@ -231,30 +230,30 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
 
     let defaults = AnalysisLimits::default();
     let changed_limits = [
-        AnalysisLimits {
-            syntax_depth: defaults.syntax_depth + 1,
-            ..defaults.clone()
-        },
-        AnalysisLimits {
-            semantic_operations: defaults.semantic_operations + 1,
-            ..defaults.clone()
-        },
-        AnalysisLimits {
-            effect_operations: defaults.effect_operations + 1,
-            ..defaults.clone()
-        },
-        AnalysisLimits {
-            evidence_items: defaults.evidence_items + 1,
-            ..defaults.clone()
-        },
-        AnalysisLimits {
-            link_operations: defaults.link_operations + 1,
-            ..defaults.clone()
-        },
-        AnalysisLimits {
-            flow_operations: defaults.flow_operations + 1,
-            ..defaults
-        },
+        defaults
+            .clone()
+            .with_syntax_depth(defaults.syntax_depth() + 1)
+            .unwrap(),
+        defaults
+            .clone()
+            .with_semantic_operations(defaults.semantic_operations() + 1)
+            .unwrap(),
+        defaults
+            .clone()
+            .with_effect_operations(defaults.effect_operations() + 1)
+            .unwrap(),
+        defaults
+            .clone()
+            .with_evidence_items(defaults.evidence_items() + 1)
+            .unwrap(),
+        defaults
+            .clone()
+            .with_link_operations(defaults.link_operations() + 1)
+            .unwrap(),
+        defaults
+            .clone()
+            .with_flow_operations(defaults.flow_operations() + 1)
+            .unwrap(),
     ];
     for (index, limits) in changed_limits.into_iter().enumerate() {
         let linter = test_linter_with_limits(limits);

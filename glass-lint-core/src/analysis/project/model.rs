@@ -243,8 +243,8 @@ impl ProjectSemanticModel {
             diagnostics: Vec::new(),
             status,
             link_budget: BudgetTracker::default(),
-            link_limit: limits.link_operations,
-            flow_limit: limits.flow_operations,
+            link_limit: limits.link_operations(),
+            flow_limit: limits.flow_operations(),
         }
     }
 
@@ -268,8 +268,8 @@ impl ProjectSemanticModel {
             diagnostics: Vec::new(),
             status: AnalysisStatus::default(),
             link_budget: BudgetTracker::default(),
-            link_limit: limits.link_operations,
-            flow_limit: limits.flow_operations,
+            link_limit: limits.link_operations(),
+            flow_limit: limits.flow_operations(),
         };
         project.propagate_local_status();
         project.build_graph_and_exports();

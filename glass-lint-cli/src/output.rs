@@ -381,10 +381,11 @@ mod tests {
                 vec![RuleCatalog::new("test", vec![rule]).unwrap()],
                 environment,
             )
-            .with_limits(AnalysisLimits {
-                semantic_operations,
-                ..AnalysisLimits::default()
-            }),
+            .with_limits(
+                AnalysisLimits::default()
+                    .with_semantic_operations(semantic_operations)
+                    .unwrap(),
+            ),
         )
         .unwrap()
     }

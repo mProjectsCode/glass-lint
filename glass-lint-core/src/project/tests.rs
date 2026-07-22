@@ -103,10 +103,9 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
 
 #[test]
 fn controlled_release_orders_produce_identical_full_report() {
-    let limits = crate::AnalysisLimits {
-        semantic_operations: 40,
-        ..crate::AnalysisLimits::default()
-    };
+    let limits = crate::AnalysisLimits::default()
+        .with_semantic_operations(40)
+        .unwrap();
     let sources = [
         source_file("z.js", "import value from './dependency.js'; fetch('/z');"),
         source_file("broken.js", "fetch("),
