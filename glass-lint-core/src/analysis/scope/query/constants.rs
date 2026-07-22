@@ -5,7 +5,7 @@ use crate::analysis::scope::query::{
     constant,
 };
 
-impl ScopeGraph<'_> {
+impl ScopeGraph {
     /// Whether an identifier refers to a mutable static object binding.
     pub(in crate::analysis) fn mutable_static_object_at(&self, expr: &Expr) -> bool {
         let Expr::Ident(ident) = expr else {
@@ -16,7 +16,7 @@ impl ScopeGraph<'_> {
     }
 }
 
-impl Lookup for ScopeGraph<'_> {
+impl Lookup for ScopeGraph {
     /// Convert only known static binding provenances into constant values.
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
         if self.has_dynamic_lookup_at(ident.span) {

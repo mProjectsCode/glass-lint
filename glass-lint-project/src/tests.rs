@@ -180,7 +180,7 @@ fn reports_project_phase_metrics_and_operation_counts() {
     assert_eq!(outcome.metrics.files, 2);
     assert_eq!(outcome.metrics.requests, 1);
     assert_eq!(outcome.metrics.edges, 1);
-    assert!(outcome.metrics.timings.total >= outcome.metrics.timings.linking_and_matching);
+    assert!(outcome.metrics.timings.total() >= outcome.metrics.timings.linking_and_matching());
 }
 
 #[test]

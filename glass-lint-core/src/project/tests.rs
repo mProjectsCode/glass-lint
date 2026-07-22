@@ -24,15 +24,81 @@ fn admitted_sources_have_identical_reports_across_worker_counts() {
     let mut reports = Vec::new();
     for workers in [0, 1, 2, 4] {
         let linter = test_linter();
-        let mut session = linter.begin_analysis("/project").unwrap();
-        for source in sources.iter().cloned() {
-            session.admit_source(source).unwrap();
-        }
-        session.analyze_admitted_sources(workers).unwrap();
-        let report = session.finish().unwrap();
+        let mut session = linter.begin_project("/project").unwrap();
+        session
+            .analyze_sources(
+                sources.iter().cloned(),
+                std::num::NonZeroUsize::new(workers).unwrap_or(std::num::NonZeroUsize::MIN),
+            )
+            .unwrap();
+        let report = session
+            .finish_local()
+            .resolve([])
+            .unwrap()
+            .finish()
+            .unwrap();
         reports.push(serde_json::to_value(report).unwrap());
     }
     assert!(reports.windows(2).all(|pair| pair[0] == pair[1]));
+}
+
+#[test]
+fn consuming_project_phases_validate_requests_at_the_boundary() {
+    let linter = test_linter();
+    let mut collection = linter.begin_project("/project").unwrap();
+    let analysis = collection
+        .analyze_source(source_file(
+            "main.js",
+            "import value from './dep.js'; value();",
+        ))
+        .unwrap();
+    assert_eq!(analysis.requests_ref().len(), 1);
+    let key = analysis.requests_ref()[0].key.clone();
+    let local = collection.finish_local();
+    let resolved = local
+        .resolve([(key, crate::ResolverOutcome::Missing)])
+        .unwrap();
+    let report = resolved.finish().unwrap();
+    assert_eq!(report.files.len(), 1);
+}
+
+#[test]
+fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
+    let linter = test_linter();
+    let mut collection = linter.begin_project("/project").unwrap();
+    let analysis = collection
+        .analyze_source(source_file(
+            "main.js",
+            "import value from './dep.js'; value();",
+        ))
+        .unwrap();
+    let key = analysis.requests_ref()[0].key.clone();
+    let mut unknown = key;
+    unknown.kind = crate::ResolutionRequestKind::Require;
+    let local = collection.finish_local();
+    let Err(error) = local.resolve([(unknown, crate::ResolverOutcome::Missing)]) else {
+        panic!("unknown requests must be rejected")
+    };
+    assert!(matches!(error, crate::ProjectInputError::UnknownRequest(_)));
+
+    let mut collection = linter.begin_project("/project").unwrap();
+    let analysis = collection
+        .analyze_source(source_file(
+            "main.js",
+            "import value from './dep.js'; value();",
+        ))
+        .unwrap();
+    let key = analysis.requests_ref()[0].key.clone();
+    let Err(error) = collection.finish_local().resolve([
+        (key.clone(), crate::ResolverOutcome::Missing),
+        (key, crate::ResolverOutcome::Missing),
+    ]) else {
+        panic!("duplicate outcomes must be rejected")
+    };
+    assert!(matches!(
+        error,
+        crate::ProjectInputError::DuplicateResolution(_)
+    ));
 }
 
 #[test]
@@ -54,14 +120,21 @@ fn controlled_release_orders_produce_identical_full_report() {
         ControlledReleaseOrder::Interleaved,
     ] {
         let linter = test_linter_with_limits(limits.clone());
-        let mut session = linter.begin_analysis("/project").unwrap();
-        for source in sources.iter().cloned() {
-            session.admit_source(source).unwrap();
-        }
+        let mut session = linter.begin_project("/project").unwrap();
         session
-            .analyze_admitted_sources_controlled(2, order)
+            .analyze_sources_controlled(sources.iter().cloned(), 2, order)
             .unwrap();
-        reports.push(serde_json::to_value(session.finish().unwrap()).unwrap());
+        reports.push(
+            serde_json::to_value(
+                session
+                    .finish_local()
+                    .resolve([])
+                    .unwrap()
+                    .finish()
+                    .unwrap(),
+            )
+            .unwrap(),
+        );
     }
     assert!(reports.windows(2).all(|pair| pair[0] == pair[1]));
     let report = &reports[0];
@@ -93,15 +166,11 @@ fn controlled_release_orders_produce_identical_full_report() {
 fn active_and_outstanding_use_the_production_bound() {
     for requested in [0, 1, 2, 4] {
         let linter = test_linter();
-        let mut session = linter.begin_analysis("/project").unwrap();
-        for index in 0..12 {
-            session
-                .admit_source(source_file(format!("{index:02}.js"), "fetch('x');"))
-                .unwrap();
-        }
+        let mut session = linter.begin_project("/project").unwrap();
+        let sources = (0..12).map(|index| source_file(format!("{index:02}.js"), "fetch('x');"));
         let observer = CountingExecutionObserver::new();
         session
-            .analyze_admitted_sources_counted(requested, &observer)
+            .analyze_sources_counted(sources, requested, &observer)
             .unwrap();
         let workers = std::num::NonZeroUsize::new(requested).unwrap_or(std::num::NonZeroUsize::MIN);
         let (active, outstanding) = observer.peaks();
@@ -149,9 +218,14 @@ fn session_uses_project_analysis_and_preserves_single_file_findings() {
     let source = "fetch('/remote');\n";
     let direct = linter.lint_snippet(source, "a.js").unwrap();
 
-    let mut session = linter.begin_analysis("/project").unwrap();
-    session.add_source(source_file("a.js", source)).unwrap();
-    let project = session.finish().unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
+    session.analyze_source(source_file("a.js", source)).unwrap();
+    let project = session
+        .finish_local()
+        .resolve([])
+        .unwrap()
+        .finish()
+        .unwrap();
 
     assert_eq!(project.files.len(), 1);
     assert_eq!(project.files[0].path, "a.js");

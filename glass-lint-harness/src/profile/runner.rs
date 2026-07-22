@@ -156,6 +156,10 @@ fn file_profile_summary(
     }
     let operation_counts = sum_operation_counts(&measured.repetitions);
 
+    let mut phase_timings = ProfilePhaseTimings::default();
+    phase_timings.record_discovery(corpus.setup_duration);
+    phase_timings.record_matching(lint_elapsed);
+    phase_timings.record_total(total_start.elapsed());
     ProfileSummary {
         workload: ProfileWorkloadIdentity {
             mode: ProfileWorkload::Files,
@@ -176,12 +180,7 @@ fn file_profile_summary(
         median_repetition_duration: median_duration(&measured.repetitions),
         repetitions: measured.repetitions,
         workload_results: totals.workload_results,
-        phase_timings: ProfilePhaseTimings {
-            discovery: corpus.setup_duration,
-            matching: lint_elapsed,
-            total: total_start.elapsed(),
-            ..ProfilePhaseTimings::default()
-        },
+        phase_timings,
         operation_counts,
     }
 }
@@ -219,7 +218,7 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         counts += project_counts;
         totals.record(result, successful_runs);
     }
-    phases.total = total_start.elapsed();
+    phases.record_total(total_start.elapsed());
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {
             mode: ProfileWorkload::LoaderProject,
@@ -234,12 +233,11 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         diagnostics: totals.diagnostics,
         errors: totals.errors,
         runs: totals.runs,
-        setup_duration: phases.discovery + phases.reads,
-        measured_elapsed: phases.parse_and_local_analysis
-            + phases.resolution
-            + phases.linking
-            + phases.matching,
-        wall_duration: phases.total,
+        setup_duration: phases.discovery() + phases.reads(),
+        measured_elapsed: phases.parse_and_local_analysis()
+            + phases.resolution()
+            + phases.linking_and_matching(),
+        wall_duration: phases.total(),
         median_repetition_duration: median_duration(&measured.repetitions),
         repetitions: measured.repetitions,
         workload_results: totals.workload_results,
@@ -436,6 +434,9 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     let operation_counts = sum_operation_counts(&measured.repetitions);
     let elapsed = measured.total_duration();
     let median_repetition_duration = median_duration(&measured.repetitions);
+    let mut phase_timings = ProfilePhaseTimings::default();
+    phase_timings.record_local_analysis(elapsed);
+    phase_timings.record_total(total_start.elapsed());
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {
             mode: ProfileWorkload::AdmittedProject,
@@ -456,11 +457,7 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         repetitions: measured.repetitions,
         median_repetition_duration,
         workload_results: Vec::new(),
-        phase_timings: ProfilePhaseTimings {
-            parse_and_local_analysis: elapsed,
-            total: total_start.elapsed(),
-            ..Default::default()
-        },
+        phase_timings,
         operation_counts,
     })
 }
@@ -471,7 +468,8 @@ fn admitted_project_run(
     linter: &Linter,
     workers: usize,
 ) -> Result<AnalysisReport> {
-    let mut session = linter.begin_analysis(root)?;
+    let mut session = linter.begin_project(root)?;
+    let mut sources = Vec::with_capacity(prepared.len());
     for file in prepared {
         let relative = file.path.strip_prefix(root).with_context(|| {
             format!(
@@ -479,13 +477,16 @@ fn admitted_project_run(
                 file.path.display()
             )
         })?;
-        session.admit_source(glass_lint_core::SourceFile::new(
+        sources.push(glass_lint_core::SourceFile::new(
             relative.to_string_lossy(),
             file.source.clone(),
-        )?)?;
+        )?);
     }
-    session.analyze_admitted_sources(workers)?;
-    Ok(session.finish()?)
+    session.analyze_sources(
+        sources,
+        std::num::NonZeroUsize::new(workers).unwrap_or(std::num::NonZeroUsize::MIN),
+    )?;
+    Ok(session.finish_local().resolve([])?.finish()?)
 }
 
 fn selected_profile_paths(

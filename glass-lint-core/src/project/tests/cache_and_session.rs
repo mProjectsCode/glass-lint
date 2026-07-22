@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    AnalysisLimits, AnalysisSession, Diagnostic, Environment, ReportCompletion, RuleBaseline,
-    RuleSelection, SourceFile, SourceLanguage,
+    AnalysisLimits, Diagnostic, Environment, ReportCompletion, RuleBaseline, RuleSelection,
+    SourceFile, SourceLanguage,
     analysis::ArtifactCacheHandle,
     project::session::{CountingExecutionObserver, InvocationCounts},
 };
@@ -9,18 +9,18 @@ use crate::{
 #[test]
 fn cache_hit_attaches_only_current_path() {
     let linter = test_linter();
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     let observer = CountingExecutionObserver::new();
     session
-        .admit_source(source_file("a.js", "fetch('x');"))
+        .admit_test_source(source_file("a.js", "fetch('x');"))
         .unwrap();
     session.analyze_source_counted("a.js", &observer).unwrap();
     session
-        .admit_source(source_file("b.js", "fetch('x');"))
+        .admit_test_source(source_file("b.js", "fetch('x');"))
         .unwrap();
     session.analyze_source_counted("b.js", &observer).unwrap();
     assert_eq!(observer.invocations().hits, 1);
-    let report = session.finish().unwrap();
+    let report = finish_collection(session);
     assert_eq!(
         report
             .files
@@ -34,9 +34,9 @@ fn cache_hit_attaches_only_current_path() {
 #[test]
 fn identical_successful_source_lowers_once_then_hits() {
     let linter = test_linter();
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     session
-        .admit_source(source_file("main.js", "fetch('/api');"))
+        .admit_test_source(source_file("main.js", "fetch('/api');"))
         .unwrap();
     let observer = CountingExecutionObserver::new();
     session
@@ -56,31 +56,31 @@ fn identical_successful_source_lowers_once_then_hits() {
             evictions: 0,
         }
     );
-    assert_eq!(session.finish().unwrap().files[0].findings.len(), 1);
+    assert_eq!(finish_collection(session).files[0].findings.len(), 1);
 }
 
 #[test]
 fn separate_sessions_on_one_linter_reuse_the_artifact_cache() {
     let linter = test_linter();
     let first_observer = CountingExecutionObserver::new();
-    let mut first = linter.begin_analysis("/project").unwrap();
+    let mut first = linter.begin_project("/project").unwrap();
     first
-        .admit_source(source_file("first.js", "fetch('/api');"))
+        .admit_test_source(source_file("first.js", "fetch('/api');"))
         .unwrap();
     first
         .analyze_source_counted("first.js", &first_observer)
         .unwrap();
-    first.finish().unwrap();
+    finish_collection(first);
 
     let second_observer = CountingExecutionObserver::new();
-    let mut second = linter.begin_analysis("/project").unwrap();
+    let mut second = linter.begin_project("/project").unwrap();
     second
-        .admit_source(source_file("second.js", "fetch('/api');"))
+        .admit_test_source(source_file("second.js", "fetch('/api');"))
         .unwrap();
     second
         .analyze_source_counted("second.js", &second_observer)
         .unwrap();
-    let report = second.finish().unwrap();
+    let report = finish_collection(second);
 
     assert_eq!(first_observer.invocations().lowers, 1);
     assert_eq!(second_observer.invocations().hits, 1);
@@ -94,9 +94,9 @@ fn separate_sessions_on_one_linter_reuse_the_artifact_cache() {
 #[test]
 fn session_retry_does_not_cache_parse_failure() {
     let linter = test_linter();
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     session
-        .admit_source(source_file("broken.js", "fetch("))
+        .admit_test_source(source_file("broken.js", "fetch("))
         .unwrap();
     let observer = CountingExecutionObserver::new();
     session
@@ -109,7 +109,7 @@ fn session_retry_does_not_cache_parse_failure() {
     assert_eq!(observer.invocations().lowers, 2);
     assert_eq!(observer.invocations().misses, 2);
     assert_eq!(observer.invocations().inserts, 0);
-    let report = session.finish().unwrap();
+    let report = finish_collection(session);
     assert_eq!(report.files[0].diagnostics.len(), 1);
     assert!(matches!(
         report.files[0].diagnostics[0],
@@ -124,9 +124,9 @@ fn session_reuses_exhausted_artifact_with_partial_status() {
         ..AnalysisLimits::default()
     };
     let linter = test_linter_with_limits(limits);
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     session
-        .admit_source(source_file("bounded.js", "fetch('/api');"))
+        .admit_test_source(source_file("bounded.js", "fetch('/api');"))
         .unwrap();
     let observer = CountingExecutionObserver::new();
     session
@@ -137,7 +137,7 @@ fn session_reuses_exhausted_artifact_with_partial_status() {
         .unwrap();
     assert_eq!(observer.invocations().lowers, 1);
     assert_eq!(observer.invocations().hits, 1);
-    let report = session.finish().unwrap();
+    let report = finish_collection(session);
     assert_eq!(report.completion, ReportCompletion::Partial);
     assert!(
         report.files[0]
@@ -150,25 +150,25 @@ fn session_reuses_exhausted_artifact_with_partial_status() {
 #[test]
 fn rule_selection_changes_projection_without_relowering() {
     let enabled = test_linter();
-    let mut first = enabled.begin_analysis("/project").unwrap();
+    let mut first = enabled.begin_project("/project").unwrap();
     first
-        .admit_source(source_file("enabled.js", "fetch('/api');"))
+        .admit_test_source(source_file("enabled.js", "fetch('/api');"))
         .unwrap();
     let first_observer = CountingExecutionObserver::new();
     first
         .analyze_source_counted("enabled.js", &first_observer)
         .unwrap();
     let cache = std::mem::take(&mut first.artifact_cache);
-    assert_eq!(first.finish().unwrap().files[0].findings.len(), 1);
+    assert_eq!(finish_collection(first).files[0].findings.len(), 1);
 
     let disabled = test_linter_with_selection(
         RuleSelection::new(RuleBaseline::None),
         AnalysisLimits::default(),
     );
-    let mut second = disabled.begin_analysis("/project").unwrap();
+    let mut second = disabled.begin_project("/project").unwrap();
     second.artifact_cache = cache;
     second
-        .admit_source(source_file("disabled.js", "fetch('/api');"))
+        .admit_test_source(source_file("disabled.js", "fetch('/api');"))
         .unwrap();
     let second_observer = CountingExecutionObserver::new();
     second
@@ -176,31 +176,34 @@ fn rule_selection_changes_projection_without_relowering() {
         .unwrap();
     assert_eq!(second_observer.invocations().hits, 1);
     assert_eq!(second_observer.invocations().lowers, 0);
-    assert!(second.finish().unwrap().files[0].findings.is_empty());
+    assert!(finish_collection(second).files[0].findings.is_empty());
 }
 
 #[test]
 fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
     let base_linter = test_linter();
-    let mut baseline = base_linter.begin_analysis("/project").unwrap();
+    let mut baseline = base_linter.begin_project("/project").unwrap();
     baseline
-        .admit_source(source_file("base.js", "fetch('/api');"))
+        .admit_test_source(source_file("base.js", "fetch('/api');"))
         .unwrap();
-    baseline.analyze_source("base.js").unwrap();
+    baseline
+        .analyze_source_at_path(&crate::ProjectRelativePath::new("base.js").unwrap())
+        .unwrap();
     let base_cache = baseline.artifact_cache.clone();
 
-    let assert_miss =
-        |linter: &crate::Linter, source: SourceFile, configure: fn(&mut AnalysisSession<'_>)| {
-            let path = source.path.to_string();
-            let mut session = linter.begin_analysis("/project").unwrap();
-            session.artifact_cache = base_cache.clone();
-            configure(&mut session);
-            session.admit_source(source).unwrap();
-            let observer = CountingExecutionObserver::new();
-            session.analyze_source_counted(path, &observer).unwrap();
-            let counts = observer.invocations();
-            assert_eq!((counts.hits, counts.misses, counts.lowers), (0, 1, 1));
-        };
+    let assert_miss = |linter: &crate::Linter,
+                       source: SourceFile,
+                       configure: fn(&mut crate::ProjectCollection<'_>)| {
+        let path = source.path.to_string();
+        let mut session = linter.begin_project("/project").unwrap();
+        session.artifact_cache = base_cache.clone();
+        configure(&mut session);
+        session.admit_test_source(source).unwrap();
+        let observer = CountingExecutionObserver::new();
+        session.analyze_source_counted(path, &observer).unwrap();
+        let counts = observer.invocations();
+        assert_eq!((counts.hits, counts.misses, counts.lowers), (0, 1, 1));
+    };
 
     assert_miss(
         &base_linter,
@@ -277,11 +280,11 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
 #[test]
 fn cache_eviction_is_bounded_and_deterministic() {
     let linter = test_linter();
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     let capacity = ArtifactCacheHandle::capacity();
     for index in 0..=capacity {
         session
-            .admit_source(source_file(
+            .admit_test_source(source_file(
                 format!("{index:03}.js"),
                 format!("fetch('/{index}');"),
             ))

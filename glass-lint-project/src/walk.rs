@@ -23,14 +23,14 @@ use crate::{admission::SourceAdmission, error::ProjectLoadError};
 /// through a symlink target) so the caller can distinguish a single file from
 /// a directory before passing it to [`collect_files`].
 pub fn resolve_root(
-    options: &crate::options::ProjectLoadOptions,
+    options: &crate::options::ValidatedProjectLoadOptions,
     root: &Path,
 ) -> Result<Option<fs::Metadata>, ProjectLoadError> {
     let metadata = fs::symlink_metadata(root).map_err(|source| ProjectLoadError::Io {
         path: root.to_path_buf(),
         source,
     })?;
-    if metadata.file_type().is_symlink() && !options.follow_symlinks {
+    if metadata.file_type().is_symlink() && !options.follow_symlinks() {
         return Ok(None);
     }
     let metadata = if metadata.file_type().is_symlink() {
@@ -59,7 +59,7 @@ pub fn collect_files(
     let mut entries = Vec::new();
     let mut visited = 0usize;
     let walker = WalkDir::new(root)
-        .follow_links(admission.options().follow_symlinks)
+        .follow_links(admission.options().follow_symlinks())
         .sort_by_file_name()
         .into_iter()
         .filter_entry(|entry| {
@@ -76,9 +76,9 @@ pub fn collect_files(
             return Err(ProjectLoadError::Timeout);
         }
         visited = visited.saturating_add(1);
-        if visited > admission.options().max_visited_entries {
+        if visited > admission.options().max_visited_entries() {
             return Err(ProjectLoadError::TooManyEntries(
-                admission.options().max_visited_entries,
+                admission.options().max_visited_entries(),
             ));
         }
         let entry = entry.map_err(|error| {
@@ -94,9 +94,9 @@ pub fn collect_files(
             && include(entry.path())
         {
             entries.push(entry.into_path());
-            if entries.len() > admission.options().max_files {
+            if entries.len() > admission.options().max_files() {
                 return Err(ProjectLoadError::TooManyFiles(
-                    admission.options().max_files,
+                    admission.options().max_files(),
                 ));
             }
         }

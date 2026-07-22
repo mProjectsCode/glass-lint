@@ -15,15 +15,15 @@ use crate::analysis::{
     value::MAX_VALUES,
 };
 
-impl Resolver<'_> {
+impl Resolver {
     /// Narrow query: return only the interned value ID for an identifier,
     /// avoiding a clone of the full `ResolvedValue` on cache hits.
-    pub(in crate::analysis) fn resolve_ident_id(&self, ident: &Ident) -> ValueId {
+    pub(in crate::analysis) fn resolve_ident_id(&mut self, ident: &Ident) -> ValueId {
         let key = ResolutionKey::Ident {
             range: ident.span.into(),
             symbol: ident.sym.to_smolstr(),
         };
-        if let Some(cached) = self.cache.borrow().resolved_values.get(&key) {
+        if let Some(cached) = self.cache.resolved_values.get(&key) {
             return cached.id;
         }
         self.resolve_ident(ident).id
@@ -32,18 +32,18 @@ impl Resolver<'_> {
     /// Narrow query for a member expression when callers need only its arena
     /// identity. Cache hits remain borrowed through the cache's `Arc` rather
     /// than cloning the complete provenance record.
-    pub(in crate::analysis) fn resolve_member_id(&self, member: &MemberExpr) -> ValueId {
+    pub(in crate::analysis) fn resolve_member_id(&mut self, member: &MemberExpr) -> ValueId {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };
-        if let Some(cached) = self.cache.borrow().resolved_values.get(&key) {
+        if let Some(cached) = self.cache.resolved_values.get(&key) {
             return cached.id;
         }
         self.resolve_member(member).id
     }
 
     /// Narrow expression query used by identity-only fact construction.
-    pub(in crate::analysis) fn resolve_expr_id(&self, expr: &Expr) -> ValueId {
+    pub(in crate::analysis) fn resolve_expr_id(&mut self, expr: &Expr) -> ValueId {
         match expr {
             Expr::Ident(ident) => self.resolve_ident_id(ident),
             Expr::Member(member) => self.resolve_member_id(member),
@@ -54,19 +54,19 @@ impl Resolver<'_> {
     /// Returns a CommonJS module only when the callee is proven to be the
     /// unshadowed global loader. Import collection and alias provenance both
     /// depend on this conservative distinction.
-    pub(in crate::analysis) fn resolve_ident(&self, ident: &Ident) -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn resolve_ident(&mut self, ident: &Ident) -> Arc<ResolvedValue> {
         self.resolve_ident_uncached(ident)
     }
 
-    fn resolve_ident_uncached(&self, ident: &Ident) -> Arc<ResolvedValue> {
+    fn resolve_ident_uncached(&mut self, ident: &Ident) -> Arc<ResolvedValue> {
         let key = ResolutionKey::Ident {
             range: ident.span.into(),
             symbol: ident.sym.to_smolstr(),
         };
-        if let Some(value) = self.cache.borrow().resolved_values.get(&key) {
+        if let Some(value) = self.cache.resolved_values.get(&key) {
             return Arc::clone(value);
         }
-        if !self.cache.borrow_mut().resolving.insert(key.clone()) {
+        if !self.cache.resolving.insert(key.clone()) {
             return Self::archive_unknown_with_reason(UnknownReason::Cycle);
         }
         let seed = self.scopes.ident_value_seed(ident);
@@ -88,6 +88,12 @@ impl Resolver<'_> {
             })
         } else {
             self.call_provenance_at(id, rooted_chain.as_ref(), ident.span)
+        };
+        let id = match &call {
+            SymbolCallProvenance::Global { name } => {
+                self.values.intern(Value::Global(name.clone()))
+            }
+            _ => id,
         };
         let module_member = match &call {
             SymbolCallProvenance::ModuleExport { module, export } => {
@@ -144,22 +150,25 @@ impl Resolver<'_> {
         self.scopes.function_id_for_span(span)
     }
 
-    pub(in crate::analysis) fn resolve_member(&self, member: &MemberExpr) -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn resolve_member(
+        &mut self,
+        member: &MemberExpr,
+    ) -> Arc<ResolvedValue> {
         self.resolve_member_uncached(member)
     }
 
-    fn resolve_member_uncached(&self, member: &MemberExpr) -> Arc<ResolvedValue> {
+    fn resolve_member_uncached(&mut self, member: &MemberExpr) -> Arc<ResolvedValue> {
         let key = ResolutionKey::Member {
             range: member.span.into(),
         };
-        if let Some(value) = self.cache.borrow().resolved_values.get(&key) {
+        if let Some(value) = self.cache.resolved_values.get(&key) {
             return Arc::clone(value);
         }
-        if !self.cache.borrow_mut().resolving.insert(key.clone()) {
+        if !self.cache.resolving.insert(key.clone()) {
             return Self::archive_unknown_with_reason(UnknownReason::Cycle);
         }
         let seed = self.scopes.member_value_seed(member);
-        let syntactic = seed.syntactic_chain;
+        let syntactic = seed.syntactic_chain.clone();
         // Prefer the alias-expanded path. Falling back to a rooted member keeps
         // direct global/`this` access available when no local alias is present.
         let rooted_chain = seed
@@ -185,10 +194,14 @@ impl Resolver<'_> {
         } else {
             self.call_provenance_at(id, rooted_chain.as_ref(), member.span)
         };
+        let id = match &call {
+            SymbolCallProvenance::Global { name } => {
+                self.values.intern(Value::Global(name.clone()))
+            }
+            _ => id,
+        };
         if let Some(SymbolMemberProvenance::ModuleNamespace { module, .. }) = &module_member {
-            self.values
-                .borrow_mut()
-                .intern(Value::ModuleNamespace(module.clone()));
+            self.values.intern(Value::ModuleNamespace(module.clone()));
         }
         let resolved = Arc::new(ResolvedValue {
             id,
@@ -208,7 +221,7 @@ impl Resolver<'_> {
         resolved
     }
 
-    pub(in crate::analysis) fn resolve_expr(&self, expr: &Expr) -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn resolve_expr(&mut self, expr: &Expr) -> Arc<ResolvedValue> {
         match expr {
             Expr::Ident(ident) => self.resolve_ident(ident),
             Expr::Member(member) => self.resolve_member(member),
@@ -253,12 +266,9 @@ impl Resolver<'_> {
         }
     }
 
-    fn cache_resolution(&self, key: &ResolutionKey, value: Arc<ResolvedValue>) {
-        self.cache
-            .borrow_mut()
-            .resolved_values
-            .insert(key.clone(), value);
-        self.cache.borrow_mut().resolving.remove(key);
+    fn cache_resolution(&mut self, key: &ResolutionKey, value: Arc<ResolvedValue>) {
+        self.cache.resolved_values.insert(key.clone(), value);
+        self.cache.resolving.remove(key);
     }
 
     pub(in crate::analysis) fn static_string_array_expr(&self, expr: &Expr) -> Option<Vec<String>> {
@@ -271,7 +281,7 @@ impl Resolver<'_> {
         }
     }
 
-    pub(in crate::analysis) fn rooted_expr_chain(&self, expr: &Expr) -> Option<SymbolPath> {
+    pub(in crate::analysis) fn rooted_expr_chain(&mut self, expr: &Expr) -> Option<SymbolPath> {
         match expr {
             Expr::Ident(ident) => self.resolve_ident(ident).rooted_chain.clone().or_else(|| {
                 ident
@@ -311,14 +321,16 @@ impl Resolver<'_> {
             range: member.span.into(),
         };
         self.cache
-            .borrow()
             .resolved_values
             .get(&key)
             .and_then(|value| value.syntactic_chain.clone())
             .or_else(|| crate::analysis::syntax::member_expression_chain(member))
     }
 
-    pub(in crate::analysis) fn class_provenance(&self, expr: &Expr) -> Option<(SmolStr, SmolStr)> {
+    pub(in crate::analysis) fn class_provenance(
+        &mut self,
+        expr: &Expr,
+    ) -> Option<(SmolStr, SmolStr)> {
         match &self.resolve_expr(expr).call {
             SymbolCallProvenance::ModuleExport { module, export } => {
                 Some((module.clone(), export.clone()))
@@ -341,9 +353,9 @@ impl Resolver<'_> {
         Arc::new(ResolvedValue::local(id))
     }
 
-    pub(in crate::analysis) fn static_value(&self, value: Value) -> Arc<ResolvedValue> {
+    pub(in crate::analysis) fn static_value(&mut self, value: Value) -> Arc<ResolvedValue> {
         let is_unknown = matches!(value, Value::Unknown);
-        let id = self.values.borrow_mut().intern(value);
+        let id = self.values.intern(value);
         if id == ValueId::UNKNOWN && !is_unknown && self.value_arena_exhausted() {
             return Self::archive_unknown_with_reason(UnknownReason::BudgetExhausted {
                 component: BudgetComponent::Values,
@@ -354,23 +366,23 @@ impl Resolver<'_> {
         Arc::new(ResolvedValue::local(id))
     }
 
-    pub(in crate::analysis) fn fresh_object_value(&self) -> Arc<ResolvedValue> {
-        let Some(object) = self.values.borrow_mut().allocate_object_id() else {
+    pub(in crate::analysis) fn fresh_object_value(&mut self) -> Arc<ResolvedValue> {
+        let Some(object) = self.values.allocate_object_id() else {
             return Self::unknown();
         };
         self.static_value(Value::Object(object))
     }
 
     pub(in crate::analysis) fn fresh_object_value_at(
-        &self,
+        &mut self,
         span: swc_common::Span,
     ) -> Arc<ResolvedValue> {
         let key = span.into();
-        if let Some(value) = self.cache.borrow().fresh_values.get(&key).copied() {
+        if let Some(value) = self.cache.fresh_values.get(&key).copied() {
             return Arc::new(ResolvedValue::local(value));
         }
         let value = self.fresh_object_value();
-        self.cache.borrow_mut().fresh_values.insert(key, value.id);
+        self.cache.fresh_values.insert(key, value.id);
         value
     }
 }

@@ -10,7 +10,8 @@ use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
 use crate::{
     admission::{PathAdmission, SourceAdmission, absolute_path},
-    options::{ProjectLoadOptions, ProjectSelection},
+    error::ProjectLoadError,
+    options::{ProjectSelection, ValidatedProjectLoadOptions},
 };
 
 /// Keeps import and CommonJS resolution policy together for one project.
@@ -22,34 +23,37 @@ pub struct ProjectResolver<'a> {
 
 impl<'a> ProjectResolver<'a> {
     /// Build import and CommonJS resolvers under one project root.
-    pub fn new(admission: SourceAdmission<'a>, selection: &ProjectSelection) -> Self {
+    pub fn new(
+        admission: SourceAdmission<'a>,
+        selection: &ProjectSelection,
+    ) -> Result<Self, ProjectLoadError> {
         let import = Resolver::new(Self::build_options(
             admission.canonical_root(),
             selection,
             admission.options(),
             false,
-        ));
+        )?);
         let require = import.clone_with_options(Self::build_options(
             admission.canonical_root(),
             selection,
             admission.options(),
             true,
-        ));
-        Self {
+        )?);
+        Ok(Self {
             admission,
             import,
             require,
-        }
+        })
     }
 
     fn build_options(
         root: &Path,
         selection: &ProjectSelection,
-        options: &ProjectLoadOptions,
+        options: &ValidatedProjectLoadOptions,
         require: bool,
-    ) -> ResolveOptions {
+    ) -> Result<ResolveOptions, ProjectLoadError> {
         let extension_alias = options
-            .extension_aliases
+            .extension_aliases()
             .iter()
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
@@ -59,9 +63,9 @@ impl<'a> ProjectResolver<'a> {
             } else {
                 vec!["node".into(), "import".into()]
             },
-            extensions: options.extensions.clone(),
+            extensions: options.extensions().map(str::to_owned).collect(),
             extension_alias,
-            symlinks: options.follow_symlinks,
+            symlinks: options.follow_symlinks(),
             roots: vec![root.to_path_buf()],
             builtin_modules: true,
             ..ResolveOptions::default()
@@ -69,12 +73,12 @@ impl<'a> ProjectResolver<'a> {
         if let ProjectSelection::Tsconfig(path) = selection {
             resolver_options.tsconfig = Some(oxc_resolver::TsconfigDiscovery::Manual(
                 oxc_resolver::TsconfigOptions {
-                    config_file: absolute_path(path),
+                    config_file: absolute_path(path)?,
                     references: oxc_resolver::TsconfigReferences::Auto,
                 },
             ));
         }
-        resolver_options
+        Ok(resolver_options)
     }
 
     /// Resolve one request into a provider-neutral, root-classified outcome.
@@ -108,7 +112,7 @@ impl<'a> ProjectResolver<'a> {
             PathAdmission::Outside(path) => {
                 if is_internal_module_request(request) {
                     ResolverOutcome::OutsideProject {
-                        path: path.to_string_lossy().into_owned(),
+                        path: path.as_ref().to_string_lossy().into_owned(),
                     }
                 } else {
                     ResolverOutcome::External {
@@ -119,7 +123,7 @@ impl<'a> ProjectResolver<'a> {
             PathAdmission::Excluded(path) => {
                 if is_internal_module_request(request) {
                     ResolverOutcome::Unsupported {
-                        reason: format!("excluded target `{}`", path.display()),
+                        reason: format!("excluded target `{}`", path.as_ref().display()),
                     }
                 } else {
                     ResolverOutcome::External {
@@ -128,12 +132,13 @@ impl<'a> ProjectResolver<'a> {
                 }
             }
             PathAdmission::Unsupported(path) => ResolverOutcome::Unsupported {
-                reason: format!("unsupported target `{}`", path.display()),
+                reason: format!("unsupported target `{}`", path.as_ref().display()),
             },
             PathAdmission::Admitted(path) => {
                 let relative = path
+                    .as_ref()
                     .strip_prefix(self.admission.canonical_root())
-                    .unwrap_or(&path)
+                    .unwrap_or_else(|_| path.as_ref())
                     .to_string_lossy()
                     .replace('\\', "/");
                 let Ok(path) = ProjectRelativePath::new(&relative) else {
@@ -160,6 +165,7 @@ mod tests {
     use glass_lint_core::{Position, ProjectRelativePath, ResolutionRequestKey, SourceRange};
 
     use super::*;
+    use crate::options::ProjectLoadOptions;
 
     fn request(specifier: &str) -> ResolutionRequest {
         ResolutionRequest {
@@ -175,11 +181,12 @@ mod tests {
 
     #[test]
     fn delegates_builtin_detection_and_canonicalization_to_oxc() {
-        let options = ProjectLoadOptions::default();
+        let options = ProjectLoadOptions::default().validated().unwrap();
         let resolver = ProjectResolver::new(
             SourceAdmission::new(Path::new("."), &options).unwrap(),
             &ProjectSelection::entry("main.js"),
-        );
+        )
+        .unwrap();
 
         for (specifier, expected) in [
             ("fs", "node:fs"),
@@ -199,11 +206,12 @@ mod tests {
 
     #[test]
     fn unresolved_bare_packages_remain_external() {
-        let options = ProjectLoadOptions::default();
+        let options = ProjectLoadOptions::default().validated().unwrap();
         let resolver = ProjectResolver::new(
             SourceAdmission::new(Path::new("."), &options).unwrap(),
             &ProjectSelection::entry("main.js"),
-        );
+        )
+        .unwrap();
 
         assert_eq!(
             resolver.resolve(&request("not-a-node-builtin")),

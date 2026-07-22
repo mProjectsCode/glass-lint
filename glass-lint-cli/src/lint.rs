@@ -29,7 +29,7 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
             }
             crate::output::write_mode(config, "single file", &path)?;
             let options = config.project_load_options()?;
-            let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;
+            let corpus = SourceCorpus::from_validated(&options);
             let paths = corpus
                 .discover(std::slice::from_ref(&path))
                 .map_err(|error| anyhow::anyhow!(error))?;
@@ -81,7 +81,7 @@ fn project_selection(path: &std::path::Path) -> ProjectSelection {
 
 fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<bool> {
     let options = config.project_load_options()?;
-    let corpus = SourceCorpus::new(&options).map_err(|error| anyhow::anyhow!(error))?;
+    let corpus = SourceCorpus::from_validated(&options);
     let mut files = Vec::with_capacity(paths.len());
     let mut failed = false;
 

@@ -9,7 +9,7 @@
 use smol_str::SmolStr;
 use swc_ecma_ast::{Expr, Pat, VarDeclKind};
 
-use super::{BindingProvenance, LexicalScopeCollector};
+use super::{BindingProvenance, ScopeCollector};
 use crate::analysis::value::NamePath;
 
 pub(super) enum DeclarationClassification {
@@ -79,7 +79,7 @@ pub(super) struct DeclarationFacts {
 }
 
 impl DeclarationFacts {
-    pub(super) fn compute(collector: &LexicalScopeCollector<'_>, expr: &Expr) -> Self {
+    pub(super) fn compute(collector: &ScopeCollector, expr: &Expr) -> Self {
         let state = DeclarationFactState {
             bound_callable: collector.bound_callable_provenance(expr),
             module_alias: collector.module_alias_provenance(expr),
@@ -205,14 +205,17 @@ mod tests {
     use swc_ecma_visit::VisitWith;
 
     use super::*;
-    use crate::analysis::scope::collect::LexicalScopeCollector;
+    use crate::analysis::scope::collect::{ScopeCollector, plan::ScopePlanner};
 
     /// Parse, predeclare, and visit a program; expose the final collector.
-    fn run(source: &str) -> LexicalScopeCollector<'static> {
+    fn run(source: &str) -> ScopeCollector {
         let parsed = crate::parse(source, "facts.js").expect("source should parse");
-        let mut collector = LexicalScopeCollector::new(parsed.program.span());
-        collector.predeclare(&parsed.program);
-        parsed.program.visit_with(&mut collector);
+        let names = crate::analysis::name::NameTable::default();
+        let mut planner = ScopePlanner::new(parsed.program.span(), names);
+        parsed.program.visit_children_with(&mut planner);
+        let plan = planner.finish();
+        let mut collector = ScopeCollector::from_plan(plan);
+        parsed.program.visit_children_with(&mut collector);
         collector
     }
 
@@ -260,14 +263,14 @@ mod tests {
             .expect("source should contain an assignment expression")
     }
 
-    fn declarator_facts(collector: &LexicalScopeCollector<'_>, source: &str) -> DeclarationFacts {
+    fn declarator_facts(collector: &ScopeCollector, source: &str) -> DeclarationFacts {
         let parsed = crate::parse(source, "facts.js").expect("source should parse");
         let (_, expr, _) = find_first_declarator(&parsed.program);
         DeclarationFacts::compute(collector, &expr)
     }
 
     fn declarator_triple(
-        collector: &LexicalScopeCollector<'_>,
+        collector: &ScopeCollector,
         source: &str,
     ) -> (Pat, DeclarationFacts, VarDeclKind) {
         let parsed = crate::parse(source, "facts.js").expect("source should parse");
@@ -276,7 +279,7 @@ mod tests {
         (pattern, facts, kind)
     }
 
-    fn assign_facts(collector: &LexicalScopeCollector<'_>, source: &str) -> DeclarationFacts {
+    fn assign_facts(collector: &ScopeCollector, source: &str) -> DeclarationFacts {
         let parsed = crate::parse(source, "facts.js").expect("source should parse");
         let expr = find_first_assign(&parsed.program);
         DeclarationFacts::compute(collector, &expr)

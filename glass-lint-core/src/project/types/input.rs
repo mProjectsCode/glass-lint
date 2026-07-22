@@ -146,6 +146,7 @@ pub enum ProjectInputError {
     InvalidTarget(String),
     UnknownRequest(ResolutionRequestKey),
     BudgetExceeded(String),
+    LocalExecution(String),
 }
 
 impl std::fmt::Display for ProjectInputError {
@@ -166,6 +167,9 @@ impl std::fmt::Display for ProjectInputError {
                 key.importer
             ),
             Self::BudgetExceeded(message) => write!(f, "project input budget exceeded: {message}"),
+            Self::LocalExecution(message) => {
+                write!(f, "local analysis execution failed: {message}")
+            }
         }
     }
 }

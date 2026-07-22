@@ -375,6 +375,7 @@ impl SemanticFact {
         }
     }
 
+    #[cfg(test)]
     pub(in crate::analysis) fn id(&self) -> FactId {
         self.id
     }

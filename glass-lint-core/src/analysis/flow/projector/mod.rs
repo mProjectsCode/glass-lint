@@ -313,8 +313,9 @@ mod tests {
 
     fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<ClassificationEvidence>> {
         let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
-        let resolver = Resolver::collect(&parsed.program);
-        let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);
+        let mut resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let flow = CompiledObjectFlow::from_matcher(flow);
         collect_with_limits(
@@ -532,8 +533,9 @@ mod tests {
     fn flow_evidence_is_anchored_at_the_sink_event() {
         let source = "const script = document.createElement('script'); script.src = url; document.head.appendChild(script);";
         let parsed = crate::parse(source, "flow-location.js").expect("source should parse");
-        let resolver = Resolver::collect(&parsed.program);
-        let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);
+        let mut resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let sink_span = stream
             .facts()
@@ -578,8 +580,9 @@ mod tests {
         let source = "const input = document.createElement('input'); input.type = 'file';";
         let parsed =
             crate::parse(source, "flow-requirement-location.js").expect("source should parse");
-        let resolver = Resolver::collect(&parsed.program);
-        let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &resolver);
+        let mut resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let configuration = stream
             .facts()

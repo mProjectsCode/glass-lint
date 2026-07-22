@@ -81,7 +81,7 @@ pub struct ProfileArgs {
     pub quiet: bool,
     #[arg(long, conflicts_with = "admitted_project")]
     pub project: bool,
-    /// Exercise the explicit admitted-source AnalysisSession path.
+    /// Exercise the explicit admitted-source project collection path.
     #[arg(long = "admitted-project", conflicts_with = "project")]
     pub admitted_project: bool,
     /// Verify and use an immutable corpus selection manifest.

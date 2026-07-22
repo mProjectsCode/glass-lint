@@ -14,7 +14,7 @@ pub use report::ReportCombineError;
 /// A staged project collection session. Sources are admitted deterministically,
 /// then locally analyzed independently before `finish` links the retained
 /// models after all resolver answers have been recorded.
-pub use session::AnalysisSession;
+pub use session::{LocallyAnalyzedProject, ProjectCollection, ResolvedProject, SourceAnalysis};
 pub use tables::EvidenceList;
 pub use types::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,

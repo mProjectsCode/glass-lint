@@ -3,14 +3,14 @@ use crate::project::tests::*;
 #[test]
 fn project_keeps_sorted_parse_failures_separate_from_valid_modules() {
     let linter = test_linter();
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     session
-        .add_source(source_file("z.js", "function {"))
+        .analyze_source(source_file("z.js", "function {"))
         .unwrap();
     session
-        .add_source(source_file("a.js", "fetch('/remote');"))
+        .analyze_source(source_file("a.js", "fetch('/remote');"))
         .unwrap();
-    let report = session.finish().unwrap();
+    let report = finish_collection(session);
     assert_eq!(
         report
             .files
@@ -27,13 +27,14 @@ fn project_keeps_sorted_parse_failures_separate_from_valid_modules() {
 #[test]
 fn session_returns_static_import_dynamic_import_require_and_reexport_requests() {
     let linter = test_linter();
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     let requests = session
-        .add_source(source_file(
+        .analyze_source(source_file(
             "main.js",
             "import { value as local } from './dep';\nexport { local as renamed } from './dep';\nconst x = require('./cjs');\nimport('./lazy');",
         ))
-        .unwrap();
+        .unwrap()
+        .requests();
     assert_eq!(requests.len(), 4);
     assert_eq!(
         requests
@@ -57,37 +58,40 @@ fn session_returns_static_import_dynamic_import_require_and_reexport_requests() 
 #[test]
 fn session_rejects_resolution_for_an_unauthored_request() {
     let linter = test_linter();
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     session
-        .add_source(source_file("main.js", "fetch('/remote');"))
+        .analyze_source(source_file("main.js", "fetch('/remote');"))
         .unwrap();
-    let error = session.record_resolution(key("main.js"), ResolverOutcome::Missing);
+    let error = session
+        .finish_local()
+        .resolve([(key("main.js"), ResolverOutcome::Missing)]);
     assert!(matches!(error, Err(ProjectInputError::UnknownRequest(_))));
 }
 
 #[test]
 fn rejected_duplicate_source_does_not_replace_the_original() {
     let linter = test_linter();
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     session
-        .add_source(source_file("main.js", "fetch('/remote');"))
+        .analyze_source(source_file("main.js", "fetch('/remote');"))
         .unwrap();
-    let error = session.add_source(source_file("./main.js", ""));
+    let error = session.analyze_source(source_file("./main.js", ""));
     assert!(matches!(error, Err(ProjectInputError::DuplicateSource(_))));
-    let report = session.finish().unwrap();
+    let report = finish_collection(session);
     assert_eq!(report.files[0].findings.len(), 1);
 }
 
 #[test]
 fn type_only_reexports_do_not_create_runtime_requests() {
     let linter = test_linter();
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     let requests = session
-        .add_source(source_file(
+        .analyze_source(source_file(
             "types.ts",
             "export { type Foo } from './dependency';",
         ))
-        .unwrap();
+        .unwrap()
+        .requests();
     assert!(requests.is_empty());
 }
 

@@ -2,7 +2,11 @@
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    num::NonZeroUsize,
+    sync::Arc,
+};
 
 struct LocalJob {
     path: ProjectRelativePath,
@@ -25,7 +29,7 @@ trait LocalJobExecutor {
         linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
-    );
+    ) -> Result<(), ProjectInputError>;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -166,12 +170,12 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
         linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
-    ) {
+    ) -> Result<(), ProjectInputError> {
         let bound = outstanding_job_bound(worker_limit);
-        let mut remaining = jobs;
+        let mut remaining = VecDeque::from(jobs);
         while !remaining.is_empty() {
             let take = bound.min(remaining.len());
-            let batch: Vec<LocalJob> = remaining.drain(..take).collect();
+            let batch: Vec<LocalJob> = (0..take).filter_map(|_| remaining.pop_front()).collect();
             let batch_size = batch.len();
             for _ in 0..batch_size {
                 observer.observe(ExecutionEvent::Submitted);
@@ -180,43 +184,55 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
             // Split the owned batch into owned per-worker chunks so each
             // worker moves job fields into LocalJobResult without cloning.
             let mut worker_chunks: Vec<Vec<LocalJob>> = Vec::new();
-            let mut remaining_batch = batch;
+            let mut remaining_batch = VecDeque::from(batch);
             while !remaining_batch.is_empty() {
                 let take = chunk_size.min(remaining_batch.len());
-                worker_chunks.push(remaining_batch.drain(..take).collect());
+                worker_chunks.push(
+                    (0..take)
+                        .filter_map(|_| remaining_batch.pop_front())
+                        .collect(),
+                );
             }
-            let batch_results = std::thread::scope(|scope| {
-                let mut handles = Vec::new();
-                for worker_jobs in worker_chunks {
-                    handles.push(scope.spawn(move || {
-                        worker_jobs
-                            .into_iter()
-                            .map(|job| {
-                                observer.observe(ExecutionEvent::Started);
-                                observer.observe(ExecutionEvent::ParseAttempted);
-                                observer.observe(ExecutionEvent::LowerAttempted);
-                                let result = crate::analysis::lower_source(linter, &job.source)
-                                    .map(|ls| ls.semantic);
-                                observer.observe(ExecutionEvent::Finished);
-                                LocalJobResult {
-                                    path: job.path,
-                                    source: job.source,
-                                    key: job.key,
-                                    result,
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                    }));
-                }
-                handles
-                    .into_iter()
-                    .flat_map(|handle| handle.join().expect("analysis worker panicked"))
-                    .collect::<Vec<_>>()
-            });
+            let batch_results: Result<Vec<LocalJobResult>, ProjectInputError> =
+                std::thread::scope(|scope| {
+                    let mut handles = Vec::new();
+                    for worker_jobs in worker_chunks {
+                        handles.push(scope.spawn(move || {
+                            worker_jobs
+                                .into_iter()
+                                .map(|job| {
+                                    observer.observe(ExecutionEvent::Started);
+                                    observer.observe(ExecutionEvent::ParseAttempted);
+                                    observer.observe(ExecutionEvent::LowerAttempted);
+                                    let result = crate::analysis::lower_source(linter, &job.source)
+                                        .map(|ls| ls.semantic);
+                                    observer.observe(ExecutionEvent::Finished);
+                                    LocalJobResult {
+                                        path: job.path,
+                                        source: job.source,
+                                        key: job.key,
+                                        result,
+                                    }
+                                })
+                                .collect::<Vec<_>>()
+                        }));
+                    }
+                    handles
+                        .into_iter()
+                        .try_fold(Vec::new(), |mut results, handle| {
+                            let worker_results = handle.join().map_err(|_| {
+                                ProjectInputError::LocalExecution("analysis worker panicked".into())
+                            })?;
+                            results.extend(worker_results);
+                            Ok::<_, ProjectInputError>(results)
+                        })
+                });
+            let batch_results = batch_results?;
             for result in batch_results {
                 release(result);
             }
         }
+        Ok(())
     }
 }
 
@@ -240,7 +256,7 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
         linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
-    ) {
+    ) -> Result<(), ProjectInputError> {
         let mut jobs = jobs.into_iter().map(Some).collect::<Vec<_>>();
         let indexes: Vec<usize> = match self.0 {
             ControlledReleaseOrder::Forward => (0..jobs.len()).collect(),
@@ -265,6 +281,7 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
                 result,
             });
         }
+        Ok(())
     }
 }
 
@@ -277,6 +294,22 @@ struct AnalysisArtifacts {
     authored_requests: BTreeMap<ResolutionRequestKey, ResolutionRequest>,
     analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
     parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
+}
+
+/// Authored module requests produced by one completed local source analysis.
+/// Source and artifact storage remains owned by the collection phase.
+pub struct SourceAnalysis {
+    requests: Vec<ResolutionRequest>,
+}
+
+impl SourceAnalysis {
+    pub fn requests(self) -> Vec<ResolutionRequest> {
+        self.requests
+    }
+
+    pub fn requests_ref(&self) -> &[ResolutionRequest] {
+        &self.requests
+    }
 }
 
 impl AnalysisArtifacts {
@@ -355,11 +388,10 @@ use crate::{
     },
 };
 
-pub struct AnalysisSession<'a> {
+pub struct ProjectCollection<'a> {
     pub(super) linter: &'a Linter,
     pub(super) root: std::path::PathBuf,
     pub(super) sources: SourceTable,
-    pub(super) resolutions: ResolutionTable,
     artifacts: AnalysisArtifacts,
     pub(super) artifact_cache: ArtifactCacheHandle,
     #[cfg(test)]
@@ -368,7 +400,24 @@ pub struct AnalysisSession<'a> {
     fingerprint_normalization: Option<&'static str>,
 }
 
-impl<'a> AnalysisSession<'a> {
+/// Project state after every admitted source has completed local analysis.
+/// The consuming transition prevents adding sources after this point.
+pub struct LocallyAnalyzedProject<'a> {
+    linter: &'a Linter,
+    root: std::path::PathBuf,
+    sources: SourceTable,
+    artifacts: AnalysisArtifacts,
+}
+
+/// Project state after the authored resolution table has been validated.
+/// Linking and matching are available only from this phase.
+pub struct ResolvedProject<'a> {
+    linter: &'a Linter,
+    input: ValidatedProjectInput,
+    artifacts: AnalysisArtifacts,
+}
+
+impl<'a> ProjectCollection<'a> {
     #[cfg(test)]
     fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
         if self.fingerprint_normalization.is_none()
@@ -435,7 +484,6 @@ impl<'a> AnalysisSession<'a> {
             linter,
             root: normalize_root(&root.into())?,
             sources: SourceTable::default(),
-            resolutions: ResolutionTable::default(),
             artifacts: AnalysisArtifacts::default(),
             artifact_cache: linter.artifact_cache_handle(),
             #[cfg(test)]
@@ -445,8 +493,7 @@ impl<'a> AnalysisSession<'a> {
         })
     }
 
-    /// Normalize and admit one source file without starting semantic analysis.
-    pub fn admit_source(&mut self, mut source: SourceFile) -> Result<(), ProjectInputError> {
+    fn admit_normalized_source(&mut self, mut source: SourceFile) -> Result<(), ProjectInputError> {
         source.path = normalize_relative(&source.path)?;
         self.sources.insert(source)
     }
@@ -458,24 +505,29 @@ impl<'a> AnalysisSession<'a> {
         self.sources.insert(source)
     }
 
-    /// Analyze one previously admitted source and return its authored requests.
+    /// Analyze one owned source and return its authored requests.
     pub fn analyze_source(
         &mut self,
-        path: impl AsRef<str>,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        self.analyze_source_with_observer(path, &NoopExecutionObserver)
+        source: SourceFile,
+    ) -> Result<SourceAnalysis, ProjectInputError> {
+        let path = source.path.clone();
+        self.admit_normalized_source(source)?;
+        Ok(SourceAnalysis {
+            requests: self.analyze_source_at_path(&path)?,
+        })
     }
 
+    #[cfg(test)]
     fn analyze_source_with_observer(
         &mut self,
         path: impl AsRef<str>,
         observer: &dyn ExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         let path = normalize_relative(path.as_ref())?;
-        self.analyze_admitted_source_with_observer(&path, observer)
+        self.analyze_source_at_path_with_observer(&path, observer)
     }
 
-    fn analyze_admitted_source_with_observer(
+    fn analyze_source_at_path_with_observer(
         &mut self,
         path: &ProjectRelativePath,
         observer: &dyn ExecutionObserver,
@@ -503,11 +555,11 @@ impl<'a> AnalysisSession<'a> {
         Ok(self.record_lowered(path, lowered))
     }
 
-    pub(crate) fn analyze_admitted_source(
+    pub(crate) fn analyze_source_at_path(
         &mut self,
         path: &ProjectRelativePath,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        self.analyze_admitted_source_with_observer(path, &NoopExecutionObserver)
+        self.analyze_source_at_path_with_observer(path, &NoopExecutionObserver)
     }
 
     #[cfg(test)]
@@ -517,6 +569,14 @@ impl<'a> AnalysisSession<'a> {
         observer: &CountingExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         self.analyze_source_with_observer(path, observer)
+    }
+
+    #[cfg(test)]
+    pub(super) fn admit_test_source(
+        &mut self,
+        source: SourceFile,
+    ) -> Result<(), ProjectInputError> {
+        self.admit_normalized_source(source)
     }
 
     fn record_lowered(
@@ -530,16 +590,28 @@ impl<'a> AnalysisSession<'a> {
     /// Analyze all admitted sources using a bounded worker count. Canonical
     /// maps and final request sorting make results independent of worker count
     /// and task completion order.
-    pub fn analyze_admitted_sources(
+    fn analyze_pending_sources(
         &mut self,
         worker_count: usize,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         let observer = NoopExecutionObserver;
-        self.analyze_admitted_sources_with(worker_count, &ThreadLocalJobExecutor, &observer)
+        self.analyze_pending_sources_with(worker_count, &ThreadLocalJobExecutor, &observer)
+    }
+
+    /// Admit and analyze owned sources with bounded local execution.
+    pub fn analyze_sources(
+        &mut self,
+        sources: impl IntoIterator<Item = SourceFile>,
+        workers: NonZeroUsize,
+    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+        for source in sources {
+            self.admit_normalized_source(source)?;
+        }
+        self.analyze_pending_sources(workers.get())
     }
 
     #[allow(clippy::unnecessary_wraps)]
-    fn analyze_admitted_sources_with<E: LocalJobExecutor>(
+    fn analyze_pending_sources_with<E: LocalJobExecutor>(
         &mut self,
         worker_count: usize,
         executor: &E,
@@ -589,7 +661,7 @@ impl<'a> AnalysisSession<'a> {
             }
             observer.observe(ExecutionEvent::Merged);
         };
-        executor.execute(uncached, worker_count, self.linter, observer, &mut release);
+        executor.execute(uncached, worker_count, self.linter, observer, &mut release)?;
         requests.sort_by(|left, right| {
             (
                 left.key.importer.as_str(),
@@ -608,13 +680,17 @@ impl<'a> AnalysisSession<'a> {
     }
 
     #[cfg(test)]
-    pub(super) fn analyze_admitted_sources_controlled(
+    pub(super) fn analyze_sources_controlled(
         &mut self,
+        sources: impl IntoIterator<Item = SourceFile>,
         worker_count: usize,
         order: ControlledReleaseOrder,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
+        for source in sources {
+            self.admit_normalized_source(source)?;
+        }
         let observer = NoopExecutionObserver;
-        self.analyze_admitted_sources_with(
+        self.analyze_pending_sources_with(
             worker_count,
             &ControlledLocalJobExecutor(order),
             &observer,
@@ -622,12 +698,16 @@ impl<'a> AnalysisSession<'a> {
     }
 
     #[cfg(test)]
-    pub(super) fn analyze_admitted_sources_counted(
+    pub(super) fn analyze_sources_counted(
         &mut self,
+        sources: impl IntoIterator<Item = SourceFile>,
         worker_count: usize,
         observer: &CountingExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        self.analyze_admitted_sources_with(worker_count, &ThreadLocalJobExecutor, observer)
+        for source in sources {
+            self.admit_normalized_source(source)?;
+        }
+        self.analyze_pending_sources_with(worker_count, &ThreadLocalJobExecutor, observer)
     }
 
     #[cfg(test)]
@@ -640,55 +720,57 @@ impl<'a> AnalysisSession<'a> {
         self.fingerprint_normalization = Some(normalization);
     }
 
-    /// Normalize, admit, parse, and locally analyze one source file.
-    pub fn add_source(
-        &mut self,
-        source: SourceFile,
-    ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
-        let path = normalize_relative(&source.path)?.to_string();
-        self.admit_source(source)?;
-        let path = ProjectRelativePath::new(path)?;
-        self.analyze_admitted_source(&path)
-    }
-
-    /// Record a resolver answer only for an authored module request.
-    pub fn record_resolution(
-        &mut self,
-        mut key: ResolutionRequestKey,
-        mut result: ResolverOutcome,
-    ) -> Result<(), ProjectInputError> {
-        normalize_resolution_key(&mut key)?;
-        if !self.artifacts.authored_requests.contains_key(&key) {
-            return Err(ProjectInputError::UnknownRequest(key));
+    /// Consume the collection after local analysis and freeze its authored
+    /// request set for the resolution phase.
+    pub fn finish_local(self) -> LocallyAnalyzedProject<'a> {
+        LocallyAnalyzedProject {
+            linter: self.linter,
+            root: self.root,
+            sources: self.sources,
+            artifacts: self.artifacts,
         }
-        normalize_result(&mut result)?;
-        self.resolutions.insert(key, result)
     }
+}
 
-    pub(crate) fn record_validated_resolution(
-        &mut self,
-        key: ResolutionRequestKey,
-        result: ResolverOutcome,
-    ) -> Result<(), ProjectInputError> {
-        self.resolutions.insert(key, result)
+impl<'a> LocallyAnalyzedProject<'a> {
+    /// Validate resolver outcomes against the frozen authored request table.
+    pub fn resolve(
+        self,
+        outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
+    ) -> Result<ResolvedProject<'a>, ProjectInputError> {
+        let mut resolutions = ResolutionTable::default();
+        for (mut key, mut result) in outcomes {
+            normalize_resolution_key(&mut key)?;
+            if !self.artifacts.authored_requests.contains_key(&key) {
+                return Err(ProjectInputError::UnknownRequest(key));
+            }
+            normalize_result(&mut result)?;
+            resolutions.insert(key, result)?;
+        }
+        Ok(ResolvedProject {
+            linter: self.linter,
+            input: ValidatedProjectInput::from_maps(
+                self.root,
+                self.sources.into_map(),
+                resolutions.into_map(),
+            ),
+            artifacts: self.artifacts,
+        })
     }
+}
 
-    /// Link the staged project and return its report.
+impl ResolvedProject<'_> {
+    /// Link, match, and assemble the report. This consuming method cannot be
+    /// called twice because the resolved project is moved into the pipeline.
     pub fn finish(self) -> Result<AnalysisReport, ProjectInputError> {
         self.finish_with_timings().map(|(report, _, _)| report)
     }
 
-    /// Link the staged project and return report plus phase timings.
     pub fn finish_with_timings(
         self,
     ) -> Result<(AnalysisReport, std::time::Duration, std::time::Duration), ProjectInputError> {
-        let input = ValidatedProjectInput::from_maps(
-            self.root,
-            self.sources.into_map(),
-            self.resolutions.into_map(),
-        );
         self.linter.finish_analyzed_project(
-            input,
+            self.input,
             self.artifacts.analyzed,
             self.artifacts.parse_diagnostics,
         )

@@ -14,11 +14,11 @@ use swc_ecma_visit::{Visit, VisitWith};
 
 use crate::analysis::{
     scope::{
-        LexicalScopeCollector,
+        ScopeCollector,
         ScopeEffect::DynamicEvaluation,
         ScopeId, ScopeKind,
         collect::{
-            Pass, PropertyAliasAssignment, RootedPropertyMutation,
+            PropertyAliasAssignment, RootedPropertyMutation,
             analysis::{DeclarationClassification, DeclarationFacts},
         },
     },
@@ -28,22 +28,12 @@ use crate::analysis::{
     },
 };
 
-impl Visit for LexicalScopeCollector<'_> {
+impl Visit for ScopeCollector {
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         self.insert_import(self.current_scope(), import);
     }
 
     fn visit_var_decl(&mut self, var_decl: &VarDecl) {
-        if self.pass == Pass::Predeclare {
-            let scope = self.binding_scope(var_decl.kind);
-            for declarator in &var_decl.decls {
-                self.insert_pat_locals(scope, &declarator.name);
-                if let Some(init) = declarator.init.as_deref() {
-                    init.visit_with(self);
-                }
-            }
-            return;
-        }
         let scope = self.binding_scope(var_decl.kind);
         for declarator in &var_decl.decls {
             let init = declarator.init.as_deref();
@@ -87,10 +77,6 @@ impl Visit for LexicalScopeCollector<'_> {
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
-        if self.pass == Pass::Predeclare {
-            assignment.visit_children_with(self);
-            return;
-        }
         let provenance = DeclarationFacts::compute(self, &assignment.right).assignment_provenance();
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
@@ -148,10 +134,6 @@ impl Visit for LexicalScopeCollector<'_> {
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
-        if self.pass == Pass::Predeclare {
-            call.visit_children_with(self);
-            return;
-        }
         self.record_modeled_callbacks(call);
         if let Callee::Expr(callee) = &call.callee
             && let Expr::Ident(callee) = &**callee
@@ -181,12 +163,10 @@ impl Visit for LexicalScopeCollector<'_> {
         self.insert_local(parent, fn_decl.ident.sym.to_string());
         self.push_scope(fn_decl.function.span, ScopeKind::Function);
         let scope = self.current_scope();
-        if self.pass == Pass::Collect {
-            let parameters = Self::function_parameters(&fn_decl.function);
-            if let Ok(name_id) = self.names.intern(fn_decl.ident.sym.as_ref()) {
-                self.function_scopes
-                    .insert((parent, name_id), (scope, parameters));
-            }
+        let parameters = Self::function_parameters(&fn_decl.function);
+        if let Ok(name_id) = self.names.intern(fn_decl.ident.sym.as_ref()) {
+            self.function_scopes
+                .insert((parent, name_id), (scope, parameters));
         }
         for parameter in &fn_decl.function.params {
             self.insert_pat_locals(scope, &parameter.pat);
@@ -208,9 +188,7 @@ impl Visit for LexicalScopeCollector<'_> {
         for param in &function.params {
             self.insert_pat_locals(scope, &param.pat);
         }
-        if self.pass == Pass::Collect
-            && let Some(bindings) = self.inline_parameters.get(&function.span.lo).cloned()
-        {
+        if let Some(bindings) = self.inline_parameters.get(&function.span.lo).cloned() {
             for (name, provenance) in bindings {
                 self.record_assignment(function.span, scope, name.as_str(), provenance);
             }
@@ -226,9 +204,7 @@ impl Visit for LexicalScopeCollector<'_> {
         for param in &arrow.params {
             self.insert_pat_locals(scope, param);
         }
-        if self.pass == Pass::Collect
-            && let Some(bindings) = self.inline_parameters.get(&arrow.span.lo).cloned()
-        {
+        if let Some(bindings) = self.inline_parameters.get(&arrow.span.lo).cloned() {
             for (name, provenance) in bindings {
                 self.record_assignment(arrow.span, scope, name.as_str(), provenance);
             }
@@ -294,7 +270,7 @@ impl Visit for LexicalScopeCollector<'_> {
 }
 
 fn collect_derived_function_pattern(
-    collector: &mut LexicalScopeCollector,
+    collector: &mut ScopeCollector,
     pattern: &Pat,
     init: Option<&Expr>,
     scope: ScopeId,
@@ -317,7 +293,7 @@ fn collect_derived_function_pattern(
 }
 
 fn register_declared_function(
-    collector: &mut LexicalScopeCollector,
+    collector: &mut ScopeCollector,
     scope: ScopeId,
     declarator: &VarDeclarator,
 ) -> bool {
@@ -335,7 +311,7 @@ fn register_declared_function(
 }
 
 fn record_mutable_static_object(
-    collector: &mut LexicalScopeCollector,
+    collector: &mut ScopeCollector,
     scope: ScopeId,
     mutable_object: bool,
     declarator: &VarDeclarator,
@@ -348,7 +324,7 @@ fn record_mutable_static_object(
     }
 }
 
-fn visit_initializer(collector: &mut LexicalScopeCollector, init: Option<&Expr>) {
+fn visit_initializer(collector: &mut ScopeCollector, init: Option<&Expr>) {
     if let Some(init) = init {
         init.visit_with(collector);
     }

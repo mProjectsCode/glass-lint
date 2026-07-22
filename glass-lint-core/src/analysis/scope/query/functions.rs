@@ -4,7 +4,7 @@ use crate::analysis::scope::query::{
     BindingProvenance, Expr, FunctionId, ScopeGraph, ScopeId, Span,
 };
 
-impl ScopeGraph<'_> {
+impl ScopeGraph {
     /// Find the nearest enclosing function identity for a lexical scope.
     pub(in crate::analysis) fn function_scope_at(&self, scope: ScopeId) -> FunctionId {
         let mut current = Some(scope);

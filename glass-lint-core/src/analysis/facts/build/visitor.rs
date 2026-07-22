@@ -112,16 +112,17 @@ impl Visit for FactBuilder<'_> {
     fn visit_update_expr(&mut self, update: &UpdateExpr) {
         update.arg.visit_with(self);
         let target = self.resolver.resolve_expr_id(&update.arg);
+        let receiver = match &*update.arg {
+            Expr::Member(member) => Some(self.resolver.resolve_expr_id(&member.obj)),
+            _ => None,
+        };
         self.emit(
             FactKind::Assignment,
             update.span(),
             FactPayload::Assignment {
                 target,
                 source: ValueId::UNKNOWN,
-                receiver: match &*update.arg {
-                    Expr::Member(member) => Some(self.resolver.resolve_expr_id(&member.obj)),
-                    _ => None,
-                },
+                receiver,
             },
         );
     }
@@ -130,16 +131,17 @@ impl Visit for FactBuilder<'_> {
         unary.arg.visit_with(self);
         if unary.op == UnaryOp::Delete {
             let target = self.resolver.resolve_expr_id(&unary.arg);
+            let receiver = match &*unary.arg {
+                Expr::Member(member) => Some(self.resolver.resolve_expr_id(&member.obj)),
+                _ => None,
+            };
             self.emit(
                 FactKind::Assignment,
                 unary.span(),
                 FactPayload::Assignment {
                     target,
                     source: ValueId::UNKNOWN,
-                    receiver: match &*unary.arg {
-                        Expr::Member(member) => Some(self.resolver.resolve_expr_id(&member.obj)),
-                        _ => None,
-                    },
+                    receiver,
                 },
             );
         }

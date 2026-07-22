@@ -1,8 +1,8 @@
-//! Two-phase collection of conservative lexical and alias facts.
+//! Source-order collection of conservative lexical and alias facts.
 //!
-//! The collector first predeclares bindings for visibility and hoisting, then
-//! traverses the source in order to collect references, assignments, and
-//! mutation.
+//! [`ScopePlanner`](plan::ScopePlanner) establishes declaration visibility and
+//! structural scope identities. [`ScopeCollector`] then traverses the source
+//! in order to collect references, assignments, and mutation.
 //!
 //! The visitor records declarations as it enters scopes and assignments in
 //! source order. It deliberately models only callback forms whose argument-to-
@@ -19,7 +19,7 @@ use swc_ecma_visit::VisitWith;
 use crate::{
     Environment,
     analysis::{
-        name::NameId,
+        name::{NameId, NameTable},
         scope::{
             AliasAssignment, BindingProvenance, LexicalScope, ScopeEffect, ScopeGraph,
             ScopeGraphParts, ScopeId, ScopeKind, ScopedName,
@@ -38,22 +38,18 @@ mod analysis;
 mod callbacks;
 mod constants;
 mod history;
+pub(super) mod plan;
 mod provenance;
 pub(super) mod visitor;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Pass {
-    Predeclare,
-    Collect,
-}
+use plan::ScopePlan;
 
 /// Mutable state shared by declaration prepass and source-order collection.
 ///
 /// The prepass establishes lexical binding identity; the normal visitor then
 /// reuses that scope tree while recording assignments and supported
 /// provenance at each use position.
-pub(super) struct LexicalScopeCollector<'a> {
-    pass: Pass,
+pub(super) struct ScopeCollector {
     /// Lexical scopes in predeclaration/traversal order.
     pub(super) scopes: Vec<LexicalScope>,
     /// Current lexical path during AST traversal.
@@ -61,7 +57,7 @@ pub(super) struct LexicalScopeCollector<'a> {
     /// Assignment events retain source order for use-position provenance.
     pub(super) assignments: Vec<AliasAssignment>,
     /// Latest use-position assignment state per lexical scope.
-    latest_assignments: AssignmentHistory<'a>,
+    latest_assignments: AssignmentHistory,
     /// Property writes retained for flow-aware rooted-member queries.
     pub(super) property_assignments: Vec<PropertyAliasAssignment>,
     /// Writes that invalidate a rooted receiver/property identity.
@@ -78,17 +74,36 @@ pub(super) struct LexicalScopeCollector<'a> {
     inline_parameters: BTreeMap<BytePos, BTreeMap<SmolStr, BindingProvenance>>,
     /// `var`-bound objects whose mutation prevents constant projection.
     pub(super) mutable_static_objects: BTreeSet<ScopedName>,
-    names: crate::analysis::name::NameTableCtx<'a>,
+    names: NameTable,
     pub(super) name_exhausted: bool,
     /// Per (scope, name) counter to avoid rescanniing all assignments.
     version_counters: BTreeMap<(ScopeId, NameId), u32>,
-    /// Structural scope shape table built during predeclare and consumed by
-    /// the main visitor, replacing positional index–based synchronization.
+    /// Structural scope shape table produced by the planner and consumed by
+    /// the source-order visitor.
     scope_shapes: ScopeShapeTable,
     /// A phase mismatch is a conservative incomplete analysis, not a panic.
-    scope_diverged: bool,
+    scope_issues: Vec<ScopeCollectionIssue>,
     #[cfg(test)]
     scope_lookups: usize,
+}
+
+/// Frozen result of source-order scope collection, including conservative
+/// shape diagnostics that callers may translate into analysis status.
+pub(in crate::analysis) struct ScopedProgram {
+    pub(super) graph: ScopeGraph,
+    pub(super) issues: Vec<ScopeCollectionIssue>,
+}
+
+impl ScopedProgram {
+    pub(in crate::analysis) fn into_parts(self) -> (ScopeGraph, Vec<ScopeCollectionIssue>) {
+        (self.graph, self.issues)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::analysis) enum ScopeCollectionIssue {
+    ShapeMismatch,
+    UnconsumedShape,
 }
 
 #[derive(Debug, Clone)]
@@ -117,7 +132,7 @@ pub(super) struct RootedPropertyMutation {
 /// key instead of by positional index. Two equal-span siblings of the same
 /// parent share the lookup key and are consumed in predeclaration order.
 #[derive(Debug, Clone, Copy)]
-struct ScopeShape {
+pub(super) struct ScopeShape {
     scope_id: ScopeId,
     kind: ScopeKind,
     span: Span,
@@ -133,13 +148,13 @@ struct ScopeShape {
 /// current parent for the visited span and kind, with no fallback
 /// allocation when the lookup misses.
 #[derive(Debug, Default)]
-struct ScopeShapeTable {
-    shapes: Vec<ScopeShape>,
-    children: BTreeMap<ScopeShapeKey, VecDeque<ScopeId>>,
+pub(super) struct ScopeShapeTable {
+    pub(super) shapes: Vec<ScopeShape>,
+    pub(super) children: BTreeMap<ScopeShapeKey, VecDeque<ScopeId>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct ScopeShapeKey {
+pub(super) struct ScopeShapeKey {
     parent: Option<ScopeId>,
     span_lo: BytePos,
     kind: ScopeKind,
@@ -193,6 +208,10 @@ impl ScopeShapeTable {
             })
             .map_or(0, VecDeque::len)
     }
+
+    fn is_consumed(&self) -> bool {
+        self.children.values().all(VecDeque::is_empty)
+    }
 }
 
 /// Compact parameter pattern descriptor that avoids cloning SWC Pat ASTs.
@@ -236,29 +255,13 @@ fn compact_pat(pattern: &Pat) -> CompactPat {
     }
 }
 
-impl<'a> LexicalScopeCollector<'a> {
-    /// Initialize an empty collector with a program-level lexical scope.
-    #[cfg(test)]
-    pub fn new(program_span: Span) -> Self {
-        Self::with_names(program_span, crate::analysis::name::NameTableCtx::testing())
-    }
-
-    pub(super) fn with_names(
-        program_span: Span,
-        names: crate::analysis::name::NameTableCtx<'a>,
-    ) -> Self {
+impl ScopeCollector {
+    pub(super) fn from_plan(plan: ScopePlan) -> Self {
         Self {
-            pass: Pass::Predeclare,
-            scopes: vec![LexicalScope {
-                span: program_span,
-                depth: 0,
-                kind: ScopeKind::Program,
-                parent: None,
-                bindings: BTreeMap::new(),
-            }],
+            scopes: plan.scopes,
             stack: vec![0],
             assignments: Vec::new(),
-            latest_assignments: AssignmentHistory::new(names),
+            latest_assignments: AssignmentHistory::new(),
             property_assignments: Vec::new(),
             rooted_property_mutations: Vec::new(),
             dynamic_evals: Vec::new(),
@@ -267,38 +270,14 @@ impl<'a> LexicalScopeCollector<'a> {
             calls: Vec::new(),
             inline_parameters: BTreeMap::new(),
             mutable_static_objects: BTreeSet::new(),
-            names,
-            name_exhausted: false,
+            names: plan.names,
+            name_exhausted: plan.name_exhausted,
             version_counters: BTreeMap::new(),
-            scope_shapes: ScopeShapeTable::new(),
-            scope_diverged: false,
+            scope_shapes: plan.scope_shapes,
+            scope_issues: Vec::new(),
             #[cfg(test)]
             scope_lookups: 0,
         }
-    }
-
-    /// Predeclare bindings before source-order collection.
-    ///
-    /// JavaScript lexical bindings are visible for the whole lexical scope
-    /// (with TDZ handled as an unresolved/local fact), and `var`/function
-    /// declarations are hoisted.
-    pub fn predeclare(&mut self, program: &swc_ecma_ast::Program) {
-        self.pass = Pass::Predeclare;
-        program.visit_children_with(self);
-        self.scope_diverged = false;
-        self.pass = Pass::Collect;
-        #[cfg(test)]
-        {
-            self.scope_lookups = 0;
-        }
-    }
-
-    /// Predeclare bindings and return the number of scope shapes recorded.
-    /// Tests use this to assert one shape per visitor push call.
-    #[cfg(test)]
-    pub fn predeclare_and_count(&mut self, program: &swc_ecma_ast::Program) -> usize {
-        self.predeclare(program);
-        self.scope_shapes.shapes_len()
     }
 
     /// Freeze collected facts into the immutable query graph.
@@ -306,7 +285,13 @@ impl<'a> LexicalScopeCollector<'a> {
     /// ID allocation, normalization, and post-collection property indexing
     /// belong to this transition so callers cannot observe a partially built
     /// graph or pass the collector's storage around independently.
-    pub(super) fn freeze(mut self, environment: &Environment) -> ScopeGraph<'a> {
+    pub(super) fn freeze(mut self, environment: &Environment) -> ScopedProgram {
+        if !self.scope_shapes.is_consumed() {
+            self.scope_issues
+                .push(ScopeCollectionIssue::UnconsumedShape);
+        }
+        let issues = self.scope_issues.clone();
+        let scope_shape_valid = issues.is_empty();
         let parameter_aliases_by_scope = self.parameter_aliases();
         let mut scopes_by_start = (0..self.scopes.len())
             .map(ScopeId::from)
@@ -400,9 +385,10 @@ impl<'a> LexicalScopeCollector<'a> {
             function_aliases,
             parameter_aliases,
             mutable_static_objects: self.mutable_static_objects,
+            scope_shape_valid,
         });
         graph.finish_collected_properties(property_assignments, rooted_mutations, dynamic_evals);
-        graph
+        ScopedProgram { graph, issues }
     }
 
     /// Return the innermost scope currently being traversed.
@@ -461,8 +447,8 @@ impl<'a> LexicalScopeCollector<'a> {
 
     /// Insert all bindings from an import declaration into `scope`.
     ///
-    /// Shared by the predeclare and main-visitor passes so import-handling
-    /// logic has a single maintenance point.
+    /// Import handling remains centralized so declaration and source-order
+    /// logic use the same provenance construction.
     pub(super) fn insert_import(&mut self, scope: ScopeId, import: &ImportDecl) {
         let import_module = import.src.value.to_string_lossy().to_smolstr();
         for specifier in &import.specifiers {
@@ -505,11 +491,11 @@ impl<'a> LexicalScopeCollector<'a> {
     }
 
     pub(super) fn interned_name(&self, name: &str) -> Option<crate::analysis::name::NameId> {
-        self.names.intern(name).ok()
+        self.names.lookup(name)
     }
 
     pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
-        self.names.intern_path(path)
+        self.names.lookup_path(path)
     }
 
     pub(super) fn rooted_name_path(&self, expr: &Expr) -> Option<NamePath> {
@@ -518,7 +504,7 @@ impl<'a> LexicalScopeCollector<'a> {
     }
 
     pub(super) fn append_name_path(&self, path: &NamePath, segment: &str) -> Option<NamePath> {
-        let id = self.names.intern(segment).ok()?;
+        let id = self.names.lookup(segment)?;
         Some(path.append_path(&NamePath::from_ids([id])))
     }
 
@@ -552,7 +538,7 @@ impl<'a> LexicalScopeCollector<'a> {
         *next = next.saturating_add(1);
         let version = BindingVersion(*next);
         self.latest_assignments
-            .record(scope, name, provenance.clone());
+            .record(&self.names, scope, name, provenance.clone());
         self.assignments.push(AliasAssignment {
             span,
             scope,
@@ -562,35 +548,8 @@ impl<'a> LexicalScopeCollector<'a> {
         });
     }
 
-    /// Enter a scope owned by the predeclare phase.
-    ///
-    /// The predeclare pass allocates the scope and records its shape. The
-    /// collect pass resolves the visited scope by structural identity
-    /// (`parent`, `span`, `kind`) against the shape table and pushes that
-    /// predeclared scope. A miss means the two phases walked the same
-    /// scope-forming syntax differently; the artifact is marked diverged and
-    /// the visitor stays in the current scope instead of allocating a
-    /// fallback that would silently desynchronize the two passes.
+    /// Enter the planned scope matching the current source-order node.
     fn push_scope(&mut self, span: Span, kind: ScopeKind) {
-        if self.pass == Pass::Predeclare {
-            let parent = self.current_scope();
-            let index = self.scopes.len();
-            self.scopes.push(LexicalScope {
-                span,
-                depth: self.stack.len(),
-                kind,
-                parent: Some(parent),
-                bindings: BTreeMap::new(),
-            });
-            self.scope_shapes.record(ScopeShape {
-                scope_id: ScopeId::from(index),
-                kind,
-                span,
-                parent: Some(parent),
-            });
-            self.stack.push(index);
-            return;
-        }
         let parent = self.current_scope();
         if let Some(scope_id) = self.scope_shapes.take_child(Some(parent), span.lo, kind) {
             self.stack.push(scope_id.index());
@@ -599,7 +558,7 @@ impl<'a> LexicalScopeCollector<'a> {
                 self.scope_lookups += 1;
             }
         } else {
-            self.scope_diverged = true;
+            self.scope_issues.push(ScopeCollectionIssue::ShapeMismatch);
         }
     }
 
@@ -626,7 +585,7 @@ impl<'a> LexicalScopeCollector<'a> {
         // collecting source order, `latest_assignments` is exactly the state
         // visible at the current AST position.
         for scope in self.stack.iter().rev().copied().map(ScopeId::from) {
-            if let Some(assignment) = self.latest_assignments.get(scope, name) {
+            if let Some(assignment) = self.latest_assignments.get(&self.names, scope, name) {
                 return Some(assignment);
             }
             if let Some(binding) = self
@@ -646,7 +605,7 @@ impl<'a> LexicalScopeCollector<'a> {
             .copied()
             .map(ScopeId::from)
             .find(|scope| {
-                self.latest_assignments.contains(*scope, name)
+                self.latest_assignments.contains(&self.names, *scope, name)
                     || self
                         .name_id(name)
                         .is_some_and(|name| self.scopes[scope.index()].bindings.contains_key(&name))
@@ -654,7 +613,7 @@ impl<'a> LexicalScopeCollector<'a> {
     }
 
     fn is_unbound(&self, name: &str) -> bool {
-        !self.scope_diverged && self.visible_binding(name).is_none()
+        self.scope_issues.is_empty() && self.visible_binding(name).is_none()
     }
 
     fn rooted_expr_name(&self, expr: &Expr) -> Option<SymbolPath> {
@@ -746,7 +705,7 @@ impl<'a> LexicalScopeCollector<'a> {
     }
 }
 
-impl RootedExprContext for LexicalScopeCollector<'_> {
+impl RootedExprContext for ScopeCollector {
     fn rooted_ident_chain(&self, ident: &swc_ecma_ast::Ident) -> Option<SymbolPath> {
         match self.visible_binding(ident.sym.as_ref()) {
             Some(
@@ -777,13 +736,17 @@ mod tests {
 
     use super::*;
 
-    fn collect(source: &str) -> LexicalScopeCollector<'_> {
+    fn collect(source: &str) -> ScopeCollector {
         let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");
-        let mut collector = LexicalScopeCollector::new(parsed.program.span());
-        let predeclared = collector.predeclare_and_count(&parsed.program);
+        let names = crate::analysis::name::NameTable::default();
+        let mut planner = plan::ScopePlanner::new(parsed.program.span(), names);
+        parsed.program.visit_children_with(&mut planner);
+        let plan = planner.finish();
+        let predeclared = plan.scope_shapes.shapes_len();
+        let mut collector = ScopeCollector::from_plan(plan);
         parsed.program.visit_children_with(&mut collector);
         assert!(
-            !collector.scope_diverged,
+            collector.scope_issues.is_empty(),
             "main visitor did not diverge from predeclared scopes"
         );
         assert_eq!(
@@ -793,7 +756,7 @@ mod tests {
         collector
     }
 
-    fn scope_fingerprint(collector: &LexicalScopeCollector) -> Vec<String> {
+    fn scope_fingerprint(collector: &ScopeCollector) -> Vec<String> {
         collector
             .scopes
             .iter()
@@ -809,6 +772,16 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    fn planned_scopes(span: Span, kinds: &[ScopeKind]) -> ScopeCollector {
+        let names = crate::analysis::name::NameTable::default();
+        let mut planner = plan::ScopePlanner::new(span, names);
+        for &kind in kinds {
+            planner.push_scope(span, kind);
+            planner.pop_scope();
+        }
+        ScopeCollector::from_plan(planner.finish())
     }
 
     #[test]
@@ -866,16 +839,9 @@ mod tests {
     fn reuses_same_span_same_kind_siblings_by_order() {
         let parsed = crate::parse("value;", "same-span.js").expect("source should parse");
         let span = parsed.program.span();
-        let mut collector = LexicalScopeCollector::new(span);
-
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
+        let mut collector = planned_scopes(span, &[ScopeKind::Block, ScopeKind::Block]);
         let predeclared = collector.scope_shapes.shapes_len();
         assert_eq!(predeclared, 2);
-        collector.scope_diverged = false;
-        collector.pass = Pass::Collect;
 
         collector.push_scope(span, ScopeKind::Block);
         let first = collector.current_scope();
@@ -915,19 +881,15 @@ mod tests {
     fn divergence_on_extra_scope_fails_closed() {
         let parsed = crate::parse("value;", "divergence-extra.js").expect("source should parse");
         let span = parsed.program.span();
-        let mut collector = LexicalScopeCollector::new(span);
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
+        let mut collector = planned_scopes(span, &[ScopeKind::Block]);
         assert_eq!(collector.scope_shapes.shapes_len(), 1);
-        collector.scope_diverged = false;
-        collector.pass = Pass::Collect;
         let before = collector.current_scope();
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();
-        assert!(!collector.scope_diverged);
+        assert!(collector.scope_issues.is_empty());
         assert_eq!(collector.current_scope(), before);
         collector.push_scope(span, ScopeKind::Block);
-        assert!(collector.scope_diverged);
+        assert!(!collector.scope_issues.is_empty());
         // No fallback scope was allocated during the diverged push.
         assert_eq!(collector.current_scope(), before);
     }
@@ -936,17 +898,11 @@ mod tests {
     fn divergence_on_missing_scope_fails_closed() {
         let parsed = crate::parse("value;", "divergence-missing.js").expect("source should parse");
         let span = parsed.program.span();
-        let mut collector = LexicalScopeCollector::new(span);
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
+        let mut collector = planned_scopes(span, &[ScopeKind::Block, ScopeKind::Block]);
         assert_eq!(collector.scope_shapes.shapes_len(), 2);
-        collector.scope_diverged = false;
-        collector.pass = Pass::Collect;
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();
-        assert!(!collector.scope_diverged);
+        assert!(collector.scope_issues.is_empty());
         assert_eq!(
             collector
                 .scope_shapes
@@ -956,11 +912,11 @@ mod tests {
         );
         // A second visit consumes the remaining predeclared shape.
         collector.push_scope(span, ScopeKind::Block);
-        assert!(!collector.scope_diverged);
+        assert!(collector.scope_issues.is_empty());
         // A third visit finds no matching shape and fails closed.
         let before = collector.current_scope();
         collector.push_scope(span, ScopeKind::Block);
-        assert!(collector.scope_diverged);
+        assert!(!collector.scope_issues.is_empty());
         // No fallback scope was allocated.
         assert_eq!(collector.current_scope(), before);
     }
@@ -969,14 +925,10 @@ mod tests {
     fn divergence_on_kind_mismatch_fails_closed() {
         let parsed = crate::parse("value;", "divergence-kind.js").expect("source should parse");
         let span = parsed.program.span();
-        let mut collector = LexicalScopeCollector::new(span);
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
-        collector.scope_diverged = false;
-        collector.pass = Pass::Collect;
+        let mut collector = planned_scopes(span, &[ScopeKind::Block]);
         let before = collector.current_scope();
         collector.push_scope(span, ScopeKind::Function);
-        assert!(collector.scope_diverged);
+        assert!(!collector.scope_issues.is_empty());
         // The visitor stays in the parent scope; no fallback is allocated.
         assert_eq!(collector.current_scope(), before);
     }
@@ -1216,7 +1168,7 @@ mod tests {
         ";
         let collector = collect(source);
         assert!(
-            !collector.scope_diverged,
+            collector.scope_issues.is_empty(),
             "no divergence when the visitor walks scope-forming syntax in predeclaration order",
         );
         assert_eq!(
@@ -1231,17 +1183,12 @@ mod tests {
         // Predeclare 3 sibling Block scopes under the program scope.
         let parsed = crate::parse("value;", "walker-divergence.js").expect("source should parse");
         let span = parsed.program.span();
-        let mut collector = LexicalScopeCollector::new(span);
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
-        collector.push_scope(span, ScopeKind::Block);
-        collector.pop_scope();
+        let mut collector = planned_scopes(
+            span,
+            &[ScopeKind::Block, ScopeKind::Block, ScopeKind::Block],
+        );
         let predeclared = collector.scope_shapes.shapes_len();
         assert_eq!(predeclared, 3);
-        collector.scope_diverged = false;
-        collector.pass = Pass::Collect;
 
         // Walk the predeclared shapes in reversed order: a structural
         // identity lookup must still resolve each push correctly because
@@ -1255,15 +1202,15 @@ mod tests {
         collector.push_scope(span, ScopeKind::Block);
         let first = collector.current_scope();
         collector.pop_scope();
-        assert!(!collector.scope_diverged);
+        assert!(collector.scope_issues.is_empty());
         collector.push_scope(span, ScopeKind::Block);
         let second = collector.current_scope();
         collector.pop_scope();
-        assert!(!collector.scope_diverged);
+        assert!(collector.scope_issues.is_empty());
         collector.push_scope(span, ScopeKind::Block);
         let third = collector.current_scope();
         collector.pop_scope();
-        assert!(!collector.scope_diverged);
+        assert!(collector.scope_issues.is_empty());
         assert_ne!(first, second);
         assert_ne!(second, third);
         assert_ne!(first, third);
@@ -1276,7 +1223,7 @@ mod tests {
         // must fail closed without allocating a fallback scope.
         let before = collector.current_scope();
         collector.push_scope(span, ScopeKind::Block);
-        assert!(collector.scope_diverged);
+        assert!(!collector.scope_issues.is_empty());
         assert_eq!(
             collector.current_scope(),
             before,

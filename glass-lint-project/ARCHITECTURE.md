@@ -8,10 +8,10 @@ ProjectSelection + validated ProjectLoadOptions
   -> canonical root and boundary checks
   -> deterministic discovery or tsconfig membership
   -> bounded source reads
-  -> core source admission and local analysis
-  -> authored resolution requests
+  -> core `ProjectCollection` source admission and local analysis
+  -> `LocallyAnalyzedProject` authored resolution requests
   -> Oxc module resolution
-  -> typed ResolutionResult records
+  -> `ResolvedProject` and typed resolver outcomes
   -> core linking and matching
   -> ProjectLoadOutcome
 ```

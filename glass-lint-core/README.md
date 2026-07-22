@@ -62,7 +62,7 @@ Providers add browser, Node.js, Electron, or application bindings. Use
 `add_global_object_with_members` for a restricted host object.
 
 For one source, call `Linter::lint_snippet`. For an in-memory project, use
-`Linter::lint_project` or `AnalysisSession` with owned `SourceFile` values and
+`Linter::lint_project` or `ProjectCollection` with owned `SourceFile` values and
 typed `ResolutionResult` records. Filesystem discovery and module resolution
 belong in `glass-lint-project`.
 

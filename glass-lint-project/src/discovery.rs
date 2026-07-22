@@ -86,17 +86,16 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         }
         paths.sort();
         paths.dedup();
-        if paths.len() > self.admission.options().max_files {
+        if paths.len() > self.admission.options().max_files() {
             return Err(ProjectLoadError::TooManyFiles(
-                self.admission.options().max_files,
+                self.admission.options().max_files(),
             ));
         }
         Ok(())
     }
 
     fn discover(&self, directory: &Path) -> Result<Vec<PathBuf>, ProjectLoadError> {
-        let options = self.admission.options();
-        let Some(_metadata) = walk::resolve_root(options, directory)? else {
+        let Some(_metadata) = walk::resolve_root(self.admission.options(), directory)? else {
             return Ok(Vec::new());
         };
         walk::collect_files(self.admission, directory, self.deadline, &mut |_| true)
@@ -110,7 +109,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         let mut visited = BTreeSet::new();
         let mut selected = BTreeSet::new();
         self.collect_tsconfig(
-            &self.admission.canonicalize(config)?,
+            self.admission.canonicalize(config)?.as_ref(),
             directory,
             &mut visited,
             &mut selected,
@@ -126,12 +125,12 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         selected: &mut BTreeSet<PathBuf>,
     ) -> Result<(), ProjectLoadError> {
         let config = self.admission.canonicalize(config)?;
-        if !visited.insert(config.clone()) {
+        if !visited.insert(config.as_ref().to_path_buf()) {
             return Ok(());
         }
 
-        let parsed = read_tsconfig_path_extends(&config, fallback_directory, visited)?;
-        let base = config.parent().unwrap_or(fallback_directory);
+        let parsed = read_tsconfig_path_extends(config.as_ref(), fallback_directory, visited)?;
+        let base = config.as_ref().parent().unwrap_or(fallback_directory);
         let includes = patterns(&parsed, "include").unwrap_or_else(|| vec!["**/*"]);
         let mut excludes = patterns(&parsed, "exclude").unwrap_or_default();
         excludes.extend(["**/node_modules", "**/bower_components"]);
@@ -164,7 +163,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         for file in files.iter().filter_map(Value::as_str) {
             let path = base.join(file);
             if path.exists() && self.admission.supports(&path) {
-                selected.insert(self.admission.canonicalize(&path)?);
+                selected.insert(self.admission.canonicalize(&path)?.into_path_buf());
             }
         }
         Ok(())
@@ -190,7 +189,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                     .iter()
                     .any(|pattern| tsconfig_pattern_matches(pattern, &relative))
             {
-                selected.insert(self.admission.canonicalize(&path)?);
+                selected.insert(self.admission.canonicalize(&path)?.into_path_buf());
             }
         }
         Ok(())

@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    ops::Deref,
     path::{Path, PathBuf},
 };
 
@@ -81,15 +80,14 @@ pub struct ProjectLoadOptionsBuilder {
 
 /// A project policy that has passed every cross-field validation rule.
 #[derive(Clone, Debug)]
-pub struct ValidatedProjectLoadOptions(ProjectLoadOptions);
-
-impl Deref for ValidatedProjectLoadOptions {
-    type Target = ProjectLoadOptions;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
+pub struct ValidatedProjectLoadOptions {
+    options: ProjectLoadOptions,
+    extensions: SourceExtensionSet,
 }
+
+/// Normalized, validated source suffixes used by filesystem boundaries.
+#[derive(Clone, Debug)]
+struct SourceExtensionSet(BTreeSet<String>);
 
 impl ProjectLoadOptionsBuilder {
     #[must_use]
@@ -196,7 +194,16 @@ impl ProjectLoadOptions {
     /// Validate this policy and mark it safe for the project loader boundary.
     pub fn validated(self) -> Result<ValidatedProjectLoadOptions, ProjectLoadError> {
         self.validate()?;
-        Ok(ValidatedProjectLoadOptions(self))
+        let extensions = SourceExtensionSet(
+            self.extensions
+                .iter()
+                .map(|extension| extension.to_ascii_lowercase())
+                .collect(),
+        );
+        Ok(ValidatedProjectLoadOptions {
+            options: self,
+            extensions,
+        })
     }
 
     /// Test whether a source path's extension is supported.
@@ -278,6 +285,74 @@ impl ProjectLoadOptions {
             ));
         }
         Ok(())
+    }
+}
+
+impl ValidatedProjectLoadOptions {
+    pub fn options(&self) -> &ProjectLoadOptions {
+        &self.options
+    }
+
+    pub fn root(&self) -> Option<&Path> {
+        self.options.root.as_deref()
+    }
+
+    pub fn max_files(&self) -> usize {
+        self.options.max_files
+    }
+
+    pub fn max_requests(&self) -> usize {
+        self.options.max_requests
+    }
+
+    pub fn max_source_bytes(&self) -> u64 {
+        self.options.max_source_bytes
+    }
+
+    pub fn max_project_source_bytes(&self) -> u64 {
+        self.options.max_project_source_bytes
+    }
+
+    pub fn max_visited_entries(&self) -> usize {
+        self.options.max_visited_entries
+    }
+
+    pub fn max_timeout_ms(&self) -> u64 {
+        self.options.max_timeout_ms
+    }
+
+    pub fn extensions(&self) -> impl Iterator<Item = &str> {
+        self.extensions.0.iter().map(String::as_str)
+    }
+
+    pub fn extension_aliases(&self) -> &BTreeMap<String, Vec<String>> {
+        &self.options.extension_aliases
+    }
+
+    pub fn follow_symlinks(&self) -> bool {
+        self.options.follow_symlinks
+    }
+
+    pub fn supports(&self, path: &Path) -> bool {
+        let name = path.to_string_lossy().to_ascii_lowercase();
+        self.extensions
+            .0
+            .iter()
+            .any(|extension| name.ends_with(extension))
+            && ![".d.ts", ".d.cts", ".d.mts"]
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
+    }
+
+    pub fn excludes_path(&self, root: &Path, path: &Path) -> bool {
+        path.strip_prefix(root).is_ok_and(|relative| {
+            relative.components().any(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .is_some_and(|name| self.options.excluded_directories.contains(name))
+            })
+        })
     }
 }
 

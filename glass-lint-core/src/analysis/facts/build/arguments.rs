@@ -71,7 +71,7 @@ impl FactBuilder<'_> {
     fn resolve_or_eval(
         expr: &Expr,
         value: ValueId,
-        resolver: &crate::analysis::resolution::Resolver<'_>,
+        resolver: &mut crate::analysis::resolution::Resolver,
     ) -> ValueId {
         if value == ValueId::UNKNOWN {
             let const_value = syntax_constant::evaluate(expr, resolver);
@@ -185,13 +185,14 @@ impl FactBuilder<'_> {
                 (value, base_value, extended)
             }
             Expr::Paren(paren) => self.analyze_argument_tree(&paren.expr, path),
-            Expr::Seq(sequence) => sequence.exprs.last().map_or_else(
-                || {
+            Expr::Seq(sequence) => {
+                if let Some(last) = sequence.exprs.last() {
+                    self.analyze_argument_tree(last, path)
+                } else {
                     let value = self.resolver.resolve_expr_id(expr);
                     (value, value, path)
-                },
-                |last| self.analyze_argument_tree(last, path),
-            ),
+                }
+            }
             _ => {
                 let value = self.resolver.resolve_expr_id(expr);
                 (value, value, path)
@@ -201,7 +202,7 @@ impl FactBuilder<'_> {
 
     /// Convert an argument already bound by a callable wrapper into the same
     /// representation as a source-level argument.
-    pub(super) fn bound_arg_info(&self, argument: &BoundArgument) -> CallArgInfo {
+    pub(super) fn bound_arg_info(&mut self, argument: &BoundArgument) -> CallArgInfo {
         match argument {
             BoundArgument::StaticString(value) => {
                 let resolved = self
@@ -239,7 +240,7 @@ impl FactBuilder<'_> {
 
     /// Resolve the rooted identity of a call target without treating a raw
     /// local name as stronger provenance than the resolver can prove.
-    pub(super) fn resolve_target_chain(&self, target: &Expr) -> Option<SymbolPath> {
+    pub(super) fn resolve_target_chain(&mut self, target: &Expr) -> Option<SymbolPath> {
         use crate::analysis::syntax::effective_callee_expr;
         let effective = effective_callee_expr(target);
         match effective {

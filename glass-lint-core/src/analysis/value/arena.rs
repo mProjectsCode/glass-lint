@@ -134,11 +134,11 @@ impl ValueTable {
     pub(in crate::analysis) fn intern_static_object(
         &mut self,
         values: impl IntoIterator<Item = (SmolStr, ValueId)>,
-        names: &mut NameTable,
+        names: &NameTable,
     ) -> ValueId {
         let mut canonical = Vec::new();
         for (name, value) in values {
-            let Ok(id) = names.intern(name.as_str()) else {
+            let Some(id) = names.lookup(name.as_str()) else {
                 self.exhausted = true;
                 return ValueId::UNKNOWN;
             };

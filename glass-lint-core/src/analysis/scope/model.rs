@@ -12,7 +12,7 @@ use swc_common::{BytePos, Span};
 use crate::{
     Environment,
     analysis::{
-        name::{NameId, NameTableCtx},
+        name::{NameId, NameTable},
         scope::collect::{PropertyAliasAssignment, RootedPropertyMutation, aliases::contains},
         syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
         value::{BindingId, BindingKey, BindingVersion, FunctionId, NamePath, SymbolPath},
@@ -58,9 +58,9 @@ impl From<usize> for ScopeId {
 
 #[derive(Debug)]
 /// Immutable lexical scope/index model consumed by resolution queries.
-pub(in crate::analysis) struct ScopeGraph<'a> {
+pub(in crate::analysis) struct ScopeGraph {
     /// Names used by compact local scope indexes.
-    names: NameTableCtx<'a>,
+    names: NameTable,
     /// Host globals and member capabilities used for unshadowed checks.
     environment: Environment,
     /// Lexical scopes in predeclaration order.
@@ -90,13 +90,14 @@ pub(in crate::analysis) struct ScopeGraph<'a> {
     dynamic_evals_by_scope: BTreeMap<ScopeId, Vec<ScopeEffect>>,
     /// Static objects whose `var` binding may be mutated.
     mutable_static_objects: std::collections::BTreeSet<ScopedName>,
+    /// False when source-order collection did not consume the planned shape.
+    scope_shape_valid: bool,
 }
 
-impl<'a> ScopeGraph<'a> {
+impl ScopeGraph {
     /// Create a minimally-initialized scope graph for test use. The caller
-    /// must ensure the `NameTableCtx` outlives the graph.
     #[cfg(test)]
-    pub(in crate::analysis) fn create_for_test(names: NameTableCtx<'a>) -> Self {
+    pub(in crate::analysis) fn create_for_test(names: NameTable) -> Self {
         Self {
             names,
             environment: crate::Environment::default(),
@@ -113,11 +114,12 @@ impl<'a> ScopeGraph<'a> {
             parameter_aliases: std::collections::BTreeMap::new(),
             dynamic_evals_by_scope: std::collections::BTreeMap::new(),
             mutable_static_objects: std::collections::BTreeSet::new(),
+            scope_shape_valid: true,
         }
     }
 
     /// Assemble the immutable graph before property indexes are attached.
-    pub(super) fn from_parts(parts: ScopeGraphParts<'a>) -> Self {
+    pub(super) fn from_parts(parts: ScopeGraphParts) -> Self {
         Self {
             environment: parts.environment,
             names: parts.names,
@@ -134,23 +136,51 @@ impl<'a> ScopeGraph<'a> {
             parameter_aliases: parts.parameter_aliases,
             dynamic_evals_by_scope: std::collections::BTreeMap::new(),
             mutable_static_objects: parts.mutable_static_objects,
+            scope_shape_valid: parts.scope_shape_valid,
         }
     }
 
     pub(in crate::analysis) fn resolve_name_id(&self, name: NameId) -> Option<SmolStr> {
-        self.names.resolve(name)
+        self.names.resolve(name).map(SmolStr::new)
     }
 
     pub(super) fn name_id(&self, name: &str) -> Option<NameId> {
         self.names.lookup(name)
     }
 
-    pub(super) fn intern_name(&self, name: &str) -> Option<NameId> {
+    pub(in crate::analysis) fn intern_name(&self, name: &str) -> Option<NameId> {
+        self.names.lookup(name)
+    }
+
+    pub(in crate::analysis) fn intern_name_mut(&mut self, name: &str) -> Option<NameId> {
         self.names.intern(name).ok()
     }
 
-    pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
-        self.names.intern_path(path)
+    pub(in crate::analysis) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
+        self.names.lookup_path(path)
+    }
+
+    pub(in crate::analysis) fn name_table_exhausted(&self) -> bool {
+        self.names.exhausted()
+    }
+
+    pub(in crate::analysis) fn name_table(&self) -> &NameTable {
+        &self.names
+    }
+
+    pub(in crate::analysis) fn name_table_mut(&mut self) -> &mut NameTable {
+        &mut self.names
+    }
+
+    pub(in crate::analysis) fn name_exhaustion(
+        &self,
+    ) -> Option<crate::analysis::name::NameExhausted> {
+        self.names.exhaustion()
+    }
+
+    #[cfg(test)]
+    pub(in crate::analysis) fn name_snapshot(&self) -> NameTable {
+        self.names.clone()
     }
 
     pub(in crate::analysis) fn symbol_path(&self, path: &NamePath) -> Option<SymbolPath> {
@@ -375,6 +405,9 @@ impl<'a> ScopeGraph<'a> {
 
     /// Find the innermost lexical scope containing a source span.
     pub(in crate::analysis) fn scope_at(&self, span: Span) -> ScopeId {
+        if !self.scope_shape_valid {
+            return ScopeId::from(0);
+        }
         if let Some((cached_span, scope)) = self.last_scope_query.get()
             && cached_span == span
         {
@@ -406,9 +439,9 @@ impl<'a> ScopeGraph<'a> {
 }
 
 /// Owned inputs used to assemble a collected [`ScopeGraph`].
-pub(super) struct ScopeGraphParts<'a> {
+pub(super) struct ScopeGraphParts {
     pub(super) environment: Environment,
-    pub(super) names: NameTableCtx<'a>,
+    pub(super) names: NameTable,
     pub(super) scopes: Vec<LexicalScope>,
     pub(super) scopes_by_start: Vec<ScopeId>,
     pub(super) assignments: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>>,
@@ -418,6 +451,7 @@ pub(super) struct ScopeGraphParts<'a> {
     pub(super) function_aliases: BTreeMap<ScopedName, FunctionId>,
     pub(super) parameter_aliases: BTreeMap<(FunctionId, NameId), BindingProvenance>,
     pub(super) mutable_static_objects: std::collections::BTreeSet<ScopedName>,
+    pub(super) scope_shape_valid: bool,
 }
 
 #[derive(Debug, Clone)]

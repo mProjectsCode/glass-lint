@@ -8,12 +8,12 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, Pat};
 
 use super::{CompactPat, compact_pat};
 use crate::analysis::{
-    name::{NameId, NameTableCtx},
-    scope::{BindingProvenance, ScopeId, ScopedName, collect::LexicalScopeCollector},
+    name::{NameId, NameTable},
+    scope::{BindingProvenance, ScopeId, ScopedName, collect::ScopeCollector},
     syntax::member_property_name,
 };
 
-impl LexicalScopeCollector<'_> {
+impl ScopeCollector {
     /// Resolve the proven parameter aliases shared by all compatible calls to
     /// a helper. Conflicting call sites are discarded rather than merged:
     /// retaining an ambiguous alias would leak one caller's provenance into
@@ -30,7 +30,7 @@ impl LexicalScopeCollector<'_> {
                 if *caller_scope != *scope
                     && let Some(Some(target)) = arguments.get(index)
                 {
-                    Self::project_parameter_pattern(self.names, parameter, target, &mut projected);
+                    Self::project_parameter_pattern(&self.names, parameter, target, &mut projected);
                 }
                 for name in Self::parameter_binding_names(parameter) {
                     let target = projected.get(&name).cloned();
@@ -74,7 +74,7 @@ impl LexicalScopeCollector<'_> {
     /// Unsupported patterns intentionally contribute no bindings: callers
     /// must not infer aliases from a shape that the collector cannot prove.
     pub(super) fn project_parameter_pattern(
-        names: NameTableCtx<'_>,
+        names: &NameTable,
         pattern: &CompactPat,
         value: &BindingProvenance,
         output: &mut BTreeMap<SmolStr, BindingProvenance>,
@@ -148,7 +148,7 @@ impl LexicalScopeCollector<'_> {
         for (parameter, argument) in parameters.into_iter().zip(arguments) {
             if let Some(argument) = argument {
                 let compact = compact_pat(parameter);
-                Self::project_parameter_pattern(self.names, &compact, &argument, &mut bindings);
+                Self::project_parameter_pattern(&self.names, &compact, &argument, &mut bindings);
             }
         }
         if !bindings.is_empty() {

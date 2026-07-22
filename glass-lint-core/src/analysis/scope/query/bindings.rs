@@ -5,7 +5,7 @@ use crate::analysis::scope::query::{
     ScopeGraph, ScopeId, ScopeKind, Span,
 };
 
-impl ScopeGraph<'_> {
+impl ScopeGraph {
     /// Resolve the binding provenance visible at a use position.
     pub(in crate::analysis) fn binding_at(
         &self,

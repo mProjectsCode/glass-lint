@@ -6,9 +6,9 @@
 //! mutable cases intentionally resolve to local/absent provenance.
 //!
 //! Collection is split into three phases:
-//! 1. Declaration prepass (predeclare) — all hoisted and block-scoped
-//!    declarations are registered before any initializer is visited, so a
-//!    use-before-decl resolves as local/TDZ rather than an unshadowed global.
+//! 1. Declaration planning — all hoisted and block-scoped declarations are
+//!    registered before any initializer is visited, so a use-before-decl
+//!    resolves as local/TDZ rather than an unshadowed global.
 //! 2. Source-order visitation — initializers, expressions, and nested scopes
 //!    are visited in AST order.
 //! 3. Freeze — the collected graph is sealed into an immutable query index.
@@ -16,12 +16,12 @@
 //! Binding IDs and assignment versions make position-sensitive queries
 //! possible without rebuilding the AST for each lookup.
 
-use collect::LexicalScopeCollector;
+use collect::{ScopeCollector, plan::ScopePlanner};
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
-use crate::analysis::name::NameTableCtx;
+use crate::analysis::name::NameTable;
 
 mod collect;
 mod query;
@@ -29,28 +29,26 @@ mod query;
 mod model;
 pub(in crate::analysis) use model::*;
 
-impl ScopeGraph<'_> {
+impl ScopeGraph {
     #[cfg(test)]
     pub(super) fn collect(program: &Program) -> Self {
-        Self::collect_with_environment(
+        let scoped = Self::collect_scoped_program(
             program,
             &crate::Environment::default(),
-            crate::analysis::name::NameTableCtx::testing(),
-        )
+            NameTable::default(),
+        );
+        scoped.into_parts().0
     }
 
-    /// Build one matcher-independent scope graph using the configured globals.
-    pub(super) fn collect_with_environment<'a>(
+    pub(super) fn collect_scoped_program(
         program: &Program,
         environment: &crate::Environment,
-        names: NameTableCtx<'a>,
-    ) -> ScopeGraph<'a> {
-        let mut collector = LexicalScopeCollector::with_names(program.span(), names);
-        // Build declarations before collecting initializers and uses.  This
-        // makes the resolver position-aware without making it traversal-order
-        // dependent: an earlier use of a later declaration is local/TDZ, not
-        // an accidentally unshadowed global.
-        collector.predeclare(program);
+        names: NameTable,
+    ) -> collect::ScopedProgram {
+        let mut planner = ScopePlanner::new(program.span(), names);
+        program.visit_children_with(&mut planner);
+        let plan = planner.finish();
+        let mut collector = ScopeCollector::from_plan(plan);
         program.visit_children_with(&mut collector);
         collector.freeze(environment)
     }

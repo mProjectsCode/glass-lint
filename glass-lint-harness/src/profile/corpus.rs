@@ -17,7 +17,7 @@ pub fn discover_profile_files(
     let corpus_options = ProjectLoadOptions::builder()
         .max_files(usize::MAX)
         .build()?;
-    let corpus = SourceCorpus::new(&corpus_options)?;
+    let corpus = SourceCorpus::from_validated(&corpus_options);
     let mut paths = BTreeMap::<PathBuf, ()>::new();
     for root in roots {
         let found = corpus.discover_filtered(std::slice::from_ref(root), |path| {

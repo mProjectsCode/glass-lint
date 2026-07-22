@@ -725,8 +725,8 @@ mod tests {
             "summary-siblings.js",
         )
         .expect("source should parse");
-        let resolver = Resolver::collect(&parsed.program);
-        let stream = facts::build::build_test_stream(&parsed.program, &resolver);
+        let mut resolver = Resolver::collect(&parsed.program);
+        let stream = facts::build::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let summaries = FunctionSummaries::collect(
             &stream,

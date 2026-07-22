@@ -1,6 +1,6 @@
 //! Compositional ordinary-clause execution over semantic occurrence indexes.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[cfg(test)]
 use smol_str::SmolStr;
@@ -9,11 +9,11 @@ use smol_str::ToSmolStr;
 use crate::{
     analysis::{
         matching::{
-            CandidateOccurrences, ClassificationEvidence, ModuleOccurrenceOverlay, Occurrence,
+            CandidateOccurrences, ClassificationEvidence, LinkedOccurrenceView, Occurrence,
             OccurrenceIndexes,
             occurrence::{
-                MergeOccurrenceIter, ModuleExportKey, ModuleOccurrences, OccurrenceIndex,
-                PackageKeyPredicate, PackageMatchKind, PackageOccurrenceIter,
+                BorrowedOccurrenceIter, BorrowedPackageOccurrenceIter, ModuleExportKey,
+                ModuleOccurrences, OccurrenceIndex, PackageKeyPredicate, PackageMatchKind,
             },
             push_owned_evidence,
         },
@@ -26,12 +26,14 @@ use crate::{
 
 fn module_occurrences<'a, K: Ord>(
     base: &'a OccurrenceIndex<K>,
-    overlay: Option<&'a OccurrenceIndex<K>>,
+    overlay: Option<&'a BTreeMap<K, Vec<&'a [Occurrence]>>>,
     masked: bool,
     key: &K,
 ) -> Option<CandidateOccurrences<'a>> {
-    if let Some(overlay_slice) = overlay.and_then(|overlay| overlay.get(key)) {
-        return Some(CandidateOccurrences::Indexed(overlay_slice));
+    if let Some(overlay_slices) = overlay.and_then(|overlay| overlay.get(key)) {
+        return Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
+            overlay_slices.clone(),
+        )));
     }
     if !masked && let Some(base_slice) = base.get(key) {
         return Some(CandidateOccurrences::Indexed(base_slice));
@@ -41,28 +43,31 @@ fn module_occurrences<'a, K: Ord>(
 
 fn package_occurrences<'a>(
     base: &'a ModuleOccurrences,
-    overlay: Option<&'a ModuleOccurrences>,
+    overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>>,
     masked: Option<&'a BTreeSet<ModuleExportKey>>,
     predicate: PackageKeyPredicate<'a>,
 ) -> CandidateOccurrences<'a> {
-    let iter = PackageOccurrenceIter::new(
-        predicate,
-        masked,
-        base.as_map(),
-        overlay.map(OccurrenceIndex::as_map),
-    );
-    CandidateOccurrences::Package(iter)
+    let iter = BorrowedPackageOccurrenceIter::new(predicate, masked, base.as_map(), overlay);
+    CandidateOccurrences::BorrowedPackage(iter)
 }
 
 fn merged_or_indexed<'a>(
     base: Option<&'a [Occurrence]>,
-    overlay: Option<&'a [Occurrence]>,
+    overlay: Option<&'a Vec<&'a [Occurrence]>>,
 ) -> Option<CandidateOccurrences<'a>> {
     match (base, overlay) {
-        (Some(base_slice), Some(overlay_slice)) => Some(CandidateOccurrences::Merged(
-            MergeOccurrenceIter::new(base_slice, overlay_slice),
-        )),
-        (Some(slice), None) | (None, Some(slice)) => Some(CandidateOccurrences::Indexed(slice)),
+        (Some(base_slice), Some(overlay_slices)) => {
+            let mut buckets = Vec::with_capacity(overlay_slices.len() + 1);
+            buckets.push(base_slice);
+            buckets.extend(overlay_slices.iter().copied());
+            Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
+                buckets,
+            )))
+        }
+        (Some(slice), None) => Some(CandidateOccurrences::Indexed(slice)),
+        (None, Some(slices)) => Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
+            slices.clone(),
+        ))),
         (None, None) => None,
     }
 }
@@ -80,7 +85,7 @@ impl OccurrenceIndexes {
     pub(in crate::analysis) fn evidence_for_with_overlay<'a>(
         &'a self,
         plan: &QueryPlan,
-        overlay: Option<&'a ModuleOccurrenceOverlay>,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &crate::analysis::name::NameTable,
     ) -> Vec<ClassificationEvidence> {
         let mut evidence = Vec::new();
@@ -107,7 +112,7 @@ impl OccurrenceIndexes {
     pub(in crate::analysis) fn occurrences_for_clause<'a>(
         &'a self,
         clause: &'a QueryClause,
-        overlay: Option<&'a ModuleOccurrenceOverlay>,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &crate::analysis::name::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         if !matches!(clause.subject, SubjectConstraint::Direct) {
@@ -119,7 +124,7 @@ impl OccurrenceIndexes {
     fn occurrences_for_subject<'a>(
         &'a self,
         clause: &'a QueryClause,
-        _overlay: Option<&'a ModuleOccurrenceOverlay>,
+        _overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &crate::analysis::name::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         match (&clause.event, &clause.subject) {
@@ -170,7 +175,7 @@ impl OccurrenceIndexes {
     fn occurrences_for_event<'a>(
         &'a self,
         clause: &'a QueryClause,
-        overlay: Option<&'a ModuleOccurrenceOverlay>,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &crate::analysis::name::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         match &clause.event {
@@ -181,13 +186,13 @@ impl OccurrenceIndexes {
                     .map(CandidateOccurrences::Indexed),
                 IdentityConstraint::Global { name, .. } => merged_or_indexed(
                     self.call_indexes.global_calls.get(name),
-                    overlay.and_then(|overlay| overlay.call_indexes.global_calls.get(name)),
+                    overlay.and_then(|overlay| overlay.global_calls.get(name)),
                 ),
                 IdentityConstraint::ModuleExport { module, export } => {
                     let key = ModuleExportKey::new(module.clone(), export.clone());
                     module_occurrences(
                         &self.call_indexes.module_calls,
-                        overlay.map(|overlay| &overlay.call_indexes.module_calls),
+                        overlay.map(|overlay| &overlay.module_calls),
                         overlay.is_some_and(|overlay| overlay.masked.contains(&key)),
                         &key,
                     )
@@ -195,7 +200,7 @@ impl OccurrenceIndexes {
                 IdentityConstraint::PackageModuleExport { module, export } => {
                     Some(package_occurrences(
                         &self.call_indexes.module_calls,
-                        overlay.map(|overlay| &overlay.call_indexes.module_calls),
+                        overlay.map(|overlay| &overlay.module_calls),
                         overlay.map(|overlay| &overlay.masked),
                         PackageKeyPredicate::new(module, PackageMatchKind::Export(export)),
                     ))

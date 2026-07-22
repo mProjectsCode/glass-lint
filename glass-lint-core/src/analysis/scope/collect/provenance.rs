@@ -12,7 +12,7 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, Lit};
 use crate::analysis::{
     scope::{
         BoundArgument,
-        collect::{BindingProvenance, LexicalScopeCollector},
+        collect::{BindingProvenance, ScopeCollector},
         query::rooted::RootedExprContext,
     },
     syntax::{
@@ -21,7 +21,7 @@ use crate::analysis::{
     },
 };
 
-impl LexicalScopeCollector<'_> {
+impl ScopeCollector {
     /// Resolve a module export, namespace member, dynamic import, or require
     /// expression while preserving lexical shadowing checks.
     pub(super) fn module_alias_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
@@ -139,7 +139,7 @@ impl LexicalScopeCollector<'_> {
             ConstValue::Object(values) => Some(BindingProvenance::StaticObjectKeys(
                 values
                     .keys()
-                    .map(|key| self.names.intern(key))
+                    .map(|key| self.names.lookup(key).ok_or(()))
                     .collect::<Result<Vec<_>, _>>()
                     .ok()?,
             )),
@@ -280,7 +280,7 @@ impl LexicalScopeCollector<'_> {
             };
             let target = self.rooted_name_path(&property.value)?;
             let key = property_name(&property.key)?;
-            values.insert(self.names.intern(key.as_str()).ok()?, target);
+            values.insert(self.names.lookup(key.as_str())?, target);
         }
         Some(BindingProvenance::StaticObjectValues(values))
     }

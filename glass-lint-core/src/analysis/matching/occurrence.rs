@@ -21,16 +21,16 @@ use crate::{
 /// they combine multiple index buckets.
 pub(in crate::analysis) enum CandidateOccurrences<'a> {
     Indexed(&'a [Occurrence]),
-    Merged(MergeOccurrenceIter<'a>),
-    Package(PackageOccurrenceIter<'a>),
+    Borrowed(BorrowedOccurrenceIter<'a>),
+    BorrowedPackage(BorrowedPackageOccurrenceIter<'a>),
     Scanned(Vec<Occurrence>),
 }
 
 /// Iterator over candidate occurrences from any lookup strategy.
 pub(in crate::analysis) enum CandidateOccurrenceIter<'a> {
     Indexed(core::iter::Copied<core::slice::Iter<'a, Occurrence>>),
-    Merged(MergeOccurrenceIter<'a>),
-    Package(PackageOccurrenceIter<'a>),
+    Borrowed(BorrowedOccurrenceIter<'a>),
+    BorrowedPackage(BorrowedPackageOccurrenceIter<'a>),
     Scanned(std::vec::IntoIter<Occurrence>),
 }
 
@@ -40,8 +40,8 @@ impl Iterator for CandidateOccurrenceIter<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         match self {
             Self::Indexed(iter) => iter.next(),
-            Self::Merged(iter) => iter.next(),
-            Self::Package(iter) => iter.next(),
+            Self::Borrowed(iter) => iter.next(),
+            Self::BorrowedPackage(iter) => iter.next(),
             Self::Scanned(iter) => iter.next(),
         }
     }
@@ -54,10 +54,57 @@ impl<'a> IntoIterator for CandidateOccurrences<'a> {
     fn into_iter(self) -> Self::IntoIter {
         match self {
             Self::Indexed(slice) => CandidateOccurrenceIter::Indexed(slice.iter().copied()),
-            Self::Merged(iter) => CandidateOccurrenceIter::Merged(iter),
-            Self::Package(iter) => CandidateOccurrenceIter::Package(iter),
+            Self::Borrowed(iter) => CandidateOccurrenceIter::Borrowed(iter),
+            Self::BorrowedPackage(iter) => CandidateOccurrenceIter::BorrowedPackage(iter),
             Self::Scanned(vec) => CandidateOccurrenceIter::Scanned(vec.into_iter()),
         }
+    }
+}
+
+/// Deterministically merges normalized occurrence slices without owning any
+/// occurrence values. The slices are stable buckets borrowed from a local
+/// semantic index; only their positions are owned by this iterator.
+#[derive(Clone, Debug)]
+pub(in crate::analysis) struct BorrowedOccurrenceIter<'a> {
+    buckets: Vec<&'a [Occurrence]>,
+    positions: Vec<usize>,
+}
+
+impl<'a> BorrowedOccurrenceIter<'a> {
+    pub(super) fn new(buckets: Vec<&'a [Occurrence]>) -> Self {
+        let positions = vec![0; buckets.len()];
+        Self { buckets, positions }
+    }
+}
+
+impl Iterator for BorrowedOccurrenceIter<'_> {
+    type Item = Occurrence;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let next = self
+            .buckets
+            .iter()
+            .enumerate()
+            .filter_map(|(index, bucket)| {
+                let position = self.positions[index];
+                bucket.get(position).map(|occurrence| {
+                    (
+                        occurrence.event,
+                        occurrence.span.start(),
+                        occurrence.span.end(),
+                        index,
+                        *occurrence,
+                    )
+                })
+            })
+            .min_by_key(|(event, start, end, index, _)| (*event, *start, *end, *index));
+        let (_, _, _, _, occurrence) = next?;
+        for (index, bucket) in self.buckets.iter().enumerate() {
+            if self.positions[index] < bucket.len() && bucket[self.positions[index]] == occurrence {
+                self.positions[index] += 1;
+            }
+        }
+        Some(occurrence)
     }
 }
 
@@ -98,83 +145,70 @@ impl<'a> PackageKeyPredicate<'a> {
     }
 }
 
-/// Lazy occurrence iterator for package-clause scans.
-///
-/// Scans the base index keys (filtered by the predicate and optional mask),
-/// then scans overlay keys. Both maps are iterated in `BTreeMap` order so
-/// output is deterministic. No intermediate `Vec<Occurrence>` is allocated.
-#[derive(Clone)]
-pub(in crate::analysis) struct PackageOccurrenceIter<'a> {
+/// Lazy package scan over owned base buckets and borrowed linked buckets.
+#[derive(Clone, Debug)]
+pub(in crate::analysis) struct BorrowedPackageOccurrenceIter<'a> {
     predicate: PackageKeyPredicate<'a>,
     masked: Option<&'a BTreeSet<ModuleExportKey>>,
-    map_iter: Option<std::collections::btree_map::Iter<'a, ModuleExportKey, Vec<Occurrence>>>,
-    overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<Occurrence>>>,
-    vals: Option<&'a [Occurrence]>,
-    pos: usize,
-    checking_mask: bool,
-    done: bool,
+    base_iter: std::collections::btree_map::Iter<'a, ModuleExportKey, Vec<Occurrence>>,
+    overlay_iter:
+        Option<std::collections::btree_map::Iter<'a, ModuleExportKey, Vec<&'a [Occurrence]>>>,
+    current: Option<BorrowedOccurrenceIter<'a>>,
+    checking_base: bool,
 }
 
-impl<'a> PackageOccurrenceIter<'a> {
+impl<'a> BorrowedPackageOccurrenceIter<'a> {
     pub(super) fn new(
         predicate: PackageKeyPredicate<'a>,
         masked: Option<&'a BTreeSet<ModuleExportKey>>,
         base: &'a BTreeMap<ModuleExportKey, Vec<Occurrence>>,
-        overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<Occurrence>>>,
+        overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>>,
     ) -> Self {
         Self {
             predicate,
             masked,
-            map_iter: Some(base.iter()),
-            overlay,
-            vals: None,
-            pos: 0,
-            checking_mask: true,
-            done: false,
+            base_iter: base.iter(),
+            overlay_iter: overlay.map(BTreeMap::iter),
+            current: None,
+            checking_base: true,
         }
     }
 }
 
-impl Iterator for PackageOccurrenceIter<'_> {
+impl Iterator for BorrowedPackageOccurrenceIter<'_> {
     type Item = Occurrence;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if self.done {
+            if let Some(current) = &mut self.current
+                && let Some(occurrence) = current.next()
+            {
+                return Some(occurrence);
+            }
+            self.current = None;
+
+            if self.checking_base {
+                if let Some((key, values)) = self.base_iter.next() {
+                    if self.predicate.matches(key)
+                        && self.masked.is_none_or(|mask| !mask.contains(key))
+                    {
+                        self.current = Some(BorrowedOccurrenceIter::new(vec![values.as_slice()]));
+                    }
+                    continue;
+                }
+                self.checking_base = false;
+            }
+
+            let Some(iter) = &mut self.overlay_iter else {
                 return None;
+            };
+            let Some((key, values)) = iter.next() else {
+                self.overlay_iter = None;
+                return None;
+            };
+            if self.predicate.matches(key) {
+                self.current = Some(BorrowedOccurrenceIter::new(values.clone()));
             }
-            if let Some(vals) = self.vals
-                && self.pos < vals.len()
-            {
-                let occ = vals[self.pos];
-                self.pos += 1;
-                return Some(occ);
-            }
-            self.vals = None;
-            self.pos = 0;
-
-            if let Some(iter) = &mut self.map_iter
-                && let Some((key, vals)) = iter.next()
-            {
-                if self.predicate.matches(key)
-                    && (!self.checking_mask || self.masked.is_none_or(|m| !m.contains(key)))
-                {
-                    self.vals = Some(vals.as_slice());
-                    continue;
-                }
-                continue;
-            }
-            self.map_iter = None;
-
-            if self.checking_mask {
-                self.checking_mask = false;
-                if let Some(overlay) = self.overlay {
-                    self.map_iter = Some(overlay.iter());
-                    continue;
-                }
-            }
-            self.done = true;
-            return None;
         }
     }
 }
@@ -365,76 +399,6 @@ impl ModuleExportKey {
 
     pub(in crate::analysis) fn wildcard(module: impl Into<SmolStr>) -> Self {
         Self::new(module, "*")
-    }
-}
-
-/// Lazy merge of two sorted, deduplicated occurrence slices.
-///
-/// Both inputs must already be sorted by `(event, span.start(), span.end())`
-/// and free of internal duplicates. The merge yields every element in global
-/// order and skips duplicates that appear in both inputs.
-#[derive(Debug, Clone)]
-pub(in crate::analysis) struct MergeOccurrenceIter<'a> {
-    left: &'a [Occurrence],
-    right: &'a [Occurrence],
-    left_pos: usize,
-    right_pos: usize,
-}
-
-impl<'a> MergeOccurrenceIter<'a> {
-    pub(super) fn new(left: &'a [Occurrence], right: &'a [Occurrence]) -> Self {
-        Self {
-            left,
-            right,
-            left_pos: 0,
-            right_pos: 0,
-        }
-    }
-}
-
-impl Iterator for MergeOccurrenceIter<'_> {
-    type Item = Occurrence;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let left_done = self.left_pos >= self.left.len();
-        let right_done = self.right_pos >= self.right.len();
-        match (left_done, right_done) {
-            (true, true) => None,
-            (true, false) => {
-                let item = self.right[self.right_pos];
-                self.right_pos += 1;
-                Some(item)
-            }
-            (false, true) => {
-                let item = self.left[self.left_pos];
-                self.left_pos += 1;
-                Some(item)
-            }
-            (false, false) => {
-                let l = &self.left[self.left_pos];
-                let r = &self.right[self.right_pos];
-                let ordering = (l.event, l.span.start(), l.span.end()).cmp(&(
-                    r.event,
-                    r.span.start(),
-                    r.span.end(),
-                ));
-                match ordering {
-                    std::cmp::Ordering::Less => {
-                        self.left_pos += 1;
-                        Some(*l)
-                    }
-                    std::cmp::Ordering::Greater => {
-                        self.right_pos += 1;
-                        Some(*r)
-                    }
-                    std::cmp::Ordering::Equal => {
-                        self.left_pos += 1;
-                        self.right_pos += 1;
-                        Some(*l)
-                    }
-                }
-            }
-        }
     }
 }
 

@@ -57,20 +57,22 @@ pub struct OccurrenceIndexes {
     test_names: crate::analysis::name::NameTable,
 }
 
+type BorrowedModuleBuckets<'a> = BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>;
+type BorrowedGlobalBuckets<'a> = BTreeMap<SmolStr, Vec<&'a [Occurrence]>>;
+
 #[derive(Debug, Default)]
-/// Project-link overlays layered over an immutable local occurrence index.
+/// Project-link view layered over an immutable local occurrence index.
 ///
-/// When the project linker resolves a module-level identity to an external
-/// module or global, the local module-prefixed occurrence is masked and its
-/// corresponding external-prefixed entry is injected into the overlay so
-/// matchers can query by the resolved identity.
-pub(in crate::analysis) struct ModuleOccurrenceOverlay {
+/// It stores only identity remaps, masks, and borrowed bucket slices. The
+/// source occurrence values remain owned by the local semantic index.
+pub(in crate::analysis) struct LinkedOccurrenceView<'a> {
     masked: std::collections::BTreeSet<ModuleExportKey>,
-    call_indexes: CallIndexes,
-    member_calls: ModuleOccurrences,
-    member_reads: ModuleOccurrences,
-    module_classes: ModuleOccurrences,
-    module_constructors: ModuleOccurrences,
+    global_calls: BorrowedGlobalBuckets<'a>,
+    module_calls: BorrowedModuleBuckets<'a>,
+    member_calls: BorrowedModuleBuckets<'a>,
+    member_reads: BorrowedModuleBuckets<'a>,
+    module_classes: BorrowedModuleBuckets<'a>,
+    module_constructors: BorrowedModuleBuckets<'a>,
 }
 
 #[derive(Debug, Default)]
@@ -302,11 +304,11 @@ impl OccurrenceIndexes {
             || !self.members.module_calls.is_empty()
     }
 
-    pub(in crate::analysis) fn module_overlay(
-        &self,
+    pub(in crate::analysis) fn module_overlay<'a>(
+        &'a self,
         identities: &ModuleIdentityMap,
-    ) -> ModuleOccurrenceOverlay {
-        let mut overlay = ModuleOccurrenceOverlay::default();
+    ) -> LinkedOccurrenceView<'a> {
+        let mut overlay = LinkedOccurrenceView::default();
         let identity_for = |key: &ModuleExportKey| {
             identities.get(key).cloned().or_else(|| {
                 identities
@@ -324,26 +326,36 @@ impl OccurrenceIndexes {
         };
 
         let mut remap_occurrences =
-            |source: &ModuleOccurrences,
-             target: &mut ModuleOccurrences,
-             mut global_target: Option<&mut Occurrences>| {
+            |source: &'a ModuleOccurrences,
+             target: &mut BorrowedModuleBuckets<'a>,
+             mut global_target: Option<&mut BorrowedGlobalBuckets<'a>>| {
                 for (key, occurrences) in source.iter() {
                     let Some(identity) = identity_for(key) else {
                         continue;
                     };
                     overlay.masked.insert(key.clone());
-                    ModuleOccurrenceOverlay::target_entry(
-                        &identity,
-                        occurrences,
-                        target,
-                        global_target.as_deref_mut(),
-                    );
+                    match identity {
+                        LinkedModuleIdentity::External { module, export } => {
+                            target
+                                .entry(ModuleExportKey::new(module, export))
+                                .or_default()
+                                .push(occurrences);
+                        }
+                        LinkedModuleIdentity::Global { name } => {
+                            if let Some(global_target) = global_target.as_deref_mut() {
+                                global_target.entry(name).or_default().push(occurrences);
+                            }
+                        }
+                        LinkedModuleIdentity::Qualified { .. }
+                        | LinkedModuleIdentity::StaticString { .. }
+                        | LinkedModuleIdentity::Unknown => {}
+                    }
                 }
             };
         remap_occurrences(
             &self.call_indexes.module_calls,
-            &mut overlay.call_indexes.module_calls,
-            Some(&mut overlay.call_indexes.global_calls),
+            &mut overlay.module_calls,
+            Some(&mut overlay.global_calls),
         );
         remap_occurrences(&self.members.module_calls, &mut overlay.member_calls, None);
         remap_occurrences(&self.members.module_reads, &mut overlay.member_reads, None);
@@ -357,41 +369,7 @@ impl OccurrenceIndexes {
             &mut overlay.module_constructors,
             None,
         );
-        overlay.call_indexes.global_calls.normalize();
-        overlay.call_indexes.module_calls.normalize();
-        overlay.member_calls.normalize();
-        overlay.member_reads.normalize();
-        overlay.module_classes.normalize();
-        overlay.module_constructors.normalize();
         overlay
-    }
-}
-
-impl ModuleOccurrenceOverlay {
-    fn target_entry(
-        identity: &LinkedModuleIdentity,
-        occurrences: &[Occurrence],
-        target: &mut ModuleOccurrences,
-        global_target: Option<&mut Occurrences>,
-    ) {
-        match identity {
-            LinkedModuleIdentity::External { module, export } => {
-                let key = ModuleExportKey::new(module.clone(), export.clone());
-                for occurrence in occurrences {
-                    target.push_occurrence(key.clone(), *occurrence);
-                }
-            }
-            LinkedModuleIdentity::Global { name } => {
-                if let Some(global_target) = global_target {
-                    for occurrence in occurrences {
-                        global_target.push_occurrence(name.clone(), *occurrence);
-                    }
-                }
-            }
-            LinkedModuleIdentity::Qualified { .. }
-            | LinkedModuleIdentity::StaticString { .. }
-            | LinkedModuleIdentity::Unknown => {}
-        }
     }
 }
 
@@ -513,12 +491,12 @@ mod tests {
         environment
             .add_globals(["URL", "require"])
             .expect("test globals");
-        let resolver = Resolver::collect_with_environment(
+        let mut resolver = Resolver::collect_with_environment(
             &parsed.program,
             &environment,
             crate::analysis::lowering::SpanNormalizer::for_program(&parsed.program),
         );
-        let stream = build_test_stream(&parsed.program, &resolver);
+        let stream = build_test_stream(&parsed.program, &mut resolver);
 
         let mut index = OccurrenceIndexes::default();
         index.build_from_stream(&stream);

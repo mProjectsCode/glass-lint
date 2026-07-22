@@ -4,12 +4,12 @@
 //! linking. It applies qualified identities once, composes bounded flow, and
 //! leaves rule selection to the compiled matcher catalog.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use crate::{
     analysis::{
         ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow,
-        matching::{ModuleOccurrenceOverlay, OccurrenceIndexes},
+        matching::{LinkedOccurrenceView, OccurrenceIndexes},
         status::{AnalysisComponent, IncompleteReason, StatusScope},
     },
     api::{
@@ -20,15 +20,15 @@ use crate::{
 
 #[derive(Debug)]
 /// Matcher-independent facts and cross-file evidence for one linked project.
-pub struct ProjectMatcherModel<'matchers> {
+pub struct ProjectMatcherModel<'project, 'matchers> {
     matchers: CompiledRuleSelection<'matchers>,
-    projections: BTreeMap<ModuleId, ProjectModuleProjection>,
+    projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>>,
 }
 
 #[derive(Debug)]
-struct ProjectModuleProjection {
-    index: Arc<OccurrenceIndexes>,
-    overlay: ModuleOccurrenceOverlay,
+struct ProjectModuleProjection<'project> {
+    index: &'project OccurrenceIndexes,
+    overlay: LinkedOccurrenceView<'project>,
     projected: Vec<Vec<ClassificationEvidence>>,
 }
 
@@ -51,15 +51,15 @@ impl ProjectSemanticModel {
     /// any source AST.  Side effects such as budget exhaustion and projection
     /// counts are returned in a `ProjectionOutcome` instead of being written
     /// back into `self`.
-    pub fn project<'matchers>(
-        &self,
+    pub fn project<'project, 'matchers>(
+        &'project self,
         matchers: CompiledRuleSelection<'matchers>,
-    ) -> (ProjectMatcherModel<'matchers>, ProjectionOutcome) {
-        let projections: BTreeMap<ModuleId, ProjectModuleProjection> = self
+    ) -> (ProjectMatcherModel<'project, 'matchers>, ProjectionOutcome) {
+        let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
             .modules
             .values()
             .map(|module| {
-                let index = module.local().facts().shared_matcher_index();
+                let index = module.local().facts().matcher_index();
                 let identities = self.module_identities(module.id());
                 let result_identities = self.call_result_identities(module.id());
                 let overlay = index.module_overlay(&identities);
@@ -121,7 +121,7 @@ impl ProjectSemanticModel {
     }
 }
 
-impl ProjectMatcherModel<'_> {
+impl ProjectMatcherModel<'_, '_> {
     /// Return deterministic, deduplicated evidence for a selected rule.
     pub fn evidence_for(
         &self,

@@ -9,12 +9,12 @@ use swc_common::Span;
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
 use crate::analysis::{
-    scope::{BindingProvenance, LexicalScopeCollector, ScopeId},
+    scope::{BindingProvenance, ScopeCollector, ScopeId},
     syntax::property_name,
     value::NamePath,
 };
 
-impl LexicalScopeCollector<'_> {
+impl ScopeCollector {
     /// Record aliases introduced by a destructuring declaration.
     ///
     /// This deliberately stops at unsupported pattern forms. A partial

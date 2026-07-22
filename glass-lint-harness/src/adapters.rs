@@ -123,12 +123,14 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
         )?
         .report
     } else {
-        let mut session = linter.begin_analysis(project.root())?;
+        let mut session = linter.begin_project(project.root())?;
         let mut authored = Vec::new();
+        let mut outcomes = Vec::new();
         for file in project.files() {
             authored.extend(
                 session
-                    .add_source(SourceFile::new(file.path.clone(), file.source.clone())?)?
+                    .analyze_source(SourceFile::new(file.path.clone(), file.source.clone())?)?
+                    .requests()
                     .into_iter()
                     .map(|request| (request, file.path.clone())),
             );
@@ -152,9 +154,9 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
                         resolution.request
                     )
                 })?;
-            session.record_resolution(request, result)?;
+            outcomes.push((request, result));
         }
-        session.finish()?
+        session.finish_local().resolve(outcomes)?.finish()?
     };
     project_report_to_run(report)
 }

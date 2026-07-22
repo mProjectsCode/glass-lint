@@ -26,36 +26,38 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
     ))
     .unwrap();
 
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     let helper = session
-        .add_source(source_file(
+        .analyze_source(source_file(
             "helper.js",
             "import { request } from 'web'; export { request as send };",
         ))
-        .unwrap();
+        .unwrap()
+        .requests();
     let main = session
-        .add_source(source_file(
+        .analyze_source(source_file(
             "main.js",
             "import { send } from './helper'; send();",
         ))
-        .unwrap();
-    session
-        .record_resolution(
-            helper[0].key.clone(),
-            ResolverOutcome::External {
-                package: "web".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main[0].key.clone(),
-            ResolverOutcome::Internal {
-                path: project_path("helper.js"),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+        .unwrap()
+        .requests();
+    let report = finish_collection_with(
+        session,
+        [
+            (
+                helper[0].key.clone(),
+                ResolverOutcome::External {
+                    package: "web".into(),
+                },
+            ),
+            (
+                main[0].key.clone(),
+                ResolverOutcome::Internal {
+                    path: project_path("helper.js"),
+                },
+            ),
+        ],
+    );
     let main_report = report
         .files
         .iter()
@@ -67,26 +69,28 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         "test:network.request"
     );
 
-    let mut global = linter.begin_analysis("/project").unwrap();
+    let mut global = linter.begin_project("/project").unwrap();
     let helper = global
-        .add_source(source_file("helper.js", "export { fetch as send };"))
+        .analyze_source(source_file("helper.js", "export { fetch as send };"))
         .unwrap();
     let main = global
-        .add_source(source_file(
+        .analyze_source(source_file(
             "main.js",
             "import { send } from './helper'; send();",
         ))
         .unwrap();
+    let helper = helper.requests();
+    let main = main.requests();
     assert!(helper.is_empty());
-    global
-        .record_resolution(
+    let report = finish_collection_with(
+        global,
+        [(
             main[0].key.clone(),
             ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },
-        )
-        .unwrap();
-    let report = global.finish().unwrap();
+        )],
+    );
     let main_report = report
         .files
         .iter()
@@ -209,36 +213,38 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
     ))
     .unwrap();
 
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     let helper = session
-        .add_source(source_file(
+        .analyze_source(source_file(
             "helper.js",
             "import { request } from 'web'; export { request as send };",
         ))
-        .unwrap();
+        .unwrap()
+        .requests();
     let main = session
-        .add_source(source_file(
+        .analyze_source(source_file(
             "main.js",
             "import { send } from './helper'; send = local; send();",
         ))
-        .unwrap();
-    session
-        .record_resolution(
-            helper[0].key.clone(),
-            ResolverOutcome::External {
-                package: "web".into(),
-            },
-        )
-        .unwrap();
-    session
-        .record_resolution(
-            main[0].key.clone(),
-            ResolverOutcome::Internal {
-                path: project_path("helper.js"),
-            },
-        )
-        .unwrap();
-    let report = session.finish().unwrap();
+        .unwrap()
+        .requests();
+    let report = finish_collection_with(
+        session,
+        [
+            (
+                helper[0].key.clone(),
+                ResolverOutcome::External {
+                    package: "web".into(),
+                },
+            ),
+            (
+                main[0].key.clone(),
+                ResolverOutcome::Internal {
+                    path: project_path("helper.js"),
+                },
+            ),
+        ],
+    );
     assert_eq!(
         report
             .files
@@ -250,25 +256,26 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
         0
     );
 
-    let mut missing = linter.begin_analysis("/project").unwrap();
+    let mut missing = linter.begin_project("/project").unwrap();
     let main = missing
-        .add_source(source_file(
+        .analyze_source(source_file(
             "main.js",
             "import { send } from './helper'; send();",
         ))
         .unwrap();
     missing
-        .add_source(source_file("helper.js", "export const other = 1;"))
+        .analyze_source(source_file("helper.js", "export const other = 1;"))
         .unwrap();
-    missing
-        .record_resolution(
+    let main = main.requests();
+    let report = finish_collection_with(
+        missing,
+        [(
             main[0].key.clone(),
             ResolverOutcome::Internal {
                 path: project_path("helper.js"),
             },
-        )
-        .unwrap();
-    let report = missing.finish().unwrap();
+        )],
+    );
     assert_eq!(
         report
             .files
@@ -297,14 +304,14 @@ fn unresolved_internal_imports_do_not_become_external_provenance() {
     ))
     .unwrap();
 
-    let mut session = linter.begin_analysis("/project").unwrap();
+    let mut session = linter.begin_project("/project").unwrap();
     session
-        .add_source(source_file(
+        .analyze_source(source_file(
             "main.js",
             "import { request } from './helper'; request();",
         ))
         .unwrap();
-    let report = session.finish().unwrap();
+    let report = finish_collection(session);
 
     assert!(report.files.iter().all(|file| file.findings.is_empty()));
     assert!(

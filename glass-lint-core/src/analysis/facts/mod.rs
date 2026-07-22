@@ -6,14 +6,13 @@
 //! selection is applied only by [`SemanticFacts::project`] after that shared
 //! state has been built.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use crate::{
     analysis::{
         flow::{effect::FunctionEffects, projector as object_flow},
         matching::{
-            self, LinkedModuleIdentity, ModuleIdentityMap, ModuleOccurrenceOverlay,
-            OccurrenceIndexes,
+            self, LinkedModuleIdentity, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes,
         },
         module::ModuleInterface,
         value::{ValueId, ValueTable},
@@ -28,6 +27,13 @@ mod stream;
 pub(in crate::analysis) use model::*;
 pub(in crate::analysis) use stream::FactStream;
 
+/// Facts collected by the source-order visitor before names and values are
+/// frozen into the immutable semantic artifact.
+pub(in crate::analysis) struct BuiltFacts {
+    pub(in crate::analysis) stream: FactStream,
+    pub(in crate::analysis) interface: ModuleInterface,
+}
+
 // ── SemanticFacts ───────────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -37,7 +43,7 @@ pub(in crate::analysis) use stream::FactStream;
 /// but indexing and projection fail closed rather than consuming partial facts.
 pub(in crate::analysis) struct SemanticFacts {
     stream: FactStream,
-    index: Arc<OccurrenceIndexes>,
+    index: OccurrenceIndexes,
     interface: ModuleInterface,
 }
 
@@ -62,7 +68,7 @@ impl SemanticFacts {
 
         Self {
             stream,
-            index: Arc::new(index),
+            index,
             interface,
         }
     }
@@ -76,8 +82,8 @@ impl SemanticFacts {
         self.stream.names()
     }
 
-    pub(in crate::analysis) fn shared_matcher_index(&self) -> Arc<OccurrenceIndexes> {
-        Arc::clone(&self.index)
+    pub(in crate::analysis) fn matcher_index(&self) -> &OccurrenceIndexes {
+        &self.index
     }
 
     /// Borrow the frozen value arena for shape lookups by ValueId.
@@ -97,7 +103,7 @@ impl SemanticFacts {
         matchers: &CompiledRuleSelection<'_>,
         identities: Option<&ModuleIdentityMap>,
         result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
-        overlay: Option<&ModuleOccurrenceOverlay>,
+        overlay: Option<&LinkedOccurrenceView<'_>>,
     ) -> Vec<Vec<crate::api::classification::ClassificationEvidence>> {
         let constrained_clauses = matchers
             .selected_matchers()
@@ -287,9 +293,9 @@ mod tests {
         let second = CompiledMatcherPlan::compile(&second).unwrap();
         let build = |matchers: Vec<&crate::api::compiler::CompiledMatcherPlan>,
                      selected: &[usize]| {
-            let resolver = Resolver::collect(&parsed.program);
+            let mut resolver = Resolver::collect(&parsed.program);
             let _ = (matchers, selected);
-            let mut builder = FactBuilder::new(&resolver);
+            let mut builder = FactBuilder::new(&mut resolver);
             swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
             let (mut stream, interface) = builder.into_parts();
             let names = resolver.name_snapshot();
@@ -333,9 +339,9 @@ mod tests {
             a.push(3);
         "#;
         let parsed = crate::parse(src, "char-index.js").expect("source should parse");
-        let resolver = Resolver::collect(&parsed.program);
+        let mut resolver = Resolver::collect(&parsed.program);
 
-        let mut builder = FactBuilder::new(&resolver);
+        let mut builder = FactBuilder::new(&mut resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
         let mut stream = builder.into_stream();
         let _ = stream.freeze_names(resolver.name_snapshot());
@@ -380,9 +386,9 @@ mod tests {
             fetch.apply(null, ['/api']);
         ";
         let parsed = crate::parse(src, "unwrap.js").expect("source should parse");
-        let resolver = Resolver::collect(&parsed.program);
+        let mut resolver = Resolver::collect(&parsed.program);
 
-        let mut builder = FactBuilder::new(&resolver);
+        let mut builder = FactBuilder::new(&mut resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
         let stream = builder.into_stream();
         let mut index = OccurrenceIndexes::default();

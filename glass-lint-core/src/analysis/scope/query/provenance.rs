@@ -18,7 +18,7 @@ use crate::analysis::{
     value::BindingRoot,
 };
 
-impl ScopeGraph<'_> {
+impl ScopeGraph {
     /// Resolve a direct member of a recognized host global object to the same
     /// callable identity as its bare global binding. This is deliberately
     /// limited to one property segment: `window.fetch` is the global `fetch`,
@@ -36,11 +36,12 @@ impl ScopeGraph<'_> {
         }
 
         let receiver = self.binding_key_for_name(root, span)?;
-        if self.property_was_written_at(
+        let written = self.property_was_written_at(
             &receiver,
             self.name_path(&SymbolPath::from_chain(member))?,
             span,
-        ) {
+        );
+        if written {
             return None;
         }
         if self.rooted_property_was_mutated_at(&root.as_str().into(), Some(member), span) {
@@ -270,7 +271,7 @@ impl ScopeGraph<'_> {
     }
 }
 
-impl ScopeGraph<'_> {
+impl ScopeGraph {
     /// Resolve callable provenance while rejecting dynamic or shadowed uses.
     pub(in crate::analysis) fn call_provenance(
         &self,

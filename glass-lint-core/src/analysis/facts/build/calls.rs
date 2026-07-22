@@ -161,7 +161,7 @@ impl FactBuilder<'_> {
 
     /// Collect value identities bound by a destructuring pattern in source
     /// order; unsupported targets are deliberately omitted or unknown.
-    pub(super) fn pattern_values(&self, pattern: &Pat, values: &mut Vec<ValueId>) {
+    pub(super) fn pattern_values(&mut self, pattern: &Pat, values: &mut Vec<ValueId>) {
         match pattern {
             Pat::Ident(ident) => values.push(self.resolver.resolve_ident_id(&ident.id)),
             Pat::Assign(assign) => self.pattern_values(&assign.left, values),
@@ -254,11 +254,12 @@ impl FactBuilder<'_> {
                 rest,
             }),
             Pat::Assign(assign) => {
+                let assigned_value = self.resolver.resolve_expr_id(&assign.right);
                 self.parameter_bindings(
                     &assign.left,
                     parameter_index,
                     path,
-                    Some(self.resolver.resolve_expr_id(&assign.right)),
+                    Some(assigned_value),
                     rest,
                     output,
                 );
@@ -531,7 +532,7 @@ impl FactBuilder<'_> {
     }
 
     pub(super) fn instance_class_for_receiver(
-        &self,
+        &mut self,
         receiver: &Expr,
     ) -> Option<(SmolStr, SmolStr)> {
         if self.traversal.in_static_method() || self.traversal.in_function() {
@@ -549,10 +550,11 @@ impl FactBuilder<'_> {
     }
 
     /// Resolve an extracted callable member from the current module instance.
-    pub(super) fn instance_callable_for_expr(&self, expr: &Expr) -> Option<InstanceCallable> {
+    pub(super) fn instance_callable_for_expr(&mut self, expr: &Expr) -> Option<InstanceCallable> {
         match expr {
             Expr::Ident(ident) => {
-                self.extracted_instance_callable(self.resolver.resolve_ident_id(ident))
+                let value = self.resolver.resolve_ident_id(ident);
+                self.extracted_instance_callable(value)
             }
             Expr::Member(member) => {
                 if !self.resolver.instance_member_available(member) {

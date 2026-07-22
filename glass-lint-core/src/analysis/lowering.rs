@@ -3,7 +3,7 @@
 //! Parser and AST details stop here. Downstream project analysis receives an
 //! immutable local artifact and its source map, never a parsed program.
 
-use std::{cell::RefCell, collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, sync::Arc};
 
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
@@ -16,7 +16,7 @@ use crate::{
         facts::{self, SemanticFacts},
         flow::effect::FunctionEffects,
         module,
-        name::{NameTable, NameTableCtx},
+        name::NameTable,
         resolution,
         scope::ScopeGraph,
         status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
@@ -213,57 +213,89 @@ fn lower_program_with_name_limit(
     coordinates: &SpanNormalizer,
     name_limit: usize,
 ) -> SemanticArtifact {
-    let name_table = RefCell::new(NameTable::with_max_entries(name_limit));
-    let names = NameTableCtx(&name_table);
-    let scopes = ScopeGraph::collect_with_environment(program, environment, names);
-    let resolver = resolution::Resolver::new(scopes, names, coordinates.clone());
-
-    let mut builder = facts::build::FactBuilder::with_limit(&resolver, limits.semantic_operations);
-    VisitWith::visit_with(program, &mut builder);
-
-    let (mut stream, interface) = builder.into_parts();
-    let mut status = AnalysisStatus::default();
-
-    if let Some(reason) = check_facts_budget(&stream, &resolver, limits) {
-        status.record(StatusScope::Project, reason);
+    LocalLowering {
+        environment,
+        limits,
+        coordinates,
+        name_limit,
     }
-    if let Some(reason) = check_invalid_parser_span(&stream) {
-        status.record(StatusScope::Project, reason);
+    .run(program)
+}
+
+/// Consuming coordinator for the private local-analysis phases.  Keeping the
+/// transition in one owner makes it difficult for callers to observe or reuse
+/// an intermediate scope, resolution, or fact state.
+struct LocalLowering<'a> {
+    environment: &'a crate::Environment,
+    limits: &'a crate::AnalysisLimits,
+    coordinates: &'a SpanNormalizer,
+    name_limit: usize,
+}
+
+impl LocalLowering<'_> {
+    fn run(self, program: &Program) -> SemanticArtifact {
+        let Self {
+            environment,
+            limits,
+            coordinates,
+            name_limit,
+        } = self;
+        let names = NameTable::with_max_entries(name_limit);
+        let scoped_program = ScopeGraph::collect_scoped_program(program, environment, names);
+        let (scope_graph, _issues) = scoped_program.into_parts();
+        let mut resolver = resolution::Resolver::new(scope_graph, coordinates.clone());
+
+        let mut builder =
+            facts::build::FactBuilder::with_limit(&mut resolver, limits.semantic_operations);
+        VisitWith::visit_with(program, &mut builder);
+
+        let built = builder.into_built_facts();
+        let mut stream = built.stream;
+        let interface = built.interface;
+        let mut status = AnalysisStatus::default();
+
+        if let Some(reason) = check_facts_budget(&stream, &resolver, limits) {
+            status.record(StatusScope::Project, reason);
+        }
+        if let Some(reason) = check_invalid_parser_span(&stream) {
+            status.record(StatusScope::Project, reason);
+        }
+        if let Some(reason) = check_name_exhaustion(&resolver) {
+            status.record(StatusScope::Project, reason);
+        }
+
+        let export_origins = interface
+            .exports()
+            .filter_map(|(_, export)| match export {
+                module::ModuleExport::Local { name } => Some((
+                    name.clone(),
+                    resolver.exported_provenance(name, program.span()),
+                )),
+                module::ModuleExport::Value
+                | module::ModuleExport::ReExport { .. }
+                | module::ModuleExport::Namespace { .. }
+                | module::ModuleExport::Unknown => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        if resolver.name_table_exhausted() {
+            stream.mark_name_exhausted();
+        }
+
+        let names = resolver.name_table().clone();
+        let values = resolver.into_values();
+        stream
+            .freeze_names(names)
+            .expect("Stream already owns a NameTable");
+
+        let facts = SemanticFacts::from_lowering(stream, interface, environment, values);
+        let effects = FunctionEffects::collect(facts.stream(), limits.effect_operations);
+        if let Some(reason) = check_effects_budget(&effects, limits) {
+            status.record(StatusScope::Project, reason);
+        }
+
+        SemanticArtifact::from_lowering(facts, export_origins, effects, status)
     }
-    if let Some(reason) = check_name_exhaustion(&resolver) {
-        status.record(StatusScope::Project, reason);
-    }
-
-    let export_origins = interface
-        .exports()
-        .filter_map(|(_, export)| match export {
-            module::ModuleExport::Local { name } => Some((
-                name.clone(),
-                resolver.exported_provenance(name, program.span()),
-            )),
-            module::ModuleExport::Value
-            | module::ModuleExport::ReExport { .. }
-            | module::ModuleExport::Namespace { .. }
-            | module::ModuleExport::Unknown => None,
-        })
-        .collect::<BTreeMap<_, _>>();
-
-    if resolver.name_table_exhausted() {
-        stream.mark_name_exhausted();
-    }
-
-    let values = resolver.into_values();
-    stream
-        .freeze_names(name_table.into_inner())
-        .expect("Stream already owns a NameTable");
-
-    let facts = SemanticFacts::from_lowering(stream, interface, environment, values);
-    let effects = FunctionEffects::collect(facts.stream(), limits.effect_operations);
-    if let Some(reason) = check_effects_budget(&effects, limits) {
-        status.record(StatusScope::Project, reason);
-    }
-
-    SemanticArtifact::from_lowering(facts, export_origins, effects, status)
 }
 
 #[cfg(test)]
@@ -305,7 +337,7 @@ mod tests {
         );
 
         assert!(!artifact.facts().stream().is_valid());
-        assert!(artifact.facts().shared_matcher_index().is_empty());
+        assert!(artifact.facts().matcher_index().is_empty());
         assert!(artifact.effects().iter_effects().next().is_none());
         let (_, project_diagnostics) = artifact.status().diagnostics();
         assert_eq!(project_diagnostics.len(), 1);

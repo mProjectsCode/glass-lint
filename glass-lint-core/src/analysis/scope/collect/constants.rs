@@ -4,14 +4,15 @@
 //! state. Mutable object bindings and dynamic property names therefore become
 //! unknown instead of being treated as stable constants.
 
+use smol_str::SmolStr;
 use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
 use crate::analysis::{
-    scope::{BindingProvenance, collect::LexicalScopeCollector},
+    scope::{BindingProvenance, collect::ScopeCollector},
     syntax::constant::{self, ConstValue, EvalState, Lookup},
 };
 
-impl Lookup for LexicalScopeCollector<'_> {
+impl Lookup for ScopeCollector {
     /// Resolve only constant-shaped binding provenances from the current scope.
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
         match self.visible_binding(ident.sym.as_ref()) {
@@ -24,14 +25,14 @@ impl Lookup for LexicalScopeCollector<'_> {
                 values
                     .iter()
                     .filter_map(|key| self.names.resolve(*key))
-                    .map(|key| (key, ConstValue::Unknown))
+                    .map(|key| (SmolStr::new(key), ConstValue::Unknown))
                     .collect(),
             ),
             Some(BindingProvenance::StaticObjectValues(values)) => ConstValue::Object(
                 values
                     .keys()
                     .filter_map(|key| self.names.resolve(*key))
-                    .map(|key| (key, ConstValue::Unknown))
+                    .map(|key| (SmolStr::new(key), ConstValue::Unknown))
                     .collect(),
             ),
             _ => ConstValue::Unknown,

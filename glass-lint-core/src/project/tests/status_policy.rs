@@ -16,9 +16,9 @@ fn configured_flow_linter(limits: AnalysisLimits) -> crate::Linter {
 }
 
 fn lint_one(linter: &crate::Linter, path: &str, source: &str) -> AnalysisReport {
-    let mut session = linter.begin_analysis("/project").unwrap();
-    session.add_source(source_file(path, source)).unwrap();
-    session.finish().unwrap()
+    let mut session = linter.begin_project("/project").unwrap();
+    session.analyze_source(source_file(path, source)).unwrap();
+    finish_collection(session)
 }
 
 fn diagnostics(report: &AnalysisReport) -> Vec<(Option<&str>, &str)> {

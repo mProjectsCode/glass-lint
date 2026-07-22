@@ -78,13 +78,12 @@ impl FactBuilder<'_> {
                         }
                         self.interface
                             .add_export(name.clone(), ModuleExport::Local { name });
-                        if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
-                            && let Some(value) = self
-                                .resolver
-                                .static_string_value(self.resolver.resolve_ident_id(&binding.id))
-                        {
-                            self.interface
-                                .add_static_string(binding.id.sym.to_string(), value);
+                        if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name {
+                            let value_id = self.resolver.resolve_ident_id(&binding.id);
+                            if let Some(value) = self.resolver.static_string_value(value_id) {
+                                self.interface
+                                    .add_static_string(binding.id.sym.to_string(), value);
+                            }
                         }
                     }
                 }

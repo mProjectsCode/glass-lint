@@ -359,11 +359,16 @@ mod tests {
             .into_iter()
             .next()
             .unwrap();
-        let mut manual_session = linter.begin_analysis("/project").unwrap();
+        let mut manual_session = linter.begin_project("/project").unwrap();
         manual_session
-            .add_source(source_file("main.js", source))
+            .analyze_source(source_file("main.js", source))
             .unwrap();
-        let manual = manual_session.finish().unwrap();
+        let manual = manual_session
+            .finish_local()
+            .resolve([])
+            .unwrap()
+            .finish()
+            .unwrap();
         let project = linter
             .lint_project(crate::ProjectInput {
                 root: "/project".into(),

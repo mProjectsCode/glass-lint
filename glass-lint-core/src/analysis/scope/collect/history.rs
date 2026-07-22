@@ -7,28 +7,32 @@
 use std::collections::BTreeMap;
 
 use crate::analysis::{
-    name::{NameId, NameTableCtx},
+    name::{NameId, NameTable},
     scope::{BindingProvenance, ScopeId},
 };
 
 #[derive(Debug)]
 /// Most recent assignment provenance for each scope-local binding.
-pub(super) struct AssignmentHistory<'a> {
-    names: NameTableCtx<'a>,
+pub(super) struct AssignmentHistory {
     assignments: BTreeMap<ScopeId, BTreeMap<NameId, BindingProvenance>>,
 }
 
-impl<'a> AssignmentHistory<'a> {
-    pub(super) fn new(names: NameTableCtx<'a>) -> Self {
+impl AssignmentHistory {
+    pub(super) fn new() -> Self {
         Self {
-            names,
             assignments: BTreeMap::new(),
         }
     }
 
     /// Replace the latest assignment for one scope/name pair.
-    pub(super) fn record(&mut self, scope: ScopeId, name: &str, provenance: BindingProvenance) {
-        let Ok(name) = self.names.intern(name) else {
+    pub(super) fn record(
+        &mut self,
+        names: &NameTable,
+        scope: ScopeId,
+        name: &str,
+        provenance: BindingProvenance,
+    ) {
+        let Some(name) = names.lookup(name) else {
             return;
         };
         self.assignments
@@ -38,15 +42,20 @@ impl<'a> AssignmentHistory<'a> {
     }
 
     /// Return the latest assignment visible in one lexical scope.
-    pub(super) fn get(&self, scope: ScopeId, name: &str) -> Option<&BindingProvenance> {
-        let name = self.names.lookup(name)?;
+    pub(super) fn get(
+        &self,
+        names: &NameTable,
+        scope: ScopeId,
+        name: &str,
+    ) -> Option<&BindingProvenance> {
+        let name = names.lookup(name)?;
         self.assignments
             .get(&scope)
             .and_then(|assignments| assignments.get(&name))
     }
 
     /// Whether an assignment has been recorded for the scope/name pair.
-    pub(super) fn contains(&self, scope: ScopeId, name: &str) -> bool {
-        self.get(scope, name).is_some()
+    pub(super) fn contains(&self, names: &NameTable, scope: ScopeId, name: &str) -> bool {
+        self.get(names, scope, name).is_some()
     }
 }

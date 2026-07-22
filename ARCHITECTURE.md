@@ -41,3 +41,7 @@ Shared semantics move toward `glass-lint-core`; host policy stays in provider
 crates; filesystem policy stays in `glass-lint-project`; executable crates
 remain thin. Do not duplicate parsers, semantic models, matcher paths, project
 loaders, report types, or rule catalogs across these boundaries.
+
+Analysis crosses the crate boundary as validated filesystem admission, owned
+`SourceFile`s, `ProjectCollection`, `LocallyAnalyzedProject`, and
+`ResolvedProject`; only the final resolved phase links and matches.

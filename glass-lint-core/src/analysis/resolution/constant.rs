@@ -10,13 +10,13 @@ use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, Value
 
 const MAX_CONST_DEPTH: usize = 32;
 
-impl Resolver<'_> {
+impl Resolver {
     /// Read a bounded constant value from the abstract value arena.
     ///
-    /// The immutable `RefCell` borrow on the value arena is held across the
-    /// entire recursive traversal because every nested call only performs
-    /// further immutable reads. Large static arrays and objects are visited
-    /// by borrowed slice rather than cloned before inspection.
+    /// The owned value arena remains stable across the entire recursive
+    /// traversal because every nested call only performs immutable reads.
+    /// Large static arrays and objects are visited by borrowed slice rather
+    /// than cloned before inspection.
     pub(in crate::analysis) fn const_value(&self, id: ValueId) -> ConstValue {
         self.const_value_depth(id, 0)
     }
@@ -25,7 +25,7 @@ impl Resolver<'_> {
         if depth >= MAX_CONST_DEPTH {
             return ConstValue::Unknown;
         }
-        let values = self.values.borrow();
+        let values = &self.values;
         let Some(value) = values.resolve(id) else {
             return ConstValue::Unknown;
         };
@@ -42,7 +42,7 @@ impl Resolver<'_> {
             Value::StaticObject(entries) => {
                 let mut object = BTreeMap::new();
                 for &(name_id, value_id) in entries {
-                    let Some(key) = self.names.resolve(name_id) else {
+                    let Some(key) = self.scopes.resolve_name_id(name_id) else {
                         return ConstValue::Unknown;
                     };
                     object.insert(key, self.const_value_depth(value_id, depth + 1));
@@ -55,7 +55,7 @@ impl Resolver<'_> {
 
     /// Intern a constant tree while preserving the optional binding identity.
     pub(in crate::analysis) fn intern_const_value(
-        &self,
+        &mut self,
         value: ConstValue,
         binding: Option<BindingKey>,
     ) -> ValueId {
@@ -74,13 +74,11 @@ impl Resolver<'_> {
                     .into_iter()
                     .map(|(key, value)| (key, self.intern_const_value(value, None)))
                     .collect::<Vec<_>>();
-                let mut arena = self.values.borrow_mut();
-                let id = self
-                    .names
-                    .with_mut(|names| arena.intern_static_object(values, names));
+                let arena = &mut self.values;
+                let id = arena.intern_static_object(values, self.scopes.name_table_mut());
                 return binding.map_or(id, |key| arena.intern(Value::Binding { key, target: id }));
             }
         };
-        self.values.borrow_mut().intern_with_binding(value, binding)
+        self.values.intern_with_binding(value, binding)
     }
 }

@@ -56,10 +56,11 @@ counts.
 
 ## Project boundary
 
-`AnalysisSession` accepts owned `SourceFile` values and typed
-`ResolutionResult` records. It never discovers files or resolves modules.
-After admission, core links imports, exports, re-exports, identities, and
-supported call flow, then runs matchers over the linked model.
+`ProjectCollection` accepts owned `SourceFile` values and produces a
+`SourceAnalysis` for each completed local lowering. Consuming transitions to
+`LocallyAnalyzedProject` and `ResolvedProject` ensure that linking and
+matching can run only after authored resolver outcomes have been validated.
+Core never discovers files or resolves modules.
 
 Ambiguous exports, missing resolutions, unsupported module shapes, and
 exhausted budgets remain unknown. Findings stay with the file containing the

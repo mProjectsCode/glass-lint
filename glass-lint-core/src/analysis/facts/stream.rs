@@ -4,10 +4,8 @@
 //! budget. Query callers receive an immutable view. Path interning happens
 //! during ordinary mutable construction, not through interior mutation.
 
-#[cfg(test)]
-use crate::analysis::facts::FactKind;
 use crate::analysis::{
-    facts::{FactId, MAX_FACTS, SemanticFact},
+    facts::{FactId, FactKind, FactPayload, MAX_FACTS, SemanticFact},
     name::NameTable,
     value::{PathId, PathInterner, PathSegment, PathSegmentInput},
 };
@@ -20,6 +18,11 @@ enum FactStreamIssue {
     NameExhausted,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::analysis) enum FactIssue {
+    BudgetExhausted,
+}
+
 #[derive(Debug)]
 /// Canonical facts plus the path interner used by argument and flow queries.
 /// Invalid streams are retained only as a diagnostic boundary and must not be
@@ -27,6 +30,7 @@ enum FactStreamIssue {
 pub(in crate::analysis) struct FactStream {
     /// Dense facts in canonical visitor order.
     facts: Vec<SemanticFact>,
+    max_facts: usize,
     /// Interned property/index paths used by argument projections.
     paths: PathInterner,
     /// Frozen name table owned directly by the stream after lowering.
@@ -44,9 +48,15 @@ pub(in crate::analysis) struct FactStream {
 impl FactStream {
     /// Create an empty, valid stream. Fact IDs are assigned by the builder;
     /// this type verifies the resulting sequence as facts are appended.
+    #[cfg(test)]
     pub(super) fn new() -> Self {
+        Self::with_limit(MAX_FACTS)
+    }
+
+    pub(super) fn with_limit(max_facts: usize) -> Self {
         Self {
             facts: Vec::new(),
+            max_facts: max_facts.min(MAX_FACTS),
             paths: PathInterner::new(),
             names: None,
             values: None,
@@ -55,16 +65,37 @@ impl FactStream {
         }
     }
 
-    pub(super) fn push(&mut self, fact: SemanticFact) {
+    pub(super) fn try_push(
+        &mut self,
+        span: crate::ByteRange,
+        function: crate::analysis::value::FunctionId,
+        kind: FactKind,
+        payload: FactPayload,
+    ) -> Result<FactId, FactIssue> {
         // Once an invariant is broken, discard subsequent input rather than
         // exposing a partially trustworthy stream to matcher indexes.
-        if !self.valid || self.facts.len() >= MAX_FACTS {
+        if !self.valid || self.facts.len() >= self.max_facts {
+            self.valid = false;
+            self.mark_budget_exhausted();
+            return Err(FactIssue::BudgetExhausted);
+        }
+        let id = FactId(u32::try_from(self.facts.len()).map_err(|_| {
+            self.valid = false;
+            self.mark_budget_exhausted();
+            FactIssue::BudgetExhausted
+        })?);
+        let fact = SemanticFact::new(id, span, function, kind, payload);
+        self.facts.push(fact);
+        Ok(id)
+    }
+
+    #[cfg(test)]
+    pub(super) fn push(&mut self, fact: SemanticFact) {
+        if !self.valid || self.facts.len() >= self.max_facts {
             self.valid = false;
             return;
         }
         if fact.id().0 as usize != self.facts.len() {
-            // A gap or duplicate ID would make indexed lookup disagree with
-            // traversal order, so the whole stream becomes untrusted.
             self.valid = false;
             return;
         }

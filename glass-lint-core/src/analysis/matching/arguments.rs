@@ -22,7 +22,7 @@ use crate::{
         facts::{ArgumentView, CallUnwrap, SemanticFact},
         matching::{
             CallArgInfo, ClassificationEvidence, FactPayload, FactStream, LinkedModuleIdentity,
-            ModuleIdentityMap, ModuleOccurrenceOverlay, Occurrence, OccurrenceIndexes,
+            LinkedOccurrenceView, ModuleIdentityMap, Occurrence, OccurrenceIndexes,
             SymbolCallProvenance, push_owned_evidence,
         },
         name::NameTable,
@@ -201,7 +201,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     indexes: &OccurrenceIndexes,
     clauses: &[(usize, &QueryClause)],
     evidence: &mut [Vec<ClassificationEvidence>],
-    overlay: Option<&ModuleOccurrenceOverlay>,
+    overlay: Option<&LinkedOccurrenceView<'_>>,
     identities: Option<&ModuleIdentityMap>,
     result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
 ) {
@@ -473,9 +473,9 @@ mod tests {
     fn stream(source: &str, environment: &Environment) -> FactStream {
         let parsed = crate::parse(source, "constrained.js").unwrap();
         let coordinates = SpanNormalizer::new(parsed.source_start, source);
-        let resolver =
+        let mut resolver =
             Resolver::collect_with_environment(&parsed.program, environment, coordinates);
-        build_test_stream(&parsed.program, &resolver)
+        build_test_stream(&parsed.program, &mut resolver)
     }
 
     fn build_index(stream: &FactStream) -> OccurrenceIndexes {

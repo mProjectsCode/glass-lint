@@ -112,15 +112,14 @@ mod tests {
 
     #[test]
     fn typed_accumulators_saturate_without_cross_item_bytes() {
-        let mut phases = ProfilePhaseTimings {
-            discovery: Duration::MAX,
-            ..ProfilePhaseTimings::default()
-        };
-        phases += ProfilePhaseTimings {
-            discovery: Duration::from_secs(1),
-            ..ProfilePhaseTimings::default()
-        };
-        assert_eq!(phases.discovery, Duration::MAX);
+        let mut phases = ProfilePhaseTimings::with_discovery(Duration::MAX);
+        phases += ProfilePhaseTimings::with_discovery(Duration::from_secs(1));
+        assert_eq!(phases.discovery(), Duration::MAX);
+        phases.record_local_analysis(Duration::from_secs(2));
+        phases.record_linking(Duration::from_secs(3));
+        phases.record_matching(Duration::from_secs(4));
+        assert_eq!(phases.parse_and_local_analysis(), Duration::from_secs(2));
+        assert_eq!(phases.linking_and_matching(), Duration::from_secs(7));
 
         let mut counts = ProfileOperationCounts {
             files: usize::MAX,

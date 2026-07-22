@@ -98,13 +98,14 @@ impl FactBuilder<'_> {
         let receiver = self.resolver.resolve_expr_id(&member.obj);
         if assignment.op == AssignOp::Assign {
             let property = self.intern_name(member_property_name(&member.prop).as_deref());
+            let value = self.resolver.resolve_expr_id(&assignment.right);
             self.emit(
                 FactKind::PropertyWrite,
                 assignment.span(),
                 FactPayload::PropertyWrite {
                     receiver,
                     property,
-                    value: self.resolver.resolve_expr_id(&assignment.right),
+                    value,
                 },
             );
         } else {

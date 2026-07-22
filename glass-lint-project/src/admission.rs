@@ -11,7 +11,41 @@ use std::{
 
 use glass_lint_core::SourceFile;
 
-use crate::{corpus::read_source_bytes, error::ProjectLoadError, options::ProjectLoadOptions};
+use crate::{
+    corpus::read_source_bytes, error::ProjectLoadError, options::ValidatedProjectLoadOptions,
+};
+
+/// A path proven canonical by the filesystem admission boundary.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct CanonicalProjectPath(PathBuf);
+
+impl CanonicalProjectPath {
+    pub(crate) fn into_path_buf(self) -> PathBuf {
+        self.0
+    }
+}
+
+impl AsRef<Path> for CanonicalProjectPath {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+/// A canonical path proven to be inside the project and supported by policy.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub struct AdmittedSourcePath(CanonicalProjectPath);
+
+impl AdmittedSourcePath {
+    pub(crate) fn into_path_buf(self) -> PathBuf {
+        self.0.into_path_buf()
+    }
+}
+
+impl AsRef<Path> for AdmittedSourcePath {
+    fn as_ref(&self) -> &Path {
+        self.0.as_ref()
+    }
+}
 
 /// Owns the canonical project root and source-file admission policy.
 ///
@@ -20,21 +54,24 @@ use crate::{corpus::read_source_bytes, error::ProjectLoadError, options::Project
 #[derive(Clone)]
 pub struct SourceAdmission<'a> {
     canonical_root: PathBuf,
-    options: &'a ProjectLoadOptions,
+    options: &'a ValidatedProjectLoadOptions,
 }
 
 /// Result of applying the canonical project boundary to one filesystem path.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum PathAdmission {
-    Admitted(PathBuf),
-    Outside(PathBuf),
-    Excluded(PathBuf),
-    Unsupported(PathBuf),
+    Admitted(AdmittedSourcePath),
+    Outside(CanonicalProjectPath),
+    Excluded(CanonicalProjectPath),
+    Unsupported(CanonicalProjectPath),
 }
 
 impl<'a> SourceAdmission<'a> {
     /// Establish one canonical root before any file I/O.
-    pub fn new(root: &Path, options: &'a ProjectLoadOptions) -> Result<Self, ProjectLoadError> {
+    pub fn new(
+        root: &Path,
+        options: &'a ValidatedProjectLoadOptions,
+    ) -> Result<Self, ProjectLoadError> {
         let canonical_root = realpath(root)?;
         Ok(Self {
             canonical_root,
@@ -48,13 +85,13 @@ impl<'a> SourceAdmission<'a> {
     }
 
     /// Borrow the loader policy used for every boundary check.
-    pub fn options(&self) -> &ProjectLoadOptions {
+    pub fn options(&self) -> &ValidatedProjectLoadOptions {
         self.options
     }
 
     /// Resolve a path to its canonical form through the filesystem.
-    pub fn canonicalize(&self, path: &Path) -> Result<PathBuf, ProjectLoadError> {
-        realpath(path)
+    pub fn canonicalize(&self, path: &Path) -> Result<CanonicalProjectPath, ProjectLoadError> {
+        realpath(path).map(CanonicalProjectPath)
     }
 
     /// Test lexical containment in the canonical project-root namespace.
@@ -79,20 +116,23 @@ impl<'a> SourceAdmission<'a> {
     /// policy exactly once.
     pub(crate) fn classify(&self, path: &Path) -> Result<PathAdmission, ProjectLoadError> {
         let canonical = self.canonicalize(path)?;
-        if !self.is_inside_root(&canonical) {
+        if !self.is_inside_root(canonical.as_ref()) {
             return Ok(PathAdmission::Outside(canonical));
         }
-        if self.is_excluded(&canonical) {
+        if self.is_excluded(canonical.as_ref()) {
             return Ok(PathAdmission::Excluded(canonical));
         }
-        if !self.supports(&canonical) {
+        if !self.supports(canonical.as_ref()) {
             return Ok(PathAdmission::Unsupported(canonical));
         }
-        Ok(PathAdmission::Admitted(canonical))
+        Ok(PathAdmission::Admitted(AdmittedSourcePath(canonical)))
     }
 
     /// Return the canonical path when it is admitted by this project.
-    pub(crate) fn admitted_path(&self, path: &Path) -> Result<Option<PathBuf>, ProjectLoadError> {
+    pub(crate) fn admitted_path(
+        &self,
+        path: &Path,
+    ) -> Result<Option<AdmittedSourcePath>, ProjectLoadError> {
         Ok(match self.classify(path)? {
             PathAdmission::Admitted(path) => Some(path),
             PathAdmission::Outside(_)
@@ -125,15 +165,15 @@ impl<'a> SourceAdmission<'a> {
     /// This is the single entry-point for loading an admitted source file.
     pub fn load_source_file(&self, path: &Path) -> Result<SourceFile, ProjectLoadError> {
         let canonical_path = match self.classify(path)? {
-            PathAdmission::Admitted(path) => path,
+            PathAdmission::Admitted(path) => path.into_path_buf(),
             PathAdmission::Outside(path) => {
                 return Err(ProjectLoadError::SelectionOutsideRoot {
-                    selection: path,
+                    selection: path.into_path_buf(),
                     root: self.canonical_root.clone(),
                 });
             }
             PathAdmission::Excluded(path) | PathAdmission::Unsupported(path) => {
-                return Err(ProjectLoadError::UnsupportedSource(path));
+                return Err(ProjectLoadError::UnsupportedSource(path.into_path_buf()));
             }
         };
         self.load_admitted_source_file(&canonical_path)
@@ -145,7 +185,7 @@ impl<'a> SourceAdmission<'a> {
         &self,
         canonical_path: &Path,
     ) -> Result<SourceFile, ProjectLoadError> {
-        let corpus_file = read_source_bytes(canonical_path, self.options.max_source_bytes)?;
+        let corpus_file = read_source_bytes(canonical_path, self.options.max_source_bytes())?;
         let relative = self.relative_path(canonical_path);
         SourceFile::new(relative, corpus_file.source).map_err(Into::into)
     }
@@ -160,10 +200,15 @@ pub fn realpath(path: &Path) -> Result<PathBuf, ProjectLoadError> {
 }
 
 /// Make a selection path absolute without requiring it to exist on disk.
-pub fn absolute_path(path: &Path) -> PathBuf {
+pub fn absolute_path(path: &Path) -> Result<PathBuf, ProjectLoadError> {
     if path.is_absolute() {
-        path.to_path_buf()
+        Ok(path.to_path_buf())
     } else {
-        std::env::current_dir().unwrap_or_default().join(path)
+        Ok(std::env::current_dir()
+            .map_err(|source| ProjectLoadError::Io {
+                path: PathBuf::from("."),
+                source,
+            })?
+            .join(path))
     }
 }

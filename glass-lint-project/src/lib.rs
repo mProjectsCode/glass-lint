@@ -18,7 +18,7 @@ mod options;
 mod resolver;
 mod walk;
 
-pub use admission::SourceAdmission;
+pub use admission::{AdmittedSourcePath, CanonicalProjectPath, SourceAdmission};
 pub use corpus::{CorpusFile, SourceCorpus};
 pub use error::{ProjectLoadError, ProjectOptionError};
 pub use loader::{ProjectLoadMetrics, ProjectLoadOutcome, ProjectLoader, ProjectPhaseTimings};

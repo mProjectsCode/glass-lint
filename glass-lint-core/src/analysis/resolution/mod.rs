@@ -14,7 +14,6 @@ mod constant;
 mod expression;
 
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     sync::Arc,
 };
@@ -24,11 +23,13 @@ use smol_str::SmolStr;
 use swc_ecma_ast::Program;
 use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr};
 
+#[cfg(test)]
+use crate::Environment;
 use crate::{
     ByteRange,
     analysis::{
         lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
-        name::{NameExhausted, NameId, NameTableCtx},
+        name::{NameExhausted, NameId, NameTable},
         scope::{BoundArgument, ScopeGraph},
         syntax::{
             SymbolCallProvenance, SymbolMemberProvenance,
@@ -37,8 +38,6 @@ use crate::{
         value::{BindingKey, NamePath, SymbolPath, Value, ValueId, ValueTable},
     },
 };
-#[cfg(test)]
-use crate::{Environment, analysis::name::NameTable};
 
 #[derive(Debug, Clone)]
 /// The complete result of resolving one expression.
@@ -116,23 +115,21 @@ struct ResolverCache {
 /// to the versioned values consumed by matchers. Resolution is cached by
 /// source position; recursive lookups are guarded. Unknown values, cycles,
 /// and exhausted arena entries become local/unknown provenance.
-pub(super) struct Resolver<'a> {
+pub(super) struct Resolver {
     /// Scope/provenance seeds from the lexical collection pass.
-    scopes: ScopeGraph<'a>,
-    /// Interned name table for artifact-local identity management.
-    names: NameTableCtx<'a>,
+    scopes: ScopeGraph,
     /// SWC-to-domain span conversion and validation.
     coordinates: SpanNormalizer,
     /// Interned value arena. Separated from the resolution cache so that
     /// immutable queries can borrow arena entries without deep cloning.
-    values: RefCell<ValueTable>,
+    values: ValueTable,
     /// Resolution cache, fresh-object map, and recursion guard.
-    cache: RefCell<ResolverCache>,
+    cache: ResolverCache,
 }
 
-impl Lookup for Resolver<'_> {
+impl Lookup for Resolver {
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
-        self.const_value(self.resolve_ident_id(ident))
+        self.scopes.ident_value_seed(ident).constant
     }
 
     fn spread(&self, expr: &Expr, state: &mut EvalState) -> ConstValue {
@@ -143,9 +140,10 @@ impl Lookup for Resolver<'_> {
     }
 
     fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue {
-        if let Some(property) = syntax_constant::property_name_with_state(&member.prop, self, state)
+        if let Some(property) =
+            syntax_constant::property_name_with_state(&member.prop, &self.scopes, state)
         {
-            return match state.evaluate(&member.obj, self) {
+            return match state.evaluate(&member.obj, &self.scopes) {
                 ConstValue::Array(values) => property
                     .parse::<usize>()
                     .ok()
@@ -166,11 +164,11 @@ impl Lookup for Resolver<'_> {
     }
 }
 
-impl<'a> Resolver<'a> {
+impl Resolver {
     /// Freeze the interning arena after lowering so artifact consumers retain
     /// the authoritative value shapes alongside the fact stream.
     pub(in crate::analysis) fn into_values(self) -> ValueTable {
-        self.values.into_inner()
+        self.values
     }
 
     /// Convert a canonical member chain into the arena's structured value.
@@ -181,8 +179,8 @@ impl<'a> Resolver<'a> {
         // identity. Canonicalize it before interning so aliases of
         // `this.app.foo` share the same frozen value as `app.foo`.
         let chain = chain.without_this_prefix();
-        self.names
-            .lookup_path(&chain)
+        self.scopes
+            .name_path(&chain)
             .map_or(Value::Unknown, |path| Value::RootedMember { path })
     }
 
@@ -218,49 +216,51 @@ impl<'a> Resolver<'a> {
         coordinates: SpanNormalizer,
         name_limit: usize,
     ) -> Self {
-        use std::cell::RefCell;
-
-        let table = Box::new(RefCell::new(NameTable::with_max_entries(name_limit)));
-        let leaked: &'static RefCell<NameTable> = Box::leak(table);
-        let names = NameTableCtx(leaked);
-        let scopes = ScopeGraph::collect_with_environment(program, environment, names);
-        Self::new(scopes, names, coordinates)
+        let names = NameTable::with_max_entries(name_limit);
+        let scopes = ScopeGraph::collect_scoped_program(program, environment, names)
+            .into_parts()
+            .0;
+        Self::new(scopes, coordinates)
     }
 
     /// Build a resolver with an externally-owned name table.
-    pub(super) fn new(
-        scopes: ScopeGraph<'a>,
-        names: NameTableCtx<'a>,
-        coordinates: SpanNormalizer,
-    ) -> Self {
+    pub(super) fn new(scopes: ScopeGraph, coordinates: SpanNormalizer) -> Self {
         Self {
             scopes,
-            names,
             coordinates,
-            values: RefCell::new(ValueTable::default()),
-            cache: RefCell::new(ResolverCache::default()),
+            values: ValueTable::default(),
+            cache: ResolverCache::default(),
         }
     }
 
-    pub(super) fn intern_name(&self, name: &str) -> Result<NameId, NameExhausted> {
-        self.names.intern(name)
+    pub(super) fn intern_name(&mut self, name: &str) -> Result<NameId, NameExhausted> {
+        self.scopes.intern_name_mut(name).ok_or_else(|| {
+            self.scopes.name_exhaustion().unwrap_or(NameExhausted {
+                limit: 0,
+                attempted: 0,
+            })
+        })
     }
 
     pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
-        self.names.intern_path(path)
+        self.scopes.name_path(path)
     }
 
     pub(super) fn name_table_exhausted(&self) -> bool {
-        self.names.exhausted()
+        self.scopes.name_table_exhausted()
     }
 
     pub(super) fn name_exhaustion(&self) -> Option<NameExhausted> {
-        self.names.exhaustion()
+        self.scopes.name_exhaustion()
     }
 
     #[cfg(test)]
     pub(super) fn name_snapshot(&self) -> NameTable {
-        self.names.snapshot()
+        self.scopes.name_snapshot()
+    }
+
+    pub(in crate::analysis) fn name_table(&self) -> &NameTable {
+        self.scopes.name_table()
     }
 
     pub(in crate::analysis) fn normalize_span(
@@ -286,12 +286,12 @@ impl<'a> Resolver<'a> {
     }
 
     pub(in crate::analysis) fn value_arena_exhausted(&self) -> bool {
-        self.values.borrow().exhausted()
+        self.values.exhausted()
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn value_snapshot(&self) -> ValueTable {
-        self.values.borrow().clone()
+        self.values.clone()
     }
 
     pub(in crate::analysis) fn instance_member_available(&self, member: &MemberExpr) -> bool {
@@ -301,12 +301,10 @@ impl<'a> Resolver<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-
     use super::*;
     use crate::analysis::{
         lowering::SpanNormalizer,
-        name::{NameId, NameTable, NameTableCtx},
+        name::{NameId, NameTable},
         scope::ScopeGraph,
         syntax::{BudgetComponent, UnknownReason},
         value::{MAX_VALUES, Value},
@@ -314,10 +312,9 @@ mod tests {
 
     #[test]
     fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let resolver = Resolver::new(scopes, SpanNormalizer::default());
         assert_eq!(
             resolver.call_provenance_for_value(ValueId::UNKNOWN),
             SymbolCallProvenance::Unknown(UnknownReason::Unsupported)
@@ -328,15 +325,13 @@ mod tests {
             let _ = values.intern(Value::StaticNumber(value));
         }
         assert!(values.exhausted());
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
         let resolver = Resolver {
             scopes,
-            names,
             coordinates: SpanNormalizer::default(),
-            values: RefCell::new(values),
-            cache: RefCell::new(ResolverCache::default()),
+            values,
+            cache: ResolverCache::default(),
         };
         assert_eq!(
             resolver.call_provenance_for_value(ValueId::UNKNOWN),
@@ -350,21 +345,16 @@ mod tests {
 
     #[test]
     fn const_value_follows_binding_chain_to_static_values() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
 
-        let inner = resolver
-            .values
-            .borrow_mut()
-            .intern(Value::StaticString("hello".into()));
+        let inner = resolver.values.intern(Value::StaticString("hello".into()));
         let key = crate::analysis::value::BindingKey::new(
             crate::analysis::value::BindingRoot::Global("test".into()),
         );
         let id = resolver
             .values
-            .borrow_mut()
             .intern(Value::Binding { key, target: inner });
 
         let result = resolver.const_value(id);
@@ -373,23 +363,18 @@ mod tests {
 
     #[test]
     fn const_value_materializes_static_arrays_with_nested_bindings() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
 
-        let one = resolver.values.borrow_mut().intern(Value::StaticNumber(1));
+        let one = resolver.values.intern(Value::StaticNumber(1));
         let key = crate::analysis::value::BindingKey::new(
             crate::analysis::value::BindingRoot::Global("x".into()),
         );
-        let wrapped = resolver
-            .values
-            .borrow_mut()
-            .intern(Value::Binding { key, target: one });
-        let two = resolver.values.borrow_mut().intern(Value::StaticNumber(2));
+        let wrapped = resolver.values.intern(Value::Binding { key, target: one });
+        let two = resolver.values.intern(Value::StaticNumber(2));
         let array = resolver
             .values
-            .borrow_mut()
             .intern(Value::StaticArray(vec![wrapped, two]));
 
         let result = resolver.const_value(array);
@@ -404,10 +389,9 @@ mod tests {
 
     #[test]
     fn const_value_returns_unknown_for_uninterned_id() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let resolver = Resolver::new(scopes, SpanNormalizer::default());
 
         let result = resolver.const_value(ValueId(u32::MAX));
         assert_eq!(result, ConstValue::Unknown);
@@ -415,32 +399,22 @@ mod tests {
 
     #[test]
     fn const_value_materializes_static_object_with_mixed_values() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
-        let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
-
-        let num_id = resolver.values.borrow_mut().intern(Value::StaticNumber(42));
-        let str_id = resolver
-            .values
-            .borrow_mut()
-            .intern(Value::StaticString("val".into()));
-        let inner_arr = resolver
-            .values
-            .borrow_mut()
-            .intern(Value::StaticArray(vec![num_id]));
-
+        let mut names = NameTable::default();
         let key_num = names.intern("num").unwrap();
         let key_str = names.intern("str").unwrap();
         let key_arr = names.intern("arr").unwrap();
-        let obj_id = resolver
-            .values
-            .borrow_mut()
-            .intern(Value::StaticObject(vec![
-                (key_num, num_id),
-                (key_str, str_id),
-                (key_arr, inner_arr),
-            ]));
+        let scopes = ScopeGraph::create_for_test(names);
+        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+
+        let num_id = resolver.values.intern(Value::StaticNumber(42));
+        let str_id = resolver.values.intern(Value::StaticString("val".into()));
+        let inner_arr = resolver.values.intern(Value::StaticArray(vec![num_id]));
+
+        let obj_id = resolver.values.intern(Value::StaticObject(vec![
+            (key_num, num_id),
+            (key_str, str_id),
+            (key_arr, inner_arr),
+        ]));
 
         let result = resolver.const_value(obj_id);
         assert_eq!(
@@ -458,19 +432,14 @@ mod tests {
 
     #[test]
     fn const_value_returns_unknown_for_unknown_name_in_object() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
 
-        let val_id = resolver
-            .values
-            .borrow_mut()
-            .intern(Value::StaticString("v".into()));
+        let val_id = resolver.values.intern(Value::StaticString("v".into()));
         let bad_name = NameId(u32::MAX);
         let obj_id = resolver
             .values
-            .borrow_mut()
             .intern(Value::StaticObject(vec![(bad_name, val_id)]));
 
         let result = resolver.const_value(obj_id);
@@ -479,18 +448,14 @@ mod tests {
 
     #[test]
     fn const_value_returns_unknown_for_deeply_nested_structure() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
 
-        let leaf = resolver.values.borrow_mut().intern(Value::StaticNumber(0));
+        let leaf = resolver.values.intern(Value::StaticNumber(0));
         let mut current = leaf;
         for _ in 0..31 {
-            current = resolver
-                .values
-                .borrow_mut()
-                .intern(Value::StaticArray(vec![current]));
+            current = resolver.values.intern(Value::StaticArray(vec![current]));
         }
         let result = resolver.const_value(current);
         assert!(
@@ -498,10 +463,7 @@ mod tests {
             "31 nesting levels should succeed"
         );
 
-        current = resolver
-            .values
-            .borrow_mut()
-            .intern(Value::StaticArray(vec![current]));
+        current = resolver.values.intern(Value::StaticArray(vec![current]));
         let result = resolver.const_value(current);
         let mut inner = &result;
         loop {
@@ -515,15 +477,14 @@ mod tests {
 
     #[test]
     fn const_value_materializes_large_flat_array() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
 
         let ids: Vec<_> = (0..100)
-            .map(|i| resolver.values.borrow_mut().intern(Value::StaticNumber(i)))
+            .map(|i| resolver.values.intern(Value::StaticNumber(i)))
             .collect();
-        let array_id = resolver.values.borrow_mut().intern(Value::StaticArray(ids));
+        let array_id = resolver.values.intern(Value::StaticArray(ids));
 
         let result = resolver.const_value(array_id);
         assert_eq!(
@@ -538,19 +499,15 @@ mod tests {
 
     #[test]
     fn const_value_follows_binding_chain_through_reassignment() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
 
-        let inner = resolver
-            .values
-            .borrow_mut()
-            .intern(Value::StaticString("first".into()));
+        let inner = resolver.values.intern(Value::StaticString("first".into()));
         let key1 = crate::analysis::value::BindingKey::new(
             crate::analysis::value::BindingRoot::Global("v1".into()),
         );
-        let first = resolver.values.borrow_mut().intern(Value::Binding {
+        let first = resolver.values.intern(Value::Binding {
             key: key1,
             target: inner,
         });
@@ -558,7 +515,7 @@ mod tests {
         let key2 = crate::analysis::value::BindingKey::new(
             crate::analysis::value::BindingRoot::Global("v2".into()),
         );
-        let second = resolver.values.borrow_mut().intern(Value::Binding {
+        let second = resolver.values.intern(Value::Binding {
             key: key2,
             target: first,
         });
@@ -575,21 +532,16 @@ mod tests {
 
     #[test]
     fn call_provenance_follows_binding_to_global() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
 
-        let inner = resolver
-            .values
-            .borrow_mut()
-            .intern(Value::Global("fetch".into()));
+        let inner = resolver.values.intern(Value::Global("fetch".into()));
         let key = crate::analysis::value::BindingKey::new(
             crate::analysis::value::BindingRoot::Global("test".into()),
         );
         let id = resolver
             .values
-            .borrow_mut()
             .intern(Value::Binding { key, target: inner });
 
         assert_eq!(
@@ -602,26 +554,25 @@ mod tests {
 
     #[test]
     fn call_provenance_follows_multi_level_binding_chain() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
 
-        let inner = resolver.values.borrow_mut().intern(Value::ModuleExport {
+        let inner = resolver.values.intern(Value::ModuleExport {
             module: "mod".into(),
             export: "fn".into(),
         });
         let key1 = crate::analysis::value::BindingKey::new(
             crate::analysis::value::BindingRoot::Global("a".into()),
         );
-        let mid = resolver.values.borrow_mut().intern(Value::Binding {
+        let mid = resolver.values.intern(Value::Binding {
             key: key1,
             target: inner,
         });
         let key2 = crate::analysis::value::BindingKey::new(
             crate::analysis::value::BindingRoot::Global("b".into()),
         );
-        let id = resolver.values.borrow_mut().intern(Value::Binding {
+        let id = resolver.values.intern(Value::Binding {
             key: key2,
             target: mid,
         });
@@ -637,10 +588,9 @@ mod tests {
 
     #[test]
     fn value_exhaustion_distinguishes_unsupported_from_budget() {
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
-        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+        let resolver = Resolver::new(scopes, SpanNormalizer::default());
         assert!(!resolver.value_arena_exhausted());
 
         let mut values = ValueTable::default();
@@ -648,15 +598,13 @@ mod tests {
             let _ = values.intern(Value::StaticNumber(value));
         }
         assert!(values.exhausted());
-        let table = RefCell::new(NameTable::default());
-        let names = NameTableCtx(&table);
+        let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names);
         let resolver = Resolver {
             scopes,
-            names,
             coordinates: SpanNormalizer::default(),
-            values: RefCell::new(values),
-            cache: RefCell::new(ResolverCache::default()),
+            values,
+            cache: ResolverCache::default(),
         };
         assert!(resolver.value_arena_exhausted());
     }

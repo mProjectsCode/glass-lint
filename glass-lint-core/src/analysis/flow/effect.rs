@@ -682,8 +682,8 @@ mod tests {
 
     fn collect_effects(source: &str) -> (FactStream, FunctionEffects) {
         let parsed = crate::parse(source, "test.js").expect("source should parse");
-        let resolver = Resolver::collect(&parsed.program);
-        let stream = facts::build::build_test_stream(&parsed.program, &resolver);
+        let mut resolver = Resolver::collect(&parsed.program);
+        let stream = facts::build::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         (stream, effects)
     }

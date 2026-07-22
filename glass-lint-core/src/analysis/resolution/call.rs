@@ -14,7 +14,7 @@ use crate::analysis::{
     value::MAX_VALUES,
 };
 
-impl Resolver<'_> {
+impl Resolver {
     /// Recover global callable provenance for a resolved value at a position.
     pub(super) fn call_provenance_at(
         &self,
@@ -37,7 +37,7 @@ impl Resolver<'_> {
     }
 
     /// Return a literal module name for an unshadowed global `require` call.
-    pub(in crate::analysis) fn require_module_name(&self, call: &CallExpr) -> Option<String> {
+    pub(in crate::analysis) fn require_module_name(&mut self, call: &CallExpr) -> Option<String> {
         let Callee::Expr(callee) = &call.callee else {
             return None;
         };
@@ -68,7 +68,7 @@ impl Resolver<'_> {
 
     /// Resolve a call result, preserving only supported callable wrappers.
     pub(in crate::analysis) fn resolve_call_expression(
-        &self,
+        &mut self,
         call: &swc_ecma_ast::CallExpr,
     ) -> std::sync::Arc<ResolvedValue> {
         if matches!(call.callee, Callee::Import(_))
@@ -123,7 +123,7 @@ impl Resolver<'_> {
     /// Intern callable/module/global value identity with optional binding
     /// scope.
     pub(in crate::analysis) fn intern_call_value(
-        &self,
+        &mut self,
         call: &SymbolCallProvenance,
         rooted: Option<&crate::analysis::SymbolPath>,
         binding: Option<crate::analysis::value::BindingKey>,
@@ -139,8 +139,8 @@ impl Resolver<'_> {
             }
             SymbolCallProvenance::Unknown(_) => Value::Unknown,
         };
-        let id = self.values.borrow_mut().intern_with_binding(value, binding);
-        debug_assert!(self.values.borrow().get(id).is_some());
+        let id = self.values.intern_with_binding(value, binding);
+        debug_assert!(self.values.get(id).is_some());
         id
     }
 
@@ -166,7 +166,7 @@ impl Resolver<'_> {
         }
         let mut current = id;
         loop {
-            let values = self.values.borrow();
+            let values = &self.values;
             let Some(value) = values.get(current) else {
                 return SymbolCallProvenance::Unknown(UnknownReason::Missing);
             };

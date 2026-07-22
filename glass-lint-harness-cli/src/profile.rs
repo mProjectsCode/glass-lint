@@ -143,11 +143,11 @@ fn print_aggregate_summary(report: &ProfileSummary) {
 fn print_phase_timings(report: &ProfileSummary) {
     println!(
         "Phases: discovery {:.1?}, reads {:.1?}, parse/local {:.1?}, resolution {:.1?}, linking/matching {:.1?}",
-        report.phase_timings.discovery,
-        report.phase_timings.reads,
-        report.phase_timings.parse_and_local_analysis,
-        report.phase_timings.resolution,
-        report.phase_timings.linking_and_matching,
+        report.phase_timings.discovery(),
+        report.phase_timings.reads(),
+        report.phase_timings.parse_and_local_analysis(),
+        report.phase_timings.resolution(),
+        report.phase_timings.linking_and_matching(),
     );
     println!(
         "Operations: {} file(s), {} request(s), {} edge(s), {} export(s), {} SCC round(s), {} effect projection(s), {} evidence item(s)",

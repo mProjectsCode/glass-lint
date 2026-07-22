@@ -8,7 +8,10 @@ use std::{
 };
 
 use crate::{
-    admission::SourceAdmission, error::ProjectLoadError, options::ProjectLoadOptions, walk,
+    admission::SourceAdmission,
+    error::ProjectLoadError,
+    options::{ProjectLoadOptions, ValidatedProjectLoadOptions},
+    walk,
 };
 
 #[derive(Clone, Debug)]
@@ -69,22 +72,35 @@ pub fn read_source_bytes(
     })
 }
 
-pub struct SourceCorpus<'a> {
-    options: &'a ProjectLoadOptions,
+pub struct SourceCorpus {
+    options: ValidatedProjectLoadOptions,
 }
 
-impl<'a> SourceCorpus<'a> {
+impl SourceCorpus {
     /// Validate options and create a corpus view without performing I/O.
-    pub fn new(options: &'a ProjectLoadOptions) -> Result<Self, ProjectLoadError> {
-        options.validate()?;
-        Ok(Self { options })
+    pub fn new(options: &ProjectLoadOptions) -> Result<Self, ProjectLoadError> {
+        Ok(Self {
+            options: options.clone().validated()?,
+        })
+    }
+
+    /// Create a corpus from a policy already checked at the loader boundary.
+    pub fn from_validated(options: &ValidatedProjectLoadOptions) -> Self {
+        Self {
+            options: options.clone(),
+        }
     }
 
     /// Create a corpus view without re-validating options. Only use when
     /// options are already known to be valid (e.g., after
     /// `ValidatedProjectLoadOptions`).
-    pub fn new_unchecked(options: &'a ProjectLoadOptions) -> Self {
-        Self { options }
+    pub fn new_unchecked(options: &ProjectLoadOptions) -> Self {
+        Self {
+            options: options
+                .clone()
+                .validated()
+                .expect("validated corpus options"),
+        }
     }
 
     /// Discover supported files in deterministic path order.
@@ -100,13 +116,13 @@ impl<'a> SourceCorpus<'a> {
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut paths = BTreeSet::new();
         for root in roots {
-            let Some(metadata) = walk::resolve_root(self.options, root)? else {
+            let Some(metadata) = walk::resolve_root(&self.options, root)? else {
                 continue;
             };
-            let admission = SourceAdmission::new(root, self.options)?;
+            let admission = SourceAdmission::new(root, &self.options)?;
             if metadata.is_file() {
                 if admission.admitted_path(root)?.is_some() && include(root) {
-                    paths.insert(admission.canonicalize(root)?);
+                    paths.insert(admission.canonicalize(root)?.into_path_buf());
                 }
                 continue;
             }
@@ -121,22 +137,22 @@ impl<'a> SourceCorpus<'a> {
             let found = walk::collect_files(&admission, root, None, &mut include)?;
             for path in found {
                 paths.insert(path);
-                if paths.len() > self.options.max_files {
-                    return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
+                if paths.len() > self.options.max_files() {
+                    return Err(ProjectLoadError::TooManyFiles(self.options.max_files()));
                 }
             }
         }
-        debug_assert!(paths.len() <= self.options.max_files);
+        debug_assert!(paths.len() <= self.options.max_files());
         Ok(paths.into_iter().collect())
     }
 
     /// Read one supported source file after enforcing the byte budget.
     pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
         let root = path.parent().unwrap_or_else(|| Path::new("."));
-        let admission = SourceAdmission::new(root, self.options)?;
+        let admission = SourceAdmission::new(root, &self.options)?;
         let Some(path) = admission.admitted_path(path)? else {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         };
-        read_source_bytes(&path, self.options.max_source_bytes)
+        read_source_bytes(path.as_ref(), self.options.max_source_bytes())
     }
 }

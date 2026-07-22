@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    AnalysisReport, AnalysisSession, Environment, ProjectInput, ProjectInputError,
-    ProviderCatalogError, REPORT_VERSION, RuleId,
+    AnalysisReport, Environment, ProjectInput, ProjectInputError, ProviderCatalogError,
+    REPORT_VERSION, RuleId,
     analysis::{LocalArtifact, ProjectSemanticModel, project::projection::ProjectionOutcome},
     api::classification::ClassificationResult,
     lint::{
@@ -92,11 +92,11 @@ impl Clone for Linter {
 
 impl Linter {
     /// Starts a deterministic project collection session.
-    pub fn begin_analysis(
+    pub fn begin_project(
         &self,
         root: impl Into<std::path::PathBuf>,
-    ) -> Result<AnalysisSession<'_>, ProjectInputError> {
-        AnalysisSession::new(self, root)
+    ) -> Result<crate::ProjectCollection<'_>, ProjectInputError> {
+        crate::ProjectCollection::new(self, root)
     }
 
     /// Construct a linter from validated catalogs, environment, rule
@@ -202,15 +202,15 @@ impl Linter {
             resolutions = input.resolutions.len(),
             "project analysis started"
         );
-        let mut session = self.begin_analysis(input.root)?;
+        let mut collection = self.begin_project(input.root)?;
         for (path, source) in input.sources {
-            session.admit_validated_source(source)?;
-            session.analyze_admitted_source(&path)?;
+            collection.admit_validated_source(source)?;
+            collection.analyze_source_at_path(&path)?;
         }
-        for (key, result) in input.resolutions {
-            session.record_validated_resolution(key, result)?;
-        }
-        session.finish()
+        let local = collection.finish_local();
+        local
+            .resolve(input.resolutions)
+            .and_then(crate::ResolvedProject::finish)
     }
 
     /// Analyze one in-memory source through the canonical project session.
@@ -236,9 +236,9 @@ impl Linter {
         filename: &str,
     ) -> Result<AnalysisReport, ProjectInputError> {
         let filename = crate::ProjectRelativePath::new(filename)?;
-        let mut session = self.begin_analysis(".")?;
-        session.add_source(crate::SourceFile::new(filename.to_string(), source)?)?;
-        session.finish()
+        let mut collection = self.begin_project(".")?;
+        collection.analyze_source(crate::SourceFile::new(filename.to_string(), source)?)?;
+        collection.finish_local().resolve([])?.finish()
     }
 
     /// Finish the canonical project analysis and expose phase timings as
