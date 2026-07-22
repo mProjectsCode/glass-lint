@@ -111,11 +111,13 @@ impl PathInterner {
     }
 
     /// Return the segment depth of a valid path.
+    #[allow(dead_code)]
     pub(in crate::analysis) fn depth(&self, path: PathId) -> Option<u32> {
         self.nodes.get(path.index()?).map(|node| node.depth)
     }
 
     /// Whether `path` has `prefix` as its canonical root prefix.
+    #[allow(dead_code)]
     pub(in crate::analysis) fn starts_with(&self, path: PathId, prefix: PathId) -> bool {
         let Some(path_depth) = self.depth(path) else {
             return false;
@@ -178,6 +180,7 @@ impl PathInterner {
 
     /// Return the first segment of a path by walking directly to the
     /// leaf node. This avoids building a complete segment vector.
+    #[allow(dead_code)]
     fn first_segment_of(&self, path: PathId) -> Option<&PathSegment> {
         let mut current = path;
         let mut last = None;
@@ -191,6 +194,7 @@ impl PathInterner {
 
     /// Return the first index segment of a valid path, if the first
     /// segment is an array/index access.
+    #[allow(dead_code)]
     pub(in crate::analysis) fn first_index(&self, path: PathId) -> Option<u32> {
         match self.first_segment_of(path)? {
             PathSegment::Index(index) => Some(*index),
@@ -199,17 +203,20 @@ impl PathInterner {
     }
 
     /// Remove the first segment and recover the canonical remaining path.
+    #[allow(dead_code)]
     pub(in crate::analysis) fn without_first(&self, path: PathId) -> Option<PathId> {
         self.segment(path)?;
         self.rebuild_without_first(path)
     }
 
+    #[allow(dead_code)]
     fn find_edge(&self, parent: PathId, segment: &PathSegment) -> Option<PathId> {
         self.by_edge.get(&(parent, segment.clone())).copied()
     }
 
     /// Rebuild the canonical suffix while unwinding the parent chain. This
     /// uses call-stack storage instead of materializing a segment vector.
+    #[allow(dead_code)]
     fn rebuild_without_first(&self, path: PathId) -> Option<PathId> {
         let node = self.nodes.get(path.index()?)?;
         let segment = self.segment(path)?;

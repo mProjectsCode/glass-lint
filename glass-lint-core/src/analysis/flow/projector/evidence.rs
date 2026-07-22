@@ -132,37 +132,30 @@ impl ObjectFlowProjector<'_, '_> {
         let Some(summary) = self.helpers.get(function).cloned() else {
             return;
         };
-        if !summary.is_invocation_compatible(self.stream, args) {
+        if !summary.is_invocation_compatible(self.stream, args, self.helpers.path_interner()) {
             return;
         }
-        for sink in summary.sinks() {
-            let Some(parameter) = summary.parameters().iter().find(|parameter| {
-                parameter.parameter_index == sink.parameter_index()
-                    && (sink
-                        .path()
-                        .matches_base(self.stream.paths(), parameter.path)
-                        || (parameter.rest
-                            && sink
-                                .path()
-                                .starts_with_base(self.stream.paths(), parameter.path)))
-            }) else {
-                continue;
-            };
-            let Some(value) = parameter.project_argument_at(self.stream, args, sink.path()) else {
-                continue;
-            };
-            let Some(object) = self.flow_state.object_for(value) else {
-                continue;
-            };
-            let Some(state) = self.flow_state.state(object, sink.flow()).cloned() else {
-                continue;
-            };
-            let Some(flow) = self.flow_index.get(sink.flow()).cloned() else {
-                continue;
-            };
-            if state.is_ready(&flow) {
-                self.emit_state(&state, &flow, sink_fact);
-            }
+        let paths = self.helpers.path_interner();
+        let ready: Vec<_> = summary
+            .sinks()
+            .into_iter()
+            .filter_map(|sink| {
+                let parameter = summary.parameters().iter().find(|parameter| {
+                    parameter.parameter_index == sink.parameter_index()
+                        && (paths.matches_frozen(sink.path(), parameter.path)
+                            || (parameter.rest
+                                && paths.starts_with_frozen(sink.path(), parameter.path)))
+                })?;
+                let value =
+                    parameter.project_argument_at(self.stream, args, paths, sink.path())?;
+                let object = self.flow_state.object_for(value)?;
+                let state = self.flow_state.state(object, sink.flow()).cloned()?;
+                let flow = self.flow_index.get(sink.flow()).cloned()?;
+                state.is_ready(&flow).then_some((state, flow))
+            })
+            .collect();
+        for (state, flow) in ready {
+            self.emit_state(&state, &flow, sink_fact);
         }
     }
 
