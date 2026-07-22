@@ -83,19 +83,19 @@ impl ExportTable {
     pub(in crate::analysis) fn resolve(
         &self,
         module: ModuleId,
-        export: SmolStr,
+        export: &SmolStr,
     ) -> Option<&ExportResolution> {
-        self.0.get(&(module, export))
+        self.0.get(&(module, export.clone()))
     }
 
     /// Store a changed export identity and report whether it changed.
     pub(in crate::analysis) fn set_monotone(
         &mut self,
         module: ModuleId,
-        export: SmolStr,
+        export: &SmolStr,
         value: ExportResolution,
     ) -> bool {
-        let key = (module, export);
+        let key = (module, export.clone());
 
         if self.0.get(&key) == Some(&value) {
             return false;

@@ -108,9 +108,10 @@ impl<'a> ProjectResolver<'a> {
         let Ok(admission) = self.admission.classify(path) else {
             return ResolverOutcome::Missing;
         };
+        let internal = is_internal_module_request(request);
         match admission {
             PathAdmission::Outside(path) => {
-                if is_internal_module_request(request) {
+                if internal {
                     ResolverOutcome::OutsideProject {
                         path: path.as_ref().to_string_lossy().into_owned(),
                     }
@@ -121,7 +122,7 @@ impl<'a> ProjectResolver<'a> {
                 }
             }
             PathAdmission::Excluded(path) => {
-                if is_internal_module_request(request) {
+                if internal {
                     ResolverOutcome::Unsupported {
                         reason: format!("excluded target `{}`", path.as_ref().display()),
                     }

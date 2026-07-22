@@ -94,7 +94,8 @@ impl ObjectFlowProjector<'_, '_> {
                     return;
                 }
                 let current = self.environment();
-                let paths = then_exit.map_or_else(|| vec![base, current], |then_exit| vec![then_exit, current]);
+                let paths = then_exit
+                    .map_or_else(|| vec![base, current], |then_exit| vec![then_exit, current]);
                 self.join(&paths);
             }
             _ => unreachable!(),
@@ -260,14 +261,12 @@ impl ObjectFlowProjector<'_, '_> {
             *catch_exit = Some(current);
             *has_finally = true;
             let mut normal = (*try_exit).into_iter().collect::<Vec<_>>();
-            if current.is_reachable() { normal.push(current); }
+            if current.is_reachable() {
+                normal.push(current);
+            }
             normal_exit.clone_from(&normal.first().copied());
             let mut incoming = normal;
-            incoming.extend(
-                abrupt_exits
-                    .iter()
-                    .map(|(_, environment)| *environment),
-            );
+            incoming.extend(abrupt_exits.iter().map(|(_, environment)| *environment));
             Some(incoming)
         } else {
             None

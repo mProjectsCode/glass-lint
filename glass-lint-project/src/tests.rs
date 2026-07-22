@@ -14,14 +14,14 @@ use crate::{ProjectLoadError, ProjectLoadOptions, ProjectLoader, ProjectSelectio
 /// RAII temporary project directory that is created on construction and cleaned
 /// up on drop (including on panic).  Shared across tests to avoid repeating the
 /// same temp-directory setup/teardown and manual `remove_dir_all` calls.
-struct TempProject {
+pub struct TempProject {
     root: PathBuf,
 }
 
 static NEXT_TEMP_PROJECT: AtomicU64 = AtomicU64::new(0);
 
 impl TempProject {
-    fn new(label: &str) -> Self {
+    pub fn new(label: &str) -> Self {
         let serial = NEXT_TEMP_PROJECT.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
             "glass-lint-project-{label}-{}-{serial}",
@@ -31,15 +31,15 @@ impl TempProject {
         Self { root }
     }
 
-    fn root(&self) -> &Path {
+    pub fn root(&self) -> &Path {
         &self.root
     }
 
-    fn create_dir(&self, path: impl AsRef<Path>) {
+    pub fn create_dir(&self, path: impl AsRef<Path>) {
         fs::create_dir_all(self.root.join(path)).unwrap();
     }
 
-    fn write(&self, path: impl AsRef<Path>, content: impl AsRef<[u8]>) {
+    pub fn write(&self, path: impl AsRef<Path>, content: impl AsRef<[u8]>) {
         let full = self.root.join(path);
         if let Some(parent) = full.parent() {
             fs::create_dir_all(parent).unwrap();

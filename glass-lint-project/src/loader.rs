@@ -68,13 +68,18 @@ impl ProjectLoadOutcome {
 /// Phase timings shared with harness profiling reports.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ProjectPhaseTimings {
-    discovery: Duration,
-    reads: Duration,
-    local_analysis: Duration,
-    resolution: Duration,
-    linking: Duration,
-    matching: Duration,
+    phases: [Duration; 6],
     total: Duration,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum Phase {
+    Discovery = 0,
+    Reads = 1,
+    LocalAnalysis = 2,
+    Resolution = 3,
+    Linking = 4,
+    Matching = 5,
 }
 
 impl ProjectPhaseTimings {
@@ -86,32 +91,32 @@ impl ProjectPhaseTimings {
 
     #[must_use]
     pub fn discovery(&self) -> Duration {
-        self.discovery
+        self.phases[Phase::Discovery as usize]
     }
 
     #[must_use]
     pub fn reads(&self) -> Duration {
-        self.reads
+        self.phases[Phase::Reads as usize]
     }
 
     #[must_use]
     pub fn local_analysis(&self) -> Duration {
-        self.local_analysis
+        self.phases[Phase::LocalAnalysis as usize]
     }
 
     #[must_use]
     pub fn resolution(&self) -> Duration {
-        self.resolution
+        self.phases[Phase::Resolution as usize]
     }
 
     #[must_use]
     pub fn linking(&self) -> Duration {
-        self.linking
+        self.phases[Phase::Linking as usize]
     }
 
     #[must_use]
     pub fn matching(&self) -> Duration {
-        self.matching
+        self.phases[Phase::Matching as usize]
     }
 
     #[must_use]
@@ -121,36 +126,42 @@ impl ProjectPhaseTimings {
 
     #[must_use]
     pub fn parse_and_local_analysis(&self) -> Duration {
-        self.local_analysis
+        self.phases[Phase::LocalAnalysis as usize]
     }
 
     #[must_use]
     pub fn linking_and_matching(&self) -> Duration {
-        self.linking.saturating_add(self.matching)
+        self.phases[Phase::Linking as usize].saturating_add(self.phases[Phase::Matching as usize])
     }
 
     pub fn record_discovery(&mut self, duration: Duration) {
-        self.discovery = self.discovery.saturating_add(duration);
+        self.phases[Phase::Discovery as usize] =
+            self.phases[Phase::Discovery as usize].saturating_add(duration);
     }
 
     pub fn record_reads(&mut self, duration: Duration) {
-        self.reads = self.reads.saturating_add(duration);
+        self.phases[Phase::Reads as usize] =
+            self.phases[Phase::Reads as usize].saturating_add(duration);
     }
 
     pub fn record_local_analysis(&mut self, duration: Duration) {
-        self.local_analysis = self.local_analysis.saturating_add(duration);
+        self.phases[Phase::LocalAnalysis as usize] =
+            self.phases[Phase::LocalAnalysis as usize].saturating_add(duration);
     }
 
     pub fn record_resolution(&mut self, duration: Duration) {
-        self.resolution = self.resolution.saturating_add(duration);
+        self.phases[Phase::Resolution as usize] =
+            self.phases[Phase::Resolution as usize].saturating_add(duration);
     }
 
     pub fn record_linking(&mut self, duration: Duration) {
-        self.linking = self.linking.saturating_add(duration);
+        self.phases[Phase::Linking as usize] =
+            self.phases[Phase::Linking as usize].saturating_add(duration);
     }
 
     pub fn record_matching(&mut self, duration: Duration) {
-        self.matching = self.matching.saturating_add(duration);
+        self.phases[Phase::Matching as usize] =
+            self.phases[Phase::Matching as usize].saturating_add(duration);
     }
 
     pub fn record_total(&mut self, duration: Duration) {
@@ -160,12 +171,9 @@ impl ProjectPhaseTimings {
 
 impl std::ops::AddAssign for ProjectPhaseTimings {
     fn add_assign(&mut self, rhs: Self) {
-        self.discovery = self.discovery.saturating_add(rhs.discovery);
-        self.reads = self.reads.saturating_add(rhs.reads);
-        self.local_analysis = self.local_analysis.saturating_add(rhs.local_analysis);
-        self.resolution = self.resolution.saturating_add(rhs.resolution);
-        self.linking = self.linking.saturating_add(rhs.linking);
-        self.matching = self.matching.saturating_add(rhs.matching);
+        for (l, r) in self.phases.iter_mut().zip(rhs.phases.iter()) {
+            *l = l.saturating_add(*r);
+        }
         self.total = self.total.saturating_add(rhs.total);
     }
 }

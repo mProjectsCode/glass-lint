@@ -272,6 +272,27 @@ impl ScopeGraph {
 }
 
 impl ScopeGraph {
+    /// Derived global or module-export provenance from a symbol path, falling
+    /// back to [`SymbolCallProvenance::Local`].
+    fn symbol_path_provenance(
+        &self,
+        target: &SymbolPath,
+        check_path: &SymbolPath,
+        span: Span,
+    ) -> SymbolCallProvenance {
+        if check_path.is_root()
+            && let Some(root_segment) = check_path.first_segment()
+            && self.is_global(root_segment)
+        {
+            SymbolCallProvenance::Global {
+                name: root_segment.to_smolstr(),
+            }
+        } else {
+            self.module_export_for_chain(&target.to_string(), span)
+                .unwrap_or(SymbolCallProvenance::Local)
+        }
+    }
+
     /// Resolve callable provenance while rejecting dynamic or shadowed uses.
     pub(in crate::analysis) fn call_provenance(
         &self,
@@ -293,33 +314,13 @@ impl ScopeGraph {
                     return SymbolCallProvenance::Local;
                 };
                 let root = path.without_bind_suffix().unwrap_or_else(|| path.clone());
-                if root.is_root()
-                    && let Some(root_segment) = root.first_segment()
-                    && self.is_global(root_segment)
-                {
-                    SymbolCallProvenance::Global {
-                        name: root_segment.to_smolstr(),
-                    }
-                } else {
-                    self.module_export_for_chain(&path.to_string(), span)
-                        .unwrap_or(SymbolCallProvenance::Local)
-                }
+                self.symbol_path_provenance(&path, &root, span)
             }
             Some(BindingProvenance::BoundCallable { target, .. }) => {
                 let Some(path) = self.symbol_path(target) else {
                     return SymbolCallProvenance::Local;
                 };
-                if path.is_root()
-                    && let Some(root_segment) = path.first_segment()
-                    && self.is_global(root_segment)
-                {
-                    SymbolCallProvenance::Global {
-                        name: root_segment.to_smolstr(),
-                    }
-                } else {
-                    self.module_export_for_chain(&path.to_string(), span)
-                        .unwrap_or(SymbolCallProvenance::Local)
-                }
+                self.symbol_path_provenance(&path, &path, span)
             }
             Some(BindingProvenance::BoundModuleCallable { module, export, .. }) => {
                 SymbolCallProvenance::ModuleExport {

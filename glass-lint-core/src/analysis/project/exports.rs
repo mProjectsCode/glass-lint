@@ -208,7 +208,7 @@ impl ProjectSemanticModel {
         if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(visit_key.clone()) {
             return None;
         }
-        if let Some(resolved) = self.exports.resolve(module, name.clone()) {
+        if let Some(resolved) = self.exports.resolve(module, name) {
             let resolved = resolved.clone();
             visiting.remove(&visit_key);
             return Some(resolved);

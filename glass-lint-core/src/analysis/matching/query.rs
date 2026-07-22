@@ -14,7 +14,7 @@ use crate::{
             occurrence::{
                 BorrowedOccurrenceIter, BorrowedPackageOccurrenceIter, ModuleExportKey,
                 ModuleOccurrences, NameOccurrences, OccurrenceIndex, Occurrences,
-                PackageKeyPredicate, PackageMatchKind,
+                PackageKeyPredicate, PackageMatchKind, ReturnedMemberKey,
             },
             push_owned_evidence,
         },
@@ -330,25 +330,27 @@ impl OccurrenceIndexes {
         names: &crate::analysis::name::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         match (&clause.event, &clause.subject) {
-            (EventPredicate::MemberCall { member }, SubjectConstraint::ReturnedFrom { .. }) => {
-                self.members.returned_calls.matching(|key| {
+            (
+                EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member },
+                SubjectConstraint::ReturnedFrom { .. },
+            ) => {
+                let predicate = |key: &ReturnedMemberKey| {
                     key.source().to_symbol_path(names).is_some_and(|source| {
                         clause
                             .identity
                             .root_or_descendant_matches(&source, &self.environment)
-                    }) && crate::analysis::value::NamePath::from_symbol_path(member, names)
-                        .is_some_and(|member| member == *key.member())
-                })
-            }
-            (EventPredicate::MemberRead { member }, SubjectConstraint::ReturnedFrom { .. }) => {
-                self.members.returned_reads.matching(|key| {
-                    key.source().to_symbol_path(names).is_some_and(|source| {
-                        clause
-                            .identity
-                            .root_or_descendant_matches(&source, &self.environment)
-                    }) && crate::analysis::value::NamePath::from_symbol_path(member, names)
-                        .is_some_and(|member| member == *key.member())
-                })
+                    }) && NamePath::from_symbol_path(member, names)
+                        .is_some_and(|m| m == *key.member())
+                };
+                match &clause.event {
+                    EventPredicate::MemberCall { .. } => {
+                        self.members.returned_calls.matching(predicate)
+                    }
+                    EventPredicate::MemberRead { .. } => {
+                        self.members.returned_reads.matching(predicate)
+                    }
+                    _ => unreachable!(),
+                }
             }
             (EventPredicate::MemberCall { member }, SubjectConstraint::InstanceOf { .. }) => self
                 .members

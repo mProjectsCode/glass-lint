@@ -84,32 +84,28 @@ impl ProjectSemanticModel {
             return identities;
         };
         for request in project_module.local().interface().requests() {
-            let ModuleRequestRole::Import { bindings } = request.role() else {
-                continue;
-            };
-            for binding in bindings {
-                if binding.is_namespace() {
-                    continue;
-                }
-                let Some(export) = binding.imported() else {
-                    continue;
-                };
-                let identity = self.resolve_imported_identity(module, request.specifier(), export);
-                identities.insert(
-                    ModuleExportKey::new(request.specifier().clone(), export.clone()),
-                    identity.into(),
-                );
-            }
-        }
-        for request in project_module.local().interface().requests() {
-            let is_namespace_import = match request.role() {
+            let is_namespace = match request.role() {
                 ModuleRequestRole::Import { bindings } => {
+                    for binding in bindings {
+                        if binding.is_namespace() {
+                            continue;
+                        }
+                        let Some(export) = binding.imported() else {
+                            continue;
+                        };
+                        let identity =
+                            self.resolve_imported_identity(module, request.specifier(), export);
+                        identities.insert(
+                            ModuleExportKey::new(request.specifier().clone(), export.clone()),
+                            identity.into(),
+                        );
+                    }
                     bindings.iter().any(ImportedBinding::is_namespace)
                 }
                 ModuleRequestRole::Require | ModuleRequestRole::DynamicImport => true,
                 ModuleRequestRole::ReExport { .. } | ModuleRequestRole::StarExport => false,
             };
-            if !is_namespace_import {
+            if !is_namespace {
                 continue;
             }
             let prefix = request.specifier().to_owned();

@@ -337,6 +337,21 @@ impl<'a> PrettyReport<'a> {
         }
     }
 
+    fn cells_from_line(line: &str) -> Vec<Cell> {
+        line.chars()
+            .scan(0usize, |column, ch| {
+                let width = display_width(ch, *column);
+                let cell = Cell {
+                    ch,
+                    start: *column,
+                    width,
+                };
+                *column += width;
+                Some(cell)
+            })
+            .collect()
+    }
+
     fn excerpt(
         &self,
         range: &SourceRange,
@@ -359,19 +374,7 @@ impl<'a> PrettyReport<'a> {
         if let Some(cache) = self.line_cache
             && !cache.borrow().contains_key(&line_idx)
         {
-            let cells = line
-                .chars()
-                .scan(0usize, |column, ch| {
-                    let width = display_width(ch, *column);
-                    let cell = Cell {
-                        ch,
-                        start: *column,
-                        width,
-                    };
-                    *column += width;
-                    Some(cell)
-                })
-                .collect();
+            let cells = Self::cells_from_line(line);
             cache.borrow_mut().insert(line_idx, cells);
         }
         if let Some(cache) = self.line_cache {
@@ -381,19 +384,7 @@ impl<'a> PrettyReport<'a> {
             };
             return self.write_excerpt(cells, range, width, &gutter, out);
         }
-        let cells = line
-            .chars()
-            .scan(0usize, |column, ch| {
-                let width = display_width(ch, *column);
-                let cell = Cell {
-                    ch,
-                    start: *column,
-                    width,
-                };
-                *column += width;
-                Some(cell)
-            })
-            .collect::<Vec<_>>();
+        let cells = Self::cells_from_line(line);
         self.write_excerpt(&cells, range, width, &gutter, out)
     }
 

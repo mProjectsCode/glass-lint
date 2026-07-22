@@ -251,6 +251,14 @@ pub fn build_test_stream<'a>(
 mod tests {
     use super::*;
 
+    fn build_facts(src: &str, filename: &str) -> FactStream {
+        let parsed = crate::parse(src, filename).expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program);
+        let mut builder = FactBuilder::new(&mut resolver);
+        parsed.program.visit_with(&mut builder);
+        builder.into_stream()
+    }
+
     #[test]
     fn fact_builder_emits_facts_for_diverse_program() {
         let src = r#"
@@ -264,11 +272,7 @@ mod tests {
             obj.prop = 4;
             new Error("fail");
         "#;
-        let parsed = crate::parse(src, "fact-builder.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts(src, "fact-builder.js");
         let facts = stream.facts();
 
         assert!(!facts.is_empty(), "fact builder should emit facts");
@@ -282,12 +286,7 @@ mod tests {
 
     #[test]
     fn facts_record_the_lexical_function_owner() {
-        let parsed = crate::parse("fetch(); function helper() { fetch(); }", "owners.js")
-            .expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts("fetch(); function helper() { fetch(); }", "owners.js");
         let calls = stream
             .facts()
             .iter()
@@ -300,17 +299,8 @@ mod tests {
     #[test]
     fn fact_ids_are_sequential_and_deterministic() {
         let src = "const a = 1; const b = 2; foo();";
-        let parsed = crate::parse(src, "ids.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-
-        let mut builder1 = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder1);
-        let stream1 = builder1.into_stream();
-
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder2 = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder2);
-        let stream2 = builder2.into_stream();
+        let stream1 = build_facts(src, "ids.js");
+        let stream2 = build_facts(src, "ids.js");
 
         let ids1: Vec<_> = stream1.facts().iter().map(|f| f.id.0).collect();
         let ids2: Vec<_> = stream2.facts().iter().map(|f| f.id.0).collect();
@@ -329,18 +319,10 @@ mod tests {
     #[test]
     fn fact_count_is_independent_of_enabled_rules() {
         let src = "fetch('/api'); document.createElement('div');";
-        let parsed = crate::parse(src, "invariant.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts(src, "invariant.js");
         let count = stream.len();
 
-        let mut resolver2 = Resolver::collect(&parsed.program);
-        let mut builder2 = FactBuilder::new(&mut resolver2);
-        parsed.program.visit_with(&mut builder2);
-        let stream2 = builder2.into_stream();
+        let stream2 = build_facts(src, "invariant.js");
         assert_eq!(
             count,
             stream2.len(),
@@ -356,12 +338,7 @@ mod tests {
     #[test]
     fn optional_chain_does_not_double_record_roles() {
         let src = "foo?.bar?.baz();";
-        let parsed = crate::parse(src, "opt.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts(src, "opt.js");
         let facts = stream.facts();
 
         assert_eq!(
@@ -383,12 +360,7 @@ mod tests {
 
     #[test]
     fn nested_call_and_member_roles_have_distinct_facts() {
-        let parsed =
-            crate::parse("outer(inner(value.prop));", "nested.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts("outer(inner(value.prop));", "nested.js");
         let calls = stream
             .facts()
             .iter()
@@ -413,13 +385,8 @@ mod tests {
             a.then(x => x.json());
             document.getElementById('root');
         ";
-        let parsed = crate::parse(src, "fp.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
 
-        let mut build_facts = || {
-            let mut builder = FactBuilder::new(&mut resolver);
-            parsed.program.visit_with(&mut builder);
-            let stream = builder.into_stream();
+        let extract = |stream: FactStream| {
             stream
                 .facts()
                 .iter()
@@ -427,9 +394,9 @@ mod tests {
                 .collect::<Vec<_>>()
         };
 
-        let fp1 = build_facts();
-        let fp2 = build_facts();
-        let fp3 = build_facts();
+        let fp1 = extract(build_facts(src, "fp.js"));
+        let fp2 = extract(build_facts(src, "fp.js"));
+        let fp3 = extract(build_facts(src, "fp.js"));
         assert_eq!(
             fp1, fp2,
             "repeated builds must produce identical fingerprints"
@@ -443,11 +410,7 @@ mod tests {
     #[test]
     fn call_fact_captures_callee_provenance() {
         let src = "fetch('/api');";
-        let parsed = crate::parse(src, "call-prov.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts(src, "call-prov.js");
         let call_facts: Vec<_> = stream
             .facts()
             .iter()
@@ -485,11 +448,7 @@ mod tests {
             new Constructor();
             function outer() { function inner() {} }
         ";
-        let parsed = crate::parse(src, "fact-identities.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts(src, "fact-identities.js");
 
         assert!(stream.facts().iter().any(|fact| {
             matches!(
@@ -508,11 +467,7 @@ mod tests {
     #[test]
     fn member_read_fact_captures_chain_info() {
         let src = "const x = document.body;";
-        let parsed = crate::parse(src, "member-prov.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts(src, "member-prov.js");
         let member_facts: Vec<_> = stream
             .facts()
             .iter()
@@ -530,11 +485,7 @@ mod tests {
     #[test]
     fn import_fact_is_emitted() {
         let src = r"import { x } from 'module';";
-        let parsed = crate::parse(src, "import.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts(src, "import.js");
         let import_facts: Vec<_> = stream
             .facts()
             .iter()
@@ -581,11 +532,7 @@ mod tests {
     #[test]
     fn class_fact_is_emitted_for_class_declaration() {
         let src = r"class Foo extends Bar {}";
-        let parsed = crate::parse(src, "class.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts(src, "class.js");
         let class_facts: Vec<_> = stream
             .facts()
             .iter()
@@ -605,11 +552,7 @@ mod tests {
                 bar() { this.baz(); }
             }
         ";
-        let parsed = crate::parse(src, "instance.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
-        let mut builder = FactBuilder::new(&mut resolver);
-        parsed.program.visit_with(&mut builder);
-        let stream = builder.into_stream();
+        let stream = build_facts(src, "instance.js");
         let call_facts: Vec<_> = stream
             .facts()
             .iter()

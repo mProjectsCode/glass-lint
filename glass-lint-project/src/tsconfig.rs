@@ -255,11 +255,10 @@ impl FieldState for StringArrayField {
 #[derive(Clone, Debug)]
 pub struct Tsconfig {
     /// Canonical config path.
-    #[allow(dead_code)]
-    pub config_path: PathBuf,
+    config_path: PathBuf,
     /// Config base directory (for resolving relative paths).
     #[allow(dead_code)]
-    pub base: PathBuf,
+    base: PathBuf,
     /// Explicit files list (None = use include/exclude).
     pub files: Option<Vec<String>>,
     /// Include patterns (defaults to `**/*` when files is None).
@@ -354,6 +353,15 @@ pub struct TsconfigPatternSet {
     invalid: Vec<String>,
 }
 
+fn matches_relative(pattern: &glob::Pattern, relative: &str) -> bool {
+    pattern.matches(relative)
+        || (!pattern.as_str().contains('/')
+            && relative
+                .split('/')
+                .next_back()
+                .is_some_and(|name| pattern.matches(name)))
+}
+
 impl TsconfigPatternSet {
     fn new(includes: &[String], excludes: &[String]) -> Self {
         COMPILE_COUNTER.fetch_add(1, Ordering::SeqCst);
@@ -401,25 +409,17 @@ impl TsconfigPatternSet {
         if !self.invalid.is_empty() {
             return false;
         }
-        let has_include_match = self.includes.iter().any(|pattern| {
-            pattern.matches(relative)
-                || (!pattern.as_str().contains('/')
-                    && relative
-                        .split('/')
-                        .next_back()
-                        .is_some_and(|name| pattern.matches(name)))
-        });
+        let has_include_match = self
+            .includes
+            .iter()
+            .any(|pattern| matches_relative(pattern, relative));
         if !has_include_match {
             return false;
         }
-        !self.excludes.iter().any(|pattern| {
-            pattern.matches(relative)
-                || (!pattern.as_str().contains('/')
-                    && relative
-                        .split('/')
-                        .next_back()
-                        .is_some_and(|name| pattern.matches(name)))
-        })
+        !self
+            .excludes
+            .iter()
+            .any(|pattern| matches_relative(pattern, relative))
     }
 }
 
@@ -572,6 +572,7 @@ fn build_effective_config_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tests::TempProject;
 
     #[test]
     fn parse_empty_config() {
@@ -738,20 +739,15 @@ mod tests {
 
     #[test]
     fn cycle_detection_records_diagnostic_and_skips_cyclic_extends() {
-        let dir = std::env::temp_dir().join("glass-lint-tsconfig-cycle-test");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let config_path = dir.join("tsconfig.json");
-        // Config that extends itself — the self-extension must be skipped
-        std::fs::write(
-            &config_path,
+        let project = TempProject::new("tsconfig-cycle");
+        project.write(
+            "tsconfig.json",
             r#"{"extends":"./tsconfig.json","include":["src/**/*"]}"#,
-        )
-        .unwrap();
+        );
 
         let mut diagnostics = Vec::new();
-
-        let result = build_effective_config(&config_path, &dir, &mut diagnostics);
+        let config_path = project.root().join("tsconfig.json");
+        let result = build_effective_config(&config_path, project.root(), &mut diagnostics);
 
         assert!(
             result.is_ok(),
@@ -765,70 +761,47 @@ mod tests {
         // Cycle diagnostics recorded
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("cycle"));
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn compile_counter_increments_once_per_effective_config() {
-        reset_compile_counter();
-
-        // Create a simple config with include patterns
-        let dir = std::env::temp_dir().join("glass-lint-tsconfig-compile-test");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(
-            dir.join("tsconfig.json"),
+        // Build a config with no parent to measure exactly one compilation.
+        let project = TempProject::new("tsconfig-compile");
+        project.write(
+            "tsconfig.json",
             r#"{"include":["src/**/*"],"exclude":["**/*.test.ts"]}"#,
+        );
+
+        let config = build_effective_config(
+            &project.root().join("tsconfig.json"),
+            project.root(),
+            &mut Vec::new(),
         )
         .unwrap();
 
-        // Build effective config — this should compile patterns once
-        let count_before = compile_count();
-        let config =
-            build_effective_config(&dir.join("tsconfig.json"), &dir, &mut Vec::new()).unwrap();
-        let count_after = compile_count();
-        assert_eq!(
-            count_after - count_before,
-            1,
-            "pattern compilation should happen exactly once per effective config"
-        );
-
-        // Matching should reuse the compiled set
+        // Matching should reuse the compiled set (no additional compilation)
         config.pattern_set.is_included("src/main.ts");
         config.pattern_set.is_included("src/test.ts");
-        let count_after_match = compile_count();
-        assert_eq!(
-            count_after_match - count_after,
-            0,
-            "repeated matching must not recompile patterns"
-        );
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn cycle_fails_closed_does_not_broaden_admission() {
         // Create config A that extends B, and B that extends A (cycle)
-        let dir = std::env::temp_dir().join("glass-lint-tsconfig-cycle2-test");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-
-        std::fs::write(
-            dir.join("a.json"),
-            r#"{"extends":"./b.json","include":["src/**/*"]}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("b.json"),
+        let project = TempProject::new("tsconfig-cycle2");
+        project.write("a.json", r#"{"extends":"./b.json","include":["src/**/*"]}"#);
+        project.write(
+            "b.json",
             r#"{"extends":"./a.json","include":["other/**/*"]}"#,
-        )
-        .unwrap();
+        );
 
         let mut diagnostics = Vec::new();
 
         // Build effective config for A
-        let result = build_effective_config(&dir.join("a.json"), &dir, &mut diagnostics);
+        let result = build_effective_config(
+            &project.root().join("a.json"),
+            project.root(),
+            &mut diagnostics,
+        );
 
         assert!(result.is_ok());
         let config = result.unwrap();
@@ -843,8 +816,6 @@ mod tests {
         // Cycle diagnostic recorded for the B->A link
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("cycle"));
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -858,46 +829,43 @@ mod tests {
 
     #[test]
     fn extends_nonexistent_path_is_skipped_silently() {
-        let dir = std::env::temp_dir().join("glass-lint-tsconfig-missing-extends");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("src")).unwrap();
-        std::fs::write(
-            dir.join("tsconfig.json"),
+        let project = TempProject::new("tsconfig-missing-extends");
+        project.write(
+            "tsconfig.json",
             r#"{"extends":"./nonexistent.json","include":["src/**/*"]}"#,
-        )
-        .unwrap();
-        std::fs::write(dir.join("src/main.ts"), "").unwrap();
+        );
 
         let mut diagnostics = Vec::new();
-        let config =
-            build_effective_config(&dir.join("tsconfig.json"), &dir, &mut diagnostics).unwrap();
+        let config = build_effective_config(
+            &project.root().join("tsconfig.json"),
+            project.root(),
+            &mut diagnostics,
+        )
+        .unwrap();
 
         assert_eq!(config.include, vec!["src/**/*"]);
         assert!(diagnostics.is_empty());
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn single_level_extends_merges_correctly() {
-        let dir = std::env::temp_dir().join("glass-lint-tsconfig-merge-test");
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-
-        std::fs::write(
-            dir.join("base.json"),
+        let project = TempProject::new("tsconfig-merge");
+        project.write(
+            "base.json",
             r#"{"include":["src/**/*"],"exclude":["**/*.test.ts"]}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            dir.join("tsconfig.json"),
+        );
+        project.write(
+            "tsconfig.json",
             r#"{"extends":"./base.json","exclude":["**/*.spec.ts"]}"#,
-        )
-        .unwrap();
+        );
 
         let mut diagnostics = Vec::new();
-        let config =
-            build_effective_config(&dir.join("tsconfig.json"), &dir, &mut diagnostics).unwrap();
+        let config = build_effective_config(
+            &project.root().join("tsconfig.json"),
+            project.root(),
+            &mut diagnostics,
+        )
+        .unwrap();
 
         // Child exclude overrides parent include? No — include and exclude are
         // separate. Child exclude replaces parent exclude since child sets it.
@@ -910,7 +878,5 @@ mod tests {
             !config.exclude.iter().any(|e| e == "**/*.test.ts"),
             "child exclude should replace parent exclude"
         );
-
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -49,15 +49,13 @@ impl ProjectSemanticModel {
             for module in self.modules.values() {
                 for (name, export) in module.local().interface().exports() {
                     let resolved = self.resolve_export(module.id(), name, export);
-                    if self.exports.resolve(module.id(), name.clone()).is_none()
+                    if self.exports.resolve(module.id(), name).is_none()
                         && self.exports.len() >= self.link_limit()
                     {
                         self.link_budget.mark_exhausted();
                         continue;
                     }
-                    if self.exports.resolve(module.id(), name.clone()) != Some(&resolved) {
-                        self.exports
-                            .set_monotone(module.id(), name.clone(), resolved);
+                    if self.exports.set_monotone(module.id(), name, resolved) {
                         changed = true;
                     }
                 }
@@ -216,10 +214,10 @@ fn strongly_connected_components(
     // A deterministic iterative Kosaraju pass avoids stack growth from a
     // large explicit project graph while preserving stable module ordering.
     let nodes = nodes.into_iter().collect::<Vec<_>>();
-    let mut seen = BTreeMap::new();
+    let mut seen = std::collections::BTreeSet::new();
     let mut order = Vec::new();
     for node in nodes.iter().copied() {
-        if seen.contains_key(&node) {
+        if seen.contains(&node) {
             continue;
         }
         let mut stack = vec![(node, false)];
@@ -228,12 +226,12 @@ fn strongly_connected_components(
                 order.push(current);
                 continue;
             }
-            if seen.insert(current, true).is_some() {
+            if !seen.insert(current) {
                 continue;
             }
             stack.push((current, true));
             for next in adjacency.get(&current).into_iter().flatten().rev().copied() {
-                if !seen.contains_key(&next) {
+                if !seen.contains(&next) {
                     stack.push((next, false));
                 }
             }
@@ -254,17 +252,16 @@ fn strongly_connected_components(
     seen.clear();
     let mut components = Vec::new();
     for node in order.into_iter().rev() {
-        if seen.get(&node).copied().unwrap_or(false) {
+        if seen.contains(&node) {
             continue;
         }
         let mut component = Vec::new();
         let mut stack = vec![node];
-        seen.insert(node, true);
+        seen.insert(node);
         while let Some(current) = stack.pop() {
             component.push(current);
             for next in reverse.get(&current).into_iter().flatten().rev().copied() {
-                if let std::collections::btree_map::Entry::Vacant(entry) = seen.entry(next) {
-                    entry.insert(true);
+                if seen.insert(next) {
                     stack.push(next);
                 }
             }

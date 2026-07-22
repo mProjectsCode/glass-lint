@@ -78,6 +78,10 @@ impl Default for AnalysisLimits {
 }
 
 impl AnalysisLimits {
+    fn check_positive(value: usize, error: AnalysisLimitError) -> Result<(), AnalysisLimitError> {
+        if value == 0 { Err(error) } else { Ok(()) }
+    }
+
     /// Validate every field and return a trusted instance.
     pub fn new(
         syntax_depth: usize,
@@ -87,24 +91,12 @@ impl AnalysisLimits {
         link_operations: usize,
         flow_operations: usize,
     ) -> Result<Self, AnalysisLimitError> {
-        if syntax_depth == 0 {
-            return Err(AnalysisLimitError::SyntaxDepth);
-        }
-        if semantic_operations == 0 {
-            return Err(AnalysisLimitError::SemanticOperations);
-        }
-        if effect_operations == 0 {
-            return Err(AnalysisLimitError::EffectOperations);
-        }
-        if evidence_items == 0 {
-            return Err(AnalysisLimitError::EvidenceItems);
-        }
-        if link_operations == 0 {
-            return Err(AnalysisLimitError::LinkOperations);
-        }
-        if flow_operations == 0 {
-            return Err(AnalysisLimitError::FlowOperations);
-        }
+        Self::check_positive(syntax_depth, AnalysisLimitError::SyntaxDepth)?;
+        Self::check_positive(semantic_operations, AnalysisLimitError::SemanticOperations)?;
+        Self::check_positive(effect_operations, AnalysisLimitError::EffectOperations)?;
+        Self::check_positive(evidence_items, AnalysisLimitError::EvidenceItems)?;
+        Self::check_positive(link_operations, AnalysisLimitError::LinkOperations)?;
+        Self::check_positive(flow_operations, AnalysisLimitError::FlowOperations)?;
         Ok(Self {
             syntax_depth,
             semantic_operations,
@@ -141,49 +133,37 @@ impl AnalysisLimits {
 
     /// Builder-style override, validated (may return an error for zero).
     pub fn with_syntax_depth(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        if value == 0 {
-            return Err(AnalysisLimitError::SyntaxDepth);
-        }
+        Self::check_positive(value, AnalysisLimitError::SyntaxDepth)?;
         self.syntax_depth = value;
         Ok(self)
     }
 
     pub fn with_semantic_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        if value == 0 {
-            return Err(AnalysisLimitError::SemanticOperations);
-        }
+        Self::check_positive(value, AnalysisLimitError::SemanticOperations)?;
         self.semantic_operations = value;
         Ok(self)
     }
 
     pub fn with_effect_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        if value == 0 {
-            return Err(AnalysisLimitError::EffectOperations);
-        }
+        Self::check_positive(value, AnalysisLimitError::EffectOperations)?;
         self.effect_operations = value;
         Ok(self)
     }
 
     pub fn with_evidence_items(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        if value == 0 {
-            return Err(AnalysisLimitError::EvidenceItems);
-        }
+        Self::check_positive(value, AnalysisLimitError::EvidenceItems)?;
         self.evidence_items = value;
         Ok(self)
     }
 
     pub fn with_link_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        if value == 0 {
-            return Err(AnalysisLimitError::LinkOperations);
-        }
+        Self::check_positive(value, AnalysisLimitError::LinkOperations)?;
         self.link_operations = value;
         Ok(self)
     }
 
     pub fn with_flow_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        if value == 0 {
-            return Err(AnalysisLimitError::FlowOperations);
-        }
+        Self::check_positive(value, AnalysisLimitError::FlowOperations)?;
         self.flow_operations = value;
         Ok(self)
     }
@@ -191,37 +171,55 @@ impl AnalysisLimits {
     /// Test-only: set a field directly (caller must ensure positivity).
     #[cfg(test)]
     pub fn set_syntax_depth(&mut self, value: usize) {
-        assert!(value > 0, "test setter requires positive value");
+        assert!(
+            Self::check_positive(value, AnalysisLimitError::SyntaxDepth).is_ok(),
+            "test setter requires positive value"
+        );
         self.syntax_depth = value;
     }
 
     #[cfg(test)]
     pub fn set_semantic_operations(&mut self, value: usize) {
-        assert!(value > 0, "test setter requires positive value");
+        assert!(
+            Self::check_positive(value, AnalysisLimitError::SemanticOperations).is_ok(),
+            "test setter requires positive value"
+        );
         self.semantic_operations = value;
     }
 
     #[cfg(test)]
     pub fn set_effect_operations(&mut self, value: usize) {
-        assert!(value > 0, "test setter requires positive value");
+        assert!(
+            Self::check_positive(value, AnalysisLimitError::EffectOperations).is_ok(),
+            "test setter requires positive value"
+        );
         self.effect_operations = value;
     }
 
     #[cfg(test)]
     pub fn set_evidence_items(&mut self, value: usize) {
-        assert!(value > 0, "test setter requires positive value");
+        assert!(
+            Self::check_positive(value, AnalysisLimitError::EvidenceItems).is_ok(),
+            "test setter requires positive value"
+        );
         self.evidence_items = value;
     }
 
     #[cfg(test)]
     pub fn set_link_operations(&mut self, value: usize) {
-        assert!(value > 0, "test setter requires positive value");
+        assert!(
+            Self::check_positive(value, AnalysisLimitError::LinkOperations).is_ok(),
+            "test setter requires positive value"
+        );
         self.link_operations = value;
     }
 
     #[cfg(test)]
     pub fn set_flow_operations(&mut self, value: usize) {
-        assert!(value > 0, "test setter requires positive value");
+        assert!(
+            Self::check_positive(value, AnalysisLimitError::FlowOperations).is_ok(),
+            "test setter requires positive value"
+        );
         self.flow_operations = value;
     }
 }

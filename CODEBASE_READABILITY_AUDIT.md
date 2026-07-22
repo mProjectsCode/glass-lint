@@ -262,7 +262,7 @@ Request recording clones cache keys, probes the cache, resolves on a miss, inser
 
 Import and require resolution build two nearly identical option values, cloning extensions and aliases for each and differing mainly in conditions. Build common options once and express the semantic difference with a request-mode enum or a small mode-specific adjustment.
 
-### READ-033 — Export fixed-point propagation clones keys and resolves twice
+### READ-033 — Export fixed-point propagation clones keys and resolves twice  ✅
 
 - **Severity:** Medium
 - **Category:** Encapsulation
@@ -270,7 +270,7 @@ Import and require resolution build two nearly identical option values, cloning 
 
 Each propagation attempt clones the export name and performs an initial resolution followed by another update lookup. Let `ExportTable` accept borrowed keys and expose a monotone `set_if_changed`/entry operation that both applies the lattice update and reports whether the fixed point changed.
 
-### READ-034 — Tsconfig tests use collision-prone manual temporary directories
+### READ-034 — Tsconfig tests use collision-prone manual temporary directories  ✅
 
 - **Severity:** Medium
 - **Category:** Testing
@@ -278,7 +278,7 @@ Each propagation attempt clones the export name and performs an initial resoluti
 
 These tests repeatedly create fixed paths, write fixtures, and manually remove them, even though the crate already has an RAII temporary-project helper. Reuse a unique RAII fixture so parallel tests cannot collide and panic paths cannot leak state into later runs.
 
-### READ-035 — `AdmittedSourcePath` is exported without a public producer
+### READ-035 — `AdmittedSourcePath` is exported without a public producer  ✅
 
 - **Severity:** Low
 - **Category:** API
@@ -286,7 +286,7 @@ These tests repeatedly create fixed paths, write fixtures, and manually remove t
 
 `SourceAdmission` is an intentional low-level public API and its public `canonicalize` method explains the exported `CanonicalProjectPath`, but no public operation constructs or returns `AdmittedSourcePath`; only crate-private classification does. Stop re-exporting that unreachable implementation type unless a public admitted-path workflow is deliberately added.
 
-### READ-036 — Callback-scope modeling repeats lookup and concentrates special cases
+### READ-036 — Callback-scope modeling repeats lookup and concentrates special cases  ✅
 
 - **Severity:** Low
 - **Category:** Complexity
@@ -294,7 +294,7 @@ These tests repeatedly create fixed paths, write fixtures, and manually remove t
 
 Lexical parent-chain lookup is duplicated, and one long conditional encodes IIFE, `forEach`, and `Promise.then` behavior. Share the lookup primitive and split callback models into named handlers or declarative cases so supported semantics are easier to audit.
 
-### READ-037 — Fact visiting repeats member-read and target extraction mechanics
+### READ-037 — Fact visiting repeats member-read and target extraction mechanics  ✅
 
 - **Severity:** Low
 - **Category:** Duplication
@@ -302,7 +302,7 @@ Lexical parent-chain lookup is duplicated, and one long conditional encodes IIFE
 
 Ordinary and optional member reads emit the same fact through separate branches, and variable declarations compute pattern targets before recomputing them for later work. Reuse one member-read emitter and retain the first target projection.
 
-### READ-038 — Callable provenance duplicates rooted-target logic
+### READ-038 — Callable provenance duplicates rooted-target logic  ✅
 
 - **Severity:** Low
 - **Category:** Duplication
@@ -310,7 +310,7 @@ Ordinary and optional member reads emit the same fact through separate branches,
 
 `ValueAlias` and `BoundCallable` repeat the same global/module/rooted-path provenance branches. Extract provenance derivation for a resolved target path and leave only variant-specific preparation at the call site.
 
-### READ-039 — Returned-from subject queries mirror event branches
+### READ-039 — Returned-from subject queries mirror event branches  ✅
 
 - **Severity:** Low
 - **Category:** Duplication
@@ -318,7 +318,7 @@ Ordinary and optional member reads emit the same fact through separate branches,
 
 Member-call and member-read cases perform the same returned-value filtering against different indexes. Select the relevant event iterator once and apply one shared predicate.
 
-### READ-040 — Analysis-limit invariants are repeated for every field
+### READ-040 — Analysis-limit invariants are repeated for every field  ✅
 
 - **Severity:** Low
 - **Category:** Newtype
@@ -326,7 +326,7 @@ Member-call and member-read cases perform the same returned-value filtering agai
 
 Six limits repeat positivity checks, getters, builders, test setters, and raw serialization plumbing. A private positive-limit type or table-driven validation helper would centralize the invariant while retaining descriptive public accessors.
 
-### READ-041 — Pretty-report assembly duplicates identical display-cell creation
+### READ-041 — Pretty-report assembly duplicates identical display-cell creation  ✅
 
 - **Severity:** Low
 - **Category:** Duplication
@@ -334,7 +334,7 @@ Six limits repeat positivity checks, getters, builders, test setters, and raw se
 
 Cached and uncached source-line branches build the same display-cell vector after obtaining line data differently. Extract the shared line-to-cells transformation so caching concerns do not duplicate formatting policy.
 
-### READ-042 — Include and exclude matching repeat the same path predicate
+### READ-042 — Include and exclude matching repeat the same path predicate  ✅
 
 - **Severity:** Low
 - **Category:** Duplication
@@ -342,7 +342,7 @@ Cached and uncached source-line branches build the same display-cell vector afte
 
 Include and exclude processing independently perform the same relative-path and pattern match operation. Use one named predicate to make their only intended difference—the surrounding any/all policy—obvious.
 
-### READ-043 — Project-phase timing is fieldwise boilerplate
+### READ-043 — Project-phase timing is fieldwise boilerplate  ✅
 
 - **Severity:** Low
 - **Category:** Duplication
@@ -350,7 +350,7 @@ Include and exclude processing independently perform the same relative-path and 
 
 Getters, recorders, and `AddAssign` repeat the same operation for each duration field. An internal phase key plus indexed durations, with named public accessors, would make adding a phase less error-prone and align timings with the explicit pipeline.
 
-### READ-044 — Dead-code suppressions obscure the intended flow-state surface
+### READ-044 — Dead-code suppressions obscure the intended flow-state surface  ✅
 
 - **Severity:** Low
 - **Category:** Other
@@ -358,7 +358,7 @@ Getters, recorders, and `AddAssign` repeat the same operation for each duration 
 
 Several flow-state fields and methods are kept behind `allow(dead_code)`, while related effect identifiers/accessors and a no-op state binding remain elsewhere in the flow modules. Remove obsolete surfaces or document the conditional consumer so readers can distinguish deliberate future-facing state from abandoned machinery.
 
-### READ-045 — Fact-builder tests repeat the complete parse-and-build harness
+### READ-045 — Fact-builder tests repeat the complete parse-and-build harness  ✅
 
 - **Severity:** Low
 - **Category:** Testing
@@ -366,7 +366,7 @@ Several flow-state fields and methods are kept behind `allow(dead_code)`, while 
 
 Many unit tests repeat parsing, resolver creation, builder creation, visiting, and stream finalization before reaching their assertion. Route them through a focused fixture helper so each test foregrounds the semantic difference it covers.
 
-### READ-046 — Resolver outcome classification repeats the same policy decision
+### READ-046 — Resolver outcome classification repeats the same policy decision  ✅
 
 - **Severity:** Low
 - **Category:** Duplication
@@ -374,7 +374,7 @@ Many unit tests repeat parsing, resolver creation, builder creation, visiting, a
 
 Outside-project and excluded-path branches separately derive the same internal-versus-external request classification. Compute that classification once and retain only the path-specific outcome construction in each branch.
 
-### READ-047 — Effective-tsconfig implementation fields are exposed and suppressed as dead
+### READ-047 — Effective-tsconfig implementation fields are exposed and suppressed as dead  ✅
 
 - **Severity:** Low
 - **Category:** Encapsulation
@@ -382,7 +382,7 @@ Outside-project and excluded-path branches separately derive the same internal-v
 
 Config path/base fields are public despite being unused by current consumers and requiring dead-code allowances. Make implementation state private or expose intentional query methods if it is part of the supported contract.
 
-### READ-048 — Module-identity construction scans authored requests twice
+### READ-048 — Module-identity construction scans authored requests twice  ✅
 
 - **Severity:** Low
 - **Category:** Complexity
@@ -390,7 +390,7 @@ Config path/base fields are public despite being unused by current consumers and
 
 Named-import and namespace-import identity handling traverse the same request collection separately. Classify each request once and route it to the appropriate identity update.
 
-### READ-049 — Strongly connected component tracking uses a map as a set
+### READ-049 — Strongly connected component tracking uses a map as a set  ✅
 
 - **Severity:** Low
 - **Category:** Complexity
@@ -398,7 +398,7 @@ Named-import and namespace-import identity handling traverse the same request co
 
 SCC membership is represented as `BTreeMap<ModuleId, bool>`, producing mixed `get`, `entry`, and boolean handling where only membership is needed. A `BTreeSet` expresses the invariant directly and shortens the traversal.
 
-### READ-050 — A committed integration test retains a debugging name
+### READ-050 — A committed integration test retains a debugging name  ✅
 
 - **Severity:** Low
 - **Category:** Naming
