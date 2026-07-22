@@ -221,9 +221,7 @@ impl CallEffectRef<'_> {
                 .or_else(|| {
                     callee_name
                         .and_then(|id| self.stream.resolve_name(id))
-                        .and_then(|name| {
-                            NamePath::from_symbol_path(&SymbolPath::from(name), names)
-                        })
+                        .and_then(|name| NamePath::from_symbol_path(&SymbolPath::from(name), names))
                 }),
             _ => None,
         }
@@ -692,8 +690,7 @@ mod tests {
 
     #[test]
     fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
-        let (stream, _effects) =
-            collect_effects("document.createElement('script');");
+        let (stream, _effects) = collect_effects("document.createElement('script');");
         let fact = stream
             .facts()
             .iter()
@@ -712,10 +709,9 @@ mod tests {
                 .to_symbol_path(names)
                 .is_some_and(|s| s.eq_chain("document.createElement")),
             "chain should be document.createElement, got {}",
-            chain.to_symbol_path(names).map_or_else(
-                || "(unresolvable)".to_string(),
-                |s| s.to_string()
-            )
+            chain
+                .to_symbol_path(names)
+                .map_or_else(|| "(unresolvable)".to_string(), |s| s.to_string())
         );
         assert!(cref.chain().is_some(), "borrowed chain should exist");
         assert!(cref.rooted(), "global member call should be rooted");
@@ -752,9 +748,7 @@ mod tests {
 
     #[test]
     fn rooted_is_false_for_non_global_call() {
-        let (stream, _effects) = collect_effects(
-            "function fn() { return 1; } fn();",
-        );
+        let (stream, _effects) = collect_effects("function fn() { return 1; } fn();");
         let call_facts: Vec<_> = stream
             .facts()
             .iter()
@@ -771,9 +765,8 @@ mod tests {
 
     #[test]
     fn effective_args_unwraps_call_invocation() {
-        let (stream, _effects) = collect_effects(
-            "function fetch(url) { return url; } fetch.call(null, '/api');",
-        );
+        let (stream, _effects) =
+            collect_effects("function fetch(url) { return url; } fetch.call(null, '/api');");
         let call_facts: Vec<_> = stream
             .facts()
             .iter()
@@ -806,9 +799,8 @@ mod tests {
 
     #[test]
     fn effective_args_unwraps_apply_invocation() {
-        let (stream, _effects) = collect_effects(
-            "function fetch(url) { return url; } fetch.apply(null, ['/api']);",
-        );
+        let (stream, _effects) =
+            collect_effects("function fetch(url) { return url; } fetch.apply(null, ['/api']);");
         let call_facts: Vec<_> = stream
             .facts()
             .iter()
@@ -860,8 +852,7 @@ mod tests {
 
     #[test]
     fn chain_returns_borrowed_without_callee_name_fallback() {
-        let (stream, _effects) =
-            collect_effects("document.createElement('script');");
+        let (stream, _effects) = collect_effects("document.createElement('script');");
         let fact = stream
             .facts()
             .iter()
@@ -874,10 +865,7 @@ mod tests {
         let names = stream.names().expect("test stream has names");
         let owned = cref.chain_owned(names).unwrap();
         let borrowed = cref.chain().unwrap();
-        assert_eq!(
-            owned, *borrowed,
-            "owned chain should match borrowed"
-        );
+        assert_eq!(owned, *borrowed, "owned chain should match borrowed");
     }
 
     #[test]
@@ -885,7 +873,9 @@ mod tests {
         let (_stream, effects) = collect_effects(
             "function fn() { document.head.appendChild(document.createElement('script')); }",
         );
-        let effect = effects.get(FunctionId(1)).expect("effect for fn should exist");
+        let effect = effects
+            .get(FunctionId(1))
+            .expect("effect for fn should exist");
         let call = effect
             .calls()
             .iter()
@@ -904,10 +894,11 @@ mod tests {
 
     #[test]
     fn call_argument_returns_none_for_missing_index() {
-        let (_stream, effects) = collect_effects(
-            "document.head.appendChild(document.createElement('script'));",
-        );
-        let effect = effects.get(FunctionId(0)).expect("script effect should exist");
+        let (_stream, effects) =
+            collect_effects("document.head.appendChild(document.createElement('script'));");
+        let effect = effects
+            .get(FunctionId(0))
+            .expect("script effect should exist");
         let call = effect.calls().first().expect("call should exist");
         assert!(effect.call_argument(call.event(), 999).is_none());
         assert!(effect.call_argument(FactId(u32::MAX), 0).is_none());

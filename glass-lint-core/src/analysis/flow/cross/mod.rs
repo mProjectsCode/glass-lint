@@ -189,11 +189,9 @@ impl ContextWorklist {
                     let Some(provenance) = cref.provenance() else {
                         continue;
                     };
-                    let Some((target_module, target_function)) = project.qualified_function_target(
-                        module.id(),
-                        cref.target(),
-                        provenance,
-                    ) else {
+                    let Some((target_module, target_function)) =
+                        project.qualified_function_target(module.id(), cref.target(), provenance)
+                    else {
                         continue;
                     };
                     for argument in call.arguments() {
@@ -297,12 +295,8 @@ impl FlowSources {
                     let Some(provenance) = cref.provenance() else {
                         continue;
                     };
-                    let Some((target_module, target_function)) = project
-                        .qualified_function_target(
-                            module.id(),
-                            cref.target(),
-                            provenance,
-                        )
+                    let Some((target_module, target_function)) =
+                        project.qualified_function_target(module.id(), cref.target(), provenance)
                     else {
                         continue;
                     };
@@ -312,8 +306,7 @@ impl FlowSources {
 
                     let to = SourceKey::new(module.id(), effect.id(), cref.result());
 
-                    for returned in target.returns().iter().filter(|r| r.parameter().is_none())
-                    {
+                    for returned in target.returns().iter().filter(|r| r.parameter().is_none()) {
                         let root = target
                             .value_root(returned.value())
                             .unwrap_or_else(|| returned.value());
@@ -856,5 +849,4 @@ mod tests {
         assert_eq!(ordered[1], candidate(0, 1, 20));
         assert_eq!(ordered[2], candidate(0, 2, 30));
     }
-
 }

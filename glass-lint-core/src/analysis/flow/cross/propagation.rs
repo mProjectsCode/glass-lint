@@ -202,11 +202,10 @@ impl CallPropagation<'_> {
             let Some(provenance) = cref.provenance() else {
                 continue;
             };
-            let Some((target_module, target_function)) = self.project.qualified_function_target(
-                self.module,
-                cref.target(),
-                provenance,
-            ) else {
+            let Some((target_module, target_function)) =
+                self.project
+                    .qualified_function_target(self.module, cref.target(), provenance)
+            else {
                 continue;
             };
             for argument in call.arguments() {

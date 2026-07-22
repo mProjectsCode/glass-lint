@@ -363,8 +363,7 @@ impl Linter {
                 .collect();
             let cap_findings = self.findings_for_capability(capability, lines, path);
 
-            let (rule_findings, rule_related) =
-                by_rule.entry(capability.rule_index).or_default();
+            let (rule_findings, rule_related) = by_rule.entry(capability.rule_index).or_default();
             rule_findings.extend(cap_findings);
             rule_related.extend(related);
         }

@@ -57,16 +57,12 @@ impl Linter {
         let mut entry_cursor = 0usize;
 
         for (retained_idx, retained) in ranges.iter().enumerate() {
-            while entry_cursor < entries.len()
-                && entries[entry_cursor].0.end() < retained.start()
-            {
+            while entry_cursor < entries.len() && entries[entry_cursor].0.end() < retained.start() {
                 entry_cursor += 1;
             }
 
             let mut scan = entry_cursor;
-            while scan < entries.len()
-                && entries[scan].0.start() <= retained.end()
-            {
+            while scan < entries.len() && entries[scan].0.start() <= retained.end() {
                 if retained.contains(&entries[scan].0) {
                     groups[retained_idx].push((entries[scan].1, &entries[scan].0));
                 }
