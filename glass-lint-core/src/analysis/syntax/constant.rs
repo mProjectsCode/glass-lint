@@ -86,7 +86,32 @@ pub(in crate::analysis) trait Lookup {
     /// Resolve an identifier through the caller's lexical model.
     fn ident(&self, ident: &Ident, state: &mut EvalState) -> ConstValue;
     /// Resolve a member through the caller's lexical model.
-    fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue;
+    ///
+    /// The default implementation evaluates only statically named array/object
+    /// members: numeric indices distinguish array elements from object keys,
+    /// computed properties are resolved through the same property-name helper,
+    /// and every unsupported case (dynamic names, missing members,
+    /// non-constant receivers, exhausted values) returns `Unknown`.
+    fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue
+    where
+        Self: Sized,
+    {
+        let Some(property) = property_name_with_state(&member.prop, self, state) else {
+            return ConstValue::Unknown;
+        };
+        match state.evaluate(&member.obj, self) {
+            ConstValue::Array(values) => property
+                .parse::<usize>()
+                .ok()
+                .and_then(|index| values.get(index).cloned())
+                .unwrap_or(ConstValue::Unknown),
+            ConstValue::Object(values) => values
+                .get(&property)
+                .cloned()
+                .unwrap_or(ConstValue::Unknown),
+            _ => ConstValue::Unknown,
+        }
+    }
     /// Check whether a global name is unshadowed at a source span.
     fn unshadowed_global(&self, name: &str, span: swc_common::Span) -> bool;
 

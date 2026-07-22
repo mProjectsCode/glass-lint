@@ -5,38 +5,21 @@
 //! unknown instead of being treated as stable constants.
 
 use smol_str::SmolStr;
-use swc_ecma_ast::{Expr, Ident, MemberExpr};
+use swc_ecma_ast::{Expr, Ident};
 
 use crate::analysis::{
-    scope::{BindingProvenance, collect::ScopeCollector},
-    syntax::constant::{self, ConstValue, EvalState, Lookup},
+    scope::{collect::ScopeCollector, provenance_to_const_value},
+    syntax::constant::{ConstValue, EvalState, Lookup},
 };
 
 impl Lookup for ScopeCollector {
     /// Resolve only constant-shaped binding provenances from the current scope.
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
-        match self.visible_binding(ident.sym.as_ref()) {
-            Some(BindingProvenance::StaticString(value)) => ConstValue::String(value.clone()),
-            Some(BindingProvenance::StaticNumber(value)) => ConstValue::NonNegativeInteger(*value),
-            Some(BindingProvenance::StaticStringArray(values)) => {
-                ConstValue::Array(values.iter().cloned().map(ConstValue::String).collect())
-            }
-            Some(BindingProvenance::StaticObjectKeys(values)) => ConstValue::Object(
-                values
-                    .iter()
-                    .filter_map(|key| self.names.resolve(*key))
-                    .map(|key| (SmolStr::new(key), ConstValue::Unknown))
-                    .collect(),
-            ),
-            Some(BindingProvenance::StaticObjectValues(values)) => ConstValue::Object(
-                values
-                    .keys()
-                    .filter_map(|key| self.names.resolve(*key))
-                    .map(|key| (SmolStr::new(key), ConstValue::Unknown))
-                    .collect(),
-            ),
-            _ => ConstValue::Unknown,
-        }
+        let resolve = |key| self.names.resolve(key).map(SmolStr::new);
+        self.visible_binding(ident.sym.as_ref())
+            .map_or(ConstValue::Unknown, |provenance| {
+                provenance_to_const_value(provenance, &resolve)
+            })
     }
 
     /// Reject spreads from mutable static objects before recursing into them.
@@ -52,25 +35,6 @@ impl Lookup for ScopeCollector {
             return ConstValue::Unknown;
         }
         state.evaluate(expr, self)
-    }
-
-    /// Evaluate only statically named array/object members.
-    fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue {
-        let Some(property) = constant::property_name_with_state(&member.prop, self, state) else {
-            return ConstValue::Unknown;
-        };
-        match state.evaluate(&member.obj, self) {
-            ConstValue::Array(values) => property
-                .parse::<usize>()
-                .ok()
-                .and_then(|index| values.get(index).cloned())
-                .unwrap_or(ConstValue::Unknown),
-            ConstValue::Object(values) => values
-                .get(&property)
-                .cloned()
-                .unwrap_or(ConstValue::Unknown),
-            _ => ConstValue::Unknown,
-        }
     }
 
     /// Delegate global recognition to lexical shadowing analysis.

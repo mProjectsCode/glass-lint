@@ -39,6 +39,7 @@ mod callbacks;
 mod constants;
 mod history;
 pub(super) mod plan;
+mod projection;
 mod provenance;
 pub(super) mod visitor;
 

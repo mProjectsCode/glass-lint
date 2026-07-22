@@ -24,10 +24,13 @@ use swc_ecma_visit::VisitWith;
 use crate::analysis::name::NameTable;
 
 mod collect;
+mod provenance_const;
 mod query;
 
 mod model;
+
 pub(in crate::analysis) use model::*;
+use provenance_const::provenance_to_const_value;
 
 impl ScopeGraph {
     #[cfg(test)]

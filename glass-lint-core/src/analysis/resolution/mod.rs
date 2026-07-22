@@ -140,23 +140,7 @@ impl Lookup for Resolver {
     }
 
     fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue {
-        if let Some(property) =
-            syntax_constant::property_name_with_state(&member.prop, &self.scopes, state)
-        {
-            return match state.evaluate(&member.obj, &self.scopes) {
-                ConstValue::Array(values) => property
-                    .parse::<usize>()
-                    .ok()
-                    .and_then(|index| values.get(index).cloned())
-                    .unwrap_or(ConstValue::Unknown),
-                ConstValue::Object(values) => values
-                    .get(&property)
-                    .cloned()
-                    .unwrap_or(ConstValue::Unknown),
-                _ => ConstValue::Unknown,
-            };
-        }
-        ConstValue::Unknown
+        self.scopes.member(member, state)
     }
 
     fn unshadowed_global(&self, name: &str, span: swc_common::Span) -> bool {

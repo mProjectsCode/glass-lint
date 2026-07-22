@@ -1,8 +1,10 @@
 //! Bounded constant queries backed by lexical provenance.
 
-use crate::analysis::scope::query::{
-    BindingProvenance, ConstValue, EvalState, Expr, Ident, Lookup, MemberExpr, ScopeGraph, Span,
-    constant,
+use smol_str::SmolStr;
+
+use crate::analysis::scope::{
+    provenance_to_const_value,
+    query::{ConstValue, EvalState, Expr, Ident, Lookup, ScopeGraph, Span},
 };
 
 impl ScopeGraph {
@@ -22,28 +24,11 @@ impl Lookup for ScopeGraph {
         if self.has_dynamic_lookup_at(ident.span) {
             return ConstValue::Unknown;
         }
-        match self.binding_at(ident.sym.as_ref(), ident.span) {
-            Some(BindingProvenance::StaticString(value)) => ConstValue::String(value.clone()),
-            Some(BindingProvenance::StaticNumber(value)) => ConstValue::NonNegativeInteger(*value),
-            Some(BindingProvenance::StaticStringArray(values)) => {
-                ConstValue::Array(values.iter().cloned().map(ConstValue::String).collect())
-            }
-            Some(BindingProvenance::StaticObjectKeys(values)) => ConstValue::Object(
-                values
-                    .iter()
-                    .filter_map(|key| self.resolve_name_id(*key))
-                    .map(|key| (key, ConstValue::Unknown))
-                    .collect(),
-            ),
-            Some(BindingProvenance::StaticObjectValues(values)) => ConstValue::Object(
-                values
-                    .keys()
-                    .filter_map(|key| self.resolve_name_id(*key))
-                    .map(|key| (key, ConstValue::Unknown))
-                    .collect(),
-            ),
-            _ => ConstValue::Unknown,
-        }
+        let resolve = |key| self.resolve_name_id(key).map(SmolStr::new);
+        self.binding_at(ident.sym.as_ref(), ident.span)
+            .map_or(ConstValue::Unknown, |provenance| {
+                provenance_to_const_value(provenance, &resolve)
+            })
     }
 
     /// Reject spreads whose source object may have been mutated.
@@ -52,25 +37,6 @@ impl Lookup for ScopeGraph {
             return ConstValue::Unknown;
         }
         state.evaluate(expr, self)
-    }
-
-    /// Evaluate only static array indexes and object property names.
-    fn member(&self, member: &MemberExpr, state: &mut EvalState) -> ConstValue {
-        let Some(property) = constant::property_name_with_state(&member.prop, self, state) else {
-            return ConstValue::Unknown;
-        };
-        match state.evaluate(&member.obj, self) {
-            ConstValue::Array(values) => property
-                .parse::<usize>()
-                .ok()
-                .and_then(|index| values.get(index).cloned())
-                .unwrap_or(ConstValue::Unknown),
-            ConstValue::Object(values) => values
-                .get(&property)
-                .cloned()
-                .unwrap_or(ConstValue::Unknown),
-            _ => ConstValue::Unknown,
-        }
     }
 
     /// Delegate global checks to the position-sensitive scope query.
