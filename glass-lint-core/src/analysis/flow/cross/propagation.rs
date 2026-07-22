@@ -53,8 +53,11 @@ impl UsageProjector<'_> {
                 EffectUse::CallReceiver { event, .. } => {
                     self.apply_receiver(*event);
                 }
-                EffectUse::CallArgument { event, argument } => {
-                    self.apply_argument(*event, argument.index());
+                EffectUse::CallArgument {
+                    event,
+                    argument_index,
+                } => {
+                    self.apply_argument(*event, *argument_index);
                 }
             }
         }
@@ -196,10 +199,13 @@ impl CallPropagation<'_> {
                 continue;
             }
             let cref = call.as_ref(stream);
+            let Some(provenance) = cref.provenance() else {
+                continue;
+            };
             let Some((target_module, target_function)) = self.project.qualified_function_target(
                 self.module,
                 cref.target(),
-                cref.provenance(),
+                provenance,
             ) else {
                 continue;
             };

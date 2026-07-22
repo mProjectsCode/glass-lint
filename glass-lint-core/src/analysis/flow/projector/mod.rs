@@ -22,7 +22,7 @@ use crate::{
     analysis::{
         facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary},
         flow::{
-            effect::FunctionEffects,
+            effect::{CallEffectRef, FunctionEffects},
             index::{FlowId, FlowIndex, FlowLimits},
             state::FlowState,
             summary::FunctionSummaries,
@@ -207,20 +207,23 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         let FactPayload::Call {
             receiver,
             target_function,
+            args,
             ..
         } = &fact.payload
         else {
             return;
         };
-        if let Some(chain) = transfer::projector_chain(self.stream, fact.id, self.names) {
-            let effective_args = transfer::projector_effective_args(fact).unwrap_or(&[]);
-            let rooted = transfer::projector_rooted(self.stream, fact.id);
+        let cref = CallEffectRef {
+            stream: self.stream,
+            event: fact.id,
+        };
+        if let Some(chain) = cref.chain_owned(self.names) {
+            let effective_args = cref.effective_args().unwrap_or(&[]);
+            let rooted = cref.rooted();
             self.record_configuration(*receiver, &chain, effective_args, fact.id);
             self.record_sinks(&chain, effective_args, fact.id, rooted);
         }
-        if let Some(function) = target_function
-            && let FactPayload::Call { args, .. } = &fact.payload
-        {
+        if let Some(function) = target_function {
             self.record_helper_sink(*function, args, fact.id);
         }
     }

@@ -19,8 +19,9 @@ use crate::{
             SemanticFact,
         },
         flow::table::FunctionTable,
+        name::NameTable,
         syntax::SymbolCallProvenance,
-        value::{FunctionId, NamePath, PathId, ValueId},
+        value::{FunctionId, NamePath, PathId, SymbolPath, ValueId},
     },
     budget::Budget,
 };
@@ -78,8 +79,9 @@ pub(in crate::analysis) enum EffectUse {
     CallArgument {
         /// Fact identity of the call.
         event: FactId,
-        /// Argument identity passed to the call.
-        argument: EffectArgument,
+        /// Zero-based argument position, resolved through the paired
+        /// [`EffectCall`] held in the same [`FunctionEffect`].
+        argument_index: usize,
     },
     CallReceiver {
         /// Fact identity of the member call.
@@ -180,16 +182,12 @@ pub(in crate::analysis) struct CallEffectRef<'stream> {
 }
 
 impl CallEffectRef<'_> {
-    fn call_fact(&self) -> &FactPayload {
-        &self
-            .stream
-            .fact(self.event)
-            .expect("call fact must exist")
-            .payload
+    fn call_fact(&self) -> Option<&FactPayload> {
+        self.stream.fact(self.event).map(|fact| &fact.payload)
     }
 
     pub(in crate::analysis) fn chain(&self) -> Option<&NamePath> {
-        match self.call_fact() {
+        match self.call_fact()? {
             FactPayload::Call {
                 rooted_chain,
                 syntactic_path,
@@ -204,37 +202,79 @@ impl CallEffectRef<'_> {
         }
     }
 
-    pub(in crate::analysis) fn rooted(&self) -> bool {
-        matches!(
-            self.call_fact(),
+    /// Owned chain with a callee-name fallback that resolves one level of
+    /// local binding.  Used when the projector cannot rely on the
+    /// resolver-backed chain because the call was summarized from facts.
+    pub(in crate::analysis) fn chain_owned(&self, names: &NameTable) -> Option<NamePath> {
+        match self.call_fact()? {
             FactPayload::Call {
-                rooted_chain: Some(_),
+                rooted_chain,
+                syntactic_path,
+                callee_name,
+                unwrap,
                 ..
-            }
-        )
+            } => unwrap
+                .as_deref()
+                .and_then(|u| u.chain_path.clone())
+                .or_else(|| rooted_chain.clone())
+                .or_else(|| syntactic_path.clone())
+                .or_else(|| {
+                    callee_name
+                        .and_then(|id| self.stream.resolve_name(id))
+                        .and_then(|name| {
+                            NamePath::from_symbol_path(&SymbolPath::from(name), names)
+                        })
+                }),
+            _ => None,
+        }
+    }
+
+    pub(in crate::analysis) fn rooted(&self) -> bool {
+        self.call_fact().is_some_and(|fact| {
+            matches!(
+                fact,
+                FactPayload::Call {
+                    rooted_chain: Some(_),
+                    ..
+                }
+            )
+        })
     }
 
     pub(in crate::analysis) fn result(&self) -> ValueId {
         match self.call_fact() {
-            FactPayload::Call { result, .. } => *result,
+            Some(FactPayload::Call { result, .. }) => *result,
             _ => ValueId::UNKNOWN,
         }
     }
 
-    pub(in crate::analysis) fn provenance(&self) -> &SymbolCallProvenance {
+    pub(in crate::analysis) fn provenance(&self) -> Option<&SymbolCallProvenance> {
         match self.call_fact() {
-            FactPayload::Call {
+            Some(FactPayload::Call {
                 call_provenance, ..
-            } => call_provenance,
-            _ => unreachable!("must be a Call fact"),
+            }) => Some(call_provenance),
+            _ => None,
         }
     }
 
     pub(in crate::analysis) fn target(&self) -> Option<FunctionId> {
         match self.call_fact() {
-            FactPayload::Call {
+            Some(FactPayload::Call {
                 target_function, ..
-            } => *target_function,
+            }) => *target_function,
+            _ => None,
+        }
+    }
+
+    /// Return the effective call arguments, accounting for
+    /// `.call()`/`.apply()` unwrapping.
+    pub(in crate::analysis) fn effective_args(&self) -> Option<&[CallArgInfo]> {
+        match self.call_fact()? {
+            FactPayload::Call { args, unwrap, .. } => Some(
+                unwrap
+                    .as_deref()
+                    .map_or(args.as_slice(), |u| u.effective_args.as_slice()),
+            ),
             _ => None,
         }
     }
@@ -474,6 +514,19 @@ impl FunctionEffect {
         self.value_roots.get(&value).copied()
     }
 
+    /// Look up the argument at `index` inside the [`EffectCall`] identified
+    /// by `event`.  Returns `None` when the call or index is not present.
+    pub(in crate::analysis) fn call_argument(
+        &self,
+        event: FactId,
+        index: usize,
+    ) -> Option<&EffectArgument> {
+        self.calls
+            .iter()
+            .find(|call| call.event() == event)
+            .and_then(|call| call.arguments().get(index))
+    }
+
     fn mark_unsupported_control(&mut self, payload: &FactPayload) {
         // Unsupported control is deliberately conservative for effects. The
         // local projector still handles its precise single-file semantics.
@@ -507,10 +560,20 @@ impl FunctionEffect {
             .as_deref()
             .map_or(args.as_slice(), |u| u.effective_args.as_slice());
         let arguments = self.build_effect_arguments(effective_args);
+        for argument in &arguments {
+            if !budget.try_push() {
+                self.invalid = true;
+                return;
+            }
+            self.uses.push(EffectUse::CallArgument {
+                event: fact.id,
+                argument_index: argument.index,
+            });
+        }
         if budget.try_push() {
             self.calls.push(EffectCall {
                 event: fact.id,
-                arguments: arguments.clone(),
+                arguments,
             });
         } else {
             self.invalid = true;
@@ -524,16 +587,6 @@ impl FunctionEffect {
             } else {
                 self.invalid = true;
             }
-        }
-        for argument in arguments {
-            if !budget.try_push() {
-                self.invalid = true;
-                break;
-            }
-            self.uses.push(EffectUse::CallArgument {
-                event: fact.id,
-                argument,
-            });
         }
         self.value_roots.entry(*result).or_insert(*result);
     }
@@ -621,5 +674,242 @@ impl FunctionEffect {
             parameter,
             provenance,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::analysis::{facts, resolution::Resolver};
+
+    fn collect_effects(source: &str) -> (FactStream, FunctionEffects) {
+        let parsed = crate::parse(source, "test.js").expect("source should parse");
+        let resolver = Resolver::collect(&parsed.program);
+        let stream = facts::build::build_test_stream(&parsed.program, &resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
+        (stream, effects)
+    }
+
+    #[test]
+    fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
+        let (stream, _effects) =
+            collect_effects("document.createElement('script');");
+        let fact = stream
+            .facts()
+            .iter()
+            .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .expect("call fact should exist");
+        let cref = CallEffectRef {
+            stream: &stream,
+            event: fact.id,
+        };
+        let names = stream.names().expect("test stream has names");
+        let chain = cref
+            .chain_owned(names)
+            .expect("direct call should have a chain");
+        assert!(
+            chain
+                .to_symbol_path(names)
+                .is_some_and(|s| s.eq_chain("document.createElement")),
+            "chain should be document.createElement, got {}",
+            chain.to_symbol_path(names).map_or_else(
+                || "(unresolvable)".to_string(),
+                |s| s.to_string()
+            )
+        );
+        assert!(cref.chain().is_some(), "borrowed chain should exist");
+        assert!(cref.rooted(), "global member call should be rooted");
+    }
+
+    #[test]
+    fn chain_owned_falls_back_to_callee_name_for_alias_call() {
+        let (stream, _effects) = collect_effects(
+            "function fetch(url) { return url; } const alias = fetch; alias('/api');",
+        );
+        let names = stream.names().expect("test stream has names");
+        let call_facts: Vec<_> = stream
+            .facts()
+            .iter()
+            .filter(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .collect();
+        assert!(!call_facts.is_empty(), "expected at least 1 call fact");
+        let alias_call = call_facts[0];
+        let cref = CallEffectRef {
+            stream: &stream,
+            event: alias_call.id,
+        };
+        let chain = cref
+            .chain_owned(names)
+            .expect("alias call should have a chain via callee_name fallback");
+        assert!(
+            chain
+                .to_symbol_path(names)
+                .is_some_and(|s| s.eq_chain("alias")),
+            "alias call chain should resolve to the callee name 'alias', got {:?}",
+            chain.to_symbol_path(names)
+        );
+    }
+
+    #[test]
+    fn rooted_is_false_for_non_global_call() {
+        let (stream, _effects) = collect_effects(
+            "function fn() { return 1; } fn();",
+        );
+        let call_facts: Vec<_> = stream
+            .facts()
+            .iter()
+            .filter(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .collect();
+        assert!(!call_facts.is_empty(), "expected at least 1 call fact");
+        let call_fact = call_facts[0];
+        let cref = CallEffectRef {
+            stream: &stream,
+            event: call_fact.id,
+        };
+        assert!(!cref.rooted(), "local function call should not be rooted");
+    }
+
+    #[test]
+    fn effective_args_unwraps_call_invocation() {
+        let (stream, _effects) = collect_effects(
+            "function fetch(url) { return url; } fetch.call(null, '/api');",
+        );
+        let call_facts: Vec<_> = stream
+            .facts()
+            .iter()
+            .filter(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .collect();
+        assert!(!call_facts.is_empty(), "expected at least 1 call fact");
+        let call_fact = call_facts[0];
+        let cref = CallEffectRef {
+            stream: &stream,
+            event: call_fact.id,
+        };
+        let effective = cref
+            .effective_args()
+            .expect(".call() should have effective args");
+        assert_eq!(
+            effective.len(),
+            1,
+            ".call() drops receiver, expected 1 arg, got {}",
+            effective.len()
+        );
+        let values = stream.values();
+        let is_api = values.is_some_and(|values| {
+            effective[0].base_value != ValueId::UNKNOWN
+                && values
+                    .static_string(effective[0].base_value)
+                    .is_some_and(|s| s == "/api")
+        });
+        assert!(is_api, "effective arg should be '/api'");
+    }
+
+    #[test]
+    fn effective_args_unwraps_apply_invocation() {
+        let (stream, _effects) = collect_effects(
+            "function fetch(url) { return url; } fetch.apply(null, ['/api']);",
+        );
+        let call_facts: Vec<_> = stream
+            .facts()
+            .iter()
+            .filter(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .collect();
+        assert!(!call_facts.is_empty(), "expected at least 1 call fact");
+        let call_fact = call_facts[0];
+        let cref = CallEffectRef {
+            stream: &stream,
+            event: call_fact.id,
+        };
+        let effective = cref
+            .effective_args()
+            .expect(".apply() should have effective args");
+        assert_eq!(
+            effective.len(),
+            1,
+            ".apply() drops receiver and unwraps, expected 1 arg, got {}",
+            effective.len()
+        );
+        let values = stream.values();
+        let is_api = values.is_some_and(|values| {
+            effective[0].base_value != ValueId::UNKNOWN
+                && values
+                    .static_string(effective[0].base_value)
+                    .is_some_and(|s| s == "/api")
+        });
+        assert!(is_api, "effective arg should be '/api'");
+    }
+
+    #[test]
+    fn call_fact_returns_none_for_unknown_id() {
+        let (stream, _effects) = collect_effects("const x = 1;");
+        let unknown = FactId(u32::MAX);
+        let cref = CallEffectRef {
+            stream: &stream,
+            event: unknown,
+        };
+        assert!(cref.call_fact().is_none());
+        assert!(cref.chain().is_none());
+        assert!(!cref.rooted());
+        assert_eq!(cref.result(), ValueId::UNKNOWN);
+        assert!(cref.provenance().is_none());
+        assert!(cref.target().is_none());
+        assert!(cref.effective_args().is_none());
+        let names = stream.names().expect("test stream has names");
+        assert!(cref.chain_owned(names).is_none());
+    }
+
+    #[test]
+    fn chain_returns_borrowed_without_callee_name_fallback() {
+        let (stream, _effects) =
+            collect_effects("document.createElement('script');");
+        let fact = stream
+            .facts()
+            .iter()
+            .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .expect("call fact should exist");
+        let cref = CallEffectRef {
+            stream: &stream,
+            event: fact.id,
+        };
+        let names = stream.names().expect("test stream has names");
+        let owned = cref.chain_owned(names).unwrap();
+        let borrowed = cref.chain().unwrap();
+        assert_eq!(
+            owned, *borrowed,
+            "owned chain should match borrowed"
+        );
+    }
+
+    #[test]
+    fn call_argument_indexes_into_correct_call() {
+        let (_stream, effects) = collect_effects(
+            "function fn() { document.head.appendChild(document.createElement('script')); }",
+        );
+        let effect = effects.get(FunctionId(1)).expect("effect for fn should exist");
+        let call = effect
+            .calls()
+            .iter()
+            .find(|c| {
+                c.arguments()
+                    .iter()
+                    .any(|a| a.index == 0 && a.value != ValueId::UNKNOWN)
+            })
+            .expect("appendChild call should exist");
+        let event = call.event();
+        let by_index = effect
+            .call_argument(event, 0)
+            .expect("argument at index 0 should exist");
+        assert_eq!(by_index.index(), 0);
+    }
+
+    #[test]
+    fn call_argument_returns_none_for_missing_index() {
+        let (_stream, effects) = collect_effects(
+            "document.head.appendChild(document.createElement('script'));",
+        );
+        let effect = effects.get(FunctionId(0)).expect("script effect should exist");
+        let call = effect.calls().first().expect("call should exist");
+        assert!(effect.call_argument(call.event(), 999).is_none());
+        assert!(effect.call_argument(FactId(u32::MAX), 0).is_none());
     }
 }

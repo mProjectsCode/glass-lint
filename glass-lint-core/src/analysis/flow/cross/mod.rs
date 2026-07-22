@@ -29,6 +29,7 @@ use crate::{
 
 const MAX_CONTEXTS: usize = 65_536;
 const MAX_SOURCE_REFINEMENT_ROUNDS: usize = 64;
+const MAX_PENDING: usize = 65_536;
 const MAX_RELATED_EVIDENCE: usize = 8;
 
 #[derive(Clone, Copy)]
@@ -185,10 +186,13 @@ impl ContextWorklist {
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
                     let cref = call.as_ref(stream);
+                    let Some(provenance) = cref.provenance() else {
+                        continue;
+                    };
                     let Some((target_module, target_function)) = project.qualified_function_target(
                         module.id(),
                         cref.target(),
-                        cref.provenance(),
+                        provenance,
                     ) else {
                         continue;
                     };
@@ -257,46 +261,85 @@ struct SourceCandidate {
 /// Proven source identities indexed by the local effect that produced them.
 ///
 /// Uses `BTreeSet` per bucket so insertion is deduplicated and sorted by
-/// construction; the table never needs a separate normalize pass.  Callers that
-/// extend from another key collect into a small temporary because the borrow
-/// checker cannot split two BTreeMap keys even when they are distinct.
+/// construction; the table never needs a separate normalize pass.
+///
+/// Propagation uses an adjacency index built from the call graph so that
+/// only edges reachable from a changed key are visited, and a candidate-level
+/// worklist so that only newly inserted candidates are re-propagated.
 #[derive(Default)]
-struct FlowSources(BTreeMap<SourceKey, BTreeSet<SourceCandidate>>);
+struct FlowSources {
+    sources: BTreeMap<SourceKey, BTreeSet<SourceCandidate>>,
+    adjacency: BTreeMap<SourceKey, Vec<SourceKey>>,
+}
 
 impl FlowSources {
     fn add(&mut self, key: SourceKey, candidate: SourceCandidate) {
-        self.0.entry(key).or_default().insert(candidate);
+        self.sources.entry(key).or_default().insert(candidate);
     }
 
     fn get(&self, key: &SourceKey) -> Option<&BTreeSet<SourceCandidate>> {
-        self.0.get(key)
+        self.sources.get(key)
     }
 
     fn iter(&self) -> impl Iterator<Item = (&SourceKey, &BTreeSet<SourceCandidate>)> {
-        self.0.iter()
+        self.sources.iter()
     }
 
-    /// Copy candidates from `from` to `to`.  `SourceCandidate` is `Copy`, so
-    /// the temporary `Vec` is allocation-cheap and avoids a double borrow on
-    /// `self.0` (the get borrows immutably, the entry borrows mutably).
-    /// Returns whether new candidates were added at `to`.
-    fn extend_from_key(&mut self, to: SourceKey, from: &SourceKey) -> bool {
-        if to == *from {
-            return false;
+    /// Build the adjacency index in one pass over all modules, effects, and
+    /// calls.  Each edge records that the destination key should receive
+    /// candidates from the source key when the source key changes.
+    fn build_adjacency(&mut self, project: &ProjectSemanticModel) {
+        for module in project.modules() {
+            let stream = module.local().facts().stream();
+            for effect in module.local().effects().iter_effects() {
+                for call in effect.calls() {
+                    let cref = call.as_ref(stream);
+                    let Some(provenance) = cref.provenance() else {
+                        continue;
+                    };
+                    let Some((target_module, target_function)) = project
+                        .qualified_function_target(
+                            module.id(),
+                            cref.target(),
+                            provenance,
+                        )
+                    else {
+                        continue;
+                    };
+                    let Some(target) = project.effect(target_module, target_function) else {
+                        continue;
+                    };
+
+                    let to = SourceKey::new(module.id(), effect.id(), cref.result());
+
+                    for returned in target.returns().iter().filter(|r| r.parameter().is_none())
+                    {
+                        let root = target
+                            .value_root(returned.value())
+                            .unwrap_or_else(|| returned.value());
+                        let from = SourceKey::new(target_module, target_function, root);
+                        self.adjacency.entry(from).or_default().push(to);
+                    }
+
+                    for argument in call.arguments() {
+                        if !argument.is_root()
+                            || !target.returns().iter().any(|returned| {
+                                returned.parameter().is_some_and(|parameter| {
+                                    parameter.index() == argument.index() && parameter.is_root()
+                                })
+                            })
+                        {
+                            continue;
+                        }
+                        let root = effect
+                            .value_root(argument.value())
+                            .unwrap_or_else(|| argument.value());
+                        let from = SourceKey::new(module.id(), effect.id(), root);
+                        self.adjacency.entry(from).or_default().push(to);
+                    }
+                }
+            }
         }
-        let Some(candidates) = self
-            .0
-            .get(from)
-            .map(|set| set.iter().copied().collect::<Vec<_>>())
-        else {
-            return false;
-        };
-        let entry = self.0.entry(to).or_default();
-        let mut changed = false;
-        for candidate in candidates {
-            changed |= entry.insert(candidate);
-        }
-        changed
     }
 }
 
@@ -392,7 +435,8 @@ impl FlowSources {
     ) -> (Self, bool) {
         let mut sources = Self::default();
         sources.collect_candidates(project, flows);
-        let budget_exhausted = sources.refine_through_calls(project);
+        sources.build_adjacency(project);
+        let budget_exhausted = sources.propagate();
         (sources, budget_exhausted)
     }
 
@@ -425,76 +469,49 @@ impl FlowSources {
         }
     }
 
-    /// Propagate source identities through returned parameter/object references
-    /// and call arguments until a fixed point or the round limit is reached.
-    ///
-    /// Only candidates from keys that changed in the previous round are
-    /// propagated; unchanged keys cannot introduce new sources at any
-    /// destination.
-    fn refine_through_calls(&mut self, project: &ProjectSemanticModel) -> bool {
+    /// Propagate source candidates through the pre-built adjacency index using
+    /// a candidate-level worklist.  Each round dequeues the pending batch and
+    /// inserts each candidate into every destination key reachable from its
+    /// source.  Destinations that receive a new candidate are enqueued for the
+    /// next round, forming a monotone fixed-point iteration over the call-graph
+    /// edges without re-scanning the project.
+    fn propagate(&mut self) -> bool {
         let mut budget = SourceBudget::new();
-        let mut changed_keys: BTreeSet<SourceKey> = self.0.keys().copied().collect();
 
-        while budget.next_round() && !changed_keys.is_empty() {
-            let prev_changed = std::mem::take(&mut changed_keys);
+        let mut pending: VecDeque<(SourceKey, SourceCandidate)> = VecDeque::new();
+        let mut pending_seen: BTreeSet<(SourceKey, SourceCandidate)> = BTreeSet::new();
 
-            for module in project.modules() {
-                let stream = module.local().facts().stream();
-                for effect in module.local().effects().iter_effects() {
-                    for call in effect.calls() {
-                        let cref = call.as_ref(stream);
-                        let Some((target_module, target_function)) = project
-                            .qualified_function_target(
-                                module.id(),
-                                cref.target(),
-                                cref.provenance(),
-                            )
-                        else {
-                            continue;
-                        };
-                        let Some(target) = project.effect(target_module, target_function) else {
-                            continue;
-                        };
+        for (key, candidates) in &self.sources {
+            for &candidate in candidates {
+                let entry = (*key, candidate);
+                if pending_seen.insert(entry) {
+                    pending.push_back(entry);
+                }
+            }
+        }
 
-                        let to = SourceKey::new(module.id(), effect.id(), cref.result());
+        while !pending.is_empty() && budget.next_round() {
+            let round = std::mem::take(&mut pending);
 
-                        let mut to_changed = false;
-
-                        for returned in target.returns().iter().filter(|r| r.parameter().is_none())
-                        {
-                            let root = target
-                                .value_root(returned.value())
-                                .unwrap_or_else(|| returned.value());
-                            let from = SourceKey::new(target_module, target_function, root);
-                            if prev_changed.contains(&from) {
-                                to_changed |= self.extend_from_key(to, &from);
-                            }
-                        }
-
-                        for argument in call.arguments() {
-                            if !argument.is_root()
-                                || !target.returns().iter().any(|returned| {
-                                    returned.parameter().is_some_and(|parameter| {
-                                        parameter.index() == argument.index() && parameter.is_root()
-                                    })
-                                })
-                            {
-                                continue;
-                            }
-                            let root = effect
-                                .value_root(argument.value())
-                                .unwrap_or_else(|| argument.value());
-                            let from = SourceKey::new(module.id(), effect.id(), root);
-                            if prev_changed.contains(&from) {
-                                to_changed |= self.extend_from_key(to, &from);
-                            }
-                        }
-
-                        if to_changed {
-                            changed_keys.insert(to);
+            for (from_key, candidate) in &round {
+                let Some(destinations) = self.adjacency.get(from_key) else {
+                    continue;
+                };
+                for &to_key in destinations {
+                    if to_key == *from_key {
+                        continue;
+                    }
+                    if self.sources.entry(to_key).or_default().insert(*candidate) {
+                        let entry = (to_key, *candidate);
+                        if pending_seen.insert(entry) {
+                            pending.push_back(entry);
                         }
                     }
                 }
+            }
+
+            if pending.len() >= MAX_PENDING {
+                return true;
             }
         }
 
@@ -536,19 +553,24 @@ pub(super) fn usage_matches_context(
         EffectUse::CallReceiver { receiver, .. } => context
             .parameter
             .is_some_and(|index| receiver.index() == index && receiver.is_root()),
-        EffectUse::CallArgument { argument, .. } => {
-            argument.parameter().is_some_and(|parameter| {
-                context
-                    .parameter
-                    .is_some_and(|index| parameter.index() == index && parameter.is_root())
-            }) || (context.parameter.is_none()
-                && context.source_root.is_some_and(|root| {
-                    effect
-                        .value_root(argument.value())
-                        .unwrap_or_else(|| argument.value())
-                        == root
-                }))
-        }
+        EffectUse::CallArgument {
+            event,
+            argument_index,
+        } => effect
+            .call_argument(*event, *argument_index)
+            .is_some_and(|argument| {
+                argument.parameter().is_some_and(|parameter| {
+                    context
+                        .parameter
+                        .is_some_and(|index| parameter.index() == index && parameter.is_root())
+                }) || (context.parameter.is_none()
+                    && context.source_root.is_some_and(|root| {
+                        effect
+                            .value_root(argument.value())
+                            .unwrap_or_else(|| argument.value())
+                            == root
+                    }))
+            }),
     }
 }
 
@@ -658,15 +680,16 @@ mod tests {
     }
 
     #[test]
-    fn extend_from_key_copies_between_distinct_keys() {
+    fn propagate_transfers_along_adjacency_edge() {
         let mut sources = FlowSources::default();
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
         sources.add(from, candidate(0, 0, 10));
         sources.add(from, candidate(0, 0, 20));
+        sources.adjacency.insert(from, vec![to]);
 
-        assert!(sources.extend_from_key(to, &from));
+        assert!(!sources.propagate());
 
         let dest = sources.get(&to).unwrap();
         assert_eq!(dest.len(), 2);
@@ -675,22 +698,25 @@ mod tests {
     }
 
     #[test]
-    fn extend_from_key_deduplicates_by_construction() {
+    fn propagate_deduplicates_by_construction() {
         let mut sources = FlowSources::default();
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
         sources.add(from, candidate(0, 0, 10));
+        sources.adjacency.insert(from, vec![to]);
 
-        assert!(sources.extend_from_key(to, &from));
+        assert!(!sources.propagate());
         assert_eq!(sources.get(&to).unwrap().len(), 1);
 
-        assert!(!sources.extend_from_key(to, &from));
+        // Second propagation is a no-op because candidates are already at the
+        // destination.
+        assert!(!sources.propagate());
         assert_eq!(sources.get(&to).unwrap().len(), 1);
     }
 
     #[test]
-    fn extend_from_key_partial_novelty() {
+    fn propagate_partial_novelty() {
         let mut sources = FlowSources::default();
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
@@ -698,30 +724,104 @@ mod tests {
         sources.add(from, candidate(0, 0, 10));
         sources.add(from, candidate(0, 0, 20));
         sources.add(to, candidate(0, 0, 10));
+        sources.adjacency.insert(from, vec![to]);
 
-        assert!(sources.extend_from_key(to, &from));
+        assert!(!sources.propagate());
         assert_eq!(sources.get(&to).unwrap().len(), 2);
 
-        assert!(!sources.extend_from_key(to, &from));
+        assert!(!sources.propagate());
     }
 
     #[test]
-    fn extend_from_key_missing_source_returns_false() {
+    fn propagate_missing_source_is_no_op() {
         let mut sources = FlowSources::default();
         let from = key(1, 1, 1);
         let to = key(1, 1, 2);
 
-        assert!(!sources.extend_from_key(to, &from));
+        sources.adjacency.insert(from, vec![to]);
+
+        assert!(!sources.propagate());
         assert!(sources.get(&to).is_none());
+        assert!(sources.get(&from).is_none());
     }
 
     #[test]
-    fn extend_from_key_same_key_is_no_op() {
+    fn propagate_self_edge_is_skipped() {
         let mut sources = FlowSources::default();
         let k = key(1, 1, 1);
         sources.add(k, candidate(0, 0, 10));
+        sources.adjacency.insert(k, vec![k]);
 
-        assert!(!sources.extend_from_key(k, &k));
+        assert!(!sources.propagate());
+        assert_eq!(sources.get(&k).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn propagate_multi_hop() {
+        let mut sources = FlowSources::default();
+        let a = key(1, 1, 1);
+        let b = key(1, 1, 2);
+        let c = key(1, 1, 3);
+
+        sources.add(a, candidate(0, 0, 10));
+        sources.adjacency.insert(a, vec![b]);
+        sources.adjacency.insert(b, vec![c]);
+
+        assert!(!sources.propagate());
+
+        assert_eq!(sources.get(&b).unwrap().len(), 1);
+        assert!(sources.get(&b).unwrap().contains(&candidate(0, 0, 10)));
+        assert_eq!(sources.get(&c).unwrap().len(), 1);
+        assert!(sources.get(&c).unwrap().contains(&candidate(0, 0, 10)));
+    }
+
+    #[test]
+    fn propagate_multi_hop_converges() {
+        let mut sources = FlowSources::default();
+        let a = key(1, 1, 1);
+        let b = key(1, 1, 2);
+
+        sources.add(a, candidate(0, 0, 10));
+        sources.adjacency.insert(a, vec![b]);
+        sources.adjacency.insert(b, vec![a]);
+
+        let exhausted = sources.propagate();
+        assert!(!exhausted);
+        assert!(sources.get(&b).unwrap().contains(&candidate(0, 0, 10)));
+    }
+
+    #[test]
+    fn propagate_preserves_ordering_at_destination() {
+        let mut sources = FlowSources::default();
+        let from = key(1, 1, 1);
+        let to = key(1, 1, 2);
+
+        sources.add(to, candidate(0, 0, 5));
+        sources.add(from, candidate(0, 1, 20));
+        sources.add(from, candidate(0, 0, 10));
+        sources.adjacency.insert(from, vec![to]);
+
+        sources.propagate();
+
+        let ordered: Vec<_> = sources.get(&to).unwrap().iter().copied().collect();
+        assert_eq!(ordered[0], candidate(0, 0, 5));
+        assert_eq!(ordered[1], candidate(0, 0, 10));
+        assert_eq!(ordered[2], candidate(0, 1, 20));
+    }
+
+    #[test]
+    fn propagate_pending_limit_exhausted() {
+        let mut sources = FlowSources::default();
+        let a = key(1, 1, 1);
+        let b = key(1, 1, 2);
+        for i in 0..(u32::try_from(MAX_PENDING).unwrap_or(u32::MAX) + 10) {
+            sources.add(a, candidate(0, 0, i));
+        }
+        // a → b edges cause all candidates to flow into b in one round,
+        // filling the pending queue past the safety limit.
+        sources.adjacency.insert(a, vec![b]);
+
+        assert!(sources.propagate());
     }
 
     #[test]
@@ -757,21 +857,4 @@ mod tests {
         assert_eq!(ordered[2], candidate(0, 2, 30));
     }
 
-    #[test]
-    fn extend_from_key_preserves_ordering_at_destination() {
-        let mut sources = FlowSources::default();
-        let from = key(1, 1, 1);
-        let to = key(1, 1, 2);
-
-        sources.add(to, candidate(0, 0, 5));
-        sources.add(from, candidate(0, 1, 20));
-        sources.add(from, candidate(0, 0, 10));
-
-        sources.extend_from_key(to, &from);
-
-        let ordered: Vec<_> = sources.get(&to).unwrap().iter().copied().collect();
-        assert_eq!(ordered[0], candidate(0, 0, 5));
-        assert_eq!(ordered[1], candidate(0, 0, 10));
-        assert_eq!(ordered[2], candidate(0, 1, 20));
-    }
 }

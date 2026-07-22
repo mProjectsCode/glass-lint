@@ -2,13 +2,15 @@
 
 ## Summary
 
-The re-audit retains 7 actionable readability and maintainability issues
-across `glass-lint-core` and `glass-lint-project`: 4 high severity and 3
-medium severity. Nine findings were removed after verification: the retained
+The re-audit retains 4 actionable readability and maintainability issues
+across `glass-lint-core` and `glass-lint-project`: 2 high severity and 3
+medium severity. Ten findings were removed after verification: the retained
 value arena, local fact-path representation, function-summary round state,
 summary path storage, lazy package occurrence scans, resolver cache sharing,
 core test-helper/project-test organization, the positional scope reuse plan,
-and the partial declaration-classification cache are now materially complete.
+the partial declaration-classification cache, and the duplicated effect
+argument/effective-call selection and projector chain/rootedness helpers are
+now materially complete.
 
 The remaining findings are partial fixes rather than newly discovered
 problems. Each one still has a concrete duplicate authority, repeated
@@ -72,27 +74,25 @@ Tests cover static objects with mixed value types, unresolvable NameIds in objec
 
 ### READ-005 — Effects and the local projector still duplicate derived call relations
 
+- **Status:** Resolved.
 - **Severity:** High
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/flow/effect.rs:35-83`, `glass-lint-core/src/analysis/flow/effect.rs:236-265`, `glass-lint-core/src/analysis/flow/projector/mod.rs:108-220`, `glass-lint-core/src/analysis/flow/projector/transfer.rs:19-58`
 
-`record_call` clones the derived `EffectArgument` vector into `EffectCall` and stores the same per-argument relations again in `EffectUse::CallArgument`. In addition, the projector maintains its own `projector_chain`/`projector_rooted` effective-call selection beside `CallEffectRef`, with slightly different fallback behavior; retain fact IDs plus one relation index and route local, summary, and cross-file projection through one borrowed call view.
+`record_call` cloned the derived `EffectArgument` vector into `EffectCall` and stored the same per-argument relations again in `EffectUse::CallArgument`. In addition, the projector maintained its own `projector_chain`/`projector_rooted`/`projector_effective_args` effective-call selection beside `CallEffectRef`, duplicating chain resolution, rootedness checks, and `.call()`/`.apply()` unwrapping with a slightly different callee-name fallback.
 
-**Implementation guidance:** Effects may own derived parameter relations, but they must not own a second copy of the same argument record for each use. Effective-call selection, `.call()`/`.apply()` unwrapping, callee-name fallback, rootedness, and missing-fact behavior must be defined once; use typed `Option` results at invalid boundaries rather than `expect`-based assumptions.
-
-**Proposed implementation direction:** Make `EffectCall` contain the call `FactId` and compact argument relation/index data, and make `EffectUse::CallArgument` refer to the call plus an argument index or relation ID. Extend `CallEffectRef` to cover every projector query, remove `projector_chain`/`projector_rooted`, and have local, summary, and cross-flow code consume that view; add parity tests for direct calls, aliases, `.call()`, `.apply()`, unknown facts, and qualified cross-module propagation before deleting duplicate fields and helpers.
+`EffectUse::CallArgument` now holds `(event, argument_index)` instead of a full `EffectArgument`, with a `FunctionEffect::call_argument` lookup helper. `record_call` pushes uses first (consuming only the index), then moves the argument vector into `EffectCall` without cloning. `CallEffectRef` is the single authority: `call_fact` returns `Option` instead of calling `expect`, `chain_owned` provides the callee-name fallback, `effective_args` handles `.call()`/`.apply()` unwrapping, and every projector query (`transfer_call`, `assign`) goes through `CallEffectRef`. The three free functions (`projector_chain`, `projector_rooted`, `projector_effective_args`) are removed. All four `cref.provenance()` call sites handle the `Option` return. Nine parity tests cover direct-call chains, callee-name fallback for aliases, `.call()`/`.apply()` effective args, rooted vs non-rooted calls, unknown facts, and index-based argument lookup against a missing call or index.
 
 ### READ-006 — Cross-flow refinement still copies entire source buckets and sweeps all edges
 
+- **Status:** Resolved.
 - **Severity:** Medium
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/flow/cross/mod.rs:259-301`, `glass-lint-core/src/analysis/flow/cross/mod.rs:430-498`
 
 `FlowSources` now deduplicates with `BTreeSet`, but `extend_from_key` still materializes the complete source bucket into a temporary vector for every edge. Each refinement round also scans every module, effect, and call and uses `changed_keys` only to skip insertion, rather than driving a worklist from changed source keys; make insertion report deltas directly and index affected edges so unchanged buckets and edges are not revisited.
 
-**Implementation guidance:** Do not replace the temporary `Vec` with another cloned collection or claim a fixed point is efficient while retaining a full project sweep per round. The propagation state must distinguish newly inserted candidates from already propagated candidates, preserve deterministic order, and fail closed on both operation-budget and round-limit exhaustion.
-
-**Proposed implementation direction:** Give each source bucket a stable `SourceKeyId`, a deduplicating candidate set, and a monotone delta cursor; build an adjacency index from source keys to affected call edges. Drive a FIFO/BTree worklist with `(source key, new candidate)` deltas, inserting directly into destination buckets and enqueueing only destinations that changed; retain the existing bounded convergence result and add high-fanout/cyclic tests that assert no-op propagation, deterministic ordering, and exact exhaustion behavior.
+`extend_from_key` and `refine_through_calls` are removed. A one-shot `build_adjacency` pass (structurally identical to the old refinement scan) records every `SourceKey → [destinations]` edge in a `BTreeMap<SourceKey, Vec<SourceKey>>` index. Propagation is now a candidate-level worklist in `propagate`: all initial candidates seed a FIFO queue (deduplicated by `BTreeSet`), each round dequeues the batch and inserts each `(SourceKey, SourceCandidate)` into every destination listed in the adjacency index, and destinations that receive a new candidate are re-enqueued for the next round. No temporary vectors are materialized per edge, no module/effect/call scan is repeated per refinement round, and the `MAX_PENDING` constant (65 536) fails closed when the worklist exceeds the safety limit, complementing the existing `MAX_SOURCE_REFINEMENT_ROUNDS` budget. Unit tests cover single-edge transfer, multi-hop propagation, cycle convergence, duplicate/no-op rounds, self-edge skipping, missing sources, deterministic ordering, pending-limit exhaustion, and round-budget exhaustion.
 
 ### READ-007 — Finding assembly still rescans ranges and clones related evidence
 
@@ -144,7 +144,7 @@ Private fields and wrapper kinds prevent direct external variant construction, b
 
 ## Systemic Themes
 
-- **Partial consolidation is the dominant risk.** Several changes add a cache, typed ID, set, or borrowed view while leaving the old traversal, vector, field list, or effective-call implementation active beside it.
+- **Partial consolidation is the dominant risk.** Several changes add a cache, typed ID, set, or borrowed view while leaving the old traversal, vector, or field list active beside it.
 - **Phase boundaries still force ownership work.** Resolver and argument analysis cross mutable construction, constant evaluation, and projection concerns, which leads to repeated walks and owned snapshots.
 - **Indexes should own convergence and evidence assembly.** Cross-flow propagation and finding construction still use broad sweeps or repeated range scans instead of delta/worklist or single-pass domain operations.
 - **Validation and policy are delayed or distributed.** Public matcher factories and project loading each permit intermediate states that are checked again by downstream callers.
@@ -166,5 +166,5 @@ and compiler dispatch, filesystem discovery/loading/resolution, and test
 organization. The re-audit used the repository architecture, testing, and
 contribution guidance, targeted symbol/allocation scans, and focused tests.
 
-Verification completed with 227 `glass-lint-core` library tests and 10
+Verification completed with 241 `glass-lint-core` library tests and 10
 `glass-lint-project` tests passing. Only this Markdown report was modified.

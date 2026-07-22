@@ -31,8 +31,11 @@ impl ProjectSemanticModel {
         for effect in module.local().effects().iter_effects() {
             for call in effect.calls() {
                 let cref = call.as_ref(stream);
+                let Some(provenance) = cref.provenance() else {
+                    continue;
+                };
                 let Some((target_module, target_function)) =
-                    self.qualified_function_target(importer, cref.target(), cref.provenance())
+                    self.qualified_function_target(importer, cref.target(), provenance)
                 else {
                     continue;
                 };
