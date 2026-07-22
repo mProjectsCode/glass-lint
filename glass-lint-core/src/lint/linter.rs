@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     AnalysisReport, Environment, ProjectInput, ProjectInputError, ProviderCatalogError,
@@ -13,11 +13,6 @@ use crate::{
 };
 
 type AnalyzedModules = BTreeMap<crate::ProjectRelativePath, LocalArtifact>;
-
-struct ProjectFileState {
-    files: BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
-    parse_paths: Vec<(crate::ProjectRelativePath, String)>,
-}
 
 /// Caller-supplied input to linter construction. Validation occurs in
 /// [`Linter::new`].
@@ -251,10 +246,8 @@ impl Linter {
         analyzed: AnalyzedModules,
         parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
     ) -> Result<(AnalysisReport, std::time::Duration, std::time::Duration), ProjectInputError> {
-        let ProjectFileState {
-            mut files,
-            parse_paths,
-        } = Self::initialize_project_files(&input, parse_diagnostics);
+        let (mut files, parse_failure_codes) =
+            Self::initialize_project_files(&input, parse_diagnostics);
 
         tracing::debug!(
             target: "glass_lint::project::link",
@@ -264,9 +257,10 @@ impl Linter {
         );
         let linking_start = std::time::Instant::now();
         let mut project = ProjectSemanticModel::link_with_limits(input, analyzed, &self.limits)?;
-        for (path, code) in parse_paths {
+        for (path, code) in parse_failure_codes {
             project.record_parse_failure(path, &code);
         }
+
         let linking_elapsed = linking_start.elapsed();
         let link_counts = project.operation_counts(0);
         tracing::info!(
@@ -318,12 +312,20 @@ impl Linter {
                 continue;
             };
             let mut findings = self.project_findings_for_module(project, module, classification);
-            findings.sort_by_key(|finding| {
-                (
-                    finding.location.range.start().line(),
-                    finding.location.range.start().column(),
-                    finding.rule_id.clone(),
-                )
+            findings.sort_by(|a, b| {
+                a.location
+                    .range
+                    .start()
+                    .line()
+                    .cmp(&b.location.range.start().line())
+                    .then_with(|| {
+                        a.location
+                            .range
+                            .start()
+                            .column()
+                            .cmp(&b.location.range.start().column())
+                    })
+                    .then_with(|| a.rule_id.as_str().cmp(b.rule_id.as_str()))
             });
             findings.dedup();
             files.insert(
@@ -372,9 +374,10 @@ impl Linter {
 
         let mut result: Vec<crate::Finding> = Vec::new();
         for (_, (mut rule_findings, related)) in by_rule {
-            for finding in &mut rule_findings {
-                if !related.is_empty() {
-                    finding.append_related(related.iter().cloned());
+            if !related.is_empty() {
+                let shared: Arc<[crate::Evidence]> = related.into();
+                for finding in &mut rule_findings {
+                    finding.set_shared_evidence(Arc::clone(&shared));
                 }
             }
             result.append(&mut rule_findings);
@@ -384,38 +387,48 @@ impl Linter {
 
     fn initialize_project_files(
         input: &ValidatedProjectInput,
-        parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
-    ) -> ProjectFileState {
-        let parse_paths = parse_diagnostics
-            .iter()
-            .map(|(path, diagnostic)| (path.clone(), diagnostic.code.as_str().to_owned()))
-            .collect::<Vec<_>>();
-        let mut files = input
-            .source_map()
-            .values()
-            .map(|source| {
-                (
-                    source.path.clone(),
-                    crate::FileReport {
-                        path: source.path.clone(),
-                        findings: Vec::new(),
-                        diagnostics: Vec::new(),
-                    },
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
-        for (path, diagnostic) in parse_diagnostics {
-            let normalized = path;
-            files.insert(
-                normalized.clone(),
-                crate::FileReport {
-                    path: normalized.clone(),
-                    findings: Vec::new(),
-                    diagnostics: vec![crate::Diagnostic::parse(normalized, diagnostic)],
-                },
-            );
+        mut parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
+    ) -> (
+        BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
+        BTreeMap<crate::ProjectRelativePath, String>,
+    ) {
+        let mut files: BTreeMap<crate::ProjectRelativePath, crate::FileReport> = BTreeMap::new();
+        let mut parse_failure_codes: BTreeMap<crate::ProjectRelativePath, String> = BTreeMap::new();
+        for source in input.source_map().values() {
+            let path = source.path.clone();
+            match parse_diagnostics.remove(&path) {
+                Some(diagnostic) => {
+                    parse_failure_codes.insert(path.clone(), diagnostic.code.as_str().to_owned());
+                    files.insert(
+                        path,
+                        crate::FileReport {
+                            path: source.path.clone(),
+                            findings: Vec::new(),
+                            diagnostics: vec![crate::Diagnostic::parse(
+                                source.path.clone(),
+                                diagnostic,
+                            )],
+                        },
+                    );
+                }
+                None => {
+                    files.insert(
+                        path,
+                        crate::FileReport {
+                            path: source.path.clone(),
+                            findings: Vec::new(),
+                            diagnostics: Vec::new(),
+                        },
+                    );
+                }
+            }
         }
-        ProjectFileState { files, parse_paths }
+        // Any remaining parse diagnostics (keys not in the source map)
+        // are consumed for status recording rather than leaked.
+        for (path, diagnostic) in parse_diagnostics {
+            parse_failure_codes.insert(path.clone(), diagnostic.code.as_str().to_owned());
+        }
+        (files, parse_failure_codes)
     }
 
     fn attach_project_diagnostics(
@@ -493,7 +506,12 @@ impl Linter {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Position, SourceRange, lint::ranges::remove_contained_ranges};
+    use crate::{
+        Environment, LintConfigError, Linter, LinterConfig, Position, RuleBaseline, RuleCatalog,
+        RuleOverride, RuleSelection, RuleState, SourceRange,
+        lint::ranges::remove_contained_ranges,
+        rules::{Confidence, MatcherDecl, Rule, Severity},
+    };
 
     #[test]
     fn range_sweep_removes_large_nested_and_duplicate_sets() {
@@ -512,5 +530,81 @@ mod tests {
 
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0].start().column(), 1);
+    }
+
+    #[test]
+    fn findings_are_sorted_without_cloning_rule_ids() {
+        let rule = Rule::builder("network.request")
+            .description("Uses fetch")
+            .category("network")
+            .severity(Severity::Warning)
+            .confidence(Confidence::High)
+            .declaration(MatcherDecl::global_call("fetch"))
+            .build()
+            .unwrap();
+        let mut environment = Environment::default();
+        environment.add_global("fetch").unwrap();
+        let linter = Linter::new(LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment,
+        ))
+        .unwrap();
+
+        let report = linter
+            .lint_snippet("fetch('/b'); fetch('/a');", "sort.js")
+            .unwrap();
+        // Findings should be sorted by line, then column, then rule ID.
+        assert_eq!(report.files[0].findings.len(), 2);
+        assert_eq!(report.files[0].findings[0].location.range.start().line(), 1);
+        assert_eq!(
+            report.files[0].findings[0].location.range.start().column(),
+            1
+        );
+        assert_eq!(
+            report.files[0].findings[1].location.range.start().column(),
+            14
+        );
+    }
+
+    #[test]
+    fn classify_with_evidence_limit_binds_record_once() {
+        let rule = Rule::builder("network.request")
+            .description("Uses fetch")
+            .category("network")
+            .severity(Severity::Warning)
+            .confidence(Confidence::High)
+            .declaration(MatcherDecl::global_call("fetch"))
+            .build()
+            .unwrap();
+        let mut environment = Environment::default();
+        environment.add_global("fetch").unwrap();
+        let linter = Linter::new(LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment,
+        ))
+        .unwrap();
+
+        let report = linter
+            .lint_snippet("fetch('/a'); fetch('/b');", "classify.js")
+            .unwrap();
+        assert_eq!(report.files[0].findings.len(), 2);
+        assert_eq!(
+            report.files[0].findings[0].rule_id.as_str(),
+            "test:network.request"
+        );
+    }
+
+    #[test]
+    fn missing_selected_rule_fails_closed() {
+        let selection = RuleSelection::new(RuleBaseline::None)
+            .with_override(RuleOverride::new("unknown:missing", RuleState::Enabled).unwrap());
+        let result = Linter::new(
+            LinterConfig::new(
+                vec![RuleCatalog::new("test", vec![]).unwrap()],
+                Environment::default(),
+            )
+            .with_rules(selection),
+        );
+        assert!(matches!(result, Err(LintConfigError::UnknownRule(_))));
     }
 }

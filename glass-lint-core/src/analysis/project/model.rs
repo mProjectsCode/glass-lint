@@ -462,9 +462,6 @@ impl ProjectSemanticModel {
                 let mut result = ClassificationResult::default();
                 for rule_index in selected {
                     let index = rule_index.get();
-                    if records.get(index).is_none() {
-                        continue;
-                    }
                     let Some(record) = records.get(index) else {
                         continue;
                     };

@@ -249,23 +249,7 @@ fn compute_checkpoints(source: &str, starts: &[usize]) -> Vec<Vec<(usize, usize)
 }
 
 impl SourceLineIndex {
-    /// Build an index once for a source before converting multiple ranges.
-    #[must_use]
-    pub fn new(source: &str) -> Self {
-        let mut starts = vec![0];
-        starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
-        let checkpoints = compute_checkpoints(source, &starts);
-        Self {
-            starts,
-            source: source.into(),
-            checkpoints,
-        }
-    }
-
-    /// Build an index while retaining the source allocation admitted by the
-    /// project boundary.
-    #[must_use]
-    pub fn from_text(source: crate::SourceText) -> Self {
+    fn from_source(source: crate::SourceText) -> Self {
         let mut starts = vec![0];
         starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
         let checkpoints = compute_checkpoints(&source, &starts);
@@ -274,6 +258,19 @@ impl SourceLineIndex {
             source,
             checkpoints,
         }
+    }
+
+    /// Build an index once for a source before converting multiple ranges.
+    #[must_use]
+    pub fn new(source: &str) -> Self {
+        Self::from_source(source.into())
+    }
+
+    /// Build an index while retaining the source allocation admitted by the
+    /// project boundary.
+    #[must_use]
+    pub fn from_text(source: crate::SourceText) -> Self {
+        Self::from_source(source)
     }
 
     /// Convert a validated byte offset into a one-based display position.
@@ -480,6 +477,28 @@ mod tests {
                 ByteRange::new(1, u32::try_from(source.len()).unwrap().saturating_add(1)).unwrap(),
             ),
             Err(InvalidSourceBoundary::OutOfBounds)
+        );
+    }
+
+    #[test]
+    fn new_and_from_text_delegate_to_same_constructor() {
+        let source = "é\r\nfetch();\n";
+        let index_borrowed = SourceLineIndex::new(source);
+        let text: crate::SourceText = source.into();
+        let index_owned = SourceLineIndex::from_text(text);
+
+        // Both constructors produce identical positions.
+        assert_eq!(
+            index_borrowed.try_range(ByteRange::new(4, 5).unwrap()),
+            index_owned.try_range(ByteRange::new(4, 5).unwrap()),
+        );
+        assert_eq!(
+            index_borrowed.try_range(ByteRange::new(0, 2).unwrap()),
+            index_owned.try_range(ByteRange::new(0, 2).unwrap()),
+        );
+        assert_eq!(
+            index_borrowed.try_range(ByteRange::new(10, 11).unwrap()),
+            index_owned.try_range(ByteRange::new(10, 11).unwrap()),
         );
     }
 }

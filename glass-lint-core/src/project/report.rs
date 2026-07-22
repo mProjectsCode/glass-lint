@@ -94,11 +94,10 @@ impl AnalysisReport {
 }
 
 impl Finding {
-    /// Append related evidence and retain deterministic de-duplicated order.
-    pub fn append_related(&mut self, evidence: impl IntoIterator<Item = Evidence>) {
-        self.evidence.extend(evidence);
-        let evidence = std::mem::take(&mut self.evidence);
-        self.evidence = evidence.into_iter().collect();
+    /// Attach a shared evidence slice. Any previously set shared slice is
+    /// replaced. Local evidence is preserved.
+    pub fn set_shared_evidence(&mut self, shared: std::sync::Arc<[Evidence]>) {
+        self.evidence.set_shared(shared);
     }
 }
 
@@ -317,9 +316,9 @@ mod tests {
     }
 
     #[test]
-    fn related_evidence_is_deduplicated_deterministically() {
+    fn shared_evidence_is_set_without_cloning_into_local() {
         let mut project_finding = finding();
-        let related = Evidence {
+        let shared: std::sync::Arc<[Evidence]> = vec![Evidence {
             message: "related".into(),
             count: 1,
             evidence_truncated: false,
@@ -327,8 +326,9 @@ mod tests {
                 path: ProjectRelativePath::new("dep.js").unwrap(),
                 range: range(3, 1, 2),
             }),
-        };
-        project_finding.append_related([related.clone(), related]);
+        }]
+        .into();
+        project_finding.set_shared_evidence(std::sync::Arc::clone(&shared));
 
         assert_eq!(project_finding.evidence.len(), 3);
         assert_eq!(project_finding.evidence[2].message, "related");
@@ -421,5 +421,46 @@ mod tests {
         let serialized = serde_json::to_string(&report).unwrap();
         let round_trip: AnalysisReport = serde_json::from_str(&serialized).unwrap();
         assert_eq!(report, round_trip);
+    }
+
+    #[test]
+    fn parse_and_valid_sources_each_produce_one_file_report() {
+        let rule = Rule::builder("network.request")
+            .description("Uses fetch")
+            .category("network")
+            .severity(RuleSeverity::Warning)
+            .confidence(Confidence::High)
+            .declaration(MatcherDecl::global_call("fetch"))
+            .build()
+            .unwrap();
+        let mut environment = crate::Environment::default();
+        environment.add_global("fetch").unwrap();
+        let linter = crate::Linter::new(crate::LinterConfig::new(
+            vec![RuleCatalog::new("test", vec![rule]).unwrap()],
+            environment,
+        ))
+        .unwrap();
+
+        // One valid file, one parse-failure file
+        let report = linter
+            .lint_project(crate::ProjectInput {
+                root: "/project".into(),
+                sources: vec![
+                    source_file("valid.js", "fetch('/a');"),
+                    source_file("broken.js", "fetch("),
+                ],
+                resolutions: Vec::new(),
+            })
+            .unwrap();
+
+        assert_eq!(report.files.len(), 2);
+        let valid = report.files.iter().find(|f| f.path == "valid.js").unwrap();
+        let broken = report.files.iter().find(|f| f.path == "broken.js").unwrap();
+
+        assert_eq!(valid.findings.len(), 1);
+        assert!(valid.diagnostics.is_empty());
+
+        assert!(broken.findings.is_empty());
+        assert!(broken.has_parse_diagnostics());
     }
 }
