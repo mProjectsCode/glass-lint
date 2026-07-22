@@ -100,6 +100,9 @@ impl<'a> ProjectDiscovery<'a> {
     }
 
     fn discover(&self, directory: &Path) -> Result<Vec<PathBuf>, ProjectLoadError> {
+        let Some(_metadata) = walk::resolve_root(self.options, directory)? else {
+            return Ok(Vec::new());
+        };
         // The shared walker already applies excluded-directory filtering
         // and extension support checks, so the include predicate accepts
         // every entry that reaches it.

@@ -20,29 +20,29 @@ use crate::api::rule::{MatcherBuildError, ModuleSpecifierPattern};
 /// Collection of matcher families before validation and normalization.
 pub struct MatcherSet {
     /// Direct callable matchers.
-    pub(crate) calls: Vec<CallMatcher>,
+    calls: Vec<CallMatcher>,
     /// Member-call matchers.
-    pub(crate) member_calls: Vec<MemberCallMatcher>,
+    member_calls: Vec<MemberCallMatcher>,
     /// Member-read matchers.
-    pub(crate) member_reads: Vec<MemberReadMatcher>,
+    member_reads: Vec<MemberReadMatcher>,
     /// Imported module specifier matchers.
-    pub(crate) imports: Vec<String>,
+    imports: Vec<String>,
     /// Boundary-aware package-root module patterns.
-    pub(crate) package_imports: Vec<ModuleSpecifierPattern>,
+    package_imports: Vec<ModuleSpecifierPattern>,
     /// Static literal matchers.
-    pub(crate) string_contains: Vec<String>,
+    string_contains: Vec<String>,
     /// Class matchers.
-    pub(crate) classes: Vec<ClassMatcher>,
+    classes: Vec<ClassMatcher>,
     /// Constructor matchers.
-    pub(crate) constructors: Vec<ConstructorMatcher>,
+    constructors: Vec<ConstructorMatcher>,
     /// Object lifecycle flow matchers.
-    pub(crate) flows: Vec<ObjectFlowMatcher>,
+    flows: Vec<ObjectFlowMatcher>,
     /// Returned-object member-call matchers.
-    pub(crate) returned_member_calls: Vec<ReturnedMemberCallMatcher>,
+    returned_member_calls: Vec<ReturnedMemberCallMatcher>,
     /// Returned-object member-read matchers.
-    pub(crate) returned_member_reads: Vec<ReturnedMemberReadMatcher>,
+    returned_member_reads: Vec<ReturnedMemberReadMatcher>,
     /// Module-export instance member-call matchers.
-    pub(crate) instance_member_calls: Vec<InstanceMemberCallMatcher>,
+    instance_member_calls: Vec<InstanceMemberCallMatcher>,
 }
 
 macro_rules! generate_from {

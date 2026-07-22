@@ -52,7 +52,7 @@ impl<'a> SourceCorpus<'a> {
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut paths = BTreeSet::new();
         for root in roots {
-            let Some(metadata) = self.resolve_root(root)? else {
+            let Some(metadata) = walk::resolve_root(self.options, root)? else {
                 continue;
             };
             if metadata.is_file() {
@@ -69,45 +69,16 @@ impl<'a> SourceCorpus<'a> {
                     )),
                 ));
             }
-            self.collect_directory_entries(root, &mut include, &mut paths)?;
+            let found = walk::collect_files(self.options, root, None, &mut include)?;
+            for path in found {
+                paths.insert(path);
+                if paths.len() > self.options.max_files {
+                    return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
+                }
+            }
         }
         debug_assert!(paths.len() <= self.options.max_files);
         Ok(paths.into_iter().collect())
-    }
-
-    fn resolve_root(&self, root: &Path) -> Result<Option<fs::Metadata>, ProjectLoadError> {
-        let metadata = fs::symlink_metadata(root).map_err(|source| ProjectLoadError::Io {
-            path: root.to_path_buf(),
-            source,
-        })?;
-        if metadata.file_type().is_symlink() && !self.options.follow_symlinks {
-            return Ok(None);
-        }
-        let metadata = if metadata.file_type().is_symlink() {
-            fs::metadata(root).map_err(|source| ProjectLoadError::Io {
-                path: root.to_path_buf(),
-                source,
-            })?
-        } else {
-            metadata
-        };
-        Ok(Some(metadata))
-    }
-
-    fn collect_directory_entries(
-        &self,
-        root: &Path,
-        include: &mut impl FnMut(&Path) -> bool,
-        paths: &mut BTreeSet<PathBuf>,
-    ) -> Result<(), ProjectLoadError> {
-        let found = walk::collect_files(self.options, root, None, include)?;
-        for path in found {
-            paths.insert(path);
-            if paths.len() > self.options.max_files {
-                return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
-            }
-        }
-        Ok(())
     }
 
     /// Read one supported source file after enforcing the byte budget.

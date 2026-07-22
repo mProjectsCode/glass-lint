@@ -9,11 +9,13 @@ use crate::{
     api::rule::{
         MatcherBuildError, ModuleSpecifierPattern,
         matcher::{
-            ArgumentConstraint, ArgumentMatcher, ClassMatcher, ConstructorMatcher, FlowCompletion,
-            FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, MemberCallMatcher,
-            MemberCallProvenance, MemberReadMatcher, ObjectEventMatcher, ObjectFlowMatcher,
-            ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher,
-            StaticStringPredicateKind, SymbolProvenance, ValueMatcher, ValueMatcherKind,
+            ArgumentConstraint, ArgumentMatcherKind, ClassMatcher, ConstructorMatcher,
+            FlowCompletion, FlowCompletionKind, FlowCondition, FlowConditionKind,
+            FlowSinkMatcherKind, InstanceMemberCallMatcher, MemberCallMatcher,
+            MemberCallProvenance, MemberReadMatcher, ObjectEventMatcher, ObjectEventMatcherKind,
+            ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher,
+            ReturnedMemberReadMatcher, StaticStringPredicateKind, SymbolProvenance, ValueMatcher,
+            ValueMatcherKind,
         },
     },
     rules::CallMatcher,
@@ -195,8 +197,8 @@ impl MemberCallMatcher {
 
 impl FlowCondition {
     fn validate_at(&self, path: &str) -> Result<(), MatcherBuildError> {
-        let events = match self {
-            Self::AnyOf(events) | Self::AllOf(events) => events,
+        let events = match self.kind() {
+            FlowConditionKind::AnyOf(events) | FlowConditionKind::AllOf(events) => events,
         };
         if events.is_empty() {
             return Err(MatcherBuildError::EmptyChain);
@@ -215,12 +217,12 @@ impl FlowCondition {
 
 impl ObjectEventMatcher {
     fn validate_at(&self, path: &str) -> Result<(), MatcherBuildError> {
-        match self {
-            Self::PropertyWrite { property, value } => {
+        match self.kind() {
+            ObjectEventMatcherKind::PropertyWrite { property, value } => {
                 validate_name_at(property, &format!("{path}.property"))?;
                 value.validate_at(&format!("{path}.value"))
             }
-            Self::MemberCall { member, arguments } => {
+            ObjectEventMatcherKind::MemberCall { member, arguments } => {
                 validate_name_at(member, &format!("{path}.member"))?;
                 validate_arguments_at(arguments, path)
             }
@@ -230,9 +232,9 @@ impl ObjectEventMatcher {
 
 impl FlowCompletion {
     fn validate_at(&self, path: &str) -> Result<(), MatcherBuildError> {
-        match self {
-            Self::Configuration => Ok(()),
-            Self::AnySink(sinks) => {
+        match self.kind() {
+            FlowCompletionKind::Configuration => Ok(()),
+            FlowCompletionKind::AnySink(sinks) => {
                 if sinks.is_empty() {
                     return Err(MatcherBuildError::EmptyChain);
                 }
@@ -243,12 +245,12 @@ impl FlowCompletion {
                 }
                 for (index, sink) in sinks.iter().enumerate() {
                     let sink_path = format!("{path}.any_sink[{index}]");
-                    match sink {
-                        FlowSinkMatcher::ArgumentOf { call, index } => {
+                    match sink.kind() {
+                        FlowSinkMatcherKind::ArgumentOf { call, index } => {
                             call.validate_without_arguments_at(&sink_path)?;
                             validate_index_at(*index, &format!("{sink_path}.argument"))?;
                         }
-                        FlowSinkMatcher::AnyArgumentOf { call } => {
+                        FlowSinkMatcherKind::AnyArgumentOf { call } => {
                             call.validate_without_arguments_at(&sink_path)?;
                         }
                     }
@@ -303,12 +305,12 @@ impl ArgumentConstraint {
     /// Validate one indexed argument predicate and retain its path context.
     fn validate_at(&self, path: &str) -> Result<(), MatcherBuildError> {
         validate_index_at(self.index(), path)?;
-        match self.matcher() {
-            ArgumentMatcher::Value(value) => value.validate_at(&format!("{path}.value")),
-            ArgumentMatcher::ObjectKeys(keys) => {
+        match self.matcher().kind() {
+            ArgumentMatcherKind::Value(value) => value.validate_at(&format!("{path}.value")),
+            ArgumentMatcherKind::ObjectKeys(keys) => {
                 validate_non_empty_strings_at(keys, &format!("{path}.object_keys"))
             }
-            ArgumentMatcher::RootedExpressions(chains) => {
+            ArgumentMatcherKind::RootedExpressions(chains) => {
                 let chain_path = format!("{path}.rooted_expressions");
                 validate_non_empty_strings_at(chains, &chain_path)?;
                 for chain in chains {
@@ -316,7 +318,7 @@ impl ArgumentConstraint {
                 }
                 Ok(())
             }
-            ArgumentMatcher::ObjectPropertyValue { property, value } => {
+            ArgumentMatcherKind::ObjectPropertyValue { property, value } => {
                 validate_name_at(property, &format!("{path}.property"))?;
                 value.validate_at(&format!("{path}.value"))
             }

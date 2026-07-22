@@ -75,9 +75,14 @@ pub fn test_environment() -> Environment {
 
 /// Lint a source snippet with a single rule and assert the exact finding count.
 pub fn assert_count(source: &str, rule: Rule, expected: usize) {
-    let environment = test_environment();
+    assert_count_with_env(source, rule, expected, &test_environment());
+}
+
+/// Lint a source snippet with a single rule and a caller-supplied environment,
+/// asserting the exact finding count.
+pub fn assert_count_with_env(source: &str, rule: Rule, expected: usize, environment: &Environment) {
     let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-    let count = Linter::new(LinterConfig::new(vec![catalog], environment))
+    let count = Linter::new(LinterConfig::new(vec![catalog], environment.clone()))
         .unwrap()
         .lint_snippet(source, "test.js")
         .unwrap()

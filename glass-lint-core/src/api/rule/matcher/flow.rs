@@ -140,9 +140,11 @@ impl ValueMatcher {
     }
 }
 
-/// A predicate applied to one selected call argument.
+// ── ArgumentMatcher ──────────────────────────────────────────────────────
+
+/// Internal kind of an argument predicate.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum ArgumentMatcher {
+pub(crate) enum ArgumentMatcherKind {
     /// Apply a value predicate.
     Value(ValueMatcher),
     /// Require a static object shape to contain these keys.
@@ -156,13 +158,26 @@ pub enum ArgumentMatcher {
     },
 }
 
+/// A predicate applied to one selected call argument.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ArgumentMatcher {
+    pub(crate) kind: ArgumentMatcherKind,
+}
+
 impl ArgumentMatcher {
+    /// Borrow the argument matcher kind.
+    pub(crate) fn kind(&self) -> &ArgumentMatcherKind {
+        &self.kind
+    }
+
     pub fn object_keys<I, S>(keys: I) -> Self
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        Self::ObjectKeys(keys.into_iter().map(Into::into).collect())
+        Self {
+            kind: ArgumentMatcherKind::ObjectKeys(keys.into_iter().map(Into::into).collect()),
+        }
     }
 
     pub fn rooted_expressions<I, S>(chains: I) -> Self
@@ -170,23 +185,30 @@ impl ArgumentMatcher {
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        Self::RootedExpressions(chains.into_iter().map(Into::into).collect())
+        Self {
+            kind: ArgumentMatcherKind::RootedExpressions(
+                chains.into_iter().map(Into::into).collect(),
+            ),
+        }
     }
 
     pub fn object_property_value(property: impl Into<String>, value: ValueMatcher) -> Self {
-        Self::ObjectPropertyValue {
-            property: property.into(),
-            value,
+        Self {
+            kind: ArgumentMatcherKind::ObjectPropertyValue {
+                property: property.into(),
+                value,
+            },
         }
     }
 
     pub(crate) fn normalize(&mut self) {
-        match self {
-            Self::Value(value) => value.normalize(),
-            Self::ObjectKeys(keys) | Self::RootedExpressions(keys) => {
+        match &mut self.kind {
+            ArgumentMatcherKind::Value(value) => value.normalize(),
+            ArgumentMatcherKind::ObjectKeys(keys)
+            | ArgumentMatcherKind::RootedExpressions(keys) => {
                 crate::api::rule::matcher::normalize_strings(keys);
             }
-            Self::ObjectPropertyValue { property, value } => {
+            ArgumentMatcherKind::ObjectPropertyValue { property, value } => {
                 *property = property.trim().to_string();
                 value.normalize();
             }
@@ -196,7 +218,9 @@ impl ArgumentMatcher {
 
 impl From<ValueMatcher> for ArgumentMatcher {
     fn from(value: ValueMatcher) -> Self {
-        Self::Value(value)
+        Self {
+            kind: ArgumentMatcherKind::Value(value),
+        }
     }
 }
 
@@ -254,9 +278,11 @@ impl ObjectSourceMatcher {
     }
 }
 
-/// A lifecycle event observed on a tracked object.
+// ── ObjectEventMatcher ───────────────────────────────────────────────────
+
+/// Internal kind of a lifecycle event on a tracked object.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ObjectEventMatcher {
+pub(crate) enum ObjectEventMatcherKind {
     PropertyWrite {
         /// Written property name.
         property: SmolStr,
@@ -271,17 +297,30 @@ pub enum ObjectEventMatcher {
     },
 }
 
+/// A lifecycle event observed on a tracked object.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectEventMatcher {
+    pub(crate) kind: ObjectEventMatcherKind,
+}
+
 impl ObjectEventMatcher {
+    /// Borrow the event kind.
+    pub(crate) fn kind(&self) -> &ObjectEventMatcherKind {
+        &self.kind
+    }
+
     pub fn property_write(property: impl Into<SmolStr>, value: ValueMatcher) -> Self {
-        Self::PropertyWrite {
-            property: property.into(),
-            value,
+        Self {
+            kind: ObjectEventMatcherKind::PropertyWrite {
+                property: property.into(),
+                value,
+            },
         }
     }
 
     pub fn member_call(member: impl Into<String>) -> ObjectEventBuilder {
         ObjectEventBuilder {
-            event: Self::MemberCall {
+            event: ObjectEventMatcherKind::MemberCall {
                 member: member.into(),
                 arguments: Vec::new(),
             },
@@ -289,12 +328,12 @@ impl ObjectEventMatcher {
     }
 
     pub(crate) fn normalize(&mut self) {
-        match self {
-            Self::PropertyWrite { property, value } => {
+        match &mut self.kind {
+            ObjectEventMatcherKind::PropertyWrite { property, value } => {
                 *property = property.trim().to_smolstr();
                 value.normalize();
             }
-            Self::MemberCall { member, arguments } => {
+            ObjectEventMatcherKind::MemberCall { member, arguments } => {
                 *member = member.trim().to_string();
                 ArgumentConstraint::normalize_all(arguments);
             }
@@ -305,20 +344,20 @@ impl ObjectEventMatcher {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectEventBuilder {
     /// Partially constructed lifecycle event.
-    event: ObjectEventMatcher,
+    event: ObjectEventMatcherKind,
 }
 
 impl ObjectEventBuilder {
     #[must_use]
     pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
-        if let ObjectEventMatcher::MemberCall { arguments, .. } = &mut self.event {
+        if let ObjectEventMatcherKind::MemberCall { arguments, .. } = &mut self.event {
             arguments.push(ArgumentConstraint::new(index, matcher));
         }
         self
     }
 
     pub fn build(self) -> ObjectEventMatcher {
-        self.event
+        ObjectEventMatcher { kind: self.event }
     }
 }
 
@@ -328,22 +367,37 @@ impl From<ObjectEventBuilder> for ObjectEventMatcher {
     }
 }
 
-/// Explicitly combines the events that configure a tracked object.
+// ── FlowCondition ────────────────────────────────────────────────────────
+
+/// Internal kind of a flow configuration condition.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FlowCondition {
+pub(crate) enum FlowConditionKind {
     /// At least one event must be observed.
     AnyOf(Vec<ObjectEventMatcher>),
     /// Every event must be observed.
     AllOf(Vec<ObjectEventMatcher>),
 }
 
+/// Explicitly combines the events that configure a tracked object.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowCondition {
+    pub(crate) kind: FlowConditionKind,
+}
+
 impl FlowCondition {
+    /// Borrow the flow condition kind.
+    pub(crate) fn kind(&self) -> &FlowConditionKind {
+        &self.kind
+    }
+
     pub fn any_of<I>(events: I) -> Self
     where
         I: IntoIterator,
         I::Item: Into<ObjectEventMatcher>,
     {
-        Self::AnyOf(events.into_iter().map(Into::into).collect())
+        Self {
+            kind: FlowConditionKind::AnyOf(events.into_iter().map(Into::into).collect()),
+        }
     }
 
     pub fn all_of<I>(events: I) -> Self
@@ -351,16 +405,20 @@ impl FlowCondition {
         I: IntoIterator,
         I::Item: Into<ObjectEventMatcher>,
     {
-        Self::AllOf(events.into_iter().map(Into::into).collect())
+        Self {
+            kind: FlowConditionKind::AllOf(events.into_iter().map(Into::into).collect()),
+        }
     }
 
     pub fn event(event: impl Into<ObjectEventMatcher>) -> Self {
-        Self::AllOf(vec![event.into()])
+        Self {
+            kind: FlowConditionKind::AllOf(vec![event.into()]),
+        }
     }
 
     pub(crate) fn normalize(&mut self) {
-        let events = match self {
-            Self::AnyOf(events) | Self::AllOf(events) => events,
+        let events = match &mut self.kind {
+            FlowConditionKind::AnyOf(events) | FlowConditionKind::AllOf(events) => events,
         };
         for event in events {
             event.normalize();
@@ -368,43 +426,62 @@ impl FlowCondition {
     }
 }
 
-/// The point at which a configured object produces evidence.
+// ── FlowCompletion ───────────────────────────────────────────────────────
+
+/// Internal kind of a flow completion mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FlowCompletion {
+pub(crate) enum FlowCompletionKind {
     /// Emit once the configuration condition is satisfied.
     Configuration,
     /// Emit when any configured sink receives the tracked object.
     AnySink(Vec<FlowSinkMatcher>),
 }
 
+/// The point at which a configured object produces evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowCompletion {
+    pub(crate) kind: FlowCompletionKind,
+}
+
 impl FlowCompletion {
+    /// Borrow the completion kind.
+    pub(crate) fn kind(&self) -> &FlowCompletionKind {
+        &self.kind
+    }
+
     #[must_use]
     pub fn configuration() -> Self {
-        Self::Configuration
+        Self {
+            kind: FlowCompletionKind::Configuration,
+        }
     }
 
     pub fn any_sink<I>(sinks: I) -> Self
     where
         I: IntoIterator<Item = FlowSinkMatcher>,
     {
-        Self::AnySink(sinks.into_iter().collect())
+        Self {
+            kind: FlowCompletionKind::AnySink(sinks.into_iter().collect()),
+        }
     }
 
     pub(crate) fn normalize(&mut self) {
-        if let Self::AnySink(sinks) = self {
-            for sink in sinks {
-                match sink {
-                    FlowSinkMatcher::ArgumentOf { call, .. }
-                    | FlowSinkMatcher::AnyArgumentOf { call } => call.normalize(),
+        if let FlowCompletionKind::AnySink(sinks) = &mut self.kind {
+            for sink in sinks.iter_mut() {
+                match &mut sink.kind {
+                    FlowSinkMatcherKind::ArgumentOf { call, .. }
+                    | FlowSinkMatcherKind::AnyArgumentOf { call } => call.normalize(),
                 }
             }
         }
     }
 }
 
-/// A tracked object appearing in a selected argument of a call.
+// ── FlowSinkMatcher ──────────────────────────────────────────────────────
+
+/// Internal kind of a tracked-object sink matcher.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FlowSinkMatcher {
+pub(crate) enum FlowSinkMatcherKind {
     /// Match one specific argument position.
     ArgumentOf {
         call: MemberCallMatcher,
@@ -417,15 +494,30 @@ pub enum FlowSinkMatcher {
     },
 }
 
+/// A tracked object appearing in a selected argument of a call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowSinkMatcher {
+    pub(crate) kind: FlowSinkMatcherKind,
+}
+
 impl FlowSinkMatcher {
+    /// Borrow the sink matcher kind.
+    pub(crate) fn kind(&self) -> &FlowSinkMatcherKind {
+        &self.kind
+    }
+
     #[must_use]
     pub fn argument_of(call: MemberCallMatcher, index: usize) -> Self {
-        Self::ArgumentOf { call, index }
+        Self {
+            kind: FlowSinkMatcherKind::ArgumentOf { call, index },
+        }
     }
 
     #[must_use]
     pub fn any_argument_of(call: MemberCallMatcher) -> Self {
-        Self::AnyArgumentOf { call }
+        Self {
+            kind: FlowSinkMatcherKind::AnyArgumentOf { call },
+        }
     }
 }
 

@@ -1,12 +1,12 @@
 //! Shared bounded directory walking with filtering and budget enforcement.
 //!
-//! Both [`SourceCorpus`] and [`ProjectDiscovery`] independently configure
-//! `WalkDir`, apply exclusions, count entries, and translate errors. This
-//! module owns one authoritative walk-and-collect engine so that policy
-//! (symlink handling, exclusion timing, visited/file budgets,
-//! canonicalization, error conversion) has a single maintenance point.
+//! This module owns one authoritative walk-and-collect engine plus root
+//! resolution so that filesystem policy (symlink handling on roots and
+//! entries, exclusion timing, visited/file budgets, error conversion) has a
+//! single maintenance point.
 
 use std::{
+    fs,
     path::{Path, PathBuf},
     time::Instant,
 };
@@ -14,6 +14,35 @@ use std::{
 use walkdir::WalkDir;
 
 use crate::{error::ProjectLoadError, options::ProjectLoadOptions};
+
+/// Resolve root metadata respecting the symlink-follow policy.
+///
+/// Returns `None` when the root is a symbolic link and
+/// [`ProjectLoadOptions::follow_symlinks`] is `false`, signalling the caller
+/// to skip this root.  Otherwise returns the metadata (possibly followed
+/// through a symlink target) so the caller can distinguish a single file from
+/// a directory before passing it to [`collect_files`].
+pub fn resolve_root(
+    options: &ProjectLoadOptions,
+    root: &Path,
+) -> Result<Option<fs::Metadata>, ProjectLoadError> {
+    let metadata = fs::symlink_metadata(root).map_err(|source| ProjectLoadError::Io {
+        path: root.to_path_buf(),
+        source,
+    })?;
+    if metadata.file_type().is_symlink() && !options.follow_symlinks {
+        return Ok(None);
+    }
+    let metadata = if metadata.file_type().is_symlink() {
+        fs::metadata(root).map_err(|source| ProjectLoadError::Io {
+            path: root.to_path_buf(),
+            source,
+        })?
+    } else {
+        metadata
+    };
+    Ok(Some(metadata))
+}
 
 /// Collect supported source files from a directory, bounded by the
 /// configured visit and file limits.

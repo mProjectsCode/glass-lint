@@ -3,6 +3,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     path::{Path, PathBuf},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -249,13 +250,13 @@ impl AdmissionSet {
 }
 
 #[derive(Debug, Default)]
-struct ResolutionCache(BTreeMap<glass_lint_core::ResolutionRequestKey, ResolverOutcome>);
+struct ResolutionCache(BTreeMap<glass_lint_core::ResolutionRequestKey, Arc<ResolverOutcome>>);
 impl ResolutionCache {
-    fn get(&self, key: &glass_lint_core::ResolutionRequestKey) -> Option<&ResolverOutcome> {
+    fn get(&self, key: &glass_lint_core::ResolutionRequestKey) -> Option<&Arc<ResolverOutcome>> {
         self.0.get(key)
     }
 
-    fn insert(&mut self, key: glass_lint_core::ResolutionRequestKey, result: ResolverOutcome) {
+    fn insert(&mut self, key: glass_lint_core::ResolutionRequestKey, result: Arc<ResolverOutcome>) {
         self.0.insert(key, result);
     }
 }
@@ -393,22 +394,20 @@ impl<'a> ProjectLoadState<'a> {
     ) -> Result<(), ProjectLoadError> {
         for request in requests {
             self.check_timeout()?;
-            // A request key is the source-position identity emitted by the
-            // semantic interface. One source location has one authored
-            // request, so retaining it avoids copying the importer and
-            // specifier into a second cache key representation.
             let cache_key = request.key.clone();
-            let result = if let Some(result) = self.resolved.get(&cache_key) {
-                result.clone()
+            let arc = if let Some(result) = self.resolved.get(&cache_key) {
+                Arc::clone(result)
             } else {
                 let resolve_start = Instant::now();
                 let result = self.resolver.resolve(&request);
                 metrics.timings.resolution += resolve_start.elapsed();
-                self.resolved.insert(cache_key, result.clone());
-                result
+                let arc = Arc::new(result);
+                self.resolved.insert(cache_key, Arc::clone(&arc));
+                arc
             };
-            self.enqueue_internal_target(&result, metrics);
-            self.session.record_resolution(request.key, result)?;
+            self.enqueue_internal_target(&arc, metrics);
+            self.session
+                .record_resolution(request.key, (*arc).clone())?;
         }
         Ok(())
     }

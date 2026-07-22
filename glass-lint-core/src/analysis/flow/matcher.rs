@@ -7,7 +7,8 @@ use crate::{
         value::{Value, ValueTable},
     },
     api::rule::{
-        ArgumentMatcher, ValueMatcher, ValueMatcherKind, matcher::StaticStringPredicateKind,
+        ArgumentMatcher, ValueMatcher, ValueMatcherKind,
+        matcher::{ArgumentMatcherKind, StaticStringPredicateKind},
     },
 };
 
@@ -59,20 +60,22 @@ impl ArgumentMatcher {
         names: &NameTable,
         values: &ValueTable,
     ) -> bool {
-        match self {
-            Self::Value(value) => value.matches_flow_value(
+        match self.kind() {
+            ArgumentMatcherKind::Value(value) => value.matches_flow_value(
                 argument
                     .overlay_static_string()
                     .or_else(|| values.static_string(argument.value())),
             ),
-            Self::ObjectKeys(expected) => argument.object_entries(values).is_some_and(|entries| {
-                expected.iter().all(|expected| {
-                    entries
-                        .iter()
-                        .any(|(key, _)| names.resolve(*key) == Some(expected.as_str()))
+            ArgumentMatcherKind::ObjectKeys(expected) => {
+                argument.object_entries(values).is_some_and(|entries| {
+                    expected.iter().all(|expected| {
+                        entries
+                            .iter()
+                            .any(|(key, _)| names.resolve(*key) == Some(expected.as_str()))
+                    })
                 })
-            }),
-            Self::RootedExpressions(expected) => {
+            }
+            ArgumentMatcherKind::RootedExpressions(expected) => {
                 argument.rooted_chain(values).is_some_and(|chain| {
                     let Some(chain) = chain.to_symbol_path(names) else {
                         return false;
@@ -80,7 +83,7 @@ impl ArgumentMatcher {
                     expected.iter().any(|candidate| chain.eq_chain(candidate))
                 })
             }
-            Self::ObjectPropertyValue { property, value } => {
+            ArgumentMatcherKind::ObjectPropertyValue { property, value } => {
                 let val = argument.value();
                 let entry = values.resolve(val);
                 entry.is_some_and(|e| match e {

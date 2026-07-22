@@ -3,8 +3,11 @@ use smol_str::SmolStr;
 use crate::{
     analysis::SymbolPath,
     api::rule::{
-        ArgumentConstraint, FlowCompletion, FlowCondition, FlowSinkMatcher, MemberCallProvenance,
-        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+        ArgumentConstraint, FlowSinkMatcher, MemberCallProvenance, ObjectEventMatcher,
+        ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+        matcher::{
+            FlowCompletionKind, FlowConditionKind, FlowSinkMatcherKind, ObjectEventMatcherKind,
+        },
     },
 };
 
@@ -43,31 +46,35 @@ impl CompiledObjectFlow {
     }
 
     pub fn from_matcher(flow: &ObjectFlowMatcher) -> Self {
-        let (requirements, all_requirements_required) = match flow.condition() {
-            Some(FlowCondition::AnyOf(events)) => (
-                events
-                    .iter()
-                    .map(CompiledObjectRequirement::from_matcher)
-                    .collect(),
-                false,
-            ),
-            Some(FlowCondition::AllOf(events)) => (
-                events
-                    .iter()
-                    .map(CompiledObjectRequirement::from_matcher)
-                    .collect(),
-                true,
-            ),
-            None => (Vec::new(), false),
-        };
-        let (sinks, emit_on_requirements) = match flow.completion() {
-            Some(FlowCompletion::Configuration) => (Vec::new(), true),
-            Some(FlowCompletion::AnySink(sinks)) => (
-                sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
-                false,
-            ),
-            None => (Vec::new(), false),
-        };
+        let (requirements, all_requirements_required) = flow.condition().map_or_else(
+            || (Vec::new(), false),
+            |cond| match cond.kind() {
+                FlowConditionKind::AnyOf(events) => (
+                    events
+                        .iter()
+                        .map(CompiledObjectRequirement::from_matcher)
+                        .collect(),
+                    false,
+                ),
+                FlowConditionKind::AllOf(events) => (
+                    events
+                        .iter()
+                        .map(CompiledObjectRequirement::from_matcher)
+                        .collect(),
+                    true,
+                ),
+            },
+        );
+        let (sinks, emit_on_requirements) = flow.completion().map_or_else(
+            || (Vec::new(), false),
+            |comp| match comp.kind() {
+                FlowCompletionKind::Configuration => (Vec::new(), true),
+                FlowCompletionKind::AnySink(sinks) => (
+                    sinks.iter().map(CompiledObjectSink::from_matcher).collect(),
+                    false,
+                ),
+            },
+        );
         Self {
             symbol: flow.symbol().to_owned(),
             sources: flow
@@ -114,12 +121,12 @@ pub(crate) enum CompiledObjectRequirement {
 
 impl CompiledObjectRequirement {
     fn from_matcher(event: &ObjectEventMatcher) -> Self {
-        match event {
-            ObjectEventMatcher::PropertyWrite { property, value } => Self::PropertyWrite {
+        match event.kind() {
+            ObjectEventMatcherKind::PropertyWrite { property, value } => Self::PropertyWrite {
                 property: property.clone(),
                 value: value.clone(),
             },
-            ObjectEventMatcher::MemberCall { member, arguments } => Self::MemberCall {
+            ObjectEventMatcherKind::MemberCall { member, arguments } => Self::MemberCall {
                 member: SymbolPath::from(member.as_str()),
                 arguments: arguments.clone(),
             },
@@ -155,13 +162,13 @@ pub(crate) struct CompiledObjectSink {
 
 impl CompiledObjectSink {
     fn from_matcher(sink: &FlowSinkMatcher) -> Self {
-        match sink {
-            FlowSinkMatcher::ArgumentOf { call, index } => Self {
+        match sink.kind() {
+            FlowSinkMatcherKind::ArgumentOf { call, index } => Self {
                 member_calls: vec![SymbolPath::from(call.chain())],
                 args: CompiledObjectSinkArguments::Indices(vec![*index]),
                 provenance: call.provenance().clone(),
             },
-            FlowSinkMatcher::AnyArgumentOf { call } => Self {
+            FlowSinkMatcherKind::AnyArgumentOf { call } => Self {
                 member_calls: vec![SymbolPath::from(call.chain())],
                 args: CompiledObjectSinkArguments::Any,
                 provenance: call.provenance().clone(),

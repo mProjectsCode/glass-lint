@@ -6,7 +6,7 @@
 #![allow(clippy::needless_raw_string_hashes)]
 
 use glass_lint_core::{
-    Environment, Linter, LinterConfig, RuleCatalog,
+    Environment,
     rules::{CallMatcher, Matcher, MemberCallMatcher, Rule, RuleBuildError, ValueMatcher},
 };
 
@@ -18,18 +18,8 @@ mod support;
 
 use support::rule;
 
-/// Run one compact source through a fresh catalog and assert exact findings.
 fn assert_count(source: &str, rule: Rule, expected: usize) {
-    let environment = test_environment();
-    let catalog = RuleCatalog::new("test", vec![rule]).unwrap();
-    let count = Linter::new(LinterConfig::new(vec![catalog], environment))
-        .unwrap()
-        .lint_snippet(source, "minified.js")
-        .unwrap()
-        .files[0]
-        .findings
-        .len();
-    assert_eq!(count, expected, "{source}");
+    support::assert_count_with_env(source, rule, expected, &test_environment());
 }
 
 /// Seed only the globals whose provenance the compact cases are meant to test.
