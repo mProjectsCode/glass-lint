@@ -9,8 +9,8 @@ use std::{
 use glass_lint_core::{AnalysisReport, Linter, ResolutionRequest, ResolverOutcome};
 
 use crate::{
-    admission::{CanonicalProjectPath, SourceAdmission, absolute_path},
-    discovery::ProjectDiscovery,
+    admission::{AdmittedSourcePath, SourceAdmission, absolute_path},
+    discovery::{DiscoveryResult, ProjectDiscovery},
     error::ProjectLoadError,
     options::{ProjectSelection, ValidatedProjectLoadOptions},
     resolver::ProjectResolver,
@@ -237,7 +237,13 @@ impl ProjectLoader {
         let paths = ProjectPaths::from_selection(&self.options, selection, deadline)?;
         metrics.timings.record_discovery(discovery_start.elapsed());
 
-        let mut build = ProjectLoadState::new(linter, paths.admission, selection, deadline)?;
+        let mut build = ProjectLoadState::new(
+            linter,
+            paths.admission,
+            paths.diagnostics,
+            selection,
+            deadline,
+        )?;
         build.add_initial_paths(paths.initial_paths);
         match build.load_all(metrics) {
             Ok(()) => Ok(ProjectLoadOutcome::complete(build.finish(metrics)?)),
@@ -253,7 +259,8 @@ impl ProjectLoader {
 /// Canonical absolute paths established before the load loop starts.
 struct ProjectPaths<'a> {
     admission: SourceAdmission<'a>,
-    initial_paths: VecDeque<CanonicalProjectPath>,
+    initial_paths: VecDeque<AdmittedSourcePath>,
+    diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
 }
 
 impl<'a> ProjectPaths<'a> {
@@ -275,37 +282,37 @@ impl<'a> ProjectPaths<'a> {
                 root,
             });
         }
-        let initial_paths: VecDeque<CanonicalProjectPath> =
+        let DiscoveryResult { paths, diagnostics } =
             ProjectDiscovery::with_deadline(&admission, deadline)
-                .initial_paths(selection, canonical_selection.as_ref())?
-                .into();
+                .initial_paths(selection, canonical_selection.as_ref())?;
         Ok(Self {
             admission,
-            initial_paths,
+            initial_paths: paths.into(),
+            diagnostics,
         })
     }
 }
 
 #[derive(Default)]
-struct PathWorkQueue(VecDeque<CanonicalProjectPath>);
+struct PathWorkQueue(VecDeque<AdmittedSourcePath>);
 impl PathWorkQueue {
-    fn extend(&mut self, paths: impl IntoIterator<Item = CanonicalProjectPath>) {
+    fn extend(&mut self, paths: impl IntoIterator<Item = AdmittedSourcePath>) {
         self.0.extend(paths);
     }
 
-    fn pop_front(&mut self) -> Option<CanonicalProjectPath> {
+    fn pop_front(&mut self) -> Option<AdmittedSourcePath> {
         self.0.pop_front()
     }
 
-    fn push(&mut self, path: CanonicalProjectPath) {
+    fn push(&mut self, path: AdmittedSourcePath) {
         self.0.push_back(path);
     }
 }
 
 #[derive(Debug, Default)]
-struct AdmissionSet(BTreeSet<CanonicalProjectPath>);
+struct AdmissionSet(BTreeSet<AdmittedSourcePath>);
 impl AdmissionSet {
-    fn admit(&mut self, path: CanonicalProjectPath) -> bool {
+    fn admit(&mut self, path: AdmittedSourcePath) -> bool {
         self.0.insert(path)
     }
 
@@ -379,6 +386,7 @@ struct ProjectLoadState<'a> {
     session: glass_lint_core::ProjectCollection<'a>,
     resolver: ProjectResolver<'a>,
     admission: SourceAdmission<'a>,
+    diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
     queue: PathWorkQueue,
     admitted: AdmissionSet,
     resolved: ResolutionCache,
@@ -390,6 +398,7 @@ impl<'a> ProjectLoadState<'a> {
     fn new(
         linter: &'a Linter,
         admission: SourceAdmission<'a>,
+        diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
         selection: &ProjectSelection,
         deadline: Instant,
     ) -> Result<Self, ProjectLoadError> {
@@ -399,6 +408,7 @@ impl<'a> ProjectLoadState<'a> {
             session,
             resolver,
             admission,
+            diagnostics,
             queue: PathWorkQueue::default(),
             admitted: AdmissionSet::default(),
             resolved: ResolutionCache::default(),
@@ -407,7 +417,7 @@ impl<'a> ProjectLoadState<'a> {
         })
     }
 
-    fn add_initial_paths(&mut self, paths: VecDeque<CanonicalProjectPath>) {
+    fn add_initial_paths(&mut self, paths: VecDeque<AdmittedSourcePath>) {
         self.queue.extend(paths);
     }
 
@@ -421,14 +431,11 @@ impl<'a> ProjectLoadState<'a> {
 
     fn load_path(
         &mut self,
-        canonical: &CanonicalProjectPath,
+        admitted: &AdmittedSourcePath,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         self.check_timeout()?;
-        let Some(admitted) = self.admission.admitted_path(canonical.as_ref())? else {
-            return Ok(());
-        };
-        if !self.admitted.admit(canonical.clone()) {
+        if !self.admitted.admit(admitted.clone()) {
             return Ok(());
         }
         if self.admitted.len() > self.admission.options().max_files() {
@@ -438,7 +445,7 @@ impl<'a> ProjectLoadState<'a> {
         }
 
         let read_start = Instant::now();
-        let source = self.admission.load_admitted_source_file(&admitted)?;
+        let source = self.admission.load_admitted_source_file(admitted)?;
         metrics.timings.record_reads(read_start.elapsed());
         let source_bytes = u64::try_from(source.source.len()).unwrap_or(u64::MAX);
         self.progress.record_source_bytes(
@@ -500,9 +507,10 @@ impl<'a> ProjectLoadState<'a> {
             self.progress.publish(metrics);
             let target = self.admission.canonical_root().join(path);
             if target.exists()
-                && let Ok(canonical) = self.admission.canonicalize(&target)
+                && let Ok(crate::admission::PathAdmission::Admitted(admitted)) =
+                    self.admission.classify(&target)
             {
-                self.queue.push(canonical);
+                self.queue.push(admitted);
             }
         }
     }
@@ -526,12 +534,27 @@ impl<'a> ProjectLoadState<'a> {
         let deadline = self.deadline;
         let local = self.session.finish_local();
         let resolved = local.resolve(self.resolved.into_iter())?;
-        let (report, linking, matching) = resolved.finish_with_timings()?;
+        let (mut report, linking, matching) = resolved.finish_with_timings()?;
         if Instant::now() > deadline {
             return Err(ProjectLoadError::Timeout);
         }
         metrics.timings.record_linking(linking);
         metrics.timings.record_matching(matching);
+        let code = glass_lint_core::DiagnosticCode::new("tsconfig")
+            .expect("tsconfig is a valid diagnostic code");
+        report
+            .diagnostics
+            .extend(self.diagnostics.into_iter().map(|diagnostic| {
+                glass_lint_core::Diagnostic::Project(glass_lint_core::AnalysisDiagnostic {
+                    code: code.clone(),
+                    message: format!(
+                        "{}: {}",
+                        diagnostic.config_path.display(),
+                        diagnostic.message
+                    ),
+                    location: None,
+                })
+            }));
         Ok(report)
     }
 }

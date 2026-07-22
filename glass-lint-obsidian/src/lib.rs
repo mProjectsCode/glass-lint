@@ -116,7 +116,12 @@ mod tests {
             .category("test")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .declaration(MatcherDecl::global_call("eval"))
+            .declaration(
+                MatcherDecl::builder()
+                    .call_global("eval")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
             .build()
             .unwrap();
         let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
@@ -138,7 +143,12 @@ mod tests {
             .category("test")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .declaration(MatcherDecl::global_call("requestUrl"))
+            .declaration(
+                MatcherDecl::builder()
+                    .call_global("requestUrl")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
             .build()
             .unwrap();
         let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(

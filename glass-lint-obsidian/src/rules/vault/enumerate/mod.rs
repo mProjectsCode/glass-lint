@@ -14,21 +14,60 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("app.vault.getFiles"))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.vault.getMarkdownFiles",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.vault.getAllLoadedFiles",
-        ))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.getAllFolders"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.getFolderByPath"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.getFileByPath"))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.vault.getAbstractFileByPath",
-        ))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.recurseChildren"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.getRoot"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.getFiles")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.getMarkdownFiles")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.getAllLoadedFiles")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.getAllFolders")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.getFolderByPath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.getFileByPath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.getAbstractFileByPath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.recurseChildren")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.getRoot")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

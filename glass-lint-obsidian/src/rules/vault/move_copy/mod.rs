@@ -13,11 +13,24 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("app.vault.rename"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.copy"))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.fileManager.renameFile",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.rename")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.copy")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.fileManager.renameFile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

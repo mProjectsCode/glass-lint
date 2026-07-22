@@ -13,14 +13,54 @@ pub fn rule() -> Rule {
         .category("language/network")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(MatcherDecl::global_constructor("URL"))
-        .declaration(MatcherDecl::global_constructor("URLSearchParams"))
-        .declaration(MatcherDecl::rooted_member_call("URL.parse"))
-        .declaration(MatcherDecl::rooted_member_call("URL.canParse"))
-        .declaration(MatcherDecl::rooted_member_call("URL.createObjectURL"))
-        .declaration(MatcherDecl::rooted_member_call("URL.revokeObjectURL"))
-        .declaration(MatcherDecl::string_contains("http://"))
-        .declaration(MatcherDecl::string_contains("https://"))
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_global("URL")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_global("URLSearchParams")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("URL.parse")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("URL.canParse")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("URL.createObjectURL")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("URL.revokeObjectURL")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .string_contains("http://")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .string_contains("https://")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

@@ -12,9 +12,24 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("app.vault.read"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.cachedRead"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.readBinary"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.read")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.cachedRead")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.readBinary")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

@@ -300,9 +300,13 @@ impl OccurrenceIndexes {
                 );
             }
         }
-        evidence.sort_by_key(|item| {
-            let first = item.occurrences.first().map(|occurrence| occurrence.span);
-            (first, item.kind, item.symbol.clone())
+        evidence.sort_by(|left, right| {
+            let left_first = left.occurrences.first().map(|occurrence| occurrence.span);
+            let right_first = right.occurrences.first().map(|occurrence| occurrence.span);
+            left_first
+                .cmp(&right_first)
+                .then_with(|| left.kind.cmp(&right.kind))
+                .then_with(|| left.symbol.as_str().cmp(right.symbol.as_str()))
         });
         evidence
     }

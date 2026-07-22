@@ -31,42 +31,71 @@ pub fn rule() -> Rule {
         .category("browser/storage")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_read("document.cookie"));
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("document.cookie")
+                .build()
+                .expect("valid matcher declaration"),
+        );
 
     for root in WEB_STORAGE_ROOTS {
         for method in WEB_STORAGE_METHODS {
-            builder =
-                builder.declaration(MatcherDecl::rooted_member_call(format!("{root}.{method}")));
+            builder = builder.declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted(format!("{root}.{method}"))
+                    .build()
+                    .expect("valid matcher declaration"),
+            );
         }
     }
     for root in DATABASE_ROOTS {
         for method in DATABASE_METHODS {
-            builder =
-                builder.declaration(MatcherDecl::rooted_member_call(format!("{root}.{method}")));
+            builder = builder.declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted(format!("{root}.{method}"))
+                    .build()
+                    .expect("valid matcher declaration"),
+            );
         }
     }
     for root in CACHE_ROOTS {
         for method in CACHE_METHODS {
-            builder =
-                builder.declaration(MatcherDecl::rooted_member_call(format!("{root}.{method}")));
+            builder = builder.declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted(format!("{root}.{method}"))
+                    .build()
+                    .expect("valid matcher declaration"),
+            );
         }
     }
     for root in STORAGE_MANAGER_ROOTS {
         for method in STORAGE_MANAGER_METHODS {
             let path = format!("{root}.{method}");
-            builder = builder.declaration(MatcherDecl::rooted_member_call(path.clone()));
+            builder = builder.declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted(path.clone())
+                    .build()
+                    .expect("valid matcher declaration"),
+            );
             if *method == "getDirectory" {
                 for member in DIRECTORY_METHODS {
-                    builder =
-                        builder.declaration(MatcherDecl::returned_member_call(&path, *member));
+                    builder = builder.declaration(
+                        MatcherDecl::builder()
+                            .member_call_returned(&path, *member)
+                            .build()
+                            .expect("valid matcher declaration"),
+                    );
                 }
             }
         }
     }
     for method in COOKIE_METHODS {
-        builder = builder.declaration(MatcherDecl::rooted_member_call(format!(
-            "cookieStore.{method}"
-        )));
+        builder = builder.declaration(
+            MatcherDecl::builder()
+                .member_call_rooted(format!("cookieStore.{method}"))
+                .build()
+                .expect("valid matcher declaration"),
+        );
     }
 
     builder.build().unwrap()

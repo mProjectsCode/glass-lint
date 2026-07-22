@@ -275,7 +275,6 @@ impl Linter {
         tracing::debug!(target: "glass_lint::project::matching", rules = self.enabled.len(), "stage started");
         let (classifications, projection_outcome) = project.classify_with_evidence_limit(
             self.catalog.compiled(),
-            &self.catalog.records,
             &self.enabled,
             self.limits.evidence_items(),
         );
@@ -539,7 +538,12 @@ mod tests {
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
-            .declaration(MatcherDecl::global_call("fetch"))
+            .declaration(
+                MatcherDecl::builder()
+                    .call_global("fetch")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
             .build()
             .unwrap();
         let mut environment = Environment::default();
@@ -573,7 +577,12 @@ mod tests {
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
-            .declaration(MatcherDecl::global_call("fetch"))
+            .declaration(
+                MatcherDecl::builder()
+                    .call_global("fetch")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
             .build()
             .unwrap();
         let mut environment = Environment::default();

@@ -10,7 +10,7 @@ use std::{fs, path::Path, time::Instant};
 use walkdir::WalkDir;
 
 use crate::{
-    admission::{CanonicalProjectPath, SourceAdmission},
+    admission::{AdmittedSourcePath, SourceAdmission},
     error::ProjectLoadError,
 };
 
@@ -54,7 +54,7 @@ pub fn collect_files(
     root: &Path,
     deadline: Option<Instant>,
     include: &mut dyn FnMut(&Path) -> bool,
-) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
+) -> Result<Vec<AdmittedSourcePath>, ProjectLoadError> {
     let mut entries = Vec::new();
     let mut visited = 0usize;
     let walker = WalkDir::new(root)
@@ -88,12 +88,12 @@ pub fn collect_files(
                 .unwrap_or_else(|| std::io::Error::other(message));
             ProjectLoadError::Io { path, source }
         })?;
-        if entry.file_type().is_file()
-            && admission.admitted_path(entry.path())?.is_some()
-            && include(entry.path())
-        {
-            let canonical = admission.canonicalize(entry.path())?;
-            entries.push(canonical);
+        if entry.file_type().is_file() && include(entry.path()) {
+            if let crate::admission::PathAdmission::Admitted(admitted) =
+                admission.classify(entry.path())?
+            {
+                entries.push(admitted);
+            }
             if entries.len() > admission.options().max_files() {
                 return Err(ProjectLoadError::TooManyFiles(
                     admission.options().max_files(),

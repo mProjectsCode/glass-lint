@@ -10,9 +10,9 @@ pub(crate) mod catalog;
 pub(crate) mod object_flow;
 pub(crate) mod rule;
 
-pub(crate) use catalog::CompiledCatalog;
+pub(crate) use catalog::compile_records;
 pub(crate) use object_flow::{
     CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments,
 };
 pub use rule::CompiledRuleRecord;
-pub(crate) use rule::{CompiledRule, CompiledRuleSelection};
+pub(crate) use rule::CompiledRuleSelection;

@@ -40,7 +40,10 @@ fn assert_matches(source: &str, decl: MatcherDecl, expected: usize) {
 fn follows_default_import_namespace_members_through_aliases() {
     assert_matches(
         "import sdk from 'sdk'; const send = sdk.send; send('/x');",
-        MatcherDecl::module_member_call("sdk", "send"),
+        MatcherDecl::builder()
+            .member_call_module("sdk", "send")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -49,7 +52,10 @@ fn follows_default_import_namespace_members_through_aliases() {
 fn follows_destructured_esm_namespace_exports() {
     assert_matches(
         "import * as sdk from 'sdk'; const { send } = sdk; send('/x');",
-        MatcherDecl::module_call("sdk", "send"),
+        MatcherDecl::builder()
+            .call_module("sdk", "send")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -58,7 +64,10 @@ fn follows_destructured_esm_namespace_exports() {
 fn follows_destructured_esm_namespace_export_renames() {
     assert_matches(
         "import * as sdk from 'sdk'; const { send: dispatch } = sdk; dispatch('/x');",
-        MatcherDecl::module_call("sdk", "send"),
+        MatcherDecl::builder()
+            .call_module("sdk", "send")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -67,7 +76,10 @@ fn follows_destructured_esm_namespace_export_renames() {
 fn follows_interop_members_extracted_before_the_call() {
     assert_matches(
         "const send = __toESM(require('sdk')).send; send('/x');",
-        MatcherDecl::module_call("sdk", "send"),
+        MatcherDecl::builder()
+            .call_module("sdk", "send")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -76,7 +88,10 @@ fn follows_interop_members_extracted_before_the_call() {
 fn preserves_module_provenance_through_sequence_calls() {
     assert_matches(
         "const sdk = require('sdk'); (0, sdk.send)('/x');",
-        MatcherDecl::module_call("sdk", "send"),
+        MatcherDecl::builder()
+            .call_module("sdk", "send")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -85,7 +100,10 @@ fn preserves_module_provenance_through_sequence_calls() {
 fn preserves_module_provenance_through_bound_exports() {
     assert_matches(
         "const send = require('sdk').send.bind(null); send('/x');",
-        MatcherDecl::module_call("sdk", "send"),
+        MatcherDecl::builder()
+            .call_module("sdk", "send")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -94,7 +112,10 @@ fn preserves_module_provenance_through_bound_exports() {
 fn follows_destructured_rooted_members() {
     assert_matches(
         "const { read } = host.files; read('x');",
-        MatcherDecl::rooted_member_call("host.files.read"),
+        MatcherDecl::builder()
+            .member_call_rooted("host.files.read")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -103,7 +124,10 @@ fn follows_destructured_rooted_members() {
 fn follows_renamed_destructured_rooted_members() {
     assert_matches(
         "const { read: load } = host.files; load('x');",
-        MatcherDecl::rooted_member_call("host.files.read"),
+        MatcherDecl::builder()
+            .member_call_rooted("host.files.read")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -112,7 +136,10 @@ fn follows_renamed_destructured_rooted_members() {
 fn follows_nested_destructured_rooted_members() {
     assert_matches(
         "const { files: { read } } = host; read('x');",
-        MatcherDecl::rooted_member_call("host.files.read"),
+        MatcherDecl::builder()
+            .member_call_rooted("host.files.read")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -217,7 +244,10 @@ fn resolves_constant_template_literal_substitutions() {
 fn resolves_static_array_property_names_through_constant_indexes() {
     assert_matches(
         "const names = ['read']; const index = 0; host.files[names[index]]('x');",
-        MatcherDecl::rooted_member_call("host.files.read"),
+        MatcherDecl::builder()
+            .member_call_rooted("host.files.read")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -226,7 +256,10 @@ fn resolves_static_array_property_names_through_constant_indexes() {
 fn tracks_global_callbacks_through_immediately_invoked_arrows() {
     assert_matches(
         "((callback) => callback('/x'))(fetch);",
-        MatcherDecl::global_call("fetch"),
+        MatcherDecl::builder()
+            .call_global("fetch")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -235,7 +268,10 @@ fn tracks_global_callbacks_through_immediately_invoked_arrows() {
 fn tracks_global_callbacks_through_immediately_invoked_functions() {
     assert_matches(
         "(function(callback) { callback('/x'); })(fetch);",
-        MatcherDecl::global_call("fetch"),
+        MatcherDecl::builder()
+            .call_global("fetch")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -244,7 +280,10 @@ fn tracks_global_callbacks_through_immediately_invoked_functions() {
 fn tracks_global_callbacks_through_array_iteration() {
     assert_matches(
         "[fetch].forEach(callback => callback('/x'));",
-        MatcherDecl::global_call("fetch"),
+        MatcherDecl::builder()
+            .call_global("fetch")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }
@@ -253,12 +292,18 @@ fn tracks_global_callbacks_through_array_iteration() {
 fn joins_matching_values_from_finite_array_callbacks() {
     assert_matches(
         "[fetch, fetch].forEach(callback => callback('/x'));",
-        MatcherDecl::global_call("fetch"),
+        MatcherDecl::builder()
+            .call_global("fetch")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
     assert_matches(
         "[fetch, local].forEach(callback => callback('/x'));",
-        MatcherDecl::global_call("fetch"),
+        MatcherDecl::builder()
+            .call_global("fetch")
+            .build()
+            .expect("valid matcher declaration"),
         0,
     );
 }
@@ -267,7 +312,10 @@ fn joins_matching_values_from_finite_array_callbacks() {
 fn tracks_global_callbacks_through_promise_handlers() {
     assert_matches(
         "Promise.resolve(fetch).then(callback => callback('/x'));",
-        MatcherDecl::global_call("fetch"),
+        MatcherDecl::builder()
+            .call_global("fetch")
+            .build()
+            .expect("valid matcher declaration"),
         1,
     );
 }

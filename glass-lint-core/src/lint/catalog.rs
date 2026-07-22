@@ -6,10 +6,7 @@ use std::{
     fmt,
 };
 
-use crate::{
-    RuleId, RuleMetadata,
-    api::compiler::{CompiledCatalog, CompiledRule, CompiledRuleRecord},
-};
+use crate::{RuleId, RuleMetadata, api::compiler::CompiledRuleRecord};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Catalog construction failure.
@@ -36,8 +33,6 @@ impl Error for ProviderCatalogError {}
 pub struct RuleCatalog {
     /// Compiled rule records (no source declaration trees retained).
     pub(crate) records: Vec<CompiledRuleRecord>,
-    /// Compiled internal catalog for matching.
-    compiled: CompiledCatalog,
     rule_ids: Vec<RuleId>,
     rule_indices: BTreeMap<RuleId, crate::api::classification::RuleIndex>,
 }
@@ -61,8 +56,8 @@ impl RuleCatalog {
             .collect::<Result<Vec<_>, _>>()?;
 
         // Compile once into immutable records (no declarations retained).
-        let records = crate::api::compiler::catalog::CompiledCatalog::compile_records(&rules)
-            .map_err(|error| match error {
+        let records =
+            crate::api::compiler::compile_records(&rules).map_err(|error| match error {
                 crate::api::rule::CompiledCatalogError::InvalidMatcher(message) => {
                     ProviderCatalogError::InvalidRule("<catalog>".into(), message)
                 }
@@ -79,17 +74,8 @@ impl RuleCatalog {
             .enumerate()
             .map(|(index, id)| (id, crate::api::classification::RuleIndex::new(index)))
             .collect();
-        let compiled = CompiledCatalog {
-            rules: records
-                .iter()
-                .map(|r| CompiledRule {
-                    matcher: r.matcher.clone(),
-                })
-                .collect(),
-        };
         Ok(Self {
             records,
-            compiled,
             rule_ids,
             rule_indices,
         })
@@ -130,17 +116,8 @@ impl RuleCatalog {
             .enumerate()
             .map(|(index, id)| (id, crate::api::classification::RuleIndex::new(index)))
             .collect();
-        let compiled = CompiledCatalog {
-            rules: records
-                .iter()
-                .map(|r| CompiledRule {
-                    matcher: r.matcher.clone(),
-                })
-                .collect(),
-        };
         Ok(Self {
             records,
-            compiled,
             rule_ids,
             rule_indices,
         })
@@ -177,8 +154,8 @@ impl RuleCatalog {
     }
 
     /// Borrow compiled matcher plans.
-    pub(crate) fn compiled(&self) -> &CompiledCatalog {
-        &self.compiled
+    pub(crate) fn compiled(&self) -> &[CompiledRuleRecord] {
+        &self.records
     }
 
     /// Resolve a fully-qualified ID to its catalog index.
@@ -198,7 +175,12 @@ mod tests {
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
-            .declaration(MatcherDecl::global_call("fetch"))
+            .declaration(
+                MatcherDecl::builder()
+                    .call_global("fetch")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
             .build()
             .unwrap();
         RuleCatalog::new(provider, vec![rule]).unwrap()

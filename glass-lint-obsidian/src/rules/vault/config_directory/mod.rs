@@ -13,9 +13,24 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(MatcherDecl::string_contains(".obsidian/"))
-        .declaration(MatcherDecl::string_contains(".obsidian\\"))
-        .declaration(MatcherDecl::rooted_member_read("app.vault.configDir"))
+        .declaration(
+            MatcherDecl::builder()
+                .string_contains(".obsidian/")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .string_contains(".obsidian\\")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.vault.configDir")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

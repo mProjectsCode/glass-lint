@@ -14,14 +14,54 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("app.vault.create"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.createBinary"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.modify"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.modifyBinary"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.append"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.appendBinary"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.process"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.createFolder"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.create")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.createBinary")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.modify")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.modifyBinary")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.append")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.appendBinary")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.process")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.createFolder")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

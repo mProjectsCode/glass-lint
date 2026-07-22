@@ -37,15 +37,20 @@ pub fn rule() -> Rule {
         .confidence(Confidence::Medium);
 
     for field in METADATA_FIELDS {
-        builder = builder.declaration(MatcherDecl::rooted_member_read(format!(
-            "app.metadataCache.getFileCache.{field}"
-        )));
+        builder = builder.declaration(
+            MatcherDecl::builder()
+                .member_read_rooted(format!("app.metadataCache.getFileCache.{field}"))
+                .build()
+                .expect("valid matcher declaration"),
+        );
     }
     for field in METADATA_FIELDS {
-        builder = builder.declaration(MatcherDecl::returned_member_read(
-            "app.metadataCache.getFileCache",
-            *field,
-        ));
+        builder = builder.declaration(
+            MatcherDecl::builder()
+                .member_read_returned("app.metadataCache.getFileCache", *field)
+                .build()
+                .expect("valid matcher declaration"),
+        );
     }
 
     builder.build().unwrap()

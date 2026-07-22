@@ -348,14 +348,14 @@ impl CompiledMatcherPlan {
 /// Borrowed view of compiled rules selected for a classification run.
 pub(crate) struct CompiledRuleSelection<'a> {
     /// All compiled rules, retained for stable rule indexes.
-    pub(crate) rules: &'a [CompiledRule],
+    pub(crate) rules: &'a [CompiledRuleRecord],
     /// Sorted selected rule indexes.
     pub(crate) selected: &'a [RuleIndex],
 }
 
 impl<'a> CompiledRuleSelection<'a> {
     /// Create a borrowed catalog view over sorted selected indexes.
-    pub fn new(rules: &'a [CompiledRule], selected: &'a [RuleIndex]) -> Self {
+    pub fn new(rules: &'a [CompiledRuleRecord], selected: &'a [RuleIndex]) -> Self {
         Self { rules, selected }
     }
 
@@ -382,13 +382,6 @@ impl<'a> CompiledRuleSelection<'a> {
     pub fn len(&self) -> usize {
         self.rules.len()
     }
-}
-
-#[derive(Debug, Clone)]
-/// One public rule paired with its compiled matcher plan.
-pub(crate) struct CompiledRule {
-    /// Compiled matcher data for the rule.
-    pub(crate) matcher: CompiledMatcherPlan,
 }
 
 #[derive(Debug, Clone)]
@@ -438,17 +431,50 @@ mod tests {
     #[test]
     fn every_declaration_compiles_into_one_plan() {
         let decls = vec![
-            MatcherDecl::global_call("fetch"),
-            MatcherDecl::rooted_member_call("window.open"),
-            MatcherDecl::rooted_member_read("window.location"),
-            MatcherDecl::import("node:fs"),
-            MatcherDecl::package_import("@scope/pkg"),
-            MatcherDecl::string_contains("https://"),
-            MatcherDecl::heuristic_class("Worker"),
-            MatcherDecl::global_constructor("URL"),
-            MatcherDecl::returned_member_call("create", "send"),
-            MatcherDecl::returned_member_read("create", "token"),
-            MatcherDecl::instance_member_call("pkg", "Client", "send"),
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_call_rooted("window.open")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_read_rooted("window.location")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .import_exact("node:fs")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .import_package("@scope/pkg")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .string_contains("https://")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .class_heuristic("Worker")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .constructor_global("URL")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_call_returned("create", "send")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_read_returned("create", "token")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_call_instance("pkg", "Client", "send")
+                .build()
+                .expect("valid matcher declaration"),
         ];
         let plan = CompiledMatcherPlan::compile(&decls).unwrap();
         assert!(!plan.query().clauses().is_empty());
@@ -481,12 +507,24 @@ mod tests {
     #[test]
     fn equivalent_declarations_compile_to_identical_queries() {
         let first = vec![
-            MatcherDecl::global_call("fetch"),
-            MatcherDecl::rooted_member_read("location.href"),
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_read_rooted("location.href")
+                .build()
+                .expect("valid matcher declaration"),
         ];
         let second = vec![
-            MatcherDecl::rooted_member_read("location.href"),
-            MatcherDecl::global_call("fetch"),
+            MatcherDecl::builder()
+                .member_read_rooted("location.href")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .build()
+                .expect("valid matcher declaration"),
         ];
 
         assert_eq!(
@@ -504,12 +542,30 @@ mod tests {
     #[test]
     fn query_plan_compiles_declarations_into_composable_dimensions() {
         let decls = vec![
-            MatcherDecl::global_call("fetch"),
-            MatcherDecl::rooted_member_call("window.open"),
-            MatcherDecl::returned_member_read("create", "token"),
-            MatcherDecl::instance_member_call("pkg", "Client", "send"),
-            MatcherDecl::import("node:fs"),
-            MatcherDecl::string_contains("https://"),
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_call_rooted("window.open")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_read_returned("create", "token")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_call_instance("pkg", "Client", "send")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .import_exact("node:fs")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .string_contains("https://")
+                .build()
+                .expect("valid matcher declaration"),
         ];
         let plan = CompiledMatcherPlan::compile(&decls).unwrap();
         let clauses = plan.query().clauses();
@@ -544,12 +600,24 @@ mod tests {
     #[test]
     fn query_plan_normalization_is_idempotent_and_order_independent() {
         let first = vec![
-            MatcherDecl::heuristic_call("fetch"),
-            MatcherDecl::rooted_member_read("location.href"),
+            MatcherDecl::builder()
+                .call_heuristic("fetch")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .member_read_rooted("location.href")
+                .build()
+                .expect("valid matcher declaration"),
         ];
         let second = vec![
-            MatcherDecl::rooted_member_read("location.href"),
-            MatcherDecl::heuristic_call("fetch"),
+            MatcherDecl::builder()
+                .member_read_rooted("location.href")
+                .build()
+                .expect("valid matcher declaration"),
+            MatcherDecl::builder()
+                .call_heuristic("fetch")
+                .build()
+                .expect("valid matcher declaration"),
         ];
         let first = CompiledMatcherPlan::compile(&first).unwrap();
         let second = CompiledMatcherPlan::compile(&second).unwrap();

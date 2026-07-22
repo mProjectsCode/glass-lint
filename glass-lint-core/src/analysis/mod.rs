@@ -43,7 +43,7 @@ mod tests {
     use crate::{
         Environment,
         api::{
-            compiler::{CompiledRuleSelection, rule::CompiledMatcherPlan},
+            compiler::{CompiledRuleRecord, CompiledRuleSelection, rule::CompiledMatcherPlan},
             rule::MatcherDecl,
         },
     };
@@ -82,22 +82,35 @@ mod tests {
                 .facts()
         );
 
-        let fetch_plan =
-            CompiledMatcherPlan::compile_decls(&[MatcherDecl::global_call("fetch")]).unwrap();
+        let fetch_plan = CompiledMatcherPlan::compile_decls(&[MatcherDecl::builder()
+            .call_global("fetch")
+            .build()
+            .expect("valid matcher declaration")])
+        .unwrap();
         let selected = [crate::api::classification::RuleIndex::new(0)];
-        let fetch_rule = crate::api::compiler::CompiledRule {
+        let fetch_rule = CompiledRuleRecord {
+            id: "fetch".into(),
+            description: "fetch".into(),
+            category: "test".into(),
+            severity: crate::Severity::Warning,
+            confidence: crate::api::rule::Confidence::High,
             matcher: fetch_plan,
         };
         let fetch_rules = [fetch_rule];
         let (_model, _outcome) =
             project.project(CompiledRuleSelection::new(&fetch_rules, &selected));
 
-        let member_plan =
-            CompiledMatcherPlan::compile_decls(&[MatcherDecl::heuristic_member_call(
-                "document.createElement",
-            )])
-            .unwrap();
-        let member_rule = crate::api::compiler::CompiledRule {
+        let member_plan = CompiledMatcherPlan::compile_decls(&[MatcherDecl::builder()
+            .member_call_heuristic("document.createElement")
+            .build()
+            .unwrap()])
+        .unwrap();
+        let member_rule = CompiledRuleRecord {
+            id: "member".into(),
+            description: "member".into(),
+            category: "test".into(),
+            severity: crate::Severity::Warning,
+            confidence: crate::api::rule::Confidence::High,
             matcher: member_plan,
         };
         let member_rules = [member_rule];

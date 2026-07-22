@@ -12,11 +12,12 @@ pub fn rule() -> Rule {
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Plugin",
-            "addCommand",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Plugin", "addCommand")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

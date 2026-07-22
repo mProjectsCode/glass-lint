@@ -2,11 +2,7 @@
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{
-    collections::{BTreeMap, VecDeque},
-    num::NonZeroUsize,
-    sync::Arc,
-};
+use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc};
 
 struct LocalJob {
     path: ProjectRelativePath,
@@ -165,74 +161,81 @@ struct ThreadLocalJobExecutor;
 impl LocalJobExecutor for ThreadLocalJobExecutor {
     fn execute(
         &self,
-        mut jobs: Box<dyn Iterator<Item = LocalJob>>,
+        jobs: Box<dyn Iterator<Item = LocalJob>>,
         worker_limit: NonZeroUsize,
         linter: &Linter,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
     ) -> Result<(), LocalExecutionError> {
         let bound = outstanding_job_bound(worker_limit);
-        loop {
-            let batch: Vec<LocalJob> = jobs.by_ref().take(bound).collect();
-            if batch.is_empty() {
-                return Ok(());
-            }
-            let batch_size = batch.len();
-            for _ in 0..batch_size {
-                observer.observe(ExecutionEvent::Submitted);
-            }
-            // Shared work queue: workers pop jobs one at a time instead of
-            // receiving pre-partitioned per-worker Vec batches.
-            let queue = std::sync::Mutex::new(VecDeque::from(batch));
-            let batch_results: Result<Vec<LocalJobResult>, LocalExecutionError> =
-                std::thread::scope(|scope| {
-                    let mut handles = Vec::new();
-                    let worker_count = worker_limit.get().min(batch_size);
-                    for _ in 0..worker_count {
-                        handles.push(scope.spawn(|| {
-                            let mut results = Vec::new();
-                            loop {
-                                let job = {
-                                    let mut q = queue
-                                        .lock()
-                                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                                    q.pop_front()
-                                };
-                                match job {
-                                    Some(job) => {
-                                        observer.observe(ExecutionEvent::Started);
-                                        observer.observe(ExecutionEvent::ParseAttempted);
-                                        observer.observe(ExecutionEvent::LowerAttempted);
-                                        let result =
-                                            crate::analysis::lower_source(linter, &job.source)
-                                                .map(|ls| ls.semantic);
-                                        observer.observe(ExecutionEvent::Finished);
-                                        results.push(LocalJobResult {
-                                            path: job.path,
-                                            source: job.source,
-                                            key: job.key,
-                                            result,
-                                        });
-                                    }
-                                    None => break,
-                                }
-                            }
-                            results
-                        }));
-                    }
-                    handles.into_iter().try_fold(Vec::new(), |mut all, handle| {
-                        let worker_results = handle
-                            .join()
+        let (job_tx, job_rx) = std::sync::mpsc::sync_channel::<LocalJob>(bound);
+        let (result_tx, result_rx) = std::sync::mpsc::sync_channel(bound);
+        let queue = std::sync::Mutex::new(job_rx);
+        std::thread::scope(|scope| {
+            let mut handles = Vec::new();
+            for _ in 0..worker_limit.get() {
+                let queue_ref = &queue;
+                let result_tx = result_tx.clone();
+                handles.push(scope.spawn(move || {
+                    loop {
+                        let job = queue_ref
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .recv();
+                        let Ok(job) = job else {
+                            break;
+                        };
+                        observer.observe(ExecutionEvent::Started);
+                        observer.observe(ExecutionEvent::ParseAttempted);
+                        observer.observe(ExecutionEvent::LowerAttempted);
+                        let result = crate::analysis::lower_source(linter, &job.source)
+                            .map(|ls| ls.semantic);
+                        observer.observe(ExecutionEvent::Finished);
+                        result_tx
+                            .send(LocalJobResult {
+                                path: job.path,
+                                source: job.source,
+                                key: job.key,
+                                result,
+                            })
                             .map_err(|_| LocalExecutionError::WorkerPanic)?;
-                        all.extend(worker_results);
-                        Ok::<_, LocalExecutionError>(all)
-                    })
-                });
-            let batch_results = batch_results?;
-            for result in batch_results {
-                release(result);
+                    }
+                    Ok::<_, LocalExecutionError>(())
+                }));
             }
-        }
+
+            let mut outstanding = 0usize;
+            for job in jobs {
+                observer.observe(ExecutionEvent::Submitted);
+                job_tx
+                    .send(job)
+                    .map_err(|_| LocalExecutionError::WorkerPanic)?;
+                outstanding += 1;
+                if outstanding == bound {
+                    release(
+                        result_rx
+                            .recv()
+                            .map_err(|_| LocalExecutionError::WorkerPanic)?,
+                    );
+                    outstanding -= 1;
+                }
+            }
+            drop(job_tx);
+            while outstanding != 0 {
+                release(
+                    result_rx
+                        .recv()
+                        .map_err(|_| LocalExecutionError::WorkerPanic)?,
+                );
+                outstanding -= 1;
+            }
+            for handle in handles {
+                handle
+                    .join()
+                    .map_err(|_| LocalExecutionError::WorkerPanic)??;
+            }
+            Ok(())
+        })
     }
 }
 

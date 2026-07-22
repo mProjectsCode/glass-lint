@@ -75,10 +75,12 @@ pub fn rule() -> Rule {
         .confidence(Confidence::High);
     for &(receiver, methods) in RECEIVERS {
         for &method in methods {
-            builder = builder.declaration(MatcherDecl::module_member_call(
-                "electron",
-                format!("{receiver}.{method}"),
-            ));
+            builder = builder.declaration(
+                MatcherDecl::builder()
+                    .member_call_module("electron", format!("{receiver}.{method}"))
+                    .build()
+                    .expect("valid matcher declaration"),
+            );
         }
     }
     builder.build().unwrap()

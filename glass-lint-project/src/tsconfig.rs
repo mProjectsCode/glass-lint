@@ -124,8 +124,16 @@ pub struct TsconfigDto {
     pub exclude: StringArrayField,
     pub compiler_options_out_dir: StringField,
     pub compiler_options_declaration_dir: StringField,
-    /// Raw references entries (we only need the `path` string).
-    pub references: Vec<String>,
+    /// Typed project-reference entries; malformed entries are retained as
+    /// diagnostics instead of disappearing during parsing.
+    pub references: Vec<ReferenceEntry>,
+    /// Field-level configuration diagnostics collected while parsing.
+    pub diagnostics: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReferenceEntry {
+    pub path: String,
 }
 
 impl TsconfigDto {
@@ -152,14 +160,54 @@ impl TsconfigDto {
             _ => StringField::Absent,
         };
 
-        let references = value
-            .get("references")
-            .and_then(Value::as_array)
-            .map_or_else(Vec::new, |arr| {
-                arr.iter()
-                    .filter_map(|r| r.get("path").and_then(Value::as_str).map(String::from))
-                    .collect()
-            });
+        let mut diagnostics = Vec::new();
+        for (name, message) in [
+            ("extends", extends.error()),
+            ("files", files.error()),
+            ("include", include.error()),
+            ("exclude", exclude.error()),
+        ] {
+            if let Some(message) = message {
+                diagnostics.push(format!("{name}: {message}"));
+            }
+        }
+
+        let references = match value.get("references") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(Value::Array(arr)) => arr
+                .iter()
+                .filter_map(|reference| match reference {
+                    Value::Object(object) => match object.get("path") {
+                        Some(Value::String(path)) => Some(ReferenceEntry { path: path.clone() }),
+                        Some(other) => {
+                            diagnostics.push(format!(
+                                "references.path: expected string, got {}",
+                                type_name(other)
+                            ));
+                            None
+                        }
+                        None => {
+                            diagnostics.push("references: entry is missing path".into());
+                            None
+                        }
+                    },
+                    other => {
+                        diagnostics.push(format!(
+                            "references: expected object entry, got {}",
+                            type_name(other)
+                        ));
+                        None
+                    }
+                })
+                .collect(),
+            Some(other) => {
+                diagnostics.push(format!(
+                    "references: expected array, got {}",
+                    type_name(other)
+                ));
+                Vec::new()
+            }
+        };
 
         Self {
             extends,
@@ -169,6 +217,31 @@ impl TsconfigDto {
             compiler_options_out_dir,
             compiler_options_declaration_dir,
             references,
+            diagnostics,
+        }
+    }
+}
+
+trait FieldState {
+    fn error(&self) -> Option<String>;
+}
+
+impl FieldState for StringField {
+    fn error(&self) -> Option<String> {
+        match self {
+            Self::WrongType(message) => Some(message.clone()),
+            Self::Null => Some("value is null".into()),
+            Self::Absent | Self::Present(_) => None,
+        }
+    }
+}
+
+impl FieldState for StringArrayField {
+    fn error(&self) -> Option<String> {
+        match self {
+            Self::WrongType(message) => Some(message.clone()),
+            Self::Null => Some("value is null".into()),
+            Self::Absent | Self::Present(_) => None,
         }
     }
 }
@@ -196,6 +269,8 @@ pub struct Tsconfig {
     pub exclude: Vec<String>,
     /// Compiled pattern set for include/exclude matching.
     pub pattern_set: TsconfigPatternSet,
+    /// Invalid patterns that caused fail-closed source selection.
+    pub pattern_diagnostics: Vec<String>,
 }
 
 impl Tsconfig {
@@ -249,6 +324,10 @@ impl Tsconfig {
         };
 
         let pattern_set = TsconfigPatternSet::new(&include, &exclude);
+        let pattern_diagnostics = pattern_set
+            .invalid_patterns()
+            .map(|pattern| format!("invalid glob pattern `{pattern}`"))
+            .collect();
 
         Self {
             config_path,
@@ -257,6 +336,7 @@ impl Tsconfig {
             include,
             exclude,
             pattern_set,
+            pattern_diagnostics,
         }
     }
 }
@@ -271,6 +351,7 @@ impl Tsconfig {
 pub struct TsconfigPatternSet {
     includes: Vec<glob::Pattern>,
     excludes: Vec<glob::Pattern>,
+    invalid: Vec<String>,
 }
 
 impl TsconfigPatternSet {
@@ -286,24 +367,40 @@ impl TsconfigPatternSet {
             }
         };
 
-        let compile = |patterns: &[String]| -> Vec<glob::Pattern> {
-            patterns
-                .iter()
-                .map(|p| normalize(p))
-                .filter_map(|p| glob::Pattern::new(&p).ok())
-                .collect()
+        let compile = |patterns: &[String]| -> (Vec<glob::Pattern>, Vec<String>) {
+            let mut compiled = Vec::new();
+            let mut invalid = Vec::new();
+            for pattern in patterns.iter().map(|p| normalize(p)) {
+                match glob::Pattern::new(&pattern) {
+                    Ok(pattern) => compiled.push(pattern),
+                    Err(_) => invalid.push(pattern),
+                }
+            }
+            (compiled, invalid)
         };
 
+        let (includes, mut invalid) = compile(includes);
+        let (excludes, exclude_invalid) = compile(excludes);
+        invalid.extend(exclude_invalid);
+
         Self {
-            includes: compile(includes),
-            excludes: compile(excludes),
+            includes,
+            excludes,
+            invalid,
         }
+    }
+
+    fn invalid_patterns(&self) -> impl Iterator<Item = &str> {
+        self.invalid.iter().map(String::as_str)
     }
 
     /// Returns true when `relative` (a slash-normalized path relative to the
     /// config base) matches at least one include pattern and matches no exclude
     /// pattern. The path is borrowed; no allocation occurs.
     pub fn is_included(&self, relative: &str) -> bool {
+        if !self.invalid.is_empty() {
+            return false;
+        }
         let has_include_match = self.includes.iter().any(|pattern| {
             pattern.matches(relative)
                 || (!pattern.as_str().contains('/')
@@ -330,9 +427,9 @@ impl TsconfigPatternSet {
 // Cycle detection diagnostics
 // ---------------------------------------------------------------------------
 
-/// Structured diagnostic for a detected cycle.
+/// Structured diagnostic for a detected cycle or malformed configuration.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CycleDiagnostic {
+pub struct TsconfigDiagnostic {
     /// The canonical config path where the cycle was detected.
     pub config_path: PathBuf,
     /// The canonical path of the parent/reference that created the cycle.
@@ -390,7 +487,7 @@ fn resolve_extends(config_path: &Path, extends: &str) -> Option<PathBuf> {
 pub fn build_effective_config(
     config_path: &Path,
     fallback_base: &Path,
-    diagnostics: &mut Vec<CycleDiagnostic>,
+    diagnostics: &mut Vec<TsconfigDiagnostic>,
 ) -> Result<Tsconfig, ProjectLoadError> {
     let mut extends_chain: Vec<PathBuf> = Vec::new();
     build_effective_config_inner(config_path, fallback_base, &mut extends_chain, diagnostics)
@@ -400,13 +497,13 @@ fn build_effective_config_inner(
     config_path: &Path,
     fallback_base: &Path,
     extends_chain: &mut Vec<PathBuf>,
-    diagnostics: &mut Vec<CycleDiagnostic>,
+    diagnostics: &mut Vec<TsconfigDiagnostic>,
 ) -> Result<Tsconfig, ProjectLoadError> {
     let canonical = realpath(config_path)?;
 
     // Cycle detection in the extends chain
     if extends_chain.contains(&canonical) {
-        diagnostics.push(CycleDiagnostic {
+        diagnostics.push(TsconfigDiagnostic {
             config_path: config_path.to_path_buf(),
             cycle_target: canonical,
             message: format!(
@@ -425,12 +522,20 @@ fn build_effective_config_inner(
             include: Vec::new(),
             exclude: vec!["**/*".to_string()],
             pattern_set: TsconfigPatternSet::new(&[], &["**/*".to_string()]),
+            pattern_diagnostics: Vec::new(),
         });
     }
 
     extends_chain.push(canonical.clone());
 
     let dto = read_and_parse(config_path)?;
+    for message in &dto.diagnostics {
+        diagnostics.push(TsconfigDiagnostic {
+            config_path: canonical.clone(),
+            cycle_target: canonical.clone(),
+            message: message.clone(),
+        });
+    }
     let base = config_path.parent().unwrap_or(fallback_base).to_path_buf();
 
     // Resolve extends — clone the extends field to avoid partial move.
@@ -450,12 +555,18 @@ fn build_effective_config_inner(
 
     extends_chain.pop();
 
-    Ok(Tsconfig::new(
-        canonical,
-        base,
-        dto,
-        parent_tsconfig.as_ref(),
-    ))
+    let effective = Tsconfig::new(canonical, base, dto, parent_tsconfig.as_ref());
+    diagnostics.extend(
+        effective
+            .pattern_diagnostics
+            .iter()
+            .map(|message| TsconfigDiagnostic {
+                config_path: effective.config_path.clone(),
+                cycle_target: effective.config_path.clone(),
+                message: message.clone(),
+            }),
+    );
+    Ok(effective)
 }
 
 #[cfg(test)]
@@ -511,7 +622,17 @@ mod tests {
     fn parse_references() {
         let dto = TsconfigDto::parse(r#"{"references":[{"path":"./child"},{"path":"./other"}]}"#)
             .unwrap();
-        assert_eq!(dto.references, vec!["./child", "./other"]);
+        assert_eq!(
+            dto.references,
+            vec![
+                ReferenceEntry {
+                    path: "./child".into()
+                },
+                ReferenceEntry {
+                    path: "./other".into()
+                }
+            ]
+        );
     }
 
     #[test]

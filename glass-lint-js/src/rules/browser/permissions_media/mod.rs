@@ -12,15 +12,24 @@ pub fn rule() -> Rule {
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call(
-            "navigator.mediaDevices.getUserMedia",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "navigator.mediaDevices.getDisplayMedia",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "navigator.mediaDevices.enumerateDevices",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.mediaDevices.getUserMedia")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.mediaDevices.getDisplayMedia")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.mediaDevices.enumerateDevices")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

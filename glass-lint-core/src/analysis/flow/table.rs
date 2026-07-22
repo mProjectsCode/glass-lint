@@ -43,19 +43,18 @@ impl<T> FunctionTable<T> {
     }
 
     /// Borrow one entry immutably and another entry mutably in one call.
-    /// Panics when `read` and `write` refer to the same identity.
+    /// Returns `None` when the identities are equal or either slot is invalid.
     pub(in crate::analysis) fn get_disjoint(
         &mut self,
         read: FunctionId,
         write: FunctionId,
-    ) -> (Option<&T>, Option<&mut T>) {
-        assert_ne!(
-            read, write,
-            "get_disjoint requires different read and write identities"
-        );
+    ) -> Option<(Option<&T>, Option<&mut T>)> {
+        if read == write {
+            return None;
+        }
         let max = usize::try_from(read.0.max(write.0)).unwrap_or(usize::MAX);
         if self.values.len() <= max {
-            return (None, None);
+            return Some((None, None));
         }
         let ri = usize::try_from(read.0).unwrap_or(usize::MAX);
         let wi = usize::try_from(write.0).unwrap_or(usize::MAX);
@@ -73,7 +72,7 @@ impl<T> FunctionTable<T> {
             } else {
                 None
             };
-            (read_ref, write_ref)
+            Some((read_ref, write_ref))
         }
     }
 

@@ -14,31 +14,48 @@ pub fn rule() -> Rule {
         .category("electron/shell")
         .confidence(Confidence::High)
         .severity(Severity::Warning)
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "shell.openExternal",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "shell.openPath",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "shell.showItemInFolder",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "shell.trashItem",
-        ))
-        .declaration(MatcherDecl::module_member_call("electron", "shell.beep"))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "shell.readShortcutLink",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "shell.writeShortcutLink",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "shell.openExternal")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "shell.openPath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "shell.showItemInFolder")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "shell.trashItem")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "shell.beep")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "shell.readShortcutLink")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "shell.writeShortcutLink")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

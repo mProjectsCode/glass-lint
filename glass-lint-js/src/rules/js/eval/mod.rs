@@ -13,9 +13,24 @@ pub fn rule() -> Rule {
         .category("language/dynamic-code")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .declaration(MatcherDecl::global_call("eval"))
-        .declaration(MatcherDecl::global_call("Function"))
-        .declaration(MatcherDecl::global_constructor("Function"))
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("eval")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("Function")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_global("Function")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

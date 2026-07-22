@@ -204,6 +204,7 @@ pub struct SharedSemanticArtifact {
 /// One entry in the artifact cache, retaining the full key for collision
 /// verification. A fingerprint match is not a hit until the full key matches.
 struct CacheEntry {
+    fingerprint: ArtifactFingerprint,
     key: ArtifactCacheKey,
     artifact: SharedSemanticArtifact,
 }
@@ -219,8 +220,10 @@ struct CacheEntry {
 /// vector or scanning unrelated buckets.
 #[derive(Default)]
 pub struct ArtifactCache {
-    buckets: HashMap<ArtifactFingerprint, Vec<CacheEntry>>,
-    fifo: VecDeque<ArtifactFingerprint>,
+    buckets: HashMap<ArtifactFingerprint, Vec<usize>>,
+    entries: HashMap<usize, CacheEntry>,
+    fifo: VecDeque<usize>,
+    next_id: usize,
 }
 
 /// Synchronized runtime-owned cache. A poisoned mutex is recovered so an
@@ -241,11 +244,12 @@ impl ArtifactCacheHandle {
     }
 
     pub fn insert(&self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
+        let fp = key.fingerprint();
         let mut cache = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        cache.insert(key, artifact)
+        cache.insert(fp, key, artifact)
     }
 
     #[cfg(test)]
@@ -263,46 +267,61 @@ impl ArtifactCache {
         fp: ArtifactFingerprint,
         key: &ArtifactCacheKey,
     ) -> Option<SharedSemanticArtifact> {
-        self.buckets.get(&fp)?.iter().find_map(|entry| {
-            if entry.key == *key {
-                Some(entry.artifact.clone())
-            } else {
-                None
-            }
+        self.buckets.get(&fp)?.iter().find_map(|id| {
+            let entry = self.entries.get(id)?;
+            (entry.key == *key).then(|| entry.artifact.clone())
         })
     }
 
     /// Insert or replace an artifact. Returns whether the FIFO policy evicted
     /// the oldest entry. An exact-match replacement does not touch the FIFO
     /// and never counts as eviction.
-    fn insert(&mut self, key: ArtifactCacheKey, artifact: SharedSemanticArtifact) -> bool {
-        let fp = key.fingerprint();
+    fn insert(
+        &mut self,
+        fp: ArtifactFingerprint,
+        key: ArtifactCacheKey,
+        artifact: SharedSemanticArtifact,
+    ) -> bool {
         // Try to replace an exact existing key first.
         if let Some(bucket) = self.buckets.get_mut(&fp)
-            && let Some(entry) = bucket.iter_mut().find(|e| e.key == key)
+            && let Some(id) = bucket
+                .iter()
+                .copied()
+                .find(|id| self.entries.get(id).is_some_and(|entry| entry.key == key))
         {
-            entry.artifact = artifact;
+            self.entries
+                .get_mut(&id)
+                .expect("bucket entry exists")
+                .artifact = artifact;
             return false;
         }
         // New entry: enforce FIFO capacity before inserting.
         let evicted = if self.fifo.len() >= Self::MAX_ENTRIES {
-            if let Some(oldest_fp) = self.fifo.pop_front()
-                && let Some(bucket) = self.buckets.get_mut(&oldest_fp)
+            if let Some(oldest_id) = self.fifo.pop_front()
+                && let Some(entry) = self.entries.remove(&oldest_id)
+                && let Some(bucket) = self.buckets.get_mut(&entry.fingerprint)
             {
-                bucket.remove(0);
+                bucket.retain(|id| *id != oldest_id);
                 if bucket.is_empty() {
-                    self.buckets.remove(&oldest_fp);
+                    self.buckets.remove(&entry.fingerprint);
                 }
             }
             true
         } else {
             false
         };
-        self.fifo.push_back(fp);
-        self.buckets
-            .entry(fp)
-            .or_default()
-            .push(CacheEntry { key, artifact });
+        let id = self.next_id;
+        self.next_id = self.next_id.wrapping_add(1);
+        self.fifo.push_back(id);
+        self.buckets.entry(fp).or_default().push(id);
+        self.entries.insert(
+            id,
+            CacheEntry {
+                fingerprint: fp,
+                key,
+                artifact,
+            },
+        );
         evicted
     }
 }

@@ -10,10 +10,12 @@ pub fn rule() -> Rule {
         .category("markdown")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(MatcherDecl::module_member_call(
-            "obsidian",
-            "MarkdownRenderer.render",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "MarkdownRenderer.render")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

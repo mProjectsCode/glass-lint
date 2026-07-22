@@ -12,13 +12,24 @@ pub fn rule() -> Rule {
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call(
-            "Notification.requestPermission",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "self.registration.showNotification",
-        ))
-        .declaration(MatcherDecl::global_constructor("Notification"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("Notification.requestPermission")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("self.registration.showNotification")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_global("Notification")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

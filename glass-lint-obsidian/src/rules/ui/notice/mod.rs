@@ -13,9 +13,24 @@ pub fn rule() -> Rule {
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::global_constructor("Notice"))
-        .declaration(MatcherDecl::module_constructor("obsidian", "Notice"))
-        .declaration(MatcherDecl::module_class("obsidian", "Notice"))
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_global("Notice")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_module("obsidian", "Notice")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .class_module("obsidian", "Notice")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

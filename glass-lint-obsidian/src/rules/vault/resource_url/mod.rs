@@ -14,11 +14,24 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("app.vault.getResourcePath"))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.vault.adapter.getResourcePath",
-        ))
-        .declaration(MatcherDecl::string_contains("obsidian://"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.getResourcePath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.adapter.getResourcePath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .string_contains("obsidian://")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

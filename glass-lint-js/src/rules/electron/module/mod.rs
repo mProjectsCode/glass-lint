@@ -73,19 +73,64 @@ pub fn rule() -> Rule {
         .category("electron/module")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::import("electron"))
-        .declaration(MatcherDecl::import("electron/main"))
-        .declaration(MatcherDecl::import("electron/renderer"))
-        .declaration(MatcherDecl::import("electron/common"))
-        .declaration(MatcherDecl::import("electron/utility"))
-        .declaration(MatcherDecl::import("electron/sandbox"))
-        .declaration(MatcherDecl::module_constructor("electron", "BrowserWindow"));
+        .declaration(
+            MatcherDecl::builder()
+                .import_exact("electron")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .import_exact("electron/main")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .import_exact("electron/renderer")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .import_exact("electron/common")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .import_exact("electron/utility")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .import_exact("electron/sandbox")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_module("electron", "BrowserWindow")
+                .build()
+                .expect("valid matcher declaration"),
+        );
 
     for member in MODULE_CALLS {
-        builder = builder.declaration(MatcherDecl::module_member_call("electron", *member));
+        builder = builder.declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", *member)
+                .build()
+                .expect("valid matcher declaration"),
+        );
     }
     for member in MODULE_READS {
-        builder = builder.declaration(MatcherDecl::module_member_read("electron", *member));
+        builder = builder.declaration(
+            MatcherDecl::builder()
+                .member_read_module("electron", *member)
+                .build()
+                .expect("valid matcher declaration"),
+        );
     }
 
     builder.build().unwrap()

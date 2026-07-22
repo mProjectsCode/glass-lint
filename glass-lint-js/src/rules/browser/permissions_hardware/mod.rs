@@ -11,15 +11,24 @@ pub fn rule() -> Rule {
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call(
-            "navigator.hid.requestDevice",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "navigator.serial.requestPort",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "navigator.usb.requestDevice",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.hid.requestDevice")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.serial.requestPort")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.usb.requestDevice")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

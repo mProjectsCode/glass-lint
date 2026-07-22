@@ -12,8 +12,18 @@ pub fn rule() -> Rule {
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::module_constructor("obsidian", "Modal"))
-        .declaration(MatcherDecl::module_class("obsidian", "Modal"))
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_module("obsidian", "Modal")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .class_module("obsidian", "Modal")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

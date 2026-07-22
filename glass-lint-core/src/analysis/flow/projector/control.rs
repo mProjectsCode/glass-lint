@@ -73,7 +73,7 @@ impl ObjectFlowProjector<'_, '_> {
                     && *expected == region
                 {
                     *then_exit = Some(current);
-                    Some(base.clone())
+                    Some(*base)
                 } else {
                     None
                 };
@@ -94,11 +94,8 @@ impl ObjectFlowProjector<'_, '_> {
                     return;
                 }
                 let current = self.environment();
-                let joined = then_exit.as_ref().map_or_else(
-                    || FlowEnvironment::join(&base, &current),
-                    |then_exit| FlowEnvironment::join(then_exit, &current),
-                );
-                self.restore(joined);
+                let paths = then_exit.map_or_else(|| vec![base, current], |then_exit| vec![then_exit, current]);
+                self.join(&paths);
             }
             _ => unreachable!(),
         }
@@ -122,8 +119,8 @@ impl ObjectFlowProjector<'_, '_> {
                     && !continues.is_empty()
                 {
                     let mut paths = vec![current];
-                    paths.extend(continues.iter().cloned());
-                    self.restore(FlowEnvironment::join_many(&paths));
+                    paths.extend(continues.iter().copied());
+                    self.join(&paths);
                 }
             }
             ControlKind::LoopEnd => {
@@ -147,7 +144,7 @@ impl ObjectFlowProjector<'_, '_> {
                 paths.extend(breaks);
                 paths.extend(continues);
                 paths.push(self.environment());
-                self.restore(FlowEnvironment::join_many(&paths));
+                self.join(&paths);
             }
             _ => unreachable!(),
         }
@@ -175,11 +172,12 @@ impl ObjectFlowProjector<'_, '_> {
                 }) = self.control.last_mut()
                     && *expected == region
                 {
-                    restore = Some(FlowEnvironment::join(&current, baseline));
+                    restore = Some((current, *baseline));
                     *has_default |= is_default;
                 }
                 if let Some(environment) = restore {
-                    self.restore(environment);
+                    let paths = vec![environment.0, environment.1];
+                    self.join(&paths);
                 }
             }
             ControlKind::SwitchEnd => {
@@ -201,7 +199,7 @@ impl ObjectFlowProjector<'_, '_> {
                 if !has_default {
                     exits.push(baseline);
                 }
-                self.restore(FlowEnvironment::join_many(&exits));
+                self.join(&exits);
             }
             _ => unreachable!(),
         }
@@ -232,7 +230,7 @@ impl ObjectFlowProjector<'_, '_> {
                     && *expected == region
                 {
                     *try_exit = current.is_reachable().then_some(current);
-                    Some(baseline.clone())
+                    Some(*baseline)
                 } else {
                     None
                 };
@@ -248,7 +246,7 @@ impl ObjectFlowProjector<'_, '_> {
 
     fn start_finally(&mut self, region: ControlRegionId) {
         let current = self.environment();
-        let restore = if let Some(ControlFrame::Try {
+        let incoming = if let Some(ControlFrame::Try {
             region: expected,
             try_exit,
             catch_exit,
@@ -259,28 +257,23 @@ impl ObjectFlowProjector<'_, '_> {
         }) = self.control.last_mut()
             && *expected == region
         {
-            *catch_exit = Some(current.clone());
+            *catch_exit = Some(current);
             *has_finally = true;
-            let mut normal = try_exit.clone();
-            if current.is_reachable() {
-                normal = Some(normal.map_or_else(
-                    || current.clone(),
-                    |normal| FlowEnvironment::join(&normal, &current),
-                ));
-            }
-            normal_exit.clone_from(&normal);
-            let mut incoming = normal.into_iter().collect::<Vec<_>>();
+            let mut normal = (*try_exit).into_iter().collect::<Vec<_>>();
+            if current.is_reachable() { normal.push(current); }
+            normal_exit.clone_from(&normal.first().copied());
+            let mut incoming = normal;
             incoming.extend(
                 abrupt_exits
                     .iter()
-                    .map(|(_, environment)| environment.clone()),
+                    .map(|(_, environment)| *environment),
             );
-            Some(FlowEnvironment::join_many(&incoming))
+            Some(incoming)
         } else {
             None
         };
-        if let Some(environment) = restore {
-            self.restore(environment);
+        if let Some(incoming) = incoming {
+            self.join(&incoming);
         }
     }
 
@@ -312,7 +305,7 @@ impl ObjectFlowProjector<'_, '_> {
             });
         } else if let Some(try_exit) = try_exit {
             let catch_exit = catch_exit.unwrap_or_else(|| self.environment());
-            self.restore(FlowEnvironment::join(&try_exit, &catch_exit));
+            self.join(&[try_exit, catch_exit]);
         }
     }
 
@@ -361,7 +354,7 @@ impl ObjectFlowProjector<'_, '_> {
     fn record_abrupt_exit(&mut self, kind: AbruptExit, environment: &FlowEnvironment) {
         for frame in self.control.iter_mut().rev() {
             if let ControlFrame::Try { abrupt_exits, .. } = frame {
-                abrupt_exits.push((kind, environment.clone()));
+                abrupt_exits.push((kind, *environment));
             }
         }
     }
@@ -385,7 +378,7 @@ impl ObjectFlowProjector<'_, '_> {
             if let Some(targets) = targets {
                 for target in targets {
                     if target == before {
-                        *target = after.clone();
+                        *target = *after;
                     }
                 }
                 return;

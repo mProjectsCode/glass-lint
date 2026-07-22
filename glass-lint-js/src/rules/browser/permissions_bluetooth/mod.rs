@@ -11,9 +11,12 @@ pub fn rule() -> Rule {
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call(
-            "navigator.bluetooth.requestDevice",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.bluetooth.requestDevice")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

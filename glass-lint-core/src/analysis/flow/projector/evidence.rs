@@ -44,7 +44,7 @@ impl ObjectFlowProjector<'_, '_> {
                 let Some(flow) = self.flow_index.get(key.flow) else {
                     continue;
                 };
-                let Some(state) = self.flow_state.state_mut(key.object, key.flow) else {
+                let Some(mut state) = self.flow_state.state_mut(key.object, key.flow) else {
                     continue;
                 };
                 for (index, requirement) in flow.requirements.iter().enumerate() {
@@ -69,6 +69,7 @@ impl ObjectFlowProjector<'_, '_> {
                         state.record_requirement(index, event);
                     }
                 }
+                drop(state);
                 emit_if_ready(
                     &mut self.flow_evidence,
                     &self.flow_state,

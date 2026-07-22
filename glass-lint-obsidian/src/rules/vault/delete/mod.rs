@@ -13,9 +13,24 @@ pub fn rule() -> Rule {
         .category("vault")
         .confidence(Confidence::High)
         .severity(Severity::Warning)
-        .declaration(MatcherDecl::rooted_member_call("app.vault.delete"))
-        .declaration(MatcherDecl::rooted_member_call("app.vault.trash"))
-        .declaration(MatcherDecl::rooted_member_call("app.fileManager.trashFile"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.delete")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.trash")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.fileManager.trashFile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

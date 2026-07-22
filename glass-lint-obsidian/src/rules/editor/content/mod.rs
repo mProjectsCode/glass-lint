@@ -11,56 +11,78 @@ pub fn rule() -> Rule {
         .category("editor")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian", "Editor", "getValue",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian", "Editor", "setValue",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian", "Editor", "getLine",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian", "Editor", "setLine",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian", "Editor", "getRange",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Editor",
-            "replaceRange",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Editor",
-            "getSelection",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Editor",
-            "replaceSelection",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Editor",
-            "getCursor",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Editor",
-            "setCursor",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Editor",
-            "setSelection",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Editor",
-            "setSelections",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "getValue")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "setValue")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "getLine")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "setLine")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "getRange")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "replaceRange")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "getSelection")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "replaceSelection")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "getCursor")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "setCursor")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "setSelection")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Editor", "setSelections")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

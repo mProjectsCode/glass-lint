@@ -54,12 +54,42 @@ pub fn rule() -> Rule {
                 .build()
                 .unwrap(),
         )
-        .declaration(MatcherDecl::rooted_member_read("document.onkeydown"))
-        .declaration(MatcherDecl::rooted_member_read("document.onkeyup"))
-        .declaration(MatcherDecl::rooted_member_read("document.onkeypress"))
-        .declaration(MatcherDecl::rooted_member_read("document.onpaste"))
-        .declaration(MatcherDecl::rooted_member_read("document.oncopy"))
-        .declaration(MatcherDecl::rooted_member_read("document.oncut"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("document.onkeydown")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("document.onkeyup")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("document.onkeypress")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("document.onpaste")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("document.oncopy")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("document.oncut")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

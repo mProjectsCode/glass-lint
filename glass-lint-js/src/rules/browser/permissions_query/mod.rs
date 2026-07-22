@@ -11,9 +11,12 @@ pub fn rule() -> Rule {
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call(
-            "navigator.permissions.query",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.permissions.query")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

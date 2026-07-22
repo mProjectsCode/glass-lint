@@ -11,12 +11,30 @@ pub fn rule() -> Rule {
         .category("plugins")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("app.plugins.getPlugin"))
-        .declaration(MatcherDecl::rooted_member_read("app.plugins.plugins"))
-        .declaration(MatcherDecl::rooted_member_read("app.plugins.manifests"))
-        .declaration(MatcherDecl::rooted_member_read(
-            "app.plugins.enabledPlugins",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.plugins.getPlugin")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.plugins.plugins")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.plugins.manifests")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.plugins.enabledPlugins")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

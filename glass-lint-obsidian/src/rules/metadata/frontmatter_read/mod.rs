@@ -12,21 +12,30 @@ pub fn rule() -> Rule {
         .category("metadata")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(MatcherDecl::rooted_member_read(
-            "app.metadataCache.getFileCache.frontmatter",
-        ))
-        .declaration(MatcherDecl::returned_member_read(
-            "app.metadataCache.getFileCache",
-            "frontmatter",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "obsidian",
-            "parseFrontMatterAliases",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "obsidian",
-            "parseFrontMatterTags",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.metadataCache.getFileCache.frontmatter")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_returned("app.metadataCache.getFileCache", "frontmatter")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "parseFrontMatterAliases")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "parseFrontMatterTags")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

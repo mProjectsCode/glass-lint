@@ -12,9 +12,12 @@ pub fn rule() -> Rule {
         .category("storage")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian", "Plugin", "loadData",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Plugin", "loadData")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

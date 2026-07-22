@@ -220,7 +220,12 @@ mod tests {
             .category(category)
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .declaration(MatcherDecl::global_call("fetch"))
+            .declaration(
+                MatcherDecl::builder()
+                    .call_global("fetch")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
             .build()
     }
 
@@ -294,7 +299,12 @@ mod tests {
             .category("network")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .declaration(MatcherDecl::global_call(""))
+            .declaration(
+                MatcherDecl::builder()
+                    .call_global("")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
             .build()
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
@@ -317,7 +327,12 @@ mod tests {
             .category("classes")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .declaration(MatcherDecl::heuristic_class(""))
+            .declaration(
+                MatcherDecl::builder()
+                    .class_heuristic("")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
             .build()
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
@@ -327,7 +342,12 @@ mod tests {
             .category("packages")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .declaration(MatcherDecl::package_import("pkg/subpath"))
+            .declaration(
+                MatcherDecl::builder()
+                    .import_package("pkg/subpath")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
             .build()
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());

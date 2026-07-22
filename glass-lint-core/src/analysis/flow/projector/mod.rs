@@ -236,6 +236,10 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         self.reachable = self.flow_state.restore(environment);
     }
 
+    fn join(&mut self, environments: &[FlowEnvironment]) {
+        self.reachable = self.flow_state.join_environments(environments);
+    }
+
     fn record_property_write(
         &mut self,
         receiver: ValueId,
@@ -255,7 +259,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             let Some(flow) = self.flow_index.get(key.flow) else {
                 continue;
             };
-            let Some(state) = self.flow_state.state_mut(key.object, key.flow) else {
+            let Some(mut state) = self.flow_state.state_mut(key.object, key.flow) else {
                 continue;
             };
             for (index, requirement) in flow.requirements.iter().enumerate() {
@@ -271,6 +275,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     }
                 }
             }
+            drop(state);
             evidence::emit_if_ready(
                 &mut self.flow_evidence,
                 &self.flow_state,

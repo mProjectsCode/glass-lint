@@ -14,22 +14,42 @@ pub fn rule() -> Rule {
         .category("metadata")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_read("app.metadataCache"))
-        .declaration(MatcherDecl::rooted_member_read(
-            "app.metadataCache.resolvedLinks",
-        ))
-        .declaration(MatcherDecl::rooted_member_read(
-            "app.metadataCache.unresolvedLinks",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.metadataCache.getFileCache",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.metadataCache.getCache",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.metadataCache.getFirstLinkpathDest",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.metadataCache")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.metadataCache.resolvedLinks")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.metadataCache.unresolvedLinks")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.metadataCache.getFileCache")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.metadataCache.getCache")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.metadataCache.getFirstLinkpathDest")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

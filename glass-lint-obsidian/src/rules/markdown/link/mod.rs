@@ -12,30 +12,60 @@ pub fn rule() -> Rule {
         .category("markdown")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(MatcherDecl::module_member_call("obsidian", "parseLinktext"))
-        .declaration(MatcherDecl::module_member_call("obsidian", "normalizePath"))
-        .declaration(MatcherDecl::module_member_call("obsidian", "getLinkpath"))
-        .declaration(MatcherDecl::module_member_call(
-            "obsidian",
-            "fileToLinktext",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "obsidian",
-            "generateMarkdownLink",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "obsidian",
-            "resolveSubpath",
-        ))
-        .declaration(MatcherDecl::module_member_call("obsidian", "parseSubpath"))
-        .declaration(MatcherDecl::module_member_call(
-            "obsidian",
-            "parseFrontMatterAliases",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "obsidian",
-            "parseFrontMatterTags",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "parseLinktext")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "normalizePath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "getLinkpath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "fileToLinktext")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "generateMarkdownLink")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "resolveSubpath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "parseSubpath")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "parseFrontMatterAliases")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "parseFrontMatterTags")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

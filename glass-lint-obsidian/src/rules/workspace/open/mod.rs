@@ -14,32 +14,48 @@ pub fn rule() -> Rule {
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.openLinkText",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.getLeaf.openFile",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "app.workspace.getLeaf",
-            "openFile",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "app.workspace.getLeafById",
-            "openFile",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "app.workspace.getLeftLeaf",
-            "openFile",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "app.workspace.getRightLeaf",
-            "openFile",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "app.workspace.ensureSideLeaf",
-            "openFile",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.openLinkText")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.getLeaf.openFile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("app.workspace.getLeaf", "openFile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("app.workspace.getLeafById", "openFile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("app.workspace.getLeftLeaf", "openFile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("app.workspace.getRightLeaf", "openFile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("app.workspace.ensureSideLeaf", "openFile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

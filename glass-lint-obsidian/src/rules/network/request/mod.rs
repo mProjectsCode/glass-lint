@@ -13,10 +13,30 @@ pub fn rule() -> Rule {
         .category("network")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::global_call("request"))
-        .declaration(MatcherDecl::global_call("requestUrl"))
-        .declaration(MatcherDecl::module_member_call("obsidian", "request"))
-        .declaration(MatcherDecl::module_member_call("obsidian", "requestUrl"))
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("request")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("requestUrl")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "request")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("obsidian", "requestUrl")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

@@ -13,7 +13,12 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_read("app.vault.adapter"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.vault.adapter")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

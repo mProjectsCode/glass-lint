@@ -21,7 +21,7 @@ pub(in crate::analysis) use identity::{
     BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, NamePath, ValueId,
 };
 pub(in crate::analysis) use path::{
-    ParentPathStore, PathId, PathInterner, PathNode, PathSegment, PathSegmentInput,
+    ParentPathStore, PathId, PathInterner, PathSegment, PathSegmentInput,
 };
 
 #[cfg(test)]

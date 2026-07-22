@@ -16,7 +16,12 @@ fn linter() -> Linter {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::global_call("fetch"))
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap();
     let mut environment = Environment::default();

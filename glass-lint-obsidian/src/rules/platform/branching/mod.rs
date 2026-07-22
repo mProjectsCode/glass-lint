@@ -12,58 +12,84 @@ pub fn rule() -> Rule {
         .category("platform")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isMobile",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isDesktop",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isIosApp",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isAndroidApp",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isMacOS",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isWin",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isLinux",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isDesktopApp",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isMobileApp",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isPhone",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isTablet",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.isSafari",
-        ))
-        .declaration(MatcherDecl::module_member_read(
-            "obsidian",
-            "Platform.resourcePathPrefix",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isMobile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isDesktop")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isIosApp")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isAndroidApp")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isMacOS")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isWin")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isLinux")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isDesktopApp")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isMobileApp")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isPhone")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isTablet")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.isSafari")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_module("obsidian", "Platform.resourcePathPrefix")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

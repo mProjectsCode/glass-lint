@@ -41,6 +41,12 @@ impl AsRef<Path> for AdmittedSourcePath {
     }
 }
 
+impl AdmittedSourcePath {
+    pub(crate) fn into_path_buf(self) -> PathBuf {
+        self.0.into_path_buf()
+    }
+}
+
 /// Owns the canonical project root and source-file admission policy.
 ///
 /// Construct one [`SourceAdmission`] per project; its canonical root is
@@ -120,19 +126,6 @@ impl<'a> SourceAdmission<'a> {
             return Ok(PathAdmission::Unsupported(canonical));
         }
         Ok(PathAdmission::Admitted(AdmittedSourcePath(canonical)))
-    }
-
-    /// Return the canonical path when it is admitted by this project.
-    pub(crate) fn admitted_path(
-        &self,
-        path: &Path,
-    ) -> Result<Option<AdmittedSourcePath>, ProjectLoadError> {
-        Ok(match self.classify(path)? {
-            PathAdmission::Admitted(path) => Some(path),
-            PathAdmission::Outside(_)
-            | PathAdmission::Excluded(_)
-            | PathAdmission::Unsupported(_) => None,
-        })
     }
 
     /// Test whether a file extension is supported by the loader policy.

@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    admission::{CanonicalProjectPath, SourceAdmission},
+    admission::{PathAdmission, SourceAdmission},
     error::ProjectLoadError,
     options::ValidatedProjectLoadOptions,
     walk,
@@ -95,15 +95,17 @@ impl SourceCorpus {
         roots: &[PathBuf],
         mut include: impl FnMut(&Path) -> bool,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
-        let mut paths: BTreeSet<CanonicalProjectPath> = BTreeSet::new();
+        let mut paths: BTreeSet<PathBuf> = BTreeSet::new();
         for root in roots {
             let Some(metadata) = walk::resolve_root(&self.options, root)? else {
                 continue;
             };
             let admission = SourceAdmission::new(root, &self.options)?;
             if metadata.is_file() {
-                if admission.admitted_path(root)?.is_some() && include(root) {
-                    paths.insert(admission.canonicalize(root)?);
+                if include(root)
+                    && let PathAdmission::Admitted(path) = admission.classify(root)?
+                {
+                    paths.insert(path.into_path_buf());
                 }
                 continue;
             }
@@ -112,26 +114,29 @@ impl SourceCorpus {
             }
             let found = walk::collect_files(&admission, root, None, &mut include)?;
             for path in found {
-                paths.insert(path);
+                paths.insert(path.into_path_buf());
                 if paths.len() > self.options.max_files() {
                     return Err(ProjectLoadError::TooManyFiles(self.options.max_files()));
                 }
             }
         }
         debug_assert!(paths.len() <= self.options.max_files());
-        Ok(paths
-            .into_iter()
-            .map(super::admission::CanonicalProjectPath::into_path_buf)
-            .collect())
+        Ok(paths.into_iter().collect())
     }
 
     /// Read one supported source file after enforcing the byte budget.
     pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
         let root = path.parent().unwrap_or_else(|| Path::new("."));
         let admission = SourceAdmission::new(root, &self.options)?;
-        let Some(admitted) = admission.admitted_path(path)? else {
-            return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
-        };
-        read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())
+        match admission.classify(path)? {
+            PathAdmission::Admitted(admitted) => {
+                read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())
+            }
+            PathAdmission::Outside(path)
+            | PathAdmission::Excluded(path)
+            | PathAdmission::Unsupported(path) => {
+                Err(ProjectLoadError::UnsupportedSource(path.into_path_buf()))
+            }
+        }
     }
 }

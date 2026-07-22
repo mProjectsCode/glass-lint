@@ -33,8 +33,18 @@ pub fn rule() -> Rule {
                 .complete_at(FlowCompletion::configuration())
                 .build(),
         ))
-        .declaration(MatcherDecl::rooted_member_call("showOpenFilePicker"))
-        .declaration(MatcherDecl::rooted_member_call("showSaveFilePicker"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("showOpenFilePicker")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("showSaveFilePicker")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

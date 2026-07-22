@@ -15,26 +15,30 @@ pub fn rule() -> Rule {
         .category("lifecycle")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Plugin",
-            "registerEvent",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Plugin",
-            "registerDomEvent",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Plugin",
-            "registerInterval",
-        ))
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Plugin",
-            "registerObsidianProtocolHandler",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Plugin", "registerEvent")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Plugin", "registerDomEvent")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Plugin", "registerInterval")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Plugin", "registerObsidianProtocolHandler")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

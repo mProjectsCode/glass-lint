@@ -13,37 +13,84 @@ pub fn rule() -> Rule {
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.getLeavesOfType",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.detachLeavesOfType",
-        ))
-        .declaration(MatcherDecl::rooted_member_call("app.workspace.revealLeaf"))
-        .declaration(MatcherDecl::rooted_member_call("app.workspace.getLeaf"))
-        .declaration(MatcherDecl::rooted_member_call("app.workspace.getLeafById"))
-        .declaration(MatcherDecl::rooted_member_call("app.workspace.getLeftLeaf"))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.getRightLeaf",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.ensureSideLeaf",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.iterateRootLeaves",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.iterateAllLeaves",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.setActiveLeaf",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.moveLeafToPopout",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.openPopoutLeaf",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.getLeavesOfType")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.detachLeavesOfType")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.revealLeaf")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.getLeaf")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.getLeafById")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.getLeftLeaf")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.getRightLeaf")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.ensureSideLeaf")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.iterateRootLeaves")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.iterateAllLeaves")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.setActiveLeaf")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.moveLeafToPopout")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.openPopoutLeaf")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

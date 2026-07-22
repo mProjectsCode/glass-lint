@@ -15,38 +15,54 @@ pub fn rule() -> Rule {
         .category("electron/dialog")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "dialog.showOpenDialog",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "dialog.showSaveDialog",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "dialog.showOpenDialogSync",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "dialog.showSaveDialogSync",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "dialog.showMessageBox",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "dialog.showMessageBoxSync",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "dialog.showErrorBox",
-        ))
-        .declaration(MatcherDecl::module_member_call(
-            "electron",
-            "dialog.showCertificateTrustDialog",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "dialog.showOpenDialog")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "dialog.showSaveDialog")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "dialog.showOpenDialogSync")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "dialog.showSaveDialogSync")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "dialog.showMessageBox")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "dialog.showMessageBoxSync")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "dialog.showErrorBox")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_module("electron", "dialog.showCertificateTrustDialog")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

@@ -27,7 +27,7 @@ use crate::{
     },
     api::{
         classification::{ClassificationResult, MatchedCapability, RuleIndex},
-        compiler::{CompiledCatalog, CompiledRuleRecord},
+        compiler::{CompiledRuleRecord, CompiledRuleSelection},
     },
     budget::BudgetTracker,
     project::{
@@ -450,12 +450,12 @@ impl ProjectSemanticModel {
 
     pub fn classify_with_evidence_limit(
         &self,
-        catalog: &CompiledCatalog,
         records: &[CompiledRuleRecord],
         selected: &[RuleIndex],
         evidence_limit: usize,
     ) -> (BTreeMap<ModuleId, ClassificationResult>, ProjectionOutcome) {
-        let (matcher_catalog, outcome) = self.project(catalog.to_matcher_catalog(selected));
+        let (matcher_catalog, outcome) =
+            self.project(CompiledRuleSelection::new(records, selected));
         let results = self
             .modules()
             .map(|module| {

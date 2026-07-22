@@ -12,9 +12,12 @@ pub fn rule() -> Rule {
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_read(
-            "app.workspace.activeEditor",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_read_rooted("app.workspace.activeEditor")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

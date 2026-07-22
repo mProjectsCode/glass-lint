@@ -13,17 +13,30 @@ pub fn rule() -> Rule {
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::instance_member_call(
-            "obsidian",
-            "Plugin",
-            "addSettingTab",
-        ))
-        .declaration(MatcherDecl::heuristic_constructor("PluginSettingTab"))
-        .declaration(MatcherDecl::module_constructor(
-            "obsidian",
-            "PluginSettingTab",
-        ))
-        .declaration(MatcherDecl::module_class("obsidian", "PluginSettingTab"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Plugin", "addSettingTab")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_heuristic("PluginSettingTab")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_module("obsidian", "PluginSettingTab")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .class_module("obsidian", "PluginSettingTab")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

@@ -5,7 +5,7 @@
 //! keys, which is the precision boundary that prevents path-local facts from
 //! leaking after a control-flow merge.
 
-use std::collections::BTreeSet;
+use std::{collections::BTreeSet, ops::{Deref, DerefMut}};
 
 use crate::{
     analysis::{
@@ -38,79 +38,129 @@ enum InverseDelta {
     /// A state was inserted (undo: remove by key).
     StateInsert(FlowStateKey, FlowState),
     /// A state's requirements changed (undo: restore old state).
-    StateUpdate(FlowStateKey, FlowState),
+    StateUpdate(FlowStateKey, FlowState, FlowState),
     /// A state was removed (undo: re-insert with its old value).
     StateRemove(FlowStateKey, FlowState),
 }
 
-/// A position in the mutation log that acts as a rollback checkpoint.
+/// A position in the persistent mutation history that acts as a checkpoint.
 #[allow(dead_code)]
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub(super) struct Checkpoint(usize);
 
-/// A bounded mutation log that enables O(1) branch capture and O(delta)
-/// rollback without cloning complete alias or state tables.
+#[derive(Debug)]
+struct LogNode {
+    parent: usize,
+    depth: usize,
+    delta: InverseDelta,
+}
+
+/// A bounded parent-linked mutation history. Checkpoints are O(1); moving
+/// between them applies only the deltas on the paths between the checkpoints.
 #[derive(Debug, Default)]
 pub(super) struct MutationLog {
-    entries: Vec<InverseDelta>,
+    nodes: Vec<LogNode>,
+    cursor: usize,
     budget_exhausted: bool,
 }
 
 impl MutationLog {
     fn record(&mut self, delta: InverseDelta) {
-        if self.entries.len() >= MAX_MUTATION_LOG_ENTRIES {
+        if self.nodes.len() >= MAX_MUTATION_LOG_ENTRIES {
             self.budget_exhausted = true;
             return;
         }
-        self.entries.push(delta);
+        let parent = self.cursor;
+        let depth = self.depth(parent) + 1;
+        self.nodes.push(LogNode { parent, depth, delta });
+        self.cursor = self.nodes.len();
     }
 
     /// Record a checkpoint at the current log position.
     #[allow(dead_code)]
     pub(super) fn checkpoint(&self) -> Checkpoint {
-        Checkpoint(self.entries.len())
+        Checkpoint(self.cursor)
     }
 
-    /// Roll back all mutations recorded since `checkpoint`, applying inverse
-    /// deltas to the given tables.
-    #[allow(dead_code)]
-    fn rollback(
+    fn transition(
         &mut self,
         checkpoint: Checkpoint,
         aliases: &mut Vec<(ValueId, ObjectId)>,
         states: &mut Vec<(FlowStateKey, FlowState)>,
-    ) {
-        while self.entries.len() > checkpoint.0 {
-            match self.entries.pop().unwrap() {
-                InverseDelta::AliasInsert(value, _object) => {
-                    let _ = remove_sorted(aliases, &value);
-                }
-                InverseDelta::AliasUpdate(value, old, _new) => {
-                    if let Ok(pos) = aliases.binary_search_by_key(&value, |(k, _)| *k) {
-                        aliases[pos].1 = old;
-                    }
-                }
-                InverseDelta::AliasRemove(value, old_object) => {
-                    insert_sorted(aliases, (value, old_object));
-                }
-                InverseDelta::StateInsert(key, _state) => {
-                    let _ = remove_sorted(states, &key);
-                }
-                InverseDelta::StateUpdate(key, old_state) => {
-                    if let Ok(pos) = states.binary_search_by_key(&key, |(k, _)| *k) {
-                        states[pos].1 = old_state;
-                    }
-                }
-                InverseDelta::StateRemove(key, old_state) => {
-                    insert_sorted(states, (key, old_state));
-                }
-            }
+    ) -> bool {
+        if checkpoint.0 > self.nodes.len() || self.budget_exhausted {
+            return false;
         }
+        let mut current = self.cursor;
+        let mut target = checkpoint.0;
+        while self.depth(current) > self.depth(target) { current = self.nodes[current - 1].parent; }
+        while self.depth(target) > self.depth(current) { target = self.nodes[target - 1].parent; }
+        while current != target {
+            current = self.nodes[current - 1].parent;
+            target = self.nodes[target - 1].parent;
+        }
+        let lca = current;
+        let mut node = self.cursor;
+        while node != lca {
+            apply_inverse(&self.nodes[node - 1].delta, aliases, states);
+            node = self.nodes[node - 1].parent;
+        }
+        let mut forward = Vec::new();
+        node = checkpoint.0;
+        while node != lca { forward.push(node); node = self.nodes[node - 1].parent; }
+        for node in forward.into_iter().rev() {
+            apply_forward(&self.nodes[node - 1].delta, aliases, states);
+        }
+        self.cursor = checkpoint.0;
+        true
+    }
+
+    fn depth(&self, node: usize) -> usize {
+        if node == 0 { return 0; }
+        self.nodes.get(node.saturating_sub(1)).map_or(0, |entry| entry.depth)
     }
 
     #[allow(dead_code)]
     pub(super) fn exhausted(&self) -> bool {
         self.budget_exhausted
+    }
+}
+
+fn apply_inverse(
+    delta: &InverseDelta,
+    aliases: &mut Vec<(ValueId, ObjectId)>,
+    states: &mut Vec<(FlowStateKey, FlowState)>,
+) {
+    match delta {
+        InverseDelta::AliasInsert(value, _) => { let _ = remove_sorted(aliases, value); }
+        InverseDelta::AliasUpdate(value, old, _) => {
+            if let Ok(pos) = aliases.binary_search_by_key(value, |(key, _)| *key) { aliases[pos].1 = *old; }
+        }
+        InverseDelta::AliasRemove(value, object) => insert_sorted(aliases, (*value, *object)),
+        InverseDelta::StateInsert(key, _) => { let _ = remove_sorted(states, key); }
+        InverseDelta::StateUpdate(key, old, _) => {
+            if let Ok(pos) = states.binary_search_by_key(key, |(entry, _)| *entry) { states[pos].1 = old.clone(); }
+        }
+        InverseDelta::StateRemove(key, state) => insert_sorted(states, (*key, state.clone())),
+    }
+}
+
+fn apply_forward(
+    delta: &InverseDelta,
+    aliases: &mut Vec<(ValueId, ObjectId)>,
+    states: &mut Vec<(FlowStateKey, FlowState)>,
+) {
+    match delta {
+        InverseDelta::AliasInsert(value, object) => insert_sorted(aliases, (*value, *object)),
+        InverseDelta::AliasUpdate(value, _, new) => {
+            if let Ok(pos) = aliases.binary_search_by_key(value, |(key, _)| *key) { aliases[pos].1 = *new; }
+        }
+        InverseDelta::AliasRemove(value, _) => { let _ = remove_sorted(aliases, value); }
+        InverseDelta::StateInsert(key, state) => insert_sorted(states, (*key, state.clone())),
+        InverseDelta::StateUpdate(key, _, new) => {
+            if let Ok(pos) = states.binary_search_by_key(key, |(entry, _)| *entry) { states[pos].1 = new.clone(); }
+        }
+        InverseDelta::StateRemove(key, _) => { let _ = remove_sorted(states, key); }
     }
 }
 
@@ -133,13 +183,10 @@ impl ReportEvidenceKey {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// Snapshot of aliases, flow states, and reachability at a control boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// O(1) snapshot of the live tables and reachability at a control boundary.
 pub(super) struct FlowEnvironment {
-    /// Value-to-object aliases proven on the snapshot path.
-    aliases: Vec<(ValueId, ObjectId)>,
-    /// Object/flow lifecycle states proven on the snapshot path.
-    states: Vec<(FlowStateKey, FlowState)>,
+    checkpoint: Checkpoint,
     /// Whether execution can reach the snapshot.
     reachable: bool,
 }
@@ -157,9 +204,10 @@ pub(super) struct FlowStateTable {
 
 impl FlowStateTable {
     pub(super) fn clear(&mut self) {
-        self.aliases.clear();
-        self.states.clear();
-        self.log = MutationLog::default();
+        let aliases = std::mem::take(&mut self.aliases);
+        for (value, object) in aliases { self.log.record(InverseDelta::AliasRemove(value, object)); }
+        let states = std::mem::take(&mut self.states);
+        for (key, state) in states { self.log.record(InverseDelta::StateRemove(key, state)); }
     }
 
     pub(super) fn object_for(&self, value: ValueId) -> Option<ObjectId> {
@@ -223,21 +271,24 @@ impl FlowStateTable {
         Some(&self.states[pos].1)
     }
 
-    pub(super) fn state_mut(&mut self, object: ObjectId, flow: FlowId) -> Option<&mut FlowState> {
+    pub(super) fn state_mut(&mut self, object: ObjectId, flow: FlowId) -> Option<StateEdit<'_>> {
         let key = FlowStateKey { object, flow };
         let pos = self.states.binary_search_by_key(&key, |(k, _)| *k).ok()?;
         let old = self.states[pos].1.clone();
-        self.log.record(InverseDelta::StateUpdate(key, old));
-        Some(&mut self.states[pos].1)
+        Some(StateEdit { table: self, key, pos, old })
     }
 
     pub(super) fn insert_state(&mut self, state: FlowState) {
         let key = state.key();
-        self.log
-            .record(InverseDelta::StateInsert(key, state.clone()));
         match self.states.binary_search_by_key(&key, |(k, _)| *k) {
-            Ok(index) => self.states[index].1 = state,
-            Err(index) => self.states.insert(index, (key, state)),
+            Ok(index) => {
+                let old = std::mem::replace(&mut self.states[index].1, state.clone());
+                self.log.record(InverseDelta::StateUpdate(key, old, state));
+            }
+            Err(index) => {
+                self.states.insert(index, (key, state.clone()));
+                self.log.record(InverseDelta::StateInsert(key, state));
+            }
         }
     }
 
@@ -253,8 +304,7 @@ impl FlowStateTable {
             .cloned()
             .collect();
         for (key, state) in &old {
-            self.log
-                .record(InverseDelta::StateRemove(*key, state.clone()));
+            self.log.record(InverseDelta::StateRemove(*key, state.clone()));
         }
         self.states.retain(|(key, _)| key.object != object);
     }
@@ -262,8 +312,7 @@ impl FlowStateTable {
     /// Record a checkpoint at the current mutation log position.
     pub(super) fn capture(&self, reachable: bool) -> FlowEnvironment {
         FlowEnvironment {
-            aliases: self.aliases.clone(),
-            states: self.states.clone(),
+            checkpoint: self.log.checkpoint(),
             reachable,
         }
     }
@@ -271,10 +320,65 @@ impl FlowStateTable {
     /// Restore a previously captured environment by rolling back the mutation
     /// log to the checkpoint that corresponds to the environment.
     pub(super) fn restore(&mut self, environment: FlowEnvironment) -> bool {
-        self.aliases = environment.aliases;
-        self.states = environment.states;
-        self.log = MutationLog::default();
-        environment.reachable
+        if self.log.transition(environment.checkpoint, &mut self.aliases, &mut self.states) {
+            environment.reachable
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn join_environments(&mut self, environments: &[FlowEnvironment]) -> bool {
+        let origin = self.log.checkpoint();
+        let mut snapshots = Vec::new();
+        for environment in environments.iter().filter(|environment| environment.reachable) {
+            if !self.restore(*environment) { return false; }
+            snapshots.push((self.aliases.clone(), self.states.clone()));
+        }
+        if !self.restore(FlowEnvironment { checkpoint: origin, reachable: true }) { return false; }
+        let mut snapshot_iter = snapshots.into_iter();
+        let Some((mut aliases, mut states)) = snapshot_iter.next() else {
+            self.clear();
+            return false;
+        };
+        for (other_aliases, other_states) in snapshot_iter {
+            aliases.retain(|(value, object)| {
+                other_aliases.binary_search_by_key(value, |(key, _)| *key)
+                    .is_ok_and(|pos| other_aliases[pos].1 == *object)
+            });
+            states.retain_mut(|(key, state)| {
+                let Some(pos) = other_states.binary_search_by_key(key, |(entry, _)| *entry).ok() else { return false; };
+                state.retain_requirement_keys(&other_states[pos].1);
+                true
+            });
+        }
+        self.clear();
+        for alias in aliases { self.bind(alias.0, alias.1); }
+        for (_, state) in states { self.insert_state(state); }
+        true
+    }
+}
+
+pub(super) struct StateEdit<'a> {
+    table: &'a mut FlowStateTable,
+    key: FlowStateKey,
+    pos: usize,
+    old: FlowState,
+}
+
+impl Deref for StateEdit<'_> {
+    type Target = FlowState;
+
+    fn deref(&self) -> &Self::Target { &self.table.states[self.pos].1 }
+}
+
+impl DerefMut for StateEdit<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.table.states[self.pos].1 }
+}
+
+impl Drop for StateEdit<'_> {
+    fn drop(&mut self) {
+        let new = self.table.states[self.pos].1.clone();
+        self.table.log.record(InverseDelta::StateUpdate(self.key, self.old.clone(), new));
     }
 }
 
@@ -328,6 +432,30 @@ impl FlowEvidence {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checkpoints_restore_divergent_mutation_paths() {
+        let mut table = FlowStateTable::default();
+        table.bind(ValueId(1), ObjectId(1));
+        let base = table.capture(true);
+
+        table.bind(ValueId(2), ObjectId(2));
+        let left = table.capture(true);
+        assert!(table.restore(base));
+        assert_eq!(table.object_for(ValueId(2)), None);
+
+        table.bind(ValueId(3), ObjectId(3));
+        assert!(table.restore(left));
+        assert_eq!(table.object_for(ValueId(2)), Some(ObjectId(2)));
+        assert_eq!(table.object_for(ValueId(3)), None);
+        assert!(table.restore(base));
+        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(1)));
+    }
+}
+
 #[derive(Debug, Clone)]
 /// Saved control construct state used to restore and join environments.
 pub(super) enum ControlFrame {
@@ -378,64 +506,9 @@ impl FlowEnvironment {
     /// Construct an unreachable environment with no usable state.
     pub(super) fn unreachable() -> Self {
         Self {
-            aliases: Vec::new(),
-            states: Vec::new(),
+            checkpoint: Checkpoint::default(),
             reachable: false,
         }
-    }
-
-    /// Join two paths, retaining only aliases and requirements proven on both.
-    pub(super) fn join(left: &Self, right: &Self) -> Self {
-        if !left.is_reachable() {
-            return right.clone();
-        }
-        if !right.is_reachable() {
-            return left.clone();
-        }
-        let aliases = left
-            .aliases
-            .iter()
-            .filter_map(|(binding, object)| {
-                let found = right
-                    .aliases
-                    .binary_search_by_key(binding, |(k, _)| *k)
-                    .is_ok_and(|pos| right.aliases[pos].1 == *object);
-                found.then_some((*binding, *object))
-            })
-            .collect();
-        let states = left
-            .states
-            .iter()
-            .filter_map(|(key, left_state)| {
-                let pos = right.states.binary_search_by_key(key, |(k, _)| *k).ok()?;
-                let right_state = &right.states[pos].1;
-                let mut state = left_state.clone();
-                state.retain_requirement_keys(right_state);
-                Some((*key, state))
-            })
-            .collect();
-        Self {
-            aliases,
-            states,
-            reachable: true,
-        }
-    }
-
-    /// Join all reachable paths, or return unreachable when none survive.
-    pub(super) fn join_many(environments: &[Self]) -> Self {
-        let Some(first) = environments
-            .iter()
-            .find(|environment| environment.is_reachable())
-        else {
-            return Self::unreachable();
-        };
-        environments
-            .iter()
-            .filter(|environment| environment.is_reachable())
-            .skip(1)
-            .fold(first.clone(), |joined, environment| {
-                Self::join(&joined, environment)
-            })
     }
 
     /// Whether this snapshot represents a reachable execution path.

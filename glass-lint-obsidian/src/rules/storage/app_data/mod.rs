@@ -12,17 +12,36 @@ pub fn rule() -> Rule {
         .category("storage")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("app.loadLocalStorage"))
-        .declaration(MatcherDecl::rooted_member_call("app.saveLocalStorage"))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.secretStorage.getSecret",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.secretStorage.setSecret",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.secretStorage.listSecrets",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.loadLocalStorage")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.saveLocalStorage")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.secretStorage.getSecret")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.secretStorage.setSecret")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.secretStorage.listSecrets")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

@@ -13,13 +13,24 @@ pub fn rule() -> Rule {
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .declaration(MatcherDecl::rooted_member_call("app.workspace.getLayout"))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.changeLayout",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.requestSaveLayout",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.getLayout")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.changeLayout")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.requestSaveLayout")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

@@ -13,11 +13,36 @@ pub fn rule() -> Rule {
         .category("browser/network")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::global_call("fetch"))
-        .declaration(MatcherDecl::rooted_member_call("navigator.sendBeacon"))
-        .declaration(MatcherDecl::global_constructor("XMLHttpRequest"))
-        .declaration(MatcherDecl::global_constructor("WebSocket"))
-        .declaration(MatcherDecl::global_constructor("EventSource"))
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.sendBeacon")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_global("XMLHttpRequest")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_global("WebSocket")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .constructor_global("EventSource")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

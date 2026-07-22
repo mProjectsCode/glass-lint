@@ -12,9 +12,12 @@ pub fn rule() -> Rule {
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.workspace.getActiveFile",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.getActiveFile")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

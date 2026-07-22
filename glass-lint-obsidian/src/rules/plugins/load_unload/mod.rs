@@ -9,24 +9,42 @@ pub fn rule() -> Rule {
         .category("plugins")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("app.plugins.loadPlugin"))
-        .declaration(MatcherDecl::rooted_member_call("app.plugins.unloadPlugin"))
-        .declaration(MatcherDecl::returned_member_call(
-            "app.plugins.getPlugin",
-            "load",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "app.plugins.getPlugin",
-            "unload",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "app.plugins.plugins",
-            "load",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "app.plugins.plugins",
-            "unload",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.plugins.loadPlugin")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.plugins.unloadPlugin")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("app.plugins.getPlugin", "load")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("app.plugins.getPlugin", "unload")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("app.plugins.plugins", "load")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("app.plugins.plugins", "unload")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

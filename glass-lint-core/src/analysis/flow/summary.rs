@@ -23,8 +23,7 @@ use crate::analysis::{
         table::FunctionTable,
     },
     value::{
-        FunctionId, ParentPathStore, PathId, PathInterner, PathNode, PathSegment, Value, ValueId,
-        ValueTable,
+        FunctionId, ParentPathStore, PathId, PathInterner, PathSegment, Value, ValueId, ValueTable,
     },
 };
 
@@ -177,8 +176,8 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     fn find_edge_impl(&self, parent: u32, segment: &PathSegment) -> Option<u32> {
-        if let Some(child) = self.overlay.by_edge.get(&(parent, segment.clone())) {
-            return Some(*child);
+        if let Some(child) = self.overlay.find_linked_edge(parent, segment) {
+            return Some(child);
         }
         if parent & OVERLAY_TAG == 0
             && let Some(child) = self.frozen.store().find_edge(parent, segment)
@@ -201,15 +200,9 @@ impl<'a> SummaryPathStore<'a> {
             return None;
         }
         let depth = self.depth(parent)?.checked_add(1)?;
-        let index = self.overlay.node_count();
-        let raw_id = u32::try_from(index).ok()? | OVERLAY_TAG;
-        self.overlay.nodes.push(PathNode {
-            parent: parent.0,
-            depth,
-            segment: Some(segment.clone()),
-        });
-        self.overlay.by_edge.insert((parent.0, segment), raw_id);
-        Some(SummaryPathId(raw_id))
+        self.overlay
+            .append_linked(parent.0, segment, depth)
+            .map(SummaryPathId)
     }
 
     fn append(&mut self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
@@ -248,6 +241,7 @@ impl<'a> SummaryPathStore<'a> {
         self.find_edge(parent, &segment)
     }
 
+    #[cfg(test)]
     pub(super) fn owned_segments(&self, id: SummaryPathId) -> Option<Vec<PathSegment>> {
         let depth = self.depth(id)?;
         let mut segments = Vec::with_capacity(depth as usize);
@@ -259,6 +253,20 @@ impl<'a> SummaryPathStore<'a> {
         }
         segments.reverse();
         Some(segments)
+    }
+
+    fn visit_segments(
+        &self,
+        id: SummaryPathId,
+        visit: &mut impl FnMut(&PathSegment),
+    ) -> Option<()> {
+        if id.is_empty() {
+            return Some(());
+        }
+        let parent = self.parent(id)?;
+        self.visit_segments(parent, visit)?;
+        visit(self.segment(id)?);
+        Some(())
     }
 }
 
@@ -413,31 +421,28 @@ impl<'a> FunctionSummaries<'a> {
     }
 
     fn propagate_sinks(&mut self, stream: &FactStream) {
+        let ids: Vec<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
         for _ in 0..MAX_SUMMARY_ROUNDS {
             let mut changed = false;
-            let prev_offsets: Vec<(FunctionId, usize)> = self
-                .by_id
-                .iter()
-                .map(|(id, s)| (id, s.sinks_offset))
-                .collect();
-            for (_, summary) in self.by_id.iter_mut() {
-                summary.sinks_offset = summary.sinks.0.len();
-            }
-            let rounds: Vec<(FunctionId, FactId)> = {
-                let ids: Vec<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
-                let mut entries = Vec::new();
-                for caller in ids {
-                    let Some(s) = self.by_id.get(caller) else {
+            for caller in &ids {
+                let call_count = self
+                    .by_id
+                    .get(*caller)
+                    .map_or(0, |summary| summary.calls.len());
+                for index in 0..call_count {
+                    let Some(call_id) = self
+                        .by_id
+                        .get(*caller)
+                        .and_then(|summary| summary.calls.get(index))
+                        .copied()
+                    else {
                         continue;
                     };
-                    for call_id in &s.calls {
-                        entries.push((caller, *call_id));
-                    }
+                    changed |= self.propagate_call_sinks(call_id, *caller, stream);
                 }
-                entries
-            };
-            for (caller, call_id) in &rounds {
-                changed |= self.propagate_call_sinks(*call_id, *caller, stream, &prev_offsets);
+            }
+            for (_, summary) in self.by_id.iter_mut() {
+                summary.sinks_offset = summary.sinks.0.len();
             }
             if !changed {
                 break;
@@ -450,19 +455,20 @@ impl<'a> FunctionSummaries<'a> {
         call_id: FactId,
         caller: FunctionId,
         stream: &FactStream,
-        prev_offsets: &[(FunctionId, usize)],
     ) -> bool {
         let Some((target, args)) = resolve_call_target(call_id, stream) else {
             return false;
         };
-        let target_sinks_offset = prev_offsets
-            .iter()
-            .find(|(id, _)| *id == target)
-            .map_or(0, |(_, offset)| *offset);
+        let target_sinks_offset = self
+            .by_id
+            .get(target)
+            .map_or(0, |summary| summary.sinks_offset);
         if target == caller {
             return false;
         }
-        let (target_summary, caller_summary) = self.by_id.get_disjoint(target, caller);
+        let Some((target_summary, caller_summary)) = self.by_id.get_disjoint(target, caller) else {
+            return false;
+        };
         let target_summary = match target_summary {
             Some(s) if s.is_invocation_compatible(stream, args, &self.paths) => s,
             _ => return false,
@@ -700,10 +706,9 @@ impl ParameterBinding {
             if path.is_empty() {
                 return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
             }
-            return stream.values().and_then(|values| {
-                let segments = paths.owned_segments(path).unwrap_or_default();
-                value_at_path(values, argument.value, &segments)
-            });
+            return stream
+                .values()
+                .and_then(|values| value_at_path(values, argument.value, paths, path));
         }
 
         if path.is_empty() {
@@ -713,8 +718,7 @@ impl ParameterBinding {
         stream.values().map_or_else(
             || self.default.filter(|value| *value != ValueId::UNKNOWN),
             |values| {
-                let segments = paths.owned_segments(path).unwrap_or_default();
-                let id = value_at_path(values, argument.value, &segments)
+                let id = value_at_path(values, argument.value, paths, path)
                     .filter(|v| *v != ValueId::UNKNOWN);
                 id.or_else(|| self.default.filter(|value| *value != ValueId::UNKNOWN))
             },
@@ -725,25 +729,40 @@ impl ParameterBinding {
 fn value_at_path(
     values: &ValueTable,
     value_id: ValueId,
-    segments: &[PathSegment],
+    paths: &SummaryPathStore<'_>,
+    path: SummaryPathId,
 ) -> Option<ValueId> {
     let mut current = value_id;
-    for segment in segments {
-        let value = values.resolve(current)?;
-        current = match value {
+    let mut valid = true;
+    paths.visit_segments(path, &mut |segment| {
+        if !valid {
+            return;
+        }
+        let Some(value) = values.resolve(current) else {
+            valid = false;
+            return;
+        };
+        let next = match value {
             Value::StaticObject(entries) => match segment {
-                PathSegment::Property(name_id) => entries
-                    .iter()
-                    .find(|(k, _)| k == name_id)
-                    .map(|(_, v)| *v)?,
-                PathSegment::Index(_) => return None,
+                PathSegment::Property(name_id) => {
+                    entries.iter().find(|(k, _)| k == name_id).map(|(_, v)| *v)
+                }
+                PathSegment::Index(_) => None,
             },
             Value::StaticArray(elements) => match segment {
-                PathSegment::Index(index) => elements.get(*index as usize).copied()?,
-                PathSegment::Property(_) => return None,
+                PathSegment::Index(index) => elements.get(*index as usize).copied(),
+                PathSegment::Property(_) => None,
             },
-            _ => return None,
+            _ => None,
         };
+        if let Some(next) = next {
+            current = next;
+        } else {
+            valid = false;
+        }
+    })?;
+    if !valid {
+        return None;
     }
     (current != ValueId::UNKNOWN).then_some(current)
 }

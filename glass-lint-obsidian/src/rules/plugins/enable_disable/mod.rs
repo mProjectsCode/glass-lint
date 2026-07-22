@@ -10,14 +10,30 @@ pub fn rule() -> Rule {
         .category("plugins")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("app.plugins.enablePlugin"))
-        .declaration(MatcherDecl::rooted_member_call("app.plugins.disablePlugin"))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.plugins.enablePluginAndSave",
-        ))
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.plugins.disablePluginAndSave",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.plugins.enablePlugin")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.plugins.disablePlugin")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.plugins.enablePluginAndSave")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.plugins.disablePluginAndSave")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

@@ -127,423 +127,9 @@ impl MatcherDecl {
     }
 }
 
-// ── Convenience constructors ──────────────────────────────────────────────
+// ── Builder entry ──
 
 impl MatcherDecl {
-    fn validated(identity: IdentityConstraint, event: EventPredicate, symbol: String) -> Self {
-        let kind = match &event {
-            EventPredicate::Call => MatchKind::Call,
-            EventPredicate::Construct => MatchKind::Constructor,
-            EventPredicate::MemberCall { .. } => MatchKind::MemberCall,
-            EventPredicate::MemberRead { .. } => MatchKind::MemberRead,
-            EventPredicate::ClassReference => MatchKind::Class,
-            EventPredicate::Import => MatchKind::Import,
-            EventPredicate::StringReference => MatchKind::StringContains,
-        };
-        Self {
-            identity,
-            event,
-            subject: SubjectConstraint::Direct,
-            constraints: Vec::new(),
-            evidence_kind: kind,
-            evidence_symbol: symbol,
-            object_flow: None,
-        }
-    }
-
-    /// Direct global call, e.g. `fetch(...)`.
-    pub fn global_call(name: impl Into<String>) -> Self {
-        let name: SmolStr = name.into().into();
-        Self::validated(
-            IdentityConstraint::Global {
-                name: name.clone(),
-                strength: IdentityStrength::Strict,
-            },
-            EventPredicate::Call,
-            name.to_string(),
-        )
-    }
-
-    /// Heuristic spelling call, e.g. any `fetch(...)` call.
-    pub fn heuristic_call(name: impl Into<String>) -> Self {
-        let name: SmolStr = name.into().into();
-        Self::validated(
-            IdentityConstraint::Any {
-                name: name.clone(),
-                strength: IdentityStrength::Heuristic,
-            },
-            EventPredicate::Call,
-            name.to_string(),
-        )
-    }
-
-    /// Call of a module export, e.g. `import { exec } from "child_process";
-    /// exec(...)`.
-    pub fn module_call(module: impl Into<String>, export: impl Into<String>) -> Self {
-        let module: SmolStr = module.into().into();
-        let export: SmolStr = export.into().into();
-        Self::validated(
-            IdentityConstraint::ModuleExport {
-                module: module.clone(),
-                export: export.clone(),
-            },
-            EventPredicate::Call,
-            format!("{module}.{export}"),
-        )
-    }
-
-    pub fn package_call(module: impl Into<String>, export: impl Into<String>) -> Self {
-        let export: SmolStr = export.into().into();
-        let pattern = ModuleSpecifierPattern::package(module);
-        let sym = pattern.to_string();
-        Self::validated(
-            IdentityConstraint::PackageModuleExport {
-                module: pattern,
-                export: export.clone(),
-            },
-            EventPredicate::Call,
-            format!("{sym}.{export}"),
-        )
-    }
-
-    /// Rooted member call, e.g. `document.createElement(...)`.
-    pub fn rooted_member_call(chain: impl Into<String>) -> Self {
-        let path = SymbolPath::from(chain.into().as_str());
-        Self::validated(
-            IdentityConstraint::Rooted { path: path.clone() },
-            EventPredicate::MemberCall {
-                member: path.clone(),
-            },
-            path.to_string(),
-        )
-    }
-
-    /// Heuristic member call, e.g. any `client.open(...)`.
-    pub fn heuristic_member_call(chain: impl Into<String>) -> Self {
-        let chain_str: String = chain.into();
-        let path = SymbolPath::from(chain_str.as_str());
-        let name: SmolStr = chain_str.as_str().into();
-        Self::validated(
-            IdentityConstraint::Any {
-                name,
-                strength: IdentityStrength::Heuristic,
-            },
-            EventPredicate::MemberCall { member: path },
-            chain_str,
-        )
-    }
-
-    /// Module-namespace member call, e.g.
-    /// `electron.dialog.showOpenDialog(...)`.
-    pub fn module_member_call(module: impl Into<String>, member: impl Into<String>) -> Self {
-        let module: SmolStr = module.into().into();
-        let member_str: String = member.into();
-        let path = SymbolPath::from(member_str.as_str());
-        Self::validated(
-            IdentityConstraint::ModuleNamespace {
-                module: module.clone(),
-            },
-            EventPredicate::MemberCall { member: path },
-            format!("{module}.{member_str}"),
-        )
-    }
-
-    pub fn package_member_call(module: impl Into<String>, member: impl Into<String>) -> Self {
-        let member_str: String = member.into();
-        let path = SymbolPath::from(member_str.as_str());
-        let pattern = ModuleSpecifierPattern::package(module);
-        let sym = pattern.to_string();
-        Self::validated(
-            IdentityConstraint::PackageModuleNamespace { module: pattern },
-            EventPredicate::MemberCall { member: path },
-            format!("{sym}.{member_str}"),
-        )
-    }
-
-    /// Rooted member read, e.g. `window.location`.
-    pub fn rooted_member_read(chain: impl Into<String>) -> Self {
-        let path = SymbolPath::from(chain.into().as_str());
-        Self::validated(
-            IdentityConstraint::Rooted { path: path.clone() },
-            EventPredicate::MemberRead {
-                member: path.clone(),
-            },
-            path.to_string(),
-        )
-    }
-
-    /// Heuristic member read.
-    pub fn heuristic_member_read(chain: impl Into<String>) -> Self {
-        let chain_str: String = chain.into();
-        let path = SymbolPath::from(chain_str.as_str());
-        let name: SmolStr = chain_str.as_str().into();
-        Self::validated(
-            IdentityConstraint::Any {
-                name,
-                strength: IdentityStrength::Heuristic,
-            },
-            EventPredicate::MemberRead { member: path },
-            chain_str,
-        )
-    }
-
-    /// Module-namespace member read.
-    pub fn module_member_read(module: impl Into<String>, member: impl Into<String>) -> Self {
-        let module: SmolStr = module.into().into();
-        let member_str: String = member.into();
-        let path = SymbolPath::from(member_str.as_str());
-        Self::validated(
-            IdentityConstraint::ModuleNamespace {
-                module: module.clone(),
-            },
-            EventPredicate::MemberRead { member: path },
-            format!("{module}.{member_str}"),
-        )
-    }
-
-    pub fn package_member_read(module: impl Into<String>, member: impl Into<String>) -> Self {
-        let member_str: String = member.into();
-        let path = SymbolPath::from(member_str.as_str());
-        let pattern = ModuleSpecifierPattern::package(module);
-        let sym = pattern.to_string();
-        Self::validated(
-            IdentityConstraint::PackageModuleNamespace { module: pattern },
-            EventPredicate::MemberRead { member: path },
-            format!("{sym}.{member_str}"),
-        )
-    }
-
-    /// Exact module import, e.g. `import "fs"`.
-    pub fn import(module: impl Into<String>) -> Self {
-        let module_str: String = module.into();
-        Self::validated(
-            IdentityConstraint::LiteralString {
-                predicate: module_str.clone(),
-            },
-            EventPredicate::Import,
-            module_str,
-        )
-    }
-
-    /// Package import pattern.
-    pub fn package_import(module: impl Into<String>) -> Self {
-        let pattern = ModuleSpecifierPattern::package(module);
-        let sym = pattern.to_string();
-        Self {
-            identity: IdentityConstraint::PackageSpecifier { pattern },
-            event: EventPredicate::Import,
-            subject: SubjectConstraint::Direct,
-            constraints: Vec::new(),
-            evidence_kind: MatchKind::Import,
-            evidence_symbol: sym,
-            object_flow: None,
-        }
-    }
-
-    /// Static string reference containing the given value.
-    pub fn string_contains(value: impl Into<String>) -> Self {
-        let value_str: String = value.into();
-        Self::validated(
-            IdentityConstraint::LiteralString {
-                predicate: value_str.clone(),
-            },
-            EventPredicate::StringReference,
-            value_str,
-        )
-    }
-
-    pub fn heuristic_class(name: impl Into<String>) -> Self {
-        let name: SmolStr = name.into().into();
-        Self::validated(
-            IdentityConstraint::Any {
-                name: name.clone(),
-                strength: IdentityStrength::Heuristic,
-            },
-            EventPredicate::ClassReference,
-            name.to_string(),
-        )
-    }
-
-    pub fn module_class(module: impl Into<String>, export: impl Into<String>) -> Self {
-        let module: SmolStr = module.into().into();
-        let export: SmolStr = export.into().into();
-        Self::validated(
-            IdentityConstraint::ModuleExport {
-                module: module.clone(),
-                export: export.clone(),
-            },
-            EventPredicate::ClassReference,
-            format!("{module}.{export}"),
-        )
-    }
-
-    pub fn package_class(module: impl Into<String>, export: impl Into<String>) -> Self {
-        let export: SmolStr = export.into().into();
-        let pattern = ModuleSpecifierPattern::package(module);
-        let sym = pattern.to_string();
-        Self::validated(
-            IdentityConstraint::PackageModuleExport {
-                module: pattern,
-                export: export.clone(),
-            },
-            EventPredicate::ClassReference,
-            format!("{sym}.{export}"),
-        )
-    }
-
-    pub fn global_constructor(name: impl Into<String>) -> Self {
-        let name: SmolStr = name.into().into();
-        Self::validated(
-            IdentityConstraint::Global {
-                name: name.clone(),
-                strength: IdentityStrength::Strict,
-            },
-            EventPredicate::Construct,
-            name.to_string(),
-        )
-    }
-
-    pub fn heuristic_constructor(name: impl Into<String>) -> Self {
-        let name: SmolStr = name.into().into();
-        Self::validated(
-            IdentityConstraint::Any {
-                name: name.clone(),
-                strength: IdentityStrength::Heuristic,
-            },
-            EventPredicate::Construct,
-            name.to_string(),
-        )
-    }
-
-    pub fn module_constructor(module: impl Into<String>, export: impl Into<String>) -> Self {
-        let module: SmolStr = module.into().into();
-        let export: SmolStr = export.into().into();
-        Self::validated(
-            IdentityConstraint::ModuleExport {
-                module: module.clone(),
-                export: export.clone(),
-            },
-            EventPredicate::Construct,
-            format!("{module}.{export}"),
-        )
-    }
-
-    pub fn package_constructor(module: impl Into<String>, export: impl Into<String>) -> Self {
-        let export: SmolStr = export.into().into();
-        let pattern = ModuleSpecifierPattern::package(module);
-        let sym = pattern.to_string();
-        Self::validated(
-            IdentityConstraint::PackageModuleExport {
-                module: pattern,
-                export: export.clone(),
-            },
-            EventPredicate::Construct,
-            format!("{sym}.{export}"),
-        )
-    }
-
-    /// Call of a member on a returned object from a rooted source.
-    pub fn returned_member_call(source: impl Into<String>, member: impl Into<String>) -> Self {
-        let source_path = SymbolPath::from(source.into().as_str());
-        let member_str: SmolStr = member.into().into();
-        let producer = IdentityConstraint::Rooted {
-            path: source_path.clone(),
-        };
-        Self {
-            identity: producer.clone(),
-            event: EventPredicate::MemberCall {
-                member: SymbolPath::from(member_str.as_str()),
-            },
-            subject: SubjectConstraint::ReturnedFrom {
-                producer: Box::new(producer),
-            },
-            constraints: Vec::new(),
-            evidence_kind: MatchKind::MemberCall,
-            evidence_symbol: format!("{source_path}.{member_str}"),
-            object_flow: None,
-        }
-    }
-
-    /// Read of a member on a returned object from a rooted source.
-    pub fn returned_member_read(source: impl Into<String>, member: impl Into<String>) -> Self {
-        let source_path = SymbolPath::from(source.into().as_str());
-        let member_str: SmolStr = member.into().into();
-        let producer = IdentityConstraint::Rooted {
-            path: source_path.clone(),
-        };
-        Self {
-            identity: producer.clone(),
-            event: EventPredicate::MemberRead {
-                member: SymbolPath::from(member_str.as_str()),
-            },
-            subject: SubjectConstraint::ReturnedFrom {
-                producer: Box::new(producer),
-            },
-            constraints: Vec::new(),
-            evidence_kind: MatchKind::MemberRead,
-            evidence_symbol: format!("{source_path}.{member_str}"),
-            object_flow: None,
-        }
-    }
-
-    /// Member call on an instance of a module export.
-    pub fn instance_member_call(
-        module: impl Into<String>,
-        export: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Self {
-        let module_str: SmolStr = module.into().into();
-        let export_str: SmolStr = export.into().into();
-        let member_str: SmolStr = member.into().into();
-        let constructor = IdentityConstraint::ModuleExport {
-            module: module_str.clone(),
-            export: export_str.clone(),
-        };
-        Self {
-            identity: constructor.clone(),
-            event: EventPredicate::MemberCall {
-                member: SymbolPath::from(member_str.as_str()),
-            },
-            subject: SubjectConstraint::InstanceOf {
-                constructor: Box::new(constructor),
-            },
-            constraints: Vec::new(),
-            evidence_kind: MatchKind::MemberCall,
-            evidence_symbol: format!("{module_str}:{export_str}.{member_str}"),
-            object_flow: None,
-        }
-    }
-
-    pub fn package_instance_member_call(
-        module: impl Into<String>,
-        export: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Self {
-        let export_str: SmolStr = export.into().into();
-        let member_str: SmolStr = member.into().into();
-        let pattern = ModuleSpecifierPattern::package(module);
-        let sym = pattern.to_string();
-        let constructor = IdentityConstraint::PackageModuleExport {
-            module: pattern,
-            export: export_str.clone(),
-        };
-        Self {
-            identity: constructor.clone(),
-            event: EventPredicate::MemberCall {
-                member: SymbolPath::from(member_str.as_str()),
-            },
-            subject: SubjectConstraint::InstanceOf {
-                constructor: Box::new(constructor),
-            },
-            constraints: Vec::new(),
-            evidence_kind: MatchKind::MemberCall,
-            evidence_symbol: format!("{sym}:{export_str}.{member_str}"),
-            object_flow: None,
-        }
-    }
-
-    // ── Builder entry ──
-
     pub fn builder() -> MatcherDeclBuilder {
         MatcherDeclBuilder::new()
     }
@@ -712,6 +298,33 @@ impl MatcherDeclBuilder {
         self
     }
 
+    /// Member call on an instance created by a module export.
+    pub fn member_call_instance(
+        mut self,
+        module: impl Into<String>,
+        export: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Self {
+        let module: SmolStr = module.into().into();
+        let export: SmolStr = export.into().into();
+        let member: SmolStr = member.into().into();
+        let constructor = IdentityConstraint::ModuleExport {
+            module: module.clone(),
+            export: export.clone(),
+        };
+        self.set_identity_event(
+            constructor.clone(),
+            EventPredicate::MemberCall {
+                member: SymbolPath::from(member.as_str()),
+            },
+            format!("{module}:{export}.{member}"),
+        );
+        self.subject = SubjectConstraint::InstanceOf {
+            constructor: Box::new(constructor),
+        };
+        self
+    }
+
     pub fn member_call_package(
         mut self,
         module: impl Into<String>,
@@ -757,6 +370,54 @@ impl MatcherDeclBuilder {
             EventPredicate::MemberRead { member: path },
             format!("{module}.{member_str}"),
         );
+        self
+    }
+
+    /// Member call on an object returned by a rooted source.
+    pub fn member_call_returned(
+        mut self,
+        source: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Self {
+        let source = source.into();
+        let member: SmolStr = member.into().into();
+        let producer = IdentityConstraint::Rooted {
+            path: SymbolPath::from(source.as_str()),
+        };
+        self.set_identity_event(
+            producer.clone(),
+            EventPredicate::MemberCall {
+                member: SymbolPath::from(member.as_str()),
+            },
+            format!("{source}.{member}"),
+        );
+        self.subject = SubjectConstraint::ReturnedFrom {
+            producer: Box::new(producer),
+        };
+        self
+    }
+
+    /// Member read on an object returned by a rooted source.
+    pub fn member_read_returned(
+        mut self,
+        source: impl Into<String>,
+        member: impl Into<String>,
+    ) -> Self {
+        let source = source.into();
+        let member: SmolStr = member.into().into();
+        let producer = IdentityConstraint::Rooted {
+            path: SymbolPath::from(source.as_str()),
+        };
+        self.set_identity_event(
+            producer.clone(),
+            EventPredicate::MemberRead {
+                member: SymbolPath::from(member.as_str()),
+            },
+            format!("{source}.{member}"),
+        );
+        self.subject = SubjectConstraint::ReturnedFrom {
+            producer: Box::new(producer),
+        };
         self
     }
 

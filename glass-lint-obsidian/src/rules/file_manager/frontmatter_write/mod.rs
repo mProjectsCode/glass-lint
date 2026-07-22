@@ -12,9 +12,12 @@ pub fn rule() -> Rule {
         .category("file-manager")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call(
-            "app.fileManager.processFrontMatter",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.fileManager.processFrontMatter")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

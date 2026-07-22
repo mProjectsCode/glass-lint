@@ -11,47 +11,72 @@ pub fn rule() -> Rule {
         .category("browser/filesystem")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("showDirectoryPicker"))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "getFileHandle",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "getDirectoryHandle",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "removeEntry",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "resolve",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "queryPermission",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "requestPermission",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "entries",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "keys",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "values",
-        ))
-        .declaration(MatcherDecl::returned_member_call(
-            "showDirectoryPicker",
-            "isSameEntry",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("showDirectoryPicker")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "getFileHandle")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "getDirectoryHandle")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "removeEntry")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "resolve")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "queryPermission")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "requestPermission")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "entries")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "keys")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "values")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_returned("showDirectoryPicker", "isSameEntry")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .build()
         .unwrap()
 }

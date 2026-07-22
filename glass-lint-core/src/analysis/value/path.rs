@@ -93,6 +93,29 @@ impl ParentPathStore {
         Some(id)
     }
 
+    /// Append a node whose parent may be an ID owned by a linked overlay.
+    pub(in crate::analysis) fn append_linked(
+        &mut self,
+        parent: u32,
+        segment: PathSegment,
+        depth: u32,
+    ) -> Option<u32> {
+        if self.node_count() >= self.max_nodes {
+            return None;
+        }
+        if let Some(path) = self.by_edge.get(&(parent, segment.clone())) {
+            return Some(*path);
+        }
+        let id = u32::try_from(self.nodes.len()).ok()? | (1 << 31);
+        self.nodes.push(PathNode {
+            parent,
+            depth,
+            segment: Some(segment.clone()),
+        });
+        self.by_edge.insert((parent, segment), id);
+        Some(id)
+    }
+
     pub(in crate::analysis) fn depth(&self, id: u32) -> Option<u32> {
         self.nodes.get(id as usize).map(|node| node.depth)
     }
@@ -150,6 +173,14 @@ impl ParentPathStore {
 
     pub(in crate::analysis) fn find_edge(&self, parent: u32, segment: &PathSegment) -> Option<u32> {
         self.by_edge.get(&(parent, segment.clone())).copied()
+    }
+
+    pub(in crate::analysis) fn find_linked_edge(
+        &self,
+        parent: u32,
+        segment: &PathSegment,
+    ) -> Option<u32> {
+        self.find_edge(parent, segment)
     }
 
     #[cfg(test)]

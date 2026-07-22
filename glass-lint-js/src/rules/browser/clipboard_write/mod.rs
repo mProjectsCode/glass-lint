@@ -11,10 +11,18 @@ pub fn rule() -> Rule {
         .category("browser/clipboard")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .declaration(MatcherDecl::rooted_member_call("navigator.clipboard.write"))
-        .declaration(MatcherDecl::rooted_member_call(
-            "navigator.clipboard.writeText",
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.clipboard.write")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("navigator.clipboard.writeText")
+                .build()
+                .expect("valid matcher declaration"),
+        )
         .declaration(
             MatcherDecl::builder()
                 .member_call_rooted("document.execCommand")

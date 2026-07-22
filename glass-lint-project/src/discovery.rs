@@ -7,10 +7,10 @@ use std::{
 };
 
 use crate::{
-    admission::{CanonicalProjectPath, SourceAdmission},
+    admission::{AdmittedSourcePath, CanonicalProjectPath, SourceAdmission},
     error::ProjectLoadError,
     options::ProjectSelection,
-    tsconfig::{self, CycleDiagnostic, Tsconfig},
+    tsconfig::{self, Tsconfig, TsconfigDiagnostic},
     walk,
 };
 
@@ -18,6 +18,11 @@ use crate::{
 pub struct ProjectDiscovery<'adm, 'opt> {
     admission: &'adm SourceAdmission<'opt>,
     deadline: Option<Instant>,
+}
+
+pub struct DiscoveryResult {
+    pub paths: Vec<AdmittedSourcePath>,
+    pub diagnostics: Vec<TsconfigDiagnostic>,
 }
 
 impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
@@ -34,10 +39,10 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         &self,
         selection: &ProjectSelection,
         selection_path: &Path,
-    ) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
-        let mut paths = match selection {
-            ProjectSelection::Entry(_) => self.entry_path(selection_path)?,
-            ProjectSelection::Directory(_) => self.discover(selection_path)?,
+    ) -> Result<DiscoveryResult, ProjectLoadError> {
+        let (mut paths, diagnostics) = match selection {
+            ProjectSelection::Entry(_) => (self.entry_path(selection_path)?, Vec::new()),
+            ProjectSelection::Directory(_) => (self.discover(selection_path)?, Vec::new()),
             ProjectSelection::Tsconfig(config) => {
                 if !selection_path.is_file() {
                     return Err(ProjectLoadError::SelectionNotFile(
@@ -54,23 +59,34 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         };
 
         self.validate_membership(&mut paths, selection_path)?;
-        Ok(paths)
+        Ok(DiscoveryResult { paths, diagnostics })
     }
 
-    fn entry_path(&self, path: &Path) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
+    fn entry_path(&self, path: &Path) -> Result<Vec<AdmittedSourcePath>, ProjectLoadError> {
         if !path.is_file() {
             return Err(ProjectLoadError::SelectionNotFile(path.to_path_buf()));
         }
         if !self.admission.supports(path) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         }
-        let canonical = self.admission.canonicalize(path)?;
-        Ok(vec![canonical])
+        match self.admission.classify(path)? {
+            crate::admission::PathAdmission::Admitted(path) => Ok(vec![path]),
+            crate::admission::PathAdmission::Outside(path) => {
+                Err(ProjectLoadError::SelectionOutsideRoot {
+                    selection: path.into_path_buf(),
+                    root: self.admission.canonical_root().to_path_buf(),
+                })
+            }
+            crate::admission::PathAdmission::Excluded(path)
+            | crate::admission::PathAdmission::Unsupported(path) => {
+                Err(ProjectLoadError::UnsupportedSource(path.into_path_buf()))
+            }
+        }
     }
 
     fn validate_membership(
         &self,
-        paths: &mut Vec<CanonicalProjectPath>,
+        paths: &mut Vec<AdmittedSourcePath>,
         selection: &Path,
     ) -> Result<(), ProjectLoadError> {
         let mut outside = false;
@@ -98,7 +114,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         Ok(())
     }
 
-    fn discover(&self, directory: &Path) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
+    fn discover(&self, directory: &Path) -> Result<Vec<AdmittedSourcePath>, ProjectLoadError> {
         let Some(_metadata) = walk::resolve_root(self.admission.options(), directory)? else {
             return Ok(Vec::new());
         };
@@ -109,8 +125,9 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         &self,
         config: &Path,
         directory: &Path,
-    ) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
+    ) -> Result<(Vec<AdmittedSourcePath>, Vec<TsconfigDiagnostic>), ProjectLoadError> {
         let mut visited = BTreeSet::new();
+        let mut active = Vec::new();
         let mut selected = BTreeSet::new();
         let mut cycle_diagnostics = Vec::new();
         let canonical_config = self.admission.canonicalize(config)?;
@@ -118,13 +135,21 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
             &canonical_config,
             directory,
             &mut visited,
+            &mut active,
             &mut selected,
             &mut cycle_diagnostics,
         )?;
         // Cycle diagnostics are recorded but the cyclic branch already returns
         // a fail-closed config (empty files, excludes all). Independent branches
         // continue normally.
-        Ok(selected.into_iter().collect())
+        cycle_diagnostics.sort_by(|left, right| {
+            left.config_path
+                .cmp(&right.config_path)
+                .then_with(|| left.cycle_target.cmp(&right.cycle_target))
+                .then_with(|| left.message.cmp(&right.message))
+        });
+        cycle_diagnostics.dedup();
+        Ok((selected.into_iter().collect(), cycle_diagnostics))
     }
 
     fn collect_tsconfig(
@@ -132,12 +157,24 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         config: &CanonicalProjectPath,
         fallback_directory: &Path,
         visited: &mut BTreeSet<PathBuf>,
-        selected: &mut BTreeSet<CanonicalProjectPath>,
-        cycle_diagnostics: &mut Vec<CycleDiagnostic>,
+        active: &mut Vec<PathBuf>,
+        selected: &mut BTreeSet<AdmittedSourcePath>,
+        cycle_diagnostics: &mut Vec<TsconfigDiagnostic>,
     ) -> Result<(), ProjectLoadError> {
+        let config_path = config.as_ref().to_path_buf();
+        if active.contains(&config_path) {
+            cycle_diagnostics.push(TsconfigDiagnostic {
+                config_path: config_path.clone(),
+                cycle_target: config_path,
+                message: "cycle detected in project references".into(),
+            });
+            return Ok(());
+        }
         if !visited.insert(config.as_ref().to_path_buf()) {
             return Ok(());
         }
+
+        active.push(config.as_ref().to_path_buf());
 
         let canonical = config.as_ref().to_path_buf();
         let base = config
@@ -153,21 +190,34 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         self.select_sources(&effective, &base, selected)?;
 
         // Phase 5: Traverse project references
-        self.collect_references(&canonical, &base, visited, selected, cycle_diagnostics)
+        let result = self.collect_references(
+            &canonical,
+            &base,
+            visited,
+            active,
+            selected,
+            cycle_diagnostics,
+        );
+        active.pop();
+        result
     }
 
     fn select_sources(
         &self,
         config: &Tsconfig,
         base: &Path,
-        selected: &mut BTreeSet<CanonicalProjectPath>,
+        selected: &mut BTreeSet<AdmittedSourcePath>,
     ) -> Result<(), ProjectLoadError> {
         if let Some(files) = &config.files {
             // Explicit files list
             for file in files {
                 let path = base.join(file);
-                if path.exists() && self.admission.supports(&path) {
-                    selected.insert(self.admission.canonicalize(&path)?);
+                if path.exists()
+                    && self.admission.supports(&path)
+                    && let crate::admission::PathAdmission::Admitted(path) =
+                        self.admission.classify(&path)?
+                {
+                    selected.insert(path);
                 }
             }
         } else {
@@ -192,13 +242,14 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         config_path: &Path,
         base: &Path,
         visited: &mut BTreeSet<PathBuf>,
-        selected: &mut BTreeSet<CanonicalProjectPath>,
-        cycle_diagnostics: &mut Vec<CycleDiagnostic>,
+        active: &mut Vec<PathBuf>,
+        selected: &mut BTreeSet<AdmittedSourcePath>,
+        cycle_diagnostics: &mut Vec<TsconfigDiagnostic>,
     ) -> Result<(), ProjectLoadError> {
         // Re-read config DTO to get typed references
         let dto = tsconfig::read_and_parse(config_path)?;
-        for ref_path_str in &dto.references {
-            let mut target = base.join(ref_path_str);
+        for reference in &dto.references {
+            let mut target = base.join(&reference.path);
             if target.is_dir() {
                 target = target.join("tsconfig.json");
             }
@@ -208,6 +259,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                     &canonical_target,
                     base,
                     visited,
+                    active,
                     selected,
                     cycle_diagnostics,
                 )?;

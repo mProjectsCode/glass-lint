@@ -282,11 +282,15 @@ mod tests {
     fn catalog_selection_and_order_cannot_change_fact_index() {
         let source = "fetch('/api'); document.createElement('script');";
         let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
-        let first =
-            CompiledMatcherPlan::compile_decls(&[MatcherDecl::global_call("fetch")]).unwrap();
-        let second = CompiledMatcherPlan::compile_decls(&[MatcherDecl::heuristic_member_call(
-            "document.createElement",
-        )])
+        let first = CompiledMatcherPlan::compile_decls(&[MatcherDecl::builder()
+            .call_global("fetch")
+            .build()
+            .expect("valid matcher declaration")])
+        .unwrap();
+        let second = CompiledMatcherPlan::compile_decls(&[MatcherDecl::builder()
+            .member_call_heuristic("document.createElement")
+            .build()
+            .unwrap()])
         .unwrap();
         let build = |matchers: Vec<&crate::api::compiler::rule::CompiledMatcherPlan>,
                      selected: &[usize]| {
