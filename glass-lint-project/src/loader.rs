@@ -9,10 +9,10 @@ use std::{
 use glass_lint_core::{AnalysisReport, Linter, ResolutionRequest, ResolverOutcome};
 
 use crate::{
-    admission::{SourceAdmission, absolute_path},
+    admission::{CanonicalProjectPath, SourceAdmission, absolute_path},
     discovery::ProjectDiscovery,
     error::ProjectLoadError,
-    options::{ProjectLoadOptions, ProjectSelection, ValidatedProjectLoadOptions},
+    options::{ProjectSelection, ValidatedProjectLoadOptions},
     resolver::ProjectResolver,
 };
 
@@ -48,9 +48,8 @@ impl ProjectLoadOutcome {
         mut report: AnalysisReport,
         reason: ProjectLoadError,
     ) -> Result<Self, ProjectLoadError> {
-        let code = glass_lint_core::DiagnosticCode::new("incomplete_project").map_err(|error| {
-            ProjectLoadError::InvalidOptions(crate::ProjectOptionError::Message(error))
-        })?;
+        let code = glass_lint_core::DiagnosticCode::new("incomplete_project")
+            .expect("incomplete_project is a valid diagnostic code");
         report.completion = glass_lint_core::ReportCompletion::Partial;
         report
             .diagnostics
@@ -216,11 +215,6 @@ impl ProjectLoader {
         Self { options }
     }
 
-    /// Borrow the validated policy used by this loader.
-    pub fn options(&self) -> &ProjectLoadOptions {
-        self.options.options()
-    }
-
     /// Loads, resolves, and lints one bounded project.
     pub fn load_and_lint(
         &self,
@@ -262,7 +256,7 @@ impl ProjectLoader {
 /// Canonical absolute paths established before the load loop starts.
 struct ProjectPaths<'a> {
     admission: SourceAdmission<'a>,
-    initial_paths: VecDeque<PathBuf>,
+    initial_paths: VecDeque<CanonicalProjectPath>,
 }
 
 impl<'a> ProjectPaths<'a> {
@@ -277,42 +271,43 @@ impl<'a> ProjectPaths<'a> {
         }
         let root = project_root(options, selection, &selection_path)?;
         let admission = SourceAdmission::new(&root, options)?;
-        let selection_path = admission.canonicalize(&selection_path)?.into_path_buf();
-        if !admission.is_inside_root(&selection_path) {
+        let canonical_selection = admission.canonicalize(&selection_path)?;
+        if !admission.is_inside_root(canonical_selection.as_ref()) {
             return Err(ProjectLoadError::SelectionOutsideRoot {
-                selection: selection_path,
+                selection: canonical_selection.into_path_buf(),
                 root,
             });
         }
-        let initial_paths = ProjectDiscovery::with_deadline(&admission, deadline)
-            .initial_paths(selection, &selection_path)?;
+        let initial_paths: VecDeque<CanonicalProjectPath> = ProjectDiscovery::with_deadline(&admission, deadline)
+            .initial_paths(selection, canonical_selection.as_ref())?
+            .into();
         Ok(Self {
             admission,
-            initial_paths: initial_paths.into(),
+            initial_paths,
         })
     }
 }
 
 #[derive(Default)]
-struct PathWorkQueue(VecDeque<PathBuf>);
+struct PathWorkQueue(VecDeque<CanonicalProjectPath>);
 impl PathWorkQueue {
-    fn extend(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
+    fn extend(&mut self, paths: impl IntoIterator<Item = CanonicalProjectPath>) {
         self.0.extend(paths);
     }
 
-    fn pop_front(&mut self) -> Option<PathBuf> {
+    fn pop_front(&mut self) -> Option<CanonicalProjectPath> {
         self.0.pop_front()
     }
 
-    fn push(&mut self, path: PathBuf) {
+    fn push(&mut self, path: CanonicalProjectPath) {
         self.0.push_back(path);
     }
 }
 
 #[derive(Debug, Default)]
-struct AdmissionSet(BTreeSet<PathBuf>);
+struct AdmissionSet(BTreeSet<CanonicalProjectPath>);
 impl AdmissionSet {
-    fn admit(&mut self, path: PathBuf) -> bool {
+    fn admit(&mut self, path: CanonicalProjectPath) -> bool {
         self.0.insert(path)
     }
 
@@ -414,7 +409,7 @@ impl<'a> ProjectLoadState<'a> {
         })
     }
 
-    fn add_initial_paths(&mut self, paths: VecDeque<PathBuf>) {
+    fn add_initial_paths(&mut self, paths: VecDeque<CanonicalProjectPath>) {
         self.queue.extend(paths);
     }
 
@@ -428,14 +423,15 @@ impl<'a> ProjectLoadState<'a> {
 
     fn load_path(
         &mut self,
-        path: &Path,
+        canonical: &CanonicalProjectPath,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         self.check_timeout()?;
-        let Some(canonical) = self.admission.admitted_path(path)? else {
-            return Ok(());
+        let admitted = match self.admission.admitted_path(canonical.as_ref())? {
+            Some(path) => path,
+            None => return Ok(()),
         };
-        if !self.admitted.admit(canonical.as_ref().to_path_buf()) {
+        if !self.admitted.admit(canonical.clone()) {
             return Ok(());
         }
         if self.admitted.len() > self.admission.options().max_files() {
@@ -447,7 +443,7 @@ impl<'a> ProjectLoadState<'a> {
         let read_start = Instant::now();
         let source = self
             .admission
-            .load_admitted_source_file(canonical.as_ref())?;
+            .load_admitted_source_file(&admitted)?;
         metrics.timings.record_reads(read_start.elapsed());
         let source_bytes = u64::try_from(source.source.len()).unwrap_or(u64::MAX);
         self.progress.record_source_bytes(
@@ -509,7 +505,9 @@ impl<'a> ProjectLoadState<'a> {
             self.progress.publish(metrics);
             let target = self.admission.canonical_root().join(path);
             if target.exists() {
-                self.queue.push(target);
+                if let Ok(canonical) = self.admission.canonicalize(&target) {
+                    self.queue.push(canonical);
+                }
             }
         }
     }

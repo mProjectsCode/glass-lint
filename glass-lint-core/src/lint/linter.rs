@@ -195,21 +195,25 @@ impl Linter {
     /// assert_eq!(report.files.len(), 1);
     /// ```
     pub fn lint_project(&self, input: ProjectInput) -> Result<AnalysisReport, ProjectInputError> {
-        let input = input.admit()?;
+        let validated = input.admit()?;
+        let file_count = validated.source_count();
+        let resolution_count = validated.resolution_count();
+
         tracing::info!(
             target: "glass_lint::project",
-            files = input.sources.len(),
-            resolutions = input.resolutions.len(),
+            files = file_count,
+            resolutions = resolution_count,
             "project analysis started"
         );
-        let mut collection = self.begin_project(input.root)?;
-        for (path, source) in input.sources {
+        let (root, sources, resolutions, _module_ids) = validated.into_parts();
+        let mut collection = self.begin_project(root)?;
+        for (path, source) in sources {
             collection.admit_validated_source(source)?;
             collection.analyze_source_at_path(&path)?;
         }
         let local = collection.finish_local();
         local
-            .resolve(input.resolutions)
+            .resolve(resolutions)
             .and_then(crate::ResolvedProject::finish)
     }
 
@@ -257,7 +261,7 @@ impl Linter {
         tracing::debug!(
             target: "glass_lint::project::link",
             modules = analyzed.len(),
-            resolutions = input.resolutions.len(),
+            resolutions = input.resolution_count(),
             "stage started"
         );
         let linking_start = std::time::Instant::now();
@@ -389,7 +393,7 @@ impl Linter {
             .map(|(path, diagnostic)| (path.clone(), diagnostic.code.as_str().to_owned()))
             .collect::<Vec<_>>();
         let mut files = input
-            .sources
+            .source_map()
             .values()
             .map(|source| {
                 (

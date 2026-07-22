@@ -9,7 +9,12 @@ use std::{
 
 use serde_json::Value;
 
-use crate::{admission::SourceAdmission, error::ProjectLoadError, options::ProjectSelection, walk};
+use crate::{
+    admission::{CanonicalProjectPath, SourceAdmission},
+    error::ProjectLoadError,
+    options::ProjectSelection,
+    walk,
+};
 
 /// Discovers the bounded set of source files that belongs to a selection.
 pub struct ProjectDiscovery<'adm, 'opt> {
@@ -31,7 +36,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         &self,
         selection: &ProjectSelection,
         selection_path: &Path,
-    ) -> Result<Vec<PathBuf>, ProjectLoadError> {
+    ) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
         let mut paths = match selection {
             ProjectSelection::Entry(_) => self.entry_path(selection_path)?,
             ProjectSelection::Directory(_) => self.discover(selection_path)?,
@@ -54,24 +59,25 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         Ok(paths)
     }
 
-    fn entry_path(&self, path: &Path) -> Result<Vec<PathBuf>, ProjectLoadError> {
+    fn entry_path(&self, path: &Path) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
         if !path.is_file() {
             return Err(ProjectLoadError::SelectionNotFile(path.to_path_buf()));
         }
         if !self.admission.supports(path) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         }
-        Ok(vec![path.to_path_buf()])
+        let canonical = self.admission.canonicalize(path)?;
+        Ok(vec![canonical])
     }
 
     fn validate_membership(
         &self,
-        paths: &mut Vec<PathBuf>,
+        paths: &mut Vec<CanonicalProjectPath>,
         selection: &Path,
     ) -> Result<(), ProjectLoadError> {
         let mut outside = false;
         paths.retain(|path| {
-            if self.admission.is_inside_root(path) {
+            if self.admission.is_inside_root(path.as_ref()) {
                 true
             } else {
                 outside = true;
@@ -94,7 +100,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         Ok(())
     }
 
-    fn discover(&self, directory: &Path) -> Result<Vec<PathBuf>, ProjectLoadError> {
+    fn discover(&self, directory: &Path) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
         let Some(_metadata) = walk::resolve_root(self.admission.options(), directory)? else {
             return Ok(Vec::new());
         };
@@ -105,11 +111,12 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         &self,
         config: &Path,
         directory: &Path,
-    ) -> Result<Vec<PathBuf>, ProjectLoadError> {
+    ) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
         let mut visited = BTreeSet::new();
         let mut selected = BTreeSet::new();
+        let canonical_config = self.admission.canonicalize(config)?;
         self.collect_tsconfig(
-            self.admission.canonicalize(config)?.as_ref(),
+            &canonical_config,
             directory,
             &mut visited,
             &mut selected,
@@ -119,12 +126,11 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
 
     fn collect_tsconfig(
         &self,
-        config: &Path,
+        config: &CanonicalProjectPath,
         fallback_directory: &Path,
         visited: &mut BTreeSet<PathBuf>,
-        selected: &mut BTreeSet<PathBuf>,
+        selected: &mut BTreeSet<CanonicalProjectPath>,
     ) -> Result<(), ProjectLoadError> {
-        let config = self.admission.canonicalize(config)?;
         if !visited.insert(config.as_ref().to_path_buf()) {
             return Ok(());
         }
@@ -158,12 +164,12 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         &self,
         base: &Path,
         files: &[Value],
-        selected: &mut BTreeSet<PathBuf>,
+        selected: &mut BTreeSet<CanonicalProjectPath>,
     ) -> Result<(), ProjectLoadError> {
         for file in files.iter().filter_map(Value::as_str) {
             let path = base.join(file);
             if path.exists() && self.admission.supports(&path) {
-                selected.insert(self.admission.canonicalize(&path)?.into_path_buf());
+                selected.insert(self.admission.canonicalize(&path)?);
             }
         }
         Ok(())
@@ -174,12 +180,13 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         base: &Path,
         includes: &[&str],
         excludes: &[&str],
-        selected: &mut BTreeSet<PathBuf>,
+        selected: &mut BTreeSet<CanonicalProjectPath>,
     ) -> Result<(), ProjectLoadError> {
-        for path in self.discover(base)? {
-            let relative = path
+        for canonical in self.discover(base)? {
+            let relative = canonical
+                .as_ref()
                 .strip_prefix(base)
-                .unwrap_or(&path)
+                .unwrap_or_else(|_| canonical.as_ref())
                 .to_string_lossy()
                 .replace('\\', "/");
             if includes
@@ -189,7 +196,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                     .iter()
                     .any(|pattern| tsconfig_pattern_matches(pattern, &relative))
             {
-                selected.insert(self.admission.canonicalize(&path)?.into_path_buf());
+                selected.insert(canonical);
             }
         }
         Ok(())
@@ -200,7 +207,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         config: &Value,
         base: &Path,
         visited: &mut BTreeSet<PathBuf>,
-        selected: &mut BTreeSet<PathBuf>,
+        selected: &mut BTreeSet<CanonicalProjectPath>,
     ) -> Result<(), ProjectLoadError> {
         let Some(references) = config.get("references").and_then(Value::as_array) else {
             return Ok(());
@@ -214,7 +221,8 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                 target = target.join("tsconfig.json");
             }
             if target.exists() {
-                self.collect_tsconfig(&target, base, visited, selected)?;
+                let canonical_target = self.admission.canonicalize(&target)?;
+                self.collect_tsconfig(&canonical_target, base, visited, selected)?;
             }
         }
         Ok(())
@@ -259,10 +267,10 @@ fn read_tsconfig_path_extends(
 }
 
 fn parse_error(config: &Path, error: impl std::fmt::Display) -> ProjectLoadError {
-    ProjectLoadError::InvalidOptions(crate::ProjectOptionError::Message(format!(
-        "parse {}: {error}",
-        config.display()
-    )))
+    ProjectLoadError::ConfigParseError {
+        path: config.to_path_buf(),
+        source: error.to_string(),
+    }
 }
 
 fn tsconfig_pattern_matches(pattern: &str, relative: &str) -> bool {

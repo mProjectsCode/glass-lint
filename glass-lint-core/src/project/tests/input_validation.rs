@@ -2,7 +2,7 @@ use crate::project::tests::*;
 
 #[test]
 fn validation_normalizes_and_sorts_sources_and_edges() {
-    let input = ProjectInput {
+    let validated = ProjectInput {
         root: "/project".into(),
         sources: vec![source_file("./z.js", ""), source_file("a.js", "")],
         resolutions: vec![(
@@ -15,24 +15,26 @@ fn validation_normalizes_and_sorts_sources_and_edges() {
     .validate()
     .unwrap();
 
+    let paths: Vec<_> = validated.sources().map(|(p, _)| p.as_str()).collect();
+    assert_eq!(paths, ["a.js", "z.js"]);
+
+    let res: Vec<_> = validated.resolutions().collect();
+    assert_eq!(res[0].0.importer.as_str(), "z.js");
     assert_eq!(
-        input
-            .sources
-            .iter()
-            .map(|source| source.path.as_str())
-            .collect::<Vec<_>>(),
-        ["a.js", "z.js"]
-    );
-    assert_eq!(input.resolutions[0].0.importer, "z.js");
-    assert_eq!(
-        input.resolutions[0].1,
-        ResolverOutcome::Internal {
+        res[0].1,
+        &ResolverOutcome::Internal {
             path: project_path("a.js")
         }
     );
-    let validated = input.admit().unwrap();
-    assert_eq!(validated.module_ids["a.js"], ModuleId::new(0));
-    assert_eq!(validated.module_ids["z.js"], ModuleId::new(1));
+
+    assert_eq!(
+        validated.module_id(&project_path("a.js")),
+        Some(ModuleId::new(0))
+    );
+    assert_eq!(
+        validated.module_id(&project_path("z.js")),
+        Some(ModuleId::new(1))
+    );
 }
 
 #[test]

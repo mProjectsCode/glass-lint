@@ -7,13 +7,16 @@
 
 use std::{
     fs,
-    path::{Path, PathBuf},
+    path::Path,
     time::Instant,
 };
 
 use walkdir::WalkDir;
 
-use crate::{admission::SourceAdmission, error::ProjectLoadError};
+use crate::{
+    admission::{CanonicalProjectPath, SourceAdmission},
+    error::ProjectLoadError,
+};
 
 /// Resolve root metadata respecting the symlink-follow policy.
 ///
@@ -55,7 +58,7 @@ pub fn collect_files(
     root: &Path,
     deadline: Option<Instant>,
     include: &mut dyn FnMut(&Path) -> bool,
-) -> Result<Vec<PathBuf>, ProjectLoadError> {
+) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
     let mut entries = Vec::new();
     let mut visited = 0usize;
     let walker = WalkDir::new(root)
@@ -93,7 +96,8 @@ pub fn collect_files(
             && admission.admitted_path(entry.path())?.is_some()
             && include(entry.path())
         {
-            entries.push(entry.into_path());
+            let canonical = admission.canonicalize(entry.path())?;
+            entries.push(canonical);
             if entries.len() > admission.options().max_files() {
                 return Err(ProjectLoadError::TooManyFiles(
                     admission.options().max_files(),

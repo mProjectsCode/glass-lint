@@ -35,12 +35,6 @@ impl AsRef<Path> for CanonicalProjectPath {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct AdmittedSourcePath(CanonicalProjectPath);
 
-impl AdmittedSourcePath {
-    pub(crate) fn into_path_buf(self) -> PathBuf {
-        self.0.into_path_buf()
-    }
-}
-
 impl AsRef<Path> for AdmittedSourcePath {
     fn as_ref(&self) -> &Path {
         self.0.as_ref()
@@ -162,31 +156,28 @@ impl<'a> SourceAdmission<'a> {
     /// Canonicalize, check containment and support, read, and produce a
     /// normalized [`SourceFile`] in one pass.
     ///
-    /// This is the single entry-point for loading an admitted source file.
+    /// This is the single entry-point for loading an unvalidated path.
     pub fn load_source_file(&self, path: &Path) -> Result<SourceFile, ProjectLoadError> {
-        let canonical_path = match self.classify(path)? {
-            PathAdmission::Admitted(path) => path.into_path_buf(),
-            PathAdmission::Outside(path) => {
-                return Err(ProjectLoadError::SelectionOutsideRoot {
-                    selection: path.into_path_buf(),
-                    root: self.canonical_root.clone(),
-                });
-            }
+        match self.classify(path)? {
+            PathAdmission::Admitted(admitted) => self.load_admitted_source_file(&admitted),
+            PathAdmission::Outside(path) => Err(ProjectLoadError::SelectionOutsideRoot {
+                selection: path.into_path_buf(),
+                root: self.canonical_root.clone(),
+            }),
             PathAdmission::Excluded(path) | PathAdmission::Unsupported(path) => {
-                return Err(ProjectLoadError::UnsupportedSource(path.into_path_buf()));
+                Err(ProjectLoadError::UnsupportedSource(path.into_path_buf()))
             }
-        };
-        self.load_admitted_source_file(&canonical_path)
+        }
     }
 
     /// Read a path returned by [`Self::admitted_path`] without repeating the
-    /// boundary decision.
+    /// boundary decision. Does not canonicalize, re-admit, or re-check the extension.
     pub(crate) fn load_admitted_source_file(
         &self,
-        canonical_path: &Path,
+        admitted: &AdmittedSourcePath,
     ) -> Result<SourceFile, ProjectLoadError> {
-        let corpus_file = read_source_bytes(canonical_path, self.options.max_source_bytes())?;
-        let relative = self.relative_path(canonical_path);
+        let corpus_file = read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())?;
+        let relative = self.relative_path(admitted.as_ref());
         SourceFile::new(relative, corpus_file.source).map_err(Into::into)
     }
 }

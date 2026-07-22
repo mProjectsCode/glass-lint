@@ -38,6 +38,10 @@ pub enum ProjectLoadError {
     Timeout,
     /// Core rejected normalized project input.
     InvalidProjectInput(ProjectInputError),
+    /// The corpus root is neither a file nor a directory.
+    CorpusRootNotFileOrDir(PathBuf),
+    /// Config parse error at the given path.
+    ConfigParseError { path: PathBuf, source: String },
 }
 
 #[derive(Debug)]
@@ -47,7 +51,6 @@ pub enum ProjectOptionError {
     ProjectBytesBelowFileBytes,
     InvalidExtensions,
     InvalidExtensionAliases,
-    Message(String),
 }
 
 impl fmt::Display for ProjectOptionError {
@@ -64,7 +67,6 @@ impl fmt::Display for ProjectOptionError {
             Self::InvalidExtensionAliases => {
                 f.write_str("extension aliases must map file suffixes to non-empty suffix lists")
             }
-            Self::Message(message) => f.write_str(message),
         }
     }
 }
@@ -106,6 +108,12 @@ impl fmt::Display for ProjectLoadError {
             }
             Self::Timeout => write!(f, "project lint timeout exceeded"),
             Self::InvalidProjectInput(error) => write!(f, "core project error: {error}"),
+            Self::CorpusRootNotFileOrDir(path) => {
+                write!(f, "corpus root is not a file or directory: {}", path.display())
+            }
+            Self::ConfigParseError { path, source } => {
+                write!(f, "parse {}: {source}", path.display())
+            }
         }
     }
 }

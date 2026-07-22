@@ -8,9 +8,9 @@ use std::{
 };
 
 use crate::{
-    admission::SourceAdmission,
+    admission::{CanonicalProjectPath, SourceAdmission},
     error::ProjectLoadError,
-    options::{ProjectLoadOptions, ValidatedProjectLoadOptions},
+    options::ValidatedProjectLoadOptions,
     walk,
 };
 
@@ -77,29 +77,10 @@ pub struct SourceCorpus {
 }
 
 impl SourceCorpus {
-    /// Validate options and create a corpus view without performing I/O.
-    pub fn new(options: &ProjectLoadOptions) -> Result<Self, ProjectLoadError> {
-        Ok(Self {
-            options: options.clone().validated()?,
-        })
-    }
-
     /// Create a corpus from a policy already checked at the loader boundary.
     pub fn from_validated(options: &ValidatedProjectLoadOptions) -> Self {
         Self {
             options: options.clone(),
-        }
-    }
-
-    /// Create a corpus view without re-validating options. Only use when
-    /// options are already known to be valid (e.g., after
-    /// `ValidatedProjectLoadOptions`).
-    pub fn new_unchecked(options: &ProjectLoadOptions) -> Self {
-        Self {
-            options: options
-                .clone()
-                .validated()
-                .expect("validated corpus options"),
         }
     }
 
@@ -114,7 +95,7 @@ impl SourceCorpus {
         roots: &[PathBuf],
         mut include: impl FnMut(&Path) -> bool,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
-        let mut paths = BTreeSet::new();
+        let mut paths: BTreeSet<CanonicalProjectPath> = BTreeSet::new();
         for root in roots {
             let Some(metadata) = walk::resolve_root(&self.options, root)? else {
                 continue;
@@ -122,17 +103,12 @@ impl SourceCorpus {
             let admission = SourceAdmission::new(root, &self.options)?;
             if metadata.is_file() {
                 if admission.admitted_path(root)?.is_some() && include(root) {
-                    paths.insert(admission.canonicalize(root)?.into_path_buf());
+                    paths.insert(admission.canonicalize(root)?);
                 }
                 continue;
             }
             if !metadata.is_dir() {
-                return Err(ProjectLoadError::InvalidOptions(
-                    crate::ProjectOptionError::Message(format!(
-                        "corpus root is not a file or directory: {}",
-                        root.display()
-                    )),
-                ));
+                return Err(ProjectLoadError::CorpusRootNotFileOrDir(root.to_path_buf()));
             }
             let found = walk::collect_files(&admission, root, None, &mut include)?;
             for path in found {
@@ -143,16 +119,16 @@ impl SourceCorpus {
             }
         }
         debug_assert!(paths.len() <= self.options.max_files());
-        Ok(paths.into_iter().collect())
+        Ok(paths.into_iter().map(|p| p.into_path_buf()).collect())
     }
 
     /// Read one supported source file after enforcing the byte budget.
     pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
         let root = path.parent().unwrap_or_else(|| Path::new("."));
         let admission = SourceAdmission::new(root, &self.options)?;
-        let Some(path) = admission.admitted_path(path)? else {
+        let Some(admitted) = admission.admitted_path(path)? else {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         };
-        read_source_bytes(path.as_ref(), self.options.max_source_bytes())
+        read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())
     }
 }

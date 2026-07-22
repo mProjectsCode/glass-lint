@@ -5,16 +5,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::project::{
-    ModuleId, ProjectInput, ProjectInputError, ProjectRelativePath, ResolutionRequestKey,
-    ResolverOutcome,
+use crate::{
+    project::{
+        ModuleId, ProjectInput, ProjectInputError, ProjectRelativePath, ResolutionRequestKey,
+        ResolverOutcome,
+    },
+    SourceFile,
 };
-
-type ValidatedMaps = (
-    PathBuf,
-    BTreeMap<ProjectRelativePath, crate::SourceFile>,
-    BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-);
 
 fn compute_module_ids(
     sources: &BTreeMap<ProjectRelativePath, crate::SourceFile>,
@@ -33,32 +30,13 @@ fn compute_module_ids(
 
 impl ProjectInput {
     /// Admit the public DTO into the normalized, internal project stage.
-    ///
-    /// Validates and stores the result as authoritative typed maps, avoiding
-    /// the map-to-Vec-to-map conversion that the public `validate` path
-    /// still performs for external consumers.
     pub(crate) fn admit(self) -> Result<ValidatedProjectInput, ProjectInputError> {
-        let (root, sources, resolutions) = self.validate_into_maps()?;
-        Ok(ValidatedProjectInput::from_maps(root, sources, resolutions))
+        self.validate()
     }
 
-    /// Canonicalizes project identities and validates all cross-record
-    /// references. Returns a public DTO compatible with external callers.
-    pub fn validate(self) -> Result<Self, ProjectInputError> {
-        let mut input = self;
-        input.validate_budgets()?;
-        input.root = normalize_root(&input.root)?;
-        let sources_map = input.validate_sources()?;
-        let source_paths: BTreeSet<_> = sources_map.keys().cloned().collect();
-        input.validate_resolutions(&source_paths)?;
-        // Convert maps back to Vecs for the public DTO contract.
-        input.sources = sources_map.into_values().collect();
-        input.resolutions = input.resolutions.into_iter().collect();
-        Ok(input)
-    }
-
-    /// Shared budget checks.
-    fn validate_budgets(&self) -> Result<(), ProjectInputError> {
+    /// Validate, normalize, deduplicate, and assign stable module IDs.
+    /// Returns a map-backed validated type with deterministic ordering.
+    pub fn validate(self) -> Result<ValidatedProjectInput, ProjectInputError> {
         if self.sources.len() > 100_000 {
             return Err(ProjectInputError::BudgetExceeded("source count".into()));
         }
@@ -76,47 +54,7 @@ impl ProjectInput {
                 "project source bytes".into(),
             ));
         }
-        Ok(())
-    }
 
-    /// Validate and deduplicate sources, returning the canonical map.
-    fn validate_sources(
-        &mut self,
-    ) -> Result<BTreeMap<ProjectRelativePath, crate::SourceFile>, ProjectInputError> {
-        let mut sources = BTreeMap::new();
-        for mut source in std::mem::take(&mut self.sources) {
-            source.path = normalize_relative(&source.path)?;
-            let path = source.path.clone();
-            if sources.insert(path.clone(), source).is_some() {
-                return Err(ProjectInputError::DuplicateSource(path.to_string()));
-            }
-        }
-        Ok(sources)
-    }
-
-    /// Validate and deduplicate resolutions using the canonical source map.
-    fn validate_resolutions(
-        &mut self,
-        source_paths: &BTreeSet<ProjectRelativePath>,
-    ) -> Result<(), ProjectInputError> {
-        let mut resolutions = BTreeMap::new();
-        for (mut key, mut result) in std::mem::take(&mut self.resolutions) {
-            normalize_resolution_key(&mut key)?;
-            if !source_paths.contains(&key.importer) {
-                return Err(ProjectInputError::UnknownImporter(key.importer.to_string()));
-            }
-            normalize_result(&mut result)?;
-            if resolutions.insert(key.clone(), result).is_some() {
-                return Err(ProjectInputError::DuplicateResolution(key));
-            }
-        }
-        self.resolutions = resolutions.into_iter().collect();
-        Ok(())
-    }
-
-    /// Validate and return maps directly, skipping the Vec round-trip.
-    fn validate_into_maps(self) -> Result<ValidatedMaps, ProjectInputError> {
-        self.validate_budgets()?;
         let root = normalize_root(&self.root)?;
         let mut sources = BTreeMap::new();
         for mut source in self.sources {
@@ -126,6 +64,7 @@ impl ProjectInput {
                 return Err(ProjectInputError::DuplicateSource(path.to_string()));
             }
         }
+
         let source_paths: BTreeSet<_> = sources.keys().cloned().collect();
         let mut resolutions = BTreeMap::new();
         for (mut key, mut result) in self.resolutions {
@@ -138,30 +77,35 @@ impl ProjectInput {
                 return Err(ProjectInputError::DuplicateResolution(key));
             }
         }
-        Ok((root, sources, resolutions))
+
+        let module_ids = compute_module_ids(&sources);
+        Ok(ValidatedProjectInput {
+            root,
+            sources,
+            resolutions,
+            module_ids,
+        })
     }
 }
 
 /// Project records after path, target, duplicate, and cross-reference
-/// validation. This type is crate-private by design: public callers continue
-/// to exchange `ProjectInput`, while canonical analysis stages cannot
-/// accidentally re-run admission validation.
+/// validation.
 ///
 /// Sources and resolutions are stored as stable-ordered maps so callers
 /// receive authoritative, indexed representations without map-to-vector
-/// conversion or re-indexing.
+/// conversion or re-indexing. Fields are private; access them through the
+/// provided accessors to preserve the ability to change internal storage.
 #[derive(Debug)]
-pub(crate) struct ValidatedProjectInput {
-    pub(crate) root: PathBuf,
-    pub(crate) sources: BTreeMap<ProjectRelativePath, crate::SourceFile>,
-    pub(crate) resolutions: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-    pub(crate) module_ids: BTreeMap<ProjectRelativePath, ModuleId>,
+pub struct ValidatedProjectInput {
+    root: PathBuf,
+    sources: BTreeMap<ProjectRelativePath, crate::SourceFile>,
+    resolutions: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
+    module_ids: BTreeMap<ProjectRelativePath, ModuleId>,
 }
 
 impl ValidatedProjectInput {
-    /// Create the canonical internal project state from already-normalized
-    /// tables. Stable module IDs are assigned here so bulk and incremental
-    /// admission cannot drift into separate numbering algorithms.
+    /// Create from already-normalized tables. Only used within the crate
+    /// during the resolve phase when maps are built from incremental sources.
     pub(crate) fn from_maps(
         root: PathBuf,
         sources: BTreeMap<ProjectRelativePath, crate::SourceFile>,
@@ -173,6 +117,65 @@ impl ValidatedProjectInput {
             sources,
             resolutions,
             module_ids,
+        }
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn source_count(&self) -> usize {
+        self.sources.len()
+    }
+
+    pub fn resolution_count(&self) -> usize {
+        self.resolutions.len()
+    }
+
+    pub fn module_id(&self, path: &ProjectRelativePath) -> Option<ModuleId> {
+        self.module_ids.get(path).copied()
+    }
+
+    /// Iterate over (path, source) pairs in deterministic order.
+    pub fn sources(&self) -> impl Iterator<Item = (&ProjectRelativePath, &SourceFile)> {
+        self.sources.iter()
+    }
+
+    /// Iterate over (key, outcome) pairs in deterministic order.
+    pub fn resolutions(&self) -> impl Iterator<Item = (&ResolutionRequestKey, &ResolverOutcome)> {
+        self.resolutions.iter()
+    }
+
+    /// Iterate over module ID assignments in deterministic order.
+    pub fn module_ids(&self) -> impl Iterator<Item = (&ProjectRelativePath, ModuleId)> {
+        self.module_ids.iter().map(|(p, id)| (p, *id))
+    }
+
+    /// Crate-internal: destructure into all components at once.
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        PathBuf,
+        BTreeMap<ProjectRelativePath, crate::SourceFile>,
+        BTreeMap<ResolutionRequestKey, ResolverOutcome>,
+        BTreeMap<ProjectRelativePath, ModuleId>,
+    ) {
+        (self.root, self.sources, self.resolutions, self.module_ids)
+    }
+
+    /// Crate-internal: borrow the source map for pipeline stages.
+    pub(crate) fn source_map(&self) -> &BTreeMap<ProjectRelativePath, crate::SourceFile> {
+        &self.sources
+    }
+}
+
+/// One-way DTO conversion for serialization or external wire boundaries.
+impl From<ValidatedProjectInput> for ProjectInput {
+    fn from(v: ValidatedProjectInput) -> Self {
+        ProjectInput {
+            root: v.root,
+            sources: v.sources.into_values().collect(),
+            resolutions: v.resolutions.into_iter().collect(),
         }
     }
 }

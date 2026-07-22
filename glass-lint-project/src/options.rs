@@ -289,10 +289,6 @@ impl ProjectLoadOptions {
 }
 
 impl ValidatedProjectLoadOptions {
-    pub fn options(&self) -> &ProjectLoadOptions {
-        &self.options
-    }
-
     pub fn root(&self) -> Option<&Path> {
         self.options.root.as_deref()
     }

@@ -152,8 +152,8 @@ mod tests {
             fs::write(root.join(filename), "").unwrap();
         }
 
-        let paths = SourceCorpus::new(&ProjectLoadOptions::default())
-            .unwrap()
+        let options = ProjectLoadOptions::default().validated().unwrap();
+        let paths = SourceCorpus::from_validated(&options)
             .discover(std::slice::from_ref(&root))
             .unwrap();
         let names: Vec<_> = paths
