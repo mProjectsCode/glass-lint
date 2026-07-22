@@ -9,6 +9,7 @@
 //! Discovery and resolution are bounded before the project session is linked,
 //! keeping filesystem policy out of the provider-neutral core engine.
 
+mod admission;
 mod corpus;
 mod discovery;
 mod error;
@@ -17,6 +18,7 @@ mod options;
 mod resolver;
 mod walk;
 
+pub use admission::SourceAdmission;
 pub use corpus::{CorpusFile, SourceCorpus};
 pub use error::{ProjectLoadError, ProjectOptionError};
 pub use loader::{ProjectLoadMetrics, ProjectLoadOutcome, ProjectLoader, ProjectPhaseTimings};

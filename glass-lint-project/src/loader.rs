@@ -10,7 +10,8 @@ use std::{
 use glass_lint_core::{AnalysisReport, Linter, ResolutionRequest, ResolverOutcome};
 
 use crate::{
-    discovery::{ProjectDiscovery, absolute_path, inside_root, realpath},
+    admission::{SourceAdmission, absolute_path, realpath},
+    discovery::ProjectDiscovery,
     error::ProjectLoadError,
     options::{ProjectLoadOptions, ProjectSelection, ValidatedProjectLoadOptions},
     resolver::ProjectResolver,
@@ -172,7 +173,7 @@ impl ProjectLoader {
         metrics.timings.discovery += discovery_start.elapsed();
 
         let mut build =
-            ProjectLoadState::new(linter, &self.options, paths.root, selection, deadline)?;
+            ProjectLoadState::new(linter, &self.options, paths.admission, selection, deadline)?;
         build.add_initial_paths(paths.initial_paths);
         match build.load_all(metrics) {
             Ok(()) => Ok(ProjectLoadOutcome::complete(build.finish(metrics)?)),
@@ -186,14 +187,14 @@ impl ProjectLoader {
 }
 
 /// Canonical absolute paths established before the load loop starts.
-struct ProjectPaths {
-    root: PathBuf,
+struct ProjectPaths<'a> {
+    admission: SourceAdmission<'a>,
     initial_paths: VecDeque<PathBuf>,
 }
 
-impl ProjectPaths {
+impl<'a> ProjectPaths<'a> {
     fn from_selection(
-        options: &ProjectLoadOptions,
+        options: &'a ProjectLoadOptions,
         selection: &ProjectSelection,
         deadline: Instant,
     ) -> Result<Self, ProjectLoadError> {
@@ -203,19 +204,19 @@ impl ProjectPaths {
         }
         let selection_path = realpath(&selection_path)?;
         let root = realpath(&project_root(options, selection, &selection_path))?;
-        if !inside_root(&root, &selection_path) {
+        let admission = SourceAdmission::new(&root, options)?;
+        if !admission.is_inside_root(&selection_path) {
             return Err(ProjectLoadError::SelectionOutsideRoot {
                 selection: selection_path,
                 root,
             });
         }
-        let initial_paths = ProjectDiscovery::with_deadline(options, deadline).initial_paths(
+        let initial_paths = ProjectDiscovery::with_deadline(&admission, deadline).initial_paths(
             selection,
             &selection_path,
-            &root,
         )?;
         Ok(Self {
-            root,
+            admission,
             initial_paths: initial_paths.into(),
         })
     }
@@ -306,9 +307,8 @@ impl LoadProgress {
 /// counters together makes the main loading phases explicit and auditable.
 struct ProjectLoadState<'a> {
     session: glass_lint_core::AnalysisSession<'a>,
-    discovery: ProjectDiscovery<'a>,
     resolver: ProjectResolver<'a>,
-    root: PathBuf,
+    admission: SourceAdmission<'a>,
     queue: PathWorkQueue,
     admitted: AdmissionSet,
     resolved: ResolutionCache,
@@ -320,15 +320,20 @@ impl<'a> ProjectLoadState<'a> {
     fn new(
         linter: &'a Linter,
         options: &'a ProjectLoadOptions,
-        root: PathBuf,
+        admission: SourceAdmission<'a>,
         selection: &ProjectSelection,
         deadline: Instant,
     ) -> Result<Self, ProjectLoadError> {
+        let session = linter.begin_analysis(admission.canonical_root())?;
+        let resolver = ProjectResolver::new(
+            admission.canonical_root(),
+            selection,
+            options,
+        );
         Ok(Self {
-            session: linter.begin_analysis(&root)?,
-            discovery: ProjectDiscovery::with_deadline(options, deadline),
-            resolver: ProjectResolver::new(&root, selection, options),
-            root,
+            session,
+            resolver,
+            admission,
             queue: PathWorkQueue::default(),
             admitted: AdmissionSet::default(),
             resolved: ResolutionCache::default(),
@@ -355,23 +360,23 @@ impl<'a> ProjectLoadState<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         self.check_timeout()?;
-        let path = realpath(path)?;
-        if !inside_root(&self.root, &path) || !self.admitted.admit(path.clone()) {
+        let canonical = self.admission.canonicalize(path)?;
+        if !self.admission.is_inside_root(&canonical) || !self.admitted.admit(canonical.clone()) {
             return Ok(());
         }
-        if self.admitted.len() > self.discovery.options().max_files {
+        if self.admitted.len() > self.admission.options().max_files {
             return Err(ProjectLoadError::TooManyFiles(
-                self.discovery.options().max_files,
+                self.admission.options().max_files,
             ));
         }
 
         let read_start = Instant::now();
-        let source = self.discovery.read_source(&self.root, &path)?;
+        let source = self.admission.load_source_file(&canonical)?;
         metrics.timings.reads += read_start.elapsed();
         let source_bytes = u64::try_from(source.source.len()).unwrap_or(u64::MAX);
         self.progress.record_source_bytes(
             source_bytes,
-            self.discovery.options().max_project_source_bytes,
+            self.admission.options().max_project_source_bytes,
         )?;
 
         let parse_start = Instant::now();
@@ -382,7 +387,7 @@ impl<'a> ProjectLoadState<'a> {
         metrics.files = self.admitted.len();
 
         self.progress
-            .add_requests(requests.len(), self.discovery.options().max_requests)?;
+            .add_requests(requests.len(), self.admission.options().max_requests)?;
         self.progress.publish(metrics);
         self.record_requests(requests, metrics)
     }
@@ -426,10 +431,10 @@ impl<'a> ProjectLoadState<'a> {
         if let ResolverOutcome::Internal { path } = result {
             self.progress.record_edge();
             self.progress.publish(metrics);
-            let target = self.root.join(path);
+            let target = self.admission.canonical_root().join(path);
             if target.exists()
-                && !self.discovery.options().excludes_path(&self.root, &target)
-                && self.discovery.options().supports(&target)
+                && !self.admission.is_excluded(&target)
+                && self.admission.supports(&target)
             {
                 self.queue.push(target);
             }

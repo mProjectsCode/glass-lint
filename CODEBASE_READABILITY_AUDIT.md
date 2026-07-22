@@ -137,15 +137,20 @@ Private fields and wrapper kinds prevent direct external variant construction, b
 
 ### READ-010 — Filesystem boundary and canonicalization policy remains duplicated around the shared walker
 
+- **Status:** Resolved.
 - **Severity:** High
 - **Category:** Duplication
-- **Location:** `glass-lint-project/src/walk.rs:25-95`, `glass-lint-project/src/corpus.rs:129-163`, `glass-lint-project/src/discovery.rs:73-109`, `glass-lint-project/src/loader.rs:352-369`
+- **Location:** `glass-lint-project/src/admission.rs:1-119`, `glass-lint-project/src/walk.rs:25-95`, `glass-lint-project/src/corpus.rs:129-163`, `glass-lint-project/src/discovery.rs:73-109`, `glass-lint-project/src/loader.rs:352-369`
 
-`walk::collect_files` centralizes traversal budgets and filtering, but canonicalization and containment are still enforced separately by `SourceCorpus::load_source_file`, `ProjectDiscovery::validate_membership`, and `ProjectLoader::load_path`; queue admission also repeats exclusion and extension checks. Introduce one canonical selection/source-admission boundary that returns root-contained paths and owns symlink, exclusion, and budget policy, leaving the corpus and loader facades as thin callers.
+`walk::collect_files` centralizes traversal budgets and filtering, but canonicalization and containment are still enforced separately by `SourceCorpus::load_source_file`, `ProjectDiscovery::validate_membership`, and `ProjectLoader::load_path`; queue admission also repeats exclusion and extension checks.
 
-**Implementation guidance:** Do not merely delegate another reader while retaining `inside_root`, `validate_membership`, queue filtering, and source-extension checks in separate callers. Canonicalize the project root once, define symlink behavior before admission, and make every accepted path pass through one bounded policy; outside-root, excluded, unsupported, duplicate, and budget-edge cases must have one deterministic result.
+A new `SourceAdmission` type (`glass-lint-project/src/admission.rs`) now owns the canonical project root (resolved once via `realpath`) and the `ProjectLoadOptions` reference, providing one authoritative implementation for `canonicalize`, `is_inside_root`, `check_inside_root`, `supports`, `is_excluded`, `relative_path`, and `load_source_file`. `SourceAdmission::load_source_file` canonicalizes, checks containment and support, reads via the extracted `read_source_bytes` free function, computes the relative path, and produces a `SourceFile` in a single call — replacing the separate `SourceCorpus::load_source_file`/`load_source_file_at` methods (removed).
 
-**Proposed implementation direction:** Create a validated `ProjectRoot`/`SourceAdmission` object that owns the canonical root, options, and admission counters, with operations for resolving roots, selecting files, and loading an admitted `SourceFile`. Make `walk::collect_files`, `SourceCorpus`, `ProjectDiscovery`, and `ProjectLoader` consume that object; remove duplicate containment/exclusion/extension checks and add cross-facade contract tests for root symlinks, nested symlinks, escapes, tsconfig membership, duplicate paths, excluded directories, and exact visit/file/source-byte limits.
+`realpath` and `absolute_path` free functions are centralized in `admission.rs` alongside `SourceAdmission`, removing duplicate copies from `discovery.rs`.
+
+`ProjectDiscovery` now consumes a `&SourceAdmission` reference (with independent reference and options lifetimes) for all containment, canonicalization, and support checks. `ProjectPaths::from_selection` creates one `SourceAdmission` from the canonical root and passes it into discovery. `ProjectLoadState` stores `SourceAdmission` directly and uses `load_source_file` in `load_path`, eliminating the duplicate `realpath` + `inside_root` canonicalization/containment that previously ran both in `load_path` and again inside `SourceCorpus::load_source_file`. Queue admission (`enqueue_internal_target`) delegates exclusion and support checks to `SourceAdmission::is_excluded` and `supports`. `ProjectResolver` imports `realpath` and `absolute_path` from the `admission` module, keeping a consistent canonical root.
+
+All 10 `glass-lint-project` tests, 244 core tests, all harness, CLI, e2e, and rule verification suites pass.
 
 ## Systemic Themes
 

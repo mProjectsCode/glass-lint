@@ -7,8 +7,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glass_lint_core::SourceFile;
-
 use crate::{error::ProjectLoadError, options::ProjectLoadOptions, walk};
 
 #[derive(Clone, Debug)]
@@ -19,6 +17,54 @@ pub struct CorpusFile {
     pub bytes: u64,
     /// UTF-8 source text loaded under the configured byte limit.
     pub source: String,
+}
+
+/// Read raw source bytes from a trusted path with a byte budget.
+///
+/// This is the lowest-level read operation; callers must validate
+/// extension support and containment before calling this function.
+pub fn read_source_bytes(
+    path: &Path,
+    max_source_bytes: u64,
+) -> Result<CorpusFile, ProjectLoadError> {
+    let file = fs::File::open(path).map_err(|source| ProjectLoadError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    let metadata = file.metadata().map_err(|source| ProjectLoadError::Io {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    if metadata.len() > max_source_bytes {
+        return Err(ProjectLoadError::SourceTooLarge {
+            path: path.to_path_buf(),
+            bytes: metadata.len(),
+            limit: max_source_bytes,
+        });
+    }
+    let mut bytes = Vec::new();
+    file.take(max_source_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|source| ProjectLoadError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
+    if bytes.len() as u64 > max_source_bytes {
+        return Err(ProjectLoadError::SourceTooLarge {
+            path: path.to_path_buf(),
+            bytes: bytes.len() as u64,
+            limit: max_source_bytes,
+        });
+    }
+    let source = String::from_utf8(bytes).map_err(|error| ProjectLoadError::Io {
+        path: path.to_path_buf(),
+        source: std::io::Error::new(std::io::ErrorKind::InvalidData, error),
+    })?;
+    Ok(CorpusFile {
+        path: path.to_path_buf(),
+        bytes: source.len() as u64,
+        source,
+    })
 }
 
 pub struct SourceCorpus<'a> {
@@ -86,80 +132,6 @@ impl<'a> SourceCorpus<'a> {
         if !self.options.supports(path) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         }
-        let file = fs::File::open(path).map_err(|source| ProjectLoadError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        let metadata = file.metadata().map_err(|source| ProjectLoadError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        if metadata.len() > self.options.max_source_bytes {
-            return Err(ProjectLoadError::SourceTooLarge {
-                path: path.to_path_buf(),
-                bytes: metadata.len(),
-                limit: self.options.max_source_bytes,
-            });
-        }
-        let mut bytes = Vec::new();
-        file.take(self.options.max_source_bytes.saturating_add(1))
-            .read_to_end(&mut bytes)
-            .map_err(|source| ProjectLoadError::Io {
-                path: path.to_path_buf(),
-                source,
-            })?;
-        if bytes.len() as u64 > self.options.max_source_bytes {
-            return Err(ProjectLoadError::SourceTooLarge {
-                path: path.to_path_buf(),
-                bytes: bytes.len() as u64,
-                limit: self.options.max_source_bytes,
-            });
-        }
-        let source = String::from_utf8(bytes).map_err(|error| ProjectLoadError::Io {
-            path: path.to_path_buf(),
-            source: std::io::Error::new(std::io::ErrorKind::InvalidData, error),
-        })?;
-        Ok(CorpusFile {
-            path: path.to_path_buf(),
-            bytes: source.len() as u64,
-            source,
-        })
-    }
-
-    /// Convert a loaded filesystem path into a normalized core source record.
-    pub fn load_source_file(
-        &self,
-        root: &Path,
-        path: &Path,
-    ) -> Result<SourceFile, ProjectLoadError> {
-        let canonical_root = fs::canonicalize(root).map_err(|source| ProjectLoadError::Io {
-            path: root.to_path_buf(),
-            source,
-        })?;
-        let canonical_path = fs::canonicalize(path).map_err(|source| ProjectLoadError::Io {
-            path: path.to_path_buf(),
-            source,
-        })?;
-        self.load_source_file_at(&canonical_root, &canonical_path)
-    }
-
-    pub fn load_source_file_at(
-        &self,
-        canonical_root: &Path,
-        canonical_path: &Path,
-    ) -> Result<SourceFile, ProjectLoadError> {
-        if canonical_path.strip_prefix(canonical_root).is_err() {
-            return Err(ProjectLoadError::SelectionOutsideRoot {
-                selection: canonical_path.to_path_buf(),
-                root: canonical_root.to_path_buf(),
-            });
-        }
-        let file = self.load(canonical_path)?;
-        let relative = canonical_path
-            .strip_prefix(canonical_root)
-            .unwrap_or(canonical_path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        Ok(SourceFile::new(relative, file.source)?)
+        read_source_bytes(path, self.options.max_source_bytes)
     }
 }

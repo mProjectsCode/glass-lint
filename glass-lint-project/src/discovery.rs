@@ -7,33 +7,28 @@ use std::{
     time::Instant,
 };
 
-use glass_lint_core::SourceFile;
 use serde_json::Value;
 
 use crate::{
+    admission::SourceAdmission,
     error::ProjectLoadError,
-    options::{ProjectLoadOptions, ProjectSelection},
+    options::ProjectSelection,
     walk,
 };
 
 /// Discovers the bounded set of source files that belongs to a selection.
-pub struct ProjectDiscovery<'a> {
-    options: &'a ProjectLoadOptions,
+pub struct ProjectDiscovery<'adm, 'opt> {
+    admission: &'adm SourceAdmission<'opt>,
     deadline: Option<Instant>,
 }
 
-impl<'a> ProjectDiscovery<'a> {
-    /// Create a discovery view over validated loader options.
-    pub fn with_deadline(options: &'a ProjectLoadOptions, deadline: Instant) -> Self {
+impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
+    /// Create a discovery view over a validated admission boundary.
+    pub fn with_deadline(admission: &'adm SourceAdmission<'opt>, deadline: Instant) -> Self {
         Self {
-            options,
+            admission,
             deadline: Some(deadline),
         }
-    }
-
-    /// Borrow the discovery policy.
-    pub fn options(&self) -> &ProjectLoadOptions {
-        self.options
     }
 
     /// Resolve a selection into sorted, root-contained initial source paths.
@@ -41,7 +36,6 @@ impl<'a> ProjectDiscovery<'a> {
         &self,
         selection: &ProjectSelection,
         selection_path: &Path,
-        root: &Path,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut paths = match selection {
             ProjectSelection::Entry(_) => self.entry_path(selection_path)?,
@@ -52,11 +46,13 @@ impl<'a> ProjectDiscovery<'a> {
                         selection_path.to_path_buf(),
                     ));
                 }
-                self.discover_tsconfig(config, selection_path.parent().unwrap_or(root))?
+                self.discover_tsconfig(config, selection_path.parent().unwrap_or_else(|| {
+                    self.admission.canonical_root()
+                }))?
             }
         };
 
-        self.validate_membership(&mut paths, selection_path, root)?;
+        self.validate_membership(&mut paths, selection_path)?;
         Ok(paths)
     }
 
@@ -64,7 +60,7 @@ impl<'a> ProjectDiscovery<'a> {
         if !path.is_file() {
             return Err(ProjectLoadError::SelectionNotFile(path.to_path_buf()));
         }
-        if !self.options.supports(path) {
+        if !self.admission.supports(path) {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
         }
         Ok(vec![path.to_path_buf()])
@@ -74,11 +70,10 @@ impl<'a> ProjectDiscovery<'a> {
         &self,
         paths: &mut Vec<PathBuf>,
         selection: &Path,
-        root: &Path,
     ) -> Result<(), ProjectLoadError> {
         let mut outside = false;
         paths.retain(|path| {
-            if inside_root(root, path) {
+            if self.admission.is_inside_root(path) {
                 true
             } else {
                 outside = true;
@@ -88,25 +83,23 @@ impl<'a> ProjectDiscovery<'a> {
         if outside {
             return Err(ProjectLoadError::SelectionOutsideRoot {
                 selection: selection.to_path_buf(),
-                root: root.to_path_buf(),
+                root: self.admission.canonical_root().to_path_buf(),
             });
         }
         paths.sort();
         paths.dedup();
-        if paths.len() > self.options.max_files {
-            return Err(ProjectLoadError::TooManyFiles(self.options.max_files));
+        if paths.len() > self.admission.options().max_files {
+            return Err(ProjectLoadError::TooManyFiles(self.admission.options().max_files));
         }
         Ok(())
     }
 
     fn discover(&self, directory: &Path) -> Result<Vec<PathBuf>, ProjectLoadError> {
-        let Some(_metadata) = walk::resolve_root(self.options, directory)? else {
+        let options = self.admission.options();
+        let Some(_metadata) = walk::resolve_root(options, directory)? else {
             return Ok(Vec::new());
         };
-        // The shared walker already applies excluded-directory filtering
-        // and extension support checks, so the include predicate accepts
-        // every entry that reaches it.
-        walk::collect_files(self.options, directory, self.deadline, &mut |_| true)
+        walk::collect_files(options, directory, self.deadline, &mut |_| true)
     }
 
     fn discover_tsconfig(
@@ -116,7 +109,7 @@ impl<'a> ProjectDiscovery<'a> {
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut visited = BTreeSet::new();
         let mut selected = BTreeSet::new();
-        self.collect_tsconfig(&realpath(config)?, directory, &mut visited, &mut selected)?;
+        self.collect_tsconfig(&self.admission.canonicalize(config)?, directory, &mut visited, &mut selected)?;
         Ok(selected.into_iter().collect())
     }
 
@@ -127,7 +120,7 @@ impl<'a> ProjectDiscovery<'a> {
         visited: &mut BTreeSet<PathBuf>,
         selected: &mut BTreeSet<PathBuf>,
     ) -> Result<(), ProjectLoadError> {
-        let config = realpath(config)?;
+        let config = self.admission.canonicalize(config)?;
         if !visited.insert(config.clone()) {
             return Ok(());
         }
@@ -165,8 +158,8 @@ impl<'a> ProjectDiscovery<'a> {
     ) -> Result<(), ProjectLoadError> {
         for file in files.iter().filter_map(Value::as_str) {
             let path = base.join(file);
-            if path.exists() && self.options.supports(&path) {
-                selected.insert(realpath(&path)?);
+            if path.exists() && self.admission.supports(&path) {
+                selected.insert(self.admission.canonicalize(&path)?);
             }
         }
         Ok(())
@@ -192,7 +185,7 @@ impl<'a> ProjectDiscovery<'a> {
                     .iter()
                     .any(|pattern| tsconfig_pattern_matches(pattern, &relative))
             {
-                selected.insert(realpath(&path)?);
+                selected.insert(self.admission.canonicalize(&path)?);
             }
         }
         Ok(())
@@ -222,10 +215,6 @@ impl<'a> ProjectDiscovery<'a> {
         }
         Ok(())
     }
-
-    pub fn read_source(&self, root: &Path, path: &Path) -> Result<SourceFile, ProjectLoadError> {
-        crate::corpus::SourceCorpus::new_unchecked(self.options).load_source_file(root, path)
-    }
 }
 
 fn patterns<'a>(config: &'a Value, key: &str) -> Option<Vec<&'a str>> {
@@ -252,7 +241,7 @@ fn read_tsconfig_path_extends(
         && let Some(parent) = resolve_tsconfig_extends(config, extends, fallback_directory)
         && parent.exists()
     {
-        let parent = realpath(&parent)?;
+        let parent = crate::admission::realpath(&parent)?;
         if visited.insert(parent.clone()) {
             effective = read_tsconfig_path_extends(
                 &parent,
@@ -263,28 +252,6 @@ fn read_tsconfig_path_extends(
     }
     merge_tsconfig_inheritance(&mut effective, parsed);
     Ok(effective)
-}
-
-/// Make a selection path absolute without requiring it to exist yet.
-pub fn absolute_path(path: &Path) -> PathBuf {
-    if path.is_absolute() {
-        path.to_path_buf()
-    } else {
-        std::env::current_dir().unwrap_or_default().join(path)
-    }
-}
-
-/// Canonicalize a path and preserve loader-specific I/O context on failure.
-pub fn realpath(path: &Path) -> Result<PathBuf, ProjectLoadError> {
-    fs::canonicalize(path).map_err(|source| ProjectLoadError::Io {
-        path: path.to_path_buf(),
-        source,
-    })
-}
-
-/// Test lexical containment in the canonical project-root namespace.
-pub fn inside_root(root: &Path, path: &Path) -> bool {
-    path.strip_prefix(root).is_ok()
 }
 
 fn parse_error(config: &Path, error: impl std::fmt::Display) -> ProjectLoadError {

@@ -9,7 +9,7 @@ use glass_lint_core::{
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
 use crate::{
-    discovery::{absolute_path, inside_root, realpath},
+    admission::{absolute_path, realpath},
     options::{ProjectLoadOptions, ProjectSelection},
 };
 
@@ -95,7 +95,7 @@ impl<'a> ProjectResolver<'a> {
         let Ok(path) = realpath(path) else {
             return ResolverOutcome::Missing;
         };
-        if !inside_root(&self.root, &path) {
+        if path.strip_prefix(&self.root).is_err() {
             return if is_internal_module_request(request) {
                 ResolverOutcome::OutsideProject {
                     path: path.to_string_lossy().into_owned(),
