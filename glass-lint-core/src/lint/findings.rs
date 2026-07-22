@@ -44,21 +44,44 @@ impl Linter {
             }
         }
 
-        let mut ranges: Vec<SourceRange> = by_range.keys().cloned().collect();
+        let entries: Vec<(SourceRange, usize)> = by_range.into_iter().collect();
+
+        let mut ranges: Vec<SourceRange> = entries.iter().map(|(r, _)| r.clone()).collect();
         remove_contained_ranges(&mut ranges);
 
         let path_shared: Arc<str> = Arc::from(path);
         let label: Arc<str> = Arc::from(capability.label());
         let severity = capability.severity();
 
+        let mut groups: Vec<Vec<(usize, &SourceRange)>> = vec![Vec::new(); ranges.len()];
+        let mut entry_cursor = 0usize;
+
+        for (retained_idx, retained) in ranges.iter().enumerate() {
+            while entry_cursor < entries.len()
+                && entries[entry_cursor].0.end() < retained.start()
+            {
+                entry_cursor += 1;
+            }
+
+            let mut scan = entry_cursor;
+            while scan < entries.len()
+                && entries[scan].0.start() <= retained.end()
+            {
+                if retained.contains(&entries[scan].0) {
+                    groups[retained_idx].push((entries[scan].1, &entries[scan].0));
+                }
+                scan += 1;
+            }
+        }
+
         ranges
             .into_iter()
-            .map(|range| {
-                let local_evidence: EvidenceList = by_range
+            .enumerate()
+            .map(|(retained_idx, range)| {
+                let local_evidence: EvidenceList = groups[retained_idx]
                     .iter()
-                    .filter(|(item_range, _)| range.contains(item_range))
-                    .map(|(item_range, &ev_idx)| {
-                        let ev = &evidence_items[ev_idx];
+                    .map(|(ev_idx, item_range)| {
+                        let ev = &evidence_items[*ev_idx];
                         Evidence {
                             message: format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
                             count: ev.count,
@@ -67,7 +90,7 @@ impl Linter {
                                 path: ProjectRelativePath::from_normalized(Arc::clone(
                                     &path_shared,
                                 )),
-                                range: item_range.clone(),
+                                range: (*item_range).clone(),
                             }),
                         }
                     })

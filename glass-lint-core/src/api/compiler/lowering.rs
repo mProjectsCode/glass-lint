@@ -76,7 +76,7 @@ fn lower_member_clause(
     }
 }
 
-pub(super) fn lower_calls(values: &[CallMatcher]) -> Vec<QueryClause> {
+pub(crate) fn lower_calls(values: &[CallMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|call| QueryClause {
@@ -102,7 +102,7 @@ pub(super) fn lower_calls(values: &[CallMatcher]) -> Vec<QueryClause> {
         .collect()
 }
 
-pub(super) fn lower_member_calls(values: &[MemberCallMatcher]) -> Vec<QueryClause> {
+pub(crate) fn lower_member_calls(values: &[MemberCallMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|member| {
@@ -130,7 +130,7 @@ pub(super) fn lower_member_calls(values: &[MemberCallMatcher]) -> Vec<QueryClaus
         .collect()
 }
 
-pub(super) fn lower_member_reads(values: &[MemberReadMatcher]) -> Vec<QueryClause> {
+pub(crate) fn lower_member_reads(values: &[MemberReadMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|read| {
@@ -162,14 +162,14 @@ fn literal_clause(value: &str, event: EventPredicate, kind: MatchKind) -> QueryC
     }
 }
 
-pub(super) fn lower_imports(values: &[String]) -> Vec<QueryClause> {
+pub(crate) fn lower_imports(values: &[String]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|value| literal_clause(value, EventPredicate::Import, MatchKind::Import))
         .collect()
 }
 
-pub(super) fn lower_package_imports(values: &[ModuleSpecifierPattern]) -> Vec<QueryClause> {
+pub(crate) fn lower_package_imports(values: &[ModuleSpecifierPattern]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|pattern| QueryClause {
@@ -187,7 +187,7 @@ pub(super) fn lower_package_imports(values: &[ModuleSpecifierPattern]) -> Vec<Qu
         .collect()
 }
 
-pub(super) fn lower_string_contains(values: &[String]) -> Vec<QueryClause> {
+pub(crate) fn lower_string_contains(values: &[String]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|value| {
@@ -200,7 +200,7 @@ pub(super) fn lower_string_contains(values: &[String]) -> Vec<QueryClause> {
         .collect()
 }
 
-pub(super) fn lower_classes(values: &[ClassMatcher]) -> Vec<QueryClause> {
+pub(crate) fn lower_classes(values: &[ClassMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|class| QueryClause {
@@ -216,7 +216,7 @@ pub(super) fn lower_classes(values: &[ClassMatcher]) -> Vec<QueryClause> {
         .collect()
 }
 
-pub(super) fn lower_constructors(values: &[ConstructorMatcher]) -> Vec<QueryClause> {
+pub(crate) fn lower_constructors(values: &[ConstructorMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|constructor| QueryClause {
@@ -233,7 +233,7 @@ pub(super) fn lower_constructors(values: &[ConstructorMatcher]) -> Vec<QueryClau
 }
 
 #[allow(unused_variables)]
-pub(super) fn lower_flows(values: &[crate::api::rule::ObjectFlowMatcher]) -> Vec<QueryClause> {
+pub(crate) fn lower_flows(values: &[crate::api::rule::ObjectFlowMatcher]) -> Vec<QueryClause> {
     Vec::new()
 }
 
@@ -261,7 +261,7 @@ fn returned_member_clause(
     }
 }
 
-pub(super) fn lower_returned_member_calls(
+pub(crate) fn lower_returned_member_calls(
     values: &[ReturnedMemberCallMatcher],
 ) -> Vec<QueryClause> {
     values
@@ -279,7 +279,7 @@ pub(super) fn lower_returned_member_calls(
         .collect()
 }
 
-pub(super) fn lower_returned_member_reads(
+pub(crate) fn lower_returned_member_reads(
     values: &[ReturnedMemberReadMatcher],
 ) -> Vec<QueryClause> {
     values
@@ -297,7 +297,7 @@ pub(super) fn lower_returned_member_reads(
         .collect()
 }
 
-pub(super) fn lower_instance_members(values: &[InstanceMemberCallMatcher]) -> Vec<QueryClause> {
+pub(crate) fn lower_instance_members(values: &[InstanceMemberCallMatcher]) -> Vec<QueryClause> {
     values
         .iter()
         .map(|instance| {

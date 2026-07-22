@@ -344,13 +344,9 @@ impl Linter {
         let lines = &module.source_context().lines;
         let path = module.path();
 
-        let mut related_by_rule: BTreeMap<
+        let mut by_rule: BTreeMap<
             crate::api::classification::RuleIndex,
-            Vec<crate::Evidence>,
-        > = BTreeMap::new();
-        let mut findings_by_rule: BTreeMap<
-            crate::api::classification::RuleIndex,
-            Vec<crate::Finding>,
+            (Vec<crate::Finding>, Vec<crate::Evidence>),
         > = BTreeMap::new();
 
         for capability in classification.capabilities() {
@@ -365,34 +361,21 @@ impl Linter {
                     Some(evidence)
                 })
                 .collect();
-            if !related.is_empty() {
-                related_by_rule
-                    .entry(capability.rule_index)
-                    .or_default()
-                    .extend(related);
-            }
-
             let cap_findings = self.findings_for_capability(capability, lines, path);
-            if !cap_findings.is_empty() {
-                findings_by_rule
-                    .entry(capability.rule_index)
-                    .or_default()
-                    .extend(cap_findings);
-            }
-        }
 
-        for (rule_index, related) in &related_by_rule {
-            if let Some(rule_findings) = findings_by_rule.get_mut(rule_index) {
-                for finding in rule_findings.iter_mut() {
-                    if !related.is_empty() {
-                        finding.append_related(related.iter().cloned());
-                    }
-                }
-            }
+            let (rule_findings, rule_related) =
+                by_rule.entry(capability.rule_index).or_default();
+            rule_findings.extend(cap_findings);
+            rule_related.extend(related);
         }
 
         let mut result: Vec<crate::Finding> = Vec::new();
-        for (_, mut rule_findings) in findings_by_rule {
+        for (_, (mut rule_findings, related)) in by_rule {
+            for finding in &mut rule_findings {
+                if !related.is_empty() {
+                    finding.append_related(related.iter().cloned());
+                }
+            }
             result.append(&mut rule_findings);
         }
         result

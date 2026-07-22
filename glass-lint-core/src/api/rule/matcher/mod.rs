@@ -16,35 +16,6 @@ pub use member::*;
 use super::{normalization, validation};
 use crate::api::rule::{MatcherBuildError, ModuleSpecifierPattern};
 
-#[derive(Debug, Clone, Default)]
-/// Collection of matcher families before validation and normalization.
-pub struct MatcherSet {
-    /// Direct callable matchers.
-    calls: Vec<CallMatcher>,
-    /// Member-call matchers.
-    member_calls: Vec<MemberCallMatcher>,
-    /// Member-read matchers.
-    member_reads: Vec<MemberReadMatcher>,
-    /// Imported module specifier matchers.
-    imports: Vec<String>,
-    /// Boundary-aware package-root module patterns.
-    package_imports: Vec<ModuleSpecifierPattern>,
-    /// Static literal matchers.
-    string_contains: Vec<String>,
-    /// Class matchers.
-    classes: Vec<ClassMatcher>,
-    /// Constructor matchers.
-    constructors: Vec<ConstructorMatcher>,
-    /// Object lifecycle flow matchers.
-    flows: Vec<ObjectFlowMatcher>,
-    /// Returned-object member-call matchers.
-    returned_member_calls: Vec<ReturnedMemberCallMatcher>,
-    /// Returned-object member-read matchers.
-    returned_member_reads: Vec<ReturnedMemberReadMatcher>,
-    /// Module-export instance member-call matchers.
-    instance_member_calls: Vec<InstanceMemberCallMatcher>,
-}
-
 macro_rules! generate_from {
     (from $ty:ty, $matcher_variant:ident) => {
         impl From<$ty> for Matcher {
@@ -58,16 +29,25 @@ macro_rules! generate_from {
 
 /// Canonical declaration for every matcher family. Adding a family to this
 /// list requires a normalize function, a validate function, and a lowering
-/// function — the macro generates From impls (for families with unique types
-/// marked `from`), push/emptiness/flatten dispatch, and the normalize/validate
-/// methods that call each family's hooks.  Omission from validation,
+/// function — the macro generates `MatcherSet` fields, the `Matcher` enum,
+/// family views, push/emptiness/flatten dispatch, normalization, validation,
+/// and compiler lowering from one declaration. Omission from validation,
 /// normalization, or lowering is a compile-time error.
 macro_rules! matcher_families {
     ($(($family_variant:ident, $matcher_variant:ident, $field:ident, $ty:ty,
         normalize($norm_fn:path),
         validate($val_fn:path),
+        lower($lower_fn:path),
         $from_state:ident
     )),* $(,)?) => {
+        /// Collection of matcher families before validation and normalization.
+        /// Fields, views, and lowering are generated from the family
+        /// declaration list.
+        #[derive(Debug, Clone, Default)]
+        pub struct MatcherSet {
+            $($field: Vec<$ty>,)*
+        }
+
         const MATCHER_FAMILY_COUNT: usize = [$(stringify!($family_variant)),*].len();
 
         #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,6 +111,16 @@ macro_rules! matcher_families {
                 }
                 Ok(())
             }
+
+            pub(crate) fn lower_all(&self) -> Vec<crate::api::compiler::rule::QueryClause> {
+                let mut clauses = Vec::new();
+                for family in self.families() {
+                    match family {
+                        $(MatcherFamily::$family_variant(values) => clauses.extend($lower_fn(values)),)*
+                    }
+                }
+                clauses
+            }
         }
 
         $(
@@ -143,50 +133,62 @@ matcher_families! {
     (Calls, Call, calls, CallMatcher,
         normalize(normalization::normalize_calls),
         validate(validation::validate_calls),
+        lower(crate::api::compiler::lowering::lower_calls),
         from),
     (MemberCalls, MemberCall, member_calls, MemberCallMatcher,
         normalize(normalization::normalize_member_calls),
         validate(validation::validate_member_calls),
+        lower(crate::api::compiler::lowering::lower_member_calls),
         from),
     (MemberReads, MemberRead, member_reads, MemberReadMatcher,
         normalize(normalization::normalize_member_reads),
         validate(validation::validate_member_reads),
+        lower(crate::api::compiler::lowering::lower_member_reads),
         from),
     (Imports, Import, imports, String,
         normalize(normalize_strings),
         validate(validation::validate_literal_strings),
+        lower(crate::api::compiler::lowering::lower_imports),
         no_from),
     (PackageImports, PackageImport, package_imports, ModuleSpecifierPattern,
         normalize(normalization::normalize_package_imports),
         validate(validation::validate_package_imports),
+        lower(crate::api::compiler::lowering::lower_package_imports),
         no_from),
     (StringContains, StringContains, string_contains, String,
         normalize(normalize_strings),
         validate(validation::validate_literal_strings),
+        lower(crate::api::compiler::lowering::lower_string_contains),
         no_from),
     (Classes, Class, classes, ClassMatcher,
         normalize(ClassMatcher::normalize_all),
         validate(validation::validate_classes),
+        lower(crate::api::compiler::lowering::lower_classes),
         from),
     (Constructors, Constructor, constructors, ConstructorMatcher,
         normalize(ConstructorMatcher::normalize_all),
         validate(validation::validate_constructors),
+        lower(crate::api::compiler::lowering::lower_constructors),
         from),
     (Flows, ObjectFlow, flows, ObjectFlowMatcher,
         normalize(normalize_flows),
         validate(validation::validate_flows),
+        lower(crate::api::compiler::lowering::lower_flows),
         from),
     (ReturnedMemberCalls, ReturnedMemberCall, returned_member_calls, ReturnedMemberCallMatcher,
         normalize(ReturnedMemberCallMatcher::normalize_all),
         validate(validation::validate_returned_member_calls),
+        lower(crate::api::compiler::lowering::lower_returned_member_calls),
         from),
     (ReturnedMemberReads, ReturnedMemberRead, returned_member_reads, ReturnedMemberReadMatcher,
         normalize(ReturnedMemberReadMatcher::normalize_all),
         validate(validation::validate_returned_member_reads),
+        lower(crate::api::compiler::lowering::lower_returned_member_reads),
         from),
     (InstanceMemberCalls, InstanceMemberCall, instance_member_calls, InstanceMemberCallMatcher,
         normalize(InstanceMemberCallMatcher::normalize_all),
         validate(validation::validate_instance_member_calls),
+        lower(crate::api::compiler::lowering::lower_instance_members),
         from),
 }
 

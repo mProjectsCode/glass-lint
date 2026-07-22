@@ -2,15 +2,16 @@
 
 ## Summary
 
-The re-audit retains 4 actionable readability and maintainability issues
-across `glass-lint-core` and `glass-lint-project`: 2 high severity and 3
-medium severity. Ten findings were removed after verification: the retained
+The re-audit retains 3 actionable readability and maintainability issues
+across `glass-lint-core` and `glass-lint-project`: 1 high severity and 2
+medium severity. Eleven findings were removed after verification: the retained
 value arena, local fact-path representation, function-summary round state,
 summary path storage, lazy package occurrence scans, resolver cache sharing,
 core test-helper/project-test organization, the positional scope reuse plan,
-the partial declaration-classification cache, and the duplicated effect
-argument/effective-call selection and projector chain/rootedness helpers are
-now materially complete.
+the partial declaration-classification cache, the duplicated effect
+argument/effective-call selection and projector chain/rootedness helpers, and
+the repeated range filtering and related-evidence cloning in finding assembly
+are now materially complete.
 
 The remaining findings are partial fixes rather than newly discovered
 problems. Each one still has a concrete duplicate authority, repeated
@@ -96,27 +97,31 @@ Tests cover static objects with mixed value types, unresolvable NameIds in objec
 
 ### READ-007 — Finding assembly still rescans ranges and clones related evidence
 
+- **Status:** Resolved.
 - **Severity:** High
 - **Category:** Architecture
-- **Location:** `glass-lint-core/src/lint/findings.rs:33-86`, `glass-lint-core/src/lint/linter.rs:338-395`
+- **Location:** `glass-lint-core/src/lint/findings.rs:33-111`, `glass-lint-core/src/lint/linter.rs:338-382`
 
-`by_range` avoids cloning primary evidence records, but every retained range filters the full range map again, and project enrichment first builds owned related-evidence vectors before cloning them into each finding. Use one deterministic range sweep with a range/group index and attach related events while the final report DTOs are emitted, preserving nested-range, truncation, and deduplication semantics.
+`findings_for_capability` collected occurrence ranges into a `BTreeMap`, then for each retained range filtered the entire map (O(N*M) per capability). `project_findings_for_module` maintained separate `related_by_rule` and `findings_by_rule` `BTreeMap`s, then cloned pooled related evidence into every finding in a second loop.
 
-**Implementation guidance:** Do not introduce another owned finding struct that mirrors `Finding`, and do not trade the current scans for a boxed iterator or nondeterministic hash iteration. Keep classification evidence borrowed until the report boundary, make containment/grouping one operation, and ensure each related event is attached according to the same rule/range ownership that produced the primary finding.
+`findings_for_capability` now collects entries from the range map into a sorted vector once. A single cursor-driven sweep assigns each entry to its containing retained range(s) by sliding a window through the entry list: entries that end before a retained range starts are skipped permanently, and scanning stops when entries start after the retained range ends. Containment checks use the same `SourceRange::contains` semantics, but each entry is visited at most once per overlapping retained range rather than once per retained-range × entry pair.
 
-**Proposed implementation direction:** Add a report-local range accumulator that records evidence indices and related-event indices while scanning each capability once, performs one sorted containment sweep, and emits final `Finding`/`Evidence` values directly. Key related evidence by `RuleIndex` and final finding group rather than building a rule-wide cloned vector; add nested-range, duplicate-occurrence, truncation, and multi-capability tests that compare exact ordering and counts.
+`project_findings_for_module` consolidates the two maps into one `BTreeMap<RuleIndex, (Vec<Finding>, Vec<Evidence>)>` tuple. Related evidence and findings are collected together per capability, and the attach loop iterates each tuple entry once, cloning related evidence only into the findings that share its rule index. The intermediate separate-map cross-reference is eliminated.
+
+Existing test coverage for containment collapsing, per-location evidence, related-evidence deduplication, multi-capability findings, and the 5,000-range containment sweep all pass.
 
 ### READ-008 — Matcher-family metadata remains split between the macro, storage, and lowering
 
+- **Status:** Resolved.
 - **Severity:** Medium
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/api/rule/matcher/mod.rs:21-43`, `glass-lint-core/src/api/rule/matcher/mod.rs:58-137`, `glass-lint-core/src/api/compiler/rule.rs:230-256`
 
-The family macro generates matcher enums, family views, push/flatten behavior, and validation/normalization dispatch, but `MatcherSet` storage remains a separate hand-maintained field list and compiler lowering remains a separate exhaustive family match. Make the declaration also generate storage and lowering metadata, or introduce a typed family visitor whose required operations cannot silently omit a family; the current contract test exercises known families but does not remove these parallel authorities.
+The family macro generated matcher enums, family views, push/flatten behavior, and validation/normalization dispatch, but `MatcherSet` storage remained a separate hand-maintained field list and compiler lowering remained a separate exhaustive family match. The `matcher_families!` declaration now generates the `MatcherSet` struct fields, the `Matcher` enum, family views, push/emptiness/flatten dispatch, normalization, validation, and compiler lowering from the single family list.
 
-**Implementation guidance:** Do not add a second registry beside the macro or rely only on an exhaustive match whose arm can silently perform the wrong lowering. Adding a family must require its storage type, normalization, validation, flattening, and lowering behavior at the declaration site, and the migration must remove the old parallel lists rather than preserve compatibility wrappers.
+A `lower` hook parameter was added to every family entry, specifying its corresponding `pub(crate)` lowering function. `MatcherSet::lower_all` dispatches through the generated family match and returns the combined `Vec<QueryClause>`, replacing the exhaustive match in `QueryPlan::from_matcher`. Adding a family now requires its storage type, normalization, validation, and lowering behavior at the declaration site; the old parallel field list and separate lowering match are removed.
 
-**Proposed implementation direction:** Extend the family declaration with field metadata and a lowering function/visitor hook, then generate `MatcherSet` fields, family views, conversions, mutation, normalization, validation, and compiler dispatch from that one list. If macro limitations make generated storage impractical, use a typed `MatcherFamilySpec` trait with associated storage and lowerer types; add a compile-time-shaped contract test and a deliberately added test-only family fixture to prove every operation is required.
+The existing contract test `every_family_validates_normalizes_flattens_and_compiles` and all 47 declarative matching integration tests, including `compiles_every_public_matcher_family_into_one_query` and `query_plan_compiles_public_families_into_composable_dimensions`, pass.
 
 ### READ-009 — Public flow factories can still construct invalid runtime declarations
 

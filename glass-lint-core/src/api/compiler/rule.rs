@@ -10,15 +10,7 @@ use crate::{
     analysis::SymbolPath,
     api::{
         classification::{MatchKind, RuleIndex},
-        compiler::{
-            lowering::{
-                lower_calls, lower_classes, lower_constructors, lower_flows, lower_imports,
-                lower_instance_members, lower_member_calls, lower_member_reads,
-                lower_package_imports, lower_returned_member_calls, lower_returned_member_reads,
-                lower_string_contains,
-            },
-            object_flow::CompiledObjectFlow,
-        },
+        compiler::object_flow::CompiledObjectFlow,
         rule::{ArgumentConstraint, MatcherFamily, MatcherSet, ModuleSpecifierPattern, Rule},
     },
 };
@@ -226,39 +218,7 @@ impl QueryClause {
 
 impl QueryPlan {
     fn from_matcher(matcher: &MatcherSet, flows: Vec<CompiledObjectFlow>) -> Self {
-        let mut clauses = Vec::new();
-        for family in matcher.families() {
-            match family {
-                MatcherFamily::Calls(values) => clauses.extend(lower_calls(values)),
-                MatcherFamily::MemberCalls(values) => clauses.extend(lower_member_calls(values)),
-                MatcherFamily::MemberReads(values) => clauses.extend(lower_member_reads(values)),
-                MatcherFamily::Imports(values) => clauses.extend(lower_imports(values)),
-                MatcherFamily::PackageImports(values) => {
-                    clauses.extend(lower_package_imports(values));
-                }
-                MatcherFamily::StringContains(values) => {
-                    clauses.extend(lower_string_contains(values));
-                }
-                MatcherFamily::Classes(values) => {
-                    clauses.extend(lower_classes(values));
-                }
-                MatcherFamily::Constructors(values) => {
-                    clauses.extend(lower_constructors(values));
-                }
-                MatcherFamily::Flows(values) => {
-                    clauses.extend(lower_flows(values));
-                }
-                MatcherFamily::ReturnedMemberCalls(values) => {
-                    clauses.extend(lower_returned_member_calls(values));
-                }
-                MatcherFamily::ReturnedMemberReads(values) => {
-                    clauses.extend(lower_returned_member_reads(values));
-                }
-                MatcherFamily::InstanceMemberCalls(values) => {
-                    clauses.extend(lower_instance_members(values));
-                }
-            }
-        }
+        let mut clauses = matcher.lower_all();
         clauses.sort();
         clauses.dedup();
         for clause in &clauses {
