@@ -3,7 +3,7 @@
 //! Renderers consume the already-normalized report and do not reorder or
 //! reinterpret findings, preserving comparisons across front ends.
 
-#![allow(clippy::format_push_string)]
+use std::fmt::Write;
 
 use anyhow::Result;
 use glass_lint_core::AnalysisReport;
@@ -63,29 +63,32 @@ pub fn render_suite_failures(report: &SuiteReport) -> String {
             if result.passed {
                 continue;
             }
-            out.push_str(&format!(
-                "\n{} [{}] failed with {} lint error(s), {} operational error(s), and {} finding(s)\n",
+            writeln!(
+                out,
+                "\n{} [{}] failed with {} lint error(s), {} operational error(s), and {} finding(s)",
                 case.id,
                 tool,
                 result.mismatches.len(),
                 result.operational_errors.len(),
                 result.findings.len()
-            ));
+            )
+            .expect("writing to a String cannot fail");
             for mismatch in &result.mismatches {
-                out.push_str(&format!("  finding mismatch: {mismatch}\n"));
+                let _ = writeln!(out, "  finding mismatch: {mismatch}");
             }
             for error in &result.operational_errors {
-                out.push_str(&format!("  operational error: {error}\n"));
+                let _ = writeln!(out, "  operational error: {error}");
             }
             for finding in &result.findings {
-                out.push_str(&format!(
-                    "  finding: {}:{} at {}:{} - {}\n",
+                let _ = writeln!(
+                    out,
+                    "  finding: {}:{} at {}:{} - {}",
                     finding.rule_id,
                     finding.message_id,
                     finding.location.range.start().line(),
                     finding.location.range.start().column(),
                     finding.message
-                ));
+                );
             }
         }
     }
@@ -99,8 +102,9 @@ pub fn render_suite_markdown(report: &SuiteReport) -> String {
     );
     for case in &report.cases {
         for (name, result) in &case.adapters {
-            out.push_str(&format!(
-                "| {} | {} {} | {} | {} |\n",
+            let _ = writeln!(
+                out,
+                "| {} | {} {} | {} | {} |",
                 case.id,
                 name,
                 result.version,
@@ -112,7 +116,7 @@ pub fn render_suite_markdown(report: &SuiteReport) -> String {
                     "fail"
                 },
                 result.findings.len()
-            ));
+            );
         }
     }
     for case in report
@@ -120,19 +124,16 @@ pub fn render_suite_markdown(report: &SuiteReport) -> String {
         .iter()
         .filter(|case| case.adapters.values().any(|tool| !tool.passed))
     {
-        out.push_str(&format!(
-            "\n## {}\n\n```js\n{}\n```\n",
-            case.id, case.source
-        ));
+        let _ = writeln!(out, "\n## {}\n\n```js\n{}\n```", case.id, case.source);
         for (tool, result) in &case.adapters {
             if let Some(reason) = &result.skip_reason {
-                out.push_str(&format!("- `{tool}` skipped: {reason}\n"));
+                let _ = writeln!(out, "- `{tool}` skipped: {reason}");
             }
             for error in &result.mismatches {
-                out.push_str(&format!("- `{tool}` lint mismatch: {error}\n"));
+                let _ = writeln!(out, "- `{tool}` lint mismatch: {error}");
             }
             for error in &result.operational_errors {
-                out.push_str(&format!("- `{tool}` operational error: {error}\n"));
+                let _ = writeln!(out, "- `{tool}` operational error: {error}");
             }
         }
     }
@@ -157,15 +158,16 @@ pub fn render_adapter_comparison(report: &SuiteReport) -> String {
          rather than precision or recall scores.\n\n",
     );
 
-    out.push_str(&format!(
-        "| Case | {} |\n|---|{}|\n",
+    let _ = writeln!(
+        out,
+        "| Case | {} |\n|---|{}|",
         tool_names.join(" | "),
         tool_names
             .iter()
             .map(|_| "---:")
             .collect::<Vec<_>>()
             .join("|")
-    ));
+    );
 
     for case in &report.cases {
         let counts: Vec<String> = tool_names
@@ -189,7 +191,7 @@ pub fn render_adapter_comparison(report: &SuiteReport) -> String {
                 )
             })
             .collect();
-        out.push_str(&format!("| {} | {} |\n", case.id, counts.join(" | ")));
+        let _ = writeln!(out, "| {} | {} |", case.id, counts.join(" | "));
     }
 
     for case in &report.cases {
@@ -200,25 +202,27 @@ pub fn render_adapter_comparison(report: &SuiteReport) -> String {
         if !has_details {
             continue;
         }
-        out.push_str(&format!(
-            "\n## {}\n\n{}\n\n```js\n{}\n```\n",
+        let _ = writeln!(
+            out,
+            "\n## {}\n\n{}\n\n```js\n{}\n```",
             case.id, case.description, case.source
-        ));
+        );
         for (tool, result) in &case.adapters {
             if result.skipped {
-                out.push_str(&format!("\n### {tool} (skipped)\n"));
+                let _ = writeln!(out, "\n### {tool} (skipped)");
                 if let Some(reason) = &result.skip_reason {
-                    out.push_str(&format!("\n{reason}\n"));
+                    let _ = writeln!(out, "\n{reason}");
                 }
                 continue;
             }
-            out.push_str(&format!(
-                "\n### {tool} ({} finding(s), {} operational error(s))\n\n",
+            let _ = writeln!(
+                out,
+                "\n### {tool} ({} finding(s), {} operational error(s))\n",
                 result.findings.len(),
                 result.operational_errors.len()
-            ));
+            );
             for error in &result.operational_errors {
-                out.push_str(&format!("- Operational error: {error}\n"));
+                let _ = writeln!(out, "- Operational error: {error}");
             }
             if !result.operational_errors.is_empty() {
                 out.push('\n');
@@ -227,14 +231,15 @@ pub fn render_adapter_comparison(report: &SuiteReport) -> String {
                 out.push_str("No findings.\n");
             }
             for finding in &result.findings {
-                out.push_str(&format!(
-                    "- {}:{} at {}:{} - {}\n",
+                let _ = writeln!(
+                    out,
+                    "- {}:{} at {}:{} - {}",
                     finding.rule_id,
                     finding.message_id,
                     finding.location.range.start().line(),
                     finding.location.range.start().column(),
                     finding.message
-                ));
+                );
             }
         }
     }

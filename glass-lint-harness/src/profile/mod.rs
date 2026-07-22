@@ -3,8 +3,6 @@
 //! Setup, measured linting, and phase metrics are kept separate so profiling
 //! compares analysis work without accidentally timing corpus preparation.
 
-#![allow(clippy::cast_possible_truncation, clippy::zero_sized_map_values)]
-
 mod config;
 mod corpus;
 mod metrics;

@@ -3,8 +3,6 @@
 //! Case IDs and file order are normalized before execution so reports and
 //! adapter requests remain stable across filesystem traversal implementations.
 
-#![allow(clippy::cast_possible_truncation)]
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -134,9 +132,9 @@ fn parse_case(root: &Path, path: &Path, source: String) -> Result<Case> {
                     format!("{}:{} has no previous code line", case.id, index + 1)
                 })?
             } else if line[..comment_start].trim().is_empty() {
-                (index + 2) as u32
+                u32::try_from(index + 2).context("fixture line number exceeds u32")?
             } else {
-                (index + 1) as u32
+                u32::try_from(index + 1).context("fixture line number exceeds u32")?
             };
             add_expectation(&mut case, rest, line_number, required)?;
         }
@@ -421,7 +419,7 @@ fn previous_code_line(lines: &[String], assertion_index: usize) -> Option<u32> {
                 && !trimmed.starts_with("@expect-error")
                 && !trimmed.starts_with("@expect-error-after")
         })
-        .map(|(index, _)| (index + 1) as u32)
+        .map(|(index, _)| u32::try_from(index + 1).unwrap_or(u32::MAX))
 }
 
 fn parse_case_directive(case: &mut Case, rest: &str) -> Result<()> {

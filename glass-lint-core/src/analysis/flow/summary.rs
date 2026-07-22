@@ -131,8 +131,7 @@ impl<'a> SummaryPathStore<'a> {
         current == prefix
     }
 
-    #[allow(clippy::unused_self)]
-    pub(super) fn matches_frozen(&self, id: SummaryPathId, base: PathId) -> bool {
+    pub(super) fn matches_frozen(id: SummaryPathId, base: PathId) -> bool {
         id == SummaryPathId::from_path_id(base)
     }
 
@@ -529,7 +528,7 @@ fn try_project_sink(
 ) -> Option<FunctionSinkSummary> {
     let target_parameter = target_parameters.iter().find(|parameter| {
         parameter.parameter_index == sink.parameter_index()
-            && (paths.matches_frozen(sink.path(), parameter.path)
+            && (SummaryPathStore::matches_frozen(sink.path(), parameter.path)
                 || (parameter.rest && paths.starts_with_frozen(sink.path(), parameter.path)))
     })?;
     let argument = target_parameter.project_argument_at(stream, args, paths, sink.path())?;
@@ -881,11 +880,16 @@ mod tests {
 
     #[test]
     fn matches_frozen_checks_identity() {
-        let (frozen, a_raw) = make_frozen_paths();
+        let (_, a_raw) = make_frozen_paths();
         let a_id = PathId(a_raw);
-        let store = SummaryPathStore::new(&frozen);
-        assert!(store.matches_frozen(SummaryPathId::from_path_id(a_id), a_id));
-        assert!(!store.matches_frozen(SummaryPathId::from_path_id(a_id), PathId(a_raw + 10),));
+        assert!(SummaryPathStore::matches_frozen(
+            SummaryPathId::from_path_id(a_id),
+            a_id
+        ));
+        assert!(!SummaryPathStore::matches_frozen(
+            SummaryPathId::from_path_id(a_id),
+            PathId(a_raw + 10),
+        ));
     }
 
     #[test]

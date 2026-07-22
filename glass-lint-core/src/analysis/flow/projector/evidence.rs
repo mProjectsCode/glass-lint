@@ -15,6 +15,7 @@ use crate::{
                 state::{FlowEvidence, ReportEvidenceKey},
             },
             state::FlowStateKey,
+            summary::SummaryPathStore,
         },
         value::NamePath,
     },
@@ -158,7 +159,7 @@ impl ObjectFlowProjector<'_, '_> {
             .filter_map(|sink| {
                 let parameter = summary.parameters().iter().find(|parameter| {
                     parameter.parameter_index == sink.parameter_index()
-                        && (paths.matches_frozen(sink.path(), parameter.path)
+                        && (SummaryPathStore::matches_frozen(sink.path(), parameter.path)
                             || (parameter.rest
                                 && paths.starts_with_frozen(sink.path(), parameter.path)))
                 })?;

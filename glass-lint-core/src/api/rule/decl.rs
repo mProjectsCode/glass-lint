@@ -1,4 +1,3 @@
-#![allow(clippy::return_self_not_must_use)]
 //! The single compositional matcher declaration type and its validated builder.
 //!
 //! [`MatcherDecl`] is the only public matcher representation. It replaces all
@@ -100,6 +99,7 @@ impl MatcherDecl {
         self
     }
 
+    #[must_use]
     pub fn with_arg_static_string_contains<I, S>(mut self, index: usize, values: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -113,6 +113,7 @@ impl MatcherDecl {
         self
     }
 
+    #[must_use]
     pub fn with_arg_object_keys<I, S>(mut self, index: usize, keys: I) -> Self
     where
         I: IntoIterator<Item = S>,
