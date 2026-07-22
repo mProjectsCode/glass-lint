@@ -8,7 +8,7 @@
 //! prevents a complete summary. Invalid summaries are not used for qualified
 //! propagation, preserving fail-closed behavior across module boundaries.
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use smol_str::SmolStr;
 
@@ -48,6 +48,10 @@ pub(in crate::analysis) struct EffectArgument {
     parameter: Option<ParameterRef>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// Dense index into a [`FunctionEffect`] call table.
+pub(in crate::analysis) struct EffectCallId(pub(in crate::analysis) usize);
+
 #[derive(Clone, Debug)]
 /// Resolver-backed call relation retained for later project composition.
 ///
@@ -56,6 +60,9 @@ pub(in crate::analysis) struct EffectArgument {
 /// the qualified function target are borrowed from the canonical fact stream
 /// through [`CallEffectRef`].
 pub(in crate::analysis) struct EffectCall {
+    /// Dense index of this call within the owning function's call table.
+    #[allow(dead_code)]
+    id: EffectCallId,
     /// Fact identity of the call event.
     event: FactId,
     /// Arguments projected to parameter paths.
@@ -77,7 +84,10 @@ pub(in crate::analysis) enum EffectUse {
         property: Option<SmolStr>,
     },
     CallArgument {
-        /// Fact identity of the call.
+        /// Dense index into the owning function's call table.
+        call_id: EffectCallId,
+        /// Fact identity of the call, retained for cross-module event
+        /// references that need the event without the owning effect.
         event: FactId,
         /// Zero-based argument position, resolved through the paired
         /// [`EffectCall`] held in the same [`FunctionEffect`].
@@ -152,6 +162,11 @@ impl EffectArgument {
 }
 
 impl EffectCall {
+    #[allow(dead_code)]
+    pub(in crate::analysis) fn id(&self) -> EffectCallId {
+        self.id
+    }
+
     pub(in crate::analysis) fn event(&self) -> FactId {
         self.event
     }
@@ -202,10 +217,12 @@ impl CallEffectRef<'_> {
         }
     }
 
-    /// Owned chain with a callee-name fallback that resolves one level of
-    /// local binding.  Used when the projector cannot rely on the
-    /// resolver-backed chain because the call was summarized from facts.
-    pub(in crate::analysis) fn chain_owned(&self, names: &NameTable) -> Option<NamePath> {
+    /// Chain with a callee-name fallback that resolves one level of local
+    /// binding.  Direct, rooted, and syntactic interned chains borrow from
+    /// the fact stream; only the callee-name fallback returns an owned path.
+    /// Used when the projector cannot rely on the resolver-backed chain
+    /// because the call was summarized from facts.
+    pub(in crate::analysis) fn chain_owned(&self, names: &NameTable) -> Option<Cow<'_, NamePath>> {
         match self.call_fact()? {
             FactPayload::Call {
                 rooted_chain,
@@ -215,13 +232,15 @@ impl CallEffectRef<'_> {
                 ..
             } => unwrap
                 .as_deref()
-                .and_then(|u| u.chain_path.clone())
-                .or_else(|| rooted_chain.clone())
-                .or_else(|| syntactic_path.clone())
+                .and_then(|u| u.chain_path.as_ref())
+                .map(Cow::Borrowed)
+                .or_else(|| rooted_chain.as_ref().map(Cow::Borrowed))
+                .or_else(|| syntactic_path.as_ref().map(Cow::Borrowed))
                 .or_else(|| {
                     callee_name
                         .and_then(|id| self.stream.resolve_name(id))
                         .and_then(|name| NamePath::from_symbol_path(&SymbolPath::from(name), names))
+                        .map(Cow::Owned)
                 }),
             _ => None,
         }
@@ -513,15 +532,14 @@ impl FunctionEffect {
     }
 
     /// Look up the argument at `index` inside the [`EffectCall`] identified
-    /// by `event`.  Returns `None` when the call or index is not present.
+    /// by `call_id`.  Returns `None` when the call or index is not present.
     pub(in crate::analysis) fn call_argument(
         &self,
-        event: FactId,
+        call_id: EffectCallId,
         index: usize,
     ) -> Option<&EffectArgument> {
         self.calls
-            .iter()
-            .find(|call| call.event() == event)
+            .get(call_id.0)
             .and_then(|call| call.arguments().get(index))
     }
 
@@ -558,18 +576,21 @@ impl FunctionEffect {
             .as_deref()
             .map_or(args.as_slice(), |u| u.effective_args.as_slice());
         let arguments = self.build_effect_arguments(effective_args);
+        let call_id = EffectCallId(self.calls.len());
         for argument in &arguments {
             if !budget.try_push() {
                 self.invalid = true;
                 return;
             }
             self.uses.push(EffectUse::CallArgument {
+                call_id,
                 event: fact.id,
                 argument_index: argument.index,
             });
         }
         if budget.try_push() {
             self.calls.push(EffectCall {
+                id: call_id,
                 event: fact.id,
                 arguments,
             });
@@ -704,6 +725,7 @@ mod tests {
         let chain = cref
             .chain_owned(names)
             .expect("direct call should have a chain");
+        let chain: &NamePath = &chain;
         assert!(
             chain
                 .to_symbol_path(names)
@@ -737,6 +759,7 @@ mod tests {
         let chain = cref
             .chain_owned(names)
             .expect("alias call should have a chain via callee_name fallback");
+        let chain: &NamePath = &chain;
         assert!(
             chain
                 .to_symbol_path(names)
@@ -865,7 +888,7 @@ mod tests {
         let names = stream.names().expect("test stream has names");
         let owned = cref.chain_owned(names).unwrap();
         let borrowed = cref.chain().unwrap();
-        assert_eq!(owned, *borrowed, "owned chain should match borrowed");
+        assert_eq!(&*owned, borrowed, "owned chain should match borrowed");
     }
 
     #[test]
@@ -885,9 +908,9 @@ mod tests {
                     .any(|a| a.index == 0 && a.value != ValueId::UNKNOWN)
             })
             .expect("appendChild call should exist");
-        let event = call.event();
+        let call_id = call.id();
         let by_index = effect
-            .call_argument(event, 0)
+            .call_argument(call_id, 0)
             .expect("argument at index 0 should exist");
         assert_eq!(by_index.index(), 0);
     }
@@ -900,7 +923,7 @@ mod tests {
             .get(FunctionId(0))
             .expect("script effect should exist");
         let call = effect.calls().first().expect("call should exist");
-        assert!(effect.call_argument(call.event(), 999).is_none());
-        assert!(effect.call_argument(FactId(u32::MAX), 0).is_none());
+        assert!(effect.call_argument(call.id(), 999).is_none());
+        assert!(effect.call_argument(EffectCallId(usize::MAX), 0).is_none());
     }
 }

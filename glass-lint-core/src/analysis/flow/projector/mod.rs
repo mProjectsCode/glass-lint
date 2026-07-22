@@ -23,7 +23,7 @@ use crate::{
         facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary},
         flow::{
             effect::{CallEffectRef, FunctionEffects},
-            index::{FlowId, FlowIndex, FlowLimits},
+            index::{FlowIndex, FlowLimits},
             state::FlowState,
             summary::FunctionSummaries,
         },
@@ -271,7 +271,16 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                     }
                 }
             }
-            self.emit_if_ready(key.flow, key.object, event);
+            evidence::emit_if_ready(
+                &mut self.flow_evidence,
+                &self.flow_state,
+                &self.flow_index,
+                &self.limits,
+                self.stream,
+                key.flow,
+                key.object,
+                event,
+            );
         }
     }
 

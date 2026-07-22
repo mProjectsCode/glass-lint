@@ -42,6 +42,41 @@ impl<T> FunctionTable<T> {
         vacant
     }
 
+    /// Borrow one entry immutably and another entry mutably in one call.
+    /// Panics when `read` and `write` refer to the same identity.
+    pub(in crate::analysis) fn get_disjoint(
+        &mut self,
+        read: FunctionId,
+        write: FunctionId,
+    ) -> (Option<&T>, Option<&mut T>) {
+        assert_ne!(
+            read, write,
+            "get_disjoint requires different read and write identities"
+        );
+        let max = usize::try_from(read.0.max(write.0)).unwrap_or(usize::MAX);
+        if self.values.len() <= max {
+            return (None, None);
+        }
+        let ri = usize::try_from(read.0).unwrap_or(usize::MAX);
+        let wi = usize::try_from(write.0).unwrap_or(usize::MAX);
+        let ptr = self.values.as_mut_ptr();
+        // SAFETY: ri != wi, so the returned references point to different
+        // entries and do not alias.
+        unsafe {
+            let read_ref = if ri < self.values.len() {
+                (*ptr.add(ri)).as_ref()
+            } else {
+                None
+            };
+            let write_ref = if wi < self.values.len() {
+                (*ptr.add(wi)).as_mut()
+            } else {
+                None
+            };
+            (read_ref, write_ref)
+        }
+    }
+
     /// Iterate present entries in ascending function-ID order.
     pub(in crate::analysis) fn iter(&self) -> impl Iterator<Item = (FunctionId, &T)> {
         self.values.iter().enumerate().filter_map(|(index, value)| {

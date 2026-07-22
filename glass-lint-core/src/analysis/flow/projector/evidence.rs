@@ -4,13 +4,17 @@
 //! aliases. Emissions are anchored at the event that completed the flow and
 //! deduplicated by flow/object/event before the bounded result is returned.
 
-use std::collections::BTreeSet;
-
 use crate::{
     analysis::{
-        flow::projector::{
-            CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowId, FlowState,
-            MatchKind, ObjectFlowProjector, ObjectId, ValueId, state::ReportEvidenceKey,
+        facts::FactStream,
+        flow::{
+            index::{FlowId, FlowLimits},
+            projector::{
+                CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowState,
+                MatchKind, ObjectFlowProjector, ObjectId, ValueId,
+                state::{FlowEvidence, ReportEvidenceKey},
+            },
+            state::FlowStateKey,
         },
         value::NamePath,
     },
@@ -26,24 +30,16 @@ impl ObjectFlowProjector<'_, '_> {
         args: &[CallArgInfo],
         event: FactId,
     ) {
-        // A missing receiver represents a call through a helper summary or a
-        // rooted operation whose object identity is not available. In that
-        // case conservatively try every live object, while receiver-bearing
-        // calls stay scoped to their proven alias.
-        let objects = match receiver {
-            Some(value) => self
-                .flow_state
-                .object_for(value)
-                .into_iter()
-                .collect::<BTreeSet<_>>(),
-            None => self.flow_state.objects().collect::<BTreeSet<_>>(),
+        let objects: Vec<ObjectId> = match receiver {
+            Some(value) => self.flow_state.object_for(value).into_iter().collect(),
+            None => self.flow_state.objects().collect(),
         };
         for object in objects {
-            let keys = self
+            let keys: Vec<_> = self
                 .flow_state
                 .states_for(object)
                 .map(|(key, _)| key)
-                .collect::<Vec<_>>();
+                .collect();
             for key in keys {
                 let Some(flow) = self.flow_index.get(key.flow) else {
                     continue;
@@ -73,7 +69,16 @@ impl ObjectFlowProjector<'_, '_> {
                         state.record_requirement(index, event);
                     }
                 }
-                self.emit_if_ready(key.flow, key.object, event);
+                emit_if_ready(
+                    &mut self.flow_evidence,
+                    &self.flow_state,
+                    &self.flow_index,
+                    &self.limits,
+                    self.stream,
+                    key.flow,
+                    key.object,
+                    event,
+                );
             }
         }
     }
@@ -86,21 +91,21 @@ impl ObjectFlowProjector<'_, '_> {
         sink_fact: FactId,
         rooted: bool,
     ) {
-        let Some(flow_ids) = self.flow_index.sink_ids(chain).map(<[FlowId]>::to_vec) else {
+        let Some(flow_ids) = self.flow_index.sink_ids(chain) else {
             return;
         };
         for (argument_index, argument) in args.iter().enumerate() {
             let Some(object) = self.flow_state.object_for(argument.value) else {
                 continue;
             };
-            let states = self
+            let pairs: Vec<(FlowStateKey, FlowId)> = self
                 .flow_state
                 .states_for(object)
                 .filter(|(key, _)| flow_ids.contains(&key.flow))
-                .map(|(_, state)| state.clone())
-                .collect::<Vec<_>>();
-            for state in states {
-                let Some(flow) = self.flow_index.get(state.flow_id()).cloned() else {
+                .map(|(key, _)| (key, key.flow))
+                .collect();
+            for (key, flow_id) in pairs {
+                let Some(flow) = self.flow_index.get(flow_id) else {
                     continue;
                 };
                 let matches = flow.sinks.iter().any(|sink| {
@@ -116,7 +121,17 @@ impl ObjectFlowProjector<'_, '_> {
                         }
                 });
                 if matches {
-                    self.emit_state(&state, &flow, sink_fact);
+                    let Some(state) = self.flow_state.state(key.object, key.flow) else {
+                        continue;
+                    };
+                    emit_state(
+                        &mut self.flow_evidence,
+                        self.stream,
+                        &self.limits,
+                        state,
+                        flow,
+                        sink_fact,
+                    );
                 }
             }
         }
@@ -129,14 +144,14 @@ impl ObjectFlowProjector<'_, '_> {
         args: &[CallArgInfo],
         sink_fact: FactId,
     ) {
-        let Some(summary) = self.helpers.get(function).cloned() else {
+        let Some(summary) = self.helpers.get(function) else {
             return;
         };
         if !summary.is_invocation_compatible(self.stream, args, self.helpers.path_interner()) {
             return;
         }
         let paths = self.helpers.path_interner();
-        let ready: Vec<_> = summary
+        let ready: Vec<(ObjectId, FlowId)> = summary
             .sinks()
             .into_iter()
             .filter_map(|sink| {
@@ -148,73 +163,95 @@ impl ObjectFlowProjector<'_, '_> {
                 })?;
                 let value = parameter.project_argument_at(self.stream, args, paths, sink.path())?;
                 let object = self.flow_state.object_for(value)?;
-                let state = self.flow_state.state(object, sink.flow()).cloned()?;
-                let flow = self.flow_index.get(sink.flow()).cloned()?;
-                state.is_ready(&flow).then_some((state, flow))
+                let state = self.flow_state.state(object, sink.flow())?;
+                let flow = self.flow_index.get(sink.flow())?;
+                if state.is_ready(flow) {
+                    Some((object, sink.flow()))
+                } else {
+                    None
+                }
             })
             .collect();
-        for (state, flow) in ready {
-            self.emit_state(&state, &flow, sink_fact);
-        }
-    }
-
-    /// Emit a requirement-only match when its state is complete.
-    pub(super) fn emit_if_ready(&mut self, flow: FlowId, object: ObjectId, event: FactId) {
-        let Some(state) = self.flow_state.state(object, flow).cloned() else {
-            return;
-        };
-        let Some(matcher) = self.flow_index.get(flow).cloned() else {
-            return;
-        };
-        if matcher.emit_on_requirements {
-            self.emit_state(&state, &matcher, event);
-        }
-    }
-
-    /// Emit one bounded, source-anchored evidence item for a ready state.
-    pub(super) fn emit_state(
-        &mut self,
-        state: &FlowState,
-        flow: &CompiledObjectFlow,
-        match_fact: FactId,
-    ) {
-        if !state.is_ready(flow) {
-            return;
-        }
-        debug_assert!(state.source_event() <= match_fact);
-        let key = ReportEvidenceKey::new(
-            state.flow_id().rule_index().get(),
-            state.flow_id().flow_index(),
-            state.object_id(),
-            match_fact,
-        );
-        if self
-            .flow_evidence
-            .try_insert(key, self.limits.emission_limit())
-        {
-            // Requirement-only flows are anchored at the event that made the
-            // final requirement true; sink flows use the sink event passed by
-            // the caller. Keep the span and event identity parallel.
-            let anchor = match_fact;
-            self.flow_evidence.record(
-                state.flow_id().rule_index().get(),
-                ClassificationEvidence {
-                    kind: MatchKind::CallArgument,
-                    symbol: flow.evidence_symbol(),
-                    count: 1,
-                    evidence_truncated: false,
-                    occurrences: vec![
-                        crate::api::classification::ClassificationEvidenceOccurrence {
-                            span: self
-                                .stream
-                                .fact(anchor)
-                                .map_or(crate::ByteRange::empty(), |fact| fact.span),
-                            fact: Some(anchor.0),
-                        },
-                    ],
-                    related: Vec::new(),
-                },
+        for (object, flow_id) in ready {
+            let Some(state) = self.flow_state.state(object, flow_id) else {
+                continue;
+            };
+            let Some(flow) = self.flow_index.get(flow_id) else {
+                continue;
+            };
+            emit_state(
+                &mut self.flow_evidence,
+                self.stream,
+                &self.limits,
+                state,
+                flow,
+                sink_fact,
             );
         }
+    }
+}
+
+/// Emit a requirement-only match when its state is complete.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn emit_if_ready(
+    evidence: &mut FlowEvidence,
+    flow_state: &super::state::FlowStateTable,
+    flow_index: &crate::analysis::flow::index::FlowIndex<'_>,
+    limits: &FlowLimits,
+    stream: &FactStream,
+    flow: FlowId,
+    object: ObjectId,
+    event: FactId,
+) {
+    let Some(state) = flow_state.state(object, flow) else {
+        return;
+    };
+    let Some(matcher) = flow_index.get(flow) else {
+        return;
+    };
+    if matcher.emit_on_requirements {
+        emit_state(evidence, stream, limits, state, matcher, event);
+    }
+}
+
+/// Emit one bounded, source-anchored evidence item for a ready state.
+fn emit_state(
+    evidence: &mut FlowEvidence,
+    stream: &FactStream,
+    limits: &FlowLimits,
+    state: &FlowState,
+    flow: &CompiledObjectFlow,
+    match_fact: FactId,
+) {
+    if !state.is_ready(flow) {
+        return;
+    }
+    debug_assert!(state.source_event() <= match_fact);
+    let key = ReportEvidenceKey::new(
+        state.flow_id().rule_index().get(),
+        state.flow_id().flow_index(),
+        state.object_id(),
+        match_fact,
+    );
+    if evidence.try_insert(key, limits.emission_limit()) {
+        let anchor = match_fact;
+        evidence.record(
+            state.flow_id().rule_index().get(),
+            ClassificationEvidence {
+                kind: MatchKind::CallArgument,
+                symbol: flow.evidence_symbol(),
+                count: 1,
+                evidence_truncated: false,
+                occurrences: vec![
+                    crate::api::classification::ClassificationEvidenceOccurrence {
+                        span: stream
+                            .fact(anchor)
+                            .map_or(crate::ByteRange::empty(), |fact| fact.span),
+                        fact: Some(anchor.0),
+                    },
+                ],
+                related: Vec::new(),
+            },
+        );
     }
 }

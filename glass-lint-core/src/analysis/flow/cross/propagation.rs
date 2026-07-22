@@ -56,6 +56,7 @@ impl UsageProjector<'_> {
                 EffectUse::CallArgument {
                     event,
                     argument_index,
+                    ..
                 } => {
                     self.apply_argument(*event, *argument_index);
                 }

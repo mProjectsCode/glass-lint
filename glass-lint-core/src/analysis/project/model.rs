@@ -277,16 +277,22 @@ impl ProjectSemanticModel {
     }
 
     fn propagate_local_status(&mut self) {
-        let local_statuses = self
-            .modules
-            .values()
-            .map(|module| module.local().status().clone())
-            .collect::<Vec<_>>();
-        for (module, status) in self.modules.values().zip(local_statuses) {
-            self.status.extend(&status.for_file(module.path()));
-            if module.local().interface().is_unknown() {
+        let ids: Vec<ModuleId> = self.modules.keys().copied().collect();
+        for id in ids {
+            let (file_status, path, unknown) = {
+                let Some(module) = self.modules.get(&id) else {
+                    continue;
+                };
+                (
+                    module.local().status().for_file(module.path()),
+                    module.path().clone(),
+                    module.local().interface().is_unknown(),
+                )
+            };
+            self.status.extend(&file_status);
+            if unknown {
                 self.status.record(
-                    StatusScope::File(module.path().clone()),
+                    StatusScope::File(path),
                     IncompleteReason::UnsupportedModuleInterface {
                         kind: ModuleInterfaceKind::CommonJsExports,
                     },

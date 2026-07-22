@@ -547,10 +547,11 @@ pub(super) fn usage_matches_context(
             .parameter
             .is_some_and(|index| receiver.index() == index && receiver.is_root()),
         EffectUse::CallArgument {
-            event,
+            call_id,
             argument_index,
+            ..
         } => effect
-            .call_argument(*event, *argument_index)
+            .call_argument(*call_id, *argument_index)
             .is_some_and(|argument| {
                 argument.parameter().is_some_and(|parameter| {
                     context

@@ -397,16 +397,17 @@ impl<'a> FunctionSummaries<'a> {
     fn collect_direct_sinks(&mut self, stream: &FactStream, flow_index: &FlowIndex<'_>) {
         let ids: Vec<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
         for id in ids {
-            let calls: Vec<FactId> = self
-                .by_id
-                .get(id)
-                .map(|s| s.calls.clone())
-                .unwrap_or_default();
+            let call_ids: Vec<FactId> = {
+                let Some(summary) = self.by_id.get(id) else {
+                    continue;
+                };
+                summary.calls.clone()
+            };
             let Some(summary) = self.by_id.get_mut(id) else {
                 continue;
             };
-            for call_id in &calls {
-                summary.collect_sinks_for_call(stream, flow_index, &mut self.paths, *call_id);
+            for call_id in call_ids {
+                summary.collect_sinks_for_call(stream, flow_index, &mut self.paths, call_id);
             }
         }
     }
@@ -422,16 +423,21 @@ impl<'a> FunctionSummaries<'a> {
             for (_, summary) in self.by_id.iter_mut() {
                 summary.sinks_offset = summary.sinks.0.len();
             }
-            let function_ids: Vec<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
-            for caller in function_ids {
-                let calls: Vec<FactId> = self
-                    .by_id
-                    .get(caller)
-                    .map(|s| s.calls.clone())
-                    .unwrap_or_default();
-                for call_id in &calls {
-                    changed |= self.propagate_call_sinks(*call_id, caller, stream, &prev_offsets);
+            let rounds: Vec<(FunctionId, FactId)> = {
+                let ids: Vec<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
+                let mut entries = Vec::new();
+                for caller in ids {
+                    let Some(s) = self.by_id.get(caller) else {
+                        continue;
+                    };
+                    for call_id in &s.calls {
+                        entries.push((caller, *call_id));
+                    }
                 }
+                entries
+            };
+            for (caller, call_id) in &rounds {
+                changed |= self.propagate_call_sinks(*call_id, *caller, stream, &prev_offsets);
             }
             if !changed {
                 break;
@@ -453,14 +459,18 @@ impl<'a> FunctionSummaries<'a> {
             .iter()
             .find(|(id, _)| *id == target)
             .map_or(0, |(_, offset)| *offset);
+        if target == caller {
+            return false;
+        }
+        let (target_summary, caller_summary) = self.by_id.get_disjoint(target, caller);
+        let target_summary = match target_summary {
+            Some(s) if s.is_invocation_compatible(stream, args, &self.paths) => s,
+            _ => return false,
+        };
+        let Some(caller_summary) = caller_summary else {
+            return false;
+        };
         let projections: Vec<FunctionSinkSummary> = {
-            let target_summary = match self.by_id.get(target) {
-                Some(s) if s.is_invocation_compatible(stream, args, &self.paths) => s,
-                _ => return false,
-            };
-            let Some(caller_summary) = self.by_id.get(caller) else {
-                return false;
-            };
             let target_params = &target_summary.parameters;
             let caller_params = &caller_summary.parameters;
             let sink_count = target_summary.sinks.0.len();
@@ -479,12 +489,6 @@ impl<'a> FunctionSummaries<'a> {
                 }
             }
             projections
-        };
-        if projections.is_empty() {
-            return false;
-        }
-        let Some(caller_summary) = self.by_id.get_mut(caller) else {
-            return false;
         };
         let mut changed = false;
         for proj in projections {

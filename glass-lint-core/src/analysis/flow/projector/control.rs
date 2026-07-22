@@ -43,11 +43,14 @@ impl ObjectFlowProjector<'_, '_> {
 
     fn transfer_branch(&mut self, kind: ControlKind, region: ControlRegionId) {
         match kind {
-            ControlKind::BranchStart => self.control.push(ControlFrame::Branch {
-                region,
-                base: self.environment(),
-                then_exit: None,
-            }),
+            ControlKind::BranchStart => {
+                let base = self.environment();
+                self.control.push(ControlFrame::Branch {
+                    region,
+                    base,
+                    then_exit: None,
+                });
+            }
             ControlKind::BranchThen => {
                 let current = self.environment();
                 if let Some(ControlFrame::Branch {
@@ -103,13 +106,16 @@ impl ObjectFlowProjector<'_, '_> {
 
     fn transfer_loop(&mut self, kind: ControlKind, region: ControlRegionId) {
         match kind {
-            ControlKind::LoopStart { guaranteed } => self.control.push(ControlFrame::Loop {
-                region,
-                baseline: self.environment(),
-                guaranteed,
-                breaks: Vec::new(),
-                continues: Vec::new(),
-            }),
+            ControlKind::LoopStart { guaranteed } => {
+                let baseline = self.environment();
+                self.control.push(ControlFrame::Loop {
+                    region,
+                    baseline,
+                    guaranteed,
+                    breaks: Vec::new(),
+                    continues: Vec::new(),
+                });
+            }
             ControlKind::LoopUpdate => {
                 let current = self.environment();
                 if let Some(ControlFrame::Loop { continues, .. }) = self.control.last()
@@ -149,12 +155,15 @@ impl ObjectFlowProjector<'_, '_> {
 
     fn transfer_switch(&mut self, kind: ControlKind, region: ControlRegionId) {
         match kind {
-            ControlKind::SwitchStart => self.control.push(ControlFrame::Switch {
-                region,
-                baseline: self.environment(),
-                breaks: Vec::new(),
-                has_default: false,
-            }),
+            ControlKind::SwitchStart => {
+                let baseline = self.environment();
+                self.control.push(ControlFrame::Switch {
+                    region,
+                    baseline,
+                    breaks: Vec::new(),
+                    has_default: false,
+                });
+            }
             ControlKind::SwitchCase { is_default } => {
                 let current = self.environment();
                 let mut restore = None;
@@ -200,15 +209,18 @@ impl ObjectFlowProjector<'_, '_> {
 
     fn transfer_try(&mut self, kind: ControlKind, region: ControlRegionId) {
         match kind {
-            ControlKind::TryStart => self.control.push(ControlFrame::Try {
-                region,
-                baseline: self.environment(),
-                try_exit: None,
-                catch_exit: None,
-                normal_exit: None,
-                abrupt_exits: Vec::new(),
-                has_finally: false,
-            }),
+            ControlKind::TryStart => {
+                let baseline = self.environment();
+                self.control.push(ControlFrame::Try {
+                    region,
+                    baseline,
+                    try_exit: None,
+                    catch_exit: None,
+                    normal_exit: None,
+                    abrupt_exits: Vec::new(),
+                    has_finally: false,
+                });
+            }
             ControlKind::CatchStart => {
                 let current = self.environment();
                 let restore = if let Some(ControlFrame::Try {
