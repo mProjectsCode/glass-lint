@@ -109,14 +109,14 @@ mod tests {
 
     #[test]
     fn active_window_is_a_configured_global_object() {
-        use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
+        use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
         let rule = Rule::builder("test.eval")
             .description("eval")
             .category("test")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .matcher(CallMatcher::global("eval"))
+            .declaration(MatcherDecl::global_call("eval"))
             .build()
             .unwrap();
         let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
@@ -131,14 +131,14 @@ mod tests {
 
     #[test]
     fn active_window_shares_the_configured_environment() {
-        use glass_lint_core::rules::{CallMatcher, Confidence, Rule, Severity};
+        use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
         let rule = Rule::builder("test.request")
             .description("request")
             .category("test")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .matcher(CallMatcher::global("requestUrl"))
+            .declaration(MatcherDecl::global_call("requestUrl"))
             .build()
             .unwrap();
         let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(

@@ -2,7 +2,7 @@ use glass_lint_core::{
     AnalysisLimits, ByteRange, DiagnosticCode, Environment, InvalidPosition, Linter, Position,
     ProjectInput, ReversedSourcePositionRange, Rule, RuleCatalog, Severity, SourceFile,
     SourceRange,
-    rules::{CallMatcher, Confidence},
+    rules::{Confidence, MatcherDecl},
 };
 
 #[test]
@@ -12,7 +12,7 @@ fn supported_public_operations_do_not_require_engine_storage() {
         .category("network")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(CallMatcher::global("fetch"))
+        .declaration(MatcherDecl::builder().call_global("fetch").build().unwrap())
         .build()
         .unwrap();
     let mut environment = Environment::default();

@@ -1,6 +1,6 @@
 //! Browser hardware-permission rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects unshadowed WebHID, Web Serial, and WebUSB device requests. Rooted
 /// aliases and static computed properties retain browser provenance; local
@@ -11,9 +11,15 @@ pub fn rule() -> Rule {
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("navigator.hid.requestDevice"))
-        .matcher(Matcher::rooted_member_call("navigator.serial.requestPort"))
-        .matcher(Matcher::rooted_member_call("navigator.usb.requestDevice"))
+        .declaration(MatcherDecl::rooted_member_call(
+            "navigator.hid.requestDevice",
+        ))
+        .declaration(MatcherDecl::rooted_member_call(
+            "navigator.serial.requestPort",
+        ))
+        .declaration(MatcherDecl::rooted_member_call(
+            "navigator.usb.requestDevice",
+        ))
         .build()
         .unwrap()
 }

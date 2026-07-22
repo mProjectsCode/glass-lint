@@ -1,6 +1,6 @@
 //! Browser geolocation permission rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects calls to unshadowed `navigator.geolocation.getCurrentPosition` and
 /// `watchPosition`,
@@ -13,10 +13,10 @@ pub fn rule() -> Rule {
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call(
             "navigator.geolocation.getCurrentPosition",
         ))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call(
             "navigator.geolocation.watchPosition",
         ))
         .build()

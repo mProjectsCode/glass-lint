@@ -1,6 +1,6 @@
 //! Electron module-boundary rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 const MODULE_CALLS: &[&str] = &[
     "webContents.fromId",
@@ -73,19 +73,19 @@ pub fn rule() -> Rule {
         .category("electron/module")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::import("electron"))
-        .matcher(Matcher::import("electron/main"))
-        .matcher(Matcher::import("electron/renderer"))
-        .matcher(Matcher::import("electron/common"))
-        .matcher(Matcher::import("electron/utility"))
-        .matcher(Matcher::import("electron/sandbox"))
-        .matcher(Matcher::module_constructor("electron", "BrowserWindow"));
+        .declaration(MatcherDecl::import("electron"))
+        .declaration(MatcherDecl::import("electron/main"))
+        .declaration(MatcherDecl::import("electron/renderer"))
+        .declaration(MatcherDecl::import("electron/common"))
+        .declaration(MatcherDecl::import("electron/utility"))
+        .declaration(MatcherDecl::import("electron/sandbox"))
+        .declaration(MatcherDecl::module_constructor("electron", "BrowserWindow"));
 
     for member in MODULE_CALLS {
-        builder = builder.matcher(Matcher::module_member_call("electron", *member));
+        builder = builder.declaration(MatcherDecl::module_member_call("electron", *member));
     }
     for member in MODULE_READS {
-        builder = builder.matcher(Matcher::module_member_read("electron", *member));
+        builder = builder.declaration(MatcherDecl::module_member_read("electron", *member));
     }
 
     builder.build().unwrap()

@@ -1,6 +1,6 @@
 //! Obsidian vault enumeration rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to the configured vault lookup and enumeration methods:
 /// `getFiles`, `getMarkdownFiles`, `getAllLoadedFiles`, `getAllFolders`,
@@ -14,17 +14,21 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("app.vault.getFiles"))
-        .matcher(Matcher::rooted_member_call("app.vault.getMarkdownFiles"))
-        .matcher(Matcher::rooted_member_call("app.vault.getAllLoadedFiles"))
-        .matcher(Matcher::rooted_member_call("app.vault.getAllFolders"))
-        .matcher(Matcher::rooted_member_call("app.vault.getFolderByPath"))
-        .matcher(Matcher::rooted_member_call("app.vault.getFileByPath"))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call("app.vault.getFiles"))
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.vault.getMarkdownFiles",
+        ))
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.vault.getAllLoadedFiles",
+        ))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.getAllFolders"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.getFolderByPath"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.getFileByPath"))
+        .declaration(MatcherDecl::rooted_member_call(
             "app.vault.getAbstractFileByPath",
         ))
-        .matcher(Matcher::rooted_member_call("app.vault.recurseChildren"))
-        .matcher(Matcher::rooted_member_call("app.vault.getRoot"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.recurseChildren"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.getRoot"))
         .build()
         .unwrap()
 }

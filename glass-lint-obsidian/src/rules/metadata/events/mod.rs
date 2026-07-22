@@ -1,6 +1,6 @@
 //! Obsidian metadata-cache event rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted `app.metadataCache.on` registrations only when the first
 /// argument is a literal event name: `changed`, `deleted`, `resolve`, or
@@ -13,10 +13,13 @@ pub fn rule() -> Rule {
         .category("metadata")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("app.metadataCache.on")
-                .arg_static_strings(0, ["changed", "deleted", "resolve", "resolved"]),
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.metadataCache.on")
+                .arg_static_strings(0, ["changed", "deleted", "resolve", "resolved"])
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()
 }

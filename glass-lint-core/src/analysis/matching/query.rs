@@ -2,25 +2,30 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-#[cfg(test)]
 use smol_str::SmolStr;
-use smol_str::ToSmolStr;
 
 use crate::{
+    Environment,
     analysis::{
+        SymbolPath,
         matching::{
             CandidateOccurrences, ClassificationEvidence, LinkedOccurrenceView, Occurrence,
             OccurrenceIndexes,
             occurrence::{
                 BorrowedOccurrenceIter, BorrowedPackageOccurrenceIter, ModuleExportKey,
-                ModuleOccurrences, OccurrenceIndex, PackageKeyPredicate, PackageMatchKind,
+                ModuleOccurrences, NameOccurrences, OccurrenceIndex, Occurrences,
+                PackageKeyPredicate, PackageMatchKind,
             },
             push_owned_evidence,
         },
+        name::NameTable,
         value::NamePath,
     },
-    api::compiler::rule::{
-        EventPredicate, IdentityConstraint, QueryClause, QueryPlan, SubjectConstraint,
+    api::{
+        compiler::rule::{
+            EventPredicate, IdentityConstraint, QueryClause, QueryPlan, SubjectConstraint,
+        },
+        rule::ModuleSpecifierPattern,
     },
 };
 
@@ -69,6 +74,199 @@ fn merged_or_indexed<'a>(
             slices.clone(),
         ))),
         (None, None) => None,
+    }
+}
+
+/// Centralized identity dispatcher that performs identity classification, key
+/// creation, masking, and merged exact/package/global iteration once for all
+/// event families. Each event adapter provides its family-specific indexes.
+struct EventIndexView<'a> {
+    name_any: Option<&'a NameOccurrences>,
+    string_any: Option<&'a Occurrences>,
+    path_any: Option<&'a OccurrenceIndex<NamePath>>,
+    module: Option<&'a ModuleOccurrences>,
+    global: Option<&'a Occurrences>,
+    rooted: Option<&'a OccurrenceIndex<NamePath>>,
+    literal: Option<&'a Occurrences>,
+    module_overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>>,
+    global_overlay: Option<&'a BTreeMap<SmolStr, Vec<&'a [Occurrence]>>>,
+    masked: Option<&'a BTreeSet<ModuleExportKey>>,
+    environment: &'a Environment,
+}
+
+impl<'a> EventIndexView<'a> {
+    fn resolve(
+        &self,
+        identity: &'a IdentityConstraint,
+        event: &'a EventPredicate,
+        names: &NameTable,
+    ) -> Option<CandidateOccurrences<'a>> {
+        match identity {
+            IdentityConstraint::Any { name, .. } => self.resolve_any(name, event, names),
+            IdentityConstraint::Global { name, .. } => self.resolve_global(name),
+            IdentityConstraint::ModuleExport { module, export } => {
+                self.resolve_module_export(module, export)
+            }
+            IdentityConstraint::PackageModuleExport { module, export } => {
+                self.resolve_package_export(module, export)
+            }
+            IdentityConstraint::ModuleNamespace { module } => {
+                self.resolve_module_namespace(module, event)
+            }
+            IdentityConstraint::PackageModuleNamespace { module } => {
+                self.resolve_package_namespace(module, event)
+            }
+            IdentityConstraint::Rooted { path } => self.resolve_rooted(path, event, names),
+            IdentityConstraint::LiteralString { predicate } => {
+                self.resolve_literal(predicate, event)
+            }
+            IdentityConstraint::PackageSpecifier { pattern } => {
+                self.resolve_package_specifier(pattern)
+            }
+        }
+    }
+
+    fn resolve_any(
+        &self,
+        name: &SmolStr,
+        event: &'a EventPredicate,
+        names: &NameTable,
+    ) -> Option<CandidateOccurrences<'a>> {
+        // Try NameOccurrences first (Call, Construct)
+        if let Some(name_index) = self.name_any
+            && let Some(id) = names.lookup(name)
+            && let Some(result) = name_index.get(&id)
+        {
+            return Some(CandidateOccurrences::Indexed(result));
+        }
+        // Try OccurrenceIndex<NamePath> (MemberCall, MemberRead)
+        if let (
+            Some(path_index),
+            EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member },
+        ) = (self.path_any, event)
+            && let Some(path) = NamePath::from_symbol_path(member, names)
+            && let Some(result) = path_index.get(&path)
+        {
+            return Some(CandidateOccurrences::Indexed(result));
+        }
+        // Try string-indexed Occurrences (ClassReference)
+        if let Some(string_index) = self.string_any
+            && let Some(result) = string_index.get(name.as_str())
+        {
+            return Some(CandidateOccurrences::Indexed(result));
+        }
+        None
+    }
+
+    fn resolve_global(&self, name: &SmolStr) -> Option<CandidateOccurrences<'a>> {
+        merged_or_indexed(
+            self.global?.get(name),
+            self.global_overlay.and_then(|o| o.get(name)),
+        )
+    }
+
+    fn resolve_module_export(
+        &self,
+        module: &SmolStr,
+        export: &SmolStr,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let key = ModuleExportKey::new(module.clone(), export.clone());
+        module_occurrences(
+            self.module?,
+            self.module_overlay,
+            self.masked.is_some_and(|masked| masked.contains(&key)),
+            &key,
+        )
+    }
+
+    fn resolve_package_export(
+        &self,
+        module: &'a ModuleSpecifierPattern,
+        export: &'a SmolStr,
+    ) -> Option<CandidateOccurrences<'a>> {
+        Some(package_occurrences(
+            self.module?,
+            self.module_overlay,
+            self.masked,
+            PackageKeyPredicate::new(module, PackageMatchKind::Export(export)),
+        ))
+    }
+
+    fn resolve_module_namespace(
+        &self,
+        module: &SmolStr,
+        event: &'a EventPredicate,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let key = match event {
+            EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member } => {
+                ModuleExportKey::new(module.clone(), member.to_string())
+            }
+            _ => return None,
+        };
+        module_occurrences(
+            self.module?,
+            self.module_overlay,
+            self.masked.is_some_and(|masked| masked.contains(&key)),
+            &key,
+        )
+    }
+
+    fn resolve_package_namespace(
+        &self,
+        module: &'a ModuleSpecifierPattern,
+        event: &'a EventPredicate,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let (EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member }) = event
+        else {
+            return None;
+        };
+        Some(package_occurrences(
+            self.module?,
+            self.module_overlay,
+            self.masked,
+            PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member)),
+        ))
+    }
+
+    fn resolve_rooted(
+        &self,
+        path: &'a SymbolPath,
+        event: &'a EventPredicate,
+        names: &NameTable,
+    ) -> Option<CandidateOccurrences<'a>> {
+        let (EventPredicate::MemberCall { member: _ } | EventPredicate::MemberRead { member: _ }) =
+            event
+        else {
+            return None;
+        };
+        let expected = NamePath::from_symbol_path(path, names)?;
+        self.rooted?
+            .matching(|key| expected.matches_global_object_alias_with(key, names, self.environment))
+    }
+
+    fn resolve_literal(
+        &self,
+        predicate: &str,
+        event: &EventPredicate,
+    ) -> Option<CandidateOccurrences<'a>> {
+        match event {
+            EventPredicate::Import => self
+                .literal?
+                .get(&SmolStr::new(predicate))
+                .map(CandidateOccurrences::Indexed),
+            EventPredicate::StringReference => self
+                .literal?
+                .matching(|literal| literal.contains(predicate)),
+            _ => None,
+        }
+    }
+
+    fn resolve_package_specifier(
+        &self,
+        pattern: &ModuleSpecifierPattern,
+    ) -> Option<CandidateOccurrences<'a>> {
+        self.literal?
+            .matching(|specifier| pattern.matches(specifier))
     }
 }
 
@@ -171,172 +369,112 @@ impl OccurrenceIndexes {
         }
     }
 
-    #[allow(clippy::too_many_lines)]
     fn occurrences_for_event<'a>(
         &'a self,
         clause: &'a QueryClause,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
         names: &crate::analysis::name::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
-        match &clause.event {
-            EventPredicate::Call => match &clause.identity {
-                IdentityConstraint::Any { name, .. } => names
-                    .lookup(name)
-                    .and_then(|id| self.call_indexes.calls.get(&id))
-                    .map(CandidateOccurrences::Indexed),
-                IdentityConstraint::Global { name, .. } => merged_or_indexed(
-                    self.call_indexes.global_calls.get(name),
-                    overlay.and_then(|overlay| overlay.global_calls.get(name)),
-                ),
-                IdentityConstraint::ModuleExport { module, export } => {
-                    let key = ModuleExportKey::new(module.clone(), export.clone());
-                    module_occurrences(
-                        &self.call_indexes.module_calls,
-                        overlay.map(|overlay| &overlay.module_calls),
-                        overlay.is_some_and(|overlay| overlay.masked.contains(&key)),
-                        &key,
-                    )
-                }
-                IdentityConstraint::PackageModuleExport { module, export } => {
-                    Some(package_occurrences(
-                        &self.call_indexes.module_calls,
-                        overlay.map(|overlay| &overlay.module_calls),
-                        overlay.map(|overlay| &overlay.masked),
-                        PackageKeyPredicate::new(module, PackageMatchKind::Export(export)),
-                    ))
-                }
-                _ => None,
+        let view = self.build_event_view(&clause.event, overlay);
+        view.resolve(&clause.identity, &clause.event, names)
+    }
+
+    fn build_event_view<'a>(
+        &'a self,
+        event: &EventPredicate,
+        overlay: Option<&'a LinkedOccurrenceView<'a>>,
+    ) -> EventIndexView<'a> {
+        match event {
+            EventPredicate::Call => EventIndexView {
+                name_any: Some(&self.call_indexes.calls),
+                string_any: None,
+                path_any: None,
+                module: Some(&self.call_indexes.module_calls),
+                global: Some(&self.call_indexes.global_calls),
+                rooted: None,
+                literal: None,
+                module_overlay: overlay.map(|o| &o.module_calls),
+                global_overlay: overlay.map(|o| &o.global_calls),
+                masked: overlay.map(|o| &o.masked),
+                environment: &self.environment,
             },
-            EventPredicate::MemberCall { member } => match &clause.identity {
-                IdentityConstraint::Any { .. } => {
-                    crate::analysis::value::NamePath::from_symbol_path(member, names)
-                        .and_then(|member| self.members.calls.get(&member))
-                        .map(CandidateOccurrences::Indexed)
-                }
-                IdentityConstraint::Rooted { path } => {
-                    let expected = NamePath::from_symbol_path(path, names)?;
-                    self.members.rooted_calls.matching(|key| {
-                        expected.matches_global_object_alias_with(key, names, &self.environment)
-                    })
-                }
-                IdentityConstraint::ModuleNamespace { module } => {
-                    let key = ModuleExportKey::new(module.clone(), member.to_string());
-                    module_occurrences(
-                        &self.members.module_calls,
-                        overlay.map(|overlay| &overlay.member_calls),
-                        overlay.is_some_and(|overlay| overlay.masked.contains(&key)),
-                        &key,
-                    )
-                }
-                IdentityConstraint::PackageModuleNamespace { module } => Some(package_occurrences(
-                    &self.members.module_calls,
-                    overlay.map(|overlay| &overlay.member_calls),
-                    overlay.map(|overlay| &overlay.masked),
-                    PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member)),
-                )),
-                _ => None,
+            EventPredicate::MemberCall { member: _ } => EventIndexView {
+                name_any: None,
+                string_any: None,
+                path_any: Some(&self.members.calls),
+                module: Some(&self.members.module_calls),
+                global: None,
+                rooted: Some(&self.members.rooted_calls),
+                literal: None,
+                module_overlay: overlay.map(|o| &o.member_calls),
+                global_overlay: None,
+                masked: overlay.map(|o| &o.masked),
+                environment: &self.environment,
             },
-            EventPredicate::MemberRead { member } => match &clause.identity {
-                IdentityConstraint::Any { .. } => {
-                    crate::analysis::value::NamePath::from_symbol_path(member, names)
-                        .and_then(|member| self.members.reads.get(&member))
-                        .map(CandidateOccurrences::Indexed)
-                }
-                IdentityConstraint::Rooted { path } => {
-                    let expected = NamePath::from_symbol_path(path, names)?;
-                    self.members.rooted_reads.matching(|key| {
-                        expected.matches_global_object_alias_with(key, names, &self.environment)
-                    })
-                }
-                IdentityConstraint::ModuleNamespace { module } => {
-                    let key = ModuleExportKey::new(module.clone(), member.to_string());
-                    module_occurrences(
-                        &self.members.module_reads,
-                        overlay.map(|overlay| &overlay.member_reads),
-                        overlay.is_some_and(|overlay| overlay.masked.contains(&key)),
-                        &key,
-                    )
-                }
-                IdentityConstraint::PackageModuleNamespace { module } => Some(package_occurrences(
-                    &self.members.module_reads,
-                    overlay.map(|overlay| &overlay.member_reads),
-                    overlay.map(|overlay| &overlay.masked),
-                    PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member)),
-                )),
-                _ => None,
+            EventPredicate::MemberRead { member: _ } => EventIndexView {
+                name_any: None,
+                string_any: None,
+                path_any: Some(&self.members.reads),
+                module: Some(&self.members.module_reads),
+                global: None,
+                rooted: Some(&self.members.rooted_reads),
+                literal: None,
+                module_overlay: overlay.map(|o| &o.member_reads),
+                global_overlay: None,
+                masked: overlay.map(|o| &o.masked),
+                environment: &self.environment,
             },
-            EventPredicate::ClassReference => match &clause.identity {
-                IdentityConstraint::Any { name, .. } => self
-                    .constructions
-                    .classes
-                    .get(name)
-                    .map(CandidateOccurrences::Indexed),
-                IdentityConstraint::ModuleExport { module, export } => {
-                    let key = ModuleExportKey::new(module.clone(), export.clone());
-                    module_occurrences(
-                        &self.constructions.module_classes,
-                        overlay.map(|overlay| &overlay.module_classes),
-                        overlay.is_some_and(|overlay| overlay.masked.contains(&key)),
-                        &key,
-                    )
-                }
-                IdentityConstraint::PackageModuleExport { module, export } => {
-                    Some(package_occurrences(
-                        &self.constructions.module_classes,
-                        overlay.map(|overlay| &overlay.module_classes),
-                        overlay.map(|overlay| &overlay.masked),
-                        PackageKeyPredicate::new(module, PackageMatchKind::Export(export)),
-                    ))
-                }
-                _ => None,
+            EventPredicate::ClassReference => EventIndexView {
+                name_any: None,
+                string_any: Some(&self.constructions.classes),
+                path_any: None,
+                module: Some(&self.constructions.module_classes),
+                global: None,
+                rooted: None,
+                literal: None,
+                module_overlay: overlay.map(|o| &o.module_classes),
+                global_overlay: None,
+                masked: overlay.map(|o| &o.masked),
+                environment: &self.environment,
             },
-            EventPredicate::Construct => match &clause.identity {
-                IdentityConstraint::Any { name, .. } => names
-                    .lookup(name)
-                    .and_then(|id| self.constructions.constructors.get(&id))
-                    .map(CandidateOccurrences::Indexed),
-                IdentityConstraint::Global { name, .. } => self
-                    .constructions
-                    .global_constructors
-                    .get(name)
-                    .map(CandidateOccurrences::Indexed),
-                IdentityConstraint::ModuleExport { module, export } => {
-                    let key = ModuleExportKey::new(module.clone(), export.clone());
-                    module_occurrences(
-                        &self.constructions.module_constructors,
-                        overlay.map(|overlay| &overlay.module_constructors),
-                        overlay.is_some_and(|overlay| overlay.masked.contains(&key)),
-                        &key,
-                    )
-                }
-                IdentityConstraint::PackageModuleExport { module, export } => {
-                    Some(package_occurrences(
-                        &self.constructions.module_constructors,
-                        overlay.map(|overlay| &overlay.module_constructors),
-                        overlay.map(|overlay| &overlay.masked),
-                        PackageKeyPredicate::new(module, PackageMatchKind::Export(export)),
-                    ))
-                }
-                _ => None,
+            EventPredicate::Construct => EventIndexView {
+                name_any: Some(&self.constructions.constructors),
+                string_any: Some(&self.constructions.global_constructors),
+                path_any: None,
+                module: Some(&self.constructions.module_constructors),
+                global: Some(&self.constructions.global_constructors),
+                rooted: None,
+                literal: None,
+                module_overlay: overlay.map(|o| &o.module_constructors),
+                global_overlay: None,
+                masked: overlay.map(|o| &o.masked),
+                environment: &self.environment,
             },
-            EventPredicate::Import => match &clause.identity {
-                IdentityConstraint::LiteralString { predicate } => self
-                    .literals
-                    .imports
-                    .get(&predicate.to_smolstr())
-                    .map(CandidateOccurrences::Indexed),
-                IdentityConstraint::PackageSpecifier { pattern } => self
-                    .literals
-                    .imports
-                    .matching(|specifier| pattern.matches(specifier)),
-                _ => None,
+            EventPredicate::Import => EventIndexView {
+                name_any: None,
+                string_any: None,
+                path_any: None,
+                module: None,
+                global: None,
+                rooted: None,
+                literal: Some(&self.literals.imports),
+                module_overlay: None,
+                global_overlay: None,
+                masked: None,
+                environment: &self.environment,
             },
-            EventPredicate::StringReference => match &clause.identity {
-                IdentityConstraint::LiteralString { predicate } => self
-                    .literals
-                    .strings
-                    .matching(|literal| literal.contains(predicate)),
-                _ => None,
+            EventPredicate::StringReference => EventIndexView {
+                name_any: None,
+                string_any: None,
+                path_any: None,
+                module: None,
+                global: None,
+                rooted: None,
+                literal: Some(&self.literals.strings),
+                module_overlay: None,
+                global_overlay: None,
+                masked: None,
+                environment: &self.environment,
             },
         }
     }

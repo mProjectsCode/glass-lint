@@ -1,6 +1,6 @@
 //! Obsidian settings-tab rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects syntactic `this.addSettingTab()` registration calls and
 /// `PluginSettingTab` constructors/subclasses. The registration form requires
@@ -13,14 +13,17 @@ pub fn rule() -> Rule {
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::instance_member_call(
+        .declaration(MatcherDecl::instance_member_call(
             "obsidian",
             "Plugin",
             "addSettingTab",
         ))
-        .matcher(Matcher::heuristic_constructor("PluginSettingTab"))
-        .matcher(Matcher::module_constructor("obsidian", "PluginSettingTab"))
-        .matcher(Matcher::module_class("obsidian", "PluginSettingTab"))
+        .declaration(MatcherDecl::heuristic_constructor("PluginSettingTab"))
+        .declaration(MatcherDecl::module_constructor(
+            "obsidian",
+            "PluginSettingTab",
+        ))
+        .declaration(MatcherDecl::module_class("obsidian", "PluginSettingTab"))
         .build()
         .unwrap()
 }

@@ -1,6 +1,6 @@
 //! Node filesystem and path module rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 const PATH_MODULES: &[&str] = &["path", "node:path"];
 const PATH_METHODS: &[&str] = &[
@@ -28,31 +28,31 @@ pub fn rule() -> Rule {
         .category("node/filesystem")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::import("fs"))
-        .matcher(Matcher::import("fs/promises"))
-        .matcher(Matcher::import("node:fs"))
-        .matcher(Matcher::import("node:fs/promises"))
-        .matcher(Matcher::package_import("fs-extra"))
-        .matcher(Matcher::package_import("graceful-fs"))
-        .matcher(Matcher::package_import("memfs"))
-        .matcher(Matcher::package_import("unionfs"))
-        .matcher(Matcher::package_import("chokidar"))
-        .matcher(Matcher::package_import("proper-lockfile"))
-        .matcher(Matcher::package_import("tmp"))
-        .matcher(Matcher::package_import("tmp-promise"))
-        .matcher(Matcher::package_import("rimraf"))
-        .matcher(Matcher::package_import("mkdirp"))
-        .matcher(Matcher::package_import("make-dir"))
-        .matcher(Matcher::package_import("write-file-atomic"))
-        .matcher(Matcher::package_import("fs-monkey"))
-        .matcher(Matcher::package_import("mock-fs"))
-        .matcher(Matcher::package_import("watchpack"))
-        .matcher(Matcher::package_import("fsevents"));
+        .declaration(MatcherDecl::import("fs"))
+        .declaration(MatcherDecl::import("fs/promises"))
+        .declaration(MatcherDecl::import("node:fs"))
+        .declaration(MatcherDecl::import("node:fs/promises"))
+        .declaration(MatcherDecl::package_import("fs-extra"))
+        .declaration(MatcherDecl::package_import("graceful-fs"))
+        .declaration(MatcherDecl::package_import("memfs"))
+        .declaration(MatcherDecl::package_import("unionfs"))
+        .declaration(MatcherDecl::package_import("chokidar"))
+        .declaration(MatcherDecl::package_import("proper-lockfile"))
+        .declaration(MatcherDecl::package_import("tmp"))
+        .declaration(MatcherDecl::package_import("tmp-promise"))
+        .declaration(MatcherDecl::package_import("rimraf"))
+        .declaration(MatcherDecl::package_import("mkdirp"))
+        .declaration(MatcherDecl::package_import("make-dir"))
+        .declaration(MatcherDecl::package_import("write-file-atomic"))
+        .declaration(MatcherDecl::package_import("fs-monkey"))
+        .declaration(MatcherDecl::package_import("mock-fs"))
+        .declaration(MatcherDecl::package_import("watchpack"))
+        .declaration(MatcherDecl::package_import("fsevents"));
 
     for module in PATH_MODULES {
         for method in PATH_METHODS {
-            builder = builder.matcher(Matcher::module_member_call(*module, *method));
-            builder = builder.matcher(Matcher::module_call(*module, *method));
+            builder = builder.declaration(MatcherDecl::module_member_call(*module, *method));
+            builder = builder.declaration(MatcherDecl::module_call(*module, *method));
         }
     }
 

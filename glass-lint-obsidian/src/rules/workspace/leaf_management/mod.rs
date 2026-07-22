@@ -1,6 +1,6 @@
 //! Obsidian workspace-leaf management rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to workspace leaf creation, lookup, traversal, and
 /// management methods on `app.workspace`. Provenance follows `this.app`,
@@ -13,27 +13,37 @@ pub fn rule() -> Rule {
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("app.workspace.getLeavesOfType"))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.workspace.getLeavesOfType",
+        ))
+        .declaration(MatcherDecl::rooted_member_call(
             "app.workspace.detachLeavesOfType",
         ))
-        .matcher(Matcher::rooted_member_call("app.workspace.revealLeaf"))
-        .matcher(Matcher::rooted_member_call("app.workspace.getLeaf"))
-        .matcher(Matcher::rooted_member_call("app.workspace.getLeafById"))
-        .matcher(Matcher::rooted_member_call("app.workspace.getLeftLeaf"))
-        .matcher(Matcher::rooted_member_call("app.workspace.getRightLeaf"))
-        .matcher(Matcher::rooted_member_call("app.workspace.ensureSideLeaf"))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call("app.workspace.revealLeaf"))
+        .declaration(MatcherDecl::rooted_member_call("app.workspace.getLeaf"))
+        .declaration(MatcherDecl::rooted_member_call("app.workspace.getLeafById"))
+        .declaration(MatcherDecl::rooted_member_call("app.workspace.getLeftLeaf"))
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.workspace.getRightLeaf",
+        ))
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.workspace.ensureSideLeaf",
+        ))
+        .declaration(MatcherDecl::rooted_member_call(
             "app.workspace.iterateRootLeaves",
         ))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call(
             "app.workspace.iterateAllLeaves",
         ))
-        .matcher(Matcher::rooted_member_call("app.workspace.setActiveLeaf"))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.workspace.setActiveLeaf",
+        ))
+        .declaration(MatcherDecl::rooted_member_call(
             "app.workspace.moveLeafToPopout",
         ))
-        .matcher(Matcher::rooted_member_call("app.workspace.openPopoutLeaf"))
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.workspace.openPopoutLeaf",
+        ))
         .build()
         .unwrap()
 }

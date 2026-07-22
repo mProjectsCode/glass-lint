@@ -4,9 +4,7 @@
 //! lifecycle. They become immutable predicates over semantic facts after
 //! validation and compilation.
 
-use smol_str::{SmolStr, ToSmolStr};
-
-use crate::api::rule::matcher::MemberCallMatcher;
+use smol_str::SmolStr;
 
 /// A context-independent predicate over an argument value.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -19,20 +17,6 @@ impl ValueMatcher {
     /// Borrow the value matcher kind.
     pub fn kind(&self) -> &ValueMatcherKind {
         &self.kind
-    }
-
-    pub(crate) fn normalize(&mut self) {
-        if let ValueMatcherKind::StaticString(predicate) = &mut self.kind {
-            match &mut predicate.kind {
-                StaticStringPredicateKind::Any => {}
-                StaticStringPredicateKind::Exact(values)
-                | StaticStringPredicateKind::Prefix(values)
-                | StaticStringPredicateKind::ContainsAny(values)
-                | StaticStringPredicateKind::ContainsAll(values) => {
-                    crate::api::rule::matcher::normalize_strings(values);
-                }
-            }
-        }
     }
 }
 
@@ -198,20 +182,6 @@ impl ArgumentMatcher {
             },
         }
     }
-
-    pub(crate) fn normalize(&mut self) {
-        match &mut self.kind {
-            ArgumentMatcherKind::Value(value) => value.normalize(),
-            ArgumentMatcherKind::ObjectKeys(keys)
-            | ArgumentMatcherKind::RootedExpressions(keys) => {
-                crate::api::rule::matcher::normalize_strings(keys);
-            }
-            ArgumentMatcherKind::ObjectPropertyValue { property, value } => {
-                *property = property.trim().to_string();
-                value.normalize();
-            }
-        }
-    }
 }
 
 impl From<ValueMatcher> for ArgumentMatcher {
@@ -247,32 +217,40 @@ impl ArgumentConstraint {
     pub fn matcher(&self) -> &ArgumentMatcher {
         &self.matcher
     }
-
-    pub fn normalize_all(arguments: &mut Vec<Self>) {
-        for argument in arguments.iter_mut() {
-            argument.matcher.normalize();
-        }
-        arguments.sort_by_key(|argument| argument.index);
-        arguments.dedup();
-    }
 }
 
 /// A call that returns the object tracked by an [`ObjectFlowMatcher`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ObjectSourceMatcher {
-    /// Source call identity and argument constraints.
-    call: MemberCallMatcher,
+    /// Rooted source chain.
+    chain: String,
+    /// Argument constraints on the source call.
+    arguments: Vec<ArgumentConstraint>,
 }
 
 impl ObjectSourceMatcher {
     #[must_use]
-    pub fn returned_by(call: MemberCallMatcher) -> Self {
-        Self { call }
+    pub fn returned_by(chain: impl Into<String>) -> Self {
+        Self {
+            chain: chain.into(),
+            arguments: Vec::new(),
+        }
     }
 
-    /// Borrow the source call matcher.
-    pub fn call(&self) -> &MemberCallMatcher {
-        &self.call
+    /// Borrow the rooted source chain.
+    pub fn chain(&self) -> &str {
+        &self.chain
+    }
+
+    /// Borrow the source call argument constraints.
+    pub fn arguments(&self) -> &[ArgumentConstraint] {
+        &self.arguments
+    }
+
+    #[must_use]
+    pub fn arg(mut self, index: usize, matcher: impl Into<ArgumentMatcher>) -> Self {
+        self.arguments.push(ArgumentConstraint::new(index, matcher));
+        self
     }
 }
 
@@ -322,19 +300,6 @@ impl ObjectEventMatcher {
                 member: member.into(),
                 arguments: Vec::new(),
             },
-        }
-    }
-
-    pub(crate) fn normalize(&mut self) {
-        match &mut self.kind {
-            ObjectEventMatcherKind::PropertyWrite { property, value } => {
-                *property = property.trim().to_smolstr();
-                value.normalize();
-            }
-            ObjectEventMatcherKind::MemberCall { member, arguments } => {
-                *member = member.trim().to_string();
-                ArgumentConstraint::normalize_all(arguments);
-            }
         }
     }
 }
@@ -413,15 +378,6 @@ impl FlowCondition {
             kind: FlowConditionKind::AllOf(vec![event.into()]),
         }
     }
-
-    pub(crate) fn normalize(&mut self) {
-        let events = match &mut self.kind {
-            FlowConditionKind::AnyOf(events) | FlowConditionKind::AllOf(events) => events,
-        };
-        for event in events {
-            event.normalize();
-        }
-    }
 }
 
 // ── FlowCompletion ───────────────────────────────────────────────────────
@@ -462,17 +418,6 @@ impl FlowCompletion {
             kind: FlowCompletionKind::AnySink(sinks.into_iter().collect()),
         }
     }
-
-    pub(crate) fn normalize(&mut self) {
-        if let FlowCompletionKind::AnySink(sinks) = &mut self.kind {
-            for sink in sinks.iter_mut() {
-                match &mut sink.kind {
-                    FlowSinkMatcherKind::ArgumentOf { call, .. }
-                    | FlowSinkMatcherKind::AnyArgumentOf { call } => call.normalize(),
-                }
-            }
-        }
-    }
 }
 
 // ── FlowSinkMatcher ──────────────────────────────────────────────────────
@@ -481,15 +426,9 @@ impl FlowCompletion {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum FlowSinkMatcherKind {
     /// Match one specific argument position.
-    ArgumentOf {
-        call: MemberCallMatcher,
-        index: usize,
-    },
+    ArgumentOf { chain: String, index: usize },
     /// Match any argument position at the sink call.
-    AnyArgumentOf {
-        /// Sink member-call identity.
-        call: MemberCallMatcher,
-    },
+    AnyArgumentOf { chain: String },
 }
 
 /// A tracked object appearing in a selected argument of a call.
@@ -505,16 +444,29 @@ impl FlowSinkMatcher {
     }
 
     #[must_use]
-    pub fn argument_of(call: MemberCallMatcher, index: usize) -> Self {
+    pub fn argument_of(chain: impl Into<String>, index: usize) -> Self {
         Self {
-            kind: FlowSinkMatcherKind::ArgumentOf { call, index },
+            kind: FlowSinkMatcherKind::ArgumentOf {
+                chain: chain.into(),
+                index,
+            },
         }
     }
 
     #[must_use]
-    pub fn any_argument_of(call: MemberCallMatcher) -> Self {
+    pub fn any_argument_of(chain: impl Into<String>) -> Self {
         Self {
-            kind: FlowSinkMatcherKind::AnyArgumentOf { call },
+            kind: FlowSinkMatcherKind::AnyArgumentOf {
+                chain: chain.into(),
+            },
+        }
+    }
+
+    /// Return the rooted chain.
+    pub fn chain(&self) -> &str {
+        match &self.kind {
+            FlowSinkMatcherKind::ArgumentOf { chain, .. }
+            | FlowSinkMatcherKind::AnyArgumentOf { chain } => chain,
         }
     }
 }
@@ -564,23 +516,6 @@ impl ObjectFlowMatcher {
     /// Borrow the optional completion mode.
     pub fn completion(&self) -> Option<&FlowCompletion> {
         self.completion.as_ref()
-    }
-
-    pub(crate) fn invalid_operation(&self) -> Option<&'static str> {
-        self.invalid_operation
-    }
-
-    pub(crate) fn normalize(&mut self) {
-        self.symbol = self.symbol.trim().to_string();
-        for source in &mut self.sources {
-            source.call.normalize();
-        }
-        if let Some(condition) = &mut self.condition {
-            condition.normalize();
-        }
-        if let Some(completion) = &mut self.completion {
-            completion.normalize();
-        }
     }
 }
 
@@ -648,7 +583,7 @@ mod tests {
     use super::*;
 
     fn source() -> ObjectSourceMatcher {
-        ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted("document.createElement"))
+        ObjectSourceMatcher::returned_by("document.createElement")
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Obsidian workspace-open rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to `app.workspace.openLinkText` and
 /// `app.workspace.getLeaf.openFile`. Provenance follows `this.app`, workspace
@@ -14,27 +14,29 @@ pub fn rule() -> Rule {
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("app.workspace.openLinkText"))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.workspace.openLinkText",
+        ))
+        .declaration(MatcherDecl::rooted_member_call(
             "app.workspace.getLeaf.openFile",
         ))
-        .matcher(Matcher::returned_member_call(
+        .declaration(MatcherDecl::returned_member_call(
             "app.workspace.getLeaf",
             "openFile",
         ))
-        .matcher(Matcher::returned_member_call(
+        .declaration(MatcherDecl::returned_member_call(
             "app.workspace.getLeafById",
             "openFile",
         ))
-        .matcher(Matcher::returned_member_call(
+        .declaration(MatcherDecl::returned_member_call(
             "app.workspace.getLeftLeaf",
             "openFile",
         ))
-        .matcher(Matcher::returned_member_call(
+        .declaration(MatcherDecl::returned_member_call(
             "app.workspace.getRightLeaf",
             "openFile",
         ))
-        .matcher(Matcher::returned_member_call(
+        .declaration(MatcherDecl::returned_member_call(
             "app.workspace.ensureSideLeaf",
             "openFile",
         ))

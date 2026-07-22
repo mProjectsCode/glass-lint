@@ -28,14 +28,6 @@ mod status;
 mod syntax;
 mod value;
 
-pub use value::SymbolPath;
-
-/// Normalize a dot-separated chain into its canonical symbol-path form.
-/// Used by the public `canonical-symbol-path` rule API.
-pub fn canonical_symbol_path(value: &str) -> String {
-    self::value::SymbolPath::from_chain(value).to_string()
-}
-
 pub use local::{
     ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, ProjectModule,
     SemanticArtifact, SharedSemanticArtifact,
@@ -43,6 +35,7 @@ pub use local::{
 pub use lowering::{LoweredSource, lower_source};
 pub use project::model::ProjectSemanticModel;
 pub(in crate::analysis) use project::model::{ExportResolution, QualifiedRequestId};
+pub use value::SymbolPath;
 
 #[cfg(test)]
 mod tests {
@@ -50,8 +43,8 @@ mod tests {
     use crate::{
         Environment,
         api::{
-            compiler::{CompiledMatcherPlan, CompiledRuleSelection},
-            rule::MatcherSet,
+            compiler::{CompiledRuleSelection, rule::CompiledMatcherPlan},
+            rule::MatcherDecl,
         },
     };
 
@@ -89,10 +82,8 @@ mod tests {
                 .facts()
         );
 
-        let fetch =
-            MatcherSet::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
-                .normalized();
-        let fetch_plan = CompiledMatcherPlan::compile(&fetch).unwrap();
+        let fetch_plan =
+            CompiledMatcherPlan::compile_decls(&[MatcherDecl::global_call("fetch")]).unwrap();
         let selected = [crate::api::classification::RuleIndex::new(0)];
         let fetch_rule = crate::api::compiler::CompiledRule {
             matcher: fetch_plan,
@@ -101,11 +92,11 @@ mod tests {
         let (_model, _outcome) =
             project.project(CompiledRuleSelection::new(&fetch_rules, &selected));
 
-        let member = MatcherSet::from_matchers(vec![crate::api::rule::Matcher::from(
-            crate::api::rule::MemberCallMatcher::heuristic("document.createElement"),
-        )])
-        .normalized();
-        let member_plan = CompiledMatcherPlan::compile(&member).unwrap();
+        let member_plan =
+            CompiledMatcherPlan::compile_decls(&[MatcherDecl::heuristic_member_call(
+                "document.createElement",
+            )])
+            .unwrap();
         let member_rule = crate::api::compiler::CompiledRule {
             matcher: member_plan,
         };

@@ -1,6 +1,6 @@
 //! Electron native-dialog rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects calls to Electron's `dialog.showOpenDialog` and
 /// `dialog.showSaveDialog` when the receiver has proven `electron` module
@@ -15,35 +15,35 @@ pub fn rule() -> Rule {
         .category("electron/dialog")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "dialog.showOpenDialog",
         ))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "dialog.showSaveDialog",
         ))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "dialog.showOpenDialogSync",
         ))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "dialog.showSaveDialogSync",
         ))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "dialog.showMessageBox",
         ))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "dialog.showMessageBoxSync",
         ))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "dialog.showErrorBox",
         ))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "dialog.showCertificateTrustDialog",
         ))

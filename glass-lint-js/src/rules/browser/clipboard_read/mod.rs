@@ -1,6 +1,6 @@
 //! Browser clipboard-read rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects calls to the unshadowed browser clipboard read APIs, including
 /// aliases derived from those APIs. Shadowed `navigator` bindings and aliases
@@ -11,11 +11,17 @@ pub fn rule() -> Rule {
         .category("browser/clipboard")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("navigator.clipboard.read"))
-        .matcher(Matcher::rooted_member_call("navigator.clipboard.readText"))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("document.execCommand").arg_static_strings(0, ["paste"]),
+        .declaration(MatcherDecl::rooted_member_call("navigator.clipboard.read"))
+        .declaration(MatcherDecl::rooted_member_call(
+            "navigator.clipboard.readText",
         ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("document.execCommand")
+                .arg_static_strings(0, ["paste"])
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()
 }

@@ -1,25 +1,21 @@
 //! Public rule declarations and builder boundary.
 //!
 //! Rule metadata is validated when a rule is built. Matcher declarations are
-//! validated, normalized, and compiled at the catalog boundary.
+//! validated and compiled at the catalog boundary.
 
 #![allow(clippy::redundant_pub_crate)]
 
+mod decl;
 mod error;
 pub mod matcher;
 mod module;
-mod normalization;
 mod taxonomy;
-pub mod validation;
 
+pub use decl::MatcherDecl;
 pub use error::{CompiledCatalogError, MatcherBuildError, RuleBuildError};
-pub(crate) use matcher::MatcherFamily;
 pub use matcher::{
-    ArgumentConstraint, ArgumentMatcher, CallMatcher, ClassMatcher, ConstructorMatcher,
-    FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, Matcher, MatcherSet,
-    MemberCallMatcher, MemberCallProvenance, MemberReadMatcher, ObjectEventMatcher,
-    ObjectFlowMatcher, ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher,
-    SymbolProvenance, ValueMatcher, ValueMatcherKind,
+    ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
+    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher, ValueMatcherKind,
 };
 pub use module::ModuleSpecifierPattern;
 pub use taxonomy::{Category, Confidence};
@@ -29,8 +25,7 @@ pub use crate::Severity;
 #[derive(Debug, Clone)]
 /// Validated provider rule with canonical matcher declarations.
 pub struct Rule {
-    /// Provider-local stable rule name. [`RuleCatalog`] adds the provider
-    /// namespace when constructing the public rule ID.
+    /// Provider-local stable rule name.
     id: String,
     /// Human-readable rule description.
     description: String,
@@ -40,8 +35,8 @@ pub struct Rule {
     severity: Severity,
     /// Evidence confidence.
     confidence: Confidence,
-    /// Matcher declarations retained until catalog validation.
-    matchers: Vec<Matcher>,
+    /// Matcher declarations retained until catalog compilation.
+    decls: Vec<MatcherDecl>,
 }
 
 impl Rule {
@@ -58,7 +53,7 @@ impl Rule {
             category: None,
             severity: None,
             confidence: None,
-            matchers: Vec::new(),
+            decls: Vec::new(),
             duplicate_field: None,
         }
     }
@@ -94,9 +89,9 @@ impl Rule {
     }
 
     #[must_use]
-    /// Borrow normalized matcher declarations.
-    pub fn matchers(&self) -> &[Matcher] {
-        &self.matchers
+    /// Borrow matcher declarations.
+    pub fn declarations(&self) -> &[MatcherDecl] {
+        &self.decls
     }
 }
 
@@ -108,15 +103,15 @@ pub struct RuleBuilder {
     category: Option<Category>,
     severity: Option<Severity>,
     confidence: Option<Confidence>,
-    matchers: Vec<Matcher>,
+    decls: Vec<MatcherDecl>,
     duplicate_field: Option<&'static str>,
 }
 
 impl RuleBuilder {
     #[must_use]
     /// Add one matcher declaration.
-    pub fn matcher(mut self, matcher: impl Into<Matcher>) -> Self {
-        self.matchers.push(matcher.into());
+    pub fn declaration(mut self, decl: MatcherDecl) -> Self {
+        self.decls.push(decl);
         self
     }
 
@@ -189,20 +184,16 @@ impl RuleBuilder {
             category,
             severity,
             confidence,
-            matchers: self.matchers,
+            decls: self.decls,
         })
     }
 }
 
 impl Rule {
-    pub(crate) fn validate_and_normalize(mut self) -> Result<Self, MatcherBuildError> {
-        let candidate = matcher::MatcherSet::from_matchers(self.matchers);
-        candidate.validate()?;
-        let matcher = candidate.normalized();
-        if matcher.is_empty() {
+    pub(crate) fn validate_and_normalize(self) -> Result<Self, MatcherBuildError> {
+        if self.decls.is_empty() {
             return Err(MatcherBuildError::MissingRequired);
         }
-        self.matchers = matcher.into_matchers();
         Ok(self)
     }
 }
@@ -229,7 +220,7 @@ mod tests {
             .category(category)
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
     }
 
@@ -303,22 +294,20 @@ mod tests {
             .category("network")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .matcher(Matcher::rooted_member_call("client..request"))
+            .declaration(MatcherDecl::global_call(""))
             .build()
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
 
         let flow = ObjectFlowMatcher::builder("incomplete")
-            .source(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(
-                "document.createElement",
-            )))
+            .source(ObjectSourceMatcher::returned_by("document.createElement"))
             .build();
         let rule = Rule::builder("incomplete")
             .description("rule")
             .category("flow")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .matcher(flow)
+            .declaration(MatcherDecl::from_object_flow(&flow))
             .build()
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
@@ -328,7 +317,7 @@ mod tests {
             .category("classes")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .matcher(Matcher::heuristic_class(""))
+            .declaration(MatcherDecl::heuristic_class(""))
             .build()
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
@@ -338,7 +327,7 @@ mod tests {
             .category("packages")
             .severity(Severity::Info)
             .confidence(Confidence::High)
-            .matcher(Matcher::package_import("pkg/subpath"))
+            .declaration(MatcherDecl::package_import("pkg/subpath"))
             .build()
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());

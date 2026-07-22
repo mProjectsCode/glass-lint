@@ -27,8 +27,7 @@ use crate::{
     },
     api::{
         classification::{ClassificationResult, MatchedCapability, RuleIndex},
-        compiler::CompiledCatalog,
-        rule::Rule,
+        compiler::{CompiledCatalog, CompiledRuleRecord},
     },
     budget::BudgetTracker,
     project::{
@@ -452,7 +451,7 @@ impl ProjectSemanticModel {
     pub fn classify_with_evidence_limit(
         &self,
         catalog: &CompiledCatalog,
-        rules: &[Rule],
+        records: &[CompiledRuleRecord],
         selected: &[RuleIndex],
         evidence_limit: usize,
     ) -> (BTreeMap<ModuleId, ClassificationResult>, ProjectionOutcome) {
@@ -463,10 +462,10 @@ impl ProjectSemanticModel {
                 let mut result = ClassificationResult::default();
                 for rule_index in selected {
                     let index = rule_index.get();
-                    if rules.get(index).is_none() {
+                    if records.get(index).is_none() {
                         continue;
                     }
-                    let Some(rule) = rules.get(index) else {
+                    let Some(record) = records.get(index) else {
                         continue;
                     };
                     let evidence =
@@ -476,11 +475,11 @@ impl ProjectSemanticModel {
                     }
                     result.capabilities.push(MatchedCapability {
                         rule_index: *rule_index,
-                        id: rule.id().to_string(),
-                        label: rule.description().to_string(),
-                        category: rule.category().clone(),
-                        severity: rule.severity(),
-                        confidence: rule.confidence(),
+                        id: record.id.clone(),
+                        label: record.description.clone(),
+                        category: record.category.clone(),
+                        severity: record.severity,
+                        confidence: record.confidence,
                         evidence,
                     });
                 }
@@ -508,11 +507,9 @@ impl From<ExportResolution> for matching::LinkedModuleIdentity {
             ExportResolution::External { module, export } => Self::External { module, export },
             ExportResolution::Global { name } => Self::Global { name },
             ExportResolution::StaticString { value } => Self::StaticString { value },
-            ExportResolution::Qualified { module, export } => Self::Qualified {
-                module: module.get(),
-                export,
-            },
-            ExportResolution::Unknown | ExportResolution::Ambiguous => Self::Unknown,
+            ExportResolution::Qualified { module, export } => Self::Qualified { module, export },
+            ExportResolution::Ambiguous => Self::Ambiguous,
+            ExportResolution::Unknown => Self::Unknown,
         }
     }
 }

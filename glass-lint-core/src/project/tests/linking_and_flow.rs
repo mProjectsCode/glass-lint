@@ -1,4 +1,4 @@
-use crate::project::tests::*;
+use crate::{api::rule::MatcherDecl, project::tests::*};
 
 #[test]
 fn linked_internal_aliases_preserve_external_and_global_call_identity() {
@@ -7,7 +7,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_call("web", "request"))
+        .declaration(MatcherDecl::module_call("web", "request"))
         .build()
         .unwrap();
     let global_rule = Rule::builder("network.fetch")
@@ -15,7 +15,7 @@ fn linked_internal_aliases_preserve_external_and_global_call_identity() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap();
     let mut environment = crate::Environment::default();
@@ -204,7 +204,7 @@ fn linked_unknown_exports_and_importer_reassignment_fail_closed() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_call("web", "request"))
+        .declaration(MatcherDecl::module_call("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -295,7 +295,7 @@ fn unresolved_internal_imports_do_not_become_external_provenance() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_call("./helper", "request"))
+        .declaration(MatcherDecl::module_call("./helper", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -330,7 +330,7 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_call("web", "request"))
+        .declaration(MatcherDecl::module_call("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -371,7 +371,7 @@ fn namespace_imports_follow_star_reexports() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_call("web", "request"))
+        .declaration(MatcherDecl::module_call("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -419,7 +419,7 @@ fn static_dynamic_imports_follow_namespace_exports() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_call("web", "request"))
+        .declaration(MatcherDecl::module_call("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -462,7 +462,7 @@ fn anonymous_commonjs_functions_remain_callable_across_modules() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_call("web", "request"))
+        .declaration(MatcherDecl::module_call("web", "request"))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -505,9 +505,7 @@ fn returned_callable_provenance_crosses_an_exported_function() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::from(
-            CallMatcher::module_export("web", "request").arg_static_string(0),
-        ))
+        .declaration(MatcherDecl::module_call("web", "request").with_arg_static_string(0))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(
@@ -515,6 +513,7 @@ fn returned_callable_provenance_crosses_an_exported_function() {
         crate::Environment::default(),
     ))
     .unwrap();
+
     let mut project = ProjectFixture::new(&linter);
     project.add_resolved(
         "helper.js",
@@ -550,9 +549,7 @@ fn linked_external_call_arguments_are_projected_after_reexports() {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::from(
-            CallMatcher::module_export("web", "request").arg_static_string(0),
-        ))
+        .declaration(MatcherDecl::module_call("web", "request").with_arg_static_string(0))
         .build()
         .unwrap();
     let linter = crate::Linter::new(crate::LinterConfig::new(

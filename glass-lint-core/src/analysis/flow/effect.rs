@@ -311,7 +311,7 @@ impl CallEffectRef<'_> {
         flow.sources.iter().any(|source| {
             NamePath::from_symbol_path(&source.member_call, names)
                 .is_some_and(|member| member == *chain)
-                && source.provenance.matches_rooted(self.rooted())
+                && source.is_rooted == self.rooted()
                 && source.arguments.iter().all(|matcher| {
                     args.get(matcher.index()).is_some_and(|argument| {
                         values.is_some_and(|values| {

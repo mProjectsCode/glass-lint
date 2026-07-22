@@ -22,25 +22,10 @@ impl OccurrenceIndexes {
     /// search; keeping it as one operation prevents a newly added index from
     /// being accidentally left in insertion order.
     pub(in crate::analysis) fn normalize_occurrences(&mut self) {
-        self.call_indexes.calls.normalize();
-        self.call_indexes.global_calls.normalize();
-        self.call_indexes.module_calls.normalize();
-        self.members.calls.normalize();
-        self.members.rooted_calls.normalize();
-        self.members.module_calls.normalize();
-        self.members.reads.normalize();
-        self.members.rooted_reads.normalize();
-        self.members.module_reads.normalize();
-        self.members.returned_calls.normalize();
-        self.members.returned_reads.normalize();
-        self.members.instance_calls.normalize();
-        self.literals.imports.normalize();
-        self.literals.strings.normalize();
-        self.constructions.classes.normalize();
-        self.constructions.module_classes.normalize();
-        self.constructions.constructors.normalize();
-        self.constructions.global_constructors.normalize();
-        self.constructions.module_constructors.normalize();
+        self.call_indexes.normalize();
+        self.members.normalize();
+        self.constructions.normalize();
+        self.literals.normalize();
     }
 
     pub(in crate::analysis) fn build_from_stream(&mut self, stream: &FactStream) {

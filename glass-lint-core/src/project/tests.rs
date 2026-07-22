@@ -4,9 +4,8 @@
 use crate::{
     Position, SourceRange,
     api::rule::{
-        CallMatcher, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher,
-        MemberCallMatcher, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
-        Severity, ValueMatcher,
+        Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
+        ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
     },
     project::{
         session::{ControlledReleaseOrder, CountingExecutionObserver, outstanding_job_bound},

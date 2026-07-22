@@ -1,6 +1,6 @@
 //! Browser global-input listener rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, MemberCallMatcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 const INPUT_EVENTS: [&str; 16] = [
     "keydown",
@@ -33,23 +33,33 @@ pub fn rule() -> Rule {
         .category("browser/input")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("document.addEventListener")
-                .arg_static_strings(0, INPUT_EVENTS),
-        ))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("addEventListener").arg_static_strings(0, INPUT_EVENTS),
-        ))
-        .matcher(Matcher::from(
-            MemberCallMatcher::rooted("document.body.addEventListener")
-                .arg_static_strings(0, INPUT_EVENTS),
-        ))
-        .matcher(Matcher::rooted_member_read("document.onkeydown"))
-        .matcher(Matcher::rooted_member_read("document.onkeyup"))
-        .matcher(Matcher::rooted_member_read("document.onkeypress"))
-        .matcher(Matcher::rooted_member_read("document.onpaste"))
-        .matcher(Matcher::rooted_member_read("document.oncopy"))
-        .matcher(Matcher::rooted_member_read("document.oncut"))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("document.addEventListener")
+                .arg_static_strings(0, INPUT_EVENTS)
+                .build()
+                .unwrap(),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("addEventListener")
+                .arg_static_strings(0, INPUT_EVENTS)
+                .build()
+                .unwrap(),
+        )
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("document.body.addEventListener")
+                .arg_static_strings(0, INPUT_EVENTS)
+                .build()
+                .unwrap(),
+        )
+        .declaration(MatcherDecl::rooted_member_read("document.onkeydown"))
+        .declaration(MatcherDecl::rooted_member_read("document.onkeyup"))
+        .declaration(MatcherDecl::rooted_member_read("document.onkeypress"))
+        .declaration(MatcherDecl::rooted_member_read("document.onpaste"))
+        .declaration(MatcherDecl::rooted_member_read("document.oncopy"))
+        .declaration(MatcherDecl::rooted_member_read("document.oncut"))
         .build()
         .unwrap()
 }

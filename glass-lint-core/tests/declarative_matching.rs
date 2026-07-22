@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog,
     rules::{
-        CallMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher, MemberCallMatcher,
+        ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
         ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, ValueMatcher,
     },
 };
@@ -33,19 +33,19 @@ impl Classification {
 }
 
 /// Construct the multi-step flow used by source/configuration/sink tests.
-fn script_insertion_flow() -> Matcher {
-    Matcher::from(
-        ObjectFlowMatcher::builder("script insertion")
-            .source(ObjectSourceMatcher::returned_by(
-                MemberCallMatcher::rooted("document.createElement")
+fn script_insertion_flow() -> MatcherDecl {
+    MatcherDecl::from_object_flow(
+        &ObjectFlowMatcher::builder("script insertion")
+            .source(
+                ObjectSourceMatcher::returned_by("document.createElement")
                     .arg(0, ValueMatcher::static_string().equals("script")),
-            ))
+            )
             .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
                 "src",
                 ValueMatcher::any_value(),
             )))
             .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
-                MemberCallMatcher::rooted("document.head.appendChild"),
+                "document.head.appendChild",
                 0,
             )]))
             .build(),
@@ -84,11 +84,11 @@ fn classify_with_environment(
 fn canonicalizes_configured_global_object_aliases_for_rooted_members() {
     let rules = [
         rule("test.navigator-call")
-            .matcher(Matcher::rooted_member_call("navigator.sendBeacon"))
+            .declaration(MatcherDecl::rooted_member_call("navigator.sendBeacon"))
             .build()
             .unwrap(),
         rule("test.navigator-read")
-            .matcher(Matcher::rooted_member_read("navigator.userAgent"))
+            .declaration(MatcherDecl::rooted_member_read("navigator.userAgent"))
             .build()
             .unwrap(),
     ];
@@ -109,7 +109,7 @@ fn rooted_configured_global_member_calls_match_direct_globals() {
         "test",
         vec![
             rule("crypto")
-                .matcher(Matcher::rooted_member_call("crypto.subtle.digest"))
+                .declaration(MatcherDecl::rooted_member_call("crypto.subtle.digest"))
                 .build()
                 .unwrap(),
         ],
@@ -127,7 +127,7 @@ fn rooted_global_member_survives_unrelated_crypto_imports() {
     let mut environment = support::test_environment();
     environment.add_global("crypto").unwrap();
     let rules = [rule("crypto")
-        .matcher(Matcher::rooted_member_call("crypto.subtle.digest"))
+        .declaration(MatcherDecl::rooted_member_call("crypto.subtle.digest"))
         .build()
         .unwrap()];
     let result = classify_with_environment(
@@ -141,7 +141,7 @@ fn rooted_global_member_survives_unrelated_crypto_imports() {
 #[test]
 fn rooted_member_read_matches_direct_read() {
     let rules = [rule("document")
-        .matcher(Matcher::rooted_member_read("document.onkeydown"))
+        .declaration(MatcherDecl::rooted_member_read("document.onkeydown"))
         .build()
         .unwrap()];
     assert_eq!(classify("document.onkeydown;", &rules).finding_count, 1);
@@ -156,11 +156,11 @@ fn rooted_global_object_aliases_respect_restricted_members_and_mutations() {
         .unwrap();
     let rules = [
         rule("test.navigator")
-            .matcher(Matcher::rooted_member_call("navigator.sendBeacon"))
+            .declaration(MatcherDecl::rooted_member_call("navigator.sendBeacon"))
             .build()
             .unwrap(),
         rule("test.fetch")
-            .matcher(Matcher::rooted_member_call("fetch"))
+            .declaration(MatcherDecl::rooted_member_call("fetch"))
             .build()
             .unwrap(),
     ];
@@ -192,7 +192,7 @@ fn rooted_global_object_alias_mutations_invalidate_the_canonical_root() {
     let mut environment = Environment::default();
     environment.add_global("navigator").unwrap();
     let rules = [rule("test.navigator")
-        .matcher(Matcher::rooted_member_call("navigator.sendBeacon"))
+        .declaration(MatcherDecl::rooted_member_call("navigator.sendBeacon"))
         .build()
         .unwrap()];
     let catalog = RuleCatalog::new("test", rules.to_vec()).unwrap();
@@ -212,7 +212,7 @@ fn rooted_global_object_alias_mutations_invalidate_the_canonical_root() {
 #[test]
 fn extracted_instance_callables_follow_aliases_and_bind_but_not_reassignment() {
     let rules = [rule("instance")
-        .matcher(Matcher::instance_member_call(
+        .declaration(MatcherDecl::instance_member_call(
             "obsidian",
             "Plugin",
             "addCommand",
@@ -237,8 +237,8 @@ fn extracted_instance_callables_follow_aliases_and_bind_but_not_reassignment() {
 #[test]
 fn package_import_patterns_match_subpaths_without_lookalikes() {
     let rules = [rule("package")
-        .matcher(Matcher::package_import("@scope/pkg"))
-        .matcher(Matcher::package_import("openai"))
+        .declaration(MatcherDecl::package_import("@scope/pkg"))
+        .declaration(MatcherDecl::package_import("openai"))
         .build()
         .unwrap()];
     let result = classify(
@@ -256,9 +256,9 @@ fn package_import_patterns_match_subpaths_without_lookalikes() {
 #[test]
 fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
     let rules = [rule("package-provenance")
-        .matcher(Matcher::package_call("sdk", "send"))
-        .matcher(Matcher::package_member_call("sdk", "client.request"))
-        .matcher(Matcher::package_member_read("sdk", "version"))
+        .declaration(MatcherDecl::package_call("sdk", "send"))
+        .declaration(MatcherDecl::package_member_call("sdk", "client.request"))
+        .declaration(MatcherDecl::package_member_read("sdk", "version"))
         .build()
         .unwrap()];
     let result = classify(
@@ -274,11 +274,17 @@ fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
 #[test]
 fn associates_static_option_properties_with_their_call_sink() {
     let rules = [rule("string-use")
-        .matcher(CallMatcher::global("fetch").arg_object_property_value(
-            1,
-            "url",
-            ValueMatcher::static_string().contains_any(["localhost"]),
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .arg_object_property_value(
+                    1,
+                    "url",
+                    ValueMatcher::static_string().contains_any(["localhost"]),
+                )
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -297,7 +303,7 @@ fn assert_capability_count(result: &Classification, id: &str, expected: usize) {
 #[test]
 fn resolves_module_provenance_and_rejects_local_lookalikes() {
     let rules = [rule("test.module")
-        .matcher(Matcher::module_call("example-sdk", "send"))
+        .declaration(MatcherDecl::module_call("example-sdk", "send"))
         .build()
         .unwrap()];
     let result = classify(
@@ -310,7 +316,7 @@ fn resolves_module_provenance_and_rejects_local_lookalikes() {
 #[test]
 fn resolves_commonjs_destructured_module_exports() {
     let rules = [rule("test.module")
-        .matcher(Matcher::module_call("example-sdk", "send"))
+        .declaration(MatcherDecl::module_call("example-sdk", "send"))
         .build()
         .unwrap()];
     let result = classify(
@@ -323,7 +329,7 @@ fn resolves_commonjs_destructured_module_exports() {
 #[test]
 fn follows_rooted_aliases_and_reassignment_order() {
     let rules = [rule("test.alias")
-        .matcher(Matcher::rooted_member_call("host.files.read"))
+        .declaration(MatcherDecl::rooted_member_call("host.files.read"))
         .build()
         .unwrap()];
     let result = classify(
@@ -336,7 +342,7 @@ fn follows_rooted_aliases_and_reassignment_order() {
 #[test]
 fn rejects_aliases_after_shadowing_reassignment() {
     let rules = [rule("test.fetch")
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -349,7 +355,13 @@ fn rejects_aliases_after_shadowing_reassignment() {
 #[test]
 fn matches_static_string_arguments_but_rejects_dynamic_strings() {
     let rules = [rule("test.fetch-url")
-        .matcher(CallMatcher::global("fetch").arg_static_string(0))
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .arg_static_string(0)
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()];
     let result = classify("fetch('/literal'); fetch('/' + dynamic);", &rules);
@@ -359,8 +371,12 @@ fn matches_static_string_arguments_but_rejects_dynamic_strings() {
 #[test]
 fn callable_transforms_use_effective_target_arguments() {
     let rule = [rule("test.callable")
-        .matcher(
-            CallMatcher::global("fetch").arg_static_strings(0, ["/call", "/apply", "/optional"]),
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .arg_static_strings(0, ["/call", "/apply", "/optional"])
+                .build()
+                .unwrap(),
         )
         .build()
         .unwrap()];
@@ -374,8 +390,12 @@ fn callable_transforms_use_effective_target_arguments() {
 #[test]
 fn global_call_matchers_cover_proven_global_object_callable_forms() {
     let rules = [rule("test.global-callable")
-        .matcher(
-            CallMatcher::global("eval").arg_static_strings(0, ["direct", "alias", "call", "apply"]),
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("eval")
+                .arg_static_strings(0, ["direct", "alias", "call", "apply"])
+                .build()
+                .unwrap(),
         )
         .build()
         .unwrap()];
@@ -392,7 +412,7 @@ fn global_call_matchers_cover_proven_global_object_callable_forms() {
 #[test]
 fn global_object_callable_forms_respect_shadowing_and_property_mutation() {
     let rules = [rule("test.global-callable")
-        .matcher(CallMatcher::global("eval"))
+        .declaration(MatcherDecl::builder().call_global("eval").build().unwrap())
         .build()
         .unwrap()];
     let result = classify(
@@ -411,7 +431,7 @@ fn global_object_callable_forms_respect_shadowing_and_property_mutation() {
 #[test]
 fn host_globals_require_explicit_environment_configuration() {
     let rule = rule("test.fetch")
-        .matcher(CallMatcher::global("fetch"))
+        .declaration(MatcherDecl::builder().call_global("fetch").build().unwrap())
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
@@ -448,7 +468,7 @@ fn host_globals_require_explicit_environment_configuration() {
 #[test]
 fn rooted_host_globals_also_require_environment_configuration() {
     let rule = rule("test.host")
-        .matcher(Matcher::rooted_member_call("host.open"))
+        .declaration(MatcherDecl::rooted_member_call("host.open"))
         .build()
         .unwrap();
     let default_catalog = RuleCatalog::new("test", vec![rule.clone()]).unwrap();
@@ -483,7 +503,7 @@ fn rooted_host_globals_also_require_environment_configuration() {
 #[test]
 fn custom_global_objects_do_not_make_unconfigured_members_global() {
     let rule = rule("test.fetch")
-        .matcher(CallMatcher::global("fetch"))
+        .declaration(MatcherDecl::builder().call_global("fetch").build().unwrap())
         .build()
         .unwrap();
     let mut environment = Environment::default();
@@ -504,11 +524,11 @@ fn custom_global_objects_do_not_make_unconfigured_members_global() {
 fn future_declarations_fail_closed_at_the_use_position() {
     let rules = [
         rule("test.require")
-            .matcher(Matcher::import("sdk"))
+            .declaration(MatcherDecl::import("sdk"))
             .build()
             .unwrap(),
         rule("test.fetch")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
     ];
@@ -523,15 +543,15 @@ fn future_declarations_fail_closed_at_the_use_position() {
 fn future_declarations_shadow_all_builtin_provenance_seeds() {
     let rules = [
         rule("test.import")
-            .matcher(Matcher::import("sdk"))
+            .declaration(MatcherDecl::import("sdk"))
             .build()
             .unwrap(),
         rule("test.fetch")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         rule("test.global-fetch")
-            .matcher(Matcher::rooted_member_call("globalThis.fetch"))
+            .declaration(MatcherDecl::rooted_member_call("globalThis.fetch"))
             .build()
             .unwrap(),
     ];
@@ -548,7 +568,7 @@ fn future_declarations_shadow_all_builtin_provenance_seeds() {
 #[test]
 fn numeric_addition_is_not_a_static_property_string() {
     let rules = [rule("test.member")
-        .matcher(Matcher::rooted_member_call("app.12"))
+        .declaration(MatcherDecl::rooted_member_call("app.12"))
         .build()
         .unwrap()];
     assert_eq!(
@@ -561,7 +581,13 @@ fn numeric_addition_is_not_a_static_property_string() {
 #[test]
 fn tracks_rooted_expression_arguments_through_aliases() {
     let rules = [rule("test.arg-flow")
-        .matcher(MemberCallMatcher::rooted("app.open").arg_rooted_exprs(0, ["vault.file"]))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.open")
+                .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -574,7 +600,7 @@ fn tracks_rooted_expression_arguments_through_aliases() {
 #[test]
 fn tracks_simple_parameter_aliases_into_named_functions() {
     let rules = [rule("test.fetch")
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -587,7 +613,7 @@ fn tracks_simple_parameter_aliases_into_named_functions() {
 #[test]
 fn named_helper_summaries_are_lexically_scoped() {
     let rules = [rule("test.fetch")
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -602,7 +628,7 @@ fn named_helper_summaries_are_lexically_scoped() {
 #[test]
 fn tracks_parameter_aliases_into_arrow_functions() {
     let rules = [rule("test.fetch")
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap()];
     let result = classify(
@@ -615,7 +641,13 @@ fn tracks_parameter_aliases_into_arrow_functions() {
 #[test]
 fn matches_optional_chained_calls_with_static_arguments() {
     let rules = [rule("test.optional")
-        .matcher(MemberCallMatcher::rooted("app.commands.execute").arg_static_strings(0, ["open"]))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.commands.execute")
+                .arg_static_strings(0, ["open"])
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -628,7 +660,7 @@ fn matches_optional_chained_calls_with_static_arguments() {
 #[test]
 fn resolves_literal_computed_properties_through_constant_aliases() {
     let rules = [rule("test.computed")
-        .matcher(Matcher::rooted_member_call("fetch"))
+        .declaration(MatcherDecl::rooted_member_call("fetch"))
         .build()
         .unwrap()];
     let result = classify("const method = 'fetch'; window[method]('/remote');", &rules);
@@ -638,7 +670,13 @@ fn resolves_literal_computed_properties_through_constant_aliases() {
 #[test]
 fn reuses_constant_object_arguments_for_key_matching() {
     let rules = [rule("test.object-arg")
-        .matcher(MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("client.request")
+                .arg_object_keys(0, ["url", "method"])
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -651,11 +689,23 @@ fn reuses_constant_object_arguments_for_key_matching() {
 #[test]
 fn rejects_reassigned_static_values() {
     let string_rules = [rule("test.fetch-url")
-        .matcher(CallMatcher::global("fetch").arg_static_string(0))
+        .declaration(
+            MatcherDecl::builder()
+                .call_global("fetch")
+                .arg_static_string(0)
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()];
     let object_rules = [rule("test.object-arg")
-        .matcher(MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url"]))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("client.request")
+                .arg_object_keys(0, ["url"])
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()];
 
@@ -680,7 +730,13 @@ fn rejects_reassigned_static_values() {
 #[test]
 fn rejects_static_shapes_after_a_property_write() {
     let rules = [rule("test.object-arg")
-        .matcher(MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("client.request")
+                .arg_object_keys(0, ["url", "method"])
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -693,7 +749,13 @@ fn rejects_static_shapes_after_a_property_write() {
 #[test]
 fn projects_const_object_aliases_into_destructured_parameters() {
     let rules = [rule("test.arg-flow")
-        .matcher(MemberCallMatcher::rooted("app.open").arg_rooted_exprs(0, ["vault.file"]))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.open")
+                .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()];
     let result = classify(
@@ -706,7 +768,7 @@ fn projects_const_object_aliases_into_destructured_parameters() {
 #[test]
 fn tracks_configured_values_into_later_member_sinks() {
     let rules = [rule("test.flow")
-        .matcher(script_insertion_flow())
+        .declaration(script_insertion_flow())
         .build()
         .unwrap()];
     let result = classify(

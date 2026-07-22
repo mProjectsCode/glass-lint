@@ -3,7 +3,7 @@
 use crate::{
     Rule,
     api::{
-        compiler::{CompiledRule, CompiledRuleSelection},
+        compiler::{CompiledRule, CompiledRuleRecord, CompiledRuleSelection},
         rule::CompiledCatalogError,
     },
 };
@@ -16,26 +16,17 @@ pub(crate) struct CompiledCatalog {
 }
 
 impl CompiledCatalog {
-    /// Compile rules after rejecting duplicate stable IDs.
-    pub fn try_from_rules(rules: &[Rule]) -> Result<Self, CompiledCatalogError> {
-        let mut ids = std::collections::BTreeSet::new();
-        for rule in rules {
-            if !ids.insert(rule.id().to_string()) {
-                return Err(CompiledCatalogError::DuplicateRule(rule.id().to_string()));
-            }
-        }
-        Self::compile_rules(rules)
-    }
-
-    /// Compile rules whose identity has already been checked by the owning
-    /// catalog boundary.
-    pub fn compile_rules(rules: &[Rule]) -> Result<Self, CompiledCatalogError> {
-        let compiled = rules
+    /// Compile rules into record form (metadata + plan, no retained decls).
+    pub fn compile_records(
+        rules: &[Rule],
+    ) -> Result<Vec<CompiledRuleRecord>, CompiledCatalogError> {
+        rules
             .iter()
-            .map(CompiledRule::new)
+            .map(|rule| {
+                CompiledRuleRecord::new(rule)
+                    .map_err(|e| CompiledCatalogError::InvalidMatcher(e.to_string()))
+            })
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| CompiledCatalogError::InvalidMatcher(error.to_string()))?;
-        Ok(Self { rules: compiled })
     }
 
     /// Borrow a selected-rule view over this catalog.

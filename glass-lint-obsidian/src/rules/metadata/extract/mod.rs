@@ -1,6 +1,6 @@
 //! Obsidian metadata collection-extraction rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 const METADATA_FIELDS: &[&str] = &[
     "tags",
@@ -37,12 +37,12 @@ pub fn rule() -> Rule {
         .confidence(Confidence::Medium);
 
     for field in METADATA_FIELDS {
-        builder = builder.matcher(Matcher::rooted_member_read(format!(
+        builder = builder.declaration(MatcherDecl::rooted_member_read(format!(
             "app.metadataCache.getFileCache.{field}"
         )));
     }
     for field in METADATA_FIELDS {
-        builder = builder.matcher(Matcher::returned_member_read(
+        builder = builder.declaration(MatcherDecl::returned_member_read(
             "app.metadataCache.getFileCache",
             *field,
         ));

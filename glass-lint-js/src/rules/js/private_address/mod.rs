@@ -1,6 +1,6 @@
 //! Private-network address indicator rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects string literals containing the configured localhost, loopback,
 /// wildcard, and HTTP(S) `10.*`/`192.168.*` address markers. It is a
@@ -13,27 +13,29 @@ pub fn rule() -> Rule {
         .category("browser/network")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .matcher(Matcher::string_contains("localhost"))
-        .matcher(Matcher::string_contains("127.0.0.1"))
-        .matcher(Matcher::string_contains("http://127."))
-        .matcher(Matcher::string_contains("https://127."))
-        .matcher(Matcher::string_contains("0.0.0.0"))
-        .matcher(Matcher::string_contains("http://192.168."))
-        .matcher(Matcher::string_contains("https://192.168."))
-        .matcher(Matcher::string_contains("http://10."))
-        .matcher(Matcher::string_contains("https://10."))
-        .matcher(Matcher::string_contains("http://172.16."))
-        .matcher(Matcher::string_contains("https://172.16."))
-        .matcher(Matcher::string_contains("http://169.254."))
-        .matcher(Matcher::string_contains("https://169.254."))
-        .matcher(Matcher::string_contains("::1"))
-        .matcher(Matcher::string_contains("fc00:"))
-        .matcher(Matcher::string_contains("fd00:"))
-        .matcher(Matcher::string_contains("fe80:"));
+        .declaration(MatcherDecl::string_contains("localhost"))
+        .declaration(MatcherDecl::string_contains("127.0.0.1"))
+        .declaration(MatcherDecl::string_contains("http://127."))
+        .declaration(MatcherDecl::string_contains("https://127."))
+        .declaration(MatcherDecl::string_contains("0.0.0.0"))
+        .declaration(MatcherDecl::string_contains("http://192.168."))
+        .declaration(MatcherDecl::string_contains("https://192.168."))
+        .declaration(MatcherDecl::string_contains("http://10."))
+        .declaration(MatcherDecl::string_contains("https://10."))
+        .declaration(MatcherDecl::string_contains("http://172.16."))
+        .declaration(MatcherDecl::string_contains("https://172.16."))
+        .declaration(MatcherDecl::string_contains("http://169.254."))
+        .declaration(MatcherDecl::string_contains("https://169.254."))
+        .declaration(MatcherDecl::string_contains("::1"))
+        .declaration(MatcherDecl::string_contains("fc00:"))
+        .declaration(MatcherDecl::string_contains("fd00:"))
+        .declaration(MatcherDecl::string_contains("fe80:"));
 
     for octet in 17..=31 {
         for scheme in ["http://", "https://"] {
-            builder = builder.matcher(Matcher::string_contains(format!("{scheme}172.{octet}.")));
+            builder = builder.declaration(MatcherDecl::string_contains(format!(
+                "{scheme}172.{octet}."
+            )));
         }
     }
 

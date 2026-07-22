@@ -1,6 +1,6 @@
 //! Browser Bluetooth permission rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects calls to unshadowed `navigator.bluetooth.requestDevice`, including
 /// calls through aliases of `navigator.bluetooth`. Local lookalikes and
@@ -11,7 +11,7 @@ pub fn rule() -> Rule {
         .category("browser/permissions")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call(
             "navigator.bluetooth.requestDevice",
         ))
         .build()

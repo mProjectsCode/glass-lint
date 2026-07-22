@@ -109,7 +109,7 @@ mod tests {
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, Evidence, FileReport, Finding,
         Position, ProjectRelativePath, RuleCatalog, RuleId, Severity, SourceFile, SourceLocation,
         SourceRange,
-        api::rule::{Confidence, Matcher, Rule, Severity as RuleSeverity},
+        api::rule::{Confidence, MatcherDecl, Rule, Severity as RuleSeverity},
     };
 
     fn source_file(path: impl Into<String>, source: impl Into<String>) -> SourceFile {
@@ -341,7 +341,7 @@ mod tests {
             .category("network")
             .severity(RuleSeverity::Warning)
             .confidence(Confidence::High)
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap();
         let mut environment = crate::Environment::default();
@@ -400,7 +400,7 @@ mod tests {
             .category("network")
             .severity(RuleSeverity::Warning)
             .confidence(Confidence::High)
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap();
         let mut environment = crate::Environment::default();

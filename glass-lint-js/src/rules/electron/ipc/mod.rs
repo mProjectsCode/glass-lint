@@ -1,6 +1,6 @@
 //! Electron IPC rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 const RECEIVERS: &[(&str, &[&str])] = &[
     (
@@ -75,7 +75,7 @@ pub fn rule() -> Rule {
         .confidence(Confidence::High);
     for &(receiver, methods) in RECEIVERS {
         for &method in methods {
-            builder = builder.matcher(Matcher::module_member_call(
+            builder = builder.declaration(MatcherDecl::module_member_call(
                 "electron",
                 format!("{receiver}.{method}"),
             ));

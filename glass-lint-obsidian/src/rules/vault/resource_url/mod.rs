@@ -1,6 +1,6 @@
 //! Obsidian vault resource-URL rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to vault and adapter `getResourcePath`, plus literal
 /// or static-template fragments containing `obsidian://`. Rooted provenance
@@ -14,11 +14,11 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("app.vault.getResourcePath"))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call("app.vault.getResourcePath"))
+        .declaration(MatcherDecl::rooted_member_call(
             "app.vault.adapter.getResourcePath",
         ))
-        .matcher(Matcher::string_contains("obsidian://"))
+        .declaration(MatcherDecl::string_contains("obsidian://"))
         .build()
         .unwrap()
 }

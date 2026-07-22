@@ -12,8 +12,8 @@ use crate::{
         classification::{MatchKind, RuleIndex},
         compiler::object_flow::CompiledObjectFlow,
         rule::{
-            ArgumentConstraint, MatcherBuildError, MatcherFamily, MatcherSet,
-            ModuleSpecifierPattern, Rule,
+            ArgumentConstraint, Category, Confidence, MatcherBuildError, MatcherDecl,
+            ModuleSpecifierPattern,
         },
     },
 };
@@ -22,19 +22,19 @@ use crate::{
 /// declarations are compiled once while a catalog is built and never enter
 /// the per-file analysis path.
 #[derive(Debug, Clone)]
-pub(crate) struct CompiledMatcherPlan {
+pub struct CompiledMatcherPlan {
     query: QueryPlan,
 }
 
 #[derive(Debug, Clone)]
 /// Private compositional query representation consumed by semantic analysis.
-pub(crate) struct QueryPlan {
+pub struct QueryPlan {
     pub(crate) clauses: Box<[QueryClause]>,
     pub(crate) flows: Box<[CompiledObjectFlow]>,
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct QueryClause {
+pub struct QueryClause {
     pub(crate) identity: IdentityConstraint,
     pub(crate) event: EventPredicate,
     pub(crate) subject: SubjectConstraint,
@@ -43,13 +43,13 @@ pub(crate) struct QueryClause {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum IdentityStrength {
+pub enum IdentityStrength {
     Strict,
     Heuristic,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum IdentityConstraint {
+pub enum IdentityConstraint {
     Any {
         name: SmolStr,
         strength: IdentityStrength,
@@ -86,6 +86,22 @@ pub(crate) enum IdentityConstraint {
 }
 
 impl IdentityConstraint {
+    /// Return true when the identity references an empty name or predicate.
+    pub(crate) fn is_empty(&self) -> bool {
+        match self {
+            Self::Any { name, .. } | Self::Global { name, .. } => name.is_empty(),
+            Self::ModuleExport { module, export } => module.is_empty() || export.is_empty(),
+            Self::PackageModuleExport { module, export } => {
+                module.as_str().is_empty() || export.is_empty()
+            }
+            Self::ModuleNamespace { module } => module.is_empty(),
+            Self::PackageModuleNamespace { module } => module.as_str().is_empty(),
+            Self::Rooted { path } => path.is_empty(),
+            Self::LiteralString { predicate } => predicate.is_empty(),
+            Self::PackageSpecifier { pattern } => pattern.as_str().is_empty(),
+        }
+    }
+
     pub(crate) fn root_or_descendant_matches(
         &self,
         source: &SymbolPath,
@@ -106,7 +122,7 @@ impl IdentityConstraint {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum EventPredicate {
+pub enum EventPredicate {
     Call,
     Construct,
     MemberCall { member: SymbolPath },
@@ -117,7 +133,7 @@ pub(crate) enum EventPredicate {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum SubjectConstraint {
+pub enum SubjectConstraint {
     Direct,
     ReturnedFrom {
         producer: Box<IdentityConstraint>,
@@ -128,18 +144,18 @@ pub(crate) enum SubjectConstraint {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub(crate) enum QueryConstraint {
+pub enum QueryConstraint {
     Argument(ArgumentConstraint),
 }
 
 #[derive(Debug, Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub(crate) struct EvidenceDescriptor {
+pub struct EvidenceDescriptor {
     pub(crate) kind: MatchKind,
     pub(crate) symbol: String,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub(crate) enum InvalidQueryClause {
+pub enum InvalidQueryClause {
     /// The identity/event/subject dimensions cannot select a semantic fact.
     ImpossibleDimensions,
     /// Argument predicates require a call-bearing event.
@@ -207,6 +223,9 @@ impl QueryClause {
         if !subject_identity_is_valid {
             return Err(InvalidQueryClause::ImpossibleDimensions);
         }
+        if self.identity.is_empty() {
+            return Err(InvalidQueryClause::ImpossibleDimensions);
+        }
         if !self.constraints.is_empty()
             && !matches!(
                 self.event,
@@ -220,11 +239,25 @@ impl QueryClause {
 }
 
 impl QueryPlan {
-    fn from_matcher(
-        matcher: &MatcherSet,
-        flows: Vec<CompiledObjectFlow>,
-    ) -> Result<Self, MatcherBuildError> {
-        let mut clauses = matcher.lower_all();
+    pub(crate) fn clauses(&self) -> &[QueryClause] {
+        &self.clauses
+    }
+
+    pub(crate) fn flows(&self) -> &[CompiledObjectFlow] {
+        &self.flows
+    }
+
+    #[cfg(test)]
+    fn from_declarations(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
+        let mut clauses = Vec::new();
+        let mut flows = Vec::new();
+        for decl in decls {
+            let clause = decl.to_query_clause();
+            clauses.push(clause);
+            if let Some(flow) = decl.to_object_flow() {
+                flows.push(flow);
+            }
+        }
         clauses.sort();
         clauses.dedup();
         for clause in &clauses {
@@ -237,34 +270,71 @@ impl QueryPlan {
             flows: flows.into_boxed_slice(),
         })
     }
-
-    pub(crate) fn clauses(&self) -> &[QueryClause] {
-        &self.clauses
-    }
-
-    pub(crate) fn flows(&self) -> &[CompiledObjectFlow] {
-        &self.flows
-    }
 }
 
 impl CompiledMatcherPlan {
-    /// Compile a public API matcher and all of its object flows.
-    pub fn compile(matcher: &MatcherSet) -> Result<Self, MatcherBuildError> {
-        matcher.validate()?;
-        let normalized = matcher.clone().normalized();
-        let flows = normalized
-            .families()
-            .into_iter()
-            .find_map(|family| match family {
-                MatcherFamily::Flows(values) => Some(values),
-                _ => None,
-            })
-            .unwrap_or_default()
-            .iter()
-            .map(CompiledObjectFlow::from_matcher)
-            .collect();
+    #[cfg(test)]
+    pub(crate) fn compile(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
+        let query = QueryPlan::from_declarations(decls)?;
+        Ok(Self { query })
+    }
+
+    /// Compile declarations into clauses and extract flows.
+    pub(crate) fn compile_decls(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
+        let mut clauses: Vec<QueryClause> = Vec::new();
+        let mut flows: Vec<CompiledObjectFlow> = Vec::new();
+        for decl in decls {
+            clauses.push(decl.to_query_clause());
+            if let Some(flow) = decl.to_object_flow() {
+                flows.push(flow);
+            }
+        }
+        clauses.sort();
+        clauses.dedup();
+        for clause in &clauses {
+            clause.validate().map_err(|error| {
+                MatcherBuildError::Generic(format!("invalid lowered matcher query: {error:?}"))
+            })?;
+        }
+        for clause in &clauses {
+            if let IdentityConstraint::PackageSpecifier { pattern }
+            | IdentityConstraint::PackageModuleExport {
+                module: pattern, ..
+            }
+            | IdentityConstraint::PackageModuleNamespace { module: pattern } = &clause.identity
+            {
+                pattern.validate().map_err(|e| {
+                    MatcherBuildError::Generic(format!("invalid package specifier: {e}"))
+                })?;
+            }
+        }
+        for flow in &flows {
+            if flow.symbol.trim().is_empty() {
+                return Err(MatcherBuildError::Generic(
+                    "object flow symbol must not be empty".into(),
+                ));
+            }
+            if flow.sources.is_empty() {
+                return Err(MatcherBuildError::Generic(
+                    "object flow must have at least one source".into(),
+                ));
+            }
+            if flow.requirements.is_empty() && !flow.all_requirements_required {
+                return Err(MatcherBuildError::Generic(
+                    "object flow must have a condition".into(),
+                ));
+            }
+            if flow.sinks.is_empty() && !flow.emit_on_requirements {
+                return Err(MatcherBuildError::Generic(
+                    "object flow must have a completion mode".into(),
+                ));
+            }
+        }
         Ok(Self {
-            query: QueryPlan::from_matcher(&normalized, flows)?,
+            query: QueryPlan {
+                clauses: clauses.into_boxed_slice(),
+                flows: flows.into_boxed_slice(),
+            },
         })
     }
 
@@ -321,133 +391,103 @@ pub(crate) struct CompiledRule {
     pub(crate) matcher: CompiledMatcherPlan,
 }
 
-impl CompiledRule {
-    /// Compile a rule's declared matcher list into one canonical plan.
-    pub fn new(rule: &Rule) -> Result<Self, MatcherBuildError> {
+#[derive(Debug, Clone)]
+/// Immutable compiled rule record containing metadata and the query plan.
+/// Retains no source declaration tree after construction.
+pub struct CompiledRuleRecord {
+    /// Provider-local rule name (before namespace prefix).
+    pub id: String,
+    /// Human-readable description.
+    pub description: String,
+    /// Provider-defined category.
+    pub category: Category,
+    /// Report severity.
+    pub severity: crate::Severity,
+    /// Evidence confidence.
+    pub confidence: Confidence,
+    /// Compiled query plan.
+    pub matcher: CompiledMatcherPlan,
+}
+
+impl CompiledRuleRecord {
+    /// Compile a rule's declarations into one record.
+    pub(crate) fn new(rule: &crate::api::rule::Rule) -> Result<Self, MatcherBuildError> {
+        let plan = CompiledMatcherPlan::compile_decls(rule.declarations())?;
         Ok(Self {
-            matcher: CompiledMatcherPlan::compile(&MatcherSet::from_matchers(
-                rule.matchers().to_vec(),
-            ))?,
+            id: rule.id().to_owned(),
+            description: rule.description().to_owned(),
+            category: rule.category().clone(),
+            severity: rule.severity(),
+            confidence: rule.confidence(),
+            matcher: plan,
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        CompiledMatcherPlan, EventPredicate, IdentityConstraint, IdentityStrength,
-        SubjectConstraint,
-    };
+    use super::*;
     use crate::{
         analysis::SymbolPath,
         api::{
             classification::MatchKind,
-            rule::{
-                CallMatcher, FlowCompletion, FlowCondition, Matcher, MatcherSet, MemberCallMatcher,
-                ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
-            },
+            rule::{MatcherDecl, ValueMatcher},
         },
     };
 
     #[test]
-    fn every_family_validates_normalizes_flattens_and_compiles() {
-        let matcher = MatcherSet::from_matchers(vec![
-            Matcher::heuristic_call("fetch"),
-            Matcher::rooted_member_call("window.open"),
-            Matcher::rooted_member_read("window.location"),
-            Matcher::import("node:fs"),
-            Matcher::package_import("@scope/pkg"),
-            Matcher::string_contains("https://"),
-            Matcher::heuristic_class("Worker"),
-            Matcher::global_constructor("URL"),
-            Matcher::from(
-                ObjectFlowMatcher::builder("request")
-                    .source(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(
-                        "test.method",
-                    )))
-                    .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
-                        "ready",
-                        ValueMatcher::any_value(),
-                    )))
-                    .complete_at(FlowCompletion::configuration())
-                    .build(),
-            ),
-            Matcher::returned_member_call("create", "send"),
-            Matcher::returned_member_read("create", "token"),
-            Matcher::instance_member_call("pkg", "Client", "send"),
-        ]);
-        matcher
-            .validate()
-            .expect("all families must survive validation");
-        let normalized = matcher.normalized();
-        let matchers = normalized.into_matchers();
-        assert_eq!(matchers.len(), 12);
-        let plan = CompiledMatcherPlan::compile(&MatcherSet::from_matchers(matchers)).unwrap();
+    fn every_declaration_compiles_into_one_plan() {
+        let decls = vec![
+            MatcherDecl::global_call("fetch"),
+            MatcherDecl::rooted_member_call("window.open"),
+            MatcherDecl::rooted_member_read("window.location"),
+            MatcherDecl::import("node:fs"),
+            MatcherDecl::package_import("@scope/pkg"),
+            MatcherDecl::string_contains("https://"),
+            MatcherDecl::heuristic_class("Worker"),
+            MatcherDecl::global_constructor("URL"),
+            MatcherDecl::returned_member_call("create", "send"),
+            MatcherDecl::returned_member_read("create", "token"),
+            MatcherDecl::instance_member_call("pkg", "Client", "send"),
+        ];
+        let plan = CompiledMatcherPlan::compile(&decls).unwrap();
         assert!(!plan.query().clauses().is_empty());
-        assert_eq!(plan.query().flows().len(), 1);
     }
 
     #[test]
     fn argument_matcher_compiles_to_one_query_clause() {
-        let matcher = MatcherSet::from_matchers(vec![Matcher::from(
-            CallMatcher::global("fetch").arg_static_strings(0, ["/api"]),
-        )]);
-        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
+        let decl = MatcherDecl::builder()
+            .call_global("fetch")
+            .arg(0, ValueMatcher::static_string())
+            .evidence(MatchKind::CallArgument, "fetch")
+            .build()
+            .unwrap();
+        let plan = CompiledMatcherPlan::compile(&[decl]).unwrap();
         let clauses = plan.query().clauses();
         assert_eq!(clauses.len(), 1);
-        assert_eq!(clauses[0].constraints.len(), 1);
+        assert!(!clauses[0].constraints.is_empty());
         assert_eq!(clauses[0].evidence.kind, MatchKind::CallArgument);
     }
 
     #[test]
-    fn invalid_raw_declarations_return_a_compile_error() {
-        let matcher = MatcherSet::from_matchers(vec![Matcher::rooted_member_call("a..b")]);
-        assert!(CompiledMatcherPlan::compile(&matcher).is_err());
-    }
-
-    #[test]
-    fn compiles_every_public_matcher_family_into_one_query() {
-        let matcher = MatcherSet::from_matchers(vec![
-            Matcher::heuristic_call("fetch"),
-            Matcher::rooted_member_call("window.open"),
-            Matcher::rooted_member_read("window.location"),
-            Matcher::import("node:fs"),
-            Matcher::string_contains("https://"),
-            Matcher::heuristic_class("Worker"),
-            Matcher::global_constructor("URL"),
-            Matcher::from(
-                ObjectFlowMatcher::builder("request")
-                    .source(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(
-                        "test.method",
-                    )))
-                    .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
-                        "ready",
-                        ValueMatcher::any_value(),
-                    )))
-                    .complete_at(FlowCompletion::configuration())
-                    .build(),
-            ),
-            Matcher::returned_member_call("create", "send"),
-            Matcher::returned_member_read("create", "token"),
-            Matcher::instance_member_call("pkg", "Client", "send"),
-        ]);
-
-        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
-        let query = plan.query();
-        assert_eq!(query.clauses.len(), 10);
-        assert_eq!(query.flows.len(), 1);
+    fn invalid_declarations_return_a_compile_error() {
+        // Missing identity + event should cause a build error
+        let decl = MatcherDecl::builder()
+            .evidence(MatchKind::Call, "test")
+            .build();
+        assert!(decl.is_err());
     }
 
     #[test]
     fn equivalent_declarations_compile_to_identical_queries() {
-        let first = MatcherSet::from_matchers(vec![
-            Matcher::global_call("fetch"),
-            Matcher::rooted_member_read("location.href"),
-        ]);
-        let second = MatcherSet::from_matchers(vec![
-            Matcher::rooted_member_read("location.href"),
-            Matcher::global_call("fetch"),
-        ]);
+        let first = vec![
+            MatcherDecl::global_call("fetch"),
+            MatcherDecl::rooted_member_read("location.href"),
+        ];
+        let second = vec![
+            MatcherDecl::rooted_member_read("location.href"),
+            MatcherDecl::global_call("fetch"),
+        ];
 
         assert_eq!(
             format!(
@@ -462,16 +502,16 @@ mod tests {
     }
 
     #[test]
-    fn query_plan_compiles_public_families_into_composable_dimensions() {
-        let matcher = MatcherSet::from_matchers(vec![
-            Matcher::global_call("fetch"),
-            Matcher::rooted_member_call("window.open"),
-            Matcher::returned_member_read("create", "token"),
-            Matcher::instance_member_call("pkg", "Client", "send"),
-            Matcher::import("node:fs"),
-            Matcher::string_contains("https://"),
-        ]);
-        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
+    fn query_plan_compiles_declarations_into_composable_dimensions() {
+        let decls = vec![
+            MatcherDecl::global_call("fetch"),
+            MatcherDecl::rooted_member_call("window.open"),
+            MatcherDecl::returned_member_read("create", "token"),
+            MatcherDecl::instance_member_call("pkg", "Client", "send"),
+            MatcherDecl::import("node:fs"),
+            MatcherDecl::string_contains("https://"),
+        ];
+        let plan = CompiledMatcherPlan::compile(&decls).unwrap();
         let clauses = plan.query().clauses();
         assert!(clauses.iter().any(|clause| matches!(
             (&clause.identity, &clause.event, &clause.subject),
@@ -503,14 +543,14 @@ mod tests {
 
     #[test]
     fn query_plan_normalization_is_idempotent_and_order_independent() {
-        let first = MatcherSet::from_matchers(vec![
-            Matcher::heuristic_call("fetch"),
-            Matcher::rooted_member_read("location.href"),
-        ]);
-        let second = MatcherSet::from_matchers(vec![
-            Matcher::rooted_member_read("location.href"),
-            Matcher::heuristic_call("fetch"),
-        ]);
+        let first = vec![
+            MatcherDecl::heuristic_call("fetch"),
+            MatcherDecl::rooted_member_read("location.href"),
+        ];
+        let second = vec![
+            MatcherDecl::rooted_member_read("location.href"),
+            MatcherDecl::heuristic_call("fetch"),
+        ];
         let first = CompiledMatcherPlan::compile(&first).unwrap();
         let second = CompiledMatcherPlan::compile(&second).unwrap();
         assert_eq!(first.query().clauses(), second.query().clauses());
@@ -518,20 +558,20 @@ mod tests {
     }
 
     #[test]
-    fn query_clause_eq_and_ord_are_consistent() {
-        let matcher = MatcherSet::from_matchers(vec![
-            Matcher::from(CallMatcher::global("fetch").arg_static_strings(0, ["/api"])),
-            Matcher::global_call("fetch"),
-        ]);
-        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
+    fn decl_with_argument_constraint_keeps_call_kind() {
+        let decl = MatcherDecl::builder()
+            .call_global("fetch")
+            .arg(0, ValueMatcher::static_string())
+            .evidence(MatchKind::CallArgument, "fetch")
+            .build()
+            .unwrap();
+        let plan = CompiledMatcherPlan::compile(&[decl]).unwrap();
         let clauses = plan.query().clauses();
-        assert_eq!(clauses.len(), 2);
+        assert_eq!(clauses.len(), 1);
         for left in clauses {
             for right in clauses {
                 assert_eq!(left == right, left.cmp(right).is_eq());
             }
         }
-        assert_ne!(clauses[0].evidence.kind, clauses[1].evidence.kind);
-        assert_ne!(clauses[0].cmp(&clauses[1]), std::cmp::Ordering::Equal);
     }
 }

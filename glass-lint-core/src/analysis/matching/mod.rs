@@ -21,6 +21,7 @@ use crate::{
         value::NamePath,
     },
     api::classification::{ClassificationEvidence, MatchKind},
+    project::ModuleId,
 };
 
 mod occurrence;
@@ -90,6 +91,19 @@ pub(super) struct CallIndexes {
     module_calls: ModuleOccurrences,
 }
 
+impl CallIndexes {
+    pub(super) fn normalize(&mut self) {
+        self.calls.normalize();
+        self.global_calls.normalize();
+        self.module_calls.normalize();
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_empty(&self) -> bool {
+        self.calls.is_empty() && self.global_calls.is_empty() && self.module_calls.is_empty()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 /// Member call/read occurrences partitioned by provenance level.
 ///
@@ -109,6 +123,33 @@ pub(super) struct MemberIndexes {
     instance_calls: OccurrenceIndex<InstanceMemberKey>,
 }
 
+impl MemberIndexes {
+    pub(super) fn normalize(&mut self) {
+        self.calls.normalize();
+        self.rooted_calls.normalize();
+        self.module_calls.normalize();
+        self.reads.normalize();
+        self.rooted_reads.normalize();
+        self.module_reads.normalize();
+        self.returned_calls.normalize();
+        self.returned_reads.normalize();
+        self.instance_calls.normalize();
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_empty(&self) -> bool {
+        self.calls.is_empty()
+            && self.rooted_calls.is_empty()
+            && self.module_calls.is_empty()
+            && self.reads.is_empty()
+            && self.rooted_reads.is_empty()
+            && self.module_reads.is_empty()
+            && self.returned_calls.is_empty()
+            && self.returned_reads.is_empty()
+            && self.instance_calls.is_empty()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 /// Class and constructor occurrences partitioned by provenance.
 pub(super) struct ConstructionIndexes {
@@ -119,6 +160,25 @@ pub(super) struct ConstructionIndexes {
     module_constructors: ModuleOccurrences,
 }
 
+impl ConstructionIndexes {
+    pub(super) fn normalize(&mut self) {
+        self.classes.normalize();
+        self.module_classes.normalize();
+        self.constructors.normalize();
+        self.global_constructors.normalize();
+        self.module_constructors.normalize();
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_empty(&self) -> bool {
+        self.classes.is_empty()
+            && self.module_classes.is_empty()
+            && self.constructors.is_empty()
+            && self.global_constructors.is_empty()
+            && self.module_constructors.is_empty()
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 /// Import and static-string occurrence indexes.
 pub(super) struct LiteralIndexes {
@@ -126,9 +186,21 @@ pub(super) struct LiteralIndexes {
     strings: Occurrences,
 }
 
+impl LiteralIndexes {
+    pub(super) fn normalize(&mut self) {
+        self.imports.normalize();
+        self.strings.normalize();
+    }
+
+    #[cfg(test)]
+    pub(super) fn is_empty(&self) -> bool {
+        self.imports.is_empty() && self.strings.is_empty()
+    }
+}
+
 /// The only identities a linked module overlay exposes to matcher indexes.
-/// Qualified local values and unknown values are intentionally not queryable
-/// by the external-module matcher vocabulary.
+/// Qualified local values and ambiguous or unknown values are intentionally
+/// not queryable by the external-module matcher vocabulary.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::analysis) enum LinkedModuleIdentity {
     /// Identity resolved to an external module export.
@@ -136,10 +208,12 @@ pub(in crate::analysis) enum LinkedModuleIdentity {
     /// Identity resolved to a configured global callable.
     Global { name: SmolStr },
     /// Qualified internal identity not exposed to external matcher queries.
-    Qualified { module: u32, export: SmolStr },
+    Qualified { module: ModuleId, export: SmolStr },
     /// Static string value available to argument predicates.
     StaticString { value: String },
-    /// Resolution was ambiguous or unsupported.
+    /// Multiple distinct linked paths proved incompatible.
+    Ambiguous,
+    /// Resolution was unsupported or could not be established.
     Unknown,
 }
 
@@ -154,7 +228,10 @@ impl LinkedModuleIdentity {
                 export: export.clone(),
             }),
             Self::Global { name } => Some(SymbolCallProvenance::Global { name: name.clone() }),
-            Self::Qualified { .. } | Self::StaticString { .. } | Self::Unknown => None,
+            Self::Qualified { .. }
+            | Self::StaticString { .. }
+            | Self::Ambiguous
+            | Self::Unknown => None,
         }
     }
 
@@ -217,25 +294,10 @@ impl OccurrenceIndexes {
 
     #[cfg(test)]
     pub(in crate::analysis) fn is_empty(&self) -> bool {
-        self.call_indexes.calls.is_empty()
-            && self.call_indexes.global_calls.is_empty()
-            && self.call_indexes.module_calls.is_empty()
-            && self.members.calls.is_empty()
-            && self.members.rooted_calls.is_empty()
-            && self.members.module_calls.is_empty()
-            && self.members.reads.is_empty()
-            && self.members.rooted_reads.is_empty()
-            && self.members.module_reads.is_empty()
-            && self.members.returned_calls.is_empty()
-            && self.members.returned_reads.is_empty()
-            && self.members.instance_calls.is_empty()
-            && self.constructions.classes.is_empty()
-            && self.constructions.module_classes.is_empty()
-            && self.constructions.constructors.is_empty()
-            && self.constructions.global_constructors.is_empty()
-            && self.constructions.module_constructors.is_empty()
-            && self.literals.imports.is_empty()
-            && self.literals.strings.is_empty()
+        self.call_indexes.is_empty()
+            && self.members.is_empty()
+            && self.constructions.is_empty()
+            && self.literals.is_empty()
     }
 
     #[cfg(test)]
@@ -348,6 +410,7 @@ impl OccurrenceIndexes {
                         }
                         LinkedModuleIdentity::Qualified { .. }
                         | LinkedModuleIdentity::StaticString { .. }
+                        | LinkedModuleIdentity::Ambiguous
                         | LinkedModuleIdentity::Unknown => {}
                     }
                 }
@@ -411,7 +474,7 @@ mod tests {
             facts::{FactId, build::build_test_stream},
             resolution::Resolver,
         },
-        api::rule::{MatcherSet, MemberCallMatcher},
+        api::{compiler::rule::CompiledMatcherPlan, rule::MatcherDecl},
         parse,
     };
 
@@ -445,10 +508,10 @@ mod tests {
         facts.record(MatchKind::MemberCall, "client.request", span(10, 24));
         facts.normalize_occurrences();
 
-        let matcher = MatcherSet::from_matchers(vec![crate::api::rule::Matcher::from(
-            MemberCallMatcher::heuristic("client.request"),
-        )]);
-        let compiled = crate::api::compiler::CompiledMatcherPlan::compile(&matcher).unwrap();
+        let compiled = CompiledMatcherPlan::compile_decls(&[MatcherDecl::heuristic_member_call(
+            "client.request",
+        )])
+        .unwrap();
         let evidence = facts.evidence_for(compiled.query());
         let reference = facts
             .members

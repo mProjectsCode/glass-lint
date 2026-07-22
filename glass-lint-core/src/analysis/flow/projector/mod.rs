@@ -315,8 +315,8 @@ mod tests {
     use crate::{
         analysis::resolution::Resolver,
         api::rule::{
-            FlowCompletion, FlowCondition, FlowSinkMatcher, MemberCallMatcher, ObjectEventMatcher,
-            ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+            FlowCompletion, FlowCondition, FlowSinkMatcher, ObjectEventMatcher, ObjectFlowMatcher,
+            ObjectSourceMatcher, ValueMatcher,
         },
     };
 
@@ -338,16 +338,16 @@ mod tests {
 
     fn script_flow() -> ObjectFlowMatcher {
         ObjectFlowMatcher::builder("script insertion")
-            .source(ObjectSourceMatcher::returned_by(
-                MemberCallMatcher::rooted("document.createElement")
+            .source(
+                ObjectSourceMatcher::returned_by("document.createElement")
                     .arg(0, ValueMatcher::static_string().equals("script")),
-            ))
+            )
             .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
                 "src",
                 ValueMatcher::any_value(),
             )))
             .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
-                MemberCallMatcher::rooted("document.head.appendChild"),
+                "document.head.appendChild",
                 0,
             )]))
             .build()
@@ -365,16 +365,16 @@ mod tests {
     #[test]
     fn member_call_configuration_stays_with_its_receiver() {
         let flow = ObjectFlowMatcher::builder("configured script")
-            .source(ObjectSourceMatcher::returned_by(
-                MemberCallMatcher::rooted("document.createElement")
+            .source(
+                ObjectSourceMatcher::returned_by("document.createElement")
                     .arg(0, ValueMatcher::static_string().equals("script")),
-            ))
+            )
             .configured_by(FlowCondition::event(
                 ObjectEventMatcher::member_call("configure")
                     .arg(0, ValueMatcher::static_string().equals("yes")),
             ))
             .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
-                MemberCallMatcher::rooted("document.head.appendChild"),
+                "document.head.appendChild",
                 0,
             )]))
             .build();
@@ -576,10 +576,10 @@ mod tests {
     #[test]
     fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
         let flow = ObjectFlowMatcher::builder("configured input")
-            .source(ObjectSourceMatcher::returned_by(
-                MemberCallMatcher::rooted("document.createElement")
+            .source(
+                ObjectSourceMatcher::returned_by("document.createElement")
                     .arg(0, ValueMatcher::static_string().equals("input")),
-            ))
+            )
             .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
                 "type",
                 ValueMatcher::static_string().equals("file"),

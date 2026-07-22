@@ -1,6 +1,6 @@
 //! Obsidian vault write rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to the eight configured vault write APIs: `create`,
 /// `createBinary`, `modify`, `modifyBinary`, `append`, `appendBinary`,
@@ -14,14 +14,14 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("app.vault.create"))
-        .matcher(Matcher::rooted_member_call("app.vault.createBinary"))
-        .matcher(Matcher::rooted_member_call("app.vault.modify"))
-        .matcher(Matcher::rooted_member_call("app.vault.modifyBinary"))
-        .matcher(Matcher::rooted_member_call("app.vault.append"))
-        .matcher(Matcher::rooted_member_call("app.vault.appendBinary"))
-        .matcher(Matcher::rooted_member_call("app.vault.process"))
-        .matcher(Matcher::rooted_member_call("app.vault.createFolder"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.create"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.createBinary"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.modify"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.modifyBinary"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.append"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.appendBinary"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.process"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.createFolder"))
         .build()
         .unwrap()
 }

@@ -1,6 +1,6 @@
 //! Obsidian network-request rule definition.
 
-use glass_lint_core::rules::{CallMatcher, Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects calls to the exact `request` and `requestUrl` exports of the
 /// `obsidian` module or the corresponding globals injected into the plugin's
@@ -13,10 +13,10 @@ pub fn rule() -> Rule {
         .category("network")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(CallMatcher::global("request"))
-        .matcher(CallMatcher::global("requestUrl"))
-        .matcher(Matcher::module_member_call("obsidian", "request"))
-        .matcher(Matcher::module_member_call("obsidian", "requestUrl"))
+        .declaration(MatcherDecl::global_call("request"))
+        .declaration(MatcherDecl::global_call("requestUrl"))
+        .declaration(MatcherDecl::module_member_call("obsidian", "request"))
+        .declaration(MatcherDecl::module_member_call("obsidian", "requestUrl"))
         .build()
         .unwrap()
 }

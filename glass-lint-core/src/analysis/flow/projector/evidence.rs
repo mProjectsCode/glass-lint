@@ -112,7 +112,7 @@ impl ObjectFlowProjector<'_, '_> {
                     sink.member_calls.iter().any(|member| {
                         NamePath::from_symbol_path(member, self.names)
                             .is_some_and(|member| member == *chain)
-                    }) && sink.provenance.matches_rooted(rooted)
+                    }) && sink.is_rooted == rooted
                         && match &sink.args {
                             CompiledObjectSinkArguments::Any => true,
                             CompiledObjectSinkArguments::Indices(indices) => {

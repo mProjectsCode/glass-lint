@@ -1,6 +1,6 @@
 //! Markdown postprocessor rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects the syntactic member chain `this.registerMarkdownPostProcessor`.
 /// The instance matcher requires a proven Obsidian `Plugin` receiver and does
@@ -12,7 +12,7 @@ pub fn rule() -> Rule {
         .category("markdown")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::instance_member_call(
+        .declaration(MatcherDecl::instance_member_call(
             "obsidian",
             "Plugin",
             "registerMarkdownPostProcessor",

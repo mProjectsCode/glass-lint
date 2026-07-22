@@ -1,6 +1,6 @@
 //! Obsidian vault read rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to vault `read`, `cachedRead`, and `readBinary`.
 /// Provenance follows `this.app`, direct receiver aliases, static computed
@@ -12,9 +12,9 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("app.vault.read"))
-        .matcher(Matcher::rooted_member_call("app.vault.cachedRead"))
-        .matcher(Matcher::rooted_member_call("app.vault.readBinary"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.read"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.cachedRead"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.readBinary"))
         .build()
         .unwrap()
 }

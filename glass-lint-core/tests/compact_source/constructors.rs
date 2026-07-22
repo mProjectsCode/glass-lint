@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn global_constructors_survive_transparent_callee_wrappers() {
     let url_constructor = rule("test.wrapped-global-constructor")
-        .matcher(Matcher::global_constructor("URL"))
+        .declaration(MatcherDecl::global_constructor("URL"))
         .build()
         .unwrap();
     assert_count(r#"new (URL)("/wrapped")"#, url_constructor.clone(), 1);
@@ -13,7 +13,7 @@ fn global_constructors_survive_transparent_callee_wrappers() {
 #[test]
 fn rooted_global_constructors_and_their_aliases_match_global_constructors() {
     let url_constructor = rule("test.rooted-global-constructor")
-        .matcher(Matcher::global_constructor("URL"))
+        .declaration(MatcherDecl::global_constructor("URL"))
         .build()
         .unwrap();
     assert_count(
@@ -33,7 +33,7 @@ fn destructured_derived_function_constructors_preserve_provenance() {
     assert_count(
         r#"const {constructor:AsyncFunction}=Object.getPrototypeOf(async function(){});new AsyncFunction("return 1")"#,
         rule("test.destructured-function-constructor")
-            .matcher(Matcher::global_constructor("Function"))
+            .declaration(MatcherDecl::global_constructor("Function"))
             .build()
             .unwrap(),
         1,
@@ -45,7 +45,7 @@ fn reflect_derived_function_constructors_preserve_provenance() {
     assert_count(
         r#"const AsyncFunction=Reflect.getPrototypeOf(async function(){}).constructor;new AsyncFunction("return 1")"#,
         rule("test.reflect-function-constructor")
-            .matcher(Matcher::global_constructor("Function"))
+            .declaration(MatcherDecl::global_constructor("Function"))
             .build()
             .unwrap(),
         1,
@@ -55,8 +55,8 @@ fn reflect_derived_function_constructors_preserve_provenance() {
 #[test]
 fn constructor_provenance_rejects_shadowed_global_roots_and_wrapped_lookalikes() {
     let url_constructor = rule("test.constructor-shadowing-negative")
-        .matcher(Matcher::global_constructor("URL"))
-        .matcher(Matcher::global_constructor("Function"))
+        .declaration(MatcherDecl::global_constructor("URL"))
+        .declaration(MatcherDecl::global_constructor("Function"))
         .build()
         .unwrap();
     assert_count(
@@ -86,7 +86,7 @@ fn module_class_references_preserve_class_provenance() {
     assert_count(
         r#"var s=require("sdk");class X extends s.Modal{};x instanceof s.Modal;"#,
         rule("test.module-class")
-            .matcher(Matcher::module_class("sdk", "Modal"))
+            .declaration(MatcherDecl::module_class("sdk", "Modal"))
             .build()
             .unwrap(),
         2,
@@ -98,8 +98,8 @@ fn local_class_lookalikes_do_not_match_module_class_or_constructor() {
     assert_count(
         r#"class Modal{};new Modal();x instanceof Modal;"#,
         rule("test.local-class-negative")
-            .matcher(Matcher::module_class("sdk", "Modal"))
-            .matcher(Matcher::module_constructor("sdk", "Modal"))
+            .declaration(MatcherDecl::module_class("sdk", "Modal"))
+            .declaration(MatcherDecl::module_constructor("sdk", "Modal"))
             .build()
             .unwrap(),
         0,
@@ -111,7 +111,7 @@ fn debug_urlalias_global_constructor() {
     assert_count(
         "new globalThis.URL('/a')",
         rule("test.debug1")
-            .matcher(Matcher::global_constructor("URL"))
+            .declaration(MatcherDecl::global_constructor("URL"))
             .build()
             .unwrap(),
         1,
@@ -119,7 +119,7 @@ fn debug_urlalias_global_constructor() {
     assert_count(
         "const U=globalThis.URL;new U('/a')",
         rule("test.debug2")
-            .matcher(Matcher::global_constructor("URL"))
+            .declaration(MatcherDecl::global_constructor("URL"))
             .build()
             .unwrap(),
         1,

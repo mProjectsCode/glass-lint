@@ -1,6 +1,6 @@
 //! Obsidian plugin-manager access rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects reads from Obsidian's plugin manager: instances, manifests, and
 /// enabled-plugin state. The rooted collection read intentionally also covers
@@ -11,10 +11,12 @@ pub fn rule() -> Rule {
         .category("plugins")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("app.plugins.getPlugin"))
-        .matcher(Matcher::rooted_member_read("app.plugins.plugins"))
-        .matcher(Matcher::rooted_member_read("app.plugins.manifests"))
-        .matcher(Matcher::rooted_member_read("app.plugins.enabledPlugins"))
+        .declaration(MatcherDecl::rooted_member_call("app.plugins.getPlugin"))
+        .declaration(MatcherDecl::rooted_member_read("app.plugins.plugins"))
+        .declaration(MatcherDecl::rooted_member_read("app.plugins.manifests"))
+        .declaration(MatcherDecl::rooted_member_read(
+            "app.plugins.enabledPlugins",
+        ))
         .build()
         .unwrap()
 }

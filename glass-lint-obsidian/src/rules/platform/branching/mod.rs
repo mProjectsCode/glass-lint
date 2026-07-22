@@ -1,6 +1,6 @@
 //! Obsidian platform-branching rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects reads of the configured `obsidian.Platform` flags and resource path
 /// prefix. Module namespace aliases, optional chains, and static computed
@@ -12,31 +12,55 @@ pub fn rule() -> Rule {
         .category("platform")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_member_read("obsidian", "Platform.isMobile"))
-        .matcher(Matcher::module_member_read(
+        .declaration(MatcherDecl::module_member_read(
+            "obsidian",
+            "Platform.isMobile",
+        ))
+        .declaration(MatcherDecl::module_member_read(
             "obsidian",
             "Platform.isDesktop",
         ))
-        .matcher(Matcher::module_member_read("obsidian", "Platform.isIosApp"))
-        .matcher(Matcher::module_member_read(
+        .declaration(MatcherDecl::module_member_read(
+            "obsidian",
+            "Platform.isIosApp",
+        ))
+        .declaration(MatcherDecl::module_member_read(
             "obsidian",
             "Platform.isAndroidApp",
         ))
-        .matcher(Matcher::module_member_read("obsidian", "Platform.isMacOS"))
-        .matcher(Matcher::module_member_read("obsidian", "Platform.isWin"))
-        .matcher(Matcher::module_member_read("obsidian", "Platform.isLinux"))
-        .matcher(Matcher::module_member_read(
+        .declaration(MatcherDecl::module_member_read(
+            "obsidian",
+            "Platform.isMacOS",
+        ))
+        .declaration(MatcherDecl::module_member_read(
+            "obsidian",
+            "Platform.isWin",
+        ))
+        .declaration(MatcherDecl::module_member_read(
+            "obsidian",
+            "Platform.isLinux",
+        ))
+        .declaration(MatcherDecl::module_member_read(
             "obsidian",
             "Platform.isDesktopApp",
         ))
-        .matcher(Matcher::module_member_read(
+        .declaration(MatcherDecl::module_member_read(
             "obsidian",
             "Platform.isMobileApp",
         ))
-        .matcher(Matcher::module_member_read("obsidian", "Platform.isPhone"))
-        .matcher(Matcher::module_member_read("obsidian", "Platform.isTablet"))
-        .matcher(Matcher::module_member_read("obsidian", "Platform.isSafari"))
-        .matcher(Matcher::module_member_read(
+        .declaration(MatcherDecl::module_member_read(
+            "obsidian",
+            "Platform.isPhone",
+        ))
+        .declaration(MatcherDecl::module_member_read(
+            "obsidian",
+            "Platform.isTablet",
+        ))
+        .declaration(MatcherDecl::module_member_read(
+            "obsidian",
+            "Platform.isSafari",
+        ))
+        .declaration(MatcherDecl::module_member_read(
             "obsidian",
             "Platform.resourcePathPrefix",
         ))

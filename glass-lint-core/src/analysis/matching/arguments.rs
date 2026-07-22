@@ -459,14 +459,11 @@ mod tests {
         },
         api::{
             classification::MatchKind,
-            compiler::{
-                CompiledMatcherPlan,
-                rule::{
-                    EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength,
-                    QueryClause, QueryConstraint, SubjectConstraint,
-                },
+            compiler::rule::{
+                CompiledMatcherPlan, EventPredicate, EvidenceDescriptor, IdentityConstraint,
+                IdentityStrength, QueryClause, QueryConstraint, SubjectConstraint,
             },
-            rule::{ArgumentConstraint, CallMatcher, Matcher, MatcherSet, ValueMatcher},
+            rule::{ArgumentConstraint, MatcherDecl, ValueMatcher},
         },
     };
 
@@ -615,10 +612,12 @@ mod tests {
 
     #[test]
     fn constrained_clause_evidence_is_source_ordered_and_deduplicated() {
-        let declaration =
-            Matcher::from(CallMatcher::heuristic("fetch").arg_static_strings(0, ["/api"]));
-        let matcher = MatcherSet::from_matchers(vec![declaration.clone(), declaration]);
-        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
+        let declaration = MatcherDecl::builder()
+            .call_heuristic("fetch")
+            .arg_static_strings(0, ["/api"])
+            .build()
+            .unwrap();
+        let plan = CompiledMatcherPlan::compile_decls(&[declaration.clone(), declaration]).unwrap();
         let clauses = plan.query().clauses();
         assert_eq!(clauses.len(), 1, "equivalent clauses compile once");
 

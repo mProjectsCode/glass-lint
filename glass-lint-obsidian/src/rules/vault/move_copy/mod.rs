@@ -1,6 +1,6 @@
 //! Obsidian vault move/copy rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted vault `rename` and `copy` calls plus
 /// `app.fileManager.renameFile`. Rooted provenance follows `this.app`, direct
@@ -13,9 +13,11 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_call("app.vault.rename"))
-        .matcher(Matcher::rooted_member_call("app.vault.copy"))
-        .matcher(Matcher::rooted_member_call("app.fileManager.renameFile"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.rename"))
+        .declaration(MatcherDecl::rooted_member_call("app.vault.copy"))
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.fileManager.renameFile",
+        ))
         .build()
         .unwrap()
 }

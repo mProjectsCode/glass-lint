@@ -4,7 +4,7 @@
 //! the matcher to prove each match without falling back to name-only matching.
 
 use glass_lint_core::rules::{
-    CallMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, Matcher, MemberCallMatcher,
+    ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
     ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
 };
 
@@ -12,9 +12,9 @@ use glass_lint_core::rules::{
 mod support;
 
 /// Execute one matcher through a fresh strict catalog and return its count.
-fn findings(source: &str, matcher: Matcher) -> usize {
+fn findings(source: &str, decl: MatcherDecl) -> usize {
     let rule = support::rule("semantic.match")
-        .matcher(matcher)
+        .declaration(decl)
         .build()
         .unwrap();
     let environment = support::test_environment();
@@ -32,15 +32,15 @@ fn findings(source: &str, matcher: Matcher) -> usize {
 }
 
 /// Assert the exact match count for a provenance or value-flow scenario.
-fn assert_matches(source: &str, matcher: Matcher, expected: usize) {
-    assert_eq!(findings(source, matcher), expected, "{source}");
+fn assert_matches(source: &str, decl: MatcherDecl, expected: usize) {
+    assert_eq!(findings(source, decl), expected, "{source}");
 }
 
 #[test]
 fn follows_default_import_namespace_members_through_aliases() {
     assert_matches(
         "import sdk from 'sdk'; const send = sdk.send; send('/x');",
-        Matcher::module_member_call("sdk", "send"),
+        MatcherDecl::module_member_call("sdk", "send"),
         1,
     );
 }
@@ -49,7 +49,7 @@ fn follows_default_import_namespace_members_through_aliases() {
 fn follows_destructured_esm_namespace_exports() {
     assert_matches(
         "import * as sdk from 'sdk'; const { send } = sdk; send('/x');",
-        Matcher::module_call("sdk", "send"),
+        MatcherDecl::module_call("sdk", "send"),
         1,
     );
 }
@@ -58,7 +58,7 @@ fn follows_destructured_esm_namespace_exports() {
 fn follows_destructured_esm_namespace_export_renames() {
     assert_matches(
         "import * as sdk from 'sdk'; const { send: dispatch } = sdk; dispatch('/x');",
-        Matcher::module_call("sdk", "send"),
+        MatcherDecl::module_call("sdk", "send"),
         1,
     );
 }
@@ -67,7 +67,7 @@ fn follows_destructured_esm_namespace_export_renames() {
 fn follows_interop_members_extracted_before_the_call() {
     assert_matches(
         "const send = __toESM(require('sdk')).send; send('/x');",
-        Matcher::module_call("sdk", "send"),
+        MatcherDecl::module_call("sdk", "send"),
         1,
     );
 }
@@ -76,7 +76,7 @@ fn follows_interop_members_extracted_before_the_call() {
 fn preserves_module_provenance_through_sequence_calls() {
     assert_matches(
         "const sdk = require('sdk'); (0, sdk.send)('/x');",
-        Matcher::module_call("sdk", "send"),
+        MatcherDecl::module_call("sdk", "send"),
         1,
     );
 }
@@ -85,7 +85,7 @@ fn preserves_module_provenance_through_sequence_calls() {
 fn preserves_module_provenance_through_bound_exports() {
     assert_matches(
         "const send = require('sdk').send.bind(null); send('/x');",
-        Matcher::module_call("sdk", "send"),
+        MatcherDecl::module_call("sdk", "send"),
         1,
     );
 }
@@ -94,7 +94,7 @@ fn preserves_module_provenance_through_bound_exports() {
 fn follows_destructured_rooted_members() {
     assert_matches(
         "const { read } = host.files; read('x');",
-        Matcher::rooted_member_call("host.files.read"),
+        MatcherDecl::rooted_member_call("host.files.read"),
         1,
     );
 }
@@ -103,7 +103,7 @@ fn follows_destructured_rooted_members() {
 fn follows_renamed_destructured_rooted_members() {
     assert_matches(
         "const { read: load } = host.files; load('x');",
-        Matcher::rooted_member_call("host.files.read"),
+        MatcherDecl::rooted_member_call("host.files.read"),
         1,
     );
 }
@@ -112,7 +112,7 @@ fn follows_renamed_destructured_rooted_members() {
 fn follows_nested_destructured_rooted_members() {
     assert_matches(
         "const { files: { read } } = host; read('x');",
-        Matcher::rooted_member_call("host.files.read"),
+        MatcherDecl::rooted_member_call("host.files.read"),
         1,
     );
 }
@@ -121,9 +121,11 @@ fn follows_nested_destructured_rooted_members() {
 fn follows_rooted_members_called_via_sequence_expressions() {
     assert_matches(
         "(0, app.commands.execute)('open');",
-        MemberCallMatcher::rooted("app.commands.execute")
+        MatcherDecl::builder()
+            .member_call_rooted("app.commands.execute")
             .arg_static_strings(0, ["open"])
-            .into(),
+            .build()
+            .unwrap(),
         1,
     );
 }
@@ -132,9 +134,11 @@ fn follows_rooted_members_called_via_sequence_expressions() {
 fn follows_bound_rooted_members_and_their_arguments() {
     assert_matches(
         "const open = app.open.bind(app); open(vault.file);",
-        MemberCallMatcher::rooted("app.open")
-            .arg_rooted_exprs(0, ["vault.file"])
-            .into(),
+        MatcherDecl::builder()
+            .member_call_rooted("app.open")
+            .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+            .build()
+            .unwrap(),
         1,
     );
 }
@@ -143,9 +147,11 @@ fn follows_bound_rooted_members_and_their_arguments() {
 fn preserves_bound_rooted_expression_arguments() {
     assert_matches(
         "const open = app.open.bind(app, vault.file); open(actual);",
-        MemberCallMatcher::rooted("app.open")
-            .arg_rooted_exprs(0, ["vault.file"])
-            .into(),
+        MatcherDecl::builder()
+            .member_call_rooted("app.open")
+            .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+            .build()
+            .unwrap(),
         1,
     );
 }
@@ -154,23 +160,29 @@ fn preserves_bound_rooted_expression_arguments() {
 fn prepends_static_bound_arguments_before_call_arguments() {
     assert_matches(
         "const request = fetch.bind(null, '/bound'); request('/actual');",
-        CallMatcher::global("fetch")
+        MatcherDecl::builder()
+            .call_global("fetch")
             .arg_static_strings(0, ["/bound"])
-            .into(),
+            .build()
+            .unwrap(),
         1,
     );
     assert_matches(
         "const request = fetch.bind(null, '/bound'); request('/actual');",
-        CallMatcher::global("fetch")
+        MatcherDecl::builder()
+            .call_global("fetch")
             .arg_static_strings(0, ["/actual"])
-            .into(),
+            .build()
+            .unwrap(),
         0,
     );
     assert_matches(
         "const send = require('sdk').send.bind(null, '/bound'); send('/actual');",
-        CallMatcher::module_export("sdk", "send")
+        MatcherDecl::builder()
+            .call_module("sdk", "send")
             .arg_static_strings(0, ["/bound"])
-            .into(),
+            .build()
+            .unwrap(),
         1,
     );
 }
@@ -179,7 +191,11 @@ fn prepends_static_bound_arguments_before_call_arguments() {
 fn resolves_static_template_literals_without_substitutions() {
     assert_matches(
         "const url = `/remote`; fetch(url);",
-        Matcher::from(glass_lint_core::rules::CallMatcher::global("fetch").arg_static_string(0)),
+        MatcherDecl::builder()
+            .call_global("fetch")
+            .arg_static_string(0)
+            .build()
+            .unwrap(),
         1,
     );
 }
@@ -188,7 +204,11 @@ fn resolves_static_template_literals_without_substitutions() {
 fn resolves_constant_template_literal_substitutions() {
     assert_matches(
         "const segment = 'remote'; const url = `/${segment}`; fetch(url);",
-        Matcher::from(glass_lint_core::rules::CallMatcher::global("fetch").arg_static_string(0)),
+        MatcherDecl::builder()
+            .call_global("fetch")
+            .arg_static_string(0)
+            .build()
+            .unwrap(),
         1,
     );
 }
@@ -197,7 +217,7 @@ fn resolves_constant_template_literal_substitutions() {
 fn resolves_static_array_property_names_through_constant_indexes() {
     assert_matches(
         "const names = ['read']; const index = 0; host.files[names[index]]('x');",
-        Matcher::rooted_member_call("host.files.read"),
+        MatcherDecl::rooted_member_call("host.files.read"),
         1,
     );
 }
@@ -206,7 +226,7 @@ fn resolves_static_array_property_names_through_constant_indexes() {
 fn tracks_global_callbacks_through_immediately_invoked_arrows() {
     assert_matches(
         "((callback) => callback('/x'))(fetch);",
-        Matcher::global_call("fetch"),
+        MatcherDecl::global_call("fetch"),
         1,
     );
 }
@@ -215,7 +235,7 @@ fn tracks_global_callbacks_through_immediately_invoked_arrows() {
 fn tracks_global_callbacks_through_immediately_invoked_functions() {
     assert_matches(
         "(function(callback) { callback('/x'); })(fetch);",
-        Matcher::global_call("fetch"),
+        MatcherDecl::global_call("fetch"),
         1,
     );
 }
@@ -224,7 +244,7 @@ fn tracks_global_callbacks_through_immediately_invoked_functions() {
 fn tracks_global_callbacks_through_array_iteration() {
     assert_matches(
         "[fetch].forEach(callback => callback('/x'));",
-        Matcher::global_call("fetch"),
+        MatcherDecl::global_call("fetch"),
         1,
     );
 }
@@ -233,12 +253,12 @@ fn tracks_global_callbacks_through_array_iteration() {
 fn joins_matching_values_from_finite_array_callbacks() {
     assert_matches(
         "[fetch, fetch].forEach(callback => callback('/x'));",
-        Matcher::global_call("fetch"),
+        MatcherDecl::global_call("fetch"),
         1,
     );
     assert_matches(
         "[fetch, local].forEach(callback => callback('/x'));",
-        Matcher::global_call("fetch"),
+        MatcherDecl::global_call("fetch"),
         0,
     );
 }
@@ -247,7 +267,7 @@ fn joins_matching_values_from_finite_array_callbacks() {
 fn tracks_global_callbacks_through_promise_handlers() {
     assert_matches(
         "Promise.resolve(fetch).then(callback => callback('/x'));",
-        Matcher::global_call("fetch"),
+        MatcherDecl::global_call("fetch"),
         1,
     );
 }
@@ -256,9 +276,11 @@ fn tracks_global_callbacks_through_promise_handlers() {
 fn tracks_rooted_arguments_through_destructured_parameters() {
     assert_matches(
         "function open({ file }) { app.open(file); } open({ file: vault.file });",
-        MemberCallMatcher::rooted("app.open")
-            .arg_rooted_exprs(0, ["vault.file"])
-            .into(),
+        MatcherDecl::builder()
+            .member_call_rooted("app.open")
+            .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+            .build()
+            .unwrap(),
         1,
     );
 }
@@ -267,9 +289,11 @@ fn tracks_rooted_arguments_through_destructured_parameters() {
 fn tracks_object_argument_keys_through_const_spreads() {
     assert_matches(
         "const base = { url: '/x' }; const options = { ...base, method: 'GET' }; client.request(options);",
-        MemberCallMatcher::rooted("client.request")
+        MatcherDecl::builder()
+            .member_call_rooted("client.request")
             .arg_object_keys(0, ["url", "method"])
-            .into(),
+            .build()
+            .unwrap(),
         1,
     );
 }
@@ -278,9 +302,11 @@ fn tracks_object_argument_keys_through_const_spreads() {
 fn tracks_object_argument_keys_through_object_assign() {
     assert_matches(
         "const options = Object.assign({}, { url: '/x', method: 'GET' }); client.request(options);",
-        MemberCallMatcher::rooted("client.request")
+        MatcherDecl::builder()
+            .member_call_rooted("client.request")
             .arg_object_keys(0, ["url", "method"])
-            .into(),
+            .build()
+            .unwrap(),
         1,
     );
 }
@@ -289,27 +315,29 @@ fn tracks_object_argument_keys_through_object_assign() {
 fn tracks_object_argument_keys_through_member_function_aliases() {
     assert_matches(
         "const request = client.request; request({ url: '/x', method: 'GET' });",
-        MemberCallMatcher::rooted("client.request")
+        MatcherDecl::builder()
+            .member_call_rooted("client.request")
             .arg_object_keys(0, ["url", "method"])
-            .into(),
+            .build()
+            .unwrap(),
         1,
     );
 }
 
 /// Build the source/configuration/sink flow used by flow-provenance tests.
-fn script_insertion_matcher() -> Matcher {
-    Matcher::from(
-        ObjectFlowMatcher::builder("script insertion")
-            .source(ObjectSourceMatcher::returned_by(
-                MemberCallMatcher::rooted("document.createElement")
+fn script_insertion_matcher() -> MatcherDecl {
+    MatcherDecl::from_object_flow(
+        &ObjectFlowMatcher::builder("script insertion")
+            .source(
+                ObjectSourceMatcher::returned_by("document.createElement")
                     .arg(0, ValueMatcher::static_string().equals("script")),
-            ))
+            )
             .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
                 "src",
                 ValueMatcher::any_value(),
             )))
             .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
-                MemberCallMatcher::rooted("document.head.appendChild"),
+                "document.head.appendChild",
                 0,
             )]))
             .build(),

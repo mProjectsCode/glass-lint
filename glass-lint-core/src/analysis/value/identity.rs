@@ -236,6 +236,11 @@ impl SymbolPath {
         )
     }
 
+    /// Return true when the path has zero segments.
+    pub(crate) fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Whether this path has at most one segment.
     pub(in crate::analysis) fn is_root(&self) -> bool {
         self.0.len() <= 1

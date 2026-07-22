@@ -1,6 +1,6 @@
 //! Obsidian workspace-event registration rule definition.
 
-use glass_lint_core::rules::{Confidence, MemberCallMatcher, Rule, Severity, ValueMatcher};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity, ValueMatcher};
 
 /// Detects rooted `app.workspace.on` registrations for the documented
 /// workspace and editor/menu events. Rooted aliases, static computed names,
@@ -12,22 +12,28 @@ pub fn rule() -> Rule {
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(MemberCallMatcher::rooted("app.workspace.on").arg(
-            0,
-            ValueMatcher::static_string().equals_any([
-                "active-leaf-change",
-                "file-open",
-                "layout-change",
-                "window-open",
-                "window-close",
-                "quit",
-                "editor-change",
-                "editor-paste",
-                "editor-drop",
-                "file-menu",
-                "editor-menu",
-            ]),
-        ))
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.workspace.on")
+                .arg(
+                    0,
+                    ValueMatcher::static_string().equals_any([
+                        "active-leaf-change",
+                        "file-open",
+                        "layout-change",
+                        "window-open",
+                        "window-close",
+                        "quit",
+                        "editor-change",
+                        "editor-paste",
+                        "editor-drop",
+                        "file-menu",
+                        "editor-menu",
+                    ]),
+                )
+                .build()
+                .unwrap(),
+        )
         .build()
         .unwrap()
 }

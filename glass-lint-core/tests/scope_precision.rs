@@ -5,7 +5,7 @@
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog,
-    rules::{Matcher, Rule},
+    rules::{MatcherDecl, Rule},
 };
 
 #[path = "support/mod.rs"]
@@ -32,7 +32,7 @@ fn assert_count(source: &str, rule: Rule, expected: usize) {
 /// Create the rooted alias rule shared by lexical-scope cases.
 fn rooted_read_rule() -> Rule {
     rule("rooted-read")
-        .matcher(Matcher::rooted_member_call("host.files.read"))
+        .declaration(MatcherDecl::rooted_member_call("host.files.read"))
         .build()
         .unwrap()
 }
@@ -96,7 +96,7 @@ fn property_aliases_follow_the_same_receiver_binding_and_version() {
 #[test]
 fn import_matchers_reject_shadowed_commonjs_loaders() {
     let require_rule = rule("import")
-        .matcher(Matcher::import("@codemirror/state"))
+        .declaration(MatcherDecl::import("@codemirror/state"))
         .build()
         .unwrap();
     assert_count(
@@ -120,7 +120,7 @@ fn import_matchers_reject_shadowed_commonjs_loaders() {
 #[test]
 fn dynamic_scopes_fail_closed_without_affecting_ordinary_globals() {
     let fetch_rule = rule("fetch")
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap();
     assert_count(
@@ -148,7 +148,7 @@ fn alias_classifier_handles_reassignment_to_a_rooted_member() {
     // local, but an assignment to a host-returned object must propagate
     // the rooted identity to the use position.
     let rule = rule("reassign-rooted")
-        .matcher(Matcher::rooted_member_call("host.cache.read"))
+        .declaration(MatcherDecl::rooted_member_call("host.cache.read"))
         .build()
         .unwrap();
     assert_count(
@@ -164,7 +164,7 @@ fn precedence_promotes_bound_callable_over_later_aliased_reassignments() {
     // variable to the same expression must keep the bound callable
     // provenance as the higher-priority fact at the call site.
     let rule = rule("bound-callable")
-        .matcher(Matcher::rooted_member_call("host.open.execute"))
+        .declaration(MatcherDecl::rooted_member_call("host.open.execute"))
         .build()
         .unwrap();
     assert_count(
@@ -180,7 +180,7 @@ fn destructured_require_aliases_record_named_module_exports() {
     // classifier as a `Require` so the downstream collect step records
     // each named property as a `ModuleExport` binding.
     let rule = rule("sdk-send")
-        .matcher(Matcher::module_call("sdk", "send"))
+        .declaration(MatcherDecl::module_call("sdk", "send"))
         .build()
         .unwrap();
     assert_count("const { send } = require('sdk'); send('/x');", rule, 1);
@@ -192,7 +192,7 @@ fn dynamic_call_value_does_not_promote_to_a_strict_provenance() {
     // provenance. The classifier falls back to a returned-object or local
     // binding, which keeps the matcher from observing a strict fact.
     let rule = rule("strict-fetch")
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap();
     assert_count("let value = dynamicThing(); value('/x');", rule, 0);

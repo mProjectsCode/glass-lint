@@ -1,6 +1,6 @@
 //! Obsidian plugin-data write rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects the syntactic `this.saveData()` plugin-storage call, including a
 /// statically computed `saveData` property. The instance matcher requires a
@@ -12,7 +12,7 @@ pub fn rule() -> Rule {
         .category("storage")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::instance_member_call(
+        .declaration(MatcherDecl::instance_member_call(
             "obsidian", "Plugin", "saveData",
         ))
         .build()

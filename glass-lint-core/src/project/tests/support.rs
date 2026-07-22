@@ -1,4 +1,5 @@
 use super::*;
+use crate::api::rule::MatcherDecl;
 
 pub fn source_file(path: impl Into<String>, source: impl Into<String>) -> SourceFile {
     SourceFile::new(path, source).unwrap()
@@ -41,7 +42,7 @@ pub fn test_linter_with_environment(environment: crate::Environment) -> crate::L
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap();
     crate::Linter::new(crate::LinterConfig::new(
@@ -59,7 +60,7 @@ pub fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap();
     crate::Linter::new(
@@ -83,7 +84,7 @@ pub fn test_linter_with_selection(
         .category("network")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(Matcher::global_call("fetch"))
+        .declaration(MatcherDecl::global_call("fetch"))
         .build()
         .unwrap();
     crate::Linter::new(
@@ -103,22 +104,22 @@ pub fn flow_linter() -> crate::Linter {
         .category("flow")
         .severity(Severity::Warning)
         .confidence(Confidence::High)
-        .matcher(
-            ObjectFlowMatcher::builder("script insertion")
-                .source(ObjectSourceMatcher::returned_by(
-                    MemberCallMatcher::rooted("document.createElement")
+        .declaration(MatcherDecl::from_object_flow(
+            &ObjectFlowMatcher::builder("script insertion")
+                .source(
+                    ObjectSourceMatcher::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("script")),
-                ))
+                )
                 .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
                     "src",
                     ValueMatcher::any_value(),
                 )))
                 .complete_at(FlowCompletion::any_sink([FlowSinkMatcher::argument_of(
-                    MemberCallMatcher::rooted("document.head.appendChild"),
+                    "document.head.appendChild",
                     0,
                 )]))
                 .build(),
-        )
+        ))
         .build()
         .unwrap();
     let mut environment = crate::Environment::default();

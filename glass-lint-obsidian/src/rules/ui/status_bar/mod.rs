@@ -1,6 +1,6 @@
 //! Obsidian status-bar registration rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects the syntactic `this.addStatusBarItem()` registration call,
 /// including a static computed property. The instance matcher requires a
@@ -12,7 +12,7 @@ pub fn rule() -> Rule {
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::instance_member_call(
+        .declaration(MatcherDecl::instance_member_call(
             "obsidian",
             "Plugin",
             "addStatusBarItem",

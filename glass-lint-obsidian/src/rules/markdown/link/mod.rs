@@ -1,6 +1,6 @@
 //! Markdown link-helper rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects calls to the exact `parseLinktext`, `normalizePath`, and
 /// `getLinkpath` exports of the `obsidian` module. ESM/CommonJS aliases retain
@@ -12,21 +12,27 @@ pub fn rule() -> Rule {
         .category("markdown")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .matcher(Matcher::module_member_call("obsidian", "parseLinktext"))
-        .matcher(Matcher::module_member_call("obsidian", "normalizePath"))
-        .matcher(Matcher::module_member_call("obsidian", "getLinkpath"))
-        .matcher(Matcher::module_member_call("obsidian", "fileToLinktext"))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call("obsidian", "parseLinktext"))
+        .declaration(MatcherDecl::module_member_call("obsidian", "normalizePath"))
+        .declaration(MatcherDecl::module_member_call("obsidian", "getLinkpath"))
+        .declaration(MatcherDecl::module_member_call(
+            "obsidian",
+            "fileToLinktext",
+        ))
+        .declaration(MatcherDecl::module_member_call(
             "obsidian",
             "generateMarkdownLink",
         ))
-        .matcher(Matcher::module_member_call("obsidian", "resolveSubpath"))
-        .matcher(Matcher::module_member_call("obsidian", "parseSubpath"))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
+            "obsidian",
+            "resolveSubpath",
+        ))
+        .declaration(MatcherDecl::module_member_call("obsidian", "parseSubpath"))
+        .declaration(MatcherDecl::module_member_call(
             "obsidian",
             "parseFrontMatterAliases",
         ))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "obsidian",
             "parseFrontMatterTags",
         ))

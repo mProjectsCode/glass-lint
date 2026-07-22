@@ -1,6 +1,6 @@
 //! Obsidian active-editor workspace rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted reads of `app.workspace.activeEditor`. Provenance follows
 /// `this.app`, workspace aliases, static computed properties, source-ordered
@@ -12,7 +12,9 @@ pub fn rule() -> Rule {
         .category("workspace")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_read("app.workspace.activeEditor"))
+        .declaration(MatcherDecl::rooted_member_read(
+            "app.workspace.activeEditor",
+        ))
         .build()
         .unwrap()
 }

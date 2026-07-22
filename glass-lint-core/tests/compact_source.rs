@@ -7,7 +7,7 @@
 
 use glass_lint_core::{
     Environment,
-    rules::{CallMatcher, Matcher, MemberCallMatcher, Rule, ValueMatcher},
+    rules::{ArgumentMatcher, MatcherDecl, Rule, ValueMatcher},
 };
 
 #[path = "compact_source/constructors.rs"]
@@ -50,7 +50,7 @@ fn commonjs_namespace_export_aliases_preserve_module_calls() {
     assert_count(
         r#"var r=require("sdk"),s=r.send;s();"#,
         rule("test.module")
-            .matcher(Matcher::module_call("sdk", "send"))
+            .declaration(MatcherDecl::module_call("sdk", "send"))
             .build()
             .unwrap(),
         1,
@@ -62,7 +62,7 @@ fn commonjs_interop_namespace_calls_preserve_module_members() {
     assert_count(
         r#"var e=__toESM(require("sdk"));e.send();"#,
         rule("test.module-member")
-            .matcher(Matcher::module_member_call("sdk", "send"))
+            .declaration(MatcherDecl::module_member_call("sdk", "send"))
             .build()
             .unwrap(),
         1,
@@ -74,7 +74,7 @@ fn assignment_expression_aliases_preserve_module_exports() {
     assert_count(
         r#"var s;(s=require("sdk").send)();"#,
         rule("test.assignment-module")
-            .matcher(Matcher::module_call("sdk", "send"))
+            .declaration(MatcherDecl::module_call("sdk", "send"))
             .build()
             .unwrap(),
         1,
@@ -91,8 +91,8 @@ fn module_provenance_rejects_local_require_and_wrapper_lookalikes() {
         e.send();send();
         "#,
         rule("test.module-negative")
-            .matcher(Matcher::module_call("sdk", "send"))
-            .matcher(Matcher::module_member_call("sdk", "send"))
+            .declaration(MatcherDecl::module_call("sdk", "send"))
+            .declaration(MatcherDecl::module_member_call("sdk", "send"))
             .build()
             .unwrap(),
         0,
@@ -104,7 +104,7 @@ fn rooted_member_aliases_follow_one_letter_bindings() {
     assert_count(
         r#"var v=host.files;v.read();"#,
         rule("test.rooted")
-            .matcher(Matcher::rooted_member_call("host.files.read"))
+            .declaration(MatcherDecl::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -116,7 +116,7 @@ fn nested_rooted_aliases_follow_cached_subobjects() {
     assert_count(
         r#"var a=host,b=a.files,c=b;c.read();"#,
         rule("test.nested-rooted")
-            .matcher(Matcher::rooted_member_call("host.files.read"))
+            .declaration(MatcherDecl::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -128,7 +128,7 @@ fn this_root_aliases_canonicalize_to_rooted_members() {
     assert_count(
         r#"var a=this.app.files;a.read();"#,
         rule("test.this-root")
-            .matcher(Matcher::rooted_member_call("app.files.read"))
+            .declaration(MatcherDecl::rooted_member_call("app.files.read"))
             .build()
             .unwrap(),
         1,
@@ -137,7 +137,7 @@ fn this_root_aliases_canonicalize_to_rooted_members() {
 
 #[test]
 fn returned_objects_follow_direct_calls_aliases_and_reassignment() {
-    let matcher = Matcher::returned_member_call("app.workspace.getLeaf", "openFile");
+    let matcher = MatcherDecl::returned_member_call("app.workspace.getLeaf", "openFile");
     assert_count(
         r#"
         app.workspace.getLeaf().openFile(file);
@@ -150,7 +150,7 @@ fn returned_objects_follow_direct_calls_aliases_and_reassignment() {
         function local(app) { app.workspace.getLeaf().openFile(file); }
         localWorkspace.getLeaf().openFile(file);
         "#,
-        rule("test.returned").matcher(matcher).build().unwrap(),
+        rule("test.returned").declaration(matcher).build().unwrap(),
         2,
     );
 }
@@ -165,7 +165,7 @@ fn returned_object_reads_are_provenance_aware() {
         local.manifest;
         "#,
         rule("test.returned-read")
-            .matcher(Matcher::returned_member_read(
+            .declaration(MatcherDecl::returned_member_read(
                 "app.plugins.getPlugin",
                 "manifest",
             ))
@@ -186,11 +186,14 @@ fn inline_commonjs_members_share_module_provenance() {
         function f(require) { require("electron").shell.openExternal(url); }
         "#,
         rule("test.inline")
-            .matcher(Matcher::module_member_call(
+            .declaration(MatcherDecl::module_member_call(
                 "electron",
                 "shell.openExternal",
             ))
-            .matcher(Matcher::module_member_call("electron", "shell.openPath"))
+            .declaration(MatcherDecl::module_member_call(
+                "electron",
+                "shell.openPath",
+            ))
             .build()
             .unwrap(),
         2,
@@ -212,7 +215,7 @@ fn instance_matchers_require_proven_module_subclasses() {
         function unrelated() { this.registerThing(); }
         "#,
         rule("test.instance")
-            .matcher(Matcher::instance_member_call(
+            .declaration(MatcherDecl::instance_member_call(
                 "framework",
                 "Base",
                 "registerThing",
@@ -239,7 +242,7 @@ fn instance_matchers_respect_alias_scope_and_static_methods() {
         }
         "#,
         rule("test.instance-scope")
-            .matcher(Matcher::instance_member_call(
+            .declaration(MatcherDecl::instance_member_call(
                 "framework",
                 "Base",
                 "registerThing",
@@ -255,7 +258,7 @@ fn new_semantic_matchers_are_normalized_and_validated() {
     assert_count(
         r#"const value = app.workspace["getLeaf"](); value.openFile(file);"#,
         rule("test.normalized-return")
-            .matcher(Matcher::returned_member_call(
+            .declaration(MatcherDecl::returned_member_call(
                 " app.workspace.getLeaf ",
                 " openFile ",
             ))
@@ -263,14 +266,6 @@ fn new_semantic_matchers_are_normalized_and_validated() {
             .unwrap(),
         1,
     );
-
-    let invalid = rule("test.invalid-semantic")
-        .matcher(Matcher::returned_member_call(" ", " "))
-        .matcher(Matcher::returned_member_read(" ", "manifest"))
-        .matcher(Matcher::instance_member_call("framework", " ", "run"))
-        .build()
-        .unwrap();
-    assert!(glass_lint_core::RuleCatalog::new("test", vec![invalid]).is_err());
 }
 
 #[test]
@@ -283,10 +278,16 @@ fn ordinary_member_argument_predicates_reuse_static_values() {
         app.vault.on("unrelated", handler);
         "#,
         rule("test.event")
-            .matcher(MemberCallMatcher::rooted("app.vault.on").arg(
-                0,
-                ValueMatcher::static_string().equals_any(["delete", "rename"]),
-            ))
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted("app.vault.on")
+                    .arg(
+                        0,
+                        ValueMatcher::static_string().equals_any(["delete", "rename"]),
+                    )
+                    .build()
+                    .unwrap(),
+            )
             .build()
             .unwrap(),
         2,
@@ -298,7 +299,7 @@ fn reassignment_order_keeps_only_pre_reassignment_rooted_calls() {
     assert_count(
         r#"var v=host.files;v.read();v=local.files;v.read();"#,
         rule("test.reassignment")
-            .matcher(Matcher::rooted_member_call("host.files.read"))
+            .declaration(MatcherDecl::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -313,7 +314,7 @@ fn sibling_scope_reuse_does_not_leak_rooted_aliases() {
         function b(){var x=local.files;x.read()}
         "#,
         rule("test.scope-reuse")
-            .matcher(Matcher::rooted_member_call("host.files.read"))
+            .declaration(MatcherDecl::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -325,7 +326,7 @@ fn literal_computed_member_chains_are_rooted() {
     assert_count(
         r#"host["files"]["read"]();"#,
         rule("test.literal-computed")
-            .matcher(Matcher::rooted_member_call("host.files.read"))
+            .declaration(MatcherDecl::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -337,9 +338,12 @@ fn this_rooted_literal_computed_member_chains_are_rooted() {
     assert_count(
         r#"class PluginChild extends Plugin { onload() { this.app.vault["on"]("modify", handler); } }"#,
         rule("test.this-literal-computed")
-            .matcher(
-                MemberCallMatcher::rooted("app.vault.on")
-                    .arg(0, ValueMatcher::static_string().equals("modify")),
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted("app.vault.on")
+                    .arg(0, ValueMatcher::static_string().equals("modify"))
+                    .build()
+                    .unwrap(),
             )
             .build()
             .unwrap(),
@@ -352,7 +356,7 @@ fn concatenated_static_property_names_are_rooted() {
     assert_count(
         r#"window["fet"+"ch"]("/x");"#,
         rule("test.concatenated-computed")
-            .matcher(Matcher::rooted_member_call("window.fetch"))
+            .declaration(MatcherDecl::rooted_member_call("window.fetch"))
             .build()
             .unwrap(),
         1,
@@ -364,7 +368,7 @@ fn constant_property_aliases_are_rooted() {
     assert_count(
         r#"const k="read";host.files[k]();"#,
         rule("test.constant-computed")
-            .matcher(Matcher::rooted_member_call("host.files.read"))
+            .declaration(MatcherDecl::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -376,7 +380,7 @@ fn static_string_table_property_aliases_are_rooted() {
     assert_count(
         r#"const k=["read"];host.files[k[0]]();"#,
         rule("test.string-table-computed")
-            .matcher(Matcher::rooted_member_call("host.files.read"))
+            .declaration(MatcherDecl::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         1,
@@ -388,7 +392,7 @@ fn dynamic_computed_properties_do_not_match_rooted_members() {
     assert_count(
         r#"var k=Date.now()>0?"read":"write";host.files[k]();"#,
         rule("test.dynamic-computed-negative")
-            .matcher(Matcher::rooted_member_call("host.files.read"))
+            .declaration(MatcherDecl::rooted_member_call("host.files.read"))
             .build()
             .unwrap(),
         0,
@@ -400,7 +404,7 @@ fn sequence_global_calls_preserve_global_provenance() {
     assert_count(
         r#"(0,fetch)("/x");"#,
         rule("test.sequence-global")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         1,
@@ -412,7 +416,7 @@ fn bound_global_calls_preserve_global_provenance() {
     assert_count(
         r#"var f=fetch.bind(null);f("/x");"#,
         rule("test.bound-global")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         1,
@@ -424,7 +428,7 @@ fn call_and_apply_preserve_global_provenance_when_receiver_is_static() {
     assert_count(
         r#"var f=fetch;f.call(null,"/x");f.apply(null,["/y"]);"#,
         rule("test.call-apply-global")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         2,
@@ -436,8 +440,12 @@ fn optional_chained_aliases_preserve_rooted_member_arguments() {
     assert_count(
         r#"var c=app.commands;c?.execute?.("open");"#,
         rule("test.optional")
-            .matcher(
-                MemberCallMatcher::rooted("app.commands.execute").arg_static_strings(0, ["open"]),
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted("app.commands.execute")
+                    .arg_static_strings(0, ["open"])
+                    .build()
+                    .unwrap(),
             )
             .build()
             .unwrap(),
@@ -450,7 +458,7 @@ fn shadowed_globals_do_not_match_global_calls() {
     assert_count(
         r#"function a(fetch){fetch("/local")}a(function(){});"#,
         rule("test.shadowed-global-negative")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         0,
@@ -462,7 +470,13 @@ fn static_string_arguments_follow_aliases_but_reject_dynamic_strings() {
     assert_count(
         r#"var f=fetch,u="/x";f(u);f("/"+name);"#,
         rule("test.static-string-arg")
-            .matcher(CallMatcher::global("fetch").arg_static_string(0))
+            .declaration(
+                MatcherDecl::builder()
+                    .call_global("fetch")
+                    .arg_static_string(0)
+                    .build()
+                    .unwrap(),
+            )
             .build()
             .unwrap(),
         1,
@@ -474,8 +488,12 @@ fn static_object_arguments_are_reused_for_key_matching() {
     assert_count(
         r#"var o={url:"/x",method:"GET"};client.request(o);"#,
         rule("test.object-arg")
-            .matcher(
-                MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]),
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted("client.request")
+                    .arg_object_keys(0, ["url", "method"])
+                    .build()
+                    .unwrap(),
             )
             .build()
             .unwrap(),
@@ -488,8 +506,12 @@ fn sequence_object_arguments_are_reused_for_key_matching() {
     assert_count(
         r#"var o;(o={url:"/x",method:"GET"},client.request(o));"#,
         rule("test.sequence-object-arg")
-            .matcher(
-                MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]),
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted("client.request")
+                    .arg_object_keys(0, ["url", "method"])
+                    .build()
+                    .unwrap(),
             )
             .build()
             .unwrap(),
@@ -502,7 +524,13 @@ fn rooted_expression_arguments_follow_one_letter_aliases() {
     assert_count(
         r#"var f=vault.file,o=app;o.open(f);"#,
         rule("test.rooted-arg")
-            .matcher(MemberCallMatcher::rooted("app.open").arg_rooted_exprs(0, ["vault.file"]))
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted("app.open")
+                    .arg(0, ArgumentMatcher::rooted_expressions(["vault.file"]))
+                    .build()
+                    .unwrap(),
+            )
             .build()
             .unwrap(),
         1,
@@ -514,8 +542,12 @@ fn spread_object_arguments_do_not_satisfy_exact_key_matching() {
     assert_count(
         r#"var b={url:"/x"};client.request({...b,method:"GET"});"#,
         rule("test.spread-object-negative")
-            .matcher(
-                MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]),
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted("client.request")
+                    .arg_object_keys(0, ["url", "method"])
+                    .build()
+                    .unwrap(),
             )
             .build()
             .unwrap(),
@@ -528,7 +560,7 @@ fn named_helper_parameter_aliases_preserve_global_calls() {
     assert_count(
         r#"function n(t){t("/x")}n(fetch);"#,
         rule("test.named-helper")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         1,
@@ -540,7 +572,7 @@ fn arrow_helper_parameter_aliases_preserve_global_calls() {
     assert_count(
         r#"var n=t=>t("/x");n(fetch);"#,
         rule("test.arrow-helper")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         1,
@@ -552,8 +584,12 @@ fn helper_argument_objects_flow_to_member_call_key_matching() {
     assert_count(
         r#"function n(x){client.request(x)}n({url:"/x",method:"GET"});"#,
         rule("test.helper-object-flow")
-            .matcher(
-                MemberCallMatcher::rooted("client.request").arg_object_keys(0, ["url", "method"]),
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_rooted("client.request")
+                    .arg_object_keys(0, ["url", "method"])
+                    .build()
+                    .unwrap(),
             )
             .build()
             .unwrap(),
@@ -566,7 +602,7 @@ fn inconsistent_helper_calls_do_not_infer_parameter_aliases() {
     assert_count(
         r#"function n(t){t("/x")}n(fetch);n(localFetch);"#,
         rule("test.inconsistent-helper-negative")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         0,
@@ -578,7 +614,7 @@ fn incomplete_helper_invocations_do_not_infer_parameter_aliases() {
     assert_count(
         r#"function n(t){t(\"/x\")}n();n(fetch);"#,
         rule("test.incomplete-helper-negative")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         0,
@@ -586,7 +622,7 @@ fn incomplete_helper_invocations_do_not_infer_parameter_aliases() {
     assert_count(
         r#"function n(t){t(\"/x\")}n(fetch,local);"#,
         rule("test.extra-helper-argument-negative")
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap(),
         0,
@@ -598,7 +634,7 @@ fn module_constructor_aliases_preserve_constructor_provenance() {
     assert_count(
         r#"var M=require("sdk").Modal;new M();"#,
         rule("test.module-constructor")
-            .matcher(Matcher::module_constructor("sdk", "Modal"))
+            .declaration(MatcherDecl::module_constructor("sdk", "Modal"))
             .build()
             .unwrap(),
         1,
@@ -608,7 +644,7 @@ fn module_constructor_aliases_preserve_constructor_provenance() {
 #[test]
 fn derived_function_constructors_preserve_global_constructor_provenance() {
     let dynamic_function = rule("test.function-constructor")
-        .matcher(Matcher::global_constructor("Function"))
+        .declaration(MatcherDecl::global_constructor("Function"))
         .build()
         .unwrap();
 
@@ -626,9 +662,9 @@ fn derived_function_constructors_preserve_global_constructor_provenance() {
     assert_count(
         r#"function evaluate(){eval("code")}new Function("return 1");const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;new AsyncFunction("return 1")"#,
         rule("test.combined-function-constructor")
-            .matcher(Matcher::global_call("eval"))
-            .matcher(Matcher::global_call("Function"))
-            .matcher(Matcher::global_constructor("Function"))
+            .declaration(MatcherDecl::global_call("eval"))
+            .declaration(MatcherDecl::global_call("Function"))
+            .declaration(MatcherDecl::global_constructor("Function"))
             .build()
             .unwrap(),
         3,

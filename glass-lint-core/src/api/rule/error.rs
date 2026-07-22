@@ -37,8 +37,6 @@ pub enum MatcherBuildError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Catalog-level rule identity failure.
 pub enum CompiledCatalogError {
-    /// Two rules declared the same stable ID.
-    DuplicateRule(String),
     /// A rule declaration could not be lowered into a semantic query.
     InvalidMatcher(String),
 }
@@ -96,7 +94,6 @@ impl From<&str> for MatcherBuildError {
 impl fmt::Display for CompiledCatalogError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::DuplicateRule(id) => write!(formatter, "duplicate rule `{id}`"),
             Self::InvalidMatcher(message) => write!(formatter, "invalid matcher: {message}"),
         }
     }

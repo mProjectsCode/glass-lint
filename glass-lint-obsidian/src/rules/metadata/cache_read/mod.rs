@@ -1,6 +1,6 @@
 //! Obsidian metadata-cache access rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted reads of `app.metadataCache`, `resolvedLinks`, and
 /// `unresolvedLinks`, plus calls to the three configured cache lookup methods.
@@ -14,18 +14,20 @@ pub fn rule() -> Rule {
         .category("metadata")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::rooted_member_read("app.metadataCache"))
-        .matcher(Matcher::rooted_member_read(
+        .declaration(MatcherDecl::rooted_member_read("app.metadataCache"))
+        .declaration(MatcherDecl::rooted_member_read(
             "app.metadataCache.resolvedLinks",
         ))
-        .matcher(Matcher::rooted_member_read(
+        .declaration(MatcherDecl::rooted_member_read(
             "app.metadataCache.unresolvedLinks",
         ))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call(
             "app.metadataCache.getFileCache",
         ))
-        .matcher(Matcher::rooted_member_call("app.metadataCache.getCache"))
-        .matcher(Matcher::rooted_member_call(
+        .declaration(MatcherDecl::rooted_member_call(
+            "app.metadataCache.getCache",
+        ))
+        .declaration(MatcherDecl::rooted_member_call(
             "app.metadataCache.getFirstLinkpathDest",
         ))
         .build()

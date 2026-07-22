@@ -167,7 +167,7 @@ mod tests {
             facts::build::FactBuilder, resolution::Resolver, syntax::SymbolCallProvenance,
             value::FunctionId,
         },
-        api::{compiler::CompiledMatcherPlan, rule::MatcherSet},
+        api::{compiler::rule::CompiledMatcherPlan, rule::MatcherDecl},
     };
 
     fn test_fact(id: u32, kind: FactKind, span: ByteRange) -> SemanticFact {
@@ -283,15 +283,12 @@ mod tests {
         let source = "fetch('/api'); document.createElement('script');";
         let parsed = crate::parse(source, "catalog-fingerprint.js").expect("source should parse");
         let first =
-            MatcherSet::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
-                .normalized();
-        let second = MatcherSet::from_matchers(vec![crate::api::rule::Matcher::from(
-            crate::api::rule::MemberCallMatcher::heuristic("document.createElement"),
+            CompiledMatcherPlan::compile_decls(&[MatcherDecl::global_call("fetch")]).unwrap();
+        let second = CompiledMatcherPlan::compile_decls(&[MatcherDecl::heuristic_member_call(
+            "document.createElement",
         )])
-        .normalized();
-        let first = CompiledMatcherPlan::compile(&first).unwrap();
-        let second = CompiledMatcherPlan::compile(&second).unwrap();
-        let build = |matchers: Vec<&crate::api::compiler::CompiledMatcherPlan>,
+        .unwrap();
+        let build = |matchers: Vec<&crate::api::compiler::rule::CompiledMatcherPlan>,
                      selected: &[usize]| {
             let mut resolver = Resolver::collect(&parsed.program);
             let _ = (matchers, selected);

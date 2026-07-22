@@ -360,7 +360,7 @@ mod tests {
     use glass_lint_core::{
         AnalysisDiagnostic, AnalysisLimits, AnalysisReport, Diagnostic, DiagnosticCode,
         Environment, Linter, ReportCompletion, Rule, RuleCatalog, Severity,
-        rules::{Confidence, Matcher},
+        rules::{Confidence, MatcherDecl},
     };
 
     use super::*;
@@ -371,7 +371,7 @@ mod tests {
             .category("network")
             .severity(Severity::Warning)
             .confidence(Confidence::High)
-            .matcher(Matcher::global_call("fetch"))
+            .declaration(MatcherDecl::global_call("fetch"))
             .build()
             .unwrap();
         let mut environment = Environment::default();

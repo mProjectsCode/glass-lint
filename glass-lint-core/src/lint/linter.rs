@@ -117,7 +117,7 @@ impl Linter {
                 RuleBaseline::All => true,
                 RuleBaseline::None => false,
                 RuleBaseline::MinimumConfidence(confidence) => {
-                    catalog.rules[index].confidence() as u8 <= confidence as u8
+                    catalog.records[index].confidence as u8 <= confidence as u8
                 }
             };
             let mut state = baseline;
@@ -281,7 +281,7 @@ impl Linter {
         tracing::debug!(target: "glass_lint::project::matching", rules = self.enabled.len(), "stage started");
         let (classifications, projection_outcome) = project.classify_with_evidence_limit(
             self.catalog.compiled(),
-            &self.catalog.rules,
+            &self.catalog.records,
             &self.enabled,
             self.limits.evidence_items(),
         );

@@ -1,8 +1,6 @@
-//! Browser file-input flow rule definition.
-
 use glass_lint_core::rules::{
-    Confidence, FlowCompletion, FlowCondition, Matcher, MemberCallMatcher, ObjectEventMatcher,
-    ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+    Confidence, FlowCompletion, FlowCondition, MatcherDecl, ObjectEventMatcher, ObjectFlowMatcher,
+    ObjectSourceMatcher, Rule, Severity, ValueMatcher,
 };
 
 /// Detects an input created by `document.createElement("input")` whose direct
@@ -16,12 +14,12 @@ pub fn rule() -> Rule {
         .category("browser/file-dialog")
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
-        .matcher(
-            ObjectFlowMatcher::builder("file input element")
-                .source(ObjectSourceMatcher::returned_by(
-                    MemberCallMatcher::rooted("document.createElement")
+        .declaration(MatcherDecl::from_object_flow(
+            &ObjectFlowMatcher::builder("file input element")
+                .source(
+                    ObjectSourceMatcher::returned_by("document.createElement")
                         .arg(0, ValueMatcher::static_string().equals("input")),
-                ))
+                )
                 .configured_by(FlowCondition::any_of([
                     ObjectEventMatcher::property_write(
                         "type",
@@ -34,9 +32,9 @@ pub fn rule() -> Rule {
                 ]))
                 .complete_at(FlowCompletion::configuration())
                 .build(),
-        )
-        .matcher(Matcher::rooted_member_call("showOpenFilePicker"))
-        .matcher(Matcher::rooted_member_call("showSaveFilePicker"))
+        ))
+        .declaration(MatcherDecl::rooted_member_call("showOpenFilePicker"))
+        .declaration(MatcherDecl::rooted_member_call("showSaveFilePicker"))
         .build()
         .unwrap()
 }

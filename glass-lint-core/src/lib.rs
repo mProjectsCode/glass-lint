@@ -49,10 +49,8 @@ pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
 /// Declarative rule-building API for provider crates and custom catalogs.
 pub mod rules {
     pub use crate::api::rule::{
-        ArgumentMatcher, CallMatcher, Category, ClassMatcher, Confidence, ConstructorMatcher,
-        FlowCompletion, FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, Matcher,
-        MemberCallMatcher, MemberReadMatcher, ObjectEventMatcher, ObjectFlowMatcher,
-        ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher, Rule,
+        ArgumentMatcher, Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher,
+        MatcherDecl, ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule,
         RuleBuildError, RuleBuilder as Builder, Severity, ValueMatcher,
     };
 }

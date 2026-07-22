@@ -1,6 +1,6 @@
 //! Obsidian vault-event registration rule definition.
 
-use glass_lint_core::rules::{Confidence, MemberCallMatcher, Rule, Severity, ValueMatcher};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity, ValueMatcher};
 
 /// Detects rooted registration through `app.vault.on`, including `this.app`,
 /// direct receiver aliases, and static computed properties. Source-ordered
@@ -14,12 +14,16 @@ pub fn rule() -> Rule {
         .category("vault")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(
-            MemberCallMatcher::rooted("app.vault.on").arg(
-                0,
-                ValueMatcher::static_string()
-                    .equals_any(["create", "delete", "modify", "rename", "closed"]),
-            ),
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_rooted("app.vault.on")
+                .arg(
+                    0,
+                    ValueMatcher::static_string()
+                        .equals_any(["create", "delete", "modify", "rename", "closed"]),
+                )
+                .build()
+                .unwrap(),
         )
         .build()
         .unwrap()

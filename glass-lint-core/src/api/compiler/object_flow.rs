@@ -3,15 +3,15 @@ use smol_str::SmolStr;
 use crate::{
     analysis::SymbolPath,
     api::rule::{
-        ArgumentConstraint, FlowSinkMatcher, MemberCallProvenance, ObjectEventMatcher,
-        ObjectFlowMatcher, ObjectSourceMatcher, ValueMatcher,
+        ArgumentConstraint, FlowSinkMatcher, ObjectEventMatcher, ObjectFlowMatcher,
+        ObjectSourceMatcher, ValueMatcher,
         matcher::{
             FlowCompletionKind, FlowConditionKind, FlowSinkMatcherKind, ObjectEventMatcherKind,
         },
     },
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CompiledObjectFlow {
     pub(crate) symbol: String,
     pub(crate) sources: Vec<CompiledObjectSource>,
@@ -26,10 +26,10 @@ impl CompiledObjectFlow {
         self.symbol.clone()
     }
 
-    pub fn sink_matches(&self, chain: Option<&SymbolPath>, rooted: bool, argument: usize) -> bool {
+    pub fn sink_matches(&self, chain: Option<&SymbolPath>, _rooted: bool, argument: usize) -> bool {
         self.sinks.iter().any(|sink| {
             sink.member_calls.iter().any(|member| chain == Some(member))
-                && sink.provenance.matches_rooted(rooted)
+                && sink.is_rooted
                 && match &sink.args {
                     CompiledObjectSinkArguments::Any => true,
                     CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument),
@@ -90,24 +90,24 @@ impl CompiledObjectFlow {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CompiledObjectSource {
     pub(crate) member_call: SymbolPath,
     pub(crate) arguments: Vec<ArgumentConstraint>,
-    pub(crate) provenance: MemberCallProvenance,
+    pub(crate) is_rooted: bool,
 }
 
 impl CompiledObjectSource {
     fn from_matcher(source: &ObjectSourceMatcher) -> Self {
         Self {
-            member_call: SymbolPath::from(source.call().chain()),
-            arguments: source.call().arguments().to_vec(),
-            provenance: source.call().provenance().clone(),
+            member_call: SymbolPath::from(source.chain()),
+            arguments: source.arguments().to_vec(),
+            is_rooted: true,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CompiledObjectRequirement {
     PropertyWrite {
         property: SmolStr,
@@ -134,7 +134,7 @@ impl CompiledObjectRequirement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CompiledObjectSinkArguments {
     Any,
     Indices(Vec<usize>),
@@ -153,25 +153,25 @@ impl CompiledObjectSinkArguments {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CompiledObjectSink {
     pub(crate) member_calls: Vec<SymbolPath>,
     pub(crate) args: CompiledObjectSinkArguments,
-    pub(crate) provenance: MemberCallProvenance,
+    pub(crate) is_rooted: bool,
 }
 
 impl CompiledObjectSink {
     fn from_matcher(sink: &FlowSinkMatcher) -> Self {
         match sink.kind() {
-            FlowSinkMatcherKind::ArgumentOf { call, index } => Self {
-                member_calls: vec![SymbolPath::from(call.chain())],
+            FlowSinkMatcherKind::ArgumentOf { chain, index } => Self {
+                member_calls: vec![SymbolPath::from(chain.as_str())],
                 args: CompiledObjectSinkArguments::Indices(vec![*index]),
-                provenance: call.provenance().clone(),
+                is_rooted: true,
             },
-            FlowSinkMatcherKind::AnyArgumentOf { call } => Self {
-                member_calls: vec![SymbolPath::from(call.chain())],
+            FlowSinkMatcherKind::AnyArgumentOf { chain } => Self {
+                member_calls: vec![SymbolPath::from(chain.as_str())],
                 args: CompiledObjectSinkArguments::Any,
-                provenance: call.provenance().clone(),
+                is_rooted: true,
             },
         }
     }

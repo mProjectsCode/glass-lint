@@ -1,8 +1,4 @@
-//! Browser network-request rule definition.
-
-use glass_lint_core::rules::{
-    CallMatcher, Confidence, ConstructorMatcher, MemberCallMatcher, Rule, Severity,
-};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects calls proven to target global `fetch`, rooted
 /// `navigator.sendBeacon`, and the global `XMLHttpRequest`, `WebSocket`, and
@@ -17,11 +13,11 @@ pub fn rule() -> Rule {
         .category("browser/network")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(CallMatcher::global("fetch"))
-        .matcher(MemberCallMatcher::rooted("navigator.sendBeacon"))
-        .matcher(ConstructorMatcher::global("XMLHttpRequest"))
-        .matcher(ConstructorMatcher::global("WebSocket"))
-        .matcher(ConstructorMatcher::global("EventSource"))
+        .declaration(MatcherDecl::global_call("fetch"))
+        .declaration(MatcherDecl::rooted_member_call("navigator.sendBeacon"))
+        .declaration(MatcherDecl::global_constructor("XMLHttpRequest"))
+        .declaration(MatcherDecl::global_constructor("WebSocket"))
+        .declaration(MatcherDecl::global_constructor("EventSource"))
         .build()
         .unwrap()
 }

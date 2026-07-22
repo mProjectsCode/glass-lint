@@ -68,7 +68,7 @@ impl ObjectFlowProjector<'_, '_> {
                     flow.sources.iter().any(|source| {
                         NamePath::from_symbol_path(&source.member_call, self.names)
                             .is_some_and(|member| member == *chain)
-                            && source.provenance.matches_rooted(rooted)
+                            && source.is_rooted == rooted
                             && source.arguments.iter().all(|matcher| {
                                 args.get(matcher.index()).is_some_and(|arg| {
                                     match self.stream.values() {

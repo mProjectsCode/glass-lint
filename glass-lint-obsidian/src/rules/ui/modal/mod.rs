@@ -1,6 +1,6 @@
 //! Obsidian modal rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects `Modal` constructors and subclass expressions proven to originate
 /// from the `obsidian` module through ESM, CommonJS, or namespace aliases.
@@ -12,8 +12,8 @@ pub fn rule() -> Rule {
         .category("ui")
         .severity(Severity::Info)
         .confidence(Confidence::High)
-        .matcher(Matcher::module_constructor("obsidian", "Modal"))
-        .matcher(Matcher::module_class("obsidian", "Modal"))
+        .declaration(MatcherDecl::module_constructor("obsidian", "Modal"))
+        .declaration(MatcherDecl::module_class("obsidian", "Modal"))
         .build()
         .unwrap()
 }

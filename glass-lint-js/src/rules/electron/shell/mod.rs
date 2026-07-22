@@ -1,6 +1,6 @@
 //! Electron shell rule definition.
 
-use glass_lint_core::rules::{Confidence, Matcher, Rule, Severity};
+use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects Electron `shell.openExternal` and `shell.openPath` calls through a
 /// proven `electron` module namespace. ESM/CommonJS namespace aliases and
@@ -14,22 +14,28 @@ pub fn rule() -> Rule {
         .category("electron/shell")
         .confidence(Confidence::High)
         .severity(Severity::Warning)
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "shell.openExternal",
         ))
-        .matcher(Matcher::module_member_call("electron", "shell.openPath"))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
+            "electron",
+            "shell.openPath",
+        ))
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "shell.showItemInFolder",
         ))
-        .matcher(Matcher::module_member_call("electron", "shell.trashItem"))
-        .matcher(Matcher::module_member_call("electron", "shell.beep"))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
+            "electron",
+            "shell.trashItem",
+        ))
+        .declaration(MatcherDecl::module_member_call("electron", "shell.beep"))
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "shell.readShortcutLink",
         ))
-        .matcher(Matcher::module_member_call(
+        .declaration(MatcherDecl::module_member_call(
             "electron",
             "shell.writeShortcutLink",
         ))

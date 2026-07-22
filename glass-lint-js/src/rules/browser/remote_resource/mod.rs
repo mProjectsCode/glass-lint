@@ -1,8 +1,8 @@
 //! Browser remote-DOM-resource flow rule definition.
 
 use glass_lint_core::rules::{
-    Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MemberCallMatcher,
-    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+    Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl, ObjectEventMatcher,
+    ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
 };
 
 /// Detects a script or image created by `document.createElement`, configured
@@ -16,31 +16,51 @@ pub fn rule() -> Rule {
         .category("browser/dom")
         .confidence(Confidence::Medium)
         .severity(Severity::Warning)
-        .matcher(remote_element_flow(
+        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
             "remote script element",
             "script",
             "src",
-        ))
-        .matcher(remote_element_flow("remote image element", "img", "src"))
-        .matcher(remote_element_flow("remote link element", "link", "href"))
-        .matcher(remote_element_flow(
+        )))
+        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
+            "remote image element",
+            "img",
+            "src",
+        )))
+        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
+            "remote link element",
+            "link",
+            "href",
+        )))
+        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
             "remote iframe element",
             "iframe",
             "src",
-        ))
-        .matcher(remote_element_flow("remote audio element", "audio", "src"))
-        .matcher(remote_element_flow("remote video element", "video", "src"))
-        .matcher(remote_element_flow(
+        )))
+        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
+            "remote audio element",
+            "audio",
+            "src",
+        )))
+        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
+            "remote video element",
+            "video",
+            "src",
+        )))
+        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
             "remote source element",
             "source",
             "src",
-        ))
-        .matcher(remote_element_flow(
+        )))
+        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
             "remote object element",
             "object",
             "data",
-        ))
-        .matcher(remote_element_flow("remote embed element", "embed", "src"))
+        )))
+        .declaration(MatcherDecl::from_object_flow(&remote_element_flow(
+            "remote embed element",
+            "embed",
+            "src",
+        )))
         .build()
         .unwrap()
 }
@@ -51,10 +71,10 @@ fn remote_element_flow(symbol: &str, tag: &str, property: &str) -> ObjectFlowMat
     // narrow and avoids treating local or dynamic sources as remote.
     let remote_url = ValueMatcher::static_string().starts_with_any(["http://", "https://", "//"]);
     ObjectFlowMatcher::builder(symbol)
-        .source(ObjectSourceMatcher::returned_by(
-            MemberCallMatcher::rooted("document.createElement")
+        .source(
+            ObjectSourceMatcher::returned_by("document.createElement")
                 .arg(0, ValueMatcher::static_string().equals(tag)),
-        ))
+        )
         .configured_by(FlowCondition::any_of([
             ObjectEventMatcher::property_write(property, remote_url.clone()),
             ObjectEventMatcher::member_call("setAttribute")
@@ -70,7 +90,7 @@ fn remote_element_flow(symbol: &str, tag: &str, property: &str) -> ObjectFlowMat
                 "document.documentElement.insertBefore",
             ]
             .into_iter()
-            .map(|chain| FlowSinkMatcher::argument_of(MemberCallMatcher::rooted(chain), 0))
+            .map(|chain| FlowSinkMatcher::argument_of(chain, 0))
             .chain(
                 [
                     "document.head.append",
@@ -80,7 +100,7 @@ fn remote_element_flow(symbol: &str, tag: &str, property: &str) -> ObjectFlowMat
                     "document.documentElement.prepend",
                 ]
                 .into_iter()
-                .map(|chain| FlowSinkMatcher::any_argument_of(MemberCallMatcher::rooted(chain))),
+                .map(FlowSinkMatcher::any_argument_of),
             ),
         ))
         .build()
