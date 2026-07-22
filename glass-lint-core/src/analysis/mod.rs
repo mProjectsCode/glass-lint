@@ -92,7 +92,7 @@ mod tests {
         let fetch =
             MatcherSet::from_matchers(vec![crate::api::rule::Matcher::global_call("fetch")])
                 .normalized();
-        let fetch_plan = CompiledMatcherPlan::compile(&fetch);
+        let fetch_plan = CompiledMatcherPlan::compile(&fetch).unwrap();
         let selected = [crate::api::classification::RuleIndex::new(0)];
         let fetch_rule = crate::api::compiler::CompiledRule {
             matcher: fetch_plan,
@@ -105,7 +105,7 @@ mod tests {
             crate::api::rule::MemberCallMatcher::heuristic("document.createElement"),
         )])
         .normalized();
-        let member_plan = CompiledMatcherPlan::compile(&member);
+        let member_plan = CompiledMatcherPlan::compile(&member).unwrap();
         let member_rule = crate::api::compiler::CompiledRule {
             matcher: member_plan,
         };

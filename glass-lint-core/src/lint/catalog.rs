@@ -50,12 +50,24 @@ impl RuleCatalog {
         let provider = provider.into();
         RuleId::parse(format!("{provider}:placeholder"))?;
 
+        let rules = rules
+            .into_iter()
+            .map(|rule| {
+                let id = format!("{provider}:{}", rule.id());
+                rule.validate_and_normalize()
+                    .map_err(|error| ProviderCatalogError::InvalidRule(id, error.to_string()))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
         let compiled = CompiledCatalog::try_from_rules(&rules).map_err(|error| match error {
             crate::api::rule::CompiledCatalogError::DuplicateRule(id) => {
                 ProviderCatalogError::InvalidRule(
                     format!("{provider}:{id}"),
                     "duplicate rule".into(),
                 )
+            }
+            crate::api::rule::CompiledCatalogError::InvalidMatcher(message) => {
+                ProviderCatalogError::InvalidRule("<catalog>".into(), message)
             }
         })?;
 
@@ -108,7 +120,14 @@ impl RuleCatalog {
             .enumerate()
             .map(|(index, id)| (id, crate::api::classification::RuleIndex::new(index)))
             .collect();
-        let compiled = CompiledCatalog::from_rules(&rules);
+        let compiled = CompiledCatalog::compile_rules(&rules).map_err(|error| match error {
+            crate::api::rule::CompiledCatalogError::DuplicateRule(id) => {
+                ProviderCatalogError::InvalidRule(id, "duplicate rule".into())
+            }
+            crate::api::rule::CompiledCatalogError::InvalidMatcher(message) => {
+                ProviderCatalogError::InvalidRule("<catalog>".into(), message)
+            }
+        })?;
         Ok(Self {
             rules,
             rule_ids,

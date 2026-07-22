@@ -7,7 +7,7 @@
 
 use glass_lint_core::{
     Environment,
-    rules::{CallMatcher, Matcher, MemberCallMatcher, Rule, RuleBuildError, ValueMatcher},
+    rules::{CallMatcher, Matcher, MemberCallMatcher, Rule, ValueMatcher},
 };
 
 #[path = "compact_source/constructors.rs"]
@@ -268,11 +268,9 @@ fn new_semantic_matchers_are_normalized_and_validated() {
         .matcher(Matcher::returned_member_call(" ", " "))
         .matcher(Matcher::returned_member_read(" ", "manifest"))
         .matcher(Matcher::instance_member_call("framework", " ", "run"))
-        .build();
-    assert!(matches!(
-        invalid.unwrap_err(),
-        RuleBuildError::InvalidMatcher(_)
-    ));
+        .build()
+        .unwrap();
+    assert!(glass_lint_core::RuleCatalog::new("test", vec![invalid]).is_err());
 }
 
 #[test]

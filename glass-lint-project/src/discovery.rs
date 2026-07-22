@@ -9,12 +9,7 @@ use std::{
 
 use serde_json::Value;
 
-use crate::{
-    admission::SourceAdmission,
-    error::ProjectLoadError,
-    options::ProjectSelection,
-    walk,
-};
+use crate::{admission::SourceAdmission, error::ProjectLoadError, options::ProjectSelection, walk};
 
 /// Discovers the bounded set of source files that belongs to a selection.
 pub struct ProjectDiscovery<'adm, 'opt> {
@@ -46,9 +41,12 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                         selection_path.to_path_buf(),
                     ));
                 }
-                self.discover_tsconfig(config, selection_path.parent().unwrap_or_else(|| {
-                    self.admission.canonical_root()
-                }))?
+                self.discover_tsconfig(
+                    config,
+                    selection_path
+                        .parent()
+                        .unwrap_or_else(|| self.admission.canonical_root()),
+                )?
             }
         };
 
@@ -89,7 +87,9 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         paths.sort();
         paths.dedup();
         if paths.len() > self.admission.options().max_files {
-            return Err(ProjectLoadError::TooManyFiles(self.admission.options().max_files));
+            return Err(ProjectLoadError::TooManyFiles(
+                self.admission.options().max_files,
+            ));
         }
         Ok(())
     }
@@ -99,7 +99,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         let Some(_metadata) = walk::resolve_root(options, directory)? else {
             return Ok(Vec::new());
         };
-        walk::collect_files(options, directory, self.deadline, &mut |_| true)
+        walk::collect_files(self.admission, directory, self.deadline, &mut |_| true)
     }
 
     fn discover_tsconfig(
@@ -109,7 +109,12 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut visited = BTreeSet::new();
         let mut selected = BTreeSet::new();
-        self.collect_tsconfig(&self.admission.canonicalize(config)?, directory, &mut visited, &mut selected)?;
+        self.collect_tsconfig(
+            &self.admission.canonicalize(config)?,
+            directory,
+            &mut visited,
+            &mut selected,
+        )?;
         Ok(selected.into_iter().collect())
     }
 

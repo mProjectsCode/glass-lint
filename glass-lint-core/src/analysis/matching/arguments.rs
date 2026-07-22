@@ -618,7 +618,7 @@ mod tests {
         let declaration =
             Matcher::from(CallMatcher::heuristic("fetch").arg_static_strings(0, ["/api"]));
         let matcher = MatcherSet::from_matchers(vec![declaration.clone(), declaration]);
-        let plan = CompiledMatcherPlan::compile(&matcher);
+        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
         let clauses = plan.query().clauses();
         assert_eq!(clauses.len(), 1, "equivalent clauses compile once");
 

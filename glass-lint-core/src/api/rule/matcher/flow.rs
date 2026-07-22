@@ -6,9 +6,7 @@
 
 use smol_str::{SmolStr, ToSmolStr};
 
-use crate::api::rule::{
-    MatcherBuildError, matcher::MemberCallMatcher, validation::validate_object_flow,
-};
+use crate::api::rule::matcher::MemberCallMatcher;
 
 /// A context-independent predicate over an argument value.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -532,10 +530,12 @@ pub struct ObjectFlowMatcher {
     condition: Option<FlowCondition>,
     /// Completion/emission mode.
     completion: Option<FlowCompletion>,
+    /// Deferred builder error, reported when the containing catalog validates.
+    invalid_operation: Option<&'static str>,
 }
 
 impl ObjectFlowMatcher {
-    /// Start a validated builder for a named object flow.
+    /// Start an unvalidated builder for a named object flow.
     pub fn builder(symbol: impl Into<String>) -> ObjectFlowMatcherBuilder {
         ObjectFlowMatcherBuilder {
             symbol: symbol.into(),
@@ -564,6 +564,10 @@ impl ObjectFlowMatcher {
     /// Borrow the optional completion mode.
     pub fn completion(&self) -> Option<&FlowCompletion> {
         self.completion.as_ref()
+    }
+
+    pub(crate) fn invalid_operation(&self) -> Option<&'static str> {
+        self.invalid_operation
     }
 
     pub(crate) fn normalize(&mut self) {
@@ -626,19 +630,16 @@ impl ObjectFlowMatcherBuilder {
         self
     }
 
-    /// Validate and build the complete object-flow matcher.
-    pub fn build(self) -> Result<ObjectFlowMatcher, MatcherBuildError> {
-        if self.invalid_operation.is_some() {
-            return Err(MatcherBuildError::ConflictingProvenance);
-        }
-        let matcher = ObjectFlowMatcher {
+    /// Build an object-flow matcher. Shape validation is deferred until its
+    /// containing catalog is built.
+    pub fn build(self) -> ObjectFlowMatcher {
+        ObjectFlowMatcher {
             symbol: self.symbol,
             sources: self.sources,
             condition: self.condition,
             completion: self.completion,
-        };
-        validate_object_flow(&matcher, "flow")?;
-        Ok(matcher)
+            invalid_operation: self.invalid_operation,
+        }
     }
 }
 
@@ -660,7 +661,7 @@ mod tests {
             )))
             .complete_at(FlowCompletion::configuration())
             .build();
-        assert!(matcher.is_ok());
+        assert_eq!(matcher.symbol(), "input");
     }
 
     #[test]
@@ -670,7 +671,7 @@ mod tests {
             .configured_by(FlowCondition::any_of(Vec::<ObjectEventMatcher>::new()))
             .complete_at(FlowCompletion::configuration())
             .build();
-        assert!(matches!(empty.unwrap_err(), MatcherBuildError::EmptyChain));
+        assert_eq!(empty.symbol(), "empty");
 
         let duplicate = ObjectFlowMatcher::builder("duplicate")
             .source(source())
@@ -684,9 +685,6 @@ mod tests {
             )))
             .complete_at(FlowCompletion::configuration())
             .build();
-        assert!(matches!(
-            duplicate.unwrap_err(),
-            MatcherBuildError::ConflictingProvenance
-        ));
+        assert_eq!(duplicate.symbol(), "duplicate");
     }
 }

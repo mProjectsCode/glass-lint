@@ -38,8 +38,7 @@ pub fn rule() -> Rule {
                         0,
                     ),
                 ]))
-                .build()
-                .unwrap(),
+                .build(),
         ))
         .matcher(Matcher::from(
             MemberCallMatcher::rooted("document.write").arg(

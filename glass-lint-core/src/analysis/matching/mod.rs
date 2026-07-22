@@ -470,7 +470,7 @@ mod tests {
         let matcher = MatcherSet::from_matchers(vec![crate::api::rule::Matcher::from(
             MemberCallMatcher::heuristic("client.request"),
         )]);
-        let compiled = crate::api::compiler::CompiledMatcherPlan::compile(&matcher);
+        let compiled = crate::api::compiler::CompiledMatcherPlan::compile(&matcher).unwrap();
         let evidence = facts.evidence_for(compiled.query());
         let reference = facts
             .members

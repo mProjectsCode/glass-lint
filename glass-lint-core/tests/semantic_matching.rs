@@ -312,8 +312,7 @@ fn script_insertion_matcher() -> Matcher {
                 MemberCallMatcher::rooted("document.head.appendChild"),
                 0,
             )]))
-            .build()
-            .unwrap(),
+            .build(),
     )
 }
 

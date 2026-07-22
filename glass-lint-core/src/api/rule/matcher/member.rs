@@ -2,7 +2,7 @@
 
 use crate::{
     api::rule::{
-        MatcherBuildError, ModuleSpecifierPattern,
+        ModuleSpecifierPattern,
         matcher::{ArgumentConstraint, ArgumentMatcher},
     },
     rules::ValueMatcher,
@@ -45,16 +45,13 @@ impl MemberCallMatcher {
         )
     }
 
-    pub fn package_member(
-        module: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        Ok(Self::new(
+    pub fn package_member(module: impl Into<String>, member: impl Into<String>) -> Self {
+        Self::new(
             member,
             MemberCallProvenance::PackageModuleNamespace {
-                module: ModuleSpecifierPattern::package(module)?,
+                module: ModuleSpecifierPattern::package(module),
             },
-        ))
+        )
     }
 
     fn new(chain: impl Into<String>, provenance: MemberCallProvenance) -> Self {
@@ -247,16 +244,13 @@ impl MemberReadMatcher {
         }
     }
 
-    pub fn package_member(
-        module: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        Ok(Self {
+    pub fn package_member(module: impl Into<String>, member: impl Into<String>) -> Self {
+        Self {
             chain: member.into(),
             provenance: MemberReadProvenance::PackageModuleNamespace {
-                module: ModuleSpecifierPattern::package(module)?,
+                module: ModuleSpecifierPattern::package(module),
             },
-        })
+        }
     }
 
     /// Return the display/evidence symbol for this matcher.

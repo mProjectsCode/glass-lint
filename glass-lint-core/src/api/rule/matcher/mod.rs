@@ -205,11 +205,8 @@ impl Matcher {
         CallMatcher::module_export(module, export).into()
     }
 
-    pub fn package_call(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        CallMatcher::package_export(module, export).map(Into::into)
+    pub fn package_call(module: impl Into<String>, export: impl Into<String>) -> Self {
+        CallMatcher::package_export(module, export).into()
     }
 
     pub fn heuristic_member_call(chain: impl Into<String>) -> Self {
@@ -224,11 +221,8 @@ impl Matcher {
         MemberCallMatcher::module_member(module, member).into()
     }
 
-    pub fn package_member_call(
-        module: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        MemberCallMatcher::package_member(module, member).map(Into::into)
+    pub fn package_member_call(module: impl Into<String>, member: impl Into<String>) -> Self {
+        MemberCallMatcher::package_member(module, member).into()
     }
 
     pub fn heuristic_member_read(chain: impl Into<String>) -> Self {
@@ -243,19 +237,16 @@ impl Matcher {
         MemberReadMatcher::module_member(module, member).into()
     }
 
-    pub fn package_member_read(
-        module: impl Into<String>,
-        member: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        MemberReadMatcher::package_member(module, member).map(Into::into)
+    pub fn package_member_read(module: impl Into<String>, member: impl Into<String>) -> Self {
+        MemberReadMatcher::package_member(module, member).into()
     }
 
     pub fn import(module: impl Into<String>) -> Self {
         Self::Import(module.into())
     }
 
-    pub fn package_import(module: impl Into<String>) -> Result<Self, MatcherBuildError> {
-        ModuleSpecifierPattern::package(module).map(Self::PackageImport)
+    pub fn package_import(module: impl Into<String>) -> Self {
+        Self::PackageImport(ModuleSpecifierPattern::package(module))
     }
 
     pub fn string_contains(value: impl Into<String>) -> Self {
@@ -270,11 +261,8 @@ impl Matcher {
         ClassMatcher::module_export(module, export).into()
     }
 
-    pub fn package_class(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        ClassMatcher::package_export(module, export).map(Into::into)
+    pub fn package_class(module: impl Into<String>, export: impl Into<String>) -> Self {
+        ClassMatcher::package_export(module, export).into()
     }
 
     pub fn heuristic_constructor(name: impl Into<String>) -> Self {
@@ -289,11 +277,8 @@ impl Matcher {
         ConstructorMatcher::module_export(module, export).into()
     }
 
-    pub fn package_constructor(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        ConstructorMatcher::package_export(module, export).map(Into::into)
+    pub fn package_constructor(module: impl Into<String>, export: impl Into<String>) -> Self {
+        ConstructorMatcher::package_export(module, export).into()
     }
 
     pub fn returned_member_call(source: impl Into<String>, member: impl Into<String>) -> Self {
@@ -316,11 +301,11 @@ impl Matcher {
         module: impl Into<String>,
         export: impl Into<String>,
         member: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
+    ) -> Self {
         let module = module.into();
-        let pattern = ModuleSpecifierPattern::package(module.clone())?;
-        Ok(Self::InstanceMemberCall(
-            InstanceMemberCallMatcher::with_package(module, pattern, export, member),
+        let pattern = ModuleSpecifierPattern::package(module.clone());
+        Self::InstanceMemberCall(InstanceMemberCallMatcher::with_package(
+            module, pattern, export, member,
         ))
     }
 }

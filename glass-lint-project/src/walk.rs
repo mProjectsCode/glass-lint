@@ -13,7 +13,7 @@ use std::{
 
 use walkdir::WalkDir;
 
-use crate::{error::ProjectLoadError, options::ProjectLoadOptions};
+use crate::{admission::SourceAdmission, error::ProjectLoadError};
 
 /// Resolve root metadata respecting the symlink-follow policy.
 ///
@@ -23,7 +23,7 @@ use crate::{error::ProjectLoadError, options::ProjectLoadOptions};
 /// through a symlink target) so the caller can distinguish a single file from
 /// a directory before passing it to [`collect_files`].
 pub fn resolve_root(
-    options: &ProjectLoadOptions,
+    options: &crate::options::ProjectLoadOptions,
     root: &Path,
 ) -> Result<Option<fs::Metadata>, ProjectLoadError> {
     let metadata = fs::symlink_metadata(root).map_err(|source| ProjectLoadError::Io {
@@ -51,7 +51,7 @@ pub fn resolve_root(
 /// iterations and returns [`ProjectLoadError::Timeout`] if the deadline
 /// passes.
 pub fn collect_files(
-    options: &ProjectLoadOptions,
+    admission: &SourceAdmission<'_>,
     root: &Path,
     deadline: Option<Instant>,
     include: &mut dyn FnMut(&Path) -> bool,
@@ -59,14 +59,15 @@ pub fn collect_files(
     let mut entries = Vec::new();
     let mut visited = 0usize;
     let walker = WalkDir::new(root)
-        .follow_links(options.follow_symlinks)
+        .follow_links(admission.options().follow_symlinks)
         .sort_by_file_name()
         .into_iter()
         .filter_entry(|entry| {
             !entry.file_type().is_dir()
-                || !options
-                    .excluded_directories
-                    .contains(&entry.file_name().to_string_lossy().to_string())
+                || !matches!(
+                    admission.classify(entry.path()),
+                    Ok(crate::admission::PathAdmission::Excluded(_))
+                )
         });
     for entry in walker {
         if let Some(deadline) = deadline
@@ -75,9 +76,9 @@ pub fn collect_files(
             return Err(ProjectLoadError::Timeout);
         }
         visited = visited.saturating_add(1);
-        if visited > options.max_visited_entries {
+        if visited > admission.options().max_visited_entries {
             return Err(ProjectLoadError::TooManyEntries(
-                options.max_visited_entries,
+                admission.options().max_visited_entries,
             ));
         }
         let entry = entry.map_err(|error| {
@@ -88,10 +89,15 @@ pub fn collect_files(
                 .unwrap_or_else(|| std::io::Error::other(message));
             ProjectLoadError::Io { path, source }
         })?;
-        if entry.file_type().is_file() && options.supports(entry.path()) && include(entry.path()) {
+        if entry.file_type().is_file()
+            && admission.admitted_path(entry.path())?.is_some()
+            && include(entry.path())
+        {
             entries.push(entry.into_path());
-            if entries.len() > options.max_files {
-                return Err(ProjectLoadError::TooManyFiles(options.max_files));
+            if entries.len() > admission.options().max_files {
+                return Err(ProjectLoadError::TooManyFiles(
+                    admission.options().max_files,
+                ));
             }
         }
     }

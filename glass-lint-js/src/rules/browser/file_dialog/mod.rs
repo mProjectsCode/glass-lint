@@ -33,8 +33,7 @@ pub fn rule() -> Rule {
                         .build(),
                 ]))
                 .complete_at(FlowCompletion::configuration())
-                .build()
-                .unwrap(),
+                .build(),
         )
         .matcher(Matcher::rooted_member_call("showOpenFilePicker"))
         .matcher(Matcher::rooted_member_call("showSaveFilePicker"))

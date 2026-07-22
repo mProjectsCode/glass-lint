@@ -1,6 +1,6 @@
 //! Oxc-backed module resolution and provider-neutral result classification.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use glass_lint_core::{
     ProjectRelativePath, ResolutionRequest, ResolutionRequestKind, ResolverOutcome,
@@ -9,27 +9,34 @@ use glass_lint_core::{
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
 use crate::{
-    admission::{absolute_path, realpath},
+    admission::{PathAdmission, SourceAdmission, absolute_path},
     options::{ProjectLoadOptions, ProjectSelection},
 };
 
 /// Keeps import and CommonJS resolution policy together for one project.
 pub struct ProjectResolver<'a> {
-    root: PathBuf,
-    options: &'a ProjectLoadOptions,
+    admission: SourceAdmission<'a>,
     import: Resolver,
     require: Resolver,
 }
 
 impl<'a> ProjectResolver<'a> {
     /// Build import and CommonJS resolvers under one project root.
-    pub fn new(root: &Path, selection: &ProjectSelection, options: &'a ProjectLoadOptions) -> Self {
-        let import = Resolver::new(Self::build_options(root, selection, options, false));
-        let require =
-            import.clone_with_options(Self::build_options(root, selection, options, true));
+    pub fn new(admission: SourceAdmission<'a>, selection: &ProjectSelection) -> Self {
+        let import = Resolver::new(Self::build_options(
+            admission.canonical_root(),
+            selection,
+            admission.options(),
+            false,
+        ));
+        let require = import.clone_with_options(Self::build_options(
+            admission.canonical_root(),
+            selection,
+            admission.options(),
+            true,
+        ));
         Self {
-            root: root.to_path_buf(),
-            options,
+            admission,
             import,
             require,
         }
@@ -72,8 +79,10 @@ impl<'a> ProjectResolver<'a> {
 
     /// Resolve one request into a provider-neutral, root-classified outcome.
     pub fn resolve(&self, request: &ResolutionRequest) -> ResolverOutcome {
-        let importer = self.root.join(&request.key.importer);
-        let directory = importer.parent().unwrap_or(&self.root);
+        let importer = self.admission.canonical_root().join(&request.key.importer);
+        let directory = importer
+            .parent()
+            .unwrap_or_else(|| self.admission.canonical_root());
         let resolver = if request.key.kind == ResolutionRequestKind::Require {
             &self.require
         } else {
@@ -92,47 +101,49 @@ impl<'a> ProjectResolver<'a> {
     }
 
     fn classify(&self, request: &str, path: &Path) -> ResolverOutcome {
-        let Ok(path) = realpath(path) else {
+        let Ok(admission) = self.admission.classify(path) else {
             return ResolverOutcome::Missing;
         };
-        if path.strip_prefix(&self.root).is_err() {
-            return if is_internal_module_request(request) {
-                ResolverOutcome::OutsideProject {
-                    path: path.to_string_lossy().into_owned(),
+        match admission {
+            PathAdmission::Outside(path) => {
+                if is_internal_module_request(request) {
+                    ResolverOutcome::OutsideProject {
+                        path: path.to_string_lossy().into_owned(),
+                    }
+                } else {
+                    ResolverOutcome::External {
+                        package: package_name(request),
+                    }
                 }
-            } else {
-                ResolverOutcome::External {
-                    package: package_name(request),
+            }
+            PathAdmission::Excluded(path) => {
+                if is_internal_module_request(request) {
+                    ResolverOutcome::Unsupported {
+                        reason: format!("excluded target `{}`", path.display()),
+                    }
+                } else {
+                    ResolverOutcome::External {
+                        package: package_name(request),
+                    }
                 }
-            };
-        }
-        if self.options.excludes_path(&self.root, &path) {
-            return if is_internal_module_request(request) {
-                ResolverOutcome::Unsupported {
-                    reason: format!("excluded target `{}`", path.display()),
-                }
-            } else {
-                ResolverOutcome::External {
-                    package: package_name(request),
-                }
-            };
-        }
-        if !self.options.supports(&path) {
-            return ResolverOutcome::Unsupported {
+            }
+            PathAdmission::Unsupported(path) => ResolverOutcome::Unsupported {
                 reason: format!("unsupported target `{}`", path.display()),
-            };
+            },
+            PathAdmission::Admitted(path) => {
+                let relative = path
+                    .strip_prefix(self.admission.canonical_root())
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let Ok(path) = ProjectRelativePath::new(&relative) else {
+                    return ResolverOutcome::Unsupported {
+                        reason: format!("invalid normalized target `{relative}`"),
+                    };
+                };
+                ResolverOutcome::Internal { path }
+            }
         }
-        let relative = path
-            .strip_prefix(&self.root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let Ok(path) = ProjectRelativePath::new(&relative) else {
-            return ResolverOutcome::Unsupported {
-                reason: format!("invalid normalized target `{relative}`"),
-            };
-        };
-        ResolverOutcome::Internal { path }
     }
 }
 
@@ -166,9 +177,8 @@ mod tests {
     fn delegates_builtin_detection_and_canonicalization_to_oxc() {
         let options = ProjectLoadOptions::default();
         let resolver = ProjectResolver::new(
-            Path::new("."),
+            SourceAdmission::new(Path::new("."), &options).unwrap(),
             &ProjectSelection::entry("main.js"),
-            &options,
         );
 
         for (specifier, expected) in [
@@ -191,9 +201,8 @@ mod tests {
     fn unresolved_bare_packages_remain_external() {
         let options = ProjectLoadOptions::default();
         let resolver = ProjectResolver::new(
-            Path::new("."),
+            SourceAdmission::new(Path::new("."), &options).unwrap(),
             &ProjectSelection::entry("main.js"),
-            &options,
         );
 
         assert_eq!(

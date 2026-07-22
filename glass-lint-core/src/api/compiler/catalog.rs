@@ -24,16 +24,18 @@ impl CompiledCatalog {
                 return Err(CompiledCatalogError::DuplicateRule(rule.id().to_string()));
             }
         }
-        Ok(Self {
-            rules: rules.iter().map(CompiledRule::new).collect(),
-        })
+        Self::compile_rules(rules)
     }
 
-    /// Compile rules without duplicate validation for trusted callers.
-    pub fn from_rules(rules: &[Rule]) -> Self {
-        Self {
-            rules: rules.iter().map(CompiledRule::new).collect(),
-        }
+    /// Compile rules whose identity has already been checked by the owning
+    /// catalog boundary.
+    pub fn compile_rules(rules: &[Rule]) -> Result<Self, CompiledCatalogError> {
+        let compiled = rules
+            .iter()
+            .map(CompiledRule::new)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| CompiledCatalogError::InvalidMatcher(error.to_string()))?;
+        Ok(Self { rules: compiled })
     }
 
     /// Borrow a selected-rule view over this catalog.

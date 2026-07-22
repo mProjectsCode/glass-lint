@@ -7,7 +7,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::{error::ProjectLoadError, options::ProjectLoadOptions, walk};
+use crate::{
+    admission::SourceAdmission, error::ProjectLoadError, options::ProjectLoadOptions, walk,
+};
 
 #[derive(Clone, Debug)]
 pub struct CorpusFile {
@@ -101,9 +103,10 @@ impl<'a> SourceCorpus<'a> {
             let Some(metadata) = walk::resolve_root(self.options, root)? else {
                 continue;
             };
+            let admission = SourceAdmission::new(root, self.options)?;
             if metadata.is_file() {
-                if self.options.supports(root) && include(root) {
-                    paths.insert(root.clone());
+                if admission.admitted_path(root)?.is_some() && include(root) {
+                    paths.insert(admission.canonicalize(root)?);
                 }
                 continue;
             }
@@ -115,7 +118,7 @@ impl<'a> SourceCorpus<'a> {
                     )),
                 ));
             }
-            let found = walk::collect_files(self.options, root, None, &mut include)?;
+            let found = walk::collect_files(&admission, root, None, &mut include)?;
             for path in found {
                 paths.insert(path);
                 if paths.len() > self.options.max_files {
@@ -129,9 +132,11 @@ impl<'a> SourceCorpus<'a> {
 
     /// Read one supported source file after enforcing the byte budget.
     pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
-        if !self.options.supports(path) {
+        let root = path.parent().unwrap_or_else(|| Path::new("."));
+        let admission = SourceAdmission::new(root, self.options)?;
+        let Some(path) = admission.admitted_path(path)? else {
             return Err(ProjectLoadError::UnsupportedSource(path.to_path_buf()));
-        }
-        read_source_bytes(path, self.options.max_source_bytes)
+        };
+        read_source_bytes(&path, self.options.max_source_bytes)
     }
 }

@@ -1,4 +1,4 @@
-//! Validated external module-specifier patterns.
+//! External module-specifier patterns.
 
 use std::fmt;
 
@@ -13,23 +13,31 @@ pub struct ModuleSpecifierPattern {
 
 impl ModuleSpecifierPattern {
     /// Construct an exact authored module specifier.
-    pub fn exact(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
-        let name = name.into().trim().to_string();
-        (!name.is_empty())
-            .then_some(Self {
-                name,
-                package: false,
-            })
-            .ok_or_else(|| {
-                MatcherBuildError::InvalidModuleSpecifier(
-                    "module specifier must not be empty".into(),
-                )
-            })
+    pub fn exact(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into().trim().to_string(),
+            package: false,
+        }
     }
 
     /// Construct a package-root pattern matching the root and `/...` subpaths.
-    pub fn package(name: impl Into<String>) -> Result<Self, MatcherBuildError> {
+    pub fn package(name: impl Into<String>) -> Self {
         let name = name.into().trim().to_string();
+        Self {
+            name,
+            package: true,
+        }
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), MatcherBuildError> {
+        let name = self.name.as_str();
+        if !self.package {
+            return (!name.is_empty()).then_some(()).ok_or_else(|| {
+                MatcherBuildError::InvalidModuleSpecifier(
+                    "module specifier must not be empty".into(),
+                )
+            });
+        }
         if name.is_empty()
             || name.ends_with('/')
             || name.starts_with('.')
@@ -55,10 +63,7 @@ impl ModuleSpecifierPattern {
                 "package root must not contain `/`: `{name}`"
             )));
         }
-        Ok(Self {
-            name,
-            package: true,
-        })
+        Ok(())
     }
 
     pub fn matches(&self, authored: &str) -> bool {
@@ -90,7 +95,7 @@ mod tests {
 
     #[test]
     fn package_patterns_obey_boundaries() {
-        let pattern = ModuleSpecifierPattern::package("@scope/pkg").unwrap();
+        let pattern = ModuleSpecifierPattern::package("@scope/pkg");
         assert!(pattern.matches("@scope/pkg"));
         assert!(pattern.matches("@scope/pkg/subpath"));
         assert!(!pattern.matches("@scope/pkg-extra"));
@@ -100,7 +105,10 @@ mod tests {
     #[test]
     fn package_patterns_reject_non_packages() {
         for value in ["", "pkg/", "pkg/subpath", "./pkg", "/pkg", "https://pkg"] {
-            assert!(ModuleSpecifierPattern::package(value).is_err(), "{value}");
+            assert!(
+                ModuleSpecifierPattern::package(value).validate().is_err(),
+                "{value}"
+            );
         }
     }
 }

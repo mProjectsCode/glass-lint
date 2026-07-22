@@ -1,7 +1,7 @@
 //! Callable matcher declarations and provenance modes.
 
 use crate::api::rule::{
-    MatcherBuildError, ModuleSpecifierPattern,
+    ModuleSpecifierPattern,
     matcher::{ArgumentConstraint, ArgumentMatcher, ValueMatcher},
 };
 
@@ -52,16 +52,13 @@ impl CallMatcher {
         )
     }
 
-    pub fn package_export(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        Ok(Self::new(
+    pub fn package_export(module: impl Into<String>, export: impl Into<String>) -> Self {
+        Self::new(
             export,
             SymbolProvenance::PackageModuleExport {
-                module: ModuleSpecifierPattern::package(module)?,
+                module: ModuleSpecifierPattern::package(module),
             },
-        ))
+        )
     }
 
     fn new(name: impl Into<String>, provenance: SymbolProvenance) -> Self {

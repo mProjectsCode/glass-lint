@@ -10,7 +10,7 @@ use std::{
 use glass_lint_core::{AnalysisReport, Linter, ResolutionRequest, ResolverOutcome};
 
 use crate::{
-    admission::{SourceAdmission, absolute_path, realpath},
+    admission::{SourceAdmission, absolute_path},
     discovery::ProjectDiscovery,
     error::ProjectLoadError,
     options::{ProjectLoadOptions, ProjectSelection, ValidatedProjectLoadOptions},
@@ -172,8 +172,7 @@ impl ProjectLoader {
         let paths = ProjectPaths::from_selection(&self.options, selection, deadline)?;
         metrics.timings.discovery += discovery_start.elapsed();
 
-        let mut build =
-            ProjectLoadState::new(linter, &self.options, paths.admission, selection, deadline)?;
+        let mut build = ProjectLoadState::new(linter, paths.admission, selection, deadline)?;
         build.add_initial_paths(paths.initial_paths);
         match build.load_all(metrics) {
             Ok(()) => Ok(ProjectLoadOutcome::complete(build.finish(metrics)?)),
@@ -202,19 +201,17 @@ impl<'a> ProjectPaths<'a> {
         if !selection_path.exists() {
             return Err(ProjectLoadError::SelectionNotFound(selection_path));
         }
-        let selection_path = realpath(&selection_path)?;
-        let root = realpath(&project_root(options, selection, &selection_path))?;
+        let root = project_root(options, selection, &selection_path);
         let admission = SourceAdmission::new(&root, options)?;
+        let selection_path = admission.canonicalize(&selection_path)?;
         if !admission.is_inside_root(&selection_path) {
             return Err(ProjectLoadError::SelectionOutsideRoot {
                 selection: selection_path,
                 root,
             });
         }
-        let initial_paths = ProjectDiscovery::with_deadline(&admission, deadline).initial_paths(
-            selection,
-            &selection_path,
-        )?;
+        let initial_paths = ProjectDiscovery::with_deadline(&admission, deadline)
+            .initial_paths(selection, &selection_path)?;
         Ok(Self {
             admission,
             initial_paths: initial_paths.into(),
@@ -319,17 +316,12 @@ struct ProjectLoadState<'a> {
 impl<'a> ProjectLoadState<'a> {
     fn new(
         linter: &'a Linter,
-        options: &'a ProjectLoadOptions,
         admission: SourceAdmission<'a>,
         selection: &ProjectSelection,
         deadline: Instant,
     ) -> Result<Self, ProjectLoadError> {
         let session = linter.begin_analysis(admission.canonical_root())?;
-        let resolver = ProjectResolver::new(
-            admission.canonical_root(),
-            selection,
-            options,
-        );
+        let resolver = ProjectResolver::new(admission.clone(), selection);
         Ok(Self {
             session,
             resolver,
@@ -360,8 +352,10 @@ impl<'a> ProjectLoadState<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         self.check_timeout()?;
-        let canonical = self.admission.canonicalize(path)?;
-        if !self.admission.is_inside_root(&canonical) || !self.admitted.admit(canonical.clone()) {
+        let Some(canonical) = self.admission.admitted_path(path)? else {
+            return Ok(());
+        };
+        if !self.admitted.admit(canonical.clone()) {
             return Ok(());
         }
         if self.admitted.len() > self.admission.options().max_files {
@@ -371,7 +365,7 @@ impl<'a> ProjectLoadState<'a> {
         }
 
         let read_start = Instant::now();
-        let source = self.admission.load_source_file(&canonical)?;
+        let source = self.admission.load_admitted_source_file(&canonical)?;
         metrics.timings.reads += read_start.elapsed();
         let source_bytes = u64::try_from(source.source.len()).unwrap_or(u64::MAX);
         self.progress.record_source_bytes(
@@ -432,10 +426,7 @@ impl<'a> ProjectLoadState<'a> {
             self.progress.record_edge();
             self.progress.publish(metrics);
             let target = self.admission.canonical_root().join(path);
-            if target.exists()
-                && !self.admission.is_excluded(&target)
-                && self.admission.supports(&target)
-            {
+            if target.exists() {
                 self.queue.push(target);
             }
         }

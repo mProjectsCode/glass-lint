@@ -19,12 +19,8 @@ pub enum RuleBuildError {
     MissingConfidence,
     /// A required metadata field was supplied more than once.
     DuplicateField(&'static str),
-    /// No valid matcher survived normalization.
-    MissingMatcher,
     /// Category failed taxonomy validation.
     InvalidCategory(String),
-    /// A matcher failed shape/provenance validation.
-    InvalidMatcher(MatcherBuildError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,6 +39,8 @@ pub enum MatcherBuildError {
 pub enum CompiledCatalogError {
     /// Two rules declared the same stable ID.
     DuplicateRule(String),
+    /// A rule declaration could not be lowered into a semantic query.
+    InvalidMatcher(String),
 }
 
 impl fmt::Display for RuleBuildError {
@@ -57,9 +55,7 @@ impl fmt::Display for RuleBuildError {
             Self::DuplicateField(field) => {
                 write!(formatter, "rule {field} was supplied more than once")
             }
-            Self::MissingMatcher => formatter.write_str("at least one matcher is required"),
             Self::InvalidCategory(value) => write!(formatter, "invalid rule category `{value}`"),
-            Self::InvalidMatcher(value) => write!(formatter, "invalid matcher: {value}"),
         }
     }
 }
@@ -101,6 +97,7 @@ impl fmt::Display for CompiledCatalogError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::DuplicateRule(id) => write!(formatter, "duplicate rule `{id}`"),
+            Self::InvalidMatcher(message) => write!(formatter, "invalid matcher: {message}"),
         }
     }
 }

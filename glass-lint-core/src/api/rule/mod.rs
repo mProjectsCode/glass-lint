@@ -1,8 +1,7 @@
 //! Public rule declarations and builder boundary.
 //!
-//! A [`Rule`] is fully validated and normalized before it is exposed to the
-//! compiler. This keeps malformed IDs, taxonomy, matcher shapes, and
-//! unbounded declarations out of analysis and report construction.
+//! Rule metadata is validated when a rule is built. Matcher declarations are
+//! validated, normalized, and compiled at the catalog boundary.
 
 #![allow(clippy::redundant_pub_crate)]
 
@@ -41,7 +40,7 @@ pub struct Rule {
     severity: Severity,
     /// Evidence confidence.
     confidence: Confidence,
-    /// Validated, normalized matcher declarations.
+    /// Matcher declarations retained until catalog validation.
     matchers: Vec<Matcher>,
 }
 
@@ -102,7 +101,7 @@ impl Rule {
 }
 
 #[derive(Debug, Clone)]
-/// Fluent rule builder whose `build` method validates all invariants.
+/// Fluent rule builder whose `build` method validates rule metadata.
 pub struct RuleBuilder {
     id: String,
     description: Option<String>,
@@ -161,7 +160,7 @@ impl RuleBuilder {
         self
     }
 
-    /// Validate metadata/matchers, normalize them, and construct the rule.
+    /// Validate metadata and construct the rule.
     pub fn build(self) -> Result<Rule, RuleBuildError> {
         if let Some(field) = self.duplicate_field {
             return Err(RuleBuildError::DuplicateField(field));
@@ -184,24 +183,27 @@ impl RuleBuilder {
             ));
         }
 
-        let candidate = matcher::MatcherSet::from_matchers(self.matchers);
-        candidate
-            .validate()
-            .map_err(RuleBuildError::InvalidMatcher)?;
-        let matcher = candidate.normalized();
-        if matcher.is_empty() {
-            return Err(RuleBuildError::MissingMatcher);
-        }
-        let matchers = matcher.into_matchers();
-
         Ok(Rule {
             id,
             description,
             category,
             severity,
             confidence,
-            matchers,
+            matchers: self.matchers,
         })
+    }
+}
+
+impl Rule {
+    pub(crate) fn validate_and_normalize(mut self) -> Result<Self, MatcherBuildError> {
+        let candidate = matcher::MatcherSet::from_matchers(self.matchers);
+        candidate.validate()?;
+        let matcher = candidate.normalized();
+        if matcher.is_empty() {
+            return Err(MatcherBuildError::MissingRequired);
+        }
+        self.matchers = matcher.into_matchers();
+        Ok(self)
     }
 }
 
@@ -295,33 +297,50 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_matcher_shapes_at_the_builder_boundary() {
-        let error = Rule::builder("network.fetch")
+    fn defers_invalid_matcher_shapes_to_catalog_construction() {
+        let rule = Rule::builder("network.fetch")
             .description("rule")
             .category("network")
             .severity(Severity::Info)
             .confidence(Confidence::High)
             .matcher(Matcher::rooted_member_call("client..request"))
             .build()
-            .unwrap_err();
-        assert!(matches!(error, RuleBuildError::InvalidMatcher(_)));
+            .unwrap();
+        assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
 
-        let error = ObjectFlowMatcher::builder("incomplete")
+        let flow = ObjectFlowMatcher::builder("incomplete")
             .source(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(
                 "document.createElement",
             )))
+            .build();
+        let rule = Rule::builder("incomplete")
+            .description("rule")
+            .category("flow")
+            .severity(Severity::Info)
+            .confidence(Confidence::High)
+            .matcher(flow)
             .build()
-            .unwrap_err();
-        assert!(matches!(error, MatcherBuildError::MissingRequired));
+            .unwrap();
+        assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
 
-        let error = Rule::builder("class.invalid-global")
+        let rule = Rule::builder("class.invalid-global")
             .description("rule")
             .category("classes")
             .severity(Severity::Info)
             .confidence(Confidence::High)
             .matcher(Matcher::heuristic_class(""))
             .build()
-            .unwrap_err();
-        assert!(matches!(error, RuleBuildError::InvalidMatcher(_)));
+            .unwrap();
+        assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
+
+        let rule = Rule::builder("package.invalid")
+            .description("rule")
+            .category("packages")
+            .severity(Severity::Info)
+            .confidence(Confidence::High)
+            .matcher(Matcher::package_import("pkg/subpath"))
+            .build()
+            .unwrap();
+        assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
     }
 }

@@ -341,7 +341,6 @@ mod tests {
                 0,
             )]))
             .build()
-            .expect("script flow should build")
     }
 
     #[test]
@@ -368,8 +367,7 @@ mod tests {
                 MemberCallMatcher::rooted("document.head.appendChild"),
                 0,
             )]))
-            .build()
-            .expect("configured script flow should build");
+            .build();
         let evidence = collect_source(
             "const first = document.createElement('script'); const second = document.createElement('script'); first.configure('yes'); document.head.appendChild(second); document.head.appendChild(first);",
             &flow,
@@ -576,8 +574,7 @@ mod tests {
                 ValueMatcher::static_string().equals("file"),
             )))
             .complete_at(FlowCompletion::configuration())
-            .build()
-            .expect("configured input flow should build");
+            .build();
         let source = "const input = document.createElement('input'); input.type = 'file';";
         let parsed =
             crate::parse(source, "flow-requirement-location.js").expect("source should parse");

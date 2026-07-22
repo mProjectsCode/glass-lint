@@ -48,8 +48,7 @@ fn script_insertion_flow() -> Matcher {
                 MemberCallMatcher::rooted("document.head.appendChild"),
                 0,
             )]))
-            .build()
-            .expect("script insertion flow should build"),
+            .build(),
     )
 }
 
@@ -238,8 +237,8 @@ fn extracted_instance_callables_follow_aliases_and_bind_but_not_reassignment() {
 #[test]
 fn package_import_patterns_match_subpaths_without_lookalikes() {
     let rules = [rule("package")
-        .matcher(Matcher::package_import("@scope/pkg").unwrap())
-        .matcher(Matcher::package_import("openai").unwrap())
+        .matcher(Matcher::package_import("@scope/pkg"))
+        .matcher(Matcher::package_import("openai"))
         .build()
         .unwrap()];
     let result = classify(
@@ -257,9 +256,9 @@ fn package_import_patterns_match_subpaths_without_lookalikes() {
 #[test]
 fn package_provenance_matches_exports_and_namespace_members_at_boundaries() {
     let rules = [rule("package-provenance")
-        .matcher(Matcher::package_call("sdk", "send").unwrap())
-        .matcher(Matcher::package_member_call("sdk", "client.request").unwrap())
-        .matcher(Matcher::package_member_read("sdk", "version").unwrap())
+        .matcher(Matcher::package_call("sdk", "send"))
+        .matcher(Matcher::package_member_call("sdk", "client.request"))
+        .matcher(Matcher::package_member_read("sdk", "version"))
         .build()
         .unwrap()];
     let result = classify(

@@ -1,6 +1,6 @@
 //! Constructor, class, and returned/instance member matcher declarations.
 
-use crate::api::rule::{MatcherBuildError, ModuleSpecifierPattern, matcher::SymbolProvenance};
+use crate::api::rule::{ModuleSpecifierPattern, matcher::SymbolProvenance};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Matcher for a constructor invocation.
@@ -45,16 +45,13 @@ impl ConstructorMatcher {
         }
     }
 
-    pub fn package_export(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        Ok(Self {
+    pub fn package_export(module: impl Into<String>, export: impl Into<String>) -> Self {
+        Self {
             name: export.into(),
             provenance: SymbolProvenance::PackageModuleExport {
-                module: ModuleSpecifierPattern::package(module)?,
+                module: ModuleSpecifierPattern::package(module),
             },
-        })
+        }
     }
 
     #[must_use]
@@ -126,16 +123,13 @@ impl ClassMatcher {
         }
     }
 
-    pub fn package_export(
-        module: impl Into<String>,
-        export: impl Into<String>,
-    ) -> Result<Self, MatcherBuildError> {
-        Ok(Self {
+    pub fn package_export(module: impl Into<String>, export: impl Into<String>) -> Self {
+        Self {
             name: export.into(),
             provenance: SymbolProvenance::PackageModuleExport {
-                module: ModuleSpecifierPattern::package(module)?,
+                module: ModuleSpecifierPattern::package(module),
             },
-        })
+        }
     }
 
     #[must_use]

@@ -283,8 +283,8 @@ mod tests {
             crate::api::rule::MemberCallMatcher::heuristic("document.createElement"),
         )])
         .normalized();
-        let first = CompiledMatcherPlan::compile(&first);
-        let second = CompiledMatcherPlan::compile(&second);
+        let first = CompiledMatcherPlan::compile(&first).unwrap();
+        let second = CompiledMatcherPlan::compile(&second).unwrap();
         let build = |matchers: Vec<&crate::api::compiler::CompiledMatcherPlan>,
                      selected: &[usize]| {
             let resolver = Resolver::collect(&parsed.program);

@@ -11,19 +11,25 @@ use std::{
 
 use glass_lint_core::SourceFile;
 
-use crate::{
-    corpus::read_source_bytes,
-    error::ProjectLoadError,
-    options::ProjectLoadOptions,
-};
+use crate::{corpus::read_source_bytes, error::ProjectLoadError, options::ProjectLoadOptions};
 
 /// Owns the canonical project root and source-file admission policy.
 ///
 /// Construct one [`SourceAdmission`] per project; its canonical root is
 /// resolved once and shared by discovery, resolution, and loading.
+#[derive(Clone)]
 pub struct SourceAdmission<'a> {
     canonical_root: PathBuf,
     options: &'a ProjectLoadOptions,
+}
+
+/// Result of applying the canonical project boundary to one filesystem path.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum PathAdmission {
+    Admitted(PathBuf),
+    Outside(PathBuf),
+    Excluded(PathBuf),
+    Unsupported(PathBuf),
 }
 
 impl<'a> SourceAdmission<'a> {
@@ -69,6 +75,32 @@ impl<'a> SourceAdmission<'a> {
         }
     }
 
+    /// Canonicalize a path and apply containment, exclusion, and extension
+    /// policy exactly once.
+    pub(crate) fn classify(&self, path: &Path) -> Result<PathAdmission, ProjectLoadError> {
+        let canonical = self.canonicalize(path)?;
+        if !self.is_inside_root(&canonical) {
+            return Ok(PathAdmission::Outside(canonical));
+        }
+        if self.is_excluded(&canonical) {
+            return Ok(PathAdmission::Excluded(canonical));
+        }
+        if !self.supports(&canonical) {
+            return Ok(PathAdmission::Unsupported(canonical));
+        }
+        Ok(PathAdmission::Admitted(canonical))
+    }
+
+    /// Return the canonical path when it is admitted by this project.
+    pub(crate) fn admitted_path(&self, path: &Path) -> Result<Option<PathBuf>, ProjectLoadError> {
+        Ok(match self.classify(path)? {
+            PathAdmission::Admitted(path) => Some(path),
+            PathAdmission::Outside(_)
+            | PathAdmission::Excluded(_)
+            | PathAdmission::Unsupported(_) => None,
+        })
+    }
+
     /// Test whether a file extension is supported by the loader policy.
     pub fn supports(&self, path: &Path) -> bool {
         self.options.supports(path)
@@ -92,13 +124,29 @@ impl<'a> SourceAdmission<'a> {
     ///
     /// This is the single entry-point for loading an admitted source file.
     pub fn load_source_file(&self, path: &Path) -> Result<SourceFile, ProjectLoadError> {
-        let canonical_path = self.canonicalize(path)?;
-        self.check_inside_root(&canonical_path)?;
-        if !self.supports(&canonical_path) {
-            return Err(ProjectLoadError::UnsupportedSource(canonical_path));
-        }
-        let corpus_file = read_source_bytes(&canonical_path, self.options.max_source_bytes)?;
-        let relative = self.relative_path(&canonical_path);
+        let canonical_path = match self.classify(path)? {
+            PathAdmission::Admitted(path) => path,
+            PathAdmission::Outside(path) => {
+                return Err(ProjectLoadError::SelectionOutsideRoot {
+                    selection: path,
+                    root: self.canonical_root.clone(),
+                });
+            }
+            PathAdmission::Excluded(path) | PathAdmission::Unsupported(path) => {
+                return Err(ProjectLoadError::UnsupportedSource(path));
+            }
+        };
+        self.load_admitted_source_file(&canonical_path)
+    }
+
+    /// Read a path returned by [`Self::admitted_path`] without repeating the
+    /// boundary decision.
+    pub(crate) fn load_admitted_source_file(
+        &self,
+        canonical_path: &Path,
+    ) -> Result<SourceFile, ProjectLoadError> {
+        let corpus_file = read_source_bytes(canonical_path, self.options.max_source_bytes)?;
+        let relative = self.relative_path(canonical_path);
         SourceFile::new(relative, corpus_file.source).map_err(Into::into)
     }
 }

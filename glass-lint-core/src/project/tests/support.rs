@@ -96,8 +96,7 @@ pub fn flow_linter() -> crate::Linter {
                     MemberCallMatcher::rooted("document.head.appendChild"),
                     0,
                 )]))
-                .build()
-                .unwrap(),
+                .build(),
         )
         .build()
         .unwrap();

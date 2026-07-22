@@ -11,7 +11,10 @@ use crate::{
     api::{
         classification::{MatchKind, RuleIndex},
         compiler::object_flow::CompiledObjectFlow,
-        rule::{ArgumentConstraint, MatcherFamily, MatcherSet, ModuleSpecifierPattern, Rule},
+        rule::{
+            ArgumentConstraint, MatcherBuildError, MatcherFamily, MatcherSet,
+            ModuleSpecifierPattern, Rule,
+        },
     },
 };
 
@@ -217,19 +220,22 @@ impl QueryClause {
 }
 
 impl QueryPlan {
-    fn from_matcher(matcher: &MatcherSet, flows: Vec<CompiledObjectFlow>) -> Self {
+    fn from_matcher(
+        matcher: &MatcherSet,
+        flows: Vec<CompiledObjectFlow>,
+    ) -> Result<Self, MatcherBuildError> {
         let mut clauses = matcher.lower_all();
         clauses.sort();
         clauses.dedup();
         for clause in &clauses {
-            clause
-                .validate()
-                .expect("matcher compiler produced an invalid query clause");
+            clause.validate().map_err(|error| {
+                MatcherBuildError::Generic(format!("invalid lowered matcher query: {error:?}"))
+            })?;
         }
-        Self {
+        Ok(Self {
             clauses: clauses.into_boxed_slice(),
             flows: flows.into_boxed_slice(),
-        }
+        })
     }
 
     pub(crate) fn clauses(&self) -> &[QueryClause] {
@@ -243,8 +249,10 @@ impl QueryPlan {
 
 impl CompiledMatcherPlan {
     /// Compile a public API matcher and all of its object flows.
-    pub fn compile(matcher: &MatcherSet) -> Self {
-        let flows = matcher
+    pub fn compile(matcher: &MatcherSet) -> Result<Self, MatcherBuildError> {
+        matcher.validate()?;
+        let normalized = matcher.clone().normalized();
+        let flows = normalized
             .families()
             .into_iter()
             .find_map(|family| match family {
@@ -255,9 +263,9 @@ impl CompiledMatcherPlan {
             .iter()
             .map(CompiledObjectFlow::from_matcher)
             .collect();
-        Self {
-            query: QueryPlan::from_matcher(matcher, flows),
-        }
+        Ok(Self {
+            query: QueryPlan::from_matcher(&normalized, flows)?,
+        })
     }
 
     /// Borrow the normalized query used by all semantic execution paths.
@@ -315,12 +323,12 @@ pub(crate) struct CompiledRule {
 
 impl CompiledRule {
     /// Compile a rule's declared matcher list into one canonical plan.
-    pub fn new(rule: &Rule) -> Self {
-        Self {
+    pub fn new(rule: &Rule) -> Result<Self, MatcherBuildError> {
+        Ok(Self {
             matcher: CompiledMatcherPlan::compile(&MatcherSet::from_matchers(
                 rule.matchers().to_vec(),
-            )),
-        }
+            ))?,
+        })
     }
 }
 
@@ -348,7 +356,7 @@ mod tests {
             Matcher::rooted_member_call("window.open"),
             Matcher::rooted_member_read("window.location"),
             Matcher::import("node:fs"),
-            Matcher::package_import("@scope/pkg").unwrap(),
+            Matcher::package_import("@scope/pkg"),
             Matcher::string_contains("https://"),
             Matcher::heuristic_class("Worker"),
             Matcher::global_constructor("URL"),
@@ -362,8 +370,7 @@ mod tests {
                         ValueMatcher::any_value(),
                     )))
                     .complete_at(FlowCompletion::configuration())
-                    .build()
-                    .unwrap(),
+                    .build(),
             ),
             Matcher::returned_member_call("create", "send"),
             Matcher::returned_member_read("create", "token"),
@@ -375,7 +382,7 @@ mod tests {
         let normalized = matcher.normalized();
         let matchers = normalized.into_matchers();
         assert_eq!(matchers.len(), 12);
-        let plan = CompiledMatcherPlan::compile(&MatcherSet::from_matchers(matchers));
+        let plan = CompiledMatcherPlan::compile(&MatcherSet::from_matchers(matchers)).unwrap();
         assert!(!plan.query().clauses().is_empty());
         assert_eq!(plan.query().flows().len(), 1);
     }
@@ -385,11 +392,17 @@ mod tests {
         let matcher = MatcherSet::from_matchers(vec![Matcher::from(
             CallMatcher::global("fetch").arg_static_strings(0, ["/api"]),
         )]);
-        let plan = CompiledMatcherPlan::compile(&matcher);
+        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
         let clauses = plan.query().clauses();
         assert_eq!(clauses.len(), 1);
         assert_eq!(clauses[0].constraints.len(), 1);
         assert_eq!(clauses[0].evidence.kind, MatchKind::CallArgument);
+    }
+
+    #[test]
+    fn invalid_raw_declarations_return_a_compile_error() {
+        let matcher = MatcherSet::from_matchers(vec![Matcher::rooted_member_call("a..b")]);
+        assert!(CompiledMatcherPlan::compile(&matcher).is_err());
     }
 
     #[test]
@@ -412,15 +425,14 @@ mod tests {
                         ValueMatcher::any_value(),
                     )))
                     .complete_at(FlowCompletion::configuration())
-                    .build()
-                    .unwrap(),
+                    .build(),
             ),
             Matcher::returned_member_call("create", "send"),
             Matcher::returned_member_read("create", "token"),
             Matcher::instance_member_call("pkg", "Client", "send"),
         ]);
 
-        let plan = CompiledMatcherPlan::compile(&matcher);
+        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
         let query = plan.query();
         assert_eq!(query.clauses.len(), 10);
         assert_eq!(query.flows.len(), 1);
@@ -438,8 +450,14 @@ mod tests {
         ]);
 
         assert_eq!(
-            format!("{:?}", CompiledMatcherPlan::compile(&first).query()),
-            format!("{:?}", CompiledMatcherPlan::compile(&second).query())
+            format!(
+                "{:?}",
+                CompiledMatcherPlan::compile(&first).unwrap().query()
+            ),
+            format!(
+                "{:?}",
+                CompiledMatcherPlan::compile(&second).unwrap().query()
+            )
         );
     }
 
@@ -453,7 +471,7 @@ mod tests {
             Matcher::import("node:fs"),
             Matcher::string_contains("https://"),
         ]);
-        let plan = CompiledMatcherPlan::compile(&matcher);
+        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
         let clauses = plan.query().clauses();
         assert!(clauses.iter().any(|clause| matches!(
             (&clause.identity, &clause.event, &clause.subject),
@@ -493,8 +511,8 @@ mod tests {
             Matcher::rooted_member_read("location.href"),
             Matcher::heuristic_call("fetch"),
         ]);
-        let first = CompiledMatcherPlan::compile(&first);
-        let second = CompiledMatcherPlan::compile(&second);
+        let first = CompiledMatcherPlan::compile(&first).unwrap();
+        let second = CompiledMatcherPlan::compile(&second).unwrap();
         assert_eq!(first.query().clauses(), second.query().clauses());
         assert_eq!(first.query().clauses(), first.query().clauses());
     }
@@ -505,7 +523,7 @@ mod tests {
             Matcher::from(CallMatcher::global("fetch").arg_static_strings(0, ["/api"])),
             Matcher::global_call("fetch"),
         ]);
-        let plan = CompiledMatcherPlan::compile(&matcher);
+        let plan = CompiledMatcherPlan::compile(&matcher).unwrap();
         let clauses = plan.query().clauses();
         assert_eq!(clauses.len(), 2);
         for left in clauses {

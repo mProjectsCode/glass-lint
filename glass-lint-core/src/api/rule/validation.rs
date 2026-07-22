@@ -1,4 +1,4 @@
-//! Validation of matcher invariants at the rule construction boundary.
+//! Validation of matcher invariants at the catalog construction boundary.
 //!
 //! Validation rejects empty, malformed, dynamic, or over-sized declarations
 //! before normalization and compilation. Error paths identify the matcher
@@ -63,7 +63,8 @@ pub(super) fn validate_package_imports(
     patterns: &[ModuleSpecifierPattern],
 ) -> Result<(), MatcherBuildError> {
     for pattern in patterns {
-        if pattern.as_str().trim().is_empty() || !pattern.is_package() {
+        pattern.validate()?;
+        if !pattern.is_package() {
             return Err(MatcherBuildError::InvalidModuleSpecifier(
                 "package import matcher must be a package pattern".into(),
             ));
@@ -124,7 +125,9 @@ pub(super) fn validate_instance_member_calls(
     values: &[InstanceMemberCallMatcher],
 ) -> Result<(), MatcherBuildError> {
     for instance in values {
-        if instance.module_pattern().is_none() {
+        if let Some(pattern) = instance.module_pattern() {
+            pattern.validate()?;
+        } else {
             validate_name_at(instance.module(), "instance module")?;
         }
         validate_name_at(instance.export(), "instance export")?;
@@ -135,6 +138,9 @@ pub(super) fn validate_instance_member_calls(
 
 /// Validate a complete object-flow lifecycle declaration.
 pub fn validate_object_flow(flow: &ObjectFlowMatcher, path: &str) -> Result<(), MatcherBuildError> {
+    if flow.invalid_operation().is_some() {
+        return Err(MatcherBuildError::ConflictingProvenance);
+    }
     validate_name_at(flow.symbol(), &format!("{path}.symbol"))?;
     if flow.sources().is_empty() {
         return Err(MatcherBuildError::EmptyChain);
@@ -360,8 +366,12 @@ fn validate_index_at(index: usize, _field: &str) -> Result<(), MatcherBuildError
 impl SymbolProvenance {
     /// Validate module provenance while preserving the caller's error path.
     fn validate_at(&self, path: &str) -> Result<(), MatcherBuildError> {
-        if let Self::ModuleExport { module } = self {
-            validate_name_at(module, &format!("{path}.module"))?;
+        match self {
+            Self::ModuleExport { module } => {
+                validate_name_at(module, &format!("{path}.module"))?;
+            }
+            Self::PackageModuleExport { module } => module.validate()?,
+            _ => {}
         }
         Ok(())
     }
@@ -369,8 +379,12 @@ impl SymbolProvenance {
 
 impl MemberCallProvenance {
     fn validate_at(&self, path: &str) -> Result<(), MatcherBuildError> {
-        if let Self::ModuleNamespace { module } = self {
-            validate_name_at(module, &format!("{path}.module"))?;
+        match self {
+            Self::ModuleNamespace { module } => {
+                validate_name_at(module, &format!("{path}.module"))?;
+            }
+            Self::PackageModuleNamespace { module } => module.validate()?,
+            _ => {}
         }
         Ok(())
     }
