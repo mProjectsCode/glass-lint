@@ -195,14 +195,6 @@ impl SymbolPath {
         Self(segments)
     }
 
-    pub(in crate::analysis) fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub(in crate::analysis) fn last_segment(&self) -> Option<&str> {
-        self.0.last().map(SmolStr::as_str)
-    }
-
     pub(in crate::analysis) fn first_segment(&self) -> Option<&str> {
         self.0.first().map(SmolStr::as_str)
     }

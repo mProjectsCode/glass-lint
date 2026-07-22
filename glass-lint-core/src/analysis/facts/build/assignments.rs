@@ -87,7 +87,6 @@ impl FactBuilder<'_> {
             FactKind::MemberRead,
             member.span(),
             FactPayload::MemberRead {
-                syntactic_chain: chain,
                 syntactic_path,
                 rooted_chain: self.rooted_path(resolved_member.rooted_chain.as_ref()),
                 module_member: resolved_member.module_member.clone(),

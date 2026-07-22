@@ -642,7 +642,7 @@ mod tests {
             .expect("should find this.baz() call with instance_class");
         if let FactPayload::Call {
             instance_class,
-            syntactic_chain,
+            syntactic_path,
             ..
         } = &this_call.payload
         {
@@ -651,8 +651,8 @@ mod tests {
                 "this.baz() inside a class with module superclass should capture instance_class"
             );
             assert!(
-                syntactic_chain.is_some(),
-                "should have syntactic chain for member call"
+                syntactic_path.is_some(),
+                "should have syntactic path for member call"
             );
         }
     }

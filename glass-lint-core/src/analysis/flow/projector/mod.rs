@@ -17,7 +17,6 @@ mod transfer;
 use std::collections::BTreeMap;
 
 use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable};
-use transfer::SourceCall;
 
 use crate::{
     analysis::{
@@ -86,7 +85,7 @@ struct ObjectFlowProjector<'rules, 'stream> {
     helpers: FunctionSummaries,
     /// Call results are indexed once so later assignments can start a flow
     /// without rescanning the fact stream.
-    calls_by_result: BTreeMap<ValueId, SourceCall>,
+    calls_by_result: BTreeMap<ValueId, FactId>,
     /// Evidence is grouped and deduplicated by the flow-specific evidence
     /// owner.
     flow_evidence: FlowEvidence,
@@ -116,9 +115,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             .facts()
             .iter()
             .filter_map(|fact| match &fact.payload {
-                FactPayload::Call { result, .. } => {
-                    Some((*result, SourceCall::from_fact(fact, stream)?))
-                }
+                FactPayload::Call { result, .. } => Some((*result, fact.id)),
                 _ => None,
             })
             .collect();
@@ -208,40 +205,29 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             return;
         }
         let FactPayload::Call {
-            syntactic_path,
-            rooted_chain,
-            callee_name,
             receiver,
-            args,
-            unwrap,
             target_function,
             ..
         } = &fact.payload
         else {
             return;
         };
-        if let Some(source) = SourceCall::from_parts(
-            fact.id,
-            self.names,
-            rooted_chain.as_ref(),
-            syntactic_path.as_ref(),
-            callee_name.and_then(|id| self.stream.resolve_name(id)),
-            unwrap.as_deref(),
-        ) {
-            let effective_args = unwrap
-                .as_deref()
-                .map_or(args.as_slice(), |u| u.effective_args.as_slice());
-            self.record_configuration(*receiver, source.chain(), effective_args, source.event());
-            self.record_sinks(
-                source.chain(),
+        if let Some(chain) = transfer::projector_chain(self.stream, fact.id, self.names) {
+            let effective_args =
+                transfer::projector_effective_args(fact).unwrap_or(&[]);
+            let rooted = transfer::projector_rooted(self.stream, fact.id);
+            self.record_configuration(
+                *receiver,
+                &chain,
                 effective_args,
-                source.event(),
-                source.has_rooted_provenance(),
+                fact.id,
             );
+            self.record_sinks(&chain, effective_args, fact.id, rooted);
         }
-        if let Some(function) = target_function {
-            self.record_helper_sink(*function, args, fact.id);
-        }
+        if let Some(function) = target_function
+            && let FactPayload::Call { args, .. } = &fact.payload {
+                self.record_helper_sink(*function, args, fact.id);
+            }
     }
 
     fn environment(&self) -> FlowEnvironment {
@@ -558,9 +544,11 @@ mod tests {
             .iter()
             .find_map(|fact| match &fact.payload {
                 FactPayload::Call {
-                    syntactic_chain: Some(chain),
+                    syntactic_path: Some(chain),
                     ..
-                } if chain.eq_chain("document.head.appendChild") => Some(fact.span),
+                } if chain
+                    .to_symbol_path(stream.names().unwrap())
+                    .is_some_and(|s| s.eq_chain("document.head.appendChild")) => Some(fact.span),
                 _ => None,
             })
             .expect("sink call should be present");

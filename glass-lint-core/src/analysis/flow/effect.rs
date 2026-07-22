@@ -15,7 +15,7 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         facts::{
-            CallArgInfo, CallUnwrap, ControlKind, FactId, FactPayload, FactStream,
+            CallArgInfo, ControlKind, FactId, FactPayload, FactStream,
             ParameterBinding, SemanticFact,
         },
         flow::table::FunctionTable,
@@ -49,19 +49,14 @@ pub(in crate::analysis) struct EffectArgument {
 
 #[derive(Clone, Debug)]
 /// Resolver-backed call relation retained for later project composition.
+///
+/// Only the fact identity and derived arguments (which include per-effect
+/// parameter refs) are owned here.  Chain, result, provenance, rootedness, and
+/// the qualified function target are borrowed from the canonical fact stream
+/// through [`CallEffectRef`].
 pub(in crate::analysis) struct EffectCall {
     /// Fact identity of the call event.
     event: FactId,
-    /// Callable chain used for source matching.
-    chain: Option<NamePath>,
-    /// Whether the chain was rooted by strict provenance.
-    rooted: bool,
-    /// Qualified function target when one is proven.
-    target: Option<FunctionId>,
-    /// Value identity allocated for the call result.
-    result: ValueId,
-    /// Resolver-backed call provenance.
-    provenance: SymbolCallProvenance,
     /// Arguments projected to parameter paths.
     arguments: Vec<EffectArgument>,
 }
@@ -83,18 +78,12 @@ pub(in crate::analysis) enum EffectUse {
     CallArgument {
         /// Fact identity of the call.
         event: FactId,
-        /// Callable chain used for sink matching.
-        chain: Option<NamePath>,
-        /// Whether the callable chain has strict rooted provenance.
-        rooted: bool,
         /// Argument identity passed to the call.
         argument: EffectArgument,
     },
     CallReceiver {
         /// Fact identity of the member call.
         event: FactId,
-        /// Member chain used for sink matching.
-        chain: Option<NamePath>,
         /// Receiver parameter consumed by the member call.
         receiver: ParameterRef,
     },
@@ -165,45 +154,107 @@ impl EffectCall {
         self.event
     }
 
+    pub(in crate::analysis) fn arguments(&self) -> &[EffectArgument] {
+        &self.arguments
+    }
+
+    pub(in crate::analysis) fn as_ref<'s>(
+        &'s self,
+        stream: &'s FactStream,
+    ) -> CallEffectRef<'s> {
+        CallEffectRef {
+            stream,
+            event: self.event,
+        }
+    }
+}
+
+/// Borrowed fact view that provides chain, result, provenance, rootedness, and
+/// the qualified function target for one call effect without copying them from
+/// the canonical fact stream.
+///
+/// This is the single authority for effective-call selection (including
+/// `.call()`/`.apply()` unwrapping) used by local flow, summaries, and
+/// cross-module flow.
+#[derive(Clone, Copy)]
+pub(in crate::analysis) struct CallEffectRef<'stream> {
+    pub(in crate::analysis) stream: &'stream FactStream,
+    pub(in crate::analysis) event: FactId,
+}
+
+impl CallEffectRef<'_> {
+    fn call_fact(&self) -> &FactPayload {
+        &self
+            .stream
+            .fact(self.event)
+            .expect("call fact must exist")
+            .payload
+    }
+
     pub(in crate::analysis) fn chain(&self) -> Option<&NamePath> {
-        self.chain.as_ref()
+        match self.call_fact() {
+            FactPayload::Call {
+                rooted_chain,
+                syntactic_path,
+                unwrap,
+                ..
+            } => unwrap
+                .as_deref()
+                .and_then(|u| u.chain_path.as_ref())
+                .or(rooted_chain.as_ref())
+                .or(syntactic_path.as_ref()),
+            _ => None,
+        }
     }
 
-    pub(in crate::analysis) fn is_rooted(&self) -> bool {
-        self.rooted
-    }
-
-    pub(in crate::analysis) fn target(&self) -> Option<FunctionId> {
-        self.target
+    pub(in crate::analysis) fn rooted(&self) -> bool {
+        matches!(self.call_fact(), FactPayload::Call {
+            rooted_chain: Some(_),
+            ..
+        })
     }
 
     pub(in crate::analysis) fn result(&self) -> ValueId {
-        self.result
+        match self.call_fact() {
+            FactPayload::Call { result, .. } => *result,
+            _ => ValueId::UNKNOWN,
+        }
     }
 
     pub(in crate::analysis) fn provenance(&self) -> &SymbolCallProvenance {
-        &self.provenance
+        match self.call_fact() {
+            FactPayload::Call {
+                call_provenance, ..
+            } => call_provenance,
+            _ => unreachable!("must be a Call fact"),
+        }
     }
 
-    pub(in crate::analysis) fn arguments(&self) -> &[EffectArgument] {
-        &self.arguments
+    pub(in crate::analysis) fn target(&self) -> Option<FunctionId> {
+        match self.call_fact() {
+            FactPayload::Call {
+                target_function, ..
+            } => *target_function,
+            _ => None,
+        }
     }
 
     pub(in crate::analysis) fn matches_source(
         &self,
         flow: &crate::api::compiler::CompiledObjectFlow,
-        stream: &FactStream,
         names: &crate::analysis::name::NameTable,
     ) -> bool {
-        let Some(args) = stream.call_args_for_event(self.event) else {
+        let Some(args) = self.stream.call_args_for_event(self.event) else {
             return false;
         };
-        let values = stream.values();
+        let values = self.stream.values();
+        let Some(chain) = self.chain() else {
+            return false;
+        };
         flow.sources.iter().any(|source| {
-            self.chain().is_some_and(|chain| {
-                NamePath::from_symbol_path(&source.member_call, names)
-                    .is_some_and(|member| member == *chain)
-            }) && source.provenance.matches_rooted(self.is_rooted())
+            NamePath::from_symbol_path(&source.member_call, names)
+                .is_some_and(|member| member == *chain)
+                && source.provenance.matches_rooted(self.rooted())
                 && source.arguments.iter().all(|matcher| {
                     args.get(matcher.index()).is_some_and(|argument| {
                         values.is_some_and(|values| {
@@ -442,13 +493,9 @@ impl FunctionEffect {
 
     fn record_call(&mut self, fact: &SemanticFact, budget: &mut Budget) {
         let FactPayload::Call {
-            syntactic_path,
-            rooted_chain,
             args,
-            target_function,
             result,
             unwrap,
-            call_provenance,
             receiver,
             ..
         } = &fact.payload
@@ -456,21 +503,13 @@ impl FunctionEffect {
             return;
         };
 
-        let (chain, call_args) = Self::call_chain_and_args(
-            unwrap.as_deref(),
-            rooted_chain.as_ref(),
-            syntactic_path.as_ref(),
-            args,
-        );
-        let arguments = self.build_effect_arguments(call_args);
+        let effective_args = unwrap
+            .as_deref()
+            .map_or(args.as_slice(), |u| u.effective_args.as_slice());
+        let arguments = self.build_effect_arguments(effective_args);
         if budget.try_push() {
             self.calls.push(EffectCall {
                 event: fact.id,
-                chain: chain.clone(),
-                rooted: rooted_chain.is_some(),
-                target: *target_function,
-                result: *result,
-                provenance: call_provenance.clone(),
                 arguments: arguments.clone(),
             });
         } else {
@@ -480,7 +519,6 @@ impl FunctionEffect {
             if budget.try_push() {
                 self.uses.push(EffectUse::CallReceiver {
                     event: fact.id,
-                    chain: chain.clone(),
                     receiver,
                 });
             } else {
@@ -494,29 +532,10 @@ impl FunctionEffect {
             }
             self.uses.push(EffectUse::CallArgument {
                 event: fact.id,
-                chain: chain.clone(),
-                rooted: rooted_chain.is_some(),
                 argument,
             });
         }
         self.value_roots.entry(*result).or_insert(*result);
-    }
-
-    fn call_chain_and_args<'a>(
-        unwrap: Option<&'a CallUnwrap>,
-        rooted_chain: Option<&NamePath>,
-        syntactic_path: Option<&NamePath>,
-        args: &'a [CallArgInfo],
-    ) -> (Option<NamePath>, &'a [CallArgInfo]) {
-        unwrap.map_or_else(
-            || {
-                (
-                    rooted_chain.cloned().or_else(|| syntactic_path.cloned()),
-                    args,
-                )
-            },
-            |unwrap| (unwrap.chain_path.clone(), unwrap.effective_args.as_slice()),
-        )
     }
 
     fn build_effect_arguments(&self, call_args: &[CallArgInfo]) -> Vec<EffectArgument> {

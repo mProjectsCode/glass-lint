@@ -14,7 +14,7 @@ use crate::{
     AnalysisDiagnostic, ProjectRelativePath,
     analysis::{
         facts::{FactId, FactStream, SemanticFact},
-        flow::effect::{EffectCall, FunctionEffect},
+        flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
         matching,
         module::ModuleRequestId,
@@ -335,13 +335,12 @@ impl ProjectSemanticModel {
         module: ModuleId,
         fact: FactId,
     ) -> ValueId {
-        self.modules
-            .get(&module)
-            .into_iter()
-            .flat_map(|module| module.local().effects().iter_effects())
-            .flat_map(FunctionEffect::calls)
-            .find(|call| call.event() == fact)
-            .map_or(ValueId::UNKNOWN, EffectCall::result)
+        self.module_fact_stream(module)
+            .and_then(|stream| stream.fact(fact))
+            .map_or(ValueId::UNKNOWN, |fact| match &fact.payload {
+                crate::analysis::facts::FactPayload::Call { result, .. } => *result,
+                _ => ValueId::UNKNOWN,
+            })
     }
 
     /// Convert a module/fact identity into reportable related evidence.

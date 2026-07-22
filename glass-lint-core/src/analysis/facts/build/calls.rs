@@ -16,7 +16,7 @@ use crate::analysis::{
         PathId, PathSegmentInput, Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance,
         ValueId, VisitWith, effective_callee_expr, member_property_name,
     },
-    value::FunctionId,
+    value::{FunctionId, NamePath},
 };
 
 impl FactBuilder<'_> {
@@ -45,7 +45,6 @@ impl FactBuilder<'_> {
                     callee_span,
                     callee_name: None,
                     call_provenance: resolved.call.clone(),
-                    syntactic_chain: None,
                     syntactic_path: None,
                     rooted_chain: None,
                     module_member: None,
@@ -95,10 +94,6 @@ impl FactBuilder<'_> {
         let result = self.call_result(span);
         let effective_args = self.effective_call_args(&resolved, args);
         let callee_name = self.intern_name(resolved.callee_name.as_deref());
-        let syntactic_path = resolved
-            .syntactic_chain
-            .as_ref()
-            .and_then(|path| self.name_path(path));
         self.emit(
             FactKind::Call,
             span,
@@ -109,8 +104,7 @@ impl FactBuilder<'_> {
                 callee_span: resolved.callee_span,
                 callee_name,
                 call_provenance: resolved.call_provenance,
-                syntactic_chain: resolved.syntactic_chain,
-                syntactic_path,
+                syntactic_path: resolved.syntactic_path,
                 rooted_chain: self.rooted_path(resolved.rooted_chain.as_ref()),
                 module_member: resolved.module_member,
                 returned_member: self.returned_path(resolved.returned_member.as_ref()),
@@ -383,7 +377,6 @@ impl FactBuilder<'_> {
                 let chain = chain.unwrap_or_default().without_this_prefix();
                 let chain_path = self.name_path(&chain);
                 let unwrap = Some(Box::new(CallUnwrap {
-                    chain,
                     chain_path,
                     effective_args,
                 }));
@@ -402,7 +395,6 @@ impl FactBuilder<'_> {
                 let chain = chain.unwrap_or_default().without_this_prefix();
                 let chain_path = self.name_path(&chain);
                 let unwrap = Some(Box::new(CallUnwrap {
-                    chain,
                     chain_path,
                     effective_args,
                 }));
@@ -477,14 +469,16 @@ impl FactBuilder<'_> {
                 let resolved = self.resolver.resolve_ident(ident);
                 let extracted = self.extracted_instance_callable(resolved.id);
                 let instance_class = extracted.as_ref().map(InstanceCallable::class_identity);
-                let syntactic_chain = extracted.map(|callable| callable.member().clone());
+                let syntactic_path = extracted
+                    .as_ref()
+                    .and_then(|callable| self.name_path(callable.member()));
                 let callee_span = self.byte_range(ident.span)?;
                 let callee_name = Some(ident.sym.to_smolstr());
                 let target_function = self.resolver.function_id_for_expr(effective);
                 let mut callee =
                     ResolvedCallee::from_resolved(&resolved, callee_span, target_function);
                 callee.callee_name = callee_name;
-                callee.syntactic_chain = syntactic_chain;
+                callee.syntactic_path = syntactic_path;
                 callee.instance_class = instance_class;
                 Some(callee)
             }
@@ -517,7 +511,10 @@ impl FactBuilder<'_> {
 
     pub(super) fn resolve_member_callee(&mut self, member: &MemberExpr) -> Option<ResolvedCallee> {
         let resolved = self.resolver.resolve_member(member);
-        let syntactic_chain = self.resolver.member_expression_chain(member);
+        let syntactic_path = self
+            .resolver
+            .member_expression_chain(member)
+            .and_then(|chain| self.name_path(&chain));
         let instance_class = self
             .resolver
             .instance_member_available(member)
@@ -527,7 +524,7 @@ impl FactBuilder<'_> {
         let callee_span = self.byte_range(member.span)?;
         let target_function = self.resolver.function_id_for_expr(&member.obj);
         let mut callee = ResolvedCallee::from_resolved(&resolved, callee_span, target_function);
-        callee.syntactic_chain = syntactic_chain;
+        callee.syntactic_path = syntactic_path;
         callee.receiver = receiver;
         callee.instance_class = instance_class;
         Some(callee)
@@ -632,7 +629,7 @@ pub(super) struct ResolvedCallee {
     callee_span: crate::ByteRange,
     callee_name: Option<SmolStr>,
     call_provenance: SymbolCallProvenance,
-    syntactic_chain: Option<SymbolPath>,
+    syntactic_path: Option<NamePath>,
     rooted_chain: Option<SymbolPath>,
     module_member: Option<SymbolMemberProvenance>,
     returned_member: Option<(SymbolPath, SymbolPath)>,
@@ -653,7 +650,7 @@ impl ResolvedCallee {
             callee_span,
             callee_name: None,
             call_provenance: resolved.call.clone(),
-            syntactic_chain: None,
+            syntactic_path: None,
             rooted_chain: resolved.rooted_chain.clone(),
             module_member: resolved.module_member.clone(),
             returned_member: resolved.returned_member.clone(),

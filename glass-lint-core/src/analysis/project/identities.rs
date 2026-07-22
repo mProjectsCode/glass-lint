@@ -27,10 +27,12 @@ impl ProjectSemanticModel {
         let Some(module) = self.modules.get(&importer) else {
             return identities;
         };
+        let stream = module.local().facts().stream();
         for effect in module.local().effects().iter_effects() {
             for call in effect.calls() {
+                let cref = call.as_ref(stream);
                 let Some((target_module, target_function)) =
-                    self.qualified_function_target(importer, call.target(), call.provenance())
+                    self.qualified_function_target(importer, cref.target(), cref.provenance())
                 else {
                     continue;
                 };
@@ -66,7 +68,7 @@ impl ProjectSemanticModel {
                         }),
                     SymbolCallProvenance::Unknown(_) => ExportResolution::Unknown,
                 };
-                identities.insert(call.result(), resolution.into());
+                identities.insert(cref.result(), resolution.into());
             }
         }
         identities

@@ -7,7 +7,7 @@ use crate::{
     analysis::{
         name::NameId,
         syntax::{SymbolCallProvenance, SymbolMemberProvenance},
-        value::{FunctionId, NamePath, PathId, SymbolPath, ValueId},
+        value::{FunctionId, NamePath, PathId, ValueId},
     },
 };
 
@@ -205,10 +205,8 @@ pub(in crate::analysis) struct ParameterBinding {
 /// Information about a `.call()`/`.apply()` unwrapping at a call site.
 #[derive(Debug, Clone)]
 pub(in crate::analysis) struct CallUnwrap {
-    /// The chain spelling of the target being called (e.g. `"fetch"` or
-    /// `"mod.fn"`).
-    pub(in crate::analysis) chain: SymbolPath,
-    /// Interned version of the unwrap chain, precomputed during lowering.
+    /// Interned chain identity of the effective call target after
+    /// `.call()`/`.apply()` unwrapping, precomputed during lowering.
     pub(in crate::analysis) chain_path: Option<NamePath>,
     /// Effective arguments after removing the receiver and options/array
     /// wrapper.
@@ -230,9 +228,7 @@ pub(in crate::analysis) enum FactPayload {
     },
     /// Member expression read.
     MemberRead {
-        /// Original member spelling when statically recoverable.
-        syntactic_chain: Option<SymbolPath>,
-        /// Syntactic chain converted to NamePath during lowering.
+        /// Syntactic chain interned to NamePath during lowering.
         syntactic_path: Option<NamePath>,
         /// Proven rooted chain used by strict member matchers.
         rooted_chain: Option<NamePath>,
@@ -281,9 +277,7 @@ pub(in crate::analysis) enum FactPayload {
         callee_name: Option<NameId>,
         /// Resolver-backed callable provenance.
         call_provenance: SymbolCallProvenance,
-        /// Member chain as written at the call site.
-        syntactic_chain: Option<SymbolPath>,
-        /// Syntactic chain converted to NamePath during lowering.
+        /// Syntactic chain interned to NamePath during lowering.
         syntactic_path: Option<NamePath>,
         /// Proven rooted member chain, if available.
         rooted_chain: Option<NamePath>,

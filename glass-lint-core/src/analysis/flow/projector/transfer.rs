@@ -9,91 +9,63 @@ use crate::analysis::{
     flow::projector::{
         CallArgInfo, FactId, FactPayload, FlowState, ObjectFlowProjector, ObjectId, ValueId,
     },
+    name::NameTable,
     value::NamePath,
 };
 
-#[derive(Debug, Clone)]
-pub(super) struct SourceCall {
-    /// Rooted or syntactic chain selected as the matcher lookup key.
-    chain: NamePath,
-    /// Original fact used for deterministic evidence anchoring.
-    fact_id: FactId,
-    /// Whether the original call had rooted provenance.
-    rooted: bool,
-}
-
-impl SourceCall {
-    /// Build the canonical source-call view used by indexing and transfer.
-    ///
-    /// `.call()` and `.apply()` facts carry both the wrapper syntax and the
-    /// effective target invocation. Flow rules match the latter, so an unwrap
-    /// replaces both the chain and argument list before source matching.
-    pub(super) fn from_fact(
-        fact: &crate::analysis::facts::SemanticFact,
-        stream: &FactStream,
-    ) -> Option<Self> {
-        let FactPayload::Call {
+/// Resolve the effective call chain for a call fact in the projector.
+///
+/// Includes a callee-name fallback that is not needed by the general
+/// [`crate::analysis::flow::effect::CallEffectRef`] view.
+pub(super) fn projector_chain(stream: &FactStream, fact_id: FactId, names: &NameTable) -> Option<NamePath> {
+    let fact = stream.fact(fact_id)?;
+    match &fact.payload {
+        FactPayload::Call {
             rooted_chain,
             syntactic_path,
             callee_name,
             unwrap,
             ..
-        } = &fact.payload
-        else {
-            return None;
-        };
-        Self::from_parts(
-            fact.id,
-            stream.names()?,
-            rooted_chain.as_ref(),
-            syntactic_path.as_ref(),
-            callee_name.and_then(|id| stream.resolve_name(id)),
-            unwrap.as_deref(),
-        )
-    }
-
-    /// Build a source-call view from explicit canonical call components.
-    pub(super) fn from_parts(
-        fact_id: FactId,
-        names: &crate::analysis::name::NameTable,
-        rooted_chain: Option<&NamePath>,
-        syntactic_path: Option<&NamePath>,
-        callee_name: Option<&str>,
-        unwrap: Option<&crate::analysis::facts::CallUnwrap>,
-    ) -> Option<Self> {
-        let chain = unwrap.map_or_else(
-            || {
-                rooted_chain
-                    .cloned()
-                    .or_else(|| syntactic_path.cloned())
-                    .or_else(|| {
-                        callee_name.and_then(|name| {
+        } => {
+            unwrap
+                .as_deref()
+                .and_then(|u| u.chain_path.clone())
+                .or_else(|| rooted_chain.clone())
+                .or_else(|| syntactic_path.clone())
+                .or_else(|| {
+                    callee_name.and_then(|id| stream.resolve_name(id)).and_then(
+                        |name| {
                             NamePath::from_symbol_path(
                                 &crate::analysis::SymbolPath::from(name),
                                 names,
                             )
-                        })
-                    })
-            },
-            |unwrap| unwrap.chain_path.clone(),
-        );
-        Some(Self {
-            chain: chain?,
-            fact_id,
-            rooted: rooted_chain.is_some(),
-        })
+                        },
+                    )
+                })
+        }
+        _ => None,
     }
+}
 
-    pub(super) fn chain(&self) -> &NamePath {
-        &self.chain
-    }
+/// Whether the call fact had rooted provenance.
+pub(super) fn projector_rooted(stream: &FactStream, fact_id: FactId) -> bool {
+    stream
+        .fact(fact_id)
+        .is_some_and(|fact| matches!(&fact.payload, FactPayload::Call { rooted_chain: Some(_), .. }))
+}
 
-    pub(super) fn event(&self) -> FactId {
-        self.fact_id
-    }
-
-    pub(super) fn has_rooted_provenance(&self) -> bool {
-        self.rooted
+/// Return the effective arguments for a call fact, accounting for
+/// `.call()`/`.apply()` unwrapping.
+pub(super) fn projector_effective_args(
+    fact: &crate::analysis::facts::SemanticFact,
+) -> Option<&[CallArgInfo]> {
+    match &fact.payload {
+        FactPayload::Call { args, unwrap, .. } => Some(
+            unwrap
+                .as_deref()
+                .map_or(args.as_slice(), |u| u.effective_args.as_slice()),
+        ),
+        _ => None,
     }
 }
 
@@ -103,13 +75,14 @@ impl ObjectFlowProjector<'_, '_> {
         if target == ValueId::UNKNOWN {
             return;
         }
-        if let Some(call) = self.calls_by_result.get(&source).cloned()
-            && let Some(args) = self.stream.call_args_for_event(call.event())
+        if let Some(fact_id) = self.calls_by_result.get(&source).copied()
+            && let Some(args) = self.stream.call_args_for_event(fact_id)
+            && let Some(chain) = projector_chain(self.stream, fact_id, self.names)
             && let Some((object, states)) = self.match_source(
-                call.chain(),
+                &chain,
                 args,
-                call.event(),
-                call.has_rooted_provenance(),
+                fact_id,
+                projector_rooted(self.stream, fact_id),
             )
         {
             if self.flow_state.state_count().saturating_add(states.len())

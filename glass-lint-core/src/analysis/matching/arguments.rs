@@ -103,7 +103,7 @@ impl<'a> MatcherEvaluator<'a> {
     fn fact_matches_clause(&self, fact: &SemanticFact, clause: &QueryClause) -> bool {
         let FactPayload::Call {
             callee,
-            syntactic_chain,
+            syntactic_path,
             rooted_chain,
             returned_member,
             instance_class,
@@ -120,6 +120,30 @@ impl<'a> MatcherEvaluator<'a> {
             callee_name.and_then(|id| self.names.resolve(id).map(Into::into));
         let call_provenance = self.overlaid_call_provenance(call_provenance, *callee);
 
+        let member_path = match &clause.event {
+            EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member } => {
+                crate::analysis::value::NamePath::from_symbol_path(member, self.names)
+            }
+            _ => None,
+        };
+
+        let rooted_path = match &clause.identity {
+            crate::api::compiler::rule::IdentityConstraint::Rooted { path } => {
+                crate::analysis::value::NamePath::from_symbol_path(path, self.names)
+            }
+            _ => None,
+        };
+
+        let any_name_path = match &clause.identity {
+            crate::api::compiler::rule::IdentityConstraint::Any { name, .. } => {
+                crate::analysis::value::NamePath::from_symbol_path(
+                    &SymbolPath::from(name.as_str()),
+                    self.names,
+                )
+            }
+            _ => None,
+        };
+
         match &clause.event {
             EventPredicate::Call => {
                 if !matches!(clause.subject, SubjectConstraint::Direct) {
@@ -129,13 +153,17 @@ impl<'a> MatcherEvaluator<'a> {
                     clause,
                     &call_provenance,
                     callee_name.as_ref(),
-                    syntactic_chain.as_ref(),
+                    syntactic_path.as_ref(),
+                    any_name_path.as_ref(),
                 ) {
                     return false;
                 }
                 self.check_constrained_args(clause, args, unwrap.as_deref())
             }
-            EventPredicate::MemberCall { member } => {
+            EventPredicate::MemberCall { .. } => {
+                let Some(ref member) = member_path else {
+                    return false;
+                };
                 if !member_subject_matches(
                     clause,
                     member,
@@ -148,7 +176,8 @@ impl<'a> MatcherEvaluator<'a> {
                 if !member_identity_matches(
                     clause,
                     member,
-                    syntactic_chain.as_ref(),
+                    rooted_path.as_ref(),
+                    syntactic_path.as_ref(),
                     rooted_chain.as_ref(),
                     fact,
                     self.names,
@@ -220,12 +249,15 @@ fn call_identity_matches(
     clause: &QueryClause,
     call_provenance: &SymbolCallProvenance,
     callee_name: Option<&smol_str::SmolStr>,
-    syntactic_chain: Option<&SymbolPath>,
+    syntactic_path: Option<&NamePath>,
+    any_name_path: Option<&NamePath>,
 ) -> bool {
     match &clause.identity {
         IdentityConstraint::Any { name, .. } => {
             callee_name.is_some_and(|found| *found == *name)
-                || syntactic_chain.is_some_and(|chain| chain.eq_chain(name))
+                || any_name_path
+                    .zip(syntactic_path)
+                    .is_some_and(|(name_path, chain)| name_path == chain)
         }
         IdentityConstraint::Global { name, .. } => {
             matches!(call_provenance, SymbolCallProvenance::Global { name: found } if found == name)
@@ -246,7 +278,7 @@ fn call_identity_matches(
 
 fn member_subject_matches(
     clause: &QueryClause,
-    member: &SymbolPath,
+    member: &NamePath,
     returned_member: Option<&(NamePath, NamePath)>,
     instance_class: Option<&(smol_str::SmolStr, smol_str::SmolStr)>,
     names: &NameTable,
@@ -255,7 +287,7 @@ fn member_subject_matches(
         SubjectConstraint::Direct => true,
         SubjectConstraint::ReturnedFrom { producer } => {
             returned_member.is_some_and(|(source, found)| {
-                NamePath::from_symbol_path(member, names).is_some_and(|member| found == &member)
+                found == member
                     && source
                         .to_symbol_path(names)
                         .is_some_and(|source| producer.exact_root_matches(&source))
@@ -268,8 +300,9 @@ fn member_subject_matches(
 
 fn member_identity_matches(
     clause: &QueryClause,
-    member: &SymbolPath,
-    syntactic_chain: Option<&SymbolPath>,
+    member: &NamePath,
+    rooted_path: Option<&NamePath>,
+    syntactic_path: Option<&NamePath>,
     rooted_chain: Option<&NamePath>,
     fact: &SemanticFact,
     names: &NameTable,
@@ -278,31 +311,28 @@ fn member_identity_matches(
         return false;
     };
     match (&clause.identity, &clause.subject) {
-        (IdentityConstraint::Any { name, .. }, SubjectConstraint::Direct) => {
-            member.eq_chain(name)
-                && (syntactic_chain.is_some_and(|chain| chain == member)
-                    || rooted_chain.is_some_and(|chain| {
-                        NamePath::from_symbol_path(member, names)
-                            .is_some_and(|member| chain == &member)
-                    }))
+        (IdentityConstraint::Any { .. }, SubjectConstraint::Direct) => {
+            syntactic_path.is_some_and(|chain| chain == member)
+                || rooted_chain.is_some_and(|chain| chain == member)
         }
-        (IdentityConstraint::Rooted { path }, SubjectConstraint::Direct) => rooted_chain
-            .is_some_and(|chain| {
-                NamePath::from_symbol_path(path, names).is_some_and(|path| chain == &path)
-                    && NamePath::from_symbol_path(member, names)
-                        .is_some_and(|member| chain == &member)
-            }),
-        (IdentityConstraint::Rooted { path }, SubjectConstraint::ReturnedFrom { .. }) => {
+        (IdentityConstraint::Rooted { .. }, SubjectConstraint::Direct) => {
+            let Some(path) = rooted_path else {
+                return false;
+            };
+            rooted_chain.is_some_and(|chain| chain == path && chain == member)
+        }
+        (IdentityConstraint::Rooted { .. }, SubjectConstraint::ReturnedFrom { .. }) => {
             let FactPayload::Call {
                 returned_member, ..
             } = &fact.payload
             else {
                 return false;
             };
+            let Some(path) = rooted_path else {
+                return false;
+            };
             returned_member.as_ref().is_some_and(|(source, found)| {
-                NamePath::from_symbol_path(path, names).is_some_and(|path| source == &path)
-                    && NamePath::from_symbol_path(member, names)
-                        .is_some_and(|member| found == &member)
+                source == path && found == member
             })
         }
         (
@@ -310,7 +340,7 @@ fn member_identity_matches(
             SubjectConstraint::InstanceOf { .. },
         ) => instance_class_and_chain_match(
             fact,
-            syntactic_chain,
+            syntactic_path,
             member,
             |found_module| found_module == module,
             export,
@@ -320,7 +350,7 @@ fn member_identity_matches(
             SubjectConstraint::InstanceOf { .. },
         ) => instance_class_and_chain_match(
             fact,
-            syntactic_chain,
+            syntactic_path,
             member,
             |found_module| module.matches(found_module),
             export,
@@ -328,12 +358,12 @@ fn member_identity_matches(
         (IdentityConstraint::ModuleNamespace { module }, SubjectConstraint::Direct) => {
             namespace_member_matches(module_member.as_ref(), member, |found_module| {
                 found_module == module
-            })
+            }, names)
         }
         (IdentityConstraint::PackageModuleNamespace { module }, SubjectConstraint::Direct) => {
             namespace_member_matches(module_member.as_ref(), member, |found_module| {
                 module.matches(found_module)
-            })
+            }, names)
         }
         _ => false,
     }
@@ -341,8 +371,8 @@ fn member_identity_matches(
 
 fn instance_class_and_chain_match(
     fact: &SemanticFact,
-    syntactic_chain: Option<&SymbolPath>,
-    member: &SymbolPath,
+    syntactic_path: Option<&NamePath>,
+    member: &NamePath,
     module_matches: impl FnOnce(&SmolStr) -> bool,
     export: &SmolStr,
 ) -> bool {
@@ -354,19 +384,27 @@ fn instance_class_and_chain_match(
         .is_some_and(|(found_module, found_export)| {
             module_matches(found_module) && found_export == export
         })
-        && syntactic_chain.and_then(|s| s.last_segment()) == member.last_segment()
+        && syntactic_path
+            .and_then(NamePath::last_segment)
+            .zip(member.last_segment())
+            .is_some_and(|(s_last, m_last)| s_last == m_last)
 }
 
 fn namespace_member_matches(
     module_member: Option<&SymbolMemberProvenance>,
-    member: &SymbolPath,
+    member: &NamePath,
     module_matches: impl FnOnce(&SmolStr) -> bool,
+    names: &NameTable,
 ) -> bool {
     matches!(
         module_member,
         Some(SymbolMemberProvenance::ModuleNamespace {
             module: found_module, member: found_member
-        }) if module_matches(found_module) && member.eq_chain(found_member)
+        }) if module_matches(found_module)
+            && member
+                .first_segment()
+                .and_then(|id| names.resolve(id))
+                .is_some_and(|resolved| resolved == found_member.as_str())
     )
 }
 

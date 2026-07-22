@@ -178,7 +178,6 @@ mod tests {
                     callee_span: span,
                     callee_name: None,
                     call_provenance: SymbolCallProvenance::Local,
-                    syntactic_chain: None,
                     syntactic_path: None,
                     rooted_chain: None,
                     module_member: None,
@@ -189,7 +188,6 @@ mod tests {
                     unwrap: None,
                 },
                 FactKind::MemberRead => FactPayload::MemberRead {
-                    syntactic_chain: None,
                     syntactic_path: None,
                     rooted_chain: None,
                     module_member: None,

@@ -189,12 +189,14 @@ impl ContextWorklist {
 
     fn seed_from_calls(&mut self, project: &ProjectSemanticModel, sources: &FlowSources) {
         for module in project.modules() {
+            let stream = module.local().facts().stream();
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
+                    let cref = call.as_ref(stream);
                     let Some((target_module, target_function)) = project.qualified_function_target(
                         module.id(),
-                        call.target(),
-                        call.provenance(),
+                        cref.target(),
+                        cref.provenance(),
                     ) else {
                         continue;
                     };
@@ -415,10 +417,11 @@ impl FlowSources {
             let stream = module.local().facts().stream();
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
+                    let cref = call.as_ref(stream);
                     for (flow_id, flow) in flows {
-                        if call.matches_source(flow, stream, names) {
+                        if cref.matches_source(flow, names) {
                             self.add(
-                                SourceKey::new(module.id(), effect.id(), call.result()),
+                                SourceKey::new(module.id(), effect.id(), cref.result()),
                                 SourceCandidate {
                                     flow: *flow_id,
                                     fact: call.event(),
@@ -438,13 +441,15 @@ impl FlowSources {
         while budget.next_round() {
             let mut changed = false;
             for module in project.modules() {
+                let stream = module.local().facts().stream();
                 for effect in module.local().effects().iter_effects() {
                     for call in effect.calls() {
+                        let cref = call.as_ref(stream);
                         let Some((target_module, target_function)) = project
                             .qualified_function_target(
                                 module.id(),
-                                call.target(),
-                                call.provenance(),
+                                cref.target(),
+                                cref.provenance(),
                             )
                         else {
                             continue;
@@ -455,12 +460,18 @@ impl FlowSources {
                         changed |= self.refine_returned_sources(
                             module.id(),
                             effect.id(),
-                            call.result(),
+                            cref.result(),
                             target,
                             target_module,
                             target_function,
                         );
-                        changed |= self.refine_argument_sources(module.id(), effect, call, target);
+                        changed |= self.refine_argument_sources(
+                            module.id(),
+                            effect,
+                            call,
+                            target,
+                            cref.result(),
+                        );
                     }
                 }
             }
@@ -505,6 +516,7 @@ impl FlowSources {
         effect: &FunctionEffect,
         call: &crate::analysis::flow::effect::EffectCall,
         target: &FunctionEffect,
+        call_result: ValueId,
     ) -> bool {
         let mut changed = false;
         for argument in call.arguments() {
@@ -522,7 +534,7 @@ impl FlowSources {
                 .unwrap_or_else(|| argument.value());
             let from = SourceKey::new(caller_module, effect.id(), root);
             changed |= self.extend_from_key(
-                SourceKey::new(caller_module, effect.id(), call.result()),
+                SourceKey::new(caller_module, effect.id(), call_result),
                 &from,
             );
         }

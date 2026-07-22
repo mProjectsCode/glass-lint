@@ -10,7 +10,7 @@ use crate::{
     analysis::{
         ProjectSemanticModel,
         facts::FactId,
-        flow::effect::{EffectUse, FunctionEffect},
+        flow::effect::{CallEffectRef, EffectUse, FunctionEffect},
         name::NameTable,
     },
     api::{classification::ClassificationEvidence, compiler::CompiledObjectFlow},
@@ -50,15 +50,13 @@ impl UsageProjector<'_> {
                 EffectUse::PropertyWrite {
                     event, property, ..
                 } => self.apply_property(*event, property.as_ref()),
-                EffectUse::CallReceiver { event, chain, .. } => {
-                    self.apply_receiver(*event, chain.as_ref());
+                EffectUse::CallReceiver { event, .. } => {
+                    self.apply_receiver(*event);
                 }
                 EffectUse::CallArgument {
                     event,
-                    chain,
-                    rooted,
                     argument,
-                } => self.apply_argument(*event, chain.as_ref(), *rooted, argument.index()),
+                } => self.apply_argument(*event, argument.index()),
             }
         }
     }
@@ -93,21 +91,16 @@ impl UsageProjector<'_> {
         *self.state = next;
     }
 
-    fn apply_receiver(&mut self, event: FactId, chain: Option<&crate::analysis::value::NamePath>) {
-        let Some(call_args) = self
-            .project
-            .module_names(self.context.module)
-            .and_then(|_| {
-                let stream = self.project.module_fact_stream(self.context.module)?;
-                stream.call_args_for_event(event)
-            })
-        else {
+    fn apply_receiver(&mut self, event: FactId) {
+        let Some(stream) = self.project.module_fact_stream(self.context.module) else {
             return;
         };
-        let values = self
-            .project
-            .module_fact_stream(self.context.module)
-            .and_then(|s| s.values());
+        let Some(call_args) = stream.call_args_for_event(event) else {
+            return;
+        };
+        let cref = CallEffectRef { stream, event };
+        let chain = cref.chain();
+        let values = stream.values();
         let mut next = self.state.clone();
         for (index, requirement) in self.flow.requirements.iter().enumerate() {
             if let crate::api::compiler::CompiledObjectRequirement::MemberCall { member, arguments } =
@@ -138,10 +131,14 @@ impl UsageProjector<'_> {
     fn apply_argument(
         &mut self,
         event: FactId,
-        chain: Option<&crate::analysis::value::NamePath>,
-        rooted: bool,
         argument: usize,
     ) {
+        let Some(stream) = self.project.module_fact_stream(self.context.module) else {
+            return;
+        };
+        let cref = CallEffectRef { stream, event };
+        let chain = cref.chain();
+        let rooted = cref.rooted();
         if self.flow.sink_matches(
             chain
                 .and_then(|chain| chain.to_symbol_path(self.names))
@@ -194,16 +191,20 @@ pub(super) struct CallPropagation<'a> {
 
 impl CallPropagation<'_> {
     pub(super) fn propagate(&mut self) {
+        let Some(stream) = self.project.module_fact_stream(self.module) else {
+            return;
+        };
         for call in self.effect.calls() {
             if self.through.is_some_and(|event| call.event() > event)
                 || !self.propagated.insert(call.event())
             {
                 continue;
             }
+            let cref = call.as_ref(stream);
             let Some((target_module, target_function)) = self.project.qualified_function_target(
                 self.module,
-                call.target(),
-                call.provenance(),
+                cref.target(),
+                cref.provenance(),
             ) else {
                 continue;
             };
