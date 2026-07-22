@@ -14,12 +14,12 @@ use swc_ecma_visit::{Visit, VisitWith};
 
 use crate::analysis::{
     scope::{
-        BindingProvenance, LexicalScopeCollector,
+        LexicalScopeCollector,
         ScopeEffect::DynamicEvaluation,
         ScopeId, ScopeKind,
         collect::{
             Pass, PropertyAliasAssignment, RootedPropertyMutation,
-            analysis::{DeclarationAnalysis, DeclarationClassification},
+            analysis::{DeclarationClassification, DeclarationFacts},
         },
     },
     syntax::{
@@ -46,36 +46,30 @@ impl Visit for LexicalScopeCollector<'_> {
         }
         let scope = self.binding_scope(var_decl.kind);
         for declarator in &var_decl.decls {
-            let mutable_object = var_decl.kind == VarDeclKind::Var
-                && matches!(
-                    declarator.init.as_deref().and_then(|init| {
-                        self.static_object_values(init)
-                            .or_else(|| self.const_provenance(init))
-                    }),
-                    Some(
-                        BindingProvenance::StaticObjectKeys(_)
-                            | BindingProvenance::StaticObjectValues(_)
-                    )
-                );
+            let init = declarator.init.as_deref();
+            // Compute the shared initializer subresults up front: both the
+            // mutability probe and the declaration classification need them
+            // and the visitor performs mutable bookkeeping between the two.
+            let facts = init.map(|init| DeclarationFacts::compute(self, init));
+            let mutable_object = facts
+                .as_ref()
+                .is_some_and(|facts| facts.is_mutable_static_object(var_decl.kind));
             record_mutable_static_object(self, scope, mutable_object, declarator);
             if register_declared_function(self, scope, declarator) {
                 continue;
             }
-            if let (Pat::Ident(alias), Some(Expr::Ident(target))) =
-                (&declarator.name, declarator.init.as_deref())
+            if let (Pat::Ident(alias), Some(Expr::Ident(target))) = (&declarator.name, init)
                 && let Some(function_scope) = self.function_scope_for_name(target.sym.as_ref())
                 && let Some(key) = self.scoped_name(scope, alias.id.sym.as_ref())
             {
                 self.function_aliases.insert(key, function_scope);
             }
-            let init = declarator.init.as_deref();
             self.insert_pat_locals(scope, &declarator.name);
             let derived_function_pattern =
                 collect_derived_function_pattern(self, &declarator.name, init, scope);
 
-            if let Some(init) = init {
-                let analysis = DeclarationAnalysis::new(self, init);
-                match analysis.classify_declaration(&declarator.name, derived_function_pattern) {
+            if let Some(facts) = facts {
+                match facts.classify_declaration(&declarator.name, derived_function_pattern) {
                     DeclarationClassification::Binding { name, provenance } => {
                         self.insert(scope, name, provenance);
                     }
@@ -97,7 +91,7 @@ impl Visit for LexicalScopeCollector<'_> {
             assignment.visit_children_with(self);
             return;
         }
-        let provenance = DeclarationAnalysis::new(self, &assignment.right).assignment_provenance();
+        let provenance = DeclarationFacts::compute(self, &assignment.right).assignment_provenance();
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
                 if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {

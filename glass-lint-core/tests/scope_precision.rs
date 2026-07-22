@@ -140,3 +140,60 @@ fn dynamic_scopes_fail_closed_without_affecting_ordinary_globals() {
     );
     assert_count("fetch('/global');", fetch_rule, 1);
 }
+
+#[test]
+fn alias_classifier_handles_reassignment_to_a_rooted_member() {
+    // The classifier must consume the same cached subresults for the
+    // declaration and the later reassignment. A bare call should remain
+    // local, but an assignment to a host-returned object must propagate
+    // the rooted identity to the use position.
+    let rule = rule("reassign-rooted")
+        .matcher(Matcher::rooted_member_call("host.cache.read"))
+        .build()
+        .unwrap();
+    assert_count(
+        "let api = host.files; api = host.cache; api.read();",
+        rule,
+        1,
+    );
+}
+
+#[test]
+fn precedence_promotes_bound_callable_over_later_aliased_reassignments() {
+    // A `host.open.bind(null, ...)` is a bound callable; reassigning the
+    // variable to the same expression must keep the bound callable
+    // provenance as the higher-priority fact at the call site.
+    let rule = rule("bound-callable")
+        .matcher(Matcher::rooted_member_call("host.open.execute"))
+        .build()
+        .unwrap();
+    assert_count(
+        "let open = host.open.bind(null, host.file); open = host.open.bind(null, host.file); open.execute();",
+        rule,
+        1,
+    );
+}
+
+#[test]
+fn destructured_require_aliases_record_named_module_exports() {
+    // A destructured `require` call must still flow through the
+    // classifier as a `Require` so the downstream collect step records
+    // each named property as a `ModuleExport` binding.
+    let rule = rule("sdk-send")
+        .matcher(Matcher::module_call("sdk", "send"))
+        .build()
+        .unwrap();
+    assert_count("const { send } = require('sdk'); send('/x');", rule, 1);
+}
+
+#[test]
+fn dynamic_call_value_does_not_promote_to_a_strict_provenance() {
+    // A bare dynamic call must not become a callable, module, or static
+    // provenance. The classifier falls back to a returned-object or local
+    // binding, which keeps the matcher from observing a strict fact.
+    let rule = rule("strict-fetch")
+        .matcher(Matcher::global_call("fetch"))
+        .build()
+        .unwrap();
+    assert_count("let value = dynamicThing(); value('/x');", rule, 0);
+}

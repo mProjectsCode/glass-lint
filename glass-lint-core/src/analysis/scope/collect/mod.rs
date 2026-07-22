@@ -8,7 +8,7 @@
 //! source order. It deliberately models only callback forms whose argument-to-
 //! parameter mapping is unambiguous; uncertain calls leave parameters local.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use history::AssignmentHistory;
 use smol_str::{SmolStr, ToSmolStr};
@@ -82,14 +82,13 @@ pub(super) struct LexicalScopeCollector<'a> {
     pub(super) name_exhausted: bool,
     /// Per (scope, name) counter to avoid rescanniing all assignments.
     version_counters: BTreeMap<(ScopeId, NameId), u32>,
-    reuse_scopes: bool,
-    /// Typed scope plan built during predeclare and consumed by the main
-    /// visitor, replacing positional index–based synchronization.
-    scope_plan: ScopePlan,
+    /// Structural scope shape table built during predeclare and consumed by
+    /// the main visitor, replacing positional index–based synchronization.
+    scope_shapes: ScopeShapeTable,
     /// A phase mismatch is a conservative incomplete analysis, not a panic.
     scope_diverged: bool,
     #[cfg(test)]
-    scope_reuse_steps: usize,
+    scope_lookups: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -113,54 +112,86 @@ pub(super) struct RootedPropertyMutation {
 
 /// One scope-forming syntax node recorded during the predeclare pass.
 ///
-/// Each entry maps to one `push_scope` call during predeclare. The main
-/// visitor validates structural identity (kind and parent) to locate the
-/// correct predeclared scope, replacing positional index–based
-/// synchronization.
+/// The shape carries the full structural identity (`scope_id`, `kind`, `span`,
+/// `parent`) so the main visitor can locate the matching predeclared scope by
+/// key instead of by positional index. Two equal-span siblings of the same
+/// parent share the lookup key and are consumed in predeclaration order.
 #[derive(Debug, Clone, Copy)]
-struct ScopePlanEntry {
-    scope_index: usize,
+struct ScopeShape {
+    scope_id: ScopeId,
+    kind: ScopeKind,
+    span: Span,
+    parent: Option<ScopeId>,
+}
+
+/// Structural scope table built during predeclare and consumed during the
+/// main visitor pass.
+///
+/// Replaces the cursor-based plan with a per-key child deque so the two
+/// phases share one identity owner. Each entry is recorded once during
+/// predeclare; the main visitor pops the next unconsumed child of the
+/// current parent for the visited span and kind, with no fallback
+/// allocation when the lookup misses.
+#[derive(Debug, Default)]
+struct ScopeShapeTable {
+    shapes: Vec<ScopeShape>,
+    children: BTreeMap<ScopeShapeKey, VecDeque<ScopeId>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct ScopeShapeKey {
+    parent: Option<ScopeId>,
+    span_lo: BytePos,
     kind: ScopeKind,
 }
 
-/// Ordered record of scope structure built during predeclare and validated
-/// during the main visitor pass.
-#[derive(Debug)]
-struct ScopePlan {
-    entries: Vec<ScopePlanEntry>,
-    cursor: usize,
-}
-
-impl ScopePlan {
+impl ScopeShapeTable {
     fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-            cursor: 0,
-        }
+        Self::default()
     }
 
-    fn push(&mut self, scope_index: usize, kind: ScopeKind) {
-        self.entries.push(ScopePlanEntry { scope_index, kind });
+    fn record(&mut self, shape: ScopeShape) {
+        let key = ScopeShapeKey {
+            parent: shape.parent,
+            span_lo: shape.span.lo,
+            kind: shape.kind,
+        };
+        self.shapes.push(shape);
+        self.children
+            .entry(key)
+            .or_default()
+            .push_back(shape.scope_id);
     }
 
-    fn advance(&mut self) -> Option<&ScopePlanEntry> {
-        let entry = self.entries.get(self.cursor);
-        self.cursor = self.cursor.saturating_add(1);
-        entry
+    fn take_child(
+        &mut self,
+        parent: Option<ScopeId>,
+        span_lo: BytePos,
+        kind: ScopeKind,
+    ) -> Option<ScopeId> {
+        self.children
+            .get_mut(&ScopeShapeKey {
+                parent,
+                span_lo,
+                kind,
+            })
+            .and_then(VecDeque::pop_front)
     }
 
     #[cfg(test)]
-    fn is_at_end(&self) -> bool {
-        self.cursor >= self.entries.len()
+    fn shapes_len(&self) -> usize {
+        self.shapes.len()
     }
 
     #[cfg(test)]
-    fn entries_len(&self) -> usize {
-        self.entries.len()
-    }
-
-    fn reset(&mut self) {
-        self.cursor = 0;
+    fn remaining(&self, parent: Option<ScopeId>, span_lo: BytePos, kind: ScopeKind) -> usize {
+        self.children
+            .get(&ScopeShapeKey {
+                parent,
+                span_lo,
+                kind,
+            })
+            .map_or(0, VecDeque::len)
     }
 }
 
@@ -239,11 +270,10 @@ impl<'a> LexicalScopeCollector<'a> {
             names,
             name_exhausted: false,
             version_counters: BTreeMap::new(),
-            reuse_scopes: false,
-            scope_plan: ScopePlan::new(),
+            scope_shapes: ScopeShapeTable::new(),
             scope_diverged: false,
             #[cfg(test)]
-            scope_reuse_steps: 0,
+            scope_lookups: 0,
         }
     }
 
@@ -255,14 +285,20 @@ impl<'a> LexicalScopeCollector<'a> {
     pub fn predeclare(&mut self, program: &swc_ecma_ast::Program) {
         self.pass = Pass::Predeclare;
         program.visit_children_with(self);
-        self.reuse_scopes = true;
-        self.scope_plan.reset();
         self.scope_diverged = false;
         self.pass = Pass::Collect;
         #[cfg(test)]
         {
-            self.scope_reuse_steps = 0;
+            self.scope_lookups = 0;
         }
+    }
+
+    /// Predeclare bindings and return the number of scope shapes recorded.
+    /// Tests use this to assert one shape per visitor push call.
+    #[cfg(test)]
+    pub fn predeclare_and_count(&mut self, program: &swc_ecma_ast::Program) -> usize {
+        self.predeclare(program);
+        self.scope_shapes.shapes_len()
     }
 
     /// Freeze collected facts into the immutable query graph.
@@ -526,59 +562,45 @@ impl<'a> LexicalScopeCollector<'a> {
         });
     }
 
-    /// Enter a predeclared scope, conservatively handling phase divergence.
+    /// Enter a scope owned by the predeclare phase.
+    ///
+    /// The predeclare pass allocates the scope and records its shape. The
+    /// collect pass resolves the visited scope by structural identity
+    /// (`parent`, `span`, `kind`) against the shape table and pushes that
+    /// predeclared scope. A miss means the two phases walked the same
+    /// scope-forming syntax differently; the artifact is marked diverged and
+    /// the visitor stays in the current scope instead of allocating a
+    /// fallback that would silently desynchronize the two passes.
     fn push_scope(&mut self, span: Span, kind: ScopeKind) {
-        if self.reuse_scopes {
+        if self.pass == Pass::Predeclare {
             let parent = self.current_scope();
-            if let Some(entry) = self.scope_plan.advance() {
-                let index = entry.scope_index;
-                if entry.kind == kind
-                    && self.scopes[index].parent == Some(parent)
-                    && self.scopes[index].span == span
-                    && self.scopes[index].kind == kind
-                {
-                    self.stack.push(index);
-                } else {
-                    self.scope_diverged = true;
-                    let index = self.scopes.len();
-                    self.scopes.push(LexicalScope {
-                        span,
-                        depth: self.stack.len(),
-                        kind,
-                        parent: Some(parent),
-                        bindings: BTreeMap::new(),
-                    });
-                    self.stack.push(index);
-                }
-            } else {
-                self.scope_diverged = true;
-                let index = self.scopes.len();
-                self.scopes.push(LexicalScope {
-                    span,
-                    depth: self.stack.len(),
-                    kind,
-                    parent: Some(parent),
-                    bindings: BTreeMap::new(),
-                });
-                self.stack.push(index);
-            }
-            #[cfg(test)]
-            {
-                self.scope_reuse_steps += 1;
-            }
+            let index = self.scopes.len();
+            self.scopes.push(LexicalScope {
+                span,
+                depth: self.stack.len(),
+                kind,
+                parent: Some(parent),
+                bindings: BTreeMap::new(),
+            });
+            self.scope_shapes.record(ScopeShape {
+                scope_id: ScopeId::from(index),
+                kind,
+                span,
+                parent: Some(parent),
+            });
+            self.stack.push(index);
             return;
         }
-        let index = self.scopes.len();
         let parent = self.current_scope();
-        self.scopes.push(LexicalScope {
-            span,
-            depth: self.stack.len(),
-            kind,
-            parent: Some(parent),
-            bindings: BTreeMap::new(),
-        });
-        self.scope_plan.push(index, kind);
-        self.stack.push(index);
+        if let Some(scope_id) = self.scope_shapes.take_child(Some(parent), span.lo, kind) {
+            self.stack.push(scope_id.index());
+            #[cfg(test)]
+            {
+                self.scope_lookups += 1;
+            }
+        } else {
+            self.scope_diverged = true;
+        }
     }
 
     /// Leave the current nested scope without popping the program scope.
@@ -758,15 +780,15 @@ mod tests {
     fn collect(source: &str) -> LexicalScopeCollector<'_> {
         let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");
         let mut collector = LexicalScopeCollector::new(parsed.program.span());
-        collector.predeclare(&parsed.program);
+        let predeclared = collector.predeclare_and_count(&parsed.program);
         parsed.program.visit_children_with(&mut collector);
         assert!(
-            collector.scope_plan.is_at_end(),
-            "main visitor consumed all scope plan entries"
+            !collector.scope_diverged,
+            "main visitor did not diverge from predeclared scopes"
         );
         assert_eq!(
-            collector.scope_reuse_steps,
-            collector.scope_plan.entries_len()
+            collector.scope_lookups, predeclared,
+            "main visitor consumed one shape per predeclared scope",
         );
         collector
     }
@@ -850,8 +872,10 @@ mod tests {
         collector.pop_scope();
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();
-        collector.reuse_scopes = true;
-        collector.scope_plan.reset();
+        let predeclared = collector.scope_shapes.shapes_len();
+        assert_eq!(predeclared, 2);
+        collector.scope_diverged = false;
+        collector.pass = Pass::Collect;
 
         collector.push_scope(span, ScopeKind::Block);
         let first = collector.current_scope();
@@ -860,22 +884,28 @@ mod tests {
         let second = collector.current_scope();
 
         assert_eq!((first, second), (ScopeId::from(1), ScopeId::from(2)));
-        assert_eq!(collector.scope_reuse_steps, 2);
+        assert_eq!(collector.scope_lookups, 2);
+        assert_eq!(
+            collector
+                .scope_shapes
+                .remaining(Some(ScopeId::from(0)), span.lo, ScopeKind::Block),
+            0,
+        );
     }
 
-    fn sibling_scope_steps(count: usize) -> usize {
+    fn sibling_scope_lookups(count: usize) -> usize {
         let source = (0..count)
             .map(|index| format!("{{ let value{index} = {index}; }}"))
             .collect::<Vec<_>>()
             .join("\n");
         let collector = collect(&source);
-        collector.scope_reuse_steps
+        collector.scope_lookups
     }
 
     #[test]
-    fn many_sibling_scopes_use_one_cursor_step_each() {
-        let one = sibling_scope_steps(128);
-        let two = sibling_scope_steps(256);
+    fn many_sibling_scopes_consume_one_shape_each() {
+        let one = sibling_scope_lookups(128);
+        let two = sibling_scope_lookups(256);
 
         assert_eq!(one, 128);
         assert_eq!(two, one * 2);
@@ -888,16 +918,18 @@ mod tests {
         let mut collector = LexicalScopeCollector::new(span);
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();
-        assert_eq!(collector.scope_plan.entries_len(), 1);
-        collector.reuse_scopes = true;
-        collector.scope_plan.reset();
+        assert_eq!(collector.scope_shapes.shapes_len(), 1);
         collector.scope_diverged = false;
         collector.pass = Pass::Collect;
+        let before = collector.current_scope();
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();
         assert!(!collector.scope_diverged);
+        assert_eq!(collector.current_scope(), before);
         collector.push_scope(span, ScopeKind::Block);
         assert!(collector.scope_diverged);
+        // No fallback scope was allocated during the diverged push.
+        assert_eq!(collector.current_scope(), before);
     }
 
     #[test]
@@ -909,18 +941,28 @@ mod tests {
         collector.pop_scope();
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();
-        assert_eq!(collector.scope_plan.entries_len(), 2);
-        collector.reuse_scopes = true;
-        collector.scope_plan.reset();
+        assert_eq!(collector.scope_shapes.shapes_len(), 2);
+        collector.scope_diverged = false;
         collector.pass = Pass::Collect;
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();
-        assert!(!collector.scope_plan.is_at_end());
-        // The second push is still consumed but divergence is flagged
+        assert!(!collector.scope_diverged);
+        assert_eq!(
+            collector
+                .scope_shapes
+                .remaining(Some(ScopeId::from(0)), span.lo, ScopeKind::Block),
+            1,
+            "the unvisited predeclared shape stays in the table",
+        );
+        // A second visit consumes the remaining predeclared shape.
         collector.push_scope(span, ScopeKind::Block);
         assert!(!collector.scope_diverged);
-        // Not consuming all plan entries is fine before completion —
-        // it only diverges when the plan runs out before the walker
+        // A third visit finds no matching shape and fails closed.
+        let before = collector.current_scope();
+        collector.push_scope(span, ScopeKind::Block);
+        assert!(collector.scope_diverged);
+        // No fallback scope was allocated.
+        assert_eq!(collector.current_scope(), before);
     }
 
     #[test]
@@ -930,11 +972,13 @@ mod tests {
         let mut collector = LexicalScopeCollector::new(span);
         collector.push_scope(span, ScopeKind::Block);
         collector.pop_scope();
-        collector.reuse_scopes = true;
-        collector.scope_plan.reset();
+        collector.scope_diverged = false;
         collector.pass = Pass::Collect;
+        let before = collector.current_scope();
         collector.push_scope(span, ScopeKind::Function);
         assert!(collector.scope_diverged);
+        // The visitor stays in the parent scope; no fallback is allocated.
+        assert_eq!(collector.current_scope(), before);
     }
 
     #[test]
@@ -1116,5 +1160,127 @@ mod tests {
                 "scope {i} binding keys differ",
             );
         }
+    }
+
+    #[test]
+    fn structural_lookup_distinguishes_equal_span_siblings_at_different_parents() {
+        let source = r"
+            { let outer = 1; }
+            function f() { { let inner = 1; } }
+        ";
+        let collector = collect(source);
+
+        let (program_block_index, program_block) = collector
+            .scopes
+            .iter()
+            .enumerate()
+            .find(|(_, scope)| {
+                scope.kind == ScopeKind::Block && scope.parent == Some(ScopeId::from(0))
+            })
+            .expect("outer block under program");
+        let (function_index, _function_scope) = collector
+            .scopes
+            .iter()
+            .enumerate()
+            .find(|(_, scope)| {
+                scope.kind == ScopeKind::Function && scope.parent == Some(ScopeId::from(0))
+            })
+            .expect("function under program");
+        let (inner_block_index, inner_block) = collector
+            .scopes
+            .iter()
+            .enumerate()
+            .find(|(_, scope)| {
+                scope.kind == ScopeKind::Block
+                    && scope.parent == Some(ScopeId::from(function_index))
+            })
+            .expect("inner block under function");
+
+        // Both blocks share a Span layout but have different parents; the
+        // structural lookup must keep them distinct.
+        assert_ne!(program_block_index, inner_block_index);
+        assert_eq!(program_block.parent, Some(ScopeId::from(0)));
+        assert_eq!(inner_block.parent, Some(ScopeId::from(function_index)));
+    }
+
+    #[test]
+    fn structural_lookup_resolves_visitor_pushes_without_positional_synchronization() {
+        let source = r"
+            function outer() {
+                for (let i = 0; i < 1; i++) {
+                    try { throw i; } catch (e) { const v = e; }
+                }
+                with (context) { const w = prop; }
+                const arrow = () => { return 1; };
+            }
+        ";
+        let collector = collect(source);
+        assert!(
+            !collector.scope_diverged,
+            "no divergence when the visitor walks scope-forming syntax in predeclaration order",
+        );
+        assert_eq!(
+            collector.scope_lookups,
+            collector.scope_shapes.shapes_len(),
+            "every predeclared shape was consumed by one visitor push",
+        );
+    }
+
+    #[test]
+    fn deliberate_walker_divergence_fails_closed_without_fallback_allocation() {
+        // Predeclare 3 sibling Block scopes under the program scope.
+        let parsed = crate::parse("value;", "walker-divergence.js").expect("source should parse");
+        let span = parsed.program.span();
+        let mut collector = LexicalScopeCollector::new(span);
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        collector.push_scope(span, ScopeKind::Block);
+        collector.pop_scope();
+        let predeclared = collector.scope_shapes.shapes_len();
+        assert_eq!(predeclared, 3);
+        collector.scope_diverged = false;
+        collector.pass = Pass::Collect;
+
+        // Walk the predeclared shapes in reversed order: a structural
+        // identity lookup must still resolve each push correctly because
+        // the lookup is keyed by (parent, span, kind), not by position.
+        let program = ScopeId::from(0);
+        let remaining_first =
+            collector
+                .scope_shapes
+                .remaining(Some(program), span.lo, ScopeKind::Block);
+        assert_eq!(remaining_first, 3);
+        collector.push_scope(span, ScopeKind::Block);
+        let first = collector.current_scope();
+        collector.pop_scope();
+        assert!(!collector.scope_diverged);
+        collector.push_scope(span, ScopeKind::Block);
+        let second = collector.current_scope();
+        collector.pop_scope();
+        assert!(!collector.scope_diverged);
+        collector.push_scope(span, ScopeKind::Block);
+        let third = collector.current_scope();
+        collector.pop_scope();
+        assert!(!collector.scope_diverged);
+        assert_ne!(first, second);
+        assert_ne!(second, third);
+        assert_ne!(first, third);
+        assert_eq!(
+            collector.scope_lookups, 3,
+            "every predeclared shape was consumed",
+        );
+
+        // A visit that is not preceded by a matching predeclared shape
+        // must fail closed without allocating a fallback scope.
+        let before = collector.current_scope();
+        collector.push_scope(span, ScopeKind::Block);
+        assert!(collector.scope_diverged);
+        assert_eq!(
+            collector.current_scope(),
+            before,
+            "divergence leaves the visitor in the parent scope",
+        );
     }
 }

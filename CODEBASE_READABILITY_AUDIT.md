@@ -2,12 +2,13 @@
 
 ## Summary
 
-The re-audit retains 10 actionable readability and maintainability issues across
-`glass-lint-core` and `glass-lint-project`: 6 high severity and 4 medium
-severity. Seven findings were removed after verification: the retained value
-arena, local fact-path representation, function-summary round state, summary
-path storage, lazy package occurrence scans, resolver cache sharing, and core
-test-helper/project-test organization are now materially complete.
+The re-audit retains 8 actionable readability and maintainability issues
+across `glass-lint-core` and `glass-lint-project`: 5 high severity and 3
+medium severity. Nine findings were removed after verification: the retained
+value arena, local fact-path representation, function-summary round state,
+summary path storage, lazy package occurrence scans, resolver cache sharing,
+core test-helper/project-test organization, the positional scope reuse plan,
+and the partial declaration-classification cache are now materially complete.
 
 The remaining findings are partial fixes rather than newly discovered
 problems. Each one still has a concrete duplicate authority, repeated
@@ -18,27 +19,25 @@ below describe the missing consolidation.
 
 ### READ-001 — Scope reuse still depends on positional traversal synchronization
 
+- **Status:** Resolved.
 - **Severity:** High
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/scope/collect/mod.rs:121-150`, `glass-lint-core/src/analysis/scope/collect/mod.rs:529-565`
+- **Location:** `glass-lint-core/src/analysis/scope/collect/mod.rs:114-198`, `glass-lint-core/src/analysis/scope/collect/mod.rs:540-587`
 
-`ScopePlan` still stores an ordered vector plus a cursor, and `push_scope` consumes the next entry before checking its span, kind, and parent. The checks detect divergence but do not replace positional pairing with stable node identities or one authoritative scope walker, so a changed traversal can allocate fallback scopes after the two passes have already lost alignment. Key the plan by validated traversal/node identities, or make one walker own scope-forming syntax and let both phases consume its result.
+`ScopePlan` stored an ordered vector plus a cursor, and `push_scope` consumed the next entry before checking its span, kind, and parent. The checks detected divergence but did not replace positional pairing with stable node identities, and a missed entry caused a fallback scope to be allocated after the two passes had already lost alignment.
 
-**Implementation guidance:** Do not add more span/kind checks around the cursor or keep a fallback scope that permits collection to continue after identity loss. Scope-forming syntax, parent relationships, and scope identity must have one owner; equal spans, generated nodes, unsupported constructs, and any phase mismatch must invalidate the artifact without exposing partially paired bindings.
-
-**Proposed implementation direction:** Introduce a scope-shape operation that emits a validated `ScopeNodeId`, `ScopeKind`, and parent for every scope-forming node, then let predeclaration and collection address that shape by ID. Prefer a single event driver with phase callbacks if stable AST identities cannot be carried across passes; in either design, delete `ScopePlan::cursor` and fallback allocation, and add tests for equal-span siblings, nested functions/arrows, hoisting, catches, loops, `with`, and deliberate walker divergence.
+The cursor and the `ScopePlan` cursor/entry types are gone. `predeclare` now records each scope's full structural identity (`scope_id`, `kind`, `span`, `parent`) into a `ScopeShapeTable` keyed by `(parent, span_lo, kind)`. The main visitor resolves every `push_scope` by popping the next unconsumed child of the current parent from the table, so equal-span siblings consume their predeclared shapes in order and a phase mismatch simply marks the artifact diverged without allocating a fallback scope. Tests cover equal-span siblings, nested functions/arrows, hoisting, catches, loops, `with`, kind/span/parent mismatches, and a deliberately misaligned walker.
 
 ### READ-002 — Declaration classification caches only one of several repeated analyses
 
+- **Status:** Resolved.
 - **Severity:** Medium
 - **Category:** Complexity
-- **Location:** `glass-lint-core/src/analysis/scope/collect/analysis.rs:29-120`, `glass-lint-core/src/analysis/scope/collect/visitor.rs:41-107`
+- **Location:** `glass-lint-core/src/analysis/scope/collect/analysis.rs:29-204`, `glass-lint-core/src/analysis/scope/collect/visitor.rs:36-94`
 
-`DeclarationAnalysis` caches `rooted_path`, but each precedence branch still independently calls bound-callable, module-alias, returned-object, static-object, constant, and `require` helpers; the mutable-object precheck repeats part of that work before classification. Give one bounded analysis result ownership of all shared subresults and precedence, then reuse it for declaration, assignment, and mutability decisions.
+`DeclarationAnalysis` cached `rooted_path` only; every precedence branch independently re-ran bound-callable, module-alias, returned-object, static-object, constant, and `require` helpers, and the mutable-object precheck in `visit_var_decl` re-ran `static_object_values`/`const_provenance` before classification.
 
-**Implementation guidance:** The new facade must not simply call the existing helpers and cache only the final enum. Compute each relevant fact at most once per initializer, apply precedence in one place, and carry exhaustion/unknown outcomes explicitly so a failed sub-analysis cannot be mistaken for a lower-priority negative result.
-
-**Proposed implementation direction:** Replace the partial `DeclarationAnalysis` cache with a `DeclarationFacts` record containing lazy or eagerly bounded fields for callable, module, require, constant/static-object, returned-object, rooted-path, and mutability classification. Have `visit_var_decl` and `visit_assign_expr` consume the same classifier, remove the separate mutable-object probe, and test aliases, reassignment, destructuring, dynamic values, `require`, and precedence collisions.
+`DeclarationAnalysis` is replaced by `DeclarationFacts`, a record that owns the callable, module-alias, require, static-object, constant, returned-object, and rooted-path subresults in `DeclarationFactState` and exposes three views: `classify_declaration`, `assignment_provenance`, and `is_mutable_static_object`. Each helper is invoked exactly once per initializer, exhaustion/unknown outcomes are carried through the `Option`-typed state, and precedence is applied in one place inside each view. `visit_var_decl` now computes one `DeclarationFacts` up front, runs the mutability probe, then reuses the same state for the declaration classification after the derived-function pattern is known. `visit_assign_expr` consumes the same classifier. Unit tests in `analysis.rs` cover static-object sharing, direct `require`, root-member aliases, reassignment to a rooted member, bound-callable precedence, dynamic-call fall-through, `var`/`let`/`const` mutability, returned-object chains, destructuring patterns, destructured `require`, and constant-vs-bound-callable precedence. Integration tests in `tests/scope_precision.rs` cover reassignment, bound-callable reassignment, destructured `require`, and dynamic-call fall-through.
 
 ### READ-003 — Resolver constant materialization still clones whole arena collections
 
@@ -160,5 +159,5 @@ and compiler dispatch, filesystem discovery/loading/resolution, and test
 organization. The re-audit used the repository architecture, testing, and
 contribution guidance, targeted symbol/allocation scans, and focused tests.
 
-Verification completed with 213 `glass-lint-core` library tests and 10
+Verification completed with 227 `glass-lint-core` library tests and 10
 `glass-lint-project` tests passing. Only this Markdown report was modified.

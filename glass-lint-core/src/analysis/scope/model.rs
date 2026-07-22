@@ -438,7 +438,7 @@ pub(in crate::analysis) struct LexicalScope {
     pub(in crate::analysis::scope) bindings: BTreeMap<NameId, BindingProvenance>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 /// Scope category relevant to JavaScript visibility and dynamic lookup.
 pub(in crate::analysis) enum ScopeKind {
     Program,
