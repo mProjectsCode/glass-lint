@@ -4,13 +4,13 @@
 //! deduplicated within each key. Queries can therefore borrow stable slices
 //! and emit evidence without repeating normalization policy.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use smol_str::SmolStr;
 
 use crate::{
     ByteRange,
-    analysis::{facts::FactId, name::NameId, value::NamePath},
+    analysis::{SymbolPath, facts::FactId, name::NameId, value::NamePath},
 };
 
 /// A borrowed, merged, or owned collection of candidate occurrences.
@@ -22,6 +22,7 @@ use crate::{
 pub(in crate::analysis) enum CandidateOccurrences<'a> {
     Indexed(&'a [Occurrence]),
     Merged(MergeOccurrenceIter<'a>),
+    Package(PackageOccurrenceIter<'a>),
     Scanned(Vec<Occurrence>),
 }
 
@@ -29,6 +30,7 @@ pub(in crate::analysis) enum CandidateOccurrences<'a> {
 pub(in crate::analysis) enum CandidateOccurrenceIter<'a> {
     Indexed(core::iter::Copied<core::slice::Iter<'a, Occurrence>>),
     Merged(MergeOccurrenceIter<'a>),
+    Package(PackageOccurrenceIter<'a>),
     Scanned(std::vec::IntoIter<Occurrence>),
 }
 
@@ -39,6 +41,7 @@ impl Iterator for CandidateOccurrenceIter<'_> {
         match self {
             Self::Indexed(iter) => iter.next(),
             Self::Merged(iter) => iter.next(),
+            Self::Package(iter) => iter.next(),
             Self::Scanned(iter) => iter.next(),
         }
     }
@@ -52,7 +55,126 @@ impl<'a> IntoIterator for CandidateOccurrences<'a> {
         match self {
             Self::Indexed(slice) => CandidateOccurrenceIter::Indexed(slice.iter().copied()),
             Self::Merged(iter) => CandidateOccurrenceIter::Merged(iter),
+            Self::Package(iter) => CandidateOccurrenceIter::Package(iter),
             Self::Scanned(vec) => CandidateOccurrenceIter::Scanned(vec.into_iter()),
+        }
+    }
+}
+
+/// Package-match predicate borrowed from a compiled query clause.
+///
+/// Package clauses match every module-export key whose module satisfies
+/// the pattern and whose export equals the target. This predicate is
+/// a concrete type so the lazy [`PackageOccurrenceIter`] can call it
+/// without boxing a closure.
+#[derive(Clone, Debug)]
+pub(in crate::analysis) struct PackageKeyPredicate<'a> {
+    pattern: &'a crate::api::rule::ModuleSpecifierPattern,
+    kind: PackageMatchKind<'a>,
+}
+
+#[derive(Clone, Debug)]
+pub(in crate::analysis) enum PackageMatchKind<'a> {
+    Export(&'a SmolStr),
+    Namespace(&'a SymbolPath),
+}
+
+impl<'a> PackageKeyPredicate<'a> {
+    pub(super) fn new(
+        pattern: &'a crate::api::rule::ModuleSpecifierPattern,
+        kind: PackageMatchKind<'a>,
+    ) -> Self {
+        Self { pattern, kind }
+    }
+
+    fn matches(&self, key: &ModuleExportKey) -> bool {
+        if !self.pattern.matches(key.module()) {
+            return false;
+        }
+        match self.kind {
+            PackageMatchKind::Export(expected) => key.export() == expected,
+            PackageMatchKind::Namespace(member) => member.eq_chain(key.export()),
+        }
+    }
+}
+
+/// Lazy occurrence iterator for package-clause scans.
+///
+/// Scans the base index keys (filtered by the predicate and optional mask),
+/// then scans overlay keys. Both maps are iterated in `BTreeMap` order so
+/// output is deterministic. No intermediate `Vec<Occurrence>` is allocated.
+#[derive(Clone)]
+pub(in crate::analysis) struct PackageOccurrenceIter<'a> {
+    predicate: PackageKeyPredicate<'a>,
+    masked: Option<&'a BTreeSet<ModuleExportKey>>,
+    map_iter: Option<std::collections::btree_map::Iter<'a, ModuleExportKey, Vec<Occurrence>>>,
+    overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<Occurrence>>>,
+    vals: Option<&'a [Occurrence]>,
+    pos: usize,
+    checking_mask: bool,
+    done: bool,
+}
+
+impl<'a> PackageOccurrenceIter<'a> {
+    pub(super) fn new(
+        predicate: PackageKeyPredicate<'a>,
+        masked: Option<&'a BTreeSet<ModuleExportKey>>,
+        base: &'a BTreeMap<ModuleExportKey, Vec<Occurrence>>,
+        overlay: Option<&'a BTreeMap<ModuleExportKey, Vec<Occurrence>>>,
+    ) -> Self {
+        Self {
+            predicate,
+            masked,
+            map_iter: Some(base.iter()),
+            overlay,
+            vals: None,
+            pos: 0,
+            checking_mask: true,
+            done: false,
+        }
+    }
+}
+
+impl Iterator for PackageOccurrenceIter<'_> {
+    type Item = Occurrence;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if self.done {
+                return None;
+            }
+            if let Some(vals) = self.vals
+                && self.pos < vals.len()
+            {
+                let occ = vals[self.pos];
+                self.pos += 1;
+                return Some(occ);
+            }
+            self.vals = None;
+            self.pos = 0;
+
+            if let Some(iter) = &mut self.map_iter
+                && let Some((key, vals)) = iter.next()
+            {
+                if self.predicate.matches(key)
+                    && (!self.checking_mask || self.masked.is_none_or(|m| !m.contains(key)))
+                {
+                    self.vals = Some(vals.as_slice());
+                    continue;
+                }
+                continue;
+            }
+            self.map_iter = None;
+
+            if self.checking_mask {
+                self.checking_mask = false;
+                if let Some(overlay) = self.overlay {
+                    self.map_iter = Some(overlay.iter());
+                    continue;
+                }
+            }
+            self.done = true;
+            return None;
         }
     }
 }
@@ -96,6 +218,11 @@ impl<K: Ord> Default for OccurrenceIndex<K> {
 }
 
 impl<K: Ord> OccurrenceIndex<K> {
+    /// Access the underlying map for lazy package-scan iteration.
+    pub(super) fn as_map(&self) -> &BTreeMap<K, Vec<Occurrence>> {
+        &self.0
+    }
+
     /// Look up one normalized occurrence bucket as a slice.
     pub(super) fn get<Q>(&self, key: &Q) -> Option<&[Occurrence]>
     where

@@ -53,10 +53,9 @@ impl UsageProjector<'_> {
                 EffectUse::CallReceiver { event, .. } => {
                     self.apply_receiver(*event);
                 }
-                EffectUse::CallArgument {
-                    event,
-                    argument,
-                } => self.apply_argument(*event, argument.index()),
+                EffectUse::CallArgument { event, argument } => {
+                    self.apply_argument(*event, argument.index());
+                }
             }
         }
     }
@@ -128,11 +127,7 @@ impl UsageProjector<'_> {
         *self.state = next;
     }
 
-    fn apply_argument(
-        &mut self,
-        event: FactId,
-        argument: usize,
-    ) {
+    fn apply_argument(&mut self, event: FactId, argument: usize) {
         let Some(stream) = self.project.module_fact_stream(self.context.module) else {
             return;
         };

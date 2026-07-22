@@ -331,9 +331,9 @@ fn member_identity_matches(
             let Some(path) = rooted_path else {
                 return false;
             };
-            returned_member.as_ref().is_some_and(|(source, found)| {
-                source == path && found == member
-            })
+            returned_member
+                .as_ref()
+                .is_some_and(|(source, found)| source == path && found == member)
         }
         (
             IdentityConstraint::ModuleExport { module, export },
@@ -356,14 +356,20 @@ fn member_identity_matches(
             export,
         ),
         (IdentityConstraint::ModuleNamespace { module }, SubjectConstraint::Direct) => {
-            namespace_member_matches(module_member.as_ref(), member, |found_module| {
-                found_module == module
-            }, names)
+            namespace_member_matches(
+                module_member.as_ref(),
+                member,
+                |found_module| found_module == module,
+                names,
+            )
         }
         (IdentityConstraint::PackageModuleNamespace { module }, SubjectConstraint::Direct) => {
-            namespace_member_matches(module_member.as_ref(), member, |found_module| {
-                module.matches(found_module)
-            }, names)
+            namespace_member_matches(
+                module_member.as_ref(),
+                member,
+                |found_module| module.matches(found_module),
+                names,
+            )
         }
         _ => false,
     }

@@ -9,9 +9,12 @@ use smol_str::ToSmolStr;
 use crate::{
     analysis::{
         matching::{
-            CandidateOccurrences, ClassificationEvidence, ModuleExportKey, ModuleOccurrenceOverlay,
-            Occurrence, OccurrenceIndexes,
-            occurrence::{MergeOccurrenceIter, ModuleOccurrences, OccurrenceIndex},
+            CandidateOccurrences, ClassificationEvidence, ModuleOccurrenceOverlay, Occurrence,
+            OccurrenceIndexes,
+            occurrence::{
+                MergeOccurrenceIter, ModuleExportKey, ModuleOccurrences, OccurrenceIndex,
+                PackageKeyPredicate, PackageMatchKind, PackageOccurrenceIter,
+            },
             push_owned_evidence,
         },
         value::NamePath,
@@ -40,23 +43,15 @@ fn package_occurrences<'a>(
     base: &'a ModuleOccurrences,
     overlay: Option<&'a ModuleOccurrences>,
     masked: Option<&'a BTreeSet<ModuleExportKey>>,
-    mut matches: impl FnMut(&ModuleExportKey) -> bool,
-) -> Option<CandidateOccurrences<'a>> {
-    let base_matches =
-        base.matching(|key| matches(key) && masked.is_none_or(|masked| !masked.contains(key)));
-    let overlay_matches = overlay.and_then(|overlay| overlay.matching(|key| matches(key)));
-    let mut merged = if let Some(CandidateOccurrences::Scanned(vec)) = base_matches {
-        vec
-    } else {
-        Vec::new()
-    };
-    if let Some(CandidateOccurrences::Scanned(vec)) = overlay_matches {
-        merged.extend(vec);
-    }
-    if merged.is_empty() {
-        return None;
-    }
-    Some(CandidateOccurrences::Scanned(merged))
+    predicate: PackageKeyPredicate<'a>,
+) -> CandidateOccurrences<'a> {
+    let iter = PackageOccurrenceIter::new(
+        predicate,
+        masked,
+        base.as_map(),
+        overlay.map(OccurrenceIndex::as_map),
+    );
+    CandidateOccurrences::Package(iter)
 }
 
 fn merged_or_indexed<'a>(
@@ -111,7 +106,7 @@ impl OccurrenceIndexes {
 
     pub(in crate::analysis) fn occurrences_for_clause<'a>(
         &'a self,
-        clause: &QueryClause,
+        clause: &'a QueryClause,
         overlay: Option<&'a ModuleOccurrenceOverlay>,
         names: &crate::analysis::name::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
@@ -123,7 +118,7 @@ impl OccurrenceIndexes {
 
     fn occurrences_for_subject<'a>(
         &'a self,
-        clause: &QueryClause,
+        clause: &'a QueryClause,
         _overlay: Option<&'a ModuleOccurrenceOverlay>,
         names: &crate::analysis::name::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
@@ -174,7 +169,7 @@ impl OccurrenceIndexes {
     #[allow(clippy::too_many_lines)]
     fn occurrences_for_event<'a>(
         &'a self,
-        clause: &QueryClause,
+        clause: &'a QueryClause,
         overlay: Option<&'a ModuleOccurrenceOverlay>,
         names: &crate::analysis::name::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
@@ -197,12 +192,14 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleExport { module, export } => package_occurrences(
-                    &self.call_indexes.module_calls,
-                    overlay.map(|overlay| &overlay.call_indexes.module_calls),
-                    overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && key.export() == export,
-                ),
+                IdentityConstraint::PackageModuleExport { module, export } => {
+                    Some(package_occurrences(
+                        &self.call_indexes.module_calls,
+                        overlay.map(|overlay| &overlay.call_indexes.module_calls),
+                        overlay.map(|overlay| &overlay.masked),
+                        PackageKeyPredicate::new(module, PackageMatchKind::Export(export)),
+                    ))
+                }
                 _ => None,
             },
             EventPredicate::MemberCall { member } => match &clause.identity {
@@ -226,12 +223,12 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleNamespace { module } => package_occurrences(
+                IdentityConstraint::PackageModuleNamespace { module } => Some(package_occurrences(
                     &self.members.module_calls,
                     overlay.map(|overlay| &overlay.member_calls),
                     overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && member.eq_chain(key.export()),
-                ),
+                    PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member)),
+                )),
                 _ => None,
             },
             EventPredicate::MemberRead { member } => match &clause.identity {
@@ -255,12 +252,12 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleNamespace { module } => package_occurrences(
+                IdentityConstraint::PackageModuleNamespace { module } => Some(package_occurrences(
                     &self.members.module_reads,
                     overlay.map(|overlay| &overlay.member_reads),
                     overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && member.eq_chain(key.export()),
-                ),
+                    PackageKeyPredicate::new(module, PackageMatchKind::Namespace(member)),
+                )),
                 _ => None,
             },
             EventPredicate::ClassReference => match &clause.identity {
@@ -278,12 +275,14 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleExport { module, export } => package_occurrences(
-                    &self.constructions.module_classes,
-                    overlay.map(|overlay| &overlay.module_classes),
-                    overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && key.export() == export,
-                ),
+                IdentityConstraint::PackageModuleExport { module, export } => {
+                    Some(package_occurrences(
+                        &self.constructions.module_classes,
+                        overlay.map(|overlay| &overlay.module_classes),
+                        overlay.map(|overlay| &overlay.masked),
+                        PackageKeyPredicate::new(module, PackageMatchKind::Export(export)),
+                    ))
+                }
                 _ => None,
             },
             EventPredicate::Construct => match &clause.identity {
@@ -305,12 +304,14 @@ impl OccurrenceIndexes {
                         &key,
                     )
                 }
-                IdentityConstraint::PackageModuleExport { module, export } => package_occurrences(
-                    &self.constructions.module_constructors,
-                    overlay.map(|overlay| &overlay.module_constructors),
-                    overlay.map(|overlay| &overlay.masked),
-                    |key| module.matches(key.module()) && key.export() == export,
-                ),
+                IdentityConstraint::PackageModuleExport { module, export } => {
+                    Some(package_occurrences(
+                        &self.constructions.module_constructors,
+                        overlay.map(|overlay| &overlay.module_constructors),
+                        overlay.map(|overlay| &overlay.masked),
+                        PackageKeyPredicate::new(module, PackageMatchKind::Export(export)),
+                    ))
+                }
                 _ => None,
             },
             EventPredicate::Import => match &clause.identity {

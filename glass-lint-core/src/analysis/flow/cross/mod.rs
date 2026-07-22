@@ -460,10 +460,7 @@ impl FlowSources {
 
                         let mut to_changed = false;
 
-                        for returned in target
-                            .returns()
-                            .iter()
-                            .filter(|r| r.parameter().is_none())
+                        for returned in target.returns().iter().filter(|r| r.parameter().is_none())
                         {
                             let root = target
                                 .value_root(returned.value())
@@ -478,8 +475,7 @@ impl FlowSources {
                             if !argument.is_root()
                                 || !target.returns().iter().any(|returned| {
                                     returned.parameter().is_some_and(|parameter| {
-                                        parameter.index() == argument.index()
-                                            && parameter.is_root()
+                                        parameter.index() == argument.index() && parameter.is_root()
                                     })
                                 })
                             {

@@ -17,7 +17,11 @@ use crate::analysis::{
 ///
 /// Includes a callee-name fallback that is not needed by the general
 /// [`crate::analysis::flow::effect::CallEffectRef`] view.
-pub(super) fn projector_chain(stream: &FactStream, fact_id: FactId, names: &NameTable) -> Option<NamePath> {
+pub(super) fn projector_chain(
+    stream: &FactStream,
+    fact_id: FactId,
+    names: &NameTable,
+) -> Option<NamePath> {
     let fact = stream.fact(fact_id)?;
     match &fact.payload {
         FactPayload::Call {
@@ -26,32 +30,33 @@ pub(super) fn projector_chain(stream: &FactStream, fact_id: FactId, names: &Name
             callee_name,
             unwrap,
             ..
-        } => {
-            unwrap
-                .as_deref()
-                .and_then(|u| u.chain_path.clone())
-                .or_else(|| rooted_chain.clone())
-                .or_else(|| syntactic_path.clone())
-                .or_else(|| {
-                    callee_name.and_then(|id| stream.resolve_name(id)).and_then(
-                        |name| {
-                            NamePath::from_symbol_path(
-                                &crate::analysis::SymbolPath::from(name),
-                                names,
-                            )
-                        },
-                    )
-                })
-        }
+        } => unwrap
+            .as_deref()
+            .and_then(|u| u.chain_path.clone())
+            .or_else(|| rooted_chain.clone())
+            .or_else(|| syntactic_path.clone())
+            .or_else(|| {
+                callee_name
+                    .and_then(|id| stream.resolve_name(id))
+                    .and_then(|name| {
+                        NamePath::from_symbol_path(&crate::analysis::SymbolPath::from(name), names)
+                    })
+            }),
         _ => None,
     }
 }
 
 /// Whether the call fact had rooted provenance.
 pub(super) fn projector_rooted(stream: &FactStream, fact_id: FactId) -> bool {
-    stream
-        .fact(fact_id)
-        .is_some_and(|fact| matches!(&fact.payload, FactPayload::Call { rooted_chain: Some(_), .. }))
+    stream.fact(fact_id).is_some_and(|fact| {
+        matches!(
+            &fact.payload,
+            FactPayload::Call {
+                rooted_chain: Some(_),
+                ..
+            }
+        )
+    })
 }
 
 /// Return the effective arguments for a call fact, accounting for

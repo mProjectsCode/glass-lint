@@ -146,8 +146,7 @@ impl ObjectFlowProjector<'_, '_> {
                             || (parameter.rest
                                 && paths.starts_with_frozen(sink.path(), parameter.path)))
                 })?;
-                let value =
-                    parameter.project_argument_at(self.stream, args, paths, sink.path())?;
+                let value = parameter.project_argument_at(self.stream, args, paths, sink.path())?;
                 let object = self.flow_state.object_for(value)?;
                 let state = self.flow_state.state(object, sink.flow()).cloned()?;
                 let flow = self.flow_index.get(sink.flow()).cloned()?;

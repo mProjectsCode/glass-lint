@@ -12,8 +12,10 @@ use crate::{
         classification::{MatchKind, RuleIndex},
         compiler::{
             lowering::{
-                lower_calls, lower_classes_and_constructors, lower_instance_members,
-                lower_literals, lower_member_calls, lower_member_reads, lower_returned_members,
+                lower_calls, lower_classes, lower_constructors, lower_flows, lower_imports,
+                lower_instance_members, lower_member_calls, lower_member_reads,
+                lower_package_imports, lower_returned_member_calls, lower_returned_member_reads,
+                lower_string_contains,
             },
             object_flow::CompiledObjectFlow,
         },
@@ -230,27 +232,27 @@ impl QueryPlan {
                 MatcherFamily::Calls(values) => clauses.extend(lower_calls(values)),
                 MatcherFamily::MemberCalls(values) => clauses.extend(lower_member_calls(values)),
                 MatcherFamily::MemberReads(values) => clauses.extend(lower_member_reads(values)),
-                MatcherFamily::Imports(values) => clauses.extend(lower_literals(values, &[], &[])),
+                MatcherFamily::Imports(values) => clauses.extend(lower_imports(values)),
                 MatcherFamily::PackageImports(values) => {
-                    clauses.extend(lower_literals(&[], values, &[]));
+                    clauses.extend(lower_package_imports(values));
                 }
                 MatcherFamily::StringContains(values) => {
-                    clauses.extend(lower_literals(&[], &[], values));
+                    clauses.extend(lower_string_contains(values));
                 }
                 MatcherFamily::Classes(values) => {
-                    clauses.extend(lower_classes_and_constructors(values, &[]));
+                    clauses.extend(lower_classes(values));
                 }
                 MatcherFamily::Constructors(values) => {
-                    clauses.extend(lower_classes_and_constructors(&[], values));
+                    clauses.extend(lower_constructors(values));
                 }
                 MatcherFamily::Flows(values) => {
-                    let _ = values;
+                    clauses.extend(lower_flows(values));
                 }
                 MatcherFamily::ReturnedMemberCalls(values) => {
-                    clauses.extend(lower_returned_members(values, &[]));
+                    clauses.extend(lower_returned_member_calls(values));
                 }
                 MatcherFamily::ReturnedMemberReads(values) => {
-                    clauses.extend(lower_returned_members(&[], values));
+                    clauses.extend(lower_returned_member_reads(values));
                 }
                 MatcherFamily::InstanceMemberCalls(values) => {
                     clauses.extend(lower_instance_members(values));
@@ -378,6 +380,45 @@ mod tests {
             },
         },
     };
+
+    #[test]
+    fn every_family_validates_normalizes_flattens_and_compiles() {
+        let matcher = MatcherSet::from_matchers(vec![
+            Matcher::heuristic_call("fetch"),
+            Matcher::rooted_member_call("window.open"),
+            Matcher::rooted_member_read("window.location"),
+            Matcher::import("node:fs"),
+            Matcher::package_import("@scope/pkg").unwrap(),
+            Matcher::string_contains("https://"),
+            Matcher::heuristic_class("Worker"),
+            Matcher::global_constructor("URL"),
+            Matcher::from(
+                ObjectFlowMatcher::builder("request")
+                    .source(ObjectSourceMatcher::returned_by(MemberCallMatcher::rooted(
+                        "test.method",
+                    )))
+                    .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                        "ready",
+                        ValueMatcher::any_value(),
+                    )))
+                    .complete_at(FlowCompletion::configuration())
+                    .build()
+                    .unwrap(),
+            ),
+            Matcher::returned_member_call("create", "send"),
+            Matcher::returned_member_read("create", "token"),
+            Matcher::instance_member_call("pkg", "Client", "send"),
+        ]);
+        matcher
+            .validate()
+            .expect("all families must survive validation");
+        let normalized = matcher.normalized();
+        let matchers = normalized.into_matchers();
+        assert_eq!(matchers.len(), 12);
+        let plan = CompiledMatcherPlan::compile(&MatcherSet::from_matchers(matchers));
+        assert!(!plan.query().clauses().is_empty());
+        assert_eq!(plan.query().flows().len(), 1);
+    }
 
     #[test]
     fn argument_matcher_compiles_to_one_query_clause() {

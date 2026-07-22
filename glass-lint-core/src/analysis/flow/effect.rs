@@ -15,8 +15,8 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         facts::{
-            CallArgInfo, ControlKind, FactId, FactPayload, FactStream,
-            ParameterBinding, SemanticFact,
+            CallArgInfo, ControlKind, FactId, FactPayload, FactStream, ParameterBinding,
+            SemanticFact,
         },
         flow::table::FunctionTable,
         syntax::SymbolCallProvenance,
@@ -158,10 +158,7 @@ impl EffectCall {
         &self.arguments
     }
 
-    pub(in crate::analysis) fn as_ref<'s>(
-        &'s self,
-        stream: &'s FactStream,
-    ) -> CallEffectRef<'s> {
+    pub(in crate::analysis) fn as_ref<'s>(&'s self, stream: &'s FactStream) -> CallEffectRef<'s> {
         CallEffectRef {
             stream,
             event: self.event,
@@ -208,10 +205,13 @@ impl CallEffectRef<'_> {
     }
 
     pub(in crate::analysis) fn rooted(&self) -> bool {
-        matches!(self.call_fact(), FactPayload::Call {
-            rooted_chain: Some(_),
-            ..
-        })
+        matches!(
+            self.call_fact(),
+            FactPayload::Call {
+                rooted_chain: Some(_),
+                ..
+            }
+        )
     }
 
     pub(in crate::analysis) fn result(&self) -> ValueId {

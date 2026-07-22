@@ -13,7 +13,8 @@ pub use derived::*;
 pub use flow::*;
 pub use member::*;
 
-use crate::api::rule::{MatcherBuildError, ModuleSpecifierPattern, validation};
+use super::{normalization, validation};
+use crate::api::rule::{MatcherBuildError, ModuleSpecifierPattern};
 
 #[derive(Debug, Clone, Default)]
 /// Collection of matcher families before validation and normalization.
@@ -44,10 +45,29 @@ pub struct MatcherSet {
     pub(crate) instance_member_calls: Vec<InstanceMemberCallMatcher>,
 }
 
-/// Exhaustive view of matcher families. Keeping this dispatch in the owning
-/// type makes adding a family a compile-time edit at one canonical list.
+macro_rules! generate_from {
+    (from $ty:ty, $matcher_variant:ident) => {
+        impl From<$ty> for Matcher {
+            fn from(value: $ty) -> Self {
+                Self::$matcher_variant(value)
+            }
+        }
+    };
+    (no_from $ty:ty, $matcher_variant:ident) => {};
+}
+
+/// Canonical declaration for every matcher family. Adding a family to this
+/// list requires a normalize function, a validate function, and a lowering
+/// function — the macro generates From impls (for families with unique types
+/// marked `from`), push/emptiness/flatten dispatch, and the normalize/validate
+/// methods that call each family's hooks.  Omission from validation,
+/// normalization, or lowering is a compile-time error.
 macro_rules! matcher_families {
-    ($(($family_variant:ident, $matcher_variant:ident, $field:ident, $ty:ty)),* $(,)?) => {
+    ($(($family_variant:ident, $matcher_variant:ident, $field:ident, $ty:ty,
+        normalize($norm_fn:path),
+        validate($val_fn:path),
+        $from_state:ident
+    )),* $(,)?) => {
         const MATCHER_FAMILY_COUNT: usize = [$(stringify!($family_variant)),*].len();
 
         #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,23 +113,81 @@ macro_rules! matcher_families {
             pub fn is_empty(&self) -> bool {
                 $(self.$field.is_empty())&&*
             }
+
+            fn normalize(mut self) -> Self {
+                for family in self.families_mut() {
+                    match family {
+                        $(MatcherFamilyMut::$family_variant(values) => $norm_fn(values),)*
+                    }
+                }
+                self
+            }
+
+            fn validate_inner(&self) -> Result<(), MatcherBuildError> {
+                for family in self.families() {
+                    match family {
+                        $(MatcherFamily::$family_variant(values) => $val_fn(values)?,)*
+                    }
+                }
+                Ok(())
+            }
         }
+
+        $(
+            generate_from!($from_state $ty, $matcher_variant);
+        )*
     };
 }
 
 matcher_families! {
-    (Calls, Call, calls, CallMatcher),
-    (MemberCalls, MemberCall, member_calls, MemberCallMatcher),
-    (MemberReads, MemberRead, member_reads, MemberReadMatcher),
-    (Imports, Import, imports, String),
-    (PackageImports, PackageImport, package_imports, ModuleSpecifierPattern),
-    (StringContains, StringContains, string_contains, String),
-    (Classes, Class, classes, ClassMatcher),
-    (Constructors, Constructor, constructors, ConstructorMatcher),
-    (Flows, ObjectFlow, flows, ObjectFlowMatcher),
-    (ReturnedMemberCalls, ReturnedMemberCall, returned_member_calls, ReturnedMemberCallMatcher),
-    (ReturnedMemberReads, ReturnedMemberRead, returned_member_reads, ReturnedMemberReadMatcher),
-    (InstanceMemberCalls, InstanceMemberCall, instance_member_calls, InstanceMemberCallMatcher),
+    (Calls, Call, calls, CallMatcher,
+        normalize(normalization::normalize_calls),
+        validate(validation::validate_calls),
+        from),
+    (MemberCalls, MemberCall, member_calls, MemberCallMatcher,
+        normalize(normalization::normalize_member_calls),
+        validate(validation::validate_member_calls),
+        from),
+    (MemberReads, MemberRead, member_reads, MemberReadMatcher,
+        normalize(normalization::normalize_member_reads),
+        validate(validation::validate_member_reads),
+        from),
+    (Imports, Import, imports, String,
+        normalize(normalize_strings),
+        validate(validation::validate_literal_strings),
+        no_from),
+    (PackageImports, PackageImport, package_imports, ModuleSpecifierPattern,
+        normalize(normalization::normalize_package_imports),
+        validate(validation::validate_package_imports),
+        no_from),
+    (StringContains, StringContains, string_contains, String,
+        normalize(normalize_strings),
+        validate(validation::validate_literal_strings),
+        no_from),
+    (Classes, Class, classes, ClassMatcher,
+        normalize(ClassMatcher::normalize_all),
+        validate(validation::validate_classes),
+        from),
+    (Constructors, Constructor, constructors, ConstructorMatcher,
+        normalize(ConstructorMatcher::normalize_all),
+        validate(validation::validate_constructors),
+        from),
+    (Flows, ObjectFlow, flows, ObjectFlowMatcher,
+        normalize(normalize_flows),
+        validate(validation::validate_flows),
+        from),
+    (ReturnedMemberCalls, ReturnedMemberCall, returned_member_calls, ReturnedMemberCallMatcher,
+        normalize(ReturnedMemberCallMatcher::normalize_all),
+        validate(validation::validate_returned_member_calls),
+        from),
+    (ReturnedMemberReads, ReturnedMemberRead, returned_member_reads, ReturnedMemberReadMatcher,
+        normalize(ReturnedMemberReadMatcher::normalize_all),
+        validate(validation::validate_returned_member_reads),
+        from),
+    (InstanceMemberCalls, InstanceMemberCall, instance_member_calls, InstanceMemberCallMatcher,
+        normalize(InstanceMemberCallMatcher::normalize_all),
+        validate(validation::validate_instance_member_calls),
+        from),
 }
 
 impl Matcher {
@@ -245,52 +323,6 @@ impl Matcher {
     }
 }
 
-impl From<CallMatcher> for Matcher {
-    fn from(value: CallMatcher) -> Self {
-        Self::Call(value)
-    }
-}
-impl From<MemberCallMatcher> for Matcher {
-    fn from(value: MemberCallMatcher) -> Self {
-        Self::MemberCall(value)
-    }
-}
-impl From<MemberReadMatcher> for Matcher {
-    fn from(value: MemberReadMatcher) -> Self {
-        Self::MemberRead(value)
-    }
-}
-impl From<ClassMatcher> for Matcher {
-    fn from(value: ClassMatcher) -> Self {
-        Self::Class(value)
-    }
-}
-impl From<ConstructorMatcher> for Matcher {
-    fn from(value: ConstructorMatcher) -> Self {
-        Self::Constructor(value)
-    }
-}
-impl From<ObjectFlowMatcher> for Matcher {
-    fn from(value: ObjectFlowMatcher) -> Self {
-        Self::ObjectFlow(value)
-    }
-}
-impl From<ReturnedMemberCallMatcher> for Matcher {
-    fn from(value: ReturnedMemberCallMatcher) -> Self {
-        Self::ReturnedMemberCall(value)
-    }
-}
-impl From<ReturnedMemberReadMatcher> for Matcher {
-    fn from(value: ReturnedMemberReadMatcher) -> Self {
-        Self::ReturnedMemberRead(value)
-    }
-}
-impl From<InstanceMemberCallMatcher> for Matcher {
-    fn from(value: InstanceMemberCallMatcher) -> Self {
-        Self::InstanceMemberCall(value)
-    }
-}
-
 impl MatcherSet {
     /// Assemble a matcher collection from typed declarations.
     pub fn from_matchers(matchers: Vec<Matcher>) -> Self {
@@ -303,7 +335,7 @@ impl MatcherSet {
 
     /// Validate all declarations without normalizing or mutating them.
     pub fn validate(&self) -> Result<(), MatcherBuildError> {
-        validation::validate(self)
+        self.validate_inner()
     }
 
     #[must_use]

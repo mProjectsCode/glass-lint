@@ -341,11 +341,19 @@ impl Linter {
         module: &crate::analysis::ProjectModule,
         classification: &ClassificationResult,
     ) -> Vec<crate::Finding> {
-        let mut related_by_rule: BTreeMap<crate::RuleId, Vec<crate::Evidence>> = BTreeMap::new();
+        let lines = &module.source_context().lines;
+        let path = module.path();
+
+        let mut related_by_rule: BTreeMap<
+            crate::api::classification::RuleIndex,
+            Vec<crate::Evidence>,
+        > = BTreeMap::new();
+        let mut findings_by_rule: BTreeMap<
+            crate::api::classification::RuleIndex,
+            Vec<crate::Finding>,
+        > = BTreeMap::new();
+
         for capability in classification.capabilities() {
-            let Some(rule_id) = self.catalog.rule_id(capability.rule_index).cloned() else {
-                continue;
-            };
             let related: Vec<_> = capability
                 .evidence()
                 .iter()
@@ -358,24 +366,36 @@ impl Linter {
                 })
                 .collect();
             if !related.is_empty() {
-                related_by_rule.entry(rule_id).or_default().extend(related);
+                related_by_rule
+                    .entry(capability.rule_index)
+                    .or_default()
+                    .extend(related);
+            }
+
+            let cap_findings = self.findings_for_capability(capability, lines, path);
+            if !cap_findings.is_empty() {
+                findings_by_rule
+                    .entry(capability.rule_index)
+                    .or_default()
+                    .extend(cap_findings);
             }
         }
 
-        self.findings_for(
-            classification,
-            &module.source_context().lines,
-            module.path(),
-        )
-        .into_iter()
-        .map(|finding| {
-            let mut project_finding = finding;
-            if let Some(related) = related_by_rule.get(&project_finding.rule_id) {
-                project_finding.append_related(related.iter().cloned());
+        for (rule_index, related) in &related_by_rule {
+            if let Some(rule_findings) = findings_by_rule.get_mut(rule_index) {
+                for finding in rule_findings.iter_mut() {
+                    if !related.is_empty() {
+                        finding.append_related(related.iter().cloned());
+                    }
+                }
             }
-            project_finding
-        })
-        .collect()
+        }
+
+        let mut result: Vec<crate::Finding> = Vec::new();
+        for (_, mut rule_findings) in findings_by_rule {
+            result.append(&mut rule_findings);
+        }
+        result
     }
 
     fn initialize_project_files(

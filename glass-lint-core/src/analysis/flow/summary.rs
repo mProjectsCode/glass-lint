@@ -462,9 +462,14 @@ impl FunctionSummaries {
     }
 }
 
-fn resolve_call_target(call_id: FactId, stream: &FactStream) -> Option<(FunctionId, &[CallArgInfo])> {
+fn resolve_call_target(
+    call_id: FactId,
+    stream: &FactStream,
+) -> Option<(FunctionId, &[CallArgInfo])> {
     let FactPayload::Call {
-        target_function, args, ..
+        target_function,
+        args,
+        ..
     } = &stream.fact(call_id)?.payload
     else {
         return None;

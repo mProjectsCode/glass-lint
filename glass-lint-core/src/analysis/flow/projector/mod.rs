@@ -213,21 +213,16 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             return;
         };
         if let Some(chain) = transfer::projector_chain(self.stream, fact.id, self.names) {
-            let effective_args =
-                transfer::projector_effective_args(fact).unwrap_or(&[]);
+            let effective_args = transfer::projector_effective_args(fact).unwrap_or(&[]);
             let rooted = transfer::projector_rooted(self.stream, fact.id);
-            self.record_configuration(
-                *receiver,
-                &chain,
-                effective_args,
-                fact.id,
-            );
+            self.record_configuration(*receiver, &chain, effective_args, fact.id);
             self.record_sinks(&chain, effective_args, fact.id, rooted);
         }
         if let Some(function) = target_function
-            && let FactPayload::Call { args, .. } = &fact.payload {
-                self.record_helper_sink(*function, args, fact.id);
-            }
+            && let FactPayload::Call { args, .. } = &fact.payload
+        {
+            self.record_helper_sink(*function, args, fact.id);
+        }
     }
 
     fn environment(&self) -> FlowEnvironment {
@@ -548,7 +543,10 @@ mod tests {
                     ..
                 } if chain
                     .to_symbol_path(stream.names().unwrap())
-                    .is_some_and(|s| s.eq_chain("document.head.appendChild")) => Some(fact.span),
+                    .is_some_and(|s| s.eq_chain("document.head.appendChild")) =>
+                {
+                    Some(fact.span)
+                }
                 _ => None,
             })
             .expect("sink call should be present");

@@ -162,61 +162,79 @@ fn literal_clause(value: &str, event: EventPredicate, kind: MatchKind) -> QueryC
     }
 }
 
-pub(super) fn lower_literals(
-    imports: &[String],
-    package_imports: &[ModuleSpecifierPattern],
-    string_contains: &[String],
-) -> Vec<QueryClause> {
-    let imports = imports
+pub(super) fn lower_imports(values: &[String]) -> Vec<QueryClause> {
+    values
         .iter()
-        .map(|value| literal_clause(value, EventPredicate::Import, MatchKind::Import));
-    let packages = package_imports.iter().map(|pattern| QueryClause {
-        identity: IdentityConstraint::PackageSpecifier {
-            pattern: pattern.clone(),
-        },
-        event: EventPredicate::Import,
-        subject: SubjectConstraint::Direct,
-        constraints: Box::new([]),
-        evidence: EvidenceDescriptor {
-            kind: MatchKind::Import,
-            symbol: pattern.to_string(),
-        },
-    });
-    let strings = string_contains.iter().map(|value| {
-        literal_clause(
-            value,
-            EventPredicate::StringReference,
-            MatchKind::StringContains,
-        )
-    });
-    imports.chain(packages).chain(strings).collect()
+        .map(|value| literal_clause(value, EventPredicate::Import, MatchKind::Import))
+        .collect()
 }
 
-pub(super) fn lower_classes_and_constructors(
-    classes: &[ClassMatcher],
-    constructors: &[ConstructorMatcher],
-) -> Vec<QueryClause> {
-    let classes = classes.iter().map(|class| QueryClause {
-        identity: call_identity(class.name(), class.provenance()),
-        event: EventPredicate::ClassReference,
-        subject: SubjectConstraint::Direct,
-        constraints: Box::new([]),
-        evidence: EvidenceDescriptor {
-            kind: MatchKind::Class,
-            symbol: class.evidence_symbol(),
-        },
-    });
-    let constructors = constructors.iter().map(|constructor| QueryClause {
-        identity: call_identity(constructor.name(), constructor.provenance()),
-        event: EventPredicate::Construct,
-        subject: SubjectConstraint::Direct,
-        constraints: Box::new([]),
-        evidence: EvidenceDescriptor {
-            kind: MatchKind::Constructor,
-            symbol: constructor.evidence_symbol(),
-        },
-    });
-    classes.chain(constructors).collect()
+pub(super) fn lower_package_imports(values: &[ModuleSpecifierPattern]) -> Vec<QueryClause> {
+    values
+        .iter()
+        .map(|pattern| QueryClause {
+            identity: IdentityConstraint::PackageSpecifier {
+                pattern: pattern.clone(),
+            },
+            event: EventPredicate::Import,
+            subject: SubjectConstraint::Direct,
+            constraints: Box::new([]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::Import,
+                symbol: pattern.to_string(),
+            },
+        })
+        .collect()
+}
+
+pub(super) fn lower_string_contains(values: &[String]) -> Vec<QueryClause> {
+    values
+        .iter()
+        .map(|value| {
+            literal_clause(
+                value,
+                EventPredicate::StringReference,
+                MatchKind::StringContains,
+            )
+        })
+        .collect()
+}
+
+pub(super) fn lower_classes(values: &[ClassMatcher]) -> Vec<QueryClause> {
+    values
+        .iter()
+        .map(|class| QueryClause {
+            identity: call_identity(class.name(), class.provenance()),
+            event: EventPredicate::ClassReference,
+            subject: SubjectConstraint::Direct,
+            constraints: Box::new([]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::Class,
+                symbol: class.evidence_symbol(),
+            },
+        })
+        .collect()
+}
+
+pub(super) fn lower_constructors(values: &[ConstructorMatcher]) -> Vec<QueryClause> {
+    values
+        .iter()
+        .map(|constructor| QueryClause {
+            identity: call_identity(constructor.name(), constructor.provenance()),
+            event: EventPredicate::Construct,
+            subject: SubjectConstraint::Direct,
+            constraints: Box::new([]),
+            evidence: EvidenceDescriptor {
+                kind: MatchKind::Constructor,
+                symbol: constructor.evidence_symbol(),
+            },
+        })
+        .collect()
+}
+
+#[allow(unused_variables)]
+pub(super) fn lower_flows(values: &[crate::api::rule::ObjectFlowMatcher]) -> Vec<QueryClause> {
+    Vec::new()
 }
 
 fn returned_member_clause(
@@ -243,31 +261,40 @@ fn returned_member_clause(
     }
 }
 
-pub(super) fn lower_returned_members(
-    calls_matchers: &[ReturnedMemberCallMatcher],
-    reads_matchers: &[ReturnedMemberReadMatcher],
+pub(super) fn lower_returned_member_calls(
+    values: &[ReturnedMemberCallMatcher],
 ) -> Vec<QueryClause> {
-    let calls = calls_matchers.iter().map(|returned| {
-        returned_member_clause(
-            returned.source(),
-            returned.member(),
-            EventPredicate::MemberCall {
-                member: returned.member().into(),
-            },
-            MatchKind::MemberCall,
-        )
-    });
-    let reads = reads_matchers.iter().map(|returned| {
-        returned_member_clause(
-            returned.source(),
-            returned.member(),
-            EventPredicate::MemberRead {
-                member: returned.member().into(),
-            },
-            MatchKind::MemberRead,
-        )
-    });
-    calls.chain(reads).collect()
+    values
+        .iter()
+        .map(|returned| {
+            returned_member_clause(
+                returned.source(),
+                returned.member(),
+                EventPredicate::MemberCall {
+                    member: returned.member().into(),
+                },
+                MatchKind::MemberCall,
+            )
+        })
+        .collect()
+}
+
+pub(super) fn lower_returned_member_reads(
+    values: &[ReturnedMemberReadMatcher],
+) -> Vec<QueryClause> {
+    values
+        .iter()
+        .map(|returned| {
+            returned_member_clause(
+                returned.source(),
+                returned.member(),
+                EventPredicate::MemberRead {
+                    member: returned.member().into(),
+                },
+                MatchKind::MemberRead,
+            )
+        })
+        .collect()
 }
 
 pub(super) fn lower_instance_members(values: &[InstanceMemberCallMatcher]) -> Vec<QueryClause> {

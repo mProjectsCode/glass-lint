@@ -5,101 +5,128 @@
 //! field that failed so provider authors can correct the rule
 //! deterministically.
 
-use crate::api::rule::{
-    MatcherBuildError,
-    matcher::{
-        ArgumentConstraint, ArgumentMatcher, FlowCompletion, FlowCondition, FlowSinkMatcher,
-        MatcherFamily, MatcherSet, MemberCallMatcher, MemberCallProvenance, ObjectEventMatcher,
-        ObjectFlowMatcher, ObjectSourceMatcher, StaticStringPredicateKind, SymbolProvenance,
-        ValueMatcher, ValueMatcherKind,
+use crate::{
+    api::rule::{
+        MatcherBuildError, ModuleSpecifierPattern,
+        matcher::{
+            ArgumentConstraint, ArgumentMatcher, ClassMatcher, ConstructorMatcher, FlowCompletion,
+            FlowCondition, FlowSinkMatcher, InstanceMemberCallMatcher, MemberCallMatcher,
+            MemberCallProvenance, MemberReadMatcher, ObjectEventMatcher, ObjectFlowMatcher,
+            ObjectSourceMatcher, ReturnedMemberCallMatcher, ReturnedMemberReadMatcher,
+            StaticStringPredicateKind, SymbolProvenance, ValueMatcher, ValueMatcherKind,
+        },
     },
+    rules::CallMatcher,
 };
 
 const MAX_ARGUMENT_INDEX: usize = 1 << 20;
 const MAX_EXPRESSION_NODES: usize = 4096;
 
-/// Validate all matcher families in one assembled API matcher.
-pub(super) fn validate(matcher: &MatcherSet) -> Result<(), MatcherBuildError> {
-    for family in matcher.families() {
-        match family {
-            MatcherFamily::Calls(calls) => {
-                for call in calls {
-                    validate_name_at(call.name(), "call name")?;
-                    call.provenance().validate_at("provenance")?;
-                    validate_arguments(call.arguments())?;
-                }
-            }
-            MatcherFamily::MemberCalls(calls) => {
-                for call in calls {
-                    call.validate()?;
-                }
-            }
-            MatcherFamily::MemberReads(reads) => {
-                for read in reads {
-                    validate_chain(read.chain(), "member read chain")?;
-                    read.provenance().validate_at("module name")?;
-                }
-            }
-            MatcherFamily::Imports(values) | MatcherFamily::StringContains(values) => {
-                for value in values {
-                    if value.trim().is_empty() {
-                        return Err(MatcherBuildError::InvalidModuleSpecifier(
-                            "literal matcher value must not be empty".into(),
-                        ));
-                    }
-                }
-            }
-            MatcherFamily::PackageImports(patterns) => {
-                for pattern in patterns {
-                    if pattern.as_str().trim().is_empty() || !pattern.is_package() {
-                        return Err(MatcherBuildError::InvalidModuleSpecifier(
-                            "package import matcher must be a package pattern".into(),
-                        ));
-                    }
-                }
-            }
-            MatcherFamily::Classes(classes) => {
-                for class in classes {
-                    validate_name_at(class.name(), "class name")?;
-                    class.provenance().validate_at("provenance")?;
-                    if matches!(class.provenance(), SymbolProvenance::Global) {
-                        return Err(MatcherBuildError::ConflictingProvenance);
-                    }
-                }
-            }
-            MatcherFamily::Constructors(constructors) => {
-                for constructor in constructors {
-                    validate_name_at(constructor.name(), "constructor name")?;
-                    constructor.provenance().validate_at("provenance")?;
-                }
-            }
-            MatcherFamily::Flows(flows) => {
-                for flow in flows {
-                    validate_object_flow(flow, "flow")?;
-                }
-            }
-            MatcherFamily::ReturnedMemberCalls(values) => {
-                for returned in values {
-                    validate_chain(returned.source(), "returned-member source")?;
-                    validate_name_at(returned.member(), "returned-member name")?;
-                }
-            }
-            MatcherFamily::ReturnedMemberReads(values) => {
-                for returned in values {
-                    validate_chain(returned.source(), "returned-member source")?;
-                    validate_name_at(returned.member(), "returned-member name")?;
-                }
-            }
-            MatcherFamily::InstanceMemberCalls(values) => {
-                for instance in values {
-                    if instance.module_pattern().is_none() {
-                        validate_name_at(instance.module(), "instance module")?;
-                    }
-                    validate_name_at(instance.export(), "instance export")?;
-                    validate_name_at(instance.member(), "instance member")?;
-                }
-            }
+pub(super) fn validate_calls(calls: &[CallMatcher]) -> Result<(), MatcherBuildError> {
+    for call in calls {
+        validate_name_at(call.name(), "call name")?;
+        call.provenance().validate_at("provenance")?;
+        validate_arguments(call.arguments())?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_member_calls(calls: &[MemberCallMatcher]) -> Result<(), MatcherBuildError> {
+    for call in calls {
+        call.validate()?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_member_reads(reads: &[MemberReadMatcher]) -> Result<(), MatcherBuildError> {
+    for read in reads {
+        validate_chain(read.chain(), "member read chain")?;
+        read.provenance().validate_at("module name")?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_literal_strings(values: &[String]) -> Result<(), MatcherBuildError> {
+    for value in values {
+        if value.trim().is_empty() {
+            return Err(MatcherBuildError::InvalidModuleSpecifier(
+                "literal matcher value must not be empty".into(),
+            ));
         }
+    }
+    Ok(())
+}
+
+pub(super) fn validate_package_imports(
+    patterns: &[ModuleSpecifierPattern],
+) -> Result<(), MatcherBuildError> {
+    for pattern in patterns {
+        if pattern.as_str().trim().is_empty() || !pattern.is_package() {
+            return Err(MatcherBuildError::InvalidModuleSpecifier(
+                "package import matcher must be a package pattern".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn validate_classes(classes: &[ClassMatcher]) -> Result<(), MatcherBuildError> {
+    for class in classes {
+        validate_name_at(class.name(), "class name")?;
+        class.provenance().validate_at("provenance")?;
+        if matches!(class.provenance(), SymbolProvenance::Global) {
+            return Err(MatcherBuildError::ConflictingProvenance);
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn validate_constructors(
+    constructors: &[ConstructorMatcher],
+) -> Result<(), MatcherBuildError> {
+    for constructor in constructors {
+        validate_name_at(constructor.name(), "constructor name")?;
+        constructor.provenance().validate_at("provenance")?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_flows(flows: &[ObjectFlowMatcher]) -> Result<(), MatcherBuildError> {
+    for flow in flows {
+        validate_object_flow(flow, "flow")?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_returned_member_calls(
+    values: &[ReturnedMemberCallMatcher],
+) -> Result<(), MatcherBuildError> {
+    for returned in values {
+        validate_chain(returned.source(), "returned-member source")?;
+        validate_name_at(returned.member(), "returned-member name")?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_returned_member_reads(
+    values: &[ReturnedMemberReadMatcher],
+) -> Result<(), MatcherBuildError> {
+    for returned in values {
+        validate_chain(returned.source(), "returned-member source")?;
+        validate_name_at(returned.member(), "returned-member name")?;
+    }
+    Ok(())
+}
+
+pub(super) fn validate_instance_member_calls(
+    values: &[InstanceMemberCallMatcher],
+) -> Result<(), MatcherBuildError> {
+    for instance in values {
+        if instance.module_pattern().is_none() {
+            validate_name_at(instance.module(), "instance module")?;
+        }
+        validate_name_at(instance.export(), "instance export")?;
+        validate_name_at(instance.member(), "instance member")?;
     }
     Ok(())
 }
