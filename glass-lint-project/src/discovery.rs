@@ -2,17 +2,15 @@
 
 use std::{
     collections::BTreeSet,
-    fs,
     path::{Path, PathBuf},
     time::Instant,
 };
-
-use serde_json::Value;
 
 use crate::{
     admission::{CanonicalProjectPath, SourceAdmission},
     error::ProjectLoadError,
     options::ProjectSelection,
+    tsconfig::{self, CycleDiagnostic, Tsconfig},
     walk,
 };
 
@@ -114,13 +112,18 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
     ) -> Result<Vec<CanonicalProjectPath>, ProjectLoadError> {
         let mut visited = BTreeSet::new();
         let mut selected = BTreeSet::new();
+        let mut cycle_diagnostics = Vec::new();
         let canonical_config = self.admission.canonicalize(config)?;
         self.collect_tsconfig(
             &canonical_config,
             directory,
             &mut visited,
             &mut selected,
+            &mut cycle_diagnostics,
         )?;
+        // Cycle diagnostics are recorded but the cyclic branch already returns
+        // a fail-closed config (empty files, excludes all). Independent branches
+        // continue normally.
         Ok(selected.into_iter().collect())
     }
 
@@ -130,73 +133,55 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         fallback_directory: &Path,
         visited: &mut BTreeSet<PathBuf>,
         selected: &mut BTreeSet<CanonicalProjectPath>,
+        cycle_diagnostics: &mut Vec<CycleDiagnostic>,
     ) -> Result<(), ProjectLoadError> {
         if !visited.insert(config.as_ref().to_path_buf()) {
             return Ok(());
         }
 
-        let parsed = read_tsconfig_path_extends(config.as_ref(), fallback_directory, visited)?;
-        let base = config.as_ref().parent().unwrap_or(fallback_directory);
-        let includes = patterns(&parsed, "include").unwrap_or_else(|| vec!["**/*"]);
-        let mut excludes = patterns(&parsed, "exclude").unwrap_or_default();
-        excludes.extend(["**/node_modules", "**/bower_components"]);
-        Self::add_output_directories(&parsed, &mut excludes);
+        let canonical = config.as_ref().to_path_buf();
+        let base = config
+            .as_ref()
+            .parent()
+            .unwrap_or(fallback_directory)
+            .to_path_buf();
 
-        if let Some(files) = parsed.get("files").and_then(Value::as_array) {
-            self.add_explicit_files(base, files, selected)?;
-        } else {
-            self.add_matching_files(base, &includes, &excludes, selected)?;
-        }
-        self.collect_references(&parsed, base, visited, selected)
+        // Phase 1-3: Build effective config (typed parse, extends resolution, merge)
+        let effective = tsconfig::build_effective_config(&canonical, &base, cycle_diagnostics)?;
+
+        // Phase 4: Select sources using the typed effective config
+        self.select_sources(&effective, &base, selected)?;
+
+        // Phase 5: Traverse project references
+        self.collect_references(&canonical, &base, visited, selected, cycle_diagnostics)
     }
 
-    fn add_output_directories<'config>(config: &'config Value, excludes: &mut Vec<&'config str>) {
-        if let Some(options) = config.get("compilerOptions") {
-            for option in ["outDir", "declarationDir"] {
-                if let Some(directory) = options.get(option).and_then(Value::as_str) {
-                    excludes.push(directory);
+    fn select_sources(
+        &self,
+        config: &Tsconfig,
+        base: &Path,
+        selected: &mut BTreeSet<CanonicalProjectPath>,
+    ) -> Result<(), ProjectLoadError> {
+        if let Some(files) = &config.files {
+            // Explicit files list
+            for file in files {
+                let path = base.join(file);
+                if path.exists() && self.admission.supports(&path) {
+                    selected.insert(self.admission.canonicalize(&path)?);
                 }
             }
-        }
-    }
-
-    fn add_explicit_files(
-        &self,
-        base: &Path,
-        files: &[Value],
-        selected: &mut BTreeSet<CanonicalProjectPath>,
-    ) -> Result<(), ProjectLoadError> {
-        for file in files.iter().filter_map(Value::as_str) {
-            let path = base.join(file);
-            if path.exists() && self.admission.supports(&path) {
-                selected.insert(self.admission.canonicalize(&path)?);
-            }
-        }
-        Ok(())
-    }
-
-    fn add_matching_files(
-        &self,
-        base: &Path,
-        includes: &[&str],
-        excludes: &[&str],
-        selected: &mut BTreeSet<CanonicalProjectPath>,
-    ) -> Result<(), ProjectLoadError> {
-        for canonical in self.discover(base)? {
-            let relative = canonical
-                .as_ref()
-                .strip_prefix(base)
-                .unwrap_or_else(|_| canonical.as_ref())
-                .to_string_lossy()
-                .replace('\\', "/");
-            if includes
-                .iter()
-                .any(|pattern| tsconfig_pattern_matches(pattern, &relative))
-                && !excludes
-                    .iter()
-                    .any(|pattern| tsconfig_pattern_matches(pattern, &relative))
-            {
-                selected.insert(canonical);
+        } else {
+            // Include/exclude pattern matching via the compiled pattern set
+            for canonical in self.discover(base)? {
+                let relative = canonical
+                    .as_ref()
+                    .strip_prefix(base)
+                    .unwrap_or_else(|_| canonical.as_ref())
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if config.pattern_set.is_included(&relative) {
+                    selected.insert(canonical);
+                }
             }
         }
         Ok(())
@@ -204,130 +189,30 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
 
     fn collect_references(
         &self,
-        config: &Value,
+        config_path: &Path,
         base: &Path,
         visited: &mut BTreeSet<PathBuf>,
         selected: &mut BTreeSet<CanonicalProjectPath>,
+        cycle_diagnostics: &mut Vec<CycleDiagnostic>,
     ) -> Result<(), ProjectLoadError> {
-        let Some(references) = config.get("references").and_then(Value::as_array) else {
-            return Ok(());
-        };
-        for reference in references {
-            let Some(path) = reference.get("path").and_then(Value::as_str) else {
-                continue;
-            };
-            let mut target = base.join(path);
+        // Re-read config DTO to get typed references
+        let dto = tsconfig::read_and_parse(config_path)?;
+        for ref_path_str in &dto.references {
+            let mut target = base.join(ref_path_str);
             if target.is_dir() {
                 target = target.join("tsconfig.json");
             }
             if target.exists() {
                 let canonical_target = self.admission.canonicalize(&target)?;
-                self.collect_tsconfig(&canonical_target, base, visited, selected)?;
+                self.collect_tsconfig(
+                    &canonical_target,
+                    base,
+                    visited,
+                    selected,
+                    cycle_diagnostics,
+                )?;
             }
         }
         Ok(())
-    }
-}
-
-fn patterns<'a>(config: &'a Value, key: &str) -> Option<Vec<&'a str>> {
-    config
-        .get(key)
-        .and_then(Value::as_array)
-        .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>())
-}
-
-/// Materialize inherited options before selecting runtime sources.
-fn read_tsconfig_path_extends(
-    config: &Path,
-    fallback_directory: &Path,
-    visited: &mut BTreeSet<PathBuf>,
-) -> Result<Value, ProjectLoadError> {
-    let mut text = fs::read_to_string(config).map_err(|source| ProjectLoadError::Io {
-        path: config.to_path_buf(),
-        source,
-    })?;
-    json_strip_comments::strip(&mut text).map_err(|error| parse_error(config, error))?;
-    let parsed: Value = serde_json::from_str(&text).map_err(|error| parse_error(config, error))?;
-    let mut effective = Value::Object(serde_json::Map::new());
-    if let Some(extends) = parsed.get("extends").and_then(Value::as_str)
-        && let Some(parent) = resolve_tsconfig_extends(config, extends, fallback_directory)
-        && parent.exists()
-    {
-        let parent = crate::admission::realpath(&parent)?;
-        if visited.insert(parent.clone()) {
-            effective = read_tsconfig_path_extends(
-                &parent,
-                parent.parent().unwrap_or(fallback_directory),
-                visited,
-            )?;
-        }
-    }
-    merge_tsconfig_inheritance(&mut effective, parsed);
-    Ok(effective)
-}
-
-fn parse_error(config: &Path, error: impl std::fmt::Display) -> ProjectLoadError {
-    ProjectLoadError::ConfigParseError {
-        path: config.to_path_buf(),
-        source: error.to_string(),
-    }
-}
-
-fn tsconfig_pattern_matches(pattern: &str, relative: &str) -> bool {
-    let pattern = pattern.replace('\\', "/");
-    let pattern = if pattern.ends_with('/') {
-        format!("{pattern}**/*")
-    } else {
-        pattern
-    };
-    glob::Pattern::new(&pattern).is_ok_and(|pattern| {
-        pattern.matches(relative)
-            || (!pattern.as_str().contains('/')
-                && relative
-                    .split('/')
-                    .next_back()
-                    .is_some_and(|name| pattern.matches(name)))
-    })
-}
-
-fn resolve_tsconfig_extends(
-    config: &Path,
-    extends: &str,
-    fallback_directory: &Path,
-) -> Option<PathBuf> {
-    // Package-based `extends` is resolver policy rather than source
-    // membership. Relative and absolute configs avoid admitting dependency
-    // sources by accident.
-    if !extends.starts_with('.') && !Path::new(extends).is_absolute() {
-        return None;
-    }
-    let base = config.parent().unwrap_or(fallback_directory);
-    let mut path = if Path::new(extends).is_absolute() {
-        PathBuf::from(extends)
-    } else {
-        base.join(extends)
-    };
-    if path.extension().is_none() {
-        path.set_extension("json");
-    }
-    Some(path)
-}
-
-fn merge_tsconfig_inheritance(base: &mut Value, child: Value) {
-    match (base, child) {
-        (Value::Object(base), Value::Object(child)) => {
-            for (key, value) in child {
-                if let Some(existing) = base.get_mut(&key) {
-                    if key == "compilerOptions" {
-                        merge_tsconfig_inheritance(existing, value);
-                    } else {
-                        *existing = value;
-                    }
-                } else {
-                    base.insert(key, value);
-                }
-            }
-        }
-        (base, child) => *base = child,
     }
 }

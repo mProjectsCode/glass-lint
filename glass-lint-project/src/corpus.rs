@@ -108,7 +108,7 @@ impl SourceCorpus {
                 continue;
             }
             if !metadata.is_dir() {
-                return Err(ProjectLoadError::CorpusRootNotFileOrDir(root.to_path_buf()));
+                return Err(ProjectLoadError::CorpusRootNotFileOrDir(root.clone()));
             }
             let found = walk::collect_files(&admission, root, None, &mut include)?;
             for path in found {
@@ -119,7 +119,7 @@ impl SourceCorpus {
             }
         }
         debug_assert!(paths.len() <= self.options.max_files());
-        Ok(paths.into_iter().map(|p| p.into_path_buf()).collect())
+        Ok(paths.into_iter().map(super::admission::CanonicalProjectPath::into_path_buf).collect())
     }
 
     /// Read one supported source file after enforcing the byte budget.

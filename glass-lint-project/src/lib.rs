@@ -16,6 +16,7 @@ mod error;
 mod loader;
 mod options;
 mod resolver;
+mod tsconfig;
 mod walk;
 
 pub use admission::{AdmittedSourcePath, CanonicalProjectPath, SourceAdmission};

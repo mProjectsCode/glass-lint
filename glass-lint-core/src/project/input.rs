@@ -6,11 +6,11 @@ use std::{
 };
 
 use crate::{
+    SourceFile,
     project::{
         ModuleId, ProjectInput, ProjectInputError, ProjectRelativePath, ResolutionRequestKey,
         ResolverOutcome,
     },
-    SourceFile,
 };
 
 fn compute_module_ids(
@@ -103,6 +103,14 @@ pub struct ValidatedProjectInput {
     module_ids: BTreeMap<ProjectRelativePath, ModuleId>,
 }
 
+/// Internal: destructured components of a validated project.
+type ProjectParts = (
+    PathBuf,
+    BTreeMap<ProjectRelativePath, crate::SourceFile>,
+    BTreeMap<ResolutionRequestKey, ResolverOutcome>,
+    BTreeMap<ProjectRelativePath, ModuleId>,
+);
+
 impl ValidatedProjectInput {
     /// Create from already-normalized tables. Only used within the crate
     /// during the resolve phase when maps are built from incremental sources.
@@ -152,14 +160,7 @@ impl ValidatedProjectInput {
     }
 
     /// Crate-internal: destructure into all components at once.
-    pub(crate) fn into_parts(
-        self,
-    ) -> (
-        PathBuf,
-        BTreeMap<ProjectRelativePath, crate::SourceFile>,
-        BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-        BTreeMap<ProjectRelativePath, ModuleId>,
-    ) {
+    pub(crate) fn into_parts(self) -> ProjectParts {
         (self.root, self.sources, self.resolutions, self.module_ids)
     }
 
@@ -172,7 +173,7 @@ impl ValidatedProjectInput {
 /// One-way DTO conversion for serialization or external wire boundaries.
 impl From<ValidatedProjectInput> for ProjectInput {
     fn from(v: ValidatedProjectInput) -> Self {
-        ProjectInput {
+        Self {
             root: v.root,
             sources: v.sources.into_values().collect(),
             resolutions: v.resolutions.into_iter().collect(),

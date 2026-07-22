@@ -47,7 +47,7 @@ impl ProjectLoadOutcome {
     fn partial(
         mut report: AnalysisReport,
         reason: ProjectLoadError,
-    ) -> Result<Self, ProjectLoadError> {
+    ) -> Self {
         let code = glass_lint_core::DiagnosticCode::new("incomplete_project")
             .expect("incomplete_project is a valid diagnostic code");
         report.completion = glass_lint_core::ReportCompletion::Partial;
@@ -60,11 +60,11 @@ impl ProjectLoadOutcome {
                     location: None,
                 },
             ));
-        Ok(Self {
+        Self {
             report,
             partial_reason: Some(reason),
             metrics: ProjectLoadMetrics::default(),
-        })
+        }
     }
 }
 
@@ -247,7 +247,7 @@ impl ProjectLoader {
             Err(ProjectLoadError::Timeout) => Err(ProjectLoadError::Timeout),
             Err(error) => {
                 let report = build.finish_partial(metrics)?;
-                ProjectLoadOutcome::partial(report, error)
+                Ok(ProjectLoadOutcome::partial(report, error))
             }
         }
     }
@@ -278,9 +278,10 @@ impl<'a> ProjectPaths<'a> {
                 root,
             });
         }
-        let initial_paths: VecDeque<CanonicalProjectPath> = ProjectDiscovery::with_deadline(&admission, deadline)
-            .initial_paths(selection, canonical_selection.as_ref())?
-            .into();
+        let initial_paths: VecDeque<CanonicalProjectPath> =
+            ProjectDiscovery::with_deadline(&admission, deadline)
+                .initial_paths(selection, canonical_selection.as_ref())?
+                .into();
         Ok(Self {
             admission,
             initial_paths,
@@ -427,9 +428,8 @@ impl<'a> ProjectLoadState<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         self.check_timeout()?;
-        let admitted = match self.admission.admitted_path(canonical.as_ref())? {
-            Some(path) => path,
-            None => return Ok(()),
+        let Some(admitted) = self.admission.admitted_path(canonical.as_ref())? else {
+            return Ok(());
         };
         if !self.admitted.admit(canonical.clone()) {
             return Ok(());
@@ -441,9 +441,7 @@ impl<'a> ProjectLoadState<'a> {
         }
 
         let read_start = Instant::now();
-        let source = self
-            .admission
-            .load_admitted_source_file(&admitted)?;
+        let source = self.admission.load_admitted_source_file(&admitted)?;
         metrics.timings.record_reads(read_start.elapsed());
         let source_bytes = u64::try_from(source.source.len()).unwrap_or(u64::MAX);
         self.progress.record_source_bytes(
@@ -504,10 +502,10 @@ impl<'a> ProjectLoadState<'a> {
             self.progress.record_edge();
             self.progress.publish(metrics);
             let target = self.admission.canonical_root().join(path);
-            if target.exists() {
-                if let Ok(canonical) = self.admission.canonicalize(&target) {
-                    self.queue.push(canonical);
-                }
+            if target.exists()
+                && let Ok(canonical) = self.admission.canonicalize(&target)
+            {
+                self.queue.push(canonical);
             }
         }
     }

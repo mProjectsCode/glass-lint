@@ -109,7 +109,11 @@ impl fmt::Display for ProjectLoadError {
             Self::Timeout => write!(f, "project lint timeout exceeded"),
             Self::InvalidProjectInput(error) => write!(f, "core project error: {error}"),
             Self::CorpusRootNotFileOrDir(path) => {
-                write!(f, "corpus root is not a file or directory: {}", path.display())
+                write!(
+                    f,
+                    "corpus root is not a file or directory: {}",
+                    path.display()
+                )
             }
             Self::ConfigParseError { path, source } => {
                 write!(f, "parse {}: {source}", path.display())

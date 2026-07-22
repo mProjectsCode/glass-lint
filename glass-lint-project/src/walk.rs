@@ -5,11 +5,7 @@
 //! entries, exclusion timing, visited/file budgets, error conversion) has a
 //! single maintenance point.
 
-use std::{
-    fs,
-    path::Path,
-    time::Instant,
-};
+use std::{fs, path::Path, time::Instant};
 
 use walkdir::WalkDir;
 

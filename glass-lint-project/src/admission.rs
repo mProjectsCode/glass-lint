@@ -171,7 +171,8 @@ impl<'a> SourceAdmission<'a> {
     }
 
     /// Read a path returned by [`Self::admitted_path`] without repeating the
-    /// boundary decision. Does not canonicalize, re-admit, or re-check the extension.
+    /// boundary decision. Does not canonicalize, re-admit, or re-check the
+    /// extension.
     pub(crate) fn load_admitted_source_file(
         &self,
         admitted: &AdmittedSourcePath,
