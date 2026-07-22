@@ -1,7 +1,4 @@
 //! Argument projections used by call facts and interprocedural flow.
-//!
-//! Projections preserve both the whole argument and statically addressable
-//! descendants; dynamic keys are intentionally represented as unknown.
 
 use crate::analysis::{
     SymbolPath,
@@ -13,132 +10,148 @@ use crate::analysis::{
     value::Value,
 };
 
-/// The one result produced for each argument walk. The expression value is
-/// retained in the frozen arena; the base pair is the only extra information
-/// needed to connect a member/parameter path during flow projection.
-struct ArgumentProjection {
-    value: ValueId,
-    base_value: ValueId,
-    base_path: PathId,
-}
-
-impl ArgumentProjection {
-    fn from_value(value: ValueId, path: PathId) -> Self {
-        Self {
-            value,
-            base_value: value,
-            base_path: path,
-        }
-    }
-
-    fn unknown() -> Self {
-        Self::from_value(ValueId::UNKNOWN, PathId::EMPTY)
-    }
-}
-
 impl FactBuilder<'_> {
     /// Resolve one argument into the scalar, rooted, and statically addressable
     /// views consumed by call matchers and parameter-path flow.
     ///
-    /// One bounded resolution and one constant evaluation are performed; every
-    /// derived view (projections, keys, strings, provenance, rooted chain)
-    /// comes from the same two sources under one budget outcome.
+    /// One bounded traversal constructs the value identity, member-chain
+    /// projection, and static object/array shapes.  Constant evaluation is
+    /// consulted only as a fallback when the resolver cannot produce a string
+    /// identity (template literals, concatenation, etc.).
+    ///
+    /// Object and array literals are walked by this method directly rather
+    /// than through the resolver because the resolver's constant-evaluation
+    /// path (`syntax_constant::evaluate`) converts runtime value identities to
+    /// `Unknown`; the direct walk preserves the resolved `ValueId` for every
+    /// child expression.
     pub(super) fn arg_info(&mut self, expr: &Expr) -> CallArgInfo {
-        let resolved = self.resolver.resolve_expr(expr);
-        let mut value = resolved.id;
-        let provenance = resolved.call.clone();
-
-        // Template literals and other expressions that the resolver does not
-        // intern as static strings are evaluated here and interned into the
-        // value table so frozen-table lookups find them.
-        if value == ValueId::UNKNOWN {
-            let const_value = syntax_constant::evaluate(expr, self.resolver);
-            if let Some(s) = const_value.string() {
-                let static_val = self
-                    .resolver
-                    .static_value(Value::StaticString(s.to_owned()));
-                value = static_val.id;
+        match expr {
+            Expr::Member(member) => {
+                let resolved = self.resolver.resolve_member(member);
+                let value = Self::resolve_or_eval(expr, resolved.id, self.resolver);
+                let (base_value, base_path) = self.member_chain_projection(expr);
+                CallArgInfo {
+                    value,
+                    base_value,
+                    base_path,
+                    spread: false,
+                    provenance: resolved.call.clone(),
+                }
             }
-        }
-
-        let projection = self.walk_argument_projections(expr, PathId::EMPTY, Some(value));
-
-        CallArgInfo {
-            value: projection.value,
-            base_value: projection.base_value,
-            base_path: projection.base_path,
-            spread: false,
-            provenance,
+            Expr::Object(_) | Expr::Array(_) => {
+                let (value, base_value, base_path) =
+                    self.analyze_argument_tree(expr, PathId::EMPTY);
+                CallArgInfo {
+                    value,
+                    base_value,
+                    base_path,
+                    spread: false,
+                    provenance: crate::analysis::syntax::SymbolCallProvenance::Local,
+                }
+            }
+            Expr::Paren(paren) => self.arg_info(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .map_or_else(CallArgInfo::unknown, |last| self.arg_info(last)),
+            _ => {
+                let resolved = self.resolver.resolve_expr(expr);
+                let value = Self::resolve_or_eval(expr, resolved.id, self.resolver);
+                CallArgInfo {
+                    value,
+                    base_value: value,
+                    base_path: PathId::EMPTY,
+                    spread: false,
+                    provenance: resolved.call.clone(),
+                }
+            }
         }
     }
 
-    /// Unified walk that simultaneously collects every descendant projection
-    /// and the outermost member-chain base projection in one bounded traversal.
-    ///
-    /// Returns `(base_value, base_path)` for the deepest non-member identity
-    /// (e.g., for `a.b.c` returns the identity of `a` and path `["b", "c"]`).
-    fn walk_argument_projections(
-        &mut self,
+    fn resolve_or_eval(
         expr: &Expr,
-        path: PathId,
-        known_value: Option<ValueId>,
-    ) -> ArgumentProjection {
+        value: ValueId,
+        resolver: &crate::analysis::resolution::Resolver<'_>,
+    ) -> ValueId {
+        if value == ValueId::UNKNOWN {
+            let const_value = syntax_constant::evaluate(expr, resolver);
+            if let Some(s) = const_value.string() {
+                return resolver.static_value(Value::StaticString(s.to_owned())).id;
+            }
+        }
+        value
+    }
+
+    /// Compute the base projection for a member chain.
+    ///
+    /// For `a.b.c`, returns the value of `a` and path `["b", "c"]`
+    /// by walking the member chain to the deepest non-member identity.
+    fn member_chain_projection(&mut self, expr: &Expr) -> (ValueId, PathId) {
         match expr {
             Expr::Member(member) => {
-                let value = known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr));
-                let base = self.walk_argument_projections(&member.obj, path, None);
-
+                let (base_val, base_path) = self.member_chain_projection(&member.obj);
                 let Some(property) = member_property_name(&member.prop) else {
-                    return ArgumentProjection::unknown();
+                    return (ValueId::UNKNOWN, PathId::EMPTY);
                 };
                 let extended = if let Ok(index) = property.parse::<usize>() {
                     let Ok(index) = u32::try_from(index) else {
-                        return ArgumentProjection::unknown();
+                        return (ValueId::UNKNOWN, PathId::EMPTY);
                     };
-                    self.append_path(base.base_path, PathSegmentInput::Index(index))
+                    self.append_path(base_path, PathSegmentInput::Index(index))
                 } else {
-                    self.append_path(
-                        base.base_path,
-                        PathSegmentInput::Property(property.as_str()),
-                    )
+                    self.append_path(base_path, PathSegmentInput::Property(property.as_str()))
                 };
-                ArgumentProjection {
-                    value,
-                    base_value: base.base_value,
-                    base_path: extended,
-                }
+                (base_val, extended)
             }
+            Expr::Paren(paren) => self.member_chain_projection(&paren.expr),
+            Expr::Seq(sequence) => sequence.exprs.last().map_or_else(
+                || (ValueId::UNKNOWN, PathId::EMPTY),
+                |last| self.member_chain_projection(last),
+            ),
+            _ => {
+                let value = self.resolver.resolve_expr_id(expr);
+                (value, PathId::EMPTY)
+            }
+        }
+    }
+
+    /// Walk an object or array literal, resolving every child via the
+    /// resolver's identity query and producing one `StaticObject` or
+    /// `StaticArray` value that preserves runtime `ValueId` for every
+    /// descendant.
+    ///
+    /// This is the sole traversal for object/array argument expressions; the
+    /// resolver's constant-evaluation path is intentionally not consulted so
+    /// that non-constant children (variables, calls, etc.) keep their arena
+    /// identity.
+    fn analyze_argument_tree(&mut self, expr: &Expr, path: PathId) -> (ValueId, ValueId, PathId) {
+        match expr {
             Expr::Object(object) => {
                 let mut entries = Vec::new();
                 for property in &object.props {
                     let swc_ecma_ast::PropOrSpread::Prop(property) = property else {
-                        return ArgumentProjection::from_value(
-                            known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
-                            path,
-                        );
+                        let value = self.resolver.resolve_expr_id(expr);
+                        return (value, value, path);
                     };
                     let swc_ecma_ast::Prop::KeyValue(property) = &**property else {
-                        return ArgumentProjection::from_value(
-                            known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
-                            path,
-                        );
+                        let value = self.resolver.resolve_expr_id(expr);
+                        return (value, value, path);
                     };
                     let Some(name) = crate::analysis::syntax::property_name(&property.key) else {
-                        return ArgumentProjection::from_value(
-                            known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr)),
-                            path,
-                        );
+                        let value = self.resolver.resolve_expr_id(expr);
+                        return (value, value, path);
                     };
                     let child_path =
                         self.append_path(path, PathSegmentInput::Property(name.as_str()));
-                    let child = self.walk_argument_projections(&property.value, child_path, None);
+                    let (child_value, _, _) =
+                        self.analyze_argument_tree(&property.value, child_path);
                     let Some(name) = self.intern_name(Some(name.as_str())) else {
-                        return ArgumentProjection::unknown();
+                        return (ValueId::UNKNOWN, ValueId::UNKNOWN, path);
                     };
-                    entries.push((name, child.value));
+                    entries.push((name, child_value));
                 }
                 let value = self.resolver.static_value(Value::StaticObject(entries)).id;
-                ArgumentProjection::from_value(value, path)
+                (value, value, path)
             }
             Expr::Array(array) => {
                 let mut elements = Vec::with_capacity(array.elems.len());
@@ -148,29 +161,40 @@ impl FactBuilder<'_> {
                         continue;
                     };
                     let Ok(index) = u32::try_from(index) else {
-                        return ArgumentProjection::unknown();
+                        return (ValueId::UNKNOWN, ValueId::UNKNOWN, path);
                     };
                     let child_path = self.append_path(path, PathSegmentInput::Index(index));
-                    elements.push(
-                        self.walk_argument_projections(&element.expr, child_path, None)
-                            .value,
-                    );
+                    let (child_value, _, _) = self.analyze_argument_tree(&element.expr, child_path);
+                    elements.push(child_value);
                 }
                 let value = self.resolver.static_value(Value::StaticArray(elements)).id;
-                ArgumentProjection::from_value(value, path)
+                (value, value, path)
             }
-            Expr::Paren(paren) => self.walk_argument_projections(&paren.expr, path, known_value),
-            Expr::Seq(sequence) => {
-                if let Some(last) = sequence.exprs.last() {
-                    self.walk_argument_projections(last, path, known_value)
-                } else {
-                    let value = known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr));
-                    ArgumentProjection::from_value(value, path)
-                }
+            Expr::Member(member) => {
+                let value = self.resolver.resolve_expr_id(expr);
+                let (base_value, base_path) = self.member_chain_projection(&member.obj);
+                let property = member_property_name(&member.prop);
+                let extended = match property {
+                    Some(p) if let Ok(index) = p.parse::<usize>() => match u32::try_from(index) {
+                        Ok(index) => self.append_path(base_path, PathSegmentInput::Index(index)),
+                        Err(_) => return (value, value, path),
+                    },
+                    Some(p) => self.append_path(base_path, PathSegmentInput::Property(p.as_str())),
+                    None => return (value, value, path),
+                };
+                (value, base_value, extended)
             }
+            Expr::Paren(paren) => self.analyze_argument_tree(&paren.expr, path),
+            Expr::Seq(sequence) => sequence.exprs.last().map_or_else(
+                || {
+                    let value = self.resolver.resolve_expr_id(expr);
+                    (value, value, path)
+                },
+                |last| self.analyze_argument_tree(last, path),
+            ),
             _ => {
-                let value = known_value.unwrap_or_else(|| self.resolver.resolve_expr_id(expr));
-                ArgumentProjection::from_value(value, path)
+                let value = self.resolver.resolve_expr_id(expr);
+                (value, value, path)
             }
         }
     }

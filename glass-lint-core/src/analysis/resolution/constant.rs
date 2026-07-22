@@ -1,63 +1,55 @@
 //! Constant value conversion for resolver-owned value identities.
+//!
+//! The query path holds an immutable arena borrow across the entire recursive
+//! traversal so that static arrays, objects, and strings are never cloned into
+//! intermediate state merely to inspect their variant or descendants.
 
 use std::collections::BTreeMap;
 
-use smol_str::SmolStr;
-
 use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, ValueId};
 
-/// Action extracted from a borrowed arena entry so the RefCell borrow
-/// is released before any recursive traversal.
-enum ConstAction {
-    Binding(ValueId),
-    String(String),
-    Number(usize),
-    Array(Vec<ValueId>),
-    Object(Vec<(crate::analysis::name::NameId, ValueId)>),
-    Unknown,
-}
+const MAX_CONST_DEPTH: usize = 32;
 
 impl Resolver<'_> {
-    /// Read a bounded constant value from the abstract value arena without
-    /// cloning the arena entry. The arena borrow is released before any
-    /// recursive call so the interleaving interner and constant reader
-    /// never hold overlapping borrows.
+    /// Read a bounded constant value from the abstract value arena.
+    ///
+    /// The immutable `RefCell` borrow on the value arena is held across the
+    /// entire recursive traversal because every nested call only performs
+    /// further immutable reads. Large static arrays and objects are visited
+    /// by borrowed slice rather than cloned before inspection.
     pub(in crate::analysis) fn const_value(&self, id: ValueId) -> ConstValue {
-        let action = {
-            let values = self.values.borrow();
-            let Some(value) = values.get(id) else {
-                return ConstValue::Unknown;
-            };
-            match value {
-                Value::Binding { target, .. } => ConstAction::Binding(*target),
-                Value::StaticString(value) => ConstAction::String(value.clone()),
-                Value::StaticNumber(value) => ConstAction::Number(*value),
-                Value::StaticArray(values) => ConstAction::Array(values.clone()),
-                Value::StaticObject(values) => ConstAction::Object(values.clone()),
-                _ => ConstAction::Unknown,
-            }
+        self.const_value_depth(id, 0)
+    }
+
+    fn const_value_depth(&self, id: ValueId, depth: usize) -> ConstValue {
+        if depth >= MAX_CONST_DEPTH {
+            return ConstValue::Unknown;
+        }
+        let values = self.values.borrow();
+        let Some(value) = values.resolve(id) else {
+            return ConstValue::Unknown;
         };
-        match action {
-            ConstAction::Binding(target) => self.const_value(target),
-            ConstAction::String(value) => ConstValue::String(value),
-            ConstAction::Number(value) => ConstValue::NonNegativeInteger(value),
-            ConstAction::Array(ids) => {
-                ConstValue::Array(ids.into_iter().map(|id| self.const_value(id)).collect())
+        match value {
+            Value::StaticString(s) => ConstValue::String(s.clone()),
+            Value::StaticNumber(n) => ConstValue::NonNegativeInteger(*n),
+            Value::StaticArray(ids) => {
+                let children = ids
+                    .iter()
+                    .map(|&id| self.const_value_depth(id, depth + 1))
+                    .collect();
+                ConstValue::Array(children)
             }
-            ConstAction::Object(entries) => {
+            Value::StaticObject(entries) => {
                 let mut object = BTreeMap::new();
-                for (name_id, value_id) in entries {
-                    let Some(key) = self
-                        .names
-                        .with_mut(|names| names.resolve(name_id).map(SmolStr::new))
-                    else {
+                for &(name_id, value_id) in entries {
+                    let Some(key) = self.names.resolve(name_id) else {
                         return ConstValue::Unknown;
                     };
-                    object.insert(key, self.const_value(value_id));
+                    object.insert(key, self.const_value_depth(value_id, depth + 1));
                 }
                 ConstValue::Object(object)
             }
-            ConstAction::Unknown => ConstValue::Unknown,
+            _ => ConstValue::Unknown,
         }
     }
 

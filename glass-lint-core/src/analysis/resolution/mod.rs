@@ -306,7 +306,7 @@ mod tests {
     use super::*;
     use crate::analysis::{
         lowering::SpanNormalizer,
-        name::{NameTable, NameTableCtx},
+        name::{NameId, NameTable, NameTableCtx},
         scope::ScopeGraph,
         syntax::{BudgetComponent, UnknownReason},
         value::{MAX_VALUES, Value},
@@ -411,6 +411,166 @@ mod tests {
 
         let result = resolver.const_value(ValueId(u32::MAX));
         assert_eq!(result, ConstValue::Unknown);
+    }
+
+    #[test]
+    fn const_value_materializes_static_object_with_mixed_values() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let num_id = resolver.values.borrow_mut().intern(Value::StaticNumber(42));
+        let str_id = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::StaticString("val".into()));
+        let inner_arr = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::StaticArray(vec![num_id]));
+
+        let key_num = names.intern("num").unwrap();
+        let key_str = names.intern("str").unwrap();
+        let key_arr = names.intern("arr").unwrap();
+        let obj_id = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::StaticObject(vec![
+                (key_num, num_id),
+                (key_str, str_id),
+                (key_arr, inner_arr),
+            ]));
+
+        let result = resolver.const_value(obj_id);
+        assert_eq!(
+            result,
+            ConstValue::Object(BTreeMap::from([
+                (
+                    "arr".into(),
+                    ConstValue::Array(vec![ConstValue::NonNegativeInteger(42)])
+                ),
+                ("num".into(), ConstValue::NonNegativeInteger(42)),
+                ("str".into(), ConstValue::String("val".into())),
+            ]))
+        );
+    }
+
+    #[test]
+    fn const_value_returns_unknown_for_unknown_name_in_object() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let val_id = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::StaticString("v".into()));
+        let bad_name = NameId(u32::MAX);
+        let obj_id = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::StaticObject(vec![(bad_name, val_id)]));
+
+        let result = resolver.const_value(obj_id);
+        assert_eq!(result, ConstValue::Unknown);
+    }
+
+    #[test]
+    fn const_value_returns_unknown_for_deeply_nested_structure() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let leaf = resolver.values.borrow_mut().intern(Value::StaticNumber(0));
+        let mut current = leaf;
+        for _ in 0..31 {
+            current = resolver
+                .values
+                .borrow_mut()
+                .intern(Value::StaticArray(vec![current]));
+        }
+        let result = resolver.const_value(current);
+        assert!(
+            matches!(result, ConstValue::Array(_)),
+            "31 nesting levels should succeed"
+        );
+
+        current = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::StaticArray(vec![current]));
+        let result = resolver.const_value(current);
+        let mut inner = &result;
+        loop {
+            match inner {
+                ConstValue::Array(elements) if elements.len() == 1 => inner = &elements[0],
+                _ => break,
+            }
+        }
+        assert_eq!(inner, &ConstValue::Unknown);
+    }
+
+    #[test]
+    fn const_value_materializes_large_flat_array() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let ids: Vec<_> = (0..100)
+            .map(|i| resolver.values.borrow_mut().intern(Value::StaticNumber(i)))
+            .collect();
+        let array_id = resolver.values.borrow_mut().intern(Value::StaticArray(ids));
+
+        let result = resolver.const_value(array_id);
+        assert_eq!(
+            result,
+            ConstValue::Array(
+                (0..100)
+                    .map(ConstValue::NonNegativeInteger)
+                    .collect::<Vec<_>>()
+            )
+        );
+    }
+
+    #[test]
+    fn const_value_follows_binding_chain_through_reassignment() {
+        let table = RefCell::new(NameTable::default());
+        let names = NameTableCtx(&table);
+        let scopes = ScopeGraph::create_for_test(names);
+        let resolver = Resolver::new(scopes, names, SpanNormalizer::default());
+
+        let inner = resolver
+            .values
+            .borrow_mut()
+            .intern(Value::StaticString("first".into()));
+        let key1 = crate::analysis::value::BindingKey::new(
+            crate::analysis::value::BindingRoot::Global("v1".into()),
+        );
+        let first = resolver.values.borrow_mut().intern(Value::Binding {
+            key: key1,
+            target: inner,
+        });
+
+        let key2 = crate::analysis::value::BindingKey::new(
+            crate::analysis::value::BindingRoot::Global("v2".into()),
+        );
+        let second = resolver.values.borrow_mut().intern(Value::Binding {
+            key: key2,
+            target: first,
+        });
+
+        assert_eq!(
+            resolver.const_value(first),
+            ConstValue::String("first".into())
+        );
+        assert_eq!(
+            resolver.const_value(second),
+            ConstValue::String("first".into())
+        );
     }
 
     #[test]

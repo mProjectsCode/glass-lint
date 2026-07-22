@@ -2,8 +2,8 @@
 
 ## Summary
 
-The re-audit retains 8 actionable readability and maintainability issues
-across `glass-lint-core` and `glass-lint-project`: 5 high severity and 3
+The re-audit retains 7 actionable readability and maintainability issues
+across `glass-lint-core` and `glass-lint-project`: 4 high severity and 3
 medium severity. Nine findings were removed after verification: the retained
 value arena, local fact-path representation, function-summary round state,
 summary path storage, lazy package occurrence scans, resolver cache sharing,
@@ -41,27 +41,34 @@ The cursor and the `ScopePlan` cursor/entry types are gone. `predeclare` now rec
 
 ### READ-003 — Resolver constant materialization still clones whole arena collections
 
+- **Status:** Resolved.
 - **Severity:** High
 - **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/resolution/constant.rs:7-65`, `glass-lint-core/src/analysis/resolution/mod.rs:119-130`, `glass-lint-core/src/analysis/value/arena.rs:87-180`
+- **Location:** `glass-lint-core/src/analysis/resolution/constant.rs:12-60`, `glass-lint-core/src/analysis/resolution/mod.rs:119-130`, `glass-lint-core/src/analysis/value/arena.rs:87-180`
 
-Separating `ValueTable` from the resolution cache removed deep clones of cached `ResolvedValue` records, but `const_value` still copies every static string, array vector, and object-entry vector into `ConstAction` before recursively inspecting it. Expose a bounded borrowed shape visitor or stable value handles for recursive queries, with an explicit mutable interning phase and immutable inspection API so large static values are not copied merely to determine their variant or descendants.
+The `ConstAction` enum is removed. `const_value` now holds the immutable `RefCell` borrow on the value arena across the entire recursive traversal because every nested call only performs further immutable reads. Large static arrays and objects are visited by borrowed slice through `ValueTable::resolve`, which follows binding chains (bounded to 16 levels), so no vector or string clones occur for intermediate inspection. The only remaining clones are `StaticString` → `String` conversions and the final `ConstValue` materialization at the query boundary.
 
-**Implementation guidance:** Do not wrap every value in another `Arc`, return references that outlive the `RefCell` borrow, or hide full clones behind `Cow`/helper functions. The query API must preserve cycle detection, reassignment/version identity, malformed IDs, value exhaustion, and bounded recursion while making the common “inspect one variant/child” path borrow-only.
+A new `MAX_CONST_DEPTH` constant (32) guards recursion at the `const_value_depth` entry point; exhausted depth returns `ConstValue::Unknown` at the element level. The `NameTableCtx::resolve` method (immutable read) replaces the previous `names.with_mut(...)` call for resolving object-entry name IDs. `NameId`'s inner field is now `pub(in crate::analysis)` to match `ValueId`'s visibility convention and enable direct construction in adversarial tests.
 
-**Proposed implementation direction:** Split resolver construction from querying: finish interning into a frozen `ValueTable`, then expose a bounded `ValueView`/visitor that follows `ValueId` chains iteratively and visits array/object children by borrowed slices. Keep owned `ConstValue` materialization only at an explicit external boundary, remove `ConstAction` collection clones from recursive inspection, and add operation/allocation-oriented tests for large arrays/objects plus cycle, invalid-ID, reassignment, and exhaustion cases.
+Tests cover static objects with mixed value types, unresolvable NameIds in object entries, deeply nested array structures exhausted at the depth guard, a 100-element flat array, and reassignment across distinct binding keys — all in addition to the existing binding-chain, array-with-nested-bindings, and invalid-ID tests.
 
 ### READ-004 — Argument projection still rebuilds shapes in a second traversal
 
+- **Status:** Resolved.
 - **Severity:** High
 - **Category:** Duplication
 - **Location:** `glass-lint-core/src/analysis/facts/build/arguments.rs:39-175`, `glass-lint-core/src/analysis/syntax/constant.rs:123-220`
 
-`arg_info` resolves the expression and conditionally runs the constant evaluator, then `walk_argument_projections` traverses member, object, and array syntax again, re-resolving descendants and reconstructing composite values. The walks do not share one evaluator budget or one cached shape, so introduce a single bounded `ArgumentAnalysis` result from which value identity, projections, static strings, and exhaustion state are derived.
+`arg_info` resolved the expression and conditionally ran the constant evaluator before calling `walk_argument_projections`, which then re-walked object, array, and member syntax, re-resolved descendants, and reconstructed composite values. For object literals the resolver's path went through `syntax_constant::evaluate` (converting runtime `ValueId` to `Unknown`), so the walk was both a duplicate traversal *and* the only correct source of descendant value identities.
 
-**Implementation guidance:** Do not preserve the current resolver walk and syntax walk behind a larger wrapper. One traversal must own the depth, node, lookup, path, name, and value budgets; dynamic keys, spreads, unsupported properties, and partial shapes must produce one typed fail-closed outcome shared by every derived view.
+`walk_argument_projections` is gone. `arg_info` now dispatches on the expression shape:
 
-**Proposed implementation direction:** Build a resolver-owned `ArgumentAnalysis` tree while visiting the expression, with each node carrying its `ValueId`, optional base/path relation, static scalar/shape result, and child projections. Derive `CallArgInfo`, object-key/property predicates, rooted identity, and bound-argument projections from that tree, then delete the independent `syntax_constant::evaluate` fallback and descendant re-resolution from `walk_argument_projections`; preserve parity tests for templates, aliases, spreads, dynamic keys, nested containers, destructuring, and minified forms.
+- **Member chains:** the resolver provides provenance and the top-level value (one cheap, cached query); `member_chain_projection` walks the chain to extract `(base_value, base_path)` without re-resolving composite shapes.
+- **Object and array literals:** `analyze_argument_tree` is the *sole* traversal. It resolves every descendant via `resolve_expr_id` (preserving runtime `ValueId`), constructs one `StaticObject`/`StaticArray`, and returns `(value, base_value, base_path)` in a single pass. The resolver's constant-evaluation path is intentionally not consulted, so non-constant children keep their arena identity.
+- **Paren / Seq wrappers:** transparently unwrapped before dispatch.
+- **Leaf expressions:** the resolver handles resolution; `syntax_constant::evaluate` is consulted only as a string fallback when the resolver cannot intern a template literal or concatenation.
+
+`resolve_or_eval` is the single point that applies the constant-evaluation fallback, and provenance for object/array arguments is `Local` (no module or global chain). Every existing parity test across templates, aliases, spreads, dynamic keys, nested containers, destructuring, and minified forms passes.
 
 ### READ-005 — Effects and the local projector still duplicate derived call relations
 

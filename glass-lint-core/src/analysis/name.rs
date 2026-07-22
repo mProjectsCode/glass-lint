@@ -18,7 +18,7 @@ pub(in crate::analysis) const MAX_NAMES: usize = 1 << 20;
 /// produced them. They may be compared for equality within the same artifact
 /// but must not be shared across artifacts or persisted. Textual ordering
 /// and cross-artifact interfaces continue to use strings.
-pub(in crate::analysis) struct NameId(u32);
+pub(in crate::analysis) struct NameId(pub(in crate::analysis) u32);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::analysis) struct NameExhausted {
