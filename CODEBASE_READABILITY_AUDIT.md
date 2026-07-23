@@ -95,11 +95,10 @@ Build an `AuthoredRequestTable` once per module, containing the local request ID
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Newtype
+- **Status:** Done
 - **Location:** `glass-lint-core/src/project/types/mod.rs:29-67`, `glass-lint-core/src/project/input.rs:59-79`, `glass-lint-core/src/project/session.rs:649-684`
 
-Already validated `ProjectRelativePath` and resolution values are converted to `&str` or `String` and then reconstructed through validating constructors. `SourceTable::iter` exposes string paths, pending work owns another string copy, and report assembly rebuilds normalized paths instead of cloning the typed identity.
-
-Carry semantic newtypes through internal iterators, queues, and report builders. Restrict raw-string validation to constructors and deserialization, then trust the established invariant. Where an owned queue is needed, drain or cheaply clone the path newtype rather than cloning its text and reparsing it.
+`SourceTable::get` now accepts `&ProjectRelativePath` and `SourceTable::iter` returns `(&ProjectRelativePath, &SourceFile)`. `session.rs` no longer re-validates paths through `ProjectRelativePath::new` when iterating pending sources. `lint/report.rs` carries `&ProjectRelativePath` through `findings_for_capability` instead of `&str`, using `path.clone()` (an `Arc`-clone) instead of rebuilding via `Arc::from(path)` and `from_normalized`.
 
 #### READ-008 — Parallel lowering discards and reconstructs source location data
 - **Severity:** Medium
@@ -256,11 +255,10 @@ A `CommonJsExportEntry` struct now captures the export name, local identity, exp
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Architecture
-- **Location:** `glass-lint-core/src/project/session.rs:1-525`
+- **Status:** Done
+- **Location:** `glass-lint-core/src/project/session/mod.rs:1-498`
 
-Job executors, observer hooks, cache lookup, test-controlled execution, artifacts, and project phase types are interleaved in one module. `SessionState` owns the artifact cache while `ProjectCollection` clones another handle solely to perform local work, which blurs whether caching belongs to the session runtime or collection phase.
-
-Split the module into execution runtime, local artifact production, and project phase-state modules. Keep one cache owner, or introduce an explicit `LocalExecutionRuntime` borrowed by collection methods. Arrange the public state transitions together so collection, local analysis, resolution, and finalization are apparent from the file structure.
+The single `session.rs` module has been split into `session/mod.rs` (phase-state types), `session/execution.rs` (job executors, observer hooks, bounded concurrency), and `session/artifacts.rs` (artifact map, cache helpers, `SourceAnalysis`). The public API surface is preserved: `ProjectCollection`, `LocallyAnalyzedProject`, `ResolvedProject`, `SourceAnalysis`, and `SessionState` remain re-exported from `project::*`. Test-only items (`ControlledReleaseOrder`, `ControlledLocalJobExecutor`, `CountingExecutionObserver`, `InvocationCounts`) are re-exported where needed.
 
 #### READ-024 — Consuming `EvidenceList` clones locally owned evidence
 - **Severity:** Low
@@ -320,26 +318,23 @@ The current configuration is canonicalized before it is added to the extends cha
 Parent configs are owned by the recursive loader but passed by reference into construction, which clones inherited file/include/exclude data. DTO `extends` and references are also cloned, and the resulting config retains raw include/exclude strings beside compiled pattern sets even though production selection uses the compiled form.
 
 Separate `ParsedTsconfig`, consuming inheritance, and `CompiledTsconfigSelection` phases. Move owned parent and DTO fields when constructing the child, compile effective patterns once, and discard raw selection text unless diagnostics require it. If tests need the parsed form, test that intermediate type rather than retaining duplicate production state.
-
 #### READ-030 — Resolver and loader collapse filesystem errors into missing modules
 - **Severity:** High
 - **Fix Complexity:** Medium
 - **Category:** Architecture
+- **Status:** Done
 - **Location:** `glass-lint-project/src/resolver.rs:67-93`, `glass-lint-project/src/loader.rs:533-548`
 
-`ProjectResolver::classify` maps every admission I/O error to `ResolverOutcome::Missing`. Loader paths also use `exists()` and `if let Ok(...)`, silently discarding metadata, canonicalization, or admission failures and making boundary errors indistinguishable from a genuine absent candidate.
-
-Return `Result<ResolverOutcome, ProjectLoadError>` through resolution caching and frontier expansion. Reserve `Missing` for a confirmed absent or unsupported candidate and preserve the offending path/source error for failures. Decide at the top-level loader whether an error aborts loading or produces an explicitly partial project.
+`ProjectResolver::classify` now propagates `ProjectLoadError` from `SourceAdmission::classify` instead of silently converting I/O errors to `ResolverOutcome::Missing`. `ProjectResolver::resolve` returns `Result<ResolverOutcome, ProjectLoadError>`, and `ResolutionCache::resolve_or_get`, `record_requests`, and `enqueue_internal_target` all propagate the error upward. The top-level loader already converts recoverable errors into a partial `ProjectLoadOutcome`. `ResolveError::Builtin`, unresolved externals, and genuinely absent candidates still produce their previous `ResolverOutcome` variants.
 
 #### READ-031 — Admitted paths do not carry their root-relative identity
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Newtype
+- **Status:** Done
 - **Location:** `glass-lint-project/src/admission.rs:31-175`, `glass-lint-project/src/discovery.rs:65-115`, `glass-lint-project/src/discovery.rs:206-236`
 
-`AdmittedSourcePath` wraps only a canonical path, even though successful admission establishes containment within one project root. Downstream code recomputes containment, uses a fallback when stripping the root, and prechecks support before calling admission, which repeats parts of the boundary policy.
-
-Have the root-owned admission service produce an `AdmittedSource` containing canonical and validated project-relative identities. Remove downstream containment rechecks and the `unwrap_or(path)` fallback because the type should make that state impossible. Let one admission operation handle support, metadata, canonicalization, and containment exactly once.
+`AdmittedSourcePath` now stores both a `CanonicalProjectPath` and a `ProjectRelativePath`. `SourceAdmission::classify` computes the root-relative path once during admission via `make_relative`. `load_admitted_source_file` uses `admitted.relative()` instead of re-calling `self.relative_path`. `resolver.rs::classify` uses `admitted.relative().clone()` instead of re-stripping the root. The `SourceAdmission::relative_path` method was removed since all callers now use the stored relative path. The `discovery.rs` `select_sources` fallback `unwrap_or(path)` was replaced with an `expect` since the path is guaranteed to be inside its base directory.
 
 #### READ-032 — Phase timing names do not match the measured work
 - **Severity:** Low

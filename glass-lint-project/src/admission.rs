@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glass_lint_core::SourceFile;
+use glass_lint_core::{ProjectRelativePath, SourceFile};
 
 use crate::{
     corpus::read_source_bytes, error::ProjectLoadError, options::ValidatedProjectLoadOptions,
@@ -31,19 +31,29 @@ impl AsRef<Path> for CanonicalProjectPath {
     }
 }
 
-/// A canonical path proven to be inside the project and supported by policy.
+/// A canonical path proven to be inside the project and supported by policy,
+/// alongside its project-relative identity.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct AdmittedSourcePath(CanonicalProjectPath);
+pub struct AdmittedSourcePath {
+    canonical: CanonicalProjectPath,
+    relative: ProjectRelativePath,
+}
 
 impl AsRef<Path> for AdmittedSourcePath {
     fn as_ref(&self) -> &Path {
-        self.0.as_ref()
+        self.canonical.as_ref()
     }
 }
 
 impl AdmittedSourcePath {
     pub(crate) fn into_path_buf(self) -> PathBuf {
-        self.0.into_path_buf()
+        self.canonical.into_path_buf()
+    }
+
+    /// The project-relative, slash-normalized path established during
+    /// admission.
+    pub fn relative(&self) -> &ProjectRelativePath {
+        &self.relative
     }
 }
 
@@ -125,7 +135,22 @@ impl<'a> SourceAdmission<'a> {
         if !self.supports(canonical.as_ref()) {
             return Ok(PathAdmission::Unsupported(canonical));
         }
-        Ok(PathAdmission::Admitted(AdmittedSourcePath(canonical)))
+        let relative = self.make_relative(canonical.as_ref())?;
+        Ok(PathAdmission::Admitted(AdmittedSourcePath {
+            canonical,
+            relative,
+        }))
+    }
+
+    /// Compute the project-relative path for a canonical, root-contained path.
+    fn make_relative(&self, path: &Path) -> Result<ProjectRelativePath, ProjectLoadError> {
+        let relative = path
+            .strip_prefix(&self.canonical_root)
+            .expect("path was already confirmed inside root")
+            .to_string_lossy()
+            .replace('\\', "/");
+        ProjectRelativePath::new(&relative)
+            .map_err(|_| ProjectLoadError::UnsupportedSource(path.to_path_buf()))
     }
 
     /// Test whether a file extension is supported by the loader policy.
@@ -136,14 +161,6 @@ impl<'a> SourceAdmission<'a> {
     /// Test whether a path under the root has an excluded directory ancestor.
     pub fn is_excluded(&self, path: &Path) -> bool {
         self.options.excludes_path(&self.canonical_root, path)
-    }
-
-    /// Compute the project-relative, slash-normalized display path.
-    pub fn relative_path(&self, path: &Path) -> String {
-        path.strip_prefix(&self.canonical_root)
-            .unwrap_or(path)
-            .to_string_lossy()
-            .replace('\\', "/")
     }
 
     /// Canonicalize, check containment and support, read, and produce a
@@ -171,8 +188,7 @@ impl<'a> SourceAdmission<'a> {
         admitted: &AdmittedSourcePath,
     ) -> Result<SourceFile, ProjectLoadError> {
         let corpus_file = read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())?;
-        let relative = self.relative_path(admitted.as_ref());
-        SourceFile::new(relative, corpus_file.source).map_err(Into::into)
+        SourceFile::new(admitted.relative().to_string(), corpus_file.source).map_err(Into::into)
     }
 }
 

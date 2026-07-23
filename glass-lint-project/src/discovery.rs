@@ -227,7 +227,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                 let relative = canonical
                     .as_ref()
                     .strip_prefix(base)
-                    .unwrap_or_else(|_| canonical.as_ref())
+                    .expect("discovered path must be inside its base directory")
                     .to_string_lossy()
                     .replace('\\', "/");
                 if config.pattern_set.is_included(&relative) {

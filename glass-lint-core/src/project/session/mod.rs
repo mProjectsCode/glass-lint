@@ -1,16 +1,29 @@
 //! Deterministic project admission, local analysis, and staging.
+//!
+//! Phase-state types (`SessionState`, `ProjectCollection`,
+//! `LocallyAnalyzedProject`, `ResolvedProject`) live here. The execution
+//! runtime and artifact-management helpers are in sibling submodules.
 
+mod artifacts;
+pub(super) mod execution;
+
+use std::{collections::BTreeMap, num::NonZeroUsize};
+
+pub use artifacts::SourceAnalysis;
+use artifacts::{AnalysisArtifacts, CacheLookup};
 #[cfg(test)]
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc};
+pub(super) use execution::{
+    ControlledLocalJobExecutor, ControlledReleaseOrder, CountingExecutionObserver,
+    InvocationCounts, outstanding_job_bound,
+};
+use execution::{
+    ExecutionEvent, ExecutionObserver, LocalJob, LocalJobExecutor, NoopExecutionObserver,
+    ThreadLocalJobExecutor, normalize_worker_limit,
+};
 
 use crate::{
-    AnalysisLimits, Environment, LocalExecutionError, ParseDiagnostic, ProjectRelativePath,
-    RuleCatalog,
-    analysis::{
-        ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
-        Lowerer, QualifiedRequestId, SharedSemanticArtifact,
-    },
+    AnalysisLimits, Environment, ProjectRelativePath, RuleCatalog,
+    analysis::{ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, QualifiedRequestId},
     api::classification::RuleIndex,
     lint::ReportAssembly,
     project::{
@@ -23,373 +36,6 @@ use crate::{
         tables::{ResolutionTable, SourceTable},
     },
 };
-
-struct LocalJob {
-    path: ProjectRelativePath,
-    source: SourceFile,
-    key: ArtifactCacheKey,
-}
-
-struct LocalJobResult {
-    path: ProjectRelativePath,
-    key: ArtifactCacheKey,
-    result: Result<LoweredSource, ParseDiagnostic>,
-}
-
-trait LocalJobExecutor {
-    fn execute(
-        &self,
-        jobs: Box<dyn Iterator<Item = LocalJob>>,
-        worker_limit: NonZeroUsize,
-        lowerer: &Lowerer,
-        observer: &dyn ExecutionObserver,
-        release: &mut dyn FnMut(LocalJobResult),
-    ) -> Result<(), LocalExecutionError>;
-}
-
-#[derive(Clone, Copy, Debug)]
-enum ExecutionEvent {
-    Submitted,
-    Started,
-    Finished,
-    Merged,
-    ParseAttempted,
-    LowerAttempted,
-    CacheHit,
-    CacheMiss,
-    CacheInserted,
-    CacheEvicted,
-}
-
-trait ExecutionObserver: Send + Sync {
-    fn observe(&self, event: ExecutionEvent);
-}
-
-struct NoopExecutionObserver;
-impl ExecutionObserver for NoopExecutionObserver {
-    fn observe(&self, _event: ExecutionEvent) {}
-}
-
-#[cfg(test)]
-pub(super) struct CountingExecutionObserver {
-    active: AtomicUsize,
-    peak_active: AtomicUsize,
-    outstanding: AtomicUsize,
-    peak_outstanding: AtomicUsize,
-    parse_attempts: AtomicUsize,
-    lower_attempts: AtomicUsize,
-    cache_hits: AtomicUsize,
-    cache_misses: AtomicUsize,
-    cache_inserts: AtomicUsize,
-    cache_evictions: AtomicUsize,
-}
-
-#[cfg(test)]
-impl CountingExecutionObserver {
-    pub(super) fn new() -> Self {
-        Self {
-            active: AtomicUsize::new(0),
-            peak_active: AtomicUsize::new(0),
-            outstanding: AtomicUsize::new(0),
-            peak_outstanding: AtomicUsize::new(0),
-            parse_attempts: AtomicUsize::new(0),
-            lower_attempts: AtomicUsize::new(0),
-            cache_hits: AtomicUsize::new(0),
-            cache_misses: AtomicUsize::new(0),
-            cache_inserts: AtomicUsize::new(0),
-            cache_evictions: AtomicUsize::new(0),
-        }
-    }
-
-    pub(super) fn peaks(&self) -> (usize, usize) {
-        (
-            self.peak_active.load(Ordering::SeqCst),
-            self.peak_outstanding.load(Ordering::SeqCst),
-        )
-    }
-
-    pub(super) fn invocations(&self) -> InvocationCounts {
-        InvocationCounts {
-            parses: self.parse_attempts.load(Ordering::SeqCst),
-            lowers: self.lower_attempts.load(Ordering::SeqCst),
-            hits: self.cache_hits.load(Ordering::SeqCst),
-            misses: self.cache_misses.load(Ordering::SeqCst),
-            inserts: self.cache_inserts.load(Ordering::SeqCst),
-            evictions: self.cache_evictions.load(Ordering::SeqCst),
-        }
-    }
-
-    fn peak(slot: &AtomicUsize, value: usize) {
-        let _ = slot.fetch_max(value, Ordering::SeqCst);
-    }
-}
-
-#[cfg(test)]
-impl ExecutionObserver for CountingExecutionObserver {
-    fn observe(&self, event: ExecutionEvent) {
-        match event {
-            ExecutionEvent::Submitted => {
-                let value = self.outstanding.fetch_add(1, Ordering::SeqCst) + 1;
-                Self::peak(&self.peak_outstanding, value);
-            }
-            ExecutionEvent::Started => {
-                let value = self.active.fetch_add(1, Ordering::SeqCst) + 1;
-                Self::peak(&self.peak_active, value);
-            }
-            ExecutionEvent::Finished => {
-                self.active.fetch_sub(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::Merged => {
-                self.outstanding.fetch_sub(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::ParseAttempted => {
-                self.parse_attempts.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::LowerAttempted => {
-                self.lower_attempts.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::CacheHit => {
-                self.cache_hits.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::CacheMiss => {
-                self.cache_misses.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::CacheInserted => {
-                self.cache_inserts.fetch_add(1, Ordering::SeqCst);
-            }
-            ExecutionEvent::CacheEvicted => {
-                self.cache_evictions.fetch_add(1, Ordering::SeqCst);
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(super) struct InvocationCounts {
-    pub(super) parses: usize,
-    pub(super) lowers: usize,
-    pub(super) hits: usize,
-    pub(super) misses: usize,
-    pub(super) inserts: usize,
-    pub(super) evictions: usize,
-}
-
-struct ThreadLocalJobExecutor;
-
-impl LocalJobExecutor for ThreadLocalJobExecutor {
-    fn execute(
-        &self,
-        jobs: Box<dyn Iterator<Item = LocalJob>>,
-        worker_limit: NonZeroUsize,
-        lowerer: &Lowerer,
-        observer: &dyn ExecutionObserver,
-        release: &mut dyn FnMut(LocalJobResult),
-    ) -> Result<(), LocalExecutionError> {
-        let bound = outstanding_job_bound(worker_limit);
-        let (job_tx, job_rx) = std::sync::mpsc::sync_channel::<LocalJob>(bound);
-        let (result_tx, result_rx) = std::sync::mpsc::sync_channel(bound);
-        let queue = std::sync::Mutex::new(job_rx);
-        std::thread::scope(|scope| {
-            let mut handles = Vec::new();
-            for _ in 0..worker_limit.get() {
-                let queue_ref = &queue;
-                let result_tx = result_tx.clone();
-                handles.push(scope.spawn(move || {
-                    loop {
-                        let job = queue_ref
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner)
-                            .recv();
-                        let Ok(job) = job else {
-                            break;
-                        };
-                        observer.observe(ExecutionEvent::Started);
-                        observer.observe(ExecutionEvent::ParseAttempted);
-                        observer.observe(ExecutionEvent::LowerAttempted);
-                        let result = lowerer.lower_source(&job.source);
-                        observer.observe(ExecutionEvent::Finished);
-                        result_tx
-                            .send(LocalJobResult {
-                                path: job.path,
-                                key: job.key,
-                                result,
-                            })
-                            .map_err(|_| LocalExecutionError::WorkerPanic)?;
-                    }
-                    Ok::<_, LocalExecutionError>(())
-                }));
-            }
-
-            let mut outstanding = 0usize;
-            for job in jobs {
-                observer.observe(ExecutionEvent::Submitted);
-                job_tx
-                    .send(job)
-                    .map_err(|_| LocalExecutionError::WorkerPanic)?;
-                outstanding += 1;
-                if outstanding == bound {
-                    release(
-                        result_rx
-                            .recv()
-                            .map_err(|_| LocalExecutionError::WorkerPanic)?,
-                    );
-                    outstanding -= 1;
-                }
-            }
-            drop(job_tx);
-            while outstanding != 0 {
-                release(
-                    result_rx
-                        .recv()
-                        .map_err(|_| LocalExecutionError::WorkerPanic)?,
-                );
-                outstanding -= 1;
-            }
-            for handle in handles {
-                handle
-                    .join()
-                    .map_err(|_| LocalExecutionError::WorkerPanic)??;
-            }
-            Ok(())
-        })
-    }
-}
-
-#[cfg(test)]
-#[derive(Clone, Copy)]
-pub(super) enum ControlledReleaseOrder {
-    Forward,
-    Reverse,
-    Interleaved,
-}
-
-#[cfg(test)]
-pub(super) struct ControlledLocalJobExecutor(ControlledReleaseOrder);
-
-#[cfg(test)]
-impl LocalJobExecutor for ControlledLocalJobExecutor {
-    fn execute(
-        &self,
-        jobs: Box<dyn Iterator<Item = LocalJob>>,
-        _worker_limit: NonZeroUsize,
-        lowerer: &Lowerer,
-        observer: &dyn ExecutionObserver,
-        release: &mut dyn FnMut(LocalJobResult),
-    ) -> Result<(), LocalExecutionError> {
-        let all: Vec<_> = jobs.collect();
-        let indexes: Vec<usize> = match self.0 {
-            ControlledReleaseOrder::Forward => (0..all.len()).collect(),
-            ControlledReleaseOrder::Reverse => (0..all.len()).rev().collect(),
-            ControlledReleaseOrder::Interleaved => (0..all.len())
-                .step_by(2)
-                .chain((1..all.len()).step_by(2))
-                .collect(),
-        };
-        let mut jobs: Vec<_> = all.into_iter().map(Some).collect();
-        for index in indexes {
-            let job = jobs[index].take().expect("release index is unique");
-            observer.observe(ExecutionEvent::Submitted);
-            observer.observe(ExecutionEvent::Started);
-            observer.observe(ExecutionEvent::ParseAttempted);
-            observer.observe(ExecutionEvent::LowerAttempted);
-            let result = lowerer.lower_source(&job.source);
-            observer.observe(ExecutionEvent::Finished);
-            release(LocalJobResult {
-                path: job.path,
-                key: job.key,
-                result,
-            });
-        }
-        Ok(())
-    }
-}
-
-fn normalize_worker_limit(requested: usize) -> NonZeroUsize {
-    NonZeroUsize::new(requested).unwrap_or(NonZeroUsize::MIN)
-}
-
-#[derive(Default)]
-struct AnalysisArtifacts {
-    authored_requests: BTreeMap<ResolutionRequestKey, ResolutionRequest>,
-    analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
-    parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
-}
-
-/// Authored module requests produced by one completed local source analysis.
-/// Source and artifact storage remains owned by the collection phase.
-pub struct SourceAnalysis {
-    requests: Vec<ResolutionRequest>,
-}
-
-impl SourceAnalysis {
-    pub fn requests(self) -> Vec<ResolutionRequest> {
-        self.requests
-    }
-
-    pub fn requests_ref(&self) -> &[ResolutionRequest] {
-        &self.requests
-    }
-}
-
-impl AnalysisArtifacts {
-    fn record_parse_failure(&mut self, path: ProjectRelativePath, error: ParseDiagnostic) {
-        self.analyzed.remove(&path);
-        self.parse_diagnostics.insert(path, error);
-    }
-
-    fn record_lowered(
-        &mut self,
-        path: &ProjectRelativePath,
-        lowered: LoweredSource,
-    ) -> Vec<ResolutionRequest> {
-        let local = LocalArtifact::new(lowered.source.clone(), lowered.semantic);
-        let requests = local
-            .interface()
-            .authored_requests(path, &local.source_context().lines);
-        for request in &requests {
-            self.authored_requests
-                .insert(request.key.clone(), request.clone());
-        }
-        self.analyzed.insert(path.clone(), local);
-        requests
-    }
-}
-
-pub(super) const fn outstanding_job_bound(worker_limit: NonZeroUsize) -> usize {
-    worker_limit.get().saturating_mul(2)
-}
-
-/// Outcome of looking up a source in the artifact cache.
-enum CacheLookup {
-    Hit(LoweredSource),
-    Miss(ArtifactCacheKey),
-}
-
-fn cached_lowered_source(source: &SourceFile, cached: &SharedSemanticArtifact) -> LoweredSource {
-    LoweredSource {
-        source: LocatedSourceContext::new(source),
-        semantic: Arc::clone(&cached.semantic),
-    }
-}
-
-fn insert_and_notify(
-    cache: &ArtifactCacheHandle,
-    key: ArtifactCacheKey,
-    lowered: &LoweredSource,
-    observer: &dyn ExecutionObserver,
-) {
-    let evicted = cache.insert(
-        key,
-        SharedSemanticArtifact {
-            semantic: Arc::clone(&lowered.semantic),
-        },
-    );
-    observer.observe(ExecutionEvent::CacheInserted);
-    if evicted {
-        observer.observe(ExecutionEvent::CacheEvicted);
-    }
-}
 
 /// Borrowed session state that replaces direct `&Linter` references in the
 /// collection, analysis, and resolution chain.
@@ -502,7 +148,7 @@ impl<'a> ProjectCollection<'a> {
             },
             |cached| {
                 observer.observe(ExecutionEvent::CacheHit);
-                CacheLookup::Hit(cached_lowered_source(source, &cached))
+                CacheLookup::Hit(artifacts::cached_lowered_source(source, &cached))
             },
         )
     }
@@ -567,7 +213,7 @@ impl<'a> ProjectCollection<'a> {
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         let source = self
             .sources
-            .get(path.as_str())
+            .get(path)
             .ok_or_else(|| ProjectInputError::InvalidPath(path.to_string()))?;
         let lowered = match self.check_cache(source, observer) {
             CacheLookup::Hit(lowered) => lowered,
@@ -581,7 +227,7 @@ impl<'a> ProjectCollection<'a> {
                         return Ok(Vec::new());
                     }
                 };
-                insert_and_notify(&self.artifact_cache, key, &lowered, observer);
+                artifacts::insert_and_notify(&self.artifact_cache, key, &lowered, observer);
                 lowered
             }
         };
@@ -661,18 +307,17 @@ impl<'a> ProjectCollection<'a> {
             .collect();
         let mut requests = Vec::new();
         let mut uncached = Vec::new();
-        for pending_path in pending {
-            let path = ProjectRelativePath::new(&pending_path)?;
-            let Some(source) = self.sources.get(&pending_path) else {
+        for pending_path in &pending {
+            let Some(source) = self.sources.get(pending_path) else {
                 continue;
             };
             match self.check_cache(source, observer) {
                 CacheLookup::Hit(lowered) => {
-                    requests.extend(self.record_lowered(&path, lowered));
+                    requests.extend(self.record_lowered(pending_path, lowered));
                 }
                 CacheLookup::Miss(key) => {
                     uncached.push(LocalJob {
-                        path,
+                        path: pending_path.clone(),
                         source: source.clone(),
                         key,
                     });
@@ -682,10 +327,10 @@ impl<'a> ProjectCollection<'a> {
 
         let artifact_cache = self.artifact_cache.clone();
         let artifacts = &mut self.artifacts;
-        let mut release = |result: LocalJobResult| {
+        let mut release = |result: execution::LocalJobResult| {
             match result.result {
                 Ok(lowered) => {
-                    insert_and_notify(&artifact_cache, result.key, &lowered, observer);
+                    artifacts::insert_and_notify(&artifact_cache, result.key, &lowered, observer);
                     requests.extend(artifacts.record_lowered(&result.path, lowered));
                 }
                 Err(error) => {

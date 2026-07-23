@@ -334,12 +334,12 @@ impl ResolutionCache {
         &mut self,
         request: &ResolutionRequest,
         resolver: &ProjectResolver,
-    ) -> (&ResolverOutcome, bool) {
+    ) -> Result<(&ResolverOutcome, bool), ProjectLoadError> {
         let cache_key = request.key.clone();
         match self.0.entry(cache_key) {
-            std::collections::btree_map::Entry::Occupied(e) => (e.into_mut(), false),
+            std::collections::btree_map::Entry::Occupied(e) => Ok((e.into_mut(), false)),
             std::collections::btree_map::Entry::Vacant(e) => {
-                (e.insert(resolver.resolve(request)), true)
+                Ok((e.insert(resolver.resolve(request)?), true))
             }
         }
     }
@@ -506,7 +506,7 @@ impl<'a> ProjectLoadState<'a> {
         for request in requests {
             self.check_timeout()?;
             let resolve_start = Instant::now();
-            let (result, resolved) = self.resolved.resolve_or_get(&request, &self.resolver);
+            let (result, resolved) = self.resolved.resolve_or_get(&request, &self.resolver)?;
             if resolved {
                 metrics.timings.record_resolution(resolve_start.elapsed());
             }
@@ -514,7 +514,7 @@ impl<'a> ProjectLoadState<'a> {
                 ResolverOutcome::Internal { path } => Some(path.clone()),
                 _ => None,
             };
-            self.enqueue_internal_target(internal_target, metrics);
+            self.enqueue_internal_target(internal_target, metrics)?;
         }
         Ok(())
     }
@@ -529,18 +529,19 @@ impl<'a> ProjectLoadState<'a> {
         &mut self,
         path: Option<glass_lint_core::ProjectRelativePath>,
         metrics: &mut ProjectLoadMetrics,
-    ) {
+    ) -> Result<(), ProjectLoadError> {
         if let Some(path) = path {
             self.progress.record_edge();
             self.progress.publish(metrics);
             let target = self.admission.canonical_root().join(path);
             if target.exists()
-                && let Ok(crate::admission::PathAdmission::Admitted(admitted)) =
-                    self.admission.classify(&target)
+                && let crate::admission::PathAdmission::Admitted(admitted) =
+                    self.admission.classify(&target)?
             {
                 self.queue.push(admitted);
             }
         }
+        Ok(())
     }
 }
 

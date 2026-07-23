@@ -3,8 +3,7 @@
 use std::path::Path;
 
 use glass_lint_core::{
-    ProjectRelativePath, ResolutionRequest, ResolutionRequestKind, ResolverOutcome,
-    is_internal_module_request,
+    ResolutionRequest, ResolutionRequestKind, ResolverOutcome, is_internal_module_request,
 };
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
@@ -65,7 +64,10 @@ impl<'a> ProjectResolver<'a> {
     }
 
     /// Resolve one request into a provider-neutral, root-classified outcome.
-    pub fn resolve(&self, request: &ResolutionRequest) -> ResolverOutcome {
+    pub fn resolve(
+        &self,
+        request: &ResolutionRequest,
+    ) -> Result<ResolverOutcome, ProjectLoadError> {
         let importer = self.admission.canonical_root().join(&request.key.importer);
         let directory = importer
             .parent()
@@ -78,21 +80,19 @@ impl<'a> ProjectResolver<'a> {
         match resolver.resolve(directory, &request.request) {
             Ok(resolution) => self.classify(&request.request, resolution.path()),
             Err(ResolveError::Builtin { resolved, .. }) => {
-                ResolverOutcome::Builtin { name: resolved }
+                Ok(ResolverOutcome::Builtin { name: resolved })
             }
-            Err(_) if is_internal_module_request(&request.request) => ResolverOutcome::Missing,
-            Err(_) => ResolverOutcome::External {
+            Err(_) if is_internal_module_request(&request.request) => Ok(ResolverOutcome::Missing),
+            Err(_) => Ok(ResolverOutcome::External {
                 package: package_name(&request.request),
-            },
+            }),
         }
     }
 
-    fn classify(&self, request: &str, path: &Path) -> ResolverOutcome {
-        let Ok(admission) = self.admission.classify(path) else {
-            return ResolverOutcome::Missing;
-        };
+    fn classify(&self, request: &str, path: &Path) -> Result<ResolverOutcome, ProjectLoadError> {
+        let admission = self.admission.classify(path)?;
         let internal = is_internal_module_request(request);
-        match admission {
+        Ok(match admission {
             PathAdmission::Outside(path) => {
                 if internal {
                     ResolverOutcome::OutsideProject {
@@ -118,21 +118,10 @@ impl<'a> ProjectResolver<'a> {
             PathAdmission::Unsupported(path) => ResolverOutcome::Unsupported {
                 reason: format!("unsupported target `{}`", path.as_ref().display()),
             },
-            PathAdmission::Admitted(path) => {
-                let relative = path
-                    .as_ref()
-                    .strip_prefix(self.admission.canonical_root())
-                    .unwrap_or_else(|_| path.as_ref())
-                    .to_string_lossy()
-                    .replace('\\', "/");
-                let Ok(path) = ProjectRelativePath::new(&relative) else {
-                    return ResolverOutcome::Unsupported {
-                        reason: format!("invalid normalized target `{relative}`"),
-                    };
-                };
-                ResolverOutcome::Internal { path }
-            }
-        }
+            PathAdmission::Admitted(admitted) => ResolverOutcome::Internal {
+                path: admitted.relative().clone(),
+            },
+        })
     }
 }
 
@@ -179,7 +168,7 @@ mod tests {
             ("timers/promises", "node:timers/promises"),
         ] {
             assert_eq!(
-                resolver.resolve(&request(specifier)),
+                resolver.resolve(&request(specifier)).unwrap(),
                 ResolverOutcome::Builtin {
                     name: expected.into()
                 },
@@ -198,7 +187,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(
-            resolver.resolve(&request("not-a-node-builtin")),
+            resolver.resolve(&request("not-a-node-builtin")).unwrap(),
             ResolverOutcome::External {
                 package: "not-a-node-builtin".into()
             }

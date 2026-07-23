@@ -186,7 +186,7 @@ impl<'a> ReportAssembly<'a> {
         &self,
         capability: &MatchedCapability,
         lines: &SourceLineIndex,
-        path: &str,
+        path: &ProjectRelativePath,
     ) -> Vec<Finding> {
         let Some(rule_id) = self.catalog.rule_id(capability.rule_index).cloned() else {
             return Vec::new();
@@ -216,7 +216,6 @@ impl<'a> ReportAssembly<'a> {
         let mut ranges: Vec<SourceRange> = entries.iter().map(|(r, _)| r.clone()).collect();
         crate::lint::ranges::remove_contained_ranges(&mut ranges);
 
-        let path_shared: Arc<str> = Arc::from(path);
         let label: Arc<str> = Arc::from(capability.label());
         let severity = capability.severity();
 
@@ -250,9 +249,7 @@ impl<'a> ReportAssembly<'a> {
                             count: ev.count,
                             evidence_truncated: ev.evidence_truncated,
                             location: Some(SourceLocation {
-                                path: ProjectRelativePath::from_normalized(Arc::clone(
-                                    &path_shared,
-                                )),
+                                path: path.clone(),
                                 range: (*item_range).clone(),
                             }),
                         }
@@ -264,7 +261,7 @@ impl<'a> ReportAssembly<'a> {
                     message: label.to_string(),
                     severity,
                     location: SourceLocation {
-                        path: ProjectRelativePath::from_normalized(Arc::clone(&path_shared)),
+                        path: path.clone(),
                         range,
                     },
                     evidence: local_evidence,

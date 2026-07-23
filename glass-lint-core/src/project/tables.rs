@@ -225,12 +225,12 @@ impl SourceTable {
         Ok(())
     }
 
-    pub fn get(&self, path: &str) -> Option<&SourceFile> {
+    pub fn get(&self, path: &ProjectRelativePath) -> Option<&SourceFile> {
         self.0.get(path)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&str, &SourceFile)> {
-        self.0.iter().map(|(path, source)| (path.as_str(), source))
+    pub fn iter(&self) -> impl Iterator<Item = (&ProjectRelativePath, &SourceFile)> {
+        self.0.iter()
     }
 
     pub(crate) fn into_map(self) -> BTreeMap<ProjectRelativePath, SourceFile> {
