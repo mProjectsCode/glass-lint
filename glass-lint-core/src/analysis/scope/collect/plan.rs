@@ -8,8 +8,7 @@ use std::collections::BTreeMap;
 
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{
-    ArrowExpr, ClassDecl, FnDecl, Function, Ident, ImportDecl, Lit, MemberExpr, Pat, PropName,
-    VarDecl,
+    ArrowExpr, ClassDecl, FnDecl, Function, Ident, ImportDecl, MemberExpr, Pat, PropName, VarDecl,
 };
 
 use super::{ScopeShape, ScopeShapeTable, traversal::ScopePass};
@@ -227,17 +226,6 @@ impl ScopePass for ScopePlanner {
         let scope = self.binding_scope(declaration.kind);
         for declarator in &declaration.decls {
             self.insert_pat_locals(scope, &declarator.name);
-        }
-    }
-
-    fn visit_lit(&mut self, literal: &Lit) {
-        if let Lit::Str(value) = literal
-            && self
-                .names
-                .intern(value.value.to_string_lossy().as_ref())
-                .is_err()
-        {
-            self.name_exhausted = true;
         }
     }
 

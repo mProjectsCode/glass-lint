@@ -446,7 +446,26 @@ impl ScopeCollector {
             self.name_exhausted = true;
             return;
         };
+        self.intern_provenance_strings(&provenance);
         self.scopes[scope.index()].bindings.insert(name, provenance);
+    }
+
+    fn intern_provenance_strings(&mut self, provenance: &BindingProvenance) {
+        match provenance {
+            BindingProvenance::StaticString(value) => {
+                if self.names.intern(value.as_str()).is_err() {
+                    self.name_exhausted = true;
+                }
+            }
+            BindingProvenance::StaticStringArray(values) => {
+                for value in values {
+                    if self.names.intern(value.as_str()).is_err() {
+                        self.name_exhausted = true;
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Insert all bindings from an import declaration into `scope`.
@@ -538,6 +557,7 @@ impl ScopeCollector {
             self.name_exhausted = true;
             return;
         };
+        self.intern_provenance_strings(&provenance);
         let next = self.version_counters.entry((scope, name_id)).or_insert(0);
         *next = next.saturating_add(1);
         let version = BindingVersion(*next);

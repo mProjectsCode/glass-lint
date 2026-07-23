@@ -16,19 +16,17 @@ the wrong quantity, while some of the hottest operations repeat recursive
 resolution, allocate equivalent paths, or rescan whole fixed-point state.
 
 This audit records 37 findings: 18 high severity, 15 medium severity, and 4 low
-severity. 10 findings have been addressed (1 high, 5 medium, 4 low). The highest-priority
+severity. 14 findings have been addressed (2 high, 8 medium, 4 low). The highest-priority
 changes remaining are:
 
 1. make project admission limits global and count unique files;
 2. parallelize local lowering in `ProjectLoader`;
 3. bound configuration traversal independently of directory traversal;
 4. eliminate repeated member-provenance, export, and cross-flow resolution;
-5. make retained-state limits account for all retained state, not only the
-   pending frontier; and
-6. use the permitted clean break to replace the duplicated project API and
+5. use the permitted clean break to replace the duplicated project API and
    stringly identity contracts with one validated semantic surface;
-7. separate transient linker state from the final project model; and
-8. limit serde to intentional configuration and output contracts behind an
+6. separate transient linker state from the final project model; and
+7. limit serde to intentional configuration and output contracts behind an
    opt-in core feature.
 
 The findings are intentionally not marked “done” based on historical edits.
@@ -53,6 +51,8 @@ the `BTreeSet` insertion, so repeated imports of an already admitted file can
 exhaust `max_files` while the project contains fewer than `max_files` unique
 files. The final corpus-size check is only a `debug_assert`, so release builds
 can return an over-limit corpus.
+
+- **Status:** Partially done — `AdmissionSet::admit` now checks `BTreeSet::contains` before charging the budget, and `SourceCorpus::discover_filtered` now uses one shared `FileBudget` across all roots instead of creating per-root budgets. Cross-root sharing through `walk::collect_files` and tsconfig-referenced projects remains as a separate concern.
 
 Define `max_files` as the maximum number of unique, admitted files for one
 top-level operation. Make the admission set own the budget and use the entry
@@ -211,7 +211,7 @@ false hit.
 - **Fix Complexity:** Low
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/scope/collect/plan.rs:200-237`
-- **Status:** Partially done — removed redundant full-chain interning from `visit_member_expr`; `visit_lit` string-literal interning retained because constant string resolution for computed properties depends on the name table
+- **Status:** Done — removed `visit_lit` from `ScopePlanner`; `ScopeCollector` now interns string values from `BindingProvenance::StaticString`/`StaticStringArray` at storage time via `intern_provenance_strings`, so only strings that participate in constant-value resolution occupy the name table rather than every syntactic string literal
 
 For every `MemberExpr`, the planner interns the direct static property, then
 constructs the complete member chain and interns every segment again. Because
@@ -297,6 +297,7 @@ coordinator rather than duplicating them.
 - **Fix Complexity:** Medium
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/matching/arguments.rs:85-192`, `glass-lint-core/src/analysis/matching/arguments.rs:200-250`, `glass-lint-core/src/analysis/matching/occurrence.rs:308-324`, `glass-lint-core/src/analysis/matching/mod.rs:391-416`
+- **Status:** Done — `PreparedClausePaths` precomputes `NamePath` conversions once per clause before the evaluation loop; both index and fallback paths use the precomputed values instead of recomputing for every candidate fact
 
 Each candidate occurrence converts callee/provenance paths into owned forms
 for each clause. The evaluator collects matched occurrences into a `Vec` and
@@ -430,6 +431,8 @@ return an explicit exhausted outcome before insertion. Keep round limits only
 as a secondary convergence guard. Add adversarial narrow-chain and high-
 fanout tests with injectable low limits.
 
+- **Status:** Done — `ContextWorklist.len()` now returns total retained (`seen.len()`), not just pending queue length. `ContextWorklist::push` checks `seen.len() >= max_retained` before inserting and drops contexts beyond the limit. `ContextWorklist::seed_from_sources` and `seed_from_calls` stop early when `is_exhausted()`. `FlowSources::propagate` limits `pending_seen` to `MAX_PENDING` unique entries during both initial load and propagation rounds.
+
 #### READ-020 — Function-summary convergence rescans every function and call each round
 
 - **Severity:** High
@@ -476,6 +479,7 @@ branch-heavy alias churn rather than selecting a container only from theory.
 - **Fix Complexity:** Medium
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/flow/effect.rs:620-699`
+- **Status:** Done — `FunctionEffect` now stores a `parameter_index: BTreeMap<ValueId, ParameterRef>` built once at construction; `parameter_for` uses the index instead of scanning `function_parameters` linearly
 
 `parameter_for` finds a copied argument's root and linearly searches the
 function's parameter descriptions. Call-argument and returned-parameter

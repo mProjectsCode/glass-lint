@@ -35,6 +35,40 @@ use crate::{
     },
 };
 
+/// Precomputed `NamePath` conversions for one clause, computed once per
+/// module/clause rather than once per candidate fact (READ-013).
+struct PreparedClausePaths {
+    member: Option<NamePath>,
+    rooted: Option<NamePath>,
+    any_name: Option<NamePath>,
+}
+
+impl PreparedClausePaths {
+    fn new(clause: &QueryClause, names: &NameTable) -> Self {
+        let member = match &clause.event {
+            EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member } => {
+                NamePath::from_symbol_path(member, names)
+            }
+            _ => None,
+        };
+        let rooted = match &clause.identity {
+            IdentityConstraint::Rooted { path } => NamePath::from_symbol_path(path, names),
+            _ => None,
+        };
+        let any_name = match &clause.identity {
+            IdentityConstraint::Any { name, .. } => {
+                NamePath::from_symbol_path(&SymbolPath::from(name.as_str()), names)
+            }
+            _ => None,
+        };
+        Self {
+            member,
+            rooted,
+            any_name,
+        }
+    }
+}
+
 struct MatcherEvaluator<'a> {
     names: &'a NameTable,
     values: &'a ValueTable,
@@ -101,7 +135,12 @@ impl<'a> MatcherEvaluator<'a> {
         raw.clone()
     }
 
-    fn fact_matches_clause(&self, fact: &SemanticFact, clause: &QueryClause) -> bool {
+    fn fact_matches_clause(
+        &self,
+        fact: &SemanticFact,
+        clause: &QueryClause,
+        paths: &PreparedClausePaths,
+    ) -> bool {
         let FactPayload::Call {
             callee,
             syntactic_path,
@@ -121,30 +160,6 @@ impl<'a> MatcherEvaluator<'a> {
             callee_name.and_then(|id| self.names.resolve(id).map(Into::into));
         let call_provenance = self.overlaid_call_provenance(call_provenance, *callee);
 
-        let member_path = match &clause.event {
-            EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member } => {
-                crate::analysis::value::NamePath::from_symbol_path(member, self.names)
-            }
-            _ => None,
-        };
-
-        let rooted_path = match &clause.identity {
-            crate::api::compiler::rule::IdentityConstraint::Rooted { path } => {
-                crate::analysis::value::NamePath::from_symbol_path(path, self.names)
-            }
-            _ => None,
-        };
-
-        let any_name_path = match &clause.identity {
-            crate::api::compiler::rule::IdentityConstraint::Any { name, .. } => {
-                crate::analysis::value::NamePath::from_symbol_path(
-                    &SymbolPath::from(name.as_str()),
-                    self.names,
-                )
-            }
-            _ => None,
-        };
-
         match &clause.event {
             EventPredicate::Call => {
                 if !matches!(clause.subject, SubjectConstraint::Direct) {
@@ -155,14 +170,14 @@ impl<'a> MatcherEvaluator<'a> {
                     &call_provenance,
                     callee_name.as_ref(),
                     syntactic_path.as_ref(),
-                    any_name_path.as_ref(),
+                    paths.any_name.as_ref(),
                 ) {
                     return false;
                 }
                 self.check_constrained_args(clause, args, unwrap.as_deref())
             }
             EventPredicate::MemberCall { .. } => {
-                let Some(ref member) = member_path else {
+                let Some(ref member) = paths.member else {
                     return false;
                 };
                 if !member_subject_matches(
@@ -177,7 +192,7 @@ impl<'a> MatcherEvaluator<'a> {
                 if !member_identity_matches(
                     clause,
                     member,
-                    rooted_path.as_ref(),
+                    paths.rooted.as_ref(),
                     syntactic_path.as_ref(),
                     rooted_chain.as_ref(),
                     fact,
@@ -209,10 +224,17 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     let names = stream.names();
     let values = stream.values();
     let evaluator = MatcherEvaluator::new(names, values, identities, result_identities);
-    let mut fallback = Vec::new();
-    for (rule_index, clause) in clauses {
+
+    // Precompute NamePath conversions once per clause (READ-013).
+    let prepared: Vec<PreparedClausePaths> = clauses
+        .iter()
+        .map(|(_, c)| PreparedClausePaths::new(c, names))
+        .collect();
+
+    let mut fallback: Vec<(usize, &QueryClause, &PreparedClausePaths)> = Vec::new();
+    for ((rule_index, clause), paths) in clauses.iter().zip(prepared.iter()) {
         let Some(candidates) = indexes.occurrences_for_clause(clause, overlay, names) else {
-            fallback.push((*rule_index, clause));
+            fallback.push((*rule_index, clause, paths));
             continue;
         };
         let matched: Vec<_> = candidates
@@ -220,7 +242,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
             .filter(|occurrence| {
                 stream
                     .fact(occurrence.event())
-                    .is_some_and(|fact| evaluator.fact_matches_clause(fact, clause))
+                    .is_some_and(|fact| evaluator.fact_matches_clause(fact, clause, paths))
             })
             .collect();
         if !matched.is_empty() {
@@ -238,13 +260,13 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     let mut fallback_occurrences: Vec<Vec<Occurrence>> =
         fallback.iter().map(|_| Vec::new()).collect();
     for fact in stream.facts() {
-        for (i, (_, clause)) in fallback.iter().enumerate() {
-            if evaluator.fact_matches_clause(fact, clause) {
+        for (i, (_, clause, paths)) in fallback.iter().enumerate() {
+            if evaluator.fact_matches_clause(fact, clause, paths) {
                 fallback_occurrences[i].push(Occurrence::new(fact.id, fact.span));
             }
         }
     }
-    for (i, (rule_index, clause)) in fallback.iter().enumerate() {
+    for (i, (rule_index, clause, _paths)) in fallback.iter().enumerate() {
         let occurrences = std::mem::take(&mut fallback_occurrences[i]);
         if !occurrences.is_empty() {
             push_owned_evidence(

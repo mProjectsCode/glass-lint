@@ -119,6 +119,9 @@ pub struct FunctionEffect {
     /// Source-order value copies. Project flow uses this to connect a source
     /// call result through local declarations before a qualified call.
     value_roots: BTreeMap<ValueId, ValueId>,
+    /// Value-id-to-parameter-ref index built once at construction, used by
+    /// [`parameter_for`](Self::parameter_for) instead of a linear scan.
+    parameter_index: BTreeMap<ValueId, ParameterRef>,
 }
 
 #[derive(Clone, Debug)]
@@ -371,6 +374,7 @@ impl FunctionEffects {
     /// Extract matcher-independent effects from the canonical fact stream in
     /// a single ordered pass: function-enter facts create effect slots before
     /// the events they own are processed.
+    #[allow(clippy::too_many_lines)]
     pub(in crate::analysis) fn collect(stream: &FactStream<Frozen>, limit: usize) -> Self {
         let mut effects = Self::default();
         if !stream.is_valid() {
@@ -391,6 +395,7 @@ impl FunctionEffects {
                     returns: Vec::new(),
                     invalid: false,
                     value_roots: BTreeMap::new(),
+                    parameter_index: BTreeMap::new(),
                 },
             );
         }
@@ -416,9 +421,18 @@ impl FunctionEffects {
                         uses: Vec::new(),
                         returns: Vec::new(),
                         invalid: false,
-                        value_roots: params
+                        value_roots: params.iter().map(|p| (p.value, p.value)).collect(),
+                        parameter_index: params
                             .iter()
-                            .map(|parameter| (parameter.value, parameter.value))
+                            .map(|p| {
+                                (
+                                    p.value,
+                                    ParameterRef {
+                                        index: p.parameter_index,
+                                        path: p.path,
+                                    },
+                                )
+                            })
                             .collect(),
                     },
                 );
@@ -651,16 +665,12 @@ impl FunctionEffect {
         }
     }
 
-    fn parameter_for(&self, value: ValueId, stream: &FactStream<Frozen>) -> Option<ParameterRef> {
+    fn parameter_for(&self, value: ValueId, _stream: &FactStream<Frozen>) -> Option<ParameterRef> {
         let root = self.value_roots.get(&value).copied().unwrap_or(value);
-        stream
-            .function_parameters(self.id)
-            .iter()
-            .find(|parameter| parameter.value == root && root != ValueId::UNKNOWN)
-            .map(|parameter| ParameterRef {
-                index: parameter.parameter_index,
-                path: parameter.path,
-            })
+        if root == ValueId::UNKNOWN {
+            return None;
+        }
+        self.parameter_index.get(&root).cloned()
     }
 
     fn record_reference(

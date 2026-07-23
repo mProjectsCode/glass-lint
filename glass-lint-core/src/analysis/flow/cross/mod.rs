@@ -100,18 +100,41 @@ pub(super) struct CallContext {
 ///
 /// Uses `VecDeque` for O(1) pop-front and a `BTreeSet` for O(log n) dedup,
 /// avoiding the O(n) shift cost of `IndexSet::shift_remove_index(0)`.
-#[derive(Default)]
+///
+/// The worklist enforces [`MAX_CONTEXTS`] total retained contexts so that
+/// the seen-set (not only the pending frontier) is bounded.
 struct ContextWorklist {
     /// FIFO queue of pending contexts.
     queue: VecDeque<CallContext>,
-    /// Seen-set for O(log n) deduplication.
+    /// Seen-set for O(log n) deduplication and total-retained tracking.
     seen: BTreeSet<CallContext>,
+    /// Maximum unique contexts retained before dropping new ones.
+    max_retained: usize,
 }
 
 impl ContextWorklist {
-    pub(super) fn push(&mut self, context: CallContext) {
+    pub(super) fn new(max_retained: usize) -> Self {
+        Self {
+            queue: VecDeque::new(),
+            seen: BTreeSet::new(),
+            max_retained,
+        }
+    }
+
+    /// Push a context if the total-retained budget allows.
+    ///
+    /// Returns whether the context was newly added.  Contexts beyond the
+    /// retained limit are silently dropped (the caller will detect
+    /// exhaustion via [`len`] / [`is_exhausted`]).
+    pub(super) fn push(&mut self, context: CallContext) -> bool {
+        if self.seen.len() >= self.max_retained {
+            return false;
+        }
         if self.seen.insert(context.clone()) {
             self.queue.push_back(context);
+            true
+        } else {
+            false
         }
     }
 
@@ -120,8 +143,16 @@ impl ContextWorklist {
         Some(context)
     }
 
+    /// Total unique contexts retained (seen-set size).
+    ///
+    /// This is the meaningful bound for worklist memory: it counts every
+    /// unique context ever inserted, not only the pending frontier.
     pub(super) fn len(&self) -> usize {
-        self.queue.len()
+        self.seen.len()
+    }
+
+    pub(super) fn is_exhausted(&self) -> bool {
+        self.seen.len() >= self.max_retained
     }
 
     pub(super) fn enqueue_parameters(
@@ -142,6 +173,9 @@ impl ContextWorklist {
         for parameter in effect.parameters(fact_stream).iter().filter(|parameter| {
             parameter.parameter_index == argument_index && parameter.path.is_empty()
         }) {
+            if self.is_exhausted() {
+                return;
+            }
             self.push(CallContext {
                 module,
                 function,
@@ -154,7 +188,7 @@ impl ContextWorklist {
     }
 
     fn seed(project: &ProjectSemanticModel, sources: &FlowSources) -> Self {
-        let mut worklist = Self::default();
+        let mut worklist = Self::new(MAX_CONTEXTS);
         worklist.seed_from_sources(project, sources);
         worklist.seed_from_calls(project, sources);
         worklist
@@ -162,6 +196,9 @@ impl ContextWorklist {
 
     fn seed_from_sources(&mut self, project: &ProjectSemanticModel, sources: &FlowSources) {
         for (key, candidates) in sources.iter() {
+            if self.is_exhausted() {
+                return;
+            }
             for candidate in candidates {
                 self.push(CallContext {
                     module: key.module,
@@ -184,6 +221,9 @@ impl ContextWorklist {
 
     fn seed_from_calls(&mut self, project: &ProjectSemanticModel, sources: &FlowSources) {
         for module in project.modules() {
+            if self.is_exhausted() {
+                return;
+            }
             let stream = module.local().facts().stream();
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
@@ -512,6 +552,10 @@ impl FlowSources {
     /// source.  Destinations that receive a new candidate are enqueued for the
     /// next round, forming a monotone fixed-point iteration over the call-graph
     /// edges without re-scanning the project.
+    ///
+    /// Both the pending frontier and the total unique seen-set are bounded so
+    /// that a long, narrow propagation graph cannot retain unbounded state
+    /// without tripping the frontier limit.
     fn propagate(&mut self) -> bool {
         let mut budget = SourceBudget::new();
 
@@ -520,6 +564,9 @@ impl FlowSources {
 
         for (key, candidates) in &self.sources {
             for &candidate in candidates {
+                if pending_seen.len() >= MAX_PENDING {
+                    return true;
+                }
                 let entry = (*key, candidate);
                 if pending_seen.insert(entry) {
                     pending.push_back(entry);
@@ -539,6 +586,9 @@ impl FlowSources {
                         continue;
                     }
                     if self.sources.entry(to_key).or_default().insert(*candidate) {
+                        if pending_seen.len() >= MAX_PENDING {
+                            return true;
+                        }
                         let entry = (to_key, *candidate);
                         if pending_seen.insert(entry) {
                             pending.push_back(entry);
@@ -888,5 +938,63 @@ mod tests {
         assert_eq!(ordered[0], candidate(0, 0, 10));
         assert_eq!(ordered[1], candidate(0, 1, 20));
         assert_eq!(ordered[2], candidate(0, 2, 30));
+    }
+
+    fn context(module: u32, function: u32) -> CallContext {
+        CallContext {
+            module: ModuleId::new(module),
+            function: FunctionId(function),
+            parameter: None,
+            source_root: None,
+            state: CrossFlowState {
+                flow: FlowId::new(RuleIndex::new(0), 0),
+                source: QualifiedEvent {
+                    module: ModuleId::new(1),
+                    fact: FactId(1),
+                },
+                requirements: RequirementSet::default(),
+            },
+            crossed: false,
+        }
+    }
+
+    #[test]
+    fn worklist_len_counts_total_retained_not_pending() {
+        let mut wl = ContextWorklist::new(10);
+        assert_eq!(wl.len(), 0);
+
+        // Push two contexts
+        assert!(wl.push(context(1, 1)));
+        assert_eq!(wl.len(), 1);
+        assert!(wl.push(context(1, 2)));
+        assert_eq!(wl.len(), 2);
+
+        // Pop one — seen still retains both, so len is still 2
+        let _popped = wl.pop_front();
+        assert_eq!(wl.len(), 2);
+
+        // Duplicate push does not increase retained count
+        assert!(!wl.push(context(1, 1)));
+        assert_eq!(wl.len(), 2);
+    }
+
+    #[test]
+    fn worklist_respects_max_retained_limit() {
+        let mut wl = ContextWorklist::new(3);
+        assert!(wl.push(context(1, 1)));
+        assert!(wl.push(context(1, 2)));
+        assert!(wl.push(context(1, 3)));
+        // Fourth unique context hits the limit
+        assert!(!wl.push(context(1, 4)));
+        assert_eq!(wl.len(), 3);
+        assert!(wl.is_exhausted());
+    }
+
+    #[test]
+    fn worklist_is_exhausted_false_below_limit() {
+        let mut wl = ContextWorklist::new(5);
+        assert!(!wl.is_exhausted());
+        wl.push(context(1, 1));
+        assert!(!wl.is_exhausted());
     }
 }

@@ -96,6 +96,7 @@ impl SourceCorpus {
         mut include: impl FnMut(&Path) -> bool,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut paths: BTreeSet<PathBuf> = BTreeSet::new();
+        let mut budget = crate::admission::FileBudget::new(self.options.max_files());
         for root in roots {
             let Some(metadata) = walk::resolve_root(&self.options, root)? else {
                 continue;
@@ -105,6 +106,7 @@ impl SourceCorpus {
                 if include(root)
                     && let PathAdmission::Admitted(path) = admission.classify(root)?
                 {
+                    budget.try_admit()?;
                     paths.insert(path.into_path_buf());
                 }
                 continue;
@@ -112,7 +114,6 @@ impl SourceCorpus {
             if !metadata.is_dir() {
                 return Err(ProjectLoadError::CorpusRootNotFileOrDir(root.clone()));
             }
-            let mut budget = crate::admission::FileBudget::new(self.options.max_files());
             let found = walk::collect_files(&admission, root, None, &mut include)?;
             for path in found {
                 budget.try_admit()?;

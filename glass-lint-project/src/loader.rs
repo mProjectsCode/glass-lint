@@ -320,8 +320,12 @@ impl AdmissionSet {
     }
 
     fn admit(&mut self, path: AdmittedSourcePath) -> Result<bool, ProjectLoadError> {
+        if self.paths.contains(&path) {
+            return Ok(false);
+        }
         self.budget.try_admit()?;
-        Ok(self.paths.insert(path))
+        self.paths.insert(path);
+        Ok(true)
     }
 
     fn len(&self) -> usize {
