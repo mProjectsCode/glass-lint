@@ -22,8 +22,6 @@ use crate::{
     api::classification::ClassificationEvidence,
 };
 
-const MAX_MUTATION_LOG_ENTRIES: usize = 4096;
-
 // ---------------------------------------------------------------------------
 // Mutation log for checkpoint/rollback
 // ---------------------------------------------------------------------------
@@ -58,16 +56,30 @@ struct LogNode {
 
 /// A bounded parent-linked mutation history. Checkpoints are O(1); moving
 /// between them applies only the deltas on the paths between the checkpoints.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct MutationLog {
     nodes: Vec<LogNode>,
     cursor: usize,
     budget_exhausted: bool,
+    limit: usize,
 }
 
 impl MutationLog {
+    fn new(limit: usize) -> Self {
+        Self {
+            nodes: Vec::new(),
+            cursor: 0,
+            budget_exhausted: false,
+            limit,
+        }
+    }
+
+    fn is_budget_exhausted(&self) -> bool {
+        self.budget_exhausted
+    }
+
     fn record(&mut self, delta: InverseDelta) {
-        if self.nodes.len() >= MAX_MUTATION_LOG_ENTRIES {
+        if self.nodes.len() >= self.limit {
             self.budget_exhausted = true;
             return;
         }
@@ -217,7 +229,7 @@ pub(super) struct FlowEnvironment {
     reachable: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 /// Mutable live alias and object-state tables for one projector pass.
 pub(super) struct FlowStateTable {
     /// Current value aliases, keyed by semantic value identity.
@@ -226,9 +238,20 @@ pub(super) struct FlowStateTable {
     states: Vec<(FlowStateKey, FlowState)>,
     /// Mutation log for checkpoint/rollback.
     log: MutationLog,
+    /// Maximum number of state entries allowed.
+    state_limit: usize,
 }
 
 impl FlowStateTable {
+    pub(super) fn new(state_limit: usize, mutation_limit: usize) -> Self {
+        Self {
+            aliases: Vec::new(),
+            states: Vec::new(),
+            log: MutationLog::new(mutation_limit),
+            state_limit,
+        }
+    }
+
     pub(super) fn clear(&mut self) {
         let aliases = std::mem::take(&mut self.aliases);
         for (value, object) in aliases {
@@ -313,22 +336,37 @@ impl FlowStateTable {
         })
     }
 
-    pub(super) fn insert_state(&mut self, state: FlowState) {
+    /// Insert or update a state. Returns `false` when the state limit has been
+    /// reached and the insertion was rejected.
+    pub(super) fn insert_state(&mut self, state: FlowState) -> bool {
         let key = state.key();
         match self.states.binary_search_by_key(&key, |(k, _)| *k) {
             Ok(index) => {
                 let old = std::mem::replace(&mut self.states[index].1, state.clone());
                 self.log.record(InverseDelta::StateUpdate(key, old, state));
+                true
             }
             Err(index) => {
+                if self.states.len() >= self.state_limit {
+                    return false;
+                }
                 self.states.insert(index, (key, state.clone()));
                 self.log.record(InverseDelta::StateInsert(key, state));
+                true
             }
         }
     }
 
     pub(super) fn state_count(&self) -> usize {
         self.states.len()
+    }
+
+    pub(super) fn mutation_count(&self) -> usize {
+        self.log.nodes.len()
+    }
+
+    pub(super) fn mutation_exhausted(&self) -> bool {
+        self.log.is_budget_exhausted()
     }
 
     pub(super) fn remove_states_for(&mut self, object: ObjectId) {
@@ -493,6 +531,10 @@ impl<'a> FlowEvidence<'a> {
     pub(super) fn record(&mut self, rule_index: usize, evidence: ClassificationEvidence) {
         self.items[rule_index].push(evidence);
     }
+
+    pub(super) fn emitted_count(&self) -> usize {
+        self.emitted.len()
+    }
 }
 
 #[cfg(test)]
@@ -501,7 +543,7 @@ mod tests {
 
     #[test]
     fn checkpoints_restore_divergent_mutation_paths() {
-        let mut table = FlowStateTable::default();
+        let mut table = FlowStateTable::new(262_144, 4096);
         table.bind(ValueId(1), ObjectId(1));
         let base = table.capture(true);
 

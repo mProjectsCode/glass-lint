@@ -36,17 +36,34 @@ use crate::{
     },
 };
 
+/// Exhaustion state and bounded counters returned by local flow projection.
+#[derive(Debug, Clone, Copy, Default)]
+#[allow(dead_code)]
+pub(in crate::analysis) struct LocalFlowProjectionOutcome {
+    /// Whether any budget was exhausted during projection.
+    pub exhausted: bool,
+    /// Object identities allocated.
+    pub objects_used: u32,
+    /// Projected state entries.
+    pub states_used: usize,
+    /// Evidence emissions recorded.
+    pub emissions_used: usize,
+    /// Mutation log entries written.
+    pub mutations_used: usize,
+}
+
 /// Push flow evidence directly into an externally-owned per-rule vec,
 /// avoiding a separate evidence matrix allocation alongside the caller's.
+/// Returns the exhaustion state and bounded counters for the caller.
 pub(in crate::analysis) fn collect_into(
     stream: &FactStream,
     effects: &FunctionEffects,
     rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
     evidence: &mut [Vec<ClassificationEvidence>],
     limits: FlowLimits,
-) {
+) -> LocalFlowProjectionOutcome {
     let Some(names) = stream.names() else {
-        return;
+        return LocalFlowProjectionOutcome::default();
     };
     let flow_index = FlowIndex::new(rules, names);
     let helpers = FunctionSummaries::collect(stream, effects, &flow_index);
@@ -55,6 +72,7 @@ pub(in crate::analysis) fn collect_into(
     for fact in stream.facts() {
         projector.transfer(fact);
     }
+    projector.into_outcome()
 }
 
 #[cfg(test)]
@@ -64,10 +82,10 @@ pub(super) fn collect_with_limits(
     rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
     rule_count: usize,
     limits: FlowLimits,
-) -> Vec<Vec<ClassificationEvidence>> {
+) -> (Vec<Vec<ClassificationEvidence>>, LocalFlowProjectionOutcome) {
     let mut evidence = vec![Vec::new(); rule_count];
-    collect_into(stream, effects, rules, &mut evidence, limits);
-    evidence
+    let outcome = collect_into(stream, effects, rules, &mut evidence, limits);
+    (evidence, outcome)
 }
 
 #[derive(Debug)]
@@ -121,7 +139,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             helpers,
             calls_by_result,
             flow_evidence: FlowEvidence::new(evidence),
-            flow_state: FlowStateTable::default(),
+            flow_state: FlowStateTable::new(limits.state_limit(), limits.mutation_limit()),
             next_object_id: 0,
             limits,
             control: Vec::new(),
@@ -308,6 +326,21 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         self.next_object_id = self.next_object_id.checked_add(1)?;
         Some(object)
     }
+
+    /// Consume the projector and produce a bounded summary of what was used.
+    fn into_outcome(self) -> LocalFlowProjectionOutcome {
+        let exhausted = self.next_object_id >= self.limits.object_limit()
+            || self.flow_state.state_count() >= self.limits.state_limit()
+            || self.flow_evidence.emitted_count() >= self.limits.emission_limit()
+            || self.flow_state.mutation_exhausted();
+        LocalFlowProjectionOutcome {
+            exhausted,
+            objects_used: self.next_object_id,
+            states_used: self.flow_state.state_count(),
+            emissions_used: self.flow_evidence.emitted_count(),
+            mutations_used: self.flow_state.mutation_count(),
+        }
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -327,13 +360,14 @@ mod tests {
             crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let flow = CompiledObjectFlow::from_matcher(flow);
-        collect_with_limits(
+        let (evidence, _outcome) = collect_with_limits(
             &stream,
             &effects,
             &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
             1,
-            FlowLimits::default(),
-        )
+            FlowLimits::from_flow_operations(262_144),
+        );
+        evidence
     }
 
     fn script_flow() -> ObjectFlowMatcher {
@@ -563,12 +597,12 @@ mod tests {
             })
             .expect("sink call should be present");
         let flow = CompiledObjectFlow::from_matcher(&script_flow());
-        let evidence = collect_with_limits(
+        let (evidence, _outcome) = collect_with_limits(
             &stream,
             &effects,
             &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
             1,
-            FlowLimits::default(),
+            FlowLimits::from_flow_operations(262_144),
         );
         assert_eq!(evidence[0][0].occurrences[0].span, sink_span);
     }
@@ -602,14 +636,106 @@ mod tests {
             })
             .expect("configuration write should be present");
         let flow = CompiledObjectFlow::from_matcher(&flow);
-        let evidence = collect_with_limits(
+        let (evidence, _outcome) = collect_with_limits(
             &stream,
             &effects,
             &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
             1,
-            FlowLimits::default(),
+            FlowLimits::from_flow_operations(262_144),
         );
         assert_eq!(evidence[0][0].occurrences[0].span, configuration.1);
         assert_eq!(evidence[0][0].occurrences[0].fact, Some(configuration.0.0));
+    }
+
+    #[test]
+    fn object_limit_exhaustion_returns_exhausted_outcome() {
+        let flow = script_flow();
+        let source = "const a = document.createElement('script'); const b = document.createElement('script');";
+        let parsed = crate::parse(source, "obj-limit.js").expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
+        let flow = CompiledObjectFlow::from_matcher(&flow);
+        let limits = FlowLimits::test_new(1, 262_144, 65_536, 4096);
+        let (evidence, outcome) = collect_with_limits(
+            &stream,
+            &effects,
+            &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
+            1,
+            limits,
+        );
+        assert!(outcome.exhausted, "object limit should be exhausted");
+        assert_eq!(
+            outcome.objects_used, 1,
+            "only one object should be allocated"
+        );
+        assert!(
+            evidence[0].is_empty(),
+            "no flow can complete without a second object"
+        );
+    }
+
+    #[test]
+    fn mutation_log_exhaustion_returns_exhausted_outcome() {
+        let flow = script_flow();
+        let source = "const a = document.createElement('script'); const b = document.createElement('script');";
+        let parsed = crate::parse(source, "mut-limit.js").expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
+        let flow = CompiledObjectFlow::from_matcher(&flow);
+        let limits = FlowLimits::test_new(65_536, 262_144, 65_536, 1);
+        let (_evidence, outcome) = collect_with_limits(
+            &stream,
+            &effects,
+            &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
+            1,
+            limits,
+        );
+        assert!(outcome.exhausted, "mutation log limit should be exhausted");
+    }
+
+    #[test]
+    fn state_limit_exhaustion_returns_exhausted_outcome() {
+        let flow = script_flow();
+        let source = "const a = document.createElement('script'); a.src = url; document.head.appendChild(a);";
+        let parsed = crate::parse(source, "state-limit.js").expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
+        let flow = CompiledObjectFlow::from_matcher(&flow);
+        let limits = FlowLimits::test_new(65_536, 0, 65_536, 4096);
+        let (_evidence, outcome) = collect_with_limits(
+            &stream,
+            &effects,
+            &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
+            1,
+            limits,
+        );
+        assert!(outcome.exhausted, "state limit should be exhausted");
+    }
+
+    #[test]
+    fn emission_limit_exhaustion_returns_exhausted_outcome() {
+        let flow = script_flow();
+        let source = "const a = document.createElement('script'); a.src = url; document.head.appendChild(a);";
+        let parsed = crate::parse(source, "emit-limit.js").expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program);
+        let stream =
+            crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
+        let flow = CompiledObjectFlow::from_matcher(&flow);
+        let limits = FlowLimits::test_new(65_536, 262_144, 0, 4096);
+        let (_evidence, outcome) = collect_with_limits(
+            &stream,
+            &effects,
+            &[(crate::api::classification::RuleIndex::new(0), 0, &flow)],
+            1,
+            limits,
+        );
+        assert!(outcome.exhausted, "emission limit should be exhausted");
     }
 }

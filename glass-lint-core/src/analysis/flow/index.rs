@@ -11,22 +11,49 @@ use crate::{
     api::{classification::RuleIndex, compiler::CompiledObjectFlow},
 };
 
-const MAX_FLOW_OBJECTS: u32 = 65_536;
-const MAX_FLOW_STATES: usize = 262_144;
-const MAX_FLOW_EMISSIONS: usize = 65_536;
+/// Default per-dimension budgets that match the prior hard-coded constants.
+const DEFAULT_OBJECTS: u64 = 65_536;
+const DEFAULT_STATES: u64 = 262_144;
+const DEFAULT_EMISSIONS: u64 = 65_536;
+const DEFAULT_MUTATIONS: u64 = 4096;
+
+/// Floor values that guarantee even the simplest local flow can complete.
+/// These are separate from the cross‑module `flow_operations` budget.
+const MIN_OBJECTS: u32 = 1024;
+const MIN_STATES: usize = 4096;
+const MIN_EMISSIONS: usize = 1024;
+const MIN_MUTATIONS: usize = 256;
 
 #[derive(Debug, Clone, Copy)]
-/// Hard limits for object-flow identities, states, and emissions.
+/// Bounded limits for object-flow identities, states, emissions, and mutation
+/// log. Budgets are derived from the validated `flow_operations` limit by
+/// scaling the defaults proportionally, with generous floors so that a single
+/// local function always has enough capacity regardless of the cross‑module
+/// budget.
 pub(in crate::analysis) struct FlowLimits {
-    /// Maximum object identities.
     objects: u32,
-    /// Maximum projected states.
     states: usize,
-    /// Maximum evidence emissions.
     emissions: usize,
+    mutation: usize,
 }
 
 impl FlowLimits {
+    /// Scale each dimension from its default proportionally to
+    /// `flow_operations`, clamped to a generous floor so that a single local
+    /// function always has enough capacity.
+    #[allow(clippy::cast_possible_truncation)]
+    pub(in crate::analysis) fn from_flow_operations(flow_operations: usize) -> Self {
+        let flow = flow_operations as u64;
+        Self {
+            objects: u32::try_from(DEFAULT_OBJECTS * flow / 262_144)
+                .unwrap_or(u32::MAX)
+                .max(MIN_OBJECTS),
+            states: ((DEFAULT_STATES * flow / 262_144) as usize).max(MIN_STATES),
+            emissions: ((DEFAULT_EMISSIONS * flow / 262_144) as usize).max(MIN_EMISSIONS),
+            mutation: ((DEFAULT_MUTATIONS * flow / 262_144) as usize).max(MIN_MUTATIONS),
+        }
+    }
+
     pub(in crate::analysis) fn object_limit(&self) -> u32 {
         self.objects
     }
@@ -38,14 +65,19 @@ impl FlowLimits {
     pub(in crate::analysis) fn emission_limit(&self) -> usize {
         self.emissions
     }
-}
 
-impl Default for FlowLimits {
-    fn default() -> Self {
+    pub(in crate::analysis) fn mutation_limit(&self) -> usize {
+        self.mutation
+    }
+
+    /// Test-only: construct a `FlowLimits` with explicit per-dimension values.
+    #[cfg(test)]
+    pub(super) fn test_new(objects: u32, states: usize, emissions: usize, mutation: usize) -> Self {
         Self {
-            objects: MAX_FLOW_OBJECTS,
-            states: MAX_FLOW_STATES,
-            emissions: MAX_FLOW_EMISSIONS,
+            objects,
+            states,
+            emissions,
+            mutation,
         }
     }
 }

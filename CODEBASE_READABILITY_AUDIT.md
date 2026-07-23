@@ -6,7 +6,7 @@ Scope: the entirety of `glass-lint-core` and `glass-lint-project`, with emphasis
 
 ## Summary
 
-This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 11 open findings remain (2 high, 7 medium, 2 low). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
+This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 8 open findings remain (8 medium). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
 
 The broad architectural opportunity is to make each pipeline transition consume one phase-owned type and produce the next. Today, several boundaries retain raw and compiled forms together, erase semantic newtypes and reconstruct them later, or build parallel maps that describe one logical record. Those choices obscure the intended pipeline and cause avoidable clones, repeated validation, repeated indexing, and transient collections.
 
@@ -41,15 +41,13 @@ The declaration planner must finish before source-order provenance collection so
 
 If `ScopeTraversal<P>` cannot be expressed with ordinary exclusive borrowing and narrow hooks, close this finding as accepted duplication and retain the current plan/collector design. A macro that generates two visitors is a fallback only if its declaration makes child order readable and adding a new scope-forming syntax cannot compile without defining both phase hooks.
 
-#### READ-002 — Local-flow resource exhaustion silently becomes absent evidence
+#### READ-002 — Local-flow resource exhaustion silently becomes absent evidence - DONE
 - **Severity:** High
 - **Fix Complexity:** High
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/flow/index.rs:14-49`, `glass-lint-core/src/analysis/flow/projector/state.rs:25-126`, `glass-lint-core/src/analysis/flow/projector/mod.rs:39-76`
 
-Local flow uses hard-coded limits for objects, states, emissions, and mutation-log entries. When those limits are reached, paths are dropped or restoration fails without a typed outcome, so callers cannot distinguish “no flow” from “analysis exhausted”; cross-module flow already treats exhaustion as a first-class partial-analysis condition.
-
-Return a `LocalFlowProjectionOutcome` containing evidence, exhaustion state, and bounded counters. Derive all flow budgets from the validated analysis limits; any local-flow exhaustion should record a file-scoped flow-budget diagnostic and make the combined report `Partial`, matching facts, effects, linking, and cross-module flow. Add focused tests for each limit so exhaustion consistently fails closed instead of looking like a clean negative result.
+Local flow now returns a `LocalFlowProjectionOutcome` containing evidence, exhaustion state (`exhausted`), and bounded counters (`objects_used`, `states_used`, `emissions_used`, `mutations_used`). All flow budgets are derived from the validated `flow_operations` limit via `FlowLimits::from_flow_operations`, with generous per-dimension floors so a single local function always has capacity. The `MutationLog` takes a configured limit instead of a hard-coded constant, `FlowStateTable::insert_state` enforces the state budget, and `ProjectionOutcome` now tracks `local_exhausted` alongside cross-flow exhaustion. Exhaustion in any dimension makes the combined report `Partial`. Tests now cover object, state, emission, and mutation-log limit exhaustion.
 
 #### READ-003 — The link graph retains metadata that does not drive linking - DONE
 - **Severity:** Medium
@@ -61,15 +59,13 @@ The link graph stores SCC components and a provenance map, but the global-export
 
 **Decision:** Implement the SCC-DAG linker now (see `private/scc-plan.md`). The global monotone fixed-point over all modules is replaced with a topological walk of the SCC DAG: single-node SCCs resolve in one pass, multi-node SCCs use a cycle-local fixed-point. This eliminates the `O(modules × rounds)` loop for acyclic graphs (the common case) while keeping the same `ExportResolution` semantics, budget enforcement, and monotone memo table. The existing `MAX_SCC_SIZE` check remains as a pre- gate before the DAG walk. Remove edge provenance now because there is no reader, and reintroduce it only with the diagnostic that consumes it. Correct the architecture comment to describe bounded SCC-DAG convergence.
 
-#### READ-004 — Validated project input is represented as parallel maps and a positional tuple
+#### READ-004 — Validated project input is represented as parallel maps and a positional tuple - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/project/input.rs:101-190`, `glass-lint-core/src/analysis/project/model.rs:104-161`
 
-`ValidatedProjectInput` keeps sources, resolutions, module IDs, and request IDs in separate maps keyed by overlapping identities, then exposes them as a five-element tuple. The linking phase uses only part of that payload, while source text and root information remain attached beyond the phase that owns them.
-
-Introduce named, consuming phase types such as `AdmittedProject`, `LocallyAnalyzedProject`, and `ResolvedLinkInput`. Store each resolution beside its qualified request identity instead of maintaining synchronized key spaces. Split report file-roster data from linker input so source text can be dropped or borrowed as soon as local analysis finishes.
+`ValidatedProjectInput` no longer stores pre-computed `module_ids` or `request_ids` as parallel maps, and no longer exposes a five-element tuple via `into_parts()`. The private `ValidatedLinkInput` has been promoted to a public `ResolvedLinkInput` that owns `modules` (ModuleId → ProjectModule) and `resolutions` (QualifiedRequestId → LinkedModuleTarget), pairing each resolution outcome with its qualified identity directly. The `ResolvedProject` phase holds the source map separately from the linker input so source text can be dropped after linking; the report's `initialize_project_files` operates on a borrowed source map instead of receiving the full validated input. Module IDs are computed locally by `ResolvedLinkInput::build` and by `resolve()` rather than stored ahead of time. The `Linter::lint_project` path uses `into_components()` (a three-element destructuring) instead of discarding computed IDs.
 
 #### READ-005 — Direct project linting assigns identities and then rebuilds the project
 - **Severity:** Medium
@@ -169,7 +165,7 @@ Several already-large production modules included hundreds of lines of inline te
 
 None remain after tracing the current status model, public documentation, tests, consumers, and the Git history of the scope collector:
 
-1. **Local-flow exhaustion makes the report partial.** This matches every other semantic/linking budget and prevents an exhausted negative result from being presented as complete. Record the reason at file scope for the affected module and let normal report combination raise project completion to `Partial`.
+1. **Local-flow exhaustion makes the report partial.** Resolved in READ-002 — `LocalFlowProjectionOutcome` carries exhaustion state, `ProjectionOutcome` tracks `local_exhausted`, and `record_flow_exhaustion` sets project completion to `Partial`.
 2. **Resolved by the SCC-DAG linker.** See `private/scc-plan.md`. SCCs become the primary driver of export resolution order; single-node SCCs resolve in one pass, cycles get a local fixed-point. Edge provenance is removed as dead data until a concrete diagnostic consumes it.
 3. **`Linter::lint_project(ProjectInput)` remains a public convenience facade, not a second internal pipeline.** Its documented API is useful for in-memory callers, but it should feed the staged collection/local/resolution pipeline before IDs are assigned. Module and request identities should be created once, after the authoritative source and authored-request sets exist.
 4. **A `tsconfig` extends cycle drops only the offending edge.** Emit a deterministic diagnostic, retain the current config's local settings and previously resolved acyclic inheritance, and do not broaden selection with the cyclic parent. This is the behavior asserted by the existing cycle tests; canonicalizing the candidate parent before membership checks closes the remaining alias-path hole.

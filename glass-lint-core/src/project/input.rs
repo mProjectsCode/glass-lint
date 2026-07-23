@@ -7,27 +7,10 @@ use std::{
 
 use crate::{
     SourceFile,
-    analysis::QualifiedRequestId,
     project::{
-        ModuleId, ProjectInput, ProjectInputError, ProjectRelativePath, ResolutionRequestKey,
-        ResolverOutcome,
+        ProjectInput, ProjectInputError, ProjectRelativePath, ResolutionRequestKey, ResolverOutcome,
     },
 };
-
-fn compute_module_ids(
-    sources: &BTreeMap<ProjectRelativePath, crate::SourceFile>,
-) -> BTreeMap<ProjectRelativePath, ModuleId> {
-    sources
-        .keys()
-        .enumerate()
-        .map(|(index, path)| {
-            (
-                path.clone(),
-                ModuleId::new(u32::try_from(index).expect("module count exceeds ModuleId range")),
-            )
-        })
-        .collect()
-}
 
 impl ProjectInput {
     /// Admit the public DTO into the normalized, internal project stage.
@@ -79,13 +62,10 @@ impl ProjectInput {
             resolutions.insert(key, result);
         }
 
-        let module_ids = compute_module_ids(&sources);
         Ok(ValidatedProjectInput {
             root,
             sources,
             resolutions,
-            module_ids,
-            request_ids: BTreeMap::new(),
         })
     }
 }
@@ -102,51 +82,9 @@ pub struct ValidatedProjectInput {
     root: PathBuf,
     sources: BTreeMap<ProjectRelativePath, crate::SourceFile>,
     resolutions: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-    module_ids: BTreeMap<ProjectRelativePath, ModuleId>,
-    /// Pre-built mapping from resolution request key to qualified
-    /// module/request identity, populated during the resolve phase.
-    /// Used by linking to avoid re-enumerating authored requests.
-    request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
 }
 
-/// Internal: destructured components of a validated project.
-type ProjectParts = (
-    PathBuf,
-    BTreeMap<ProjectRelativePath, crate::SourceFile>,
-    BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-    BTreeMap<ProjectRelativePath, ModuleId>,
-    BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
-);
-
 impl ValidatedProjectInput {
-    /// Create from already-normalized tables. Only used within the crate
-    /// during the resolve phase when maps are built from incremental sources.
-    pub(crate) fn from_maps(
-        root: PathBuf,
-        sources: BTreeMap<ProjectRelativePath, crate::SourceFile>,
-        resolutions: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-    ) -> Self {
-        let module_ids = compute_module_ids(&sources);
-        Self {
-            root,
-            sources,
-            resolutions,
-            module_ids,
-            request_ids: BTreeMap::new(),
-        }
-    }
-
-    /// Attach a pre-built request-to-qualified-ID mapping.
-    /// Used after the resolve phase to carry auth-request identity across
-    /// the local-to-resolved boundary.
-    pub(crate) fn with_request_ids(
-        mut self,
-        request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
-    ) -> Self {
-        self.request_ids = request_ids;
-        self
-    }
-
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -159,10 +97,6 @@ impl ValidatedProjectInput {
         self.resolutions.len()
     }
 
-    pub fn module_id(&self, path: &ProjectRelativePath) -> Option<ModuleId> {
-        self.module_ids.get(path).copied()
-    }
-
     /// Iterate over (path, source) pairs in deterministic order.
     pub fn sources(&self) -> impl Iterator<Item = (&ProjectRelativePath, &SourceFile)> {
         self.sources.iter()
@@ -173,25 +107,15 @@ impl ValidatedProjectInput {
         self.resolutions.iter()
     }
 
-    /// Iterate over module ID assignments in deterministic order.
-    pub fn module_ids(&self) -> impl Iterator<Item = (&ProjectRelativePath, ModuleId)> {
-        self.module_ids.iter().map(|(p, id)| (p, *id))
-    }
-
-    /// Crate-internal: destructure into all components at once.
-    pub(crate) fn into_parts(self) -> ProjectParts {
-        (
-            self.root,
-            self.sources,
-            self.resolutions,
-            self.module_ids,
-            self.request_ids,
-        )
-    }
-
-    /// Crate-internal: borrow the source map for pipeline stages.
-    pub(crate) fn source_map(&self) -> &BTreeMap<ProjectRelativePath, crate::SourceFile> {
-        &self.sources
+    /// Consume and return all components.
+    pub(crate) fn into_components(
+        self,
+    ) -> (
+        PathBuf,
+        BTreeMap<ProjectRelativePath, crate::SourceFile>,
+        BTreeMap<ResolutionRequestKey, ResolverOutcome>,
+    ) {
+        (self.root, self.sources, self.resolutions)
     }
 }
 

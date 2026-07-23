@@ -22,17 +22,17 @@ use execution::{
 };
 
 use crate::{
-    AnalysisLimits, Environment, ProjectRelativePath, RuleCatalog,
-    analysis::{ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, QualifiedRequestId},
+    AnalysisLimits, Environment, ProjectRelativePath, RuleCatalog, SourceFile,
+    analysis::{
+        ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, QualifiedRequestId,
+        ResolvedLinkInput,
+    },
     api::classification::RuleIndex,
     lint::ReportAssembly,
     project::{
-        AnalysisReport, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
-        ResolverOutcome, SourceFile,
-        input::{
-            ValidatedProjectInput, normalize_relative, normalize_resolution_key, normalize_result,
-            normalize_root,
-        },
+        AnalysisReport, ModuleId, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
+        ResolverOutcome,
+        input::{normalize_relative, normalize_resolution_key, normalize_result, normalize_root},
         tables::{ResolutionTable, SourceTable},
     },
 };
@@ -68,7 +68,7 @@ impl<'a> SessionState<'a> {
 
 pub struct ProjectCollection<'a> {
     state: SessionState<'a>,
-    pub(super) root: std::path::PathBuf,
+    pub(super) _root: std::path::PathBuf,
     pub(super) sources: SourceTable,
     artifacts: AnalysisArtifacts,
     pub(super) artifact_cache: ArtifactCacheHandle,
@@ -82,7 +82,6 @@ pub struct ProjectCollection<'a> {
 /// The consuming transition prevents adding sources after this point.
 pub struct LocallyAnalyzedProject<'a> {
     state: SessionState<'a>,
-    root: std::path::PathBuf,
     sources: SourceTable,
     artifacts: AnalysisArtifacts,
 }
@@ -91,8 +90,9 @@ pub struct LocallyAnalyzedProject<'a> {
 /// Linking and matching are available only from this phase.
 pub struct ResolvedProject<'a> {
     state: SessionState<'a>,
-    input: ValidatedProjectInput,
-    artifacts: AnalysisArtifacts,
+    source_map: BTreeMap<ProjectRelativePath, SourceFile>,
+    link_input: ResolvedLinkInput,
+    parse_diagnostics: BTreeMap<ProjectRelativePath, crate::ParseDiagnostic>,
 }
 
 impl<'a> ProjectCollection<'a> {
@@ -161,7 +161,7 @@ impl<'a> ProjectCollection<'a> {
         let artifact_cache = state.artifact_cache.clone();
         Ok(Self {
             state,
-            root: normalize_root(&root.into())?,
+            _root: normalize_root(&root.into())?,
             sources: SourceTable::default(),
             artifacts: AnalysisArtifacts::default(),
             artifact_cache,
@@ -411,7 +411,6 @@ impl<'a> ProjectCollection<'a> {
     pub fn finish_local(self) -> LocallyAnalyzedProject<'a> {
         LocallyAnalyzedProject {
             state: self.state,
-            root: self.root,
             sources: self.sources,
             artifacts: self.artifacts,
         }
@@ -425,26 +424,38 @@ impl<'a> LocallyAnalyzedProject<'a> {
         self,
         outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
     ) -> Result<ResolvedProject<'a>, ProjectInputError> {
-        let mut resolutions = ResolutionTable::default();
+        let mut resolution_table = ResolutionTable::default();
         for (mut key, mut result) in outcomes {
             normalize_resolution_key(&mut key)?;
             if !self.artifacts.authored_requests.contains_key(&key) {
                 return Err(ProjectInputError::UnknownRequest(key));
             }
             normalize_result(&mut result)?;
-            resolutions.insert(key, result)?;
+            resolution_table.insert(key, result)?;
         }
-        let input = ValidatedProjectInput::from_maps(
-            self.root,
-            self.sources.into_map(),
-            resolutions.into_map(),
-        );
+        let resolution_map = resolution_table.into_map();
+
+        let source_map = self.sources.into_map();
+
+        let module_ids: BTreeMap<ProjectRelativePath, ModuleId> = source_map
+            .keys()
+            .enumerate()
+            .map(|(index, path)| {
+                (
+                    path.clone(),
+                    ModuleId::new(
+                        u32::try_from(index).expect("module count exceeds ModuleId range"),
+                    ),
+                )
+            })
+            .collect();
+
         let request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId> = self
             .artifacts
             .analyzed
             .iter()
             .filter_map(|(path, local)| {
-                let module_id = input.module_id(path)?;
+                let module_id = module_ids.get(path).copied()?;
                 Some((path, local, module_id))
             })
             .flat_map(|(path, local, module_id)| {
@@ -462,10 +473,20 @@ impl<'a> LocallyAnalyzedProject<'a> {
                 })
             })
             .collect();
+
+        let link_input = ResolvedLinkInput::build(
+            source_map.clone(),
+            self.artifacts.analyzed,
+            &module_ids,
+            resolution_map,
+            &request_ids,
+        )?;
+
         Ok(ResolvedProject {
             state: self.state,
-            input: input.with_request_ids(request_ids),
-            artifacts: self.artifacts,
+            source_map,
+            link_input,
+            parse_diagnostics: self.artifacts.parse_diagnostics,
         })
     }
 }
@@ -484,9 +505,9 @@ impl ResolvedProject<'_> {
             self.state.evidence_limit,
         );
         assembly.finish(
-            self.input,
-            self.artifacts.analyzed,
-            self.artifacts.parse_diagnostics,
+            &self.source_map,
+            self.link_input,
+            self.parse_diagnostics,
             self.state.lowerer.limits(),
         )
     }

@@ -2,12 +2,13 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
     AnalysisLimits, AnalysisReport, Diagnostic, EvidenceList, FileReport, Finding, ParseDiagnostic,
-    Position, ProjectInputError, ProjectRelativePath, REPORT_VERSION, SourceLocation, SourceRange,
-    analysis::{LocalArtifact, ProjectSemanticModel, project::projection::ProjectionOutcome},
+    Position, ProjectInputError, ProjectRelativePath, REPORT_VERSION, SourceFile, SourceLocation,
+    SourceRange,
+    analysis::{ProjectSemanticModel, ResolvedLinkInput, project::projection::ProjectionOutcome},
     api::classification::{ClassificationResult, MatchedCapability, RuleIndex},
     diagnostic::SourceLineIndex,
     lint::catalog::RuleCatalog,
-    project::{ModuleId, input::ValidatedProjectInput},
+    project::ModuleId,
 };
 
 /// Outcome of linking and matching a resolved project, with phase timings.
@@ -35,24 +36,25 @@ impl<'a> ReportAssembly<'a> {
     }
 
     /// Link, classify, and assemble the report.
+    #[allow(clippy::unnecessary_wraps)]
     pub fn finish(
         &self,
-        input: ValidatedProjectInput,
-        analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
+        source_map: &BTreeMap<ProjectRelativePath, SourceFile>,
+        link_input: ResolvedLinkInput,
         parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
         limits: &AnalysisLimits,
     ) -> Result<ProjectAnalysis, ProjectInputError> {
         let (mut files, parse_failure_codes) =
-            Self::initialize_project_files(&input, parse_diagnostics);
+            Self::initialize_project_files(source_map, parse_diagnostics);
 
         tracing::debug!(
             target: "glass_lint::project::link",
-            modules = analyzed.len(),
-            resolutions = input.resolution_count(),
+            modules = link_input.modules.len(),
+            resolutions = link_input.resolutions.len(),
             "stage started"
         );
         let linking_start = std::time::Instant::now();
-        let mut project = ProjectSemanticModel::link_with_limits(input, analyzed, limits)?;
+        let mut project = ProjectSemanticModel::link_with_limits(link_input, limits);
         for (path, code) in parse_failure_codes {
             project.record_parse_failure(path, &code);
         }
@@ -271,7 +273,7 @@ impl<'a> ReportAssembly<'a> {
     }
 
     fn initialize_project_files(
-        input: &ValidatedProjectInput,
+        source_map: &BTreeMap<ProjectRelativePath, SourceFile>,
         mut parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
     ) -> (
         BTreeMap<ProjectRelativePath, FileReport>,
@@ -279,7 +281,7 @@ impl<'a> ReportAssembly<'a> {
     ) {
         let mut files: BTreeMap<ProjectRelativePath, FileReport> = BTreeMap::new();
         let mut parse_failure_codes: BTreeMap<ProjectRelativePath, String> = BTreeMap::new();
-        for source in input.source_map().values() {
+        for source in source_map.values() {
             let path = source.path.clone();
             match parse_diagnostics.remove(&path) {
                 Some(diagnostic) => {

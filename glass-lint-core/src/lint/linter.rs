@@ -210,7 +210,7 @@ impl Linter {
             resolutions = resolution_count,
             "project analysis started"
         );
-        let (root, sources, resolutions, _module_ids, _request_ids) = validated.into_parts();
+        let (root, sources, resolutions) = validated.into_components();
         let mut collection = self.begin_project(root)?;
         for (path, source) in sources {
             collection.admit_validated_source(source)?;

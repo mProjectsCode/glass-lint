@@ -26,15 +26,6 @@ fn validation_normalizes_and_sorts_sources_and_edges() {
             path: project_path("a.js")
         }
     );
-
-    assert_eq!(
-        validated.module_id(&project_path("a.js")),
-        Some(ModuleId::new(0))
-    );
-    assert_eq!(
-        validated.module_id(&project_path("z.js")),
-        Some(ModuleId::new(1))
-    );
 }
 
 #[test]

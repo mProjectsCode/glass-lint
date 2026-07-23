@@ -10,7 +10,11 @@ use std::collections::BTreeMap;
 
 use crate::{
     analysis::{
-        flow::{effect::FunctionEffects, index::FlowLimits, projector as object_flow},
+        flow::{
+            effect::FunctionEffects,
+            index::FlowLimits,
+            projector::{self as object_flow, LocalFlowProjectionOutcome},
+        },
         matching::{self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes},
         module::ModuleInterface,
         project::model::ExportResolution,
@@ -142,6 +146,8 @@ impl SemanticFacts {
     }
 
     /// Projects constrained-clause and flow evidence after linking.
+    /// Returns projected evidence alongside a [`LocalFlowProjectionOutcome`]
+    /// so callers can observe exhaustion without guessing from evidence shape.
     pub(in crate::analysis) fn project(
         &self,
         effects: &FunctionEffects,
@@ -149,7 +155,11 @@ impl SemanticFacts {
         identities: Option<&ModuleIdentityMap>,
         result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
         overlay: Option<&LinkedOccurrenceView<'_>>,
-    ) -> Vec<Vec<crate::api::classification::ClassificationEvidence>> {
+        flow_limits: FlowLimits,
+    ) -> (
+        Vec<Vec<crate::api::classification::ClassificationEvidence>>,
+        LocalFlowProjectionOutcome,
+    ) {
         let mut projected_evidence = vec![Vec::new(); plan.rule_count];
         if !self.stream.is_valid()
             || self
@@ -157,7 +167,7 @@ impl SemanticFacts {
                 .and_then(|values| values.get(ValueId::UNKNOWN))
                 .is_none()
         {
-            return projected_evidence;
+            return (projected_evidence, LocalFlowProjectionOutcome::default());
         }
         matching::compute_constrained_evidence_from_stream_with_overlay(
             &self.stream,
@@ -168,14 +178,14 @@ impl SemanticFacts {
             identities,
             result_identities,
         );
-        object_flow::collect_into(
+        let outcome = object_flow::collect_into(
             &self.stream,
             effects,
             &plan.flow_matchers,
             &mut projected_evidence,
-            FlowLimits::default(),
+            flow_limits,
         );
-        projected_evidence
+        (projected_evidence, outcome)
     }
 }
 

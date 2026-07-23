@@ -11,7 +11,7 @@ use super::{
     state::{ExportTable, ModuleGraph, SccPartition},
 };
 use crate::{
-    AnalysisDiagnostic, ProjectRelativePath,
+    AnalysisDiagnostic, ProjectRelativePath, SourceFile,
     analysis::{
         facts::{FactId, FactStream, SemanticFact},
         flow::effect::FunctionEffect,
@@ -30,8 +30,7 @@ use crate::{
     },
     budget::BudgetTracker,
     project::{
-        LinkedModuleTarget, ModuleId, ProjectInputError, ResolverOutcome,
-        input::ValidatedProjectInput,
+        LinkedModuleTarget, ModuleId, ProjectInputError, ResolutionRequestKey, ResolverOutcome,
     },
 };
 
@@ -98,32 +97,35 @@ impl ExportResolution {
 }
 
 // ---------------------------------------------------------------------------
-// ValidatedLinkInput (private helper)
+// ResolvedLinkInput
 // ---------------------------------------------------------------------------
 
-struct ValidatedLinkInput {
-    modules: BTreeMap<ModuleId, ProjectModule>,
-    resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
+/// Combined linker input after local analysis and resolution validation.
+/// Source text has been consumed or dropped; only module-level semantic
+/// artifacts and their resolved import targets remain.
+pub struct ResolvedLinkInput {
+    pub(crate) modules: BTreeMap<ModuleId, ProjectModule>,
+    pub(crate) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
 }
 
-impl ValidatedLinkInput {
-    fn build(
-        input: ValidatedProjectInput,
+impl ResolvedLinkInput {
+    pub(crate) fn build(
+        source_map: BTreeMap<ProjectRelativePath, SourceFile>,
         mut analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
+        module_ids: &BTreeMap<ProjectRelativePath, ModuleId>,
+        resolution_map: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
+        request_ids: &BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
     ) -> Result<Self, ProjectInputError> {
-        let (root, source_map, resolution_map, module_ids, request_ids) = input.into_parts();
         let mut modules = BTreeMap::new();
-        for path in source_map.keys() {
-            let Some(local) = analyzed.remove(path) else {
+        for (path, _source) in source_map {
+            let Some(local) = analyzed.remove(&path) else {
                 continue;
             };
-            let Some(id) = module_ids.get(path).copied() else {
+            let Some(id) = module_ids.get(&path).copied() else {
                 return Err(ProjectInputError::InvalidTarget(path.to_string()));
             };
             modules.insert(id, ProjectModule::new(id, local));
         }
-
-        drop(root);
 
         let request_count = modules
             .values()
@@ -151,9 +153,10 @@ impl ValidatedLinkInput {
                     .get(&key)
                     .copied()
                     .ok_or_else(|| ProjectInputError::UnknownRequest(key.clone()))?;
-                Ok((request, resolve_record(result, &module_ids)?))
+                Ok((request, resolve_record(result, module_ids)?))
             })
             .collect::<Result<BTreeMap<_, _>, _>>()?;
+
         Ok(Self {
             modules,
             resolutions,
@@ -261,15 +264,12 @@ impl ProjectSemanticModel {
     /// to a fixed point; flow overlays are prepared for matcher projection.
     /// Diagnoses missing or misaligned resolutions and bounded budgets.
     pub(crate) fn link_with_limits(
-        input: ValidatedProjectInput,
-        analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
+        link_input: ResolvedLinkInput,
         limits: &crate::AnalysisLimits,
-    ) -> Result<Self, ProjectInputError> {
-        let validated = ValidatedLinkInput::build(input, analyzed)?;
-
+    ) -> Self {
         let mut project = Self {
-            modules: validated.modules,
-            resolutions: validated.resolutions,
+            modules: link_input.modules,
+            resolutions: link_input.resolutions,
             exports: ExportTable::default(),
             graph: ModuleGraph::default(),
             scc_partition: SccPartition {
@@ -286,7 +286,7 @@ impl ProjectSemanticModel {
         };
         project.propagate_local_status();
         project.build_graph_and_exports();
-        Ok(project)
+        project
     }
 
     fn propagate_local_status(&mut self) {

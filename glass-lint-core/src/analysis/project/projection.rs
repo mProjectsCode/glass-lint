@@ -10,7 +10,7 @@ use crate::{
     analysis::{
         ModuleId, ProjectModule, ProjectSemanticModel, evidence,
         facts::ProjectionPlan,
-        flow,
+        flow::{self, index::FlowLimits},
         matching::{LinkedOccurrenceView, OccurrenceIndexes},
         status::{AnalysisComponent, IncompleteReason, StatusScope},
     },
@@ -40,6 +40,8 @@ struct ProjectModuleProjection<'project> {
 /// itself through a shared reference.
 #[derive(Debug, Default)]
 pub struct ProjectionOutcome {
+    /// Whether local flow projection exhausted its budget in any module.
+    pub local_exhausted: bool,
     /// Whether cross-module flow projection exhausted its budget.
     pub flow_exhausted: bool,
     /// Number of effect projections performed during this projection.
@@ -58,6 +60,8 @@ impl ProjectSemanticModel {
         matchers: CompiledRuleSelection<'matchers>,
     ) -> (ProjectMatcherModel<'project, 'matchers>, ProjectionOutcome) {
         let plan = ProjectionPlan::from_selection(&matchers);
+        let flow_limits = FlowLimits::from_flow_operations(self.flow_limit());
+        let mut local_exhausted = false;
         let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
             .modules
             .values()
@@ -66,13 +70,17 @@ impl ProjectSemanticModel {
                 let identities = self.module_identities(module.id());
                 let result_identities = self.call_result_identities(module.id());
                 let overlay = index.module_overlay(&identities);
-                let projected = module.local().facts().project(
+                let (projected, local_outcome) = module.local().facts().project(
                     module.local().effects(),
                     &plan,
                     Some(&identities),
                     Some(&result_identities),
                     Some(&overlay),
+                    flow_limits,
                 );
+                if local_outcome.exhausted {
+                    local_exhausted = true;
+                }
                 (
                     module.id(),
                     ProjectModuleProjection {
@@ -84,11 +92,13 @@ impl ProjectSemanticModel {
             })
             .collect();
 
-        let (cross, exhausted, projection_count) = flow::cross::collect(self, &matchers);
+        let (cross, cross_exhausted, projection_count) = flow::cross::collect(self, &matchers);
+        let exhausted = local_exhausted || cross_exhausted;
         let outcome = ProjectionOutcome {
             flow_exhausted: exhausted,
             effect_projections: projection_count,
             flow_observed: exhausted.then_some(projection_count),
+            local_exhausted,
         };
 
         let mut projections = projections;
@@ -111,7 +121,7 @@ impl ProjectSemanticModel {
 
     /// Record flow exhaustion status from a projection outcome.
     pub(crate) fn record_flow_exhaustion(&mut self, outcome: &ProjectionOutcome) {
-        if outcome.flow_exhausted {
+        if outcome.local_exhausted || outcome.flow_exhausted {
             self.status.record(
                 StatusScope::Project,
                 IncompleteReason::BudgetExhausted {
