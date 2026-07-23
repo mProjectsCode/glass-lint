@@ -1,6 +1,14 @@
 //! Typed tsconfig parsing, inheritance, reference traversal, and source
 //! selection. Each phase consumes a typed predecessor; no phase uses a mutable
 //! `serde_json::Value` as its semantic model.
+//!
+//! Phases:
+//!   1. [`ParsedTsconfig`] — parsed fields from one file (no inheritance).
+//!   2. [`MergedSelection`] — effective `files`/`include`/`exclude` after
+//!      inheriting from a parent (consuming the parent by value).
+//!   3. [`CompiledTsconfigSelection`] — [`MergedSelection`] compiled into a
+//!      [`TsconfigPatternSet`], discarding raw selection strings. This is the
+//!      production type used for source membership.
 
 use std::{
     fmt,
@@ -110,13 +118,16 @@ fn type_name(value: &Value) -> &'static str {
 }
 
 // ---------------------------------------------------------------------------
-// Parsed config fields DTO
+// Phase 1 — Parsed config fields
 // ---------------------------------------------------------------------------
 
 /// Typed representation of one parsed tsconfig file. Every supported field is
 /// explicitly represented; unsupported fields are ignored.
+///
+/// This is the output of phase 1 (parsing) and the input to phase 2
+/// (consuming inheritance).
 #[derive(Clone, Debug)]
-pub struct TsconfigDto {
+pub struct ParsedTsconfig {
     pub extends: StringField,
     pub files: StringArrayField,
     pub include: StringArrayField,
@@ -135,10 +146,10 @@ pub struct ReferenceEntry {
     pub path: String,
 }
 
-impl TsconfigDto {
+impl ParsedTsconfig {
     /// Parse one config file's text (must already have JSONC comments
     /// stripped).
-    fn parse(text: &str) -> Result<Self, String> {
+    pub fn parse(text: &str) -> Result<Self, String> {
         let parsed: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
         Ok(Self::from_value(&parsed))
     }
@@ -236,74 +247,117 @@ impl<T> FieldState for ParsedField<T> {
 }
 
 // ---------------------------------------------------------------------------
-// Effective merged tsconfig
+// Phase 2 — Consuming inheritance / merged selection
+// ---------------------------------------------------------------------------
+
+/// Fully inherited (merged) selection data with plain string fields.
+///
+/// This is an intermediate type produced during config inheritance.
+/// It exists only during construction and is consumed by
+/// [`CompiledTsconfigSelection::compile`].
+pub struct MergedSelection {
+    pub files: Option<Vec<String>>,
+    pub include: Vec<String>,
+    pub exclude: Vec<String>,
+}
+
+/// Merge a child [`ParsedTsconfig`] with an optional parent
+/// [`MergedSelection`] by consuming both (moving owned fields).
+/// No cloning of selection data occurs.
+pub fn merge_selection(child: ParsedTsconfig, parent: Option<MergedSelection>) -> MergedSelection {
+    let ParsedTsconfig {
+        extends: _,
+        files: child_files,
+        include: child_include,
+        exclude: child_exclude,
+        compiler_options_out_dir,
+        compiler_options_declaration_dir,
+        references: _,
+        diagnostics: _,
+    } = child;
+
+    let has_parent = parent.is_some();
+    let (parent_files, parent_include, parent_exclude) = match parent {
+        Some(m) => (m.files, m.include, m.exclude),
+        None => (None, Vec::new(), Vec::new()),
+    };
+
+    let files = child_files.ok().or(parent_files);
+
+    let (include, exclude) = if files.is_some() {
+        (Vec::new(), Vec::new())
+    } else {
+        // Distinguish Absent (inherit or default) from Present (use as-is
+        // even when empty) so an explicit empty array is not collapsed
+        // with an absent field.
+        let include = match child_include {
+            ParsedField::Present(v) => v,
+            _ if has_parent => parent_include,
+            _ => vec!["**/*".to_string()],
+        };
+
+        let mut exclude = match child_exclude {
+            ParsedField::Present(v) => v,
+            _ if has_parent => parent_exclude,
+            _ => Vec::new(),
+        };
+        // Always add default runtime exclusions
+        for default in &["**/node_modules", "**/bower_components"] {
+            if !exclude.iter().any(|e| e == default) {
+                exclude.push(default.to_string());
+            }
+        }
+        // Add output directories from this config's compilerOptions
+        if let Some(out_dir) = compiler_options_out_dir.ok()
+            && !exclude.iter().any(|e| e == &out_dir)
+        {
+            exclude.push(out_dir);
+        }
+        if let Some(decl_dir) = compiler_options_declaration_dir.ok()
+            && !exclude.iter().any(|e| e == &decl_dir)
+        {
+            exclude.push(decl_dir);
+        }
+
+        (include, exclude)
+    };
+
+    MergedSelection {
+        files,
+        include,
+        exclude,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 — Compiled selection
 // ---------------------------------------------------------------------------
 
 /// An effective (fully inherited) tsconfig with normalized paths and compiled
 /// patterns. This is the semantic model used for source selection.
-#[derive(Clone, Debug)]
-pub struct Tsconfig {
+///
+/// Raw include/exclude strings are discarded after compilation; only the
+/// compiled [`TsconfigPatternSet`] and the explicit `files` list are retained.
+pub struct CompiledTsconfigSelection {
     /// Canonical config path.
     config_path: PathBuf,
     /// Explicit files list (None = use include/exclude).
     pub files: Option<Vec<String>>,
-    /// Include patterns (defaults to `**/*` when files is None).
-    pub include: Vec<String>,
-    /// Exclude patterns (includes default node_modules/bower_components and
-    /// outDir).
-    pub exclude: Vec<String>,
     /// Compiled pattern set for include/exclude matching.
     pub pattern_set: TsconfigPatternSet,
     /// Invalid patterns that caused fail-closed source selection.
     pub pattern_diagnostics: Vec<String>,
 }
 
-impl Tsconfig {
-    fn new(config_path: PathBuf, dto: TsconfigDto, parent: Option<&Self>) -> Self {
-        // Merge: child wins over parent for all fields except compilerOptions
-        // (which deep-merges).
-        let files = dto
-            .files
-            .ok()
-            .or_else(|| parent.and_then(|p| p.files.clone()));
-
-        let (include, exclude) = if files.is_some() {
-            (Vec::new(), Vec::new())
-        } else {
-            // Distinguish Absent (inherit or default) from Present (use as-is
-            // even when empty) so an explicit empty array is not collapsed
-            // with an absent field.
-            let include = match dto.include {
-                ParsedField::Present(v) => v,
-                _ => {
-                    parent.map_or_else(|| vec!["**/*".to_string()], |parent| parent.include.clone())
-                }
-            };
-
-            let mut exclude = match dto.exclude {
-                ParsedField::Present(v) => v,
-                _ => parent.map_or_else(Vec::new, |parent| parent.exclude.clone()),
-            };
-            // Always add default runtime exclusions
-            for default in &["**/node_modules", "**/bower_components"] {
-                if !exclude.iter().any(|e| e == default) {
-                    exclude.push(default.to_string());
-                }
-            }
-            // Add output directories from this config's compilerOptions
-            if let Some(out_dir) = dto.compiler_options_out_dir.ok()
-                && !exclude.iter().any(|e| e == &out_dir)
-            {
-                exclude.push(out_dir);
-            }
-            if let Some(decl_dir) = dto.compiler_options_declaration_dir.ok()
-                && !exclude.iter().any(|e| e == &decl_dir)
-            {
-                exclude.push(decl_dir);
-            }
-
-            (include, exclude)
-        };
+impl CompiledTsconfigSelection {
+    /// Compile a merged selection into a production selection.
+    /// Raw include/exclude strings are consumed and discarded.
+    fn compile(config_path: PathBuf, merged: MergedSelection) -> Self {
+        let MergedSelection {
+            files,
+            include,
+            exclude,
+        } = merged;
 
         let pattern_set = TsconfigPatternSet::new(&include, &exclude);
         let pattern_diagnostics = pattern_set
@@ -314,8 +368,6 @@ impl Tsconfig {
         Self {
             config_path,
             files,
-            include,
-            exclude,
             pattern_set,
             pattern_diagnostics,
         }
@@ -423,17 +475,17 @@ pub struct TsconfigDiagnostic {
 }
 
 // ---------------------------------------------------------------------------
-// Inheritance/resolution phases
+// Phase functions
 // ---------------------------------------------------------------------------
 
 /// Phase 1: Read and parse one tsconfig file (JSONC-aware).
-pub fn read_and_parse(config_path: &Path) -> Result<TsconfigDto, ProjectLoadError> {
+pub fn read_and_parse(config_path: &Path) -> Result<ParsedTsconfig, ProjectLoadError> {
     let mut text = std::fs::read_to_string(config_path).map_err(|source| ProjectLoadError::Io {
         path: config_path.to_path_buf(),
         source,
     })?;
     json_strip_comments::strip(&mut text).map_err(|error| parse_error(config_path, error))?;
-    TsconfigDto::parse(&text).map_err(|error| parse_error(config_path, error))
+    ParsedTsconfig::parse(&text).map_err(|error| parse_error(config_path, error))
 }
 
 fn parse_error(config: &Path, error: impl fmt::Display) -> ProjectLoadError {
@@ -461,7 +513,7 @@ fn resolve_extends(config_path: &Path, extends: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-/// Phase 2-3: Build the effective Tsconfig for a given config path, resolving
+/// Phase 2-3: Build the effective selection for a given config path, resolving
 /// `extends` inheritance recursively. Returns diagnostics for cycles.
 ///
 /// Maintains an internal extends-chain to detect cycles without affecting the
@@ -475,15 +527,28 @@ pub fn build_effective_config(
     fallback_base: &Path,
     deadline: Option<Instant>,
     diagnostics: &mut Vec<TsconfigDiagnostic>,
-) -> Result<(Tsconfig, Vec<ReferenceEntry>), ProjectLoadError> {
+) -> Result<(CompiledTsconfigSelection, Vec<ReferenceEntry>), ProjectLoadError> {
     let mut extends_chain: Vec<PathBuf> = Vec::new();
-    build_effective_config_inner(
+    let (merged, references) = build_effective_config_inner(
         config_path,
         fallback_base,
         &mut extends_chain,
         deadline,
         diagnostics,
-    )
+    )?;
+    let canonical = realpath(config_path)?;
+    let compiled = CompiledTsconfigSelection::compile(canonical, merged);
+    diagnostics.extend(
+        compiled
+            .pattern_diagnostics
+            .iter()
+            .map(|message| TsconfigDiagnostic {
+                config_path: compiled.config_path.clone(),
+                cycle_target: None,
+                message: message.clone(),
+            }),
+    );
+    Ok((compiled, references))
 }
 
 fn build_effective_config_inner(
@@ -492,7 +557,7 @@ fn build_effective_config_inner(
     extends_chain: &mut Vec<PathBuf>,
     deadline: Option<Instant>,
     diagnostics: &mut Vec<TsconfigDiagnostic>,
-) -> Result<(Tsconfig, Vec<ReferenceEntry>), ProjectLoadError> {
+) -> Result<(MergedSelection, Vec<ReferenceEntry>), ProjectLoadError> {
     if let Some(deadline) = deadline
         && Instant::now() >= deadline
     {
@@ -514,7 +579,7 @@ fn build_effective_config_inner(
     // Resolve extends — detect cycles at the extends-resolution site rather
     // than returning a sentinel config that callers must recognise.
     let references = dto.references.clone();
-    let parent_tsconfig = dto
+    let parent_merged = dto
         .extends
         .clone()
         .ok()
@@ -544,7 +609,7 @@ fn build_effective_config_inner(
                                 deadline,
                                 diagnostics,
                             );
-                            Some(result.map(|(config, _)| config))
+                            Some(result.map(|(merged, _)| merged))
                         }
                     }
                     Err(e) => {
@@ -567,17 +632,9 @@ fn build_effective_config_inner(
 
     extends_chain.pop();
 
-    let effective = Tsconfig::new(canonical, dto, parent_tsconfig.as_ref());
-    diagnostics.extend(
-        effective
-            .pattern_diagnostics
-            .iter()
-            .map(|message| TsconfigDiagnostic {
-                config_path: effective.config_path.clone(),
-                cycle_target: None,
-                message: message.clone(),
-            }),
-    );
+    // Merge: consume child dto and optional parent MergedSelection.
+    // No cloning of selection data occurs — owned fields are moved.
+    let effective = merge_selection(dto, parent_merged);
     Ok((effective, references))
 }
 

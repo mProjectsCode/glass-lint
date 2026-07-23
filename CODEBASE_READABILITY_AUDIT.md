@@ -6,7 +6,7 @@ Scope: the entirety of `glass-lint-core` and `glass-lint-project`, with emphasis
 
 ## Summary
 
-This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 4 open findings remain (4 medium). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
+This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 1 open finding remains (1 medium). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
 
 The broad architectural opportunity is to make each pipeline transition consume one phase-owned type and produce the next. Today, several boundaries retain raw and compiled forms together, erase semantic newtypes and reconstruct them later, or build parallel maps that describe one logical record. Those choices obscure the intended pipeline and cause avoidable clones, repeated validation, repeated indexing, and transient collections.
 
@@ -105,7 +105,7 @@ Build an `AuthoredRequestTable` once per module, containing the local request ID
 
 A `BoundFlowPlan` phase was added between catalog compilation and flow execution (`plan.rs`). Sources, requirements, and sinks are pre-resolved from `SymbolPath` to `NamePath` once during plan construction, eliminating repeated `NamePath::from_symbol_path` calls inside event/state loops in evidence emission and summary collection. The local projector, summary collector, and cross-module propagator all use the pre-bound data. Cross-flow candidate discovery now builds a per-module source index (`build_source_index` in cross/mod.rs) and looks up flows by chain instead of scanning every flow for every call. The now-unused `FlowIndex` struct, `chain_matches` helper, and `sink_matches` method were removed.
 
-#### READ-012 — Flow-state edits clone full states and log unchanged mutations
+#### READ-012 — Flow-state edits clone full states and log unchanged mutations - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Encapsulation
@@ -115,19 +115,19 @@ State mutation clones the prior state, then clones the new state on guard drop e
 
 Make the edit guard compare old and new values and skip no-op log entries. Use ordered-range removal or draining for one object's states, and merge into scratch storage rather than repeatedly clearing and reinserting. Consider shared or persistent state values only after measuring; the first guardrail is to stop unconditional full-state snapshots.
 
-#### READ-015 — Export storage clones flat keys and namespace resolution retraverses exports
+`StateEdit::drop` now compares old and new values and only records a log entry when they differ. `remove_states_for` uses `partition_point` to find the contiguous range of states for one object and `drain` to remove them, avoiding the intermediate cloned vec and the second pass over retained entries. `join_environments` builds the joined result in scratch storage and replaces the live tables through sorted-merge delta functions that log only entries that were removed, added, or changed — eliminating the old pattern of `clear()` + `bind()` / `insert_state()` that unconditionally removed every entry and reinserted them through binary-search method calls.
+
+#### READ-015 — Export storage clones flat keys and namespace resolution retraverses exports - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/analysis/project/state.rs:80-170`, `glass-lint-core/src/analysis/project/identities.rs:76-148`
 
-The export table uses `(ModuleId, SmolStr)` flat keys, requiring owned name construction for common lookups and updates. Namespace resolution recursively collects exported names into temporary sets and then performs another recursive lookup for those names, repeating graph traversal and allocation.
-
-Store exports as `ModuleId -> ModuleExports` so module lookup and borrowed name lookup are distinct operations. Expose a deterministic iterator over the resolved export table and use it for namespace projection. Cache only at a phase boundary with a clear invalidation rule; do not add another parallel export model.
+The export table now uses `BTreeMap<ModuleId, ModuleExports>` instead of `BTreeMap<(ModuleId, SmolStr), ExportResolution>`, eliminating the flat-key clone on every `resolve` lookup. A new `ModuleExports` wrapper type provides borrowed iteration. Namespace identity resolution (`collect_exported_identities`) walks the resolved export table and star-export chains in a single pass, replacing the old `exported_names` + `lookup_export` double traversal and avoiding temporary allocation and repeated graph traversal.
 
 ### Project: Discovery, Resolution, and Configuration
 
-#### READ-029 — `tsconfig` parsing, inheritance, and selection remain one clone-heavy representation
+#### READ-029 — `tsconfig` parsing, inheritance, and selection remain one clone-heavy representation - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Architecture

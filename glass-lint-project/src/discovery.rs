@@ -10,7 +10,7 @@ use crate::{
     admission::{AdmittedSourcePath, CanonicalProjectPath, SourceAdmission},
     error::ProjectLoadError,
     options::ProjectSelection,
-    tsconfig::{self, Tsconfig, TsconfigDiagnostic},
+    tsconfig::{self, CompiledTsconfigSelection, TsconfigDiagnostic},
     walk,
 };
 
@@ -205,7 +205,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
 
     fn select_sources(
         &self,
-        config: &Tsconfig,
+        config: &CompiledTsconfigSelection,
         base: &Path,
         selected: &mut BTreeSet<AdmittedSourcePath>,
     ) -> Result<(), ProjectLoadError> {

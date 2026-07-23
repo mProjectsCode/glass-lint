@@ -3,7 +3,7 @@ use crate::tests::TempProject;
 
 #[test]
 fn parse_empty_config() {
-    let dto = TsconfigDto::parse("{}").unwrap();
+    let dto = ParsedTsconfig::parse("{}").unwrap();
     assert!(matches!(dto.extends, StringField::Absent));
     assert!(matches!(dto.files, StringArrayField::Absent));
     assert!(matches!(dto.include, StringArrayField::Absent));
@@ -13,8 +13,9 @@ fn parse_empty_config() {
 
 #[test]
 fn parse_null_fields() {
-    let dto = TsconfigDto::parse(r#"{"extends":null,"files":null,"include":null,"exclude":null}"#)
-        .unwrap();
+    let dto =
+        ParsedTsconfig::parse(r#"{"extends":null,"files":null,"include":null,"exclude":null}"#)
+            .unwrap();
     assert!(matches!(dto.extends, StringField::Null));
     assert!(matches!(dto.files, StringArrayField::Null));
     assert!(matches!(dto.include, StringArrayField::Null));
@@ -23,9 +24,10 @@ fn parse_null_fields() {
 
 #[test]
 fn parse_wrong_types() {
-    let dto =
-        TsconfigDto::parse(r#"{"extends":42,"files":"not-an-array","include":false,"exclude":{}}"#)
-            .unwrap();
+    let dto = ParsedTsconfig::parse(
+        r#"{"extends":42,"files":"not-an-array","include":false,"exclude":{}}"#,
+    )
+    .unwrap();
     assert!(matches!(&dto.extends, StringField::WrongType(_)));
     assert!(matches!(&dto.files, StringArrayField::WrongType(_)));
     assert!(matches!(&dto.include, StringArrayField::WrongType(_)));
@@ -35,7 +37,7 @@ fn parse_wrong_types() {
 #[test]
 fn parse_compiler_options() {
     let dto =
-        TsconfigDto::parse(r#"{"compilerOptions":{"outDir":"dist","declarationDir":"types"}}"#)
+        ParsedTsconfig::parse(r#"{"compilerOptions":{"outDir":"dist","declarationDir":"types"}}"#)
             .unwrap();
     assert_eq!(dto.compiler_options_out_dir.ok(), Some("dist".into()));
     assert_eq!(
@@ -47,7 +49,7 @@ fn parse_compiler_options() {
 #[test]
 fn parse_references() {
     let dto =
-        TsconfigDto::parse(r#"{"references":[{"path":"./child"},{"path":"./other"}]}"#).unwrap();
+        ParsedTsconfig::parse(r#"{"references":[{"path":"./child"},{"path":"./other"}]}"#).unwrap();
     assert_eq!(
         dto.references,
         vec![
@@ -65,7 +67,7 @@ fn parse_references() {
 fn parse_jsonc() {
     let mut text = "{\n  // comment\n  \"include\": [\"src\"],\n}".to_string();
     json_strip_comments::strip(&mut text).unwrap();
-    let dto = TsconfigDto::parse(&text).unwrap();
+    let dto = ParsedTsconfig::parse(&text).unwrap();
     assert!(matches!(&dto.include, StringArrayField::Present(v) if v == &["src"]));
 }
 
@@ -107,18 +109,14 @@ fn compile_counter_increments() {
 }
 
 #[test]
-fn effective_config_inherits_fields() {
+fn merge_selection_inherits_fields() {
     let parent_dto =
-        TsconfigDto::parse(r#"{"include":["src/**/*"],"exclude":["**/*.test.ts"]}"#).unwrap();
-    let child_dto = TsconfigDto::parse(r#"{"include":["lib/**/*"]}"#).unwrap();
+        ParsedTsconfig::parse(r#"{"include":["src/**/*"],"exclude":["**/*.test.ts"]}"#).unwrap();
+    let child_dto = ParsedTsconfig::parse(r#"{"include":["lib/**/*"]}"#).unwrap();
 
-    let parent = Tsconfig::new(PathBuf::from("/root/tsconfig.json"), parent_dto, None);
+    let parent = merge_selection(parent_dto, None);
 
-    let child = Tsconfig::new(
-        PathBuf::from("/root/tsconfig.json"),
-        child_dto,
-        Some(&parent),
-    );
+    let child = merge_selection(child_dto, Some(parent));
 
     // Child include overrides parent
     assert_eq!(child.include, vec!["lib/**/*"]);
@@ -129,16 +127,16 @@ fn effective_config_inherits_fields() {
 }
 
 #[test]
-fn effective_config_default_include() {
-    let dto = TsconfigDto::parse("{}").unwrap();
-    let config = Tsconfig::new(PathBuf::from("/root/tsconfig.json"), dto, None);
+fn merge_selection_default_include() {
+    let dto = ParsedTsconfig::parse("{}").unwrap();
+    let config = merge_selection(dto, None);
     assert_eq!(config.include, vec!["**/*"]);
 }
 
 #[test]
-fn effective_config_explicit_files() {
-    let dto = TsconfigDto::parse(r#"{"files":["src/main.ts","src/util.ts"]}"#).unwrap();
-    let config = Tsconfig::new(PathBuf::from("/root/tsconfig.json"), dto, None);
+fn merge_selection_explicit_files() {
+    let dto = ParsedTsconfig::parse(r#"{"files":["src/main.ts","src/util.ts"]}"#).unwrap();
+    let config = merge_selection(dto, None);
     assert_eq!(
         config.files,
         Some(vec!["src/main.ts".to_string(), "src/util.ts".to_string()])
@@ -166,7 +164,8 @@ fn cycle_detection_records_diagnostic_and_skips_cyclic_extends() {
     let (config, _references) = result.unwrap();
     // Cycle extends is skipped; config uses its own include
     assert_eq!(config.files, None);
-    assert!(config.include.contains(&"src/**/*".to_string()));
+    assert!(config.pattern_set.is_included("src/main.ts"));
+    assert!(!config.pattern_set.is_included("other/file.ts"));
     // Cycle diagnostics recorded
     assert_eq!(diagnostics.len(), 1);
     assert!(diagnostics[0].message.contains("cycle"));
@@ -219,10 +218,13 @@ fn cycle_fails_closed_does_not_broaden_admission() {
     // A should have include: ["src/**/*"] (its own setting)
     // The cycle in extends should NOT bring in B's patterns
     assert!(config.files.is_none(), "no explicit files");
-    assert_eq!(
-        config.include,
-        vec!["src/**/*"],
-        "A's include should not be broadened by cyclic B"
+    assert!(
+        config.pattern_set.is_included("src/main.ts"),
+        "A's include should be used"
+    );
+    assert!(
+        !config.pattern_set.is_included("other/bar.ts"),
+        "B's include should not be inherited through cycle"
     );
     // Cycle diagnostic recorded for the B->A link
     assert_eq!(diagnostics.len(), 1);
@@ -233,7 +235,7 @@ fn cycle_fails_closed_does_not_broaden_admission() {
 fn missing_config_field_returns_typed_diagnostic() {
     // Parsing a config with wrong types should succeed (we record diagnostics
     // as typed fields, not errors)
-    let dto = TsconfigDto::parse(r#"{"include":123,"exclude":null}"#).unwrap();
+    let dto = ParsedTsconfig::parse(r#"{"include":123,"exclude":null}"#).unwrap();
     assert!(matches!(&dto.include, StringArrayField::WrongType(_)));
     assert!(matches!(&dto.exclude, StringArrayField::Null));
 }
@@ -255,7 +257,7 @@ fn extends_nonexistent_path_is_skipped_silently() {
     )
     .unwrap();
 
-    assert_eq!(config.include, vec!["src/**/*"]);
+    assert!(config.pattern_set.is_included("src/main.ts"));
     assert!(diagnostics.is_empty());
 }
 
@@ -280,15 +282,20 @@ fn single_level_extends_merges_correctly() {
     )
     .unwrap();
 
-    // Child exclude overrides parent include? No — include and exclude are
-    // separate. Child exclude replaces parent exclude since child sets it.
-    // Actually from Tsconfig::new: exclude starts as child's, and if child's is
-    // empty it inherits from parent. Child set ["**/*.spec.ts"], so excludes
-    // should be: ["**/*.spec.ts", "**/node_modules", "**/bower_components"]
-    assert!(config.exclude.iter().any(|e| e == "**/*.spec.ts"));
-    // Parent's exclude should NOT be inherited since child set its own.
+    // Child exclude replaces parent exclude since child sets its own.
+    // Parent's exclude ("**/*.test.ts") should NOT be inherited.
+    // The compiled pattern set should reflect child's exclude.
     assert!(
-        !config.exclude.iter().any(|e| e == "**/*.test.ts"),
-        "child exclude should replace parent exclude"
+        config.pattern_set.is_included("src/main.test.ts"),
+        "parent exclude not inherited when child sets its own"
+    );
+    assert!(
+        !config.pattern_set.is_included("src/main.spec.ts"),
+        "child exclude should apply"
+    );
+    // Default exclusions still apply
+    assert!(
+        !config.pattern_set.is_included("node_modules/pkg/index.js"),
+        "default node_modules exclusion applies"
     );
 }

@@ -111,14 +111,12 @@ impl ProjectSemanticModel {
             let prefix = request.specifier().to_owned();
             match self.resolve_namespace(module, request) {
                 ExportResolution::Qualified { module: target, .. } => {
-                    for export in self.exported_names(target, &mut BTreeSet::new()) {
-                        if let Some(resolved) =
-                            self.lookup_export(target, &export, &mut BTreeSet::new())
-                        {
-                            identities
-                                .insert(ModuleExportKey::new(prefix.clone(), export), resolved);
-                        }
-                    }
+                    self.collect_exported_identities(
+                        target,
+                        &prefix,
+                        &mut BTreeSet::new(),
+                        &mut identities,
+                    );
                 }
                 other => {
                     identities.insert(ModuleExportKey::wildcard(prefix), other);
@@ -128,36 +126,47 @@ impl ProjectSemanticModel {
         identities
     }
 
-    /// Collect statically named exports reachable through star re-exports.
-    fn exported_names(
+    /// Walk the resolved export table and star-export chains in a single pass,
+    /// collecting member identities directly into the identity map without
+    /// temporary sets or repeated lookups.
+    fn collect_exported_identities(
         &self,
         module: ModuleId,
+        prefix: &SmolStr,
         visiting: &mut BTreeSet<ModuleId>,
-    ) -> BTreeSet<SmolStr> {
+        identities: &mut ModuleIdentityMap,
+    ) {
         if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(module) {
-            return BTreeSet::new();
+            return;
         }
-        let Some(project_module) = self.modules.get(&module) else {
-            return BTreeSet::new();
-        };
-        let interface = project_module.local().interface();
-        let mut names = interface
-            .exports()
-            .map(|(name, _)| name.clone())
-            .collect::<BTreeSet<_>>();
-        for request_index in interface.star_exports() {
-            let Some(request) = interface.request(*request_index) else {
-                continue;
-            };
-            let Some(key) = self.request_id(module, request) else {
-                continue;
-            };
-            if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key) {
-                names.extend(self.exported_names(*id, visiting));
+
+        // Collect all resolved entries from the export table for this module.
+        if let Some(exports) = self.exports.module_exports(module) {
+            for (name, resolved) in exports.iter() {
+                identities.insert(
+                    ModuleExportKey::new(prefix.clone(), name.clone()),
+                    resolved.clone(),
+                );
             }
         }
+
+        // Follow star exports to include re-exported member identities.
+        if let Some(project_module) = self.modules.get(&module) {
+            for request_index in project_module.local().interface().star_exports() {
+                let Some(request) = project_module.local().interface().request(*request_index)
+                else {
+                    continue;
+                };
+                let Some(key) = self.request_id(module, request) else {
+                    continue;
+                };
+                if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key) {
+                    self.collect_exported_identities(*id, prefix, visiting, identities);
+                }
+            }
+        }
+
         visiting.remove(&module);
-        names
     }
 
     /// Resolve a namespace request without guessing at unsupported targets.

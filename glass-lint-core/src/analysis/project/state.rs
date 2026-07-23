@@ -58,8 +58,29 @@ pub(in crate::analysis) struct SccPartition {
 }
 
 #[derive(Debug, Default)]
+/// Resolved export identities for one module.
+pub(in crate::analysis) struct ModuleExports(BTreeMap<SmolStr, ExportResolution>);
+impl ModuleExports {
+    pub fn get(&self, name: &SmolStr) -> Option<&ExportResolution> {
+        self.0.get(name)
+    }
+
+    pub fn insert(&mut self, name: SmolStr, value: ExportResolution) -> Option<ExportResolution> {
+        self.0.insert(name, value)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&SmolStr, &ExportResolution)> {
+        self.0.iter()
+    }
+}
+
+#[derive(Debug, Default)]
 /// Qualified export identities indexed by module and export name.
-pub(in crate::analysis) struct ExportTable(BTreeMap<(ModuleId, SmolStr), ExportResolution>);
+pub(in crate::analysis) struct ExportTable(BTreeMap<ModuleId, ModuleExports>);
 impl ExportTable {
     /// Look up the current fixed-point value for one export.
     pub(in crate::analysis) fn resolve(
@@ -67,7 +88,7 @@ impl ExportTable {
         module: ModuleId,
         export: &SmolStr,
     ) -> Option<&ExportResolution> {
-        self.0.get(&(module, export.clone()))
+        self.0.get(&module)?.get(export)
     }
 
     /// Store a changed export identity and report whether it changed.
@@ -77,17 +98,22 @@ impl ExportTable {
         export: &SmolStr,
         value: ExportResolution,
     ) -> bool {
-        let key = (module, export.clone());
+        let entry = self.0.entry(module).or_default();
 
-        if self.0.get(&key) == Some(&value) {
+        if entry.get(export) == Some(&value) {
             return false;
         }
-        self.0.insert(key, value);
+        entry.insert(export.clone(), value);
         true
     }
 
-    /// Return the number of indexed module/export entries.
+    /// Return the total number of resolved module/export entries.
     pub(in crate::analysis) fn len(&self) -> usize {
-        self.0.len()
+        self.0.values().map(ModuleExports::len).sum()
+    }
+
+    /// Borrow the resolved exports for one module.
+    pub(in crate::analysis) fn module_exports(&self, module: ModuleId) -> Option<&ModuleExports> {
+        self.0.get(&module)
     }
 }
