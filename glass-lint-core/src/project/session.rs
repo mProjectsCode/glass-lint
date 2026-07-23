@@ -379,7 +379,7 @@ use crate::{
     Linter, LocalExecutionError, ParseDiagnostic, ProjectRelativePath,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
-        SemanticArtifact, SharedSemanticArtifact,
+        QualifiedRequestId, SemanticArtifact, SharedSemanticArtifact,
     },
     project::{
         AnalysisReport, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
@@ -751,7 +751,8 @@ impl<'a> ProjectCollection<'a> {
 }
 
 impl<'a> LocallyAnalyzedProject<'a> {
-    /// Validate resolver outcomes against the frozen authored request table.
+    /// Validate resolver outcomes against the frozen authored request table
+    /// and build the qualified-request-identity table that linking consumes.
     pub fn resolve(
         self,
         outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
@@ -765,13 +766,39 @@ impl<'a> LocallyAnalyzedProject<'a> {
             normalize_result(&mut result)?;
             resolutions.insert(key, result)?;
         }
+        let input = ValidatedProjectInput::from_maps(
+            self.root,
+            self.sources.into_map(),
+            resolutions.into_map(),
+        );
+        let request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId> = self
+            .artifacts
+            .analyzed
+            .iter()
+            .filter_map(|(path, local)| {
+                let module_id = input.module_id(path)?;
+                Some((path, local, module_id))
+            })
+            .flat_map(|(path, local, module_id)| {
+                let interface = local.interface();
+                let lines = &local.source_context().lines;
+                let requests = interface.requests_with_ids(path, lines);
+                requests
+                    .into_iter()
+                    .map(move |(req_id, authored)| {
+                        (
+                            authored.key,
+                            QualifiedRequestId {
+                                module: module_id,
+                                request: req_id,
+                            },
+                        )
+                    })
+            })
+            .collect();
         Ok(ResolvedProject {
             linter: self.linter,
-            input: ValidatedProjectInput::from_maps(
-                self.root,
-                self.sources.into_map(),
-                resolutions.into_map(),
-            ),
+            input: input.with_request_ids(request_ids),
             artifacts: self.artifacts,
         })
     }

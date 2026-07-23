@@ -419,17 +419,6 @@ impl ProjectModule {
     pub(crate) fn local(&self) -> &LocalArtifact {
         &self.local
     }
-
-    pub(crate) fn authored_requests_with_ids(
-        &self,
-    ) -> Vec<(
-        crate::analysis::module::ModuleRequestId,
-        crate::ResolutionRequest,
-    )> {
-        self.local()
-            .interface()
-            .requests_with_ids(self.path(), &self.source_context().lines)
-    }
 }
 
 #[cfg(test)]

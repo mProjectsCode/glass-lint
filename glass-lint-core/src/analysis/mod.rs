@@ -34,7 +34,8 @@ pub use local::{
 };
 pub use lowering::{LoweredSource, lower_source};
 pub use project::model::ProjectSemanticModel;
-pub(in crate::analysis) use project::model::{ExportResolution, QualifiedRequestId};
+pub use project::model::QualifiedRequestId;
+pub(in crate::analysis) use project::model::ExportResolution;
 pub use value::SymbolPath;
 
 #[cfg(test)]

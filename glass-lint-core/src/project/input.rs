@@ -7,6 +7,7 @@ use std::{
 
 use crate::{
     SourceFile,
+    analysis::QualifiedRequestId,
     project::{
         ModuleId, ProjectInput, ProjectInputError, ProjectRelativePath, ResolutionRequestKey,
         ResolverOutcome,
@@ -84,6 +85,7 @@ impl ProjectInput {
             sources,
             resolutions,
             module_ids,
+            request_ids: BTreeMap::new(),
         })
     }
 }
@@ -101,6 +103,10 @@ pub struct ValidatedProjectInput {
     sources: BTreeMap<ProjectRelativePath, crate::SourceFile>,
     resolutions: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
     module_ids: BTreeMap<ProjectRelativePath, ModuleId>,
+    /// Pre-built mapping from resolution request key to qualified
+    /// module/request identity, populated during the resolve phase.
+    /// Used by linking to avoid re-enumerating authored requests.
+    request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
 }
 
 /// Internal: destructured components of a validated project.
@@ -109,6 +115,7 @@ type ProjectParts = (
     BTreeMap<ProjectRelativePath, crate::SourceFile>,
     BTreeMap<ResolutionRequestKey, ResolverOutcome>,
     BTreeMap<ProjectRelativePath, ModuleId>,
+    BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
 );
 
 impl ValidatedProjectInput {
@@ -125,7 +132,19 @@ impl ValidatedProjectInput {
             sources,
             resolutions,
             module_ids,
+            request_ids: BTreeMap::new(),
         }
+    }
+
+    /// Attach a pre-built request-to-qualified-ID mapping.
+    /// Used after the resolve phase to carry auth-request identity across
+    /// the local-to-resolved boundary.
+    pub(crate) fn with_request_ids(
+        mut self,
+        request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId>,
+    ) -> Self {
+        self.request_ids = request_ids;
+        self
     }
 
     pub fn root(&self) -> &Path {
@@ -161,7 +180,13 @@ impl ValidatedProjectInput {
 
     /// Crate-internal: destructure into all components at once.
     pub(crate) fn into_parts(self) -> ProjectParts {
-        (self.root, self.sources, self.resolutions, self.module_ids)
+        (
+            self.root,
+            self.sources,
+            self.resolutions,
+            self.module_ids,
+            self.request_ids,
+        )
     }
 
     /// Crate-internal: borrow the source map for pipeline stages.

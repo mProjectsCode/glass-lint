@@ -45,9 +45,9 @@ pub(super) const MAX_PROJECT_REQUESTS: usize = 500_000;
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub(in crate::analysis) struct QualifiedRequestId {
-    pub(in crate::analysis) module: ModuleId,
-    pub(in crate::analysis) request: ModuleRequestId,
+pub struct QualifiedRequestId {
+    pub module: ModuleId,
+    pub request: ModuleRequestId,
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ impl ValidatedLinkInput {
         input: ValidatedProjectInput,
         mut analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
     ) -> Result<Self, ProjectInputError> {
-        let (root, source_map, resolution_map, module_ids) = input.into_parts();
+        let (root, source_map, resolution_map, module_ids, request_ids) = input.into_parts();
         let mut modules = BTreeMap::new();
         for path in source_map.keys() {
             let Some(local) = analyzed.remove(path) else {
@@ -124,29 +124,6 @@ impl ValidatedLinkInput {
         }
 
         drop(root);
-
-        let authored = modules
-            .values()
-            .flat_map(|module| {
-                module
-                    .authored_requests_with_ids()
-                    .into_iter()
-                    .map(move |(request, authored)| {
-                        (
-                            authored.key,
-                            QualifiedRequestId {
-                                module: module.id(),
-                                request,
-                            },
-                        )
-                    })
-            })
-            .collect::<BTreeMap<_, _>>();
-        for key in resolution_map.keys() {
-            if !authored.contains_key(key) {
-                return Err(ProjectInputError::UnknownRequest(key.clone()));
-            }
-        }
 
         let request_count = modules
             .values()
@@ -170,7 +147,7 @@ impl ValidatedLinkInput {
         let resolutions = resolution_map
             .into_iter()
             .map(|(key, result)| {
-                let request = authored
+                let request = request_ids
                     .get(&key)
                     .copied()
                     .ok_or_else(|| ProjectInputError::UnknownRequest(key.clone()))?;

@@ -334,7 +334,7 @@ impl ModuleInterface {
     /// Canonical projection from authored requests into (id, ResolutionRequest)
     /// pairs. Both `authored_requests` and downstream `ProjectModule` methods
     /// delegate here so the conversion logic has one owner.
-    pub(in crate::analysis) fn requests_with_ids(
+    pub(crate) fn requests_with_ids(
         &self,
         importer: &ProjectRelativePath,
         lines: &crate::SourceLineIndex,
