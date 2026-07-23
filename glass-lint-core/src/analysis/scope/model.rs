@@ -71,7 +71,7 @@ pub(in crate::analysis) struct ScopeGraph {
     /// one AST node.
     last_scope_query: Cell<Option<(Span, ScopeId)>>,
     /// Source-ordered assignments grouped by scope and name.
-    assignments: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>>,
+    assignments: FrozenAssignmentIndex,
     /// Stable binding IDs keyed by lexical scope and name.
     binding_ids: BTreeMap<ScopedName, BindingId>,
     /// Stable function IDs keyed by function scope.
@@ -104,7 +104,7 @@ impl ScopeGraph {
             scopes: Vec::new(),
             scopes_by_start: Vec::new(),
             last_scope_query: std::cell::Cell::new(None),
-            assignments: std::collections::BTreeMap::new(),
+            assignments: FrozenAssignmentIndex::from_assignments(Vec::new()),
             binding_ids: std::collections::BTreeMap::new(),
             function_ids: std::collections::BTreeMap::new(),
             function_bindings: std::collections::BTreeMap::new(),
@@ -261,13 +261,6 @@ impl ScopeGraph {
         self.environment.global_objects()
     }
 
-    /// Look up the assignment history for a scope-local name, or `None` if the
-    /// name is unknown or has no recorded assignments.
-    fn assignments_for(&self, scope: ScopeId, name: &str) -> Option<&Vec<AliasAssignment>> {
-        self.name_id(name)
-            .and_then(|name| self.assignments.get(&scope)?.get(&name))
-    }
-
     /// Find the latest assignment at or before a source position.
     pub(super) fn assignment_at(
         &self,
@@ -275,12 +268,8 @@ impl ScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<&AliasAssignment> {
-        self.assignments_for(scope, name).and_then(|assignments| {
-            assignments
-                .partition_point(|assignment| assignment.span.lo <= span.lo)
-                .checked_sub(1)
-                .and_then(|index| assignments.get(index))
-        })
+        let name = self.name_id(name)?;
+        self.assignments.latest_at(scope, name, span)
     }
 
     pub(super) fn binding_id_at(&self, scope: ScopeId, name: &str) -> Option<BindingId> {
@@ -347,23 +336,17 @@ impl ScopeGraph {
         start: BytePos,
         end: BytePos,
     ) -> bool {
-        self.assignments_for(scope, name)
-            .is_some_and(|assignments| {
-                assignments
-                    .iter()
-                    .any(|assignment| assignment.span.lo > start && assignment.span.lo <= end)
-            })
+        let Some(name) = self.name_id(name) else {
+            return false;
+        };
+        self.assignments.changed_between(scope, name, start, end)
     }
 
     pub(super) fn binding_version(&self, scope: ScopeId, name: &str, span: Span) -> BindingVersion {
-        self.assignments_for(scope, name)
-            .and_then(|assignments| {
-                assignments
-                    .partition_point(|assignment| assignment.span.lo <= span.lo)
-                    .checked_sub(1)
-                    .and_then(|index| assignments.get(index))
-            })
-            .map_or(BindingVersion(0), |assignment| assignment.version)
+        let Some(name) = self.name_id(name) else {
+            return BindingVersion(0);
+        };
+        self.assignments.version_at(scope, name, span)
     }
 
     pub(super) fn property_aliases(
@@ -441,7 +424,7 @@ pub(super) struct ScopeGraphParts {
     pub(super) names: NameTable,
     pub(super) scopes: Vec<LexicalScope>,
     pub(super) scopes_by_start: Vec<ScopeId>,
-    pub(super) assignments: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>>,
+    pub(super) assignments: FrozenAssignmentIndex,
     pub(super) binding_ids: BTreeMap<ScopedName, BindingId>,
     pub(super) function_ids: BTreeMap<ScopeId, FunctionId>,
     pub(super) function_bindings: BTreeMap<ScopedName, FunctionId>,
@@ -576,6 +559,82 @@ pub(in crate::analysis) struct AliasAssignment {
     pub(in crate::analysis::scope) name: NameId,
     pub(in crate::analysis::scope) version: BindingVersion,
     pub(in crate::analysis::scope) provenance: BindingProvenance,
+}
+
+/// Source-ordered assignment history frozen after collection.
+///
+/// All inner `Vec<AliasAssignment>` values are sorted by `span.lo`; this
+/// invariant is established during construction and never violated.
+#[derive(Debug, Clone)]
+pub(super) struct FrozenAssignmentIndex {
+    inner: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>>,
+}
+
+impl FrozenAssignmentIndex {
+    /// Build from a flat, unsorted assignment stream.
+    /// Sorts and groups by (scope, name) during construction.
+    pub(super) fn from_assignments(assignments: Vec<AliasAssignment>) -> Self {
+        let mut inner: BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>> = BTreeMap::new();
+        for assignment in assignments {
+            inner
+                .entry(assignment.scope)
+                .or_default()
+                .entry(assignment.name)
+                .or_default()
+                .push(assignment);
+        }
+        for scope_entries in inner.values_mut() {
+            for binding_assignments in scope_entries.values_mut() {
+                binding_assignments.sort_by_key(|a| a.span.lo);
+            }
+        }
+        Self { inner }
+    }
+
+    /// Retrieve the sorted slice for one scope/name pair, if it exists.
+    fn get(&self, scope: ScopeId, name: NameId) -> Option<&[AliasAssignment]> {
+        self.inner.get(&scope)?.get(&name).map(Vec::as_slice)
+    }
+
+    /// Find the index of the latest assignment at or before `span.lo`.
+    fn latest_index(assignments: &[AliasAssignment], span: Span) -> Option<usize> {
+        let idx = assignments.partition_point(|a| a.span.lo <= span.lo);
+        idx.checked_sub(1)
+    }
+
+    /// Latest assignment at or before a source position.
+    pub(super) fn latest_at(
+        &self,
+        scope: ScopeId,
+        name: NameId,
+        span: Span,
+    ) -> Option<&AliasAssignment> {
+        let assignments = self.get(scope, name)?;
+        let idx = Self::latest_index(assignments, span)?;
+        Some(&assignments[idx])
+    }
+
+    /// Binding version visible at a source position.
+    pub(super) fn version_at(&self, scope: ScopeId, name: NameId, span: Span) -> BindingVersion {
+        self.latest_at(scope, name, span)
+            .map_or(BindingVersion(0), |a| a.version)
+    }
+
+    /// Whether any assignment occurred in the half-open interval `(start,
+    /// end]`.
+    pub(super) fn changed_between(
+        &self,
+        scope: ScopeId,
+        name: NameId,
+        start: BytePos,
+        end: BytePos,
+    ) -> bool {
+        let Some(assignments) = self.get(scope, name) else {
+            return false;
+        };
+        let after_start = assignments.partition_point(|a| a.span.lo <= start);
+        after_start < assignments.len() && assignments[after_start].span.lo <= end
+    }
 }
 
 #[derive(Debug, Clone)]

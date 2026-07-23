@@ -89,6 +89,16 @@ pub struct ValidatedProjectLoadOptions {
 #[derive(Clone, Debug)]
 struct SourceExtensionSet(BTreeSet<String>);
 
+impl SourceExtensionSet {
+    fn supports(&self, path: &Path) -> bool {
+        let name = path.to_string_lossy().to_ascii_lowercase();
+        self.0.iter().any(|extension| name.ends_with(extension))
+            && ![".d.ts", ".d.cts", ".d.mts"]
+                .iter()
+                .any(|suffix| name.ends_with(suffix))
+    }
+}
+
 impl ProjectLoadOptionsBuilder {
     #[must_use]
     pub fn root(mut self, root: impl Into<PathBuf>) -> Self {
@@ -330,7 +340,7 @@ impl ValidatedProjectLoadOptions {
     }
 
     pub fn supports(&self, path: &Path) -> bool {
-        self.options.supports(path)
+        self.extensions.supports(path)
     }
 
     pub fn excludes_path(&self, root: &Path, path: &Path) -> bool {

@@ -302,34 +302,29 @@ impl Environment {
     /// directly into the FNV-1a state. Iteration order follows
     /// BTreeSet/BTreeMap keys, which is stable.
     pub(crate) fn write_fingerprint_bytes(&self, h: &mut u64) {
-        fn write(h: &mut u64, bytes: &[u8]) {
-            for &b in bytes {
-                *h ^= u64::from(b);
-                *h = h.wrapping_mul(0x100_0000_01b3);
-            }
-        }
+        use crate::fingerprint::fnv_write;
         let inner = self.inner();
         // Global bindings (sorted).
-        write(h, &(inner.global_bindings.len() as u64).to_le_bytes());
+        fnv_write(h, &(inner.global_bindings.len() as u64).to_le_bytes());
         for name in &inner.global_bindings {
-            write(h, name.as_bytes());
-            write(h, &[0u8]);
+            fnv_write(h, name.as_bytes());
+            fnv_write(h, &[0u8]);
         }
         // Global objects (sorted by name).
-        write(h, &(inner.global_objects.len() as u64).to_le_bytes());
+        fnv_write(h, &(inner.global_objects.len() as u64).to_le_bytes());
         for (name, members) in &inner.global_objects {
-            write(h, name.as_bytes());
-            write(h, &[0u8]);
+            fnv_write(h, name.as_bytes());
+            fnv_write(h, &[0u8]);
             match members {
                 GlobalObjectMembers::ConfiguredGlobals => {
-                    write(h, &[0u8]);
+                    fnv_write(h, &[0u8]);
                 }
                 GlobalObjectMembers::Restricted(member_set) => {
-                    write(h, &[1u8]);
-                    write(h, &(member_set.len() as u64).to_le_bytes());
+                    fnv_write(h, &[1u8]);
+                    fnv_write(h, &(member_set.len() as u64).to_le_bytes());
                     for member in member_set {
-                        write(h, member.as_bytes());
-                        write(h, &[0u8]);
+                        fnv_write(h, member.as_bytes());
+                        fnv_write(h, &[0u8]);
                     }
                 }
             }

@@ -62,18 +62,23 @@ impl<'a> IntoIterator for CandidateOccurrences<'a> {
 }
 
 /// Deterministically merges normalized occurrence slices without owning any
-/// occurrence values. The slices are stable buckets borrowed from a local
-/// semantic index; only their positions are owned by this iterator.
+/// occurrence values. A `base` slice and borrowed `overlay` buckets are merged
+/// without allocating a combined bucket vector.
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct BorrowedOccurrenceIter<'a> {
-    buckets: Vec<&'a [Occurrence]>,
+    base: Option<&'a [Occurrence]>,
+    overlay: &'a [&'a [Occurrence]],
     positions: Vec<usize>,
 }
 
 impl<'a> BorrowedOccurrenceIter<'a> {
-    pub(super) fn new(buckets: Vec<&'a [Occurrence]>) -> Self {
-        let positions = vec![0; buckets.len()];
-        Self { buckets, positions }
+    pub(super) fn new(base: Option<&'a [Occurrence]>, overlay: &'a [&'a [Occurrence]]) -> Self {
+        let num_buckets = overlay.len() + usize::from(base.is_some());
+        Self {
+            base,
+            overlay,
+            positions: vec![0; num_buckets],
+        }
     }
 }
 
@@ -81,11 +86,18 @@ impl Iterator for BorrowedOccurrenceIter<'_> {
     type Item = Occurrence;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let next = self
-            .buckets
-            .iter()
-            .enumerate()
-            .filter_map(|(index, bucket)| {
+        let has_base = self.base.is_some();
+        let next = (0..self.positions.len())
+            .filter_map(|index| {
+                let bucket = if has_base {
+                    if index == 0 {
+                        self.base?
+                    } else {
+                        self.overlay.get(index - 1)?
+                    }
+                } else {
+                    self.overlay.get(index)?
+                };
                 let position = self.positions[index];
                 bucket.get(position).map(|occurrence| {
                     (
@@ -98,10 +110,25 @@ impl Iterator for BorrowedOccurrenceIter<'_> {
                 })
             })
             .min_by_key(|(event, start, end, index, _)| (*event, *start, *end, *index));
-        let (_, _, _, _, occurrence) = next?;
-        for (index, bucket) in self.buckets.iter().enumerate() {
-            if self.positions[index] < bucket.len() && bucket[self.positions[index]] == occurrence {
-                self.positions[index] += 1;
+        let (_, _, _, chosen_index, occurrence) = next?;
+        if has_base && chosen_index == 0 {
+            if let Some(base) = self.base
+                && self.positions[0] < base.len()
+                && base[self.positions[0]] == occurrence
+            {
+                self.positions[0] += 1;
+            }
+        } else {
+            let overlay_index = if has_base {
+                chosen_index - 1
+            } else {
+                chosen_index
+            };
+            if let Some(bucket) = self.overlay.get(overlay_index)
+                && self.positions[chosen_index] < bucket.len()
+                && bucket[self.positions[chosen_index]] == occurrence
+            {
+                self.positions[chosen_index] += 1;
             }
         }
         Some(occurrence)
@@ -192,7 +219,8 @@ impl Iterator for BorrowedPackageOccurrenceIter<'_> {
                     if self.predicate.matches(key)
                         && self.masked.is_none_or(|mask| !mask.contains(key))
                     {
-                        self.current = Some(BorrowedOccurrenceIter::new(vec![values.as_slice()]));
+                        self.current =
+                            Some(BorrowedOccurrenceIter::new(Some(values.as_slice()), &[]));
                     }
                     continue;
                 }
@@ -207,7 +235,7 @@ impl Iterator for BorrowedPackageOccurrenceIter<'_> {
                 return None;
             };
             if self.predicate.matches(key) {
-                self.current = Some(BorrowedOccurrenceIter::new(values.clone()));
+                self.current = Some(BorrowedOccurrenceIter::new(None, values.as_slice()));
             }
         }
     }

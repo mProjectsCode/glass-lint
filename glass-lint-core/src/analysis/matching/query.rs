@@ -37,7 +37,8 @@ fn module_occurrences<'a, K: Ord>(
 ) -> Option<CandidateOccurrences<'a>> {
     if let Some(overlay_slices) = overlay.and_then(|overlay| overlay.get(key)) {
         return Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
-            overlay_slices.clone(),
+            None,
+            overlay_slices.as_slice(),
         )));
     }
     if !masked && let Some(base_slice) = base.get(key) {
@@ -61,17 +62,13 @@ fn merged_or_indexed<'a>(
     overlay: Option<&'a Vec<&'a [Occurrence]>>,
 ) -> Option<CandidateOccurrences<'a>> {
     match (base, overlay) {
-        (Some(base_slice), Some(overlay_slices)) => {
-            let mut buckets = Vec::with_capacity(overlay_slices.len() + 1);
-            buckets.push(base_slice);
-            buckets.extend(overlay_slices.iter().copied());
-            Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
-                buckets,
-            )))
-        }
+        (Some(base_slice), Some(overlay_slices)) => Some(CandidateOccurrences::Borrowed(
+            BorrowedOccurrenceIter::new(Some(base_slice), overlay_slices.as_slice()),
+        )),
         (Some(slice), None) => Some(CandidateOccurrences::Indexed(slice)),
         (None, Some(slices)) => Some(CandidateOccurrences::Borrowed(BorrowedOccurrenceIter::new(
-            slices.clone(),
+            None,
+            slices.as_slice(),
         ))),
         (None, None) => None,
     }

@@ -12,8 +12,7 @@ use crate::{
         classification::{MatchKind, RuleIndex},
         compiler::object_flow::CompiledObjectFlow,
         rule::{
-            ArgumentConstraint, Category, Confidence, MatcherBuildError, MatcherDecl,
-            ModuleSpecifierPattern,
+            ArgumentConstraint, Confidence, MatcherBuildError, MatcherDecl, ModuleSpecifierPattern,
         },
     },
 };
@@ -238,6 +237,30 @@ impl QueryClause {
     }
 }
 
+/// Shared declaration compilation: convert each declaration to a clause,
+/// collect object flows, sort and deduplicate clauses, then validate every
+/// clause. Package-pattern and flow-field validation are left to the caller.
+fn collect_clauses_and_flows(
+    decls: &[MatcherDecl],
+) -> Result<(Vec<QueryClause>, Vec<CompiledObjectFlow>), MatcherBuildError> {
+    let mut clauses: Vec<QueryClause> = Vec::new();
+    let mut flows: Vec<CompiledObjectFlow> = Vec::new();
+    for decl in decls {
+        clauses.push(decl.to_query_clause());
+        if let Some(matcher) = &decl.object_flow {
+            flows.push(CompiledObjectFlow::from_matcher(matcher));
+        }
+    }
+    clauses.sort();
+    clauses.dedup();
+    for clause in &clauses {
+        clause.validate().map_err(|error| {
+            MatcherBuildError::Generic(format!("invalid lowered matcher query: {error:?}"))
+        })?;
+    }
+    Ok((clauses, flows))
+}
+
 impl QueryPlan {
     pub(crate) fn clauses(&self) -> &[QueryClause] {
         &self.clauses
@@ -249,22 +272,7 @@ impl QueryPlan {
 
     #[cfg(test)]
     fn from_declarations(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
-        let mut clauses = Vec::new();
-        let mut flows = Vec::new();
-        for decl in decls {
-            let clause = decl.to_query_clause();
-            clauses.push(clause);
-            if let Some(matcher) = &decl.object_flow {
-                flows.push(CompiledObjectFlow::from_matcher(matcher));
-            }
-        }
-        clauses.sort();
-        clauses.dedup();
-        for clause in &clauses {
-            clause.validate().map_err(|error| {
-                MatcherBuildError::Generic(format!("invalid lowered matcher query: {error:?}"))
-            })?;
-        }
+        let (clauses, flows) = collect_clauses_and_flows(decls)?;
         Ok(Self {
             clauses: clauses.into_boxed_slice(),
             flows: flows.into_boxed_slice(),
@@ -281,21 +289,7 @@ impl CompiledMatcherPlan {
 
     /// Compile declarations into clauses and extract flows.
     pub(crate) fn compile_decls(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
-        let mut clauses: Vec<QueryClause> = Vec::new();
-        let mut flows: Vec<CompiledObjectFlow> = Vec::new();
-        for decl in decls {
-            clauses.push(decl.to_query_clause());
-            if let Some(matcher) = &decl.object_flow {
-                flows.push(CompiledObjectFlow::from_matcher(matcher));
-            }
-        }
-        clauses.sort();
-        clauses.dedup();
-        for clause in &clauses {
-            clause.validate().map_err(|error| {
-                MatcherBuildError::Generic(format!("invalid lowered matcher query: {error:?}"))
-            })?;
-        }
+        let (clauses, flows) = collect_clauses_and_flows(decls)?;
         for clause in &clauses {
             if let IdentityConstraint::PackageSpecifier { pattern }
             | IdentityConstraint::PackageModuleExport {
@@ -388,12 +382,8 @@ impl<'a> CompiledRuleSelection<'a> {
 /// Immutable compiled rule record containing metadata and the query plan.
 /// Retains no source declaration tree after construction.
 pub struct CompiledRuleRecord {
-    /// Provider-local rule name (before namespace prefix).
-    pub id: String,
     /// Human-readable description.
     pub description: String,
-    /// Provider-defined category.
-    pub category: Category,
     /// Report severity.
     pub severity: crate::Severity,
     /// Evidence confidence.
@@ -407,9 +397,7 @@ impl CompiledRuleRecord {
     pub(crate) fn new(rule: &crate::api::rule::Rule) -> Result<Self, MatcherBuildError> {
         let plan = CompiledMatcherPlan::compile_decls(rule.declarations())?;
         Ok(Self {
-            id: rule.id().to_owned(),
             description: rule.description().to_owned(),
-            category: rule.category().clone(),
             severity: rule.severity(),
             confidence: rule.confidence(),
             matcher: plan,

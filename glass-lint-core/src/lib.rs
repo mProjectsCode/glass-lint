@@ -10,6 +10,7 @@ mod budget;
 mod config;
 mod diagnostic;
 mod environment;
+mod fingerprint;
 mod limits;
 mod lint;
 mod parse;

@@ -76,7 +76,7 @@ pub struct ProjectPhaseTimings {
 enum Phase {
     Discovery = 0,
     Reads = 1,
-    LocalAnalysis = 2,
+    AnalyzeSource = 2,
     Resolution = 3,
     Linking = 4,
     Matching = 5,
@@ -97,11 +97,6 @@ impl ProjectPhaseTimings {
     #[must_use]
     pub fn reads(&self) -> Duration {
         self.phases[Phase::Reads as usize]
-    }
-
-    #[must_use]
-    pub fn local_analysis(&self) -> Duration {
-        self.phases[Phase::LocalAnalysis as usize]
     }
 
     #[must_use]
@@ -126,7 +121,7 @@ impl ProjectPhaseTimings {
 
     #[must_use]
     pub fn parse_and_local_analysis(&self) -> Duration {
-        self.phases[Phase::LocalAnalysis as usize]
+        self.phases[Phase::AnalyzeSource as usize]
     }
 
     #[must_use]
@@ -144,9 +139,9 @@ impl ProjectPhaseTimings {
             self.phases[Phase::Reads as usize].saturating_add(duration);
     }
 
-    pub fn record_local_analysis(&mut self, duration: Duration) {
-        self.phases[Phase::LocalAnalysis as usize] =
-            self.phases[Phase::LocalAnalysis as usize].saturating_add(duration);
+    pub fn record_analyze_source(&mut self, duration: Duration) {
+        self.phases[Phase::AnalyzeSource as usize] =
+            self.phases[Phase::AnalyzeSource as usize].saturating_add(duration);
     }
 
     pub fn record_resolution(&mut self, duration: Duration) {
@@ -180,9 +175,9 @@ impl std::ops::AddAssign for ProjectPhaseTimings {
 
 /// Bounded construction counters and phase timings for profiling.
 ///
-/// Embeds [`ProjectPhaseTimings`] directly so that the eight duration fields
-/// have one authoritative representation across timings, metrics, and
-/// phase-timing conversions.
+/// Embeds [`ProjectPhaseTimings`] directly so that the duration fields have
+/// one authoritative representation across timings, metrics, and phase-timing
+/// conversions.
 #[derive(Clone, Debug, Default)]
 pub struct ProjectLoadMetrics {
     /// Phase durations embedded directly as the canonical timing record.
@@ -494,7 +489,7 @@ impl<'a> ProjectLoadState<'a> {
 
         let parse_start = Instant::now();
         let requests = self.session.analyze_source(source)?.requests();
-        metrics.timings.record_local_analysis(parse_start.elapsed());
+        metrics.timings.record_analyze_source(parse_start.elapsed());
         metrics.files = self.admitted.len();
 
         self.progress

@@ -156,14 +156,43 @@ impl Index<usize> for EvidenceList {
         }
     }
 }
-#[allow(clippy::needless_collect)]
+pub struct EvidenceIntoIter {
+    local: std::vec::IntoIter<Evidence>,
+    shared: Option<Arc<[Evidence]>>,
+    shared_index: usize,
+}
+
+impl Iterator for EvidenceIntoIter {
+    type Item = Evidence;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.local.next().or_else(|| {
+            let item = self.shared.as_ref()?.get(self.shared_index)?.clone();
+            self.shared_index += 1;
+            Some(item)
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.local.len()
+            + self
+                .shared
+                .as_ref()
+                .map_or(0, |s| s.len().saturating_sub(self.shared_index));
+        (remaining, Some(remaining))
+    }
+}
+
 impl IntoIterator for EvidenceList {
-    type IntoIter = std::vec::IntoIter<Evidence>;
+    type IntoIter = EvidenceIntoIter;
     type Item = Evidence;
 
     fn into_iter(self) -> Self::IntoIter {
-        let combined: Vec<Evidence> = self.iter().cloned().collect();
-        combined.into_iter()
+        EvidenceIntoIter {
+            local: self.local.into_iter(),
+            shared: self.shared,
+            shared_index: 0,
+        }
     }
 }
 impl<'a> IntoIterator for &'a EvidenceList {

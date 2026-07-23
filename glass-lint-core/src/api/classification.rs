@@ -4,10 +4,7 @@
 //! separate. `rule_index` and event IDs are internal correlation keys and are
 //! intentionally omitted from serialized reports.
 
-use crate::{
-    ByteRange,
-    api::rule::{Category, Confidence, Severity},
-};
+use crate::{ByteRange, api::rule::Severity};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable position of a rule within a validated catalog.
@@ -29,16 +26,10 @@ pub struct MatchedCapability {
     /// Internal catalog position used to correlate rule selections.
     #[serde(skip)]
     pub rule_index: RuleIndex,
-    /// Stable namespaced rule ID.
-    pub id: String,
     /// Human-readable capability label.
     pub label: String,
-    /// Provider-owned category.
-    pub category: Category,
     /// Severity assigned by the rule declaration.
     pub severity: Severity,
-    /// Confidence assigned by the rule declaration.
-    pub confidence: Confidence,
     /// Primary-file evidence for this capability.
     pub evidence: Vec<ClassificationEvidence>,
 }

@@ -465,9 +465,11 @@ fn resolve_extends(config_path: &Path, extends: &str) -> Option<PathBuf> {
 /// `extends` inheritance recursively. Returns diagnostics for cycles.
 ///
 /// Maintains an internal extends-chain to detect cycles without affecting the
-/// caller's visited set. When a cycle is found, a diagnostic is emitted, that
-/// branch stops, and a fail-closed config is returned (empty files, excludes
-/// all). Independent non-cyclic branches continue normally.
+/// caller's visited set. When a cycle is found, a diagnostic is emitted, the
+/// offending `extends` edge is discarded, and the current file's local settings
+/// plus any already-resolved acyclic ancestors are retained. The child config
+/// continues building normally without the cyclic parent. Independent
+/// non-cyclic branches continue unaffected.
 pub fn build_effective_config(
     config_path: &Path,
     fallback_base: &Path,

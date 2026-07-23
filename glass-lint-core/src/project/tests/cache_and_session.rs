@@ -178,8 +178,7 @@ fn rule_selection_changes_projection_without_relowering() {
     assert!(finish_collection(second).files[0].findings.is_empty());
 }
 
-#[test]
-fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
+fn setup_baseline_and_base_cache() -> (crate::Linter, crate::analysis::ArtifactCacheHandle) {
     let base_linter = test_linter();
     let mut baseline = base_linter.begin_project("/project").unwrap();
     baseline
@@ -189,27 +188,55 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
         .analyze_source_at_path(&crate::ProjectRelativePath::new("base.js").unwrap())
         .unwrap();
     let base_cache = baseline.artifact_cache.clone();
+    (base_linter, base_cache)
+}
 
-    let assert_miss = |linter: &crate::Linter,
-                       source: SourceFile,
-                       configure: fn(&mut crate::ProjectCollection<'_>)| {
-        let path = source.path.to_string();
-        let mut session = linter.begin_project("/project").unwrap();
-        session.artifact_cache = base_cache.clone();
-        configure(&mut session);
-        session.admit_test_source(source).unwrap();
-        let observer = CountingExecutionObserver::new();
-        session.analyze_source_counted(path, &observer).unwrap();
-        let counts = observer.invocations();
-        assert_eq!((counts.hits, counts.misses, counts.lowers), (0, 1, 1));
-    };
+fn assert_miss_for(
+    base_cache: &crate::analysis::ArtifactCacheHandle,
+    linter: &crate::Linter,
+    source: SourceFile,
+    configure: fn(&mut crate::ProjectCollection<'_>),
+) {
+    let path = source.path.to_string();
+    let mut session = linter.begin_project("/project").unwrap();
+    session.artifact_cache = base_cache.clone();
+    configure(&mut session);
+    session.admit_test_source(source).unwrap();
+    let observer = CountingExecutionObserver::new();
+    session.analyze_source_counted(path, &observer).unwrap();
+    let counts = observer.invocations();
+    assert_eq!((counts.hits, counts.misses, counts.lowers), (0, 1, 1));
+}
 
-    assert_miss(
+fn assert_hit_for(
+    base_cache: &crate::analysis::ArtifactCacheHandle,
+    linter: &crate::Linter,
+    source: SourceFile,
+    configure: fn(&mut crate::ProjectCollection<'_>),
+) {
+    let path = source.path.to_string();
+    let mut session = linter.begin_project("/project").unwrap();
+    session.artifact_cache = base_cache.clone();
+    configure(&mut session);
+    session.admit_test_source(source).unwrap();
+    let observer = CountingExecutionObserver::new();
+    session.analyze_source_counted(path, &observer).unwrap();
+    let counts = observer.invocations();
+    assert_eq!((counts.hits, counts.misses, counts.lowers), (1, 0, 0));
+}
+
+#[test]
+fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
+    let (base_linter, base_cache) = setup_baseline_and_base_cache();
+
+    assert_miss_for(
+        &base_cache,
         &base_linter,
         source_file("changed.js", "fetch('/different');"),
         |_| {},
     );
-    assert_miss(
+    assert_miss_for(
+        &base_cache,
         &base_linter,
         SourceFile {
             path: project_path("typed.ts"),
@@ -222,14 +249,16 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
     let mut changed_environment = Environment::default();
     changed_environment.add_globals(["fetch", "extra"]).unwrap();
     let environment_linter = test_linter_with_environment(changed_environment);
-    assert_miss(
+    assert_miss_for(
+        &base_cache,
         &environment_linter,
         source_file("environment.js", "fetch('/api');"),
         |_| {},
     );
 
     let defaults = AnalysisLimits::default();
-    let changed_limits = [
+    // Changing these local-affecting limits invalidates the cache.
+    let local_limits = [
         defaults
             .clone()
             .with_syntax_depth(defaults.syntax_depth() + 1)
@@ -242,6 +271,19 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
             .clone()
             .with_effect_operations(defaults.effect_operations() + 1)
             .unwrap(),
+    ];
+    for (index, limits) in local_limits.into_iter().enumerate() {
+        let linter = test_linter_with_limits(limits);
+        assert_miss_for(
+            &base_cache,
+            &linter,
+            source_file(format!("local-limit-{index}.js"), "fetch('/api');"),
+            |_| {},
+        );
+    }
+    // Changing downstream-only limits (evidence, link, flow) does not affect
+    // the local artifact, so the cache should still hit.
+    let downstream_limits = [
         defaults
             .clone()
             .with_evidence_items(defaults.evidence_items() + 1)
@@ -255,21 +297,24 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
             .with_flow_operations(defaults.flow_operations() + 1)
             .unwrap(),
     ];
-    for (index, limits) in changed_limits.into_iter().enumerate() {
+    for (index, limits) in downstream_limits.into_iter().enumerate() {
         let linter = test_linter_with_limits(limits);
-        assert_miss(
+        assert_hit_for(
+            &base_cache,
             &linter,
-            source_file(format!("limit-{index}.js"), "fetch('/api');"),
+            source_file(format!("downstream-limit-{index}.js"), "fetch('/api');"),
             |_| {},
         );
     }
 
-    assert_miss(
+    assert_miss_for(
+        &base_cache,
         &base_linter,
         source_file("normalization.js", "fetch('/api');"),
         |session| session.set_fingerprint_normalization("test-normalization-v2"),
     );
-    assert_miss(
+    assert_miss_for(
+        &base_cache,
         &base_linter,
         source_file("engine.js", "fetch('/api');"),
         |session| session.set_fingerprint_engine_version("test-engine-v2"),

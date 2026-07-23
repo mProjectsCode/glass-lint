@@ -113,7 +113,7 @@ mod tests {
         let mut phases = ProfilePhaseTimings::with_discovery(Duration::MAX);
         phases += ProfilePhaseTimings::with_discovery(Duration::from_secs(1));
         assert_eq!(phases.discovery(), Duration::MAX);
-        phases.record_local_analysis(Duration::from_secs(2));
+        phases.record_analyze_source(Duration::from_secs(2));
         phases.record_linking(Duration::from_secs(3));
         phases.record_matching(Duration::from_secs(4));
         assert_eq!(phases.parse_and_local_analysis(), Duration::from_secs(2));

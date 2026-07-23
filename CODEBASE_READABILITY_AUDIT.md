@@ -105,6 +105,7 @@ Carry semantic newtypes through internal iterators, queues, and report builders.
 - **Severity:** Medium
 - **Fix Complexity:** Low
 - **Category:** Architecture
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/lowering.rs:139-155`, `glass-lint-core/src/project/session.rs:181-219`, `glass-lint-core/src/project/session.rs:686-699`
 
 Lowering constructs a `SourceLineIndex`, but the parallel worker projects the result down to semantic data and later reconstructs the line index from the source. Consuming a lowered source also clones its source context into the local artifact instead of moving the complete phase result.
@@ -115,6 +116,7 @@ Carry `LoweredSource` through the worker result and move its source context into
 - **Severity:** Medium
 - **Fix Complexity:** Low
 - **Category:** Architecture
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/local.rs:30-75`, `glass-lint-core/src/analysis/local.rs:102-168`, `glass-lint-core/src/project/tests/cache_and_session.rs:181-265`
 
 The cache fingerprint includes the full `AnalysisLimits`, including evidence, linking, and flow budgets that do not affect matcher-independent parsing and semantic facts. Tests currently encode cache misses for these unrelated changes, coupling the local artifact phase to downstream execution policy.
@@ -187,31 +189,28 @@ Store exports as `ModuleId -> ModuleExports` so module lookup and borrowed name 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Architecture
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/project/model.rs:454-489`, `glass-lint-core/src/lint/report.rs:145-258`
 
-Each transient `MatchedCapability` owns rule ID, description, and category strings even though report assembly already has the immutable catalog and mostly consumes the rule index, label, severity, and evidence. Repeating static rule metadata per matched module increases allocations and creates another representation that can drift from the catalog.
-
-Keep internal matches as rule IDs/indexes plus evidence and any result-specific label or severity. Let report assembly borrow catalog metadata while constructing the owned public report. If a standalone classification result is public API, make its ownership conversion an explicit final step.
+`MatchedCapability` no longer carries `id`, `category`, or `confidence`. Report assembly already looked up `rule_id` from the catalog via `rule_index` and never read the removed fields. The `CompiledRuleRecord` fields `id` and `category` were also dead after this change and have been removed from the struct and constructor. Internal matches now keep only `rule_index`, `label`, `severity`, and `evidence`.
 
 #### READ-017 — `Linter::clone` is documented as cheap but deep-clones its execution plan
 - **Severity:** Medium
 - **Fix Complexity:** Low
 - **Category:** API
+- **Status:** Done
 - **Location:** `glass-lint-core/src/lint/linter.rs:55-81`
 
-Cloning a linter duplicates the catalog records, compiled plans, and enabled-rule vector; only the cache/environment handles are naturally cheap. The API documentation therefore understates the cost for large catalogs and encourages cloning at a boundary where shared immutable state is appropriate.
-
-Treat cheap cloning as part of the public concurrency contract because the type-level documentation explicitly promises it. Store the immutable catalog, compiled execution plan, enabled set, environment, and limits in one `Arc`-backed configuration object, while keeping the already shared artifact-cache handle separate. Add a test or size/identity assertion showing clones share the compiled configuration; do not merely weaken the documentation while retaining a deep `Clone`.
+Cloning a linter previously duplicated the catalog records, compiled plans, and enabled-rule vector; only the cache handle was naturally cheap. The immutable catalog, compiled execution plan, enabled set, environment, and limits are now stored in one `Arc`-backed `LinterSharedConfig` object, while the already shared artifact-cache handle remains separate. The `Clone` impl clones only the `Arc` pointer and the cache handle, making cheap cloning match the documented public contract.
 
 #### READ-018 — Query-plan compilation has separate production and test implementations
 - **Severity:** Medium
 - **Fix Complexity:** Low
 - **Category:** Duplication
+- **Status:** Done
 - **Location:** `glass-lint-core/src/api/compiler/rule.rs:241-336`
 
-The test-only `QueryPlan::from_declarations` and production compilation both collect clauses and flows, sort/deduplicate them, and validate the result. The test path omits some package and flow validation, so tests can exercise a compiler-shaped implementation that is not the production compiler.
-
-Extract one internal compilation function with explicit inputs for declarations and package context. Call it from both the public compiler and unit tests. Keep convenience fixture construction outside the query-plan type so validation cannot be bypassed accidentally.
+The test-only `QueryPlan::from_declarations` and production `CompiledMatcherPlan::compile_decls` both collected clauses and flows, sorted/deduplicated them, and validated the result. A shared free function `collect_clauses_and_flows` now handles the common building, sorting, deduplication, and clause validation. `from_declarations` and `compile_decls` both call this shared function, with `compile_decls` applying the additional package-pattern and flow-field validation on top. Convenience fixture construction remains outside the query-plan type so validation cannot be bypassed accidentally.
 
 #### READ-019 — CommonJS object-export properties are traversed and decoded twice
 - **Severity:** Medium
@@ -227,21 +226,19 @@ Normalize each property once into a typed `CommonJsExportEntry` containing the e
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Encapsulation
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/scope/model.rs:73-75`, `glass-lint-core/src/analysis/scope/model.rs:264-284`, `glass-lint-core/src/analysis/scope/model.rs:343-367`
 
-Collection has an assignment-history concept, but the frozen scope model exposes it as nested maps. `assignment_at` and `binding_version` repeat nearly identical partition-point logic, while `reassigned_between` linearly scans an already sorted history.
-
-Preserve a `FrozenAssignmentIndex` newtype with `latest_at`, `version_at`, and `changed_between` operations. Implement all range queries with one binary-search primitive and keep ordering validation at construction. This puts temporal-binding invariants on the state-owning type and removes duplicated callers.
+`FrozenAssignmentIndex` now wraps the nested assignment map, providing `latest_at`, `version_at`, and `changed_between` operations. All range queries use a single `partition_point` primitive (the old `reassigned_between` used a linear scan). The `collect_and_sort_assignments` free function was replaced by `FrozenAssignmentIndex::from_assignments`. The `assignments_for` helper was removed since callers go through the newtype.
 
 #### READ-021 — Overlay matching allocates a bucket vector for each query
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Encapsulation
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/matching/query.rs:32-76`, `glass-lint-core/src/analysis/matching/occurrence.rs:1-90`
 
-Module occurrence queries clone a `Vec<&[Occurrence]>`, and merged base/overlay queries allocate and copy bucket references before iteration. This happens at clause-query granularity even though the underlying occurrence slices are already stable and borrowed.
-
-Represent iteration as an optional base slice plus a borrowed slice of overlay buckets. Make `BorrowedOccurrenceIter` borrow that view rather than own a newly assembled vector. Retain deterministic merge order without allocating a container per matcher query.
+`BorrowedOccurrenceIter` now borrows an optional `base` slice and an `overlay` slice-of-slices instead of owning a combined `Vec<&[Occurrence]>`. The `merged_or_indexed` and `module_occurrences` helpers no longer allocate bucket vectors; they pass `(Some(base), overlay.as_slice())` or `(None, slices.as_slice())` directly. The deterministic k-way merge order is preserved.
 
 #### READ-022 — Event-index construction repeats a sparse ten-field record
 - **Severity:** Low
@@ -267,21 +264,19 @@ Split the module into execution runtime, local artifact production, and project 
 - **Severity:** Low
 - **Fix Complexity:** Low
 - **Category:** Encapsulation
+- **Status:** Done
 - **Location:** `glass-lint-core/src/project/tables.rs:159-167`
 
-`IntoIterator for EvidenceList` delegates to borrowed iteration and clones every item into a temporary collection. That is necessary for shared backing storage but unnecessarily clones evidence already held in the local owned vector.
-
-Provide a custom owning iterator that moves local entries and clones only entries backed by shared immutable storage. If the mixed representation makes that contract surprising, expose an explicit consuming flatten operation instead of `IntoIterator`. Preserve the current deterministic order between shared and local segments.
+`IntoIterator for EvidenceList` previously delegated to borrowed iteration and cloned every item into a temporary collection even for locally owned entries. A custom `EvidenceIntoIter` now moves local entries out of the owned vector and clones only entries backed by shared `Arc<[Evidence]>` storage. The `EvidenceIntoIter` type preserves the same deterministic order (local first, then shared).
 
 #### READ-025 — Deterministic FNV hashing is duplicated
 - **Severity:** Low
 - **Fix Complexity:** Low
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/analysis/local.rs:30-37`, `glass-lint-core/src/environment.rs:301-325`
+- **Status:** Done
+- **Location:** `glass-lint-core/src/fingerprint.rs`, `glass-lint-core/src/analysis/local.rs:30-37`, `glass-lint-core/src/environment.rs:301-325`
 
-The same byte loop and FNV prime are implemented in local-analysis fingerprinting and nested environment fingerprint helpers. The duplication is small, but these fingerprints participate in cache correctness and should not acquire subtly different framing or constants.
-
-Introduce a small deterministic fingerprint writer with typed methods for bytes, strings, integers, and sequence framing. Use it for both fingerprints and document stability expectations. Keep it private to core unless the serialized fingerprint becomes a cross-crate contract.
+The same byte loop and FNV prime have been extracted into a shared `crate::fingerprint` module with `fnv_init()` and `fnv_write()` functions. Both local-analysis fingerprinting and environment fingerprint helpers now delegate to the shared implementation. The module is private to core (`pub(crate)`).
 
 #### READ-026 — Module export metadata is split across parallel maps
 - **Severity:** Medium
@@ -299,11 +294,10 @@ Model one `ExportEntry` containing resolution plus optional function and static 
 - **Severity:** Medium
 - **Fix Complexity:** Low
 - **Category:** Duplication
+- **Status:** Done
 - **Location:** `glass-lint-project/src/options.rs:188-218`, `glass-lint-project/src/options.rs:291-338`
 
-Validation builds a lowercased `SourceExtensionSet`, but `ValidatedProjectLoadOptions::supports` delegates to the raw options method, which lowercases the path and every configured extension on each admission check. The normalized set is used by resolution but not by the discovery boundary that performs the same policy.
-
-Put suffix support and exclusion on `SourceExtensionSet`, and make validated options delegate only to that normalized owner. Validate/build once and keep raw options out of runtime admission. Add mixed-case extension tests at the normalized-set boundary.
+`SourceExtensionSet` now has its own `supports()` method that uses the already-normalized lowercased extensions. `ValidatedProjectLoadOptions::supports` delegates to `self.extensions.supports()` instead of the raw `ProjectLoadOptions::supports` which re-lowercases on every call.
 
 #### READ-028 — `tsconfig` cycle detection compares canonical and unresolved paths
 - **Severity:** High
@@ -349,21 +343,19 @@ Have the root-owned admission service produce an `AdmittedSource` containing can
 - **Severity:** Low
 - **Fix Complexity:** Medium
 - **Category:** Naming
+- **Status:** Done
 - **Location:** `glass-lint-project/src/loader.rs:50-159`, `glass-lint-project/src/loader.rs:485-503`
 
-The timing structure describes a different number of fields than it exposes, `parse_and_local_analysis` aliases `local_analysis`, and linking/matching is derived rather than directly measured. The local timer includes cache lookup, parse/lower work, and request projection, so its name does not reveal the boundary being timed.
-
-Use a named phase enum or table whose values correspond exactly to loader transitions. Remove the compatibility-like alias, or split parse from local projection if the distinction is operationally meaningful. Derive totals in one place and document inclusive/exclusive timing semantics.
+The unused `local_analysis()` accessor was removed (all callers used `parse_and_local_analysis()`). `Phase::LocalAnalysis` was renamed to `Phase::AnalyzeSource` and `record_local_analysis` to `record_analyze_source` to reflect that the timer covers cache lookup, parse/lower, local analysis, and request projection. The stale "eight duration fields" doc comment was corrected.
 
 #### READ-033 — Documented `tsconfig` cycle behavior contradicts implementation
 - **Severity:** Low
 - **Fix Complexity:** Low
 - **Category:** Other
+- **Status:** Done
 - **Location:** `glass-lint-project/src/tsconfig.rs:464-470`, `glass-lint-project/src/discovery.rs:142-144`
 
-Comments describe a fail-closed sentinel configuration that excludes all files on an extends cycle, while the implementation skips the cyclic parent and continues building the child/local configuration. The discrepancy makes it unclear which behavior callers and tests should rely on.
-
-The existing tests establish the intended contract: emit a deterministic diagnostic, discard only the offending cyclic `extends` edge, and retain the current file's local settings plus any already resolved acyclic ancestors. Update the comments to state that behavior and add a canonical-alias cycle case alongside the current lexical cycle tests. Do not restore a sentinel config, exclude the entire project, or silently accept the edge.
+Comments previously described a fail-closed sentinel configuration. The doc comment on `build_effective_config` now accurately states: the cyclic edge is discarded, local settings and acyclic ancestors are retained, and the child config continues building without the cyclic parent.
 
 ### Cross-Cutting Organization and Tests
 
@@ -371,6 +363,7 @@ The existing tests establish the intended contract: emit a deterministic diagnos
 - **Severity:** Low
 - **Fix Complexity:** Low
 - **Category:** Testing
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/scope/collect/mod.rs:754-1254`, `glass-lint-core/src/project/report.rs:105-481`, `glass-lint-project/src/tsconfig.rs:566-864`
 
 Several already-large production modules include hundreds of lines of inline tests, with similar concentrations in fact building, resolution, and flow projection. Private access is convenient, but the resulting files make the production state transitions and ownership boundaries harder to scan.

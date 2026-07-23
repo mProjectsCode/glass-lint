@@ -89,9 +89,7 @@ mod tests {
         .unwrap();
         let selected = [crate::api::classification::RuleIndex::new(0)];
         let fetch_rule = CompiledRuleRecord {
-            id: "fetch".into(),
             description: "fetch".into(),
-            category: "test".into(),
             severity: crate::Severity::Warning,
             confidence: crate::api::rule::Confidence::High,
             matcher: fetch_plan,
@@ -106,9 +104,7 @@ mod tests {
             .unwrap()])
         .unwrap();
         let member_rule = CompiledRuleRecord {
-            id: "member".into(),
             description: "member".into(),
-            category: "test".into(),
             severity: crate::Severity::Warning,
             confidence: crate::api::rule::Confidence::High,
             matcher: member_plan,

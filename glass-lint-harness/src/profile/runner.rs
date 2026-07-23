@@ -435,7 +435,7 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     let elapsed = measured.total_duration();
     let median_repetition_duration = median_duration(&measured.repetitions);
     let mut phase_timings = ProfilePhaseTimings::default();
-    phase_timings.record_local_analysis(elapsed);
+    phase_timings.record_analyze_source(elapsed);
     phase_timings.record_total(total_start.elapsed());
     Ok(ProfileSummary {
         workload: ProfileWorkloadIdentity {

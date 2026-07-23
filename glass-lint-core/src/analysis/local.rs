@@ -21,58 +21,65 @@ use crate::{
     project::ModuleId,
 };
 
+/// Inputs from `AnalysisLimits` that affect local semantic lowering.
+/// Evidence, link, and flow budgets are intentionally excluded because
+/// they only affect downstream matching and linking.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub(super) struct LocalLoweringConfig {
+    syntax_depth: usize,
+    semantic_operations: usize,
+    effect_operations: usize,
+}
+
+impl From<&crate::AnalysisLimits> for LocalLoweringConfig {
+    fn from(limits: &crate::AnalysisLimits) -> Self {
+        Self {
+            syntax_depth: limits.syntax_depth(),
+            semantic_operations: limits.semantic_operations(),
+            effect_operations: limits.effect_operations(),
+        }
+    }
+}
+
 // ---- Deterministic FNV-1a hasher for cache fingerprints -------------------
 
 /// FNV-1a hash that is deterministic across processes (fixed seed).
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub struct ArtifactFingerprint(u64);
 
-const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x100_0000_01b3;
-
-fn fnv_write(h: &mut u64, bytes: &[u8]) {
-    for &b in bytes {
-        *h ^= u64::from(b);
-        *h = h.wrapping_mul(FNV_PRIME);
-    }
-}
-
 /// Current hash version – bump when the encoding of any fingerprint
 /// dimension changes so that cached artifacts from older versions are
 /// naturally evicted.
-const FINGERPRINT_VERSION: u64 = 1;
+const FINGERPRINT_VERSION: u64 = 2;
 
 impl ArtifactFingerprint {
     /// Versioned deterministic hash of all artifact-affecting inputs.
     /// Rule selection is intentionally excluded.
-    pub fn compute(
+    fn compute(
         source: &crate::SourceText,
         language: crate::SourceLanguage,
         normalization_mode: &str,
         environment: &crate::Environment,
-        limits: &crate::AnalysisLimits,
+        limits: &LocalLoweringConfig,
         engine_version: &str,
     ) -> Self {
-        let mut h = FNV_OFFSET;
-        fnv_write(&mut h, &FINGERPRINT_VERSION.to_le_bytes());
-        fnv_write(&mut h, source.as_bytes());
-        fnv_write(
+        let mut h = crate::fingerprint::fnv_init();
+        crate::fingerprint::fnv_write(&mut h, &FINGERPRINT_VERSION.to_le_bytes());
+        crate::fingerprint::fnv_write(&mut h, source.as_bytes());
+        crate::fingerprint::fnv_write(
             &mut h,
             &[match language {
                 crate::SourceLanguage::JavaScript => 0u8,
                 crate::SourceLanguage::TypeScript => 1u8,
             }],
         );
-        fnv_write(&mut h, normalization_mode.as_bytes());
-        fnv_write(&mut h, &[0u8]); // separator
+        crate::fingerprint::fnv_write(&mut h, normalization_mode.as_bytes());
+        crate::fingerprint::fnv_write(&mut h, &[0u8]); // separator
         environment.write_fingerprint_bytes(&mut h);
-        fnv_write(&mut h, &limits.syntax_depth().to_le_bytes());
-        fnv_write(&mut h, &limits.semantic_operations().to_le_bytes());
-        fnv_write(&mut h, &limits.effect_operations().to_le_bytes());
-        fnv_write(&mut h, &limits.evidence_items().to_le_bytes());
-        fnv_write(&mut h, &limits.link_operations().to_le_bytes());
-        fnv_write(&mut h, &limits.flow_operations().to_le_bytes());
-        fnv_write(&mut h, engine_version.as_bytes());
+        crate::fingerprint::fnv_write(&mut h, &limits.syntax_depth.to_le_bytes());
+        crate::fingerprint::fnv_write(&mut h, &limits.semantic_operations.to_le_bytes());
+        crate::fingerprint::fnv_write(&mut h, &limits.effect_operations.to_le_bytes());
+        crate::fingerprint::fnv_write(&mut h, engine_version.as_bytes());
         Self(h)
     }
 }
@@ -101,13 +108,15 @@ impl LocatedSourceContext {
 
 /// Private identity of all inputs that can affect local semantic lowering.
 /// Rule selection is intentionally absent: artifacts are matcher-independent.
+/// Only local-affecting limits (syntax depth, semantic ops, effect ops) are
+/// stored; evidence, link, and flow budgets have no impact on lowering.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactCacheKey {
     source: crate::SourceText,
     language: crate::SourceLanguage,
     normalization_mode: &'static str,
     environment: crate::Environment,
-    limits: crate::AnalysisLimits,
+    limits: LocalLoweringConfig,
     engine_version: &'static str,
 }
 
@@ -151,7 +160,7 @@ impl ArtifactCacheKey {
             language: source.language,
             normalization_mode,
             environment: environment.clone(),
-            limits: limits.clone(),
+            limits: LocalLoweringConfig::from(limits),
             engine_version,
         }
     }

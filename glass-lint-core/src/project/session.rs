@@ -9,7 +9,7 @@ use crate::{
     RuleCatalog,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
-        Lowerer, QualifiedRequestId, SemanticArtifact, SharedSemanticArtifact,
+        Lowerer, QualifiedRequestId, SharedSemanticArtifact,
     },
     api::classification::RuleIndex,
     lint::ReportAssembly,
@@ -32,9 +32,8 @@ struct LocalJob {
 
 struct LocalJobResult {
     path: ProjectRelativePath,
-    source: SourceFile,
     key: ArtifactCacheKey,
-    result: Result<Arc<SemanticArtifact>, ParseDiagnostic>,
+    result: Result<LoweredSource, ParseDiagnostic>,
 }
 
 trait LocalJobExecutor {
@@ -208,12 +207,11 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
                         observer.observe(ExecutionEvent::Started);
                         observer.observe(ExecutionEvent::ParseAttempted);
                         observer.observe(ExecutionEvent::LowerAttempted);
-                        let result = lowerer.lower_source(&job.source).map(|ls| ls.semantic);
+                        let result = lowerer.lower_source(&job.source);
                         observer.observe(ExecutionEvent::Finished);
                         result_tx
                             .send(LocalJobResult {
                                 path: job.path,
-                                source: job.source,
                                 key: job.key,
                                 result,
                             })
@@ -295,11 +293,10 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
             observer.observe(ExecutionEvent::Started);
             observer.observe(ExecutionEvent::ParseAttempted);
             observer.observe(ExecutionEvent::LowerAttempted);
-            let result = lowerer.lower_source(&job.source).map(|ls| ls.semantic);
+            let result = lowerer.lower_source(&job.source);
             observer.observe(ExecutionEvent::Finished);
             release(LocalJobResult {
                 path: job.path,
-                source: job.source,
                 key: job.key,
                 result,
             });
@@ -379,13 +376,13 @@ fn cached_lowered_source(source: &SourceFile, cached: &SharedSemanticArtifact) -
 fn insert_and_notify(
     cache: &ArtifactCacheHandle,
     key: ArtifactCacheKey,
-    semantic: &Arc<SemanticArtifact>,
+    lowered: &LoweredSource,
     observer: &dyn ExecutionObserver,
 ) {
     let evicted = cache.insert(
         key,
         SharedSemanticArtifact {
-            semantic: Arc::clone(semantic),
+            semantic: Arc::clone(&lowered.semantic),
         },
     );
     observer.observe(ExecutionEvent::CacheInserted);
@@ -584,7 +581,7 @@ impl<'a> ProjectCollection<'a> {
                         return Ok(Vec::new());
                     }
                 };
-                insert_and_notify(&self.artifact_cache, key, &lowered.semantic, observer);
+                insert_and_notify(&self.artifact_cache, key, &lowered, observer);
                 lowered
             }
         };
@@ -687,15 +684,9 @@ impl<'a> ProjectCollection<'a> {
         let artifacts = &mut self.artifacts;
         let mut release = |result: LocalJobResult| {
             match result.result {
-                Ok(artifact) => {
-                    insert_and_notify(&artifact_cache, result.key, &artifact, observer);
-                    requests.extend(artifacts.record_lowered(
-                        &result.path,
-                        LoweredSource {
-                            source: LocatedSourceContext::new(&result.source),
-                            semantic: artifact,
-                        },
-                    ));
+                Ok(lowered) => {
+                    insert_and_notify(&artifact_cache, result.key, &lowered, observer);
+                    requests.extend(artifacts.record_lowered(&result.path, lowered));
                 }
                 Err(error) => {
                     artifacts.record_parse_failure(result.path, error);

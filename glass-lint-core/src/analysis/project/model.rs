@@ -475,11 +475,8 @@ impl ProjectSemanticModel {
                     }
                     result.capabilities.push(MatchedCapability {
                         rule_index: *rule_index,
-                        id: record.id.clone(),
                         label: record.description.clone(),
-                        category: record.category.clone(),
                         severity: record.severity,
-                        confidence: record.confidence,
                         evidence,
                     });
                 }

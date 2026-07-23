@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     AnalysisLimits, AnalysisReport, Environment, ProjectCollection, ProjectInput,
     ProjectInputError, ProviderCatalogError, RuleId,
@@ -51,12 +53,9 @@ impl LinterConfig {
     }
 }
 
-/// Immutable catalog plus sorted enabled-rule indexes for lint execution.
-///
-/// The linter owns the combined rule catalog, host environment, enabled-rule
-/// set, analysis limits, and a shared bounded artifact cache. It is `Send`
-/// and `Sync` and can be cloned cheaply (the cache handle is `Arc<Mutex>`).
-pub struct Linter {
+/// Immutable configuration shared across cloned linters.
+#[derive(Clone)]
+struct LinterSharedConfig {
     /// Validated rule catalog and compiled matcher plans.
     catalog: RuleCatalog,
     /// Host environment used during semantic fact construction.
@@ -65,6 +64,17 @@ pub struct Linter {
     enabled: Vec<RuleIndex>,
     /// Parser and semantic operation bounds.
     limits: AnalysisLimits,
+}
+
+/// Immutable catalog plus sorted enabled-rule indexes for lint execution.
+///
+/// The linter owns the combined rule catalog, host environment, enabled-rule
+/// set, analysis limits, and a shared bounded artifact cache. It is `Send`
+/// and `Sync` and can be cloned cheaply (all configuration fields are
+/// `Arc`-backed; only the already-shared cache handle is cloned separately).
+pub struct Linter {
+    /// Arc-backed immutable configuration shared between clones.
+    shared: Arc<LinterSharedConfig>,
     /// Shared bounded cache of successfully lowered artifacts.
     artifact_cache: ArtifactCacheHandle,
 }
@@ -72,10 +82,7 @@ pub struct Linter {
 impl Clone for Linter {
     fn clone(&self) -> Self {
         Self {
-            catalog: self.catalog.clone(),
-            environment: self.environment.clone(),
-            enabled: self.enabled.clone(),
-            limits: self.limits.clone(),
+            shared: self.shared.clone(),
             artifact_cache: self.artifact_cache.clone(),
         }
     }
@@ -91,9 +98,9 @@ impl Linter {
             self.analysis_environment(),
             self.analysis_limits(),
             self.artifact_cache_handle(),
-            &self.catalog,
-            &self.enabled,
-            self.limits.evidence_items(),
+            &self.shared.catalog,
+            &self.shared.enabled,
+            self.shared.limits.evidence_items(),
         );
         ProjectCollection::new(state, root)
     }
@@ -130,10 +137,12 @@ impl Linter {
         // Limits are guaranteed valid by construction through
         // `AnalysisLimits::new` or `Default`; no re-validation needed.
         Ok(Self {
-            catalog,
-            environment: config.environment,
-            enabled,
-            limits: config.limits,
+            shared: Arc::new(LinterSharedConfig {
+                catalog,
+                environment: config.environment,
+                enabled,
+                limits: config.limits,
+            }),
             artifact_cache: ArtifactCacheHandle::default(),
         })
     }
@@ -141,26 +150,27 @@ impl Linter {
     #[must_use]
     /// Borrow the validated catalog.
     pub fn catalog(&self) -> &RuleCatalog {
-        &self.catalog
+        &self.shared.catalog
     }
 
     /// Returns the enabled rule IDs in deterministic catalog order.
     #[must_use]
     pub fn enabled_rule_ids(&self) -> Vec<RuleId> {
-        self.enabled
+        self.shared
+            .enabled
             .iter()
-            .filter_map(|&index| self.catalog.rule_id(index).cloned())
+            .filter_map(|&index| self.shared.catalog.rule_id(index).cloned())
             .collect()
     }
 
     /// Borrow the validated parser and semantic safety limits.
     pub fn analysis_limits(&self) -> &AnalysisLimits {
-        &self.limits
+        &self.shared.limits
     }
 
     /// Borrow the complete host environment used by semantic analysis.
     pub fn analysis_environment(&self) -> &Environment {
-        &self.environment
+        &self.shared.environment
     }
 
     pub(crate) fn artifact_cache_handle(&self) -> ArtifactCacheHandle {
