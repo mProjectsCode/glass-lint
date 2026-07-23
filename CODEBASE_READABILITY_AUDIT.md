@@ -66,7 +66,7 @@ can return an over-limit corpus.
 - **Severity:** High
 - **Fix Complexity:** High
 - **Category:** Architecture
-- **Location:** `glass-lint-project/src/loader.rs:447-519`, `glass-lint-core/src/project/session/mod.rs:269-345`
+- **Location:** `glass-lint-project/src/loader.rs:441-530`, `glass-lint-core/src/project/session/mod.rs:274-283`
 
 `ProjectLoader` pops one path, reads it, and calls
 `session.analyze_source(source)` before advancing the queue. This serializes
@@ -74,12 +74,7 @@ parsing, scope construction, fact building, indexing, and local matching for
 directory and tsconfig projects even though the core session already exposes
 deterministic bounded parallel analysis through `analyze_sources`.
 
-Process the current import frontier in bounded waves: read a bounded batch,
-pass it to `ProjectCollection::analyze_sources` with the validated worker
-count, sort returned requests deterministically, resolve them, and build the
-next wave. Preserve the existing deadline, cache, partial-report, and source-
-byte semantics, and cap the wave size independently of total files so
-parallelism does not create an unbounded memory spike.
+- **Status:** Done — `ProjectLoadState::close_frontier` now drains the import frontier in bounded waves of 50 files. Each wave reads files sequentially, then passes the batch to `ProjectCollection::analyze_sources` for parallel lowering using `available_parallelism` workers. Returned `ResolutionRequest`s (already sorted deterministically by `analyze_sources`) are resolved and internal targets enqueued. `check_timeout` runs between waves and per resolution. Deferred byte-budget errors preserve partial-report semantics: files read before a budget hit are still analyzed. The old serial `load_path` was replaced by wave-based `process_wave`; `record_requests`, `check_timeout`, and `enqueue_internal_target` are retained.
 
 #### READ-004 — Tsconfig inheritance and references have no structural traversal budget
 
@@ -102,6 +97,8 @@ graphs and an active set paired with an ordered stack for cycle diagnostics.
 Resolve an `extends` chain iteratively and merge it in reverse order. Return a
 typed project-load error on structural exhaustion and test below, at, and
 above both limits.
+
+- **Status:** Done — added `ConfigTraversalBudget` with `max_config_count` and `max_depth`, threaded through `build_effective_config` and discovery reference traversal, added `ConfigBudgetExhausted` error variant, replaced recursive reference traversal with an iterative work stack using Enter/Exit markers, added budget fields to `ProjectLoadOptions` with defaults (100 count, 20 depth), validation, and builder methods, and added tests for below/at/above both limits.
 
 #### READ-005 — Directory discovery performs a realpath operation for every entry
 
@@ -228,6 +225,8 @@ owned prefixes. Preserve source-position-sensitive mutation checks,
 shadowing, reassignment, and fail-closed ambiguity. Add a deep minified-chain
 profile and exact-behavior tests before replacing the existing paths.
 
+- **Status:** Done — added `MemberChainCache` (three `RefCell<HashMap<...>>` caches) to `ScopeGraph`; `resolve_member_chain` caches `Option<SymbolPath>` keyed by `member.span`; `rooted_chain_mutated_at` caches `bool` keyed by `(chain_string, span)`; `member_value_seed` caches the complete `MemberValueSeed` keyed by `member.span`. Repeated nested-member resolution now returns cached results instead of recomputing all prefixes.
+
 #### READ-011 — DeclarationFacts eagerly performs seven overlapping analyses even when the result is discarded
 
 - **Severity:** High
@@ -269,6 +268,8 @@ that creates a read-only resolver view. Put queries on the component that owns
 their state; keep a small coordinator only for queries that genuinely combine
 components. Centralize strict-identity and dynamic-scope checks in that
 coordinator rather than duplicating them.
+
+- **Status:** Done — Split `ScopeGraph` into `NameEnvironment`, `LexicalScopeIndex`, `BindingIndex`, and `MutationIndex` sub-structs; added `FrozenScopeGraph` as a read-only query type; moved all query methods from `impl ScopeGraph` to `impl FrozenScopeGraph`; collection phase calls `freeze()` to produce the frozen graph.
 
 #### READ-013 — Constrained matching prepares paths and allocates evidence inside the occurrence loop
 

@@ -8,7 +8,7 @@ use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase};
 
 use crate::analysis::{
     SymbolPath,
-    scope::{BindingProvenance, ScopeGraph},
+    scope::{BindingProvenance, FrozenScopeGraph},
 };
 
 pub(in crate::analysis) trait RootedExprContext {
@@ -18,7 +18,7 @@ pub(in crate::analysis) trait RootedExprContext {
     fn rooted_member_chain(&self, member: &MemberExpr) -> Option<SymbolPath>;
 }
 
-impl RootedExprContext for ScopeGraph {
+impl RootedExprContext for FrozenScopeGraph {
     fn rooted_ident_chain(&self, ident: &Ident) -> Option<SymbolPath> {
         if self.has_dynamic_lookup_at(ident.span) {
             return None;
@@ -73,7 +73,7 @@ pub(in crate::analysis) fn rooted_expr_chain_with(
     }
 }
 
-impl ScopeGraph {
+impl FrozenScopeGraph {
     /// Resolve a supported expression shape to a rooted symbol path.
     pub(in crate::analysis) fn rooted_expr_chain(&self, expr: &Expr) -> Option<SymbolPath> {
         rooted_expr_chain_with(self, expr)

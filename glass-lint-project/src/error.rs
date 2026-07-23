@@ -42,6 +42,8 @@ pub enum ProjectLoadError {
     CorpusRootNotFileOrDir(PathBuf),
     /// Config parse error at the given path.
     ConfigParseError { path: PathBuf, source: String },
+    /// The tsconfig traversal budget was exhausted.
+    ConfigBudgetExhausted { kind: &'static str, limit: usize },
 }
 
 #[derive(Debug)]
@@ -121,6 +123,9 @@ impl fmt::Display for ProjectLoadError {
             }
             Self::ConfigParseError { path, source } => {
                 write!(f, "parse {}: {source}", path.display())
+            }
+            Self::ConfigBudgetExhausted { kind, limit } => {
+                write!(f, "tsconfig traversal {kind} exceeded ({limit})")
             }
         }
     }

@@ -2,6 +2,7 @@
 
 use std::{
     collections::{BTreeMap, VecDeque},
+    num::NonZeroUsize,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -17,6 +18,7 @@ use crate::{
     error::ProjectLoadError,
     options::{ProjectSelection, ValidatedProjectLoadOptions},
     resolver::ProjectResolver,
+    tsconfig,
 };
 
 /// Filesystem loader and Oxc resolver configuration.
@@ -281,7 +283,15 @@ impl<'a> ProjectPaths<'a> {
                 root,
             });
         }
-        let discover = ProjectDiscovery::with_deadline(&admission, deadline, options.max_files());
+        let discover = ProjectDiscovery::with_deadline(
+            &admission,
+            deadline,
+            options.max_files(),
+            tsconfig::ConfigTraversalBudget::new(
+                options.max_config_count(),
+                options.max_config_depth(),
+            ),
+        );
         let DiscoveryResult { paths, diagnostics } =
             discover.initial_paths(selection, canonical_selection.as_ref())?;
         Ok(Self {
@@ -380,6 +390,11 @@ impl LoadProgress {
     }
 }
 
+/// Maximum number of files processed in one parallel wave. Independent of
+/// the total file limit so that parallelism does not create an unbounded
+/// memory spike.
+const WAVE_SIZE: usize = 50;
+
 /// Mutable state for one project construction. Keeping the queue, cache, and
 /// counters together makes the main loading phases explicit and auditable.
 struct ProjectLoadState<'a> {
@@ -422,24 +437,36 @@ impl<'a> ProjectLoadState<'a> {
         self.queue.extend(paths);
     }
 
-    /// Drain the work queue and close the frontier, returning a typed
-    /// [`ClosedFrontier`] that can only be used for linking and matching.
-    /// Frontier expansion and report generation are now visibly separate
-    /// phases. The result signals whether the frontier was fully drained or
-    /// stopped by a recoverable error; the `ClosedFrontier` is always
-    /// produced so callers can still assemble a partial report.
+    /// Drain the work queue in bounded parallel waves and close the frontier,
+    /// returning a typed [`ClosedFrontier`] that can only be used for linking
+    /// and matching.  Frontier expansion and report generation are now visibly
+    /// separate phases. The result signals whether the frontier was fully
+    /// drained or stopped by a recoverable error; the `ClosedFrontier` is
+    /// always produced so callers can still assemble a partial report.
     fn close_frontier(
         mut self,
         metrics: &mut ProjectLoadMetrics,
     ) -> (Result<(), ProjectLoadError>, ClosedFrontier<'a>) {
+        let workers = std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+
         let result = loop {
-            let Some(path) = self.queue.pop_front() else {
-                break Ok(());
-            };
             if let Err(e) = self.check_timeout() {
                 break Err(e);
             }
-            if let Err(e) = self.load_path(&path, metrics) {
+
+            let mut wave: Vec<AdmittedSourcePath> = Vec::with_capacity(WAVE_SIZE);
+            while wave.len() < WAVE_SIZE {
+                match self.queue.pop_front() {
+                    Some(path) => wave.push(path),
+                    None => break,
+                }
+            }
+
+            if wave.is_empty() {
+                break Ok(());
+            }
+
+            if let Err(e) = self.process_wave(&wave, workers, metrics) {
                 break Err(e);
             }
         };
@@ -452,34 +479,66 @@ impl<'a> ProjectLoadState<'a> {
         (result, frontier)
     }
 
-    fn load_path(
+    /// Admit, read, and locally analyze one bounded wave of source files in
+    /// parallel, then resolve all emerging requests and enqueue internal
+    /// targets for the next wave.
+    ///
+    /// When a budget check fails mid-wave (e.g. the project source-byte limit
+    /// is hit), files that were successfully admitted and read are still
+    /// submitted for parallel analysis so partial output is preserved.
+    fn process_wave(
         &mut self,
-        admitted: &AdmittedSourcePath,
+        wave: &[AdmittedSourcePath],
+        workers: NonZeroUsize,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
-        self.check_timeout()?;
-        if !self.admitted.admit(admitted)? {
-            return Ok(());
+        let source_limit = self.admission.options().max_project_source_bytes();
+
+        // Phase 1: admit and read every source in the wave.  If a cumulative
+        // budget is exceeded, we defer the error and analyse whatever we
+        // already read, preserving partial-report semantics.
+        let read_start = Instant::now();
+        let mut sources = Vec::with_capacity(wave.len());
+        let mut byte_error = None;
+        for admitted in wave {
+            if !self.admitted.admit(admitted)? {
+                continue;
+            }
+            let source = self.admission.load_admitted_source_file(admitted)?;
+            let source_bytes = u64::try_from(source.source().len())
+                .unwrap_or_else(|_| source_limit.saturating_add(1));
+            if let Err(e) = self
+                .progress
+                .record_source_bytes(source_bytes, source_limit)
+            {
+                byte_error = Some(e);
+                break;
+            }
+            sources.push(source);
+        }
+        metrics.timings.record_reads(read_start.elapsed());
+
+        // Phase 2: analyze all sources collected so far in parallel, even if
+        // a later file triggered a budget error.
+        if !sources.is_empty() {
+            let parse_start = Instant::now();
+            let requests = self.session.analyze_sources(sources, workers)?;
+            metrics.timings.record_analyze_source(parse_start.elapsed());
+            metrics.files = self.admitted.len();
+
+            self.progress
+                .add_requests(requests.len(), self.admission.options().max_requests())?;
+            self.progress.publish(metrics);
+            self.record_requests(requests, metrics)?;
         }
 
-        let read_start = Instant::now();
-        let source = self.admission.load_admitted_source_file(admitted)?;
-        metrics.timings.record_reads(read_start.elapsed());
-        let source_limit = self.admission.options().max_project_source_bytes();
-        let source_bytes =
-            u64::try_from(source.source().len()).unwrap_or_else(|_| source_limit.saturating_add(1));
-        self.progress
-            .record_source_bytes(source_bytes, source_limit)?;
+        // Phase 3: propagate the deferred byte error after the analysed files
+        // have been incorporated.
+        if let Some(e) = byte_error {
+            return Err(e);
+        }
 
-        let parse_start = Instant::now();
-        let requests = self.session.analyze_source(source)?.requests();
-        metrics.timings.record_analyze_source(parse_start.elapsed());
-        metrics.files = self.admitted.len();
-
-        self.progress
-            .add_requests(requests.len(), self.admission.options().max_requests())?;
-        self.progress.publish(metrics);
-        self.record_requests(requests, metrics)
+        Ok(())
     }
 
     fn record_requests(

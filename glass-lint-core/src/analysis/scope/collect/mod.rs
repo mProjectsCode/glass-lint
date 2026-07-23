@@ -20,8 +20,8 @@ use crate::{
     analysis::{
         name::{NameId, NameTable},
         scope::{
-            AliasAssignment, BindingProvenance, FrozenAssignmentIndex, LexicalScope, ScopeEffect,
-            ScopeGraph, ScopeGraphParts, ScopeId, ScopeKind, ScopedName,
+            AliasAssignment, BindingProvenance, FrozenAssignmentIndex, FrozenScopeGraph,
+            LexicalScope, ScopeEffect, ScopeGraph, ScopeGraphParts, ScopeId, ScopeKind, ScopedName,
             query::rooted::{RootedExprContext, rooted_expr_chain_with},
         },
         syntax::{
@@ -95,12 +95,12 @@ pub(super) struct ScopeCollector {
 /// Frozen result of source-order scope collection, including conservative
 /// shape diagnostics that callers may translate into analysis status.
 pub(in crate::analysis) struct ScopedProgram {
-    pub(super) graph: ScopeGraph,
+    pub(super) graph: FrozenScopeGraph,
     pub(super) issues: Vec<ScopeCollectionIssue>,
 }
 
 impl ScopedProgram {
-    pub(in crate::analysis) fn into_parts(self) -> (ScopeGraph, Vec<ScopeCollectionIssue>) {
+    pub(in crate::analysis) fn into_parts(self) -> (FrozenScopeGraph, Vec<ScopeCollectionIssue>) {
         (self.graph, self.issues)
     }
 }
@@ -392,7 +392,11 @@ impl ScopeCollector {
             scope_shape_valid,
         });
         graph.finish_collected_properties(property_assignments, rooted_mutations, dynamic_evals);
-        ScopedProgram { graph, issues }
+        let frozen = graph.freeze();
+        ScopedProgram {
+            graph: frozen,
+            issues,
+        }
     }
 
     /// Return the innermost scope currently being traversed.

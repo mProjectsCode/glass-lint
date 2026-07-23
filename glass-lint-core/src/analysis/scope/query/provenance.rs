@@ -10,15 +10,15 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
     scope::query::{
-        BindingKey, BindingProvenance, Expr, Ident, IdentValueSeed, MemberExpr, MemberValueSeed,
-        ScopeGraph, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant,
+        BindingKey, BindingProvenance, Expr, FrozenScopeGraph, Ident, IdentValueSeed, MemberExpr,
+        MemberValueSeed, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant,
         contains, member_root_identifier,
     },
     syntax::{constant::Lookup, expression_name},
     value::BindingRoot,
 };
 
-impl ScopeGraph {
+impl FrozenScopeGraph {
     /// Resolve a direct member of a recognized host global object to the same
     /// callable identity as its bare global binding. This is deliberately
     /// limited to one property segment: `window.fetch` is the global `fetch`,
@@ -57,7 +57,7 @@ impl ScopeGraph {
         member: &MemberExpr,
     ) -> Option<SymbolPath> {
         let syntactic_chain = self.member_expression_chain(member).or_else(|| {
-            let object = crate::analysis::syntax::expression_name(&member.obj)?;
+            let object = expression_name(&member.obj)?;
             let property = self.member_property_name(member)?;
             Some(object.append_chain(&property))
         })?;
@@ -70,78 +70,92 @@ impl ScopeGraph {
         member: &MemberExpr,
         syntactic_chain: &SymbolPath,
     ) -> Option<SymbolPath> {
-        if self.has_dynamic_lookup_at(member.span) {
-            return None;
+        if let Some(cached) = self.member_cache.resolve_chain.borrow().get(&member.span) {
+            return cached.clone();
         }
 
-        let Some(root) = member_root_identifier(member) else {
-            return (syntactic_chain.first_segment() == Some("this"))
-                .then(|| syntactic_chain.clone());
-        };
+        let result = (|| {
+            if self.has_dynamic_lookup_at(member.span) {
+                return None;
+            }
 
-        let receiver_key = self.binding_key_for_name(root.sym.as_ref(), root.span)?;
-        let segments = syntactic_chain.segments();
-
-        for prefix_end in (2..=segments.len()).rev() {
-            let path = segments[1..prefix_end].to_vec();
-            let Some(path) = self.name_path(&SymbolPath::from_segments(path)) else {
-                continue;
-            };
-            let Some(assignments) = self.property_aliases(&(receiver_key.clone(), path)) else {
-                continue;
+            let Some(root) = member_root_identifier(member) else {
+                return (syntactic_chain.first_segment() == Some("this"))
+                    .then(|| syntactic_chain.clone());
             };
 
-            let prior_count =
-                assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
+            let receiver_key = self.binding_key_for_name(root.sym.as_ref(), root.span)?;
+            let segments = syntactic_chain.segments();
 
-            if let Some(assignment) = assignments[..prior_count].iter().rev().find(|assignment| {
-                self.scope_span(assignment.scope)
-                    .is_some_and(|scope| contains(scope, member.span))
-            }) {
-                let target = assignment.target.as_ref()?;
-                let suffix = SymbolPath::from_segments(segments[prefix_end..].to_vec());
-                return Some(target.append_path(&suffix));
-            }
-        }
+            for prefix_end in (2..=segments.len()).rev() {
+                let path = segments[1..prefix_end].to_vec();
+                let Some(path) = self.name_path(&SymbolPath::from_segments(path)) else {
+                    continue;
+                };
+                let Some(assignments) = self.property_aliases(&(receiver_key.clone(), path)) else {
+                    continue;
+                };
 
-        let suffix = SymbolPath::from_segments(segments[1..].to_vec());
-        match self.binding_at(root.sym.as_ref(), root.span) {
-            Some(BindingProvenance::ValueAlias { target })
-                if self.rooted_path_available(target) =>
-            {
-                Some(self.symbol_path(target)?.append_path(&suffix))
+                let prior_count =
+                    assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
+
+                if let Some(assignment) =
+                    assignments[..prior_count].iter().rev().find(|assignment| {
+                        self.scope_span(assignment.scope)
+                            .is_some_and(|scope| contains(scope, member.span))
+                    })
+                {
+                    let target = assignment.target.as_ref()?;
+                    let suffix = SymbolPath::from_segments(segments[prefix_end..].to_vec());
+                    return Some(target.append_path(&suffix));
+                }
             }
-            Some(BindingProvenance::BoundCallable { target, .. })
-                if self.rooted_path_available(target) =>
-            {
-                Some(self.symbol_path(target)?.append_path(&suffix))
+
+            let suffix = SymbolPath::from_segments(segments[1..].to_vec());
+            match self.binding_at(root.sym.as_ref(), root.span) {
+                Some(BindingProvenance::ValueAlias { target })
+                    if self.rooted_path_available(target) =>
+                {
+                    Some(self.symbol_path(target)?.append_path(&suffix))
+                }
+                Some(BindingProvenance::BoundCallable { target, .. })
+                    if self.rooted_path_available(target) =>
+                {
+                    Some(self.symbol_path(target)?.append_path(&suffix))
+                }
+                Some(BindingProvenance::ReturnedObject { source })
+                    if self.rooted_path_available(source) =>
+                {
+                    Some(self.symbol_path(source)?.append_path(&suffix))
+                }
+                Some(
+                    BindingProvenance::ValueAlias { .. }
+                    | BindingProvenance::BoundCallable { .. }
+                    | BindingProvenance::ReturnedObject { .. },
+                ) => None,
+                Some(
+                    BindingProvenance::Local
+                    | BindingProvenance::ModuleExport { .. }
+                    | BindingProvenance::ModuleNamespace { .. }
+                    | BindingProvenance::BoundModuleCallable { .. }
+                    | BindingProvenance::StaticString(_)
+                    | BindingProvenance::StaticNumber(_)
+                    | BindingProvenance::StaticStringArray(_)
+                    | BindingProvenance::StaticObjectKeys(_)
+                    | BindingProvenance::StaticObjectValues(_),
+                ) => None,
+                None if self.is_global(root.sym.as_ref()) => {
+                    self.rooted_chain_available_at(syntactic_chain, member.span)
+                }
+                None => None,
             }
-            Some(BindingProvenance::ReturnedObject { source })
-                if self.rooted_path_available(source) =>
-            {
-                Some(self.symbol_path(source)?.append_path(&suffix))
-            }
-            Some(
-                BindingProvenance::ValueAlias { .. }
-                | BindingProvenance::BoundCallable { .. }
-                | BindingProvenance::ReturnedObject { .. },
-            ) => None,
-            Some(
-                BindingProvenance::Local
-                | BindingProvenance::ModuleExport { .. }
-                | BindingProvenance::ModuleNamespace { .. }
-                | BindingProvenance::BoundModuleCallable { .. }
-                | BindingProvenance::StaticString(_)
-                | BindingProvenance::StaticNumber(_)
-                | BindingProvenance::StaticStringArray(_)
-                | BindingProvenance::StaticObjectKeys(_)
-                | BindingProvenance::StaticObjectValues(_),
-            ) => None,
-            None if self.is_global(root.sym.as_ref()) => {
-                self.rooted_chain_available_at(syntactic_chain, member.span)
-            }
-            None => None,
-        }
+        })();
+
+        self.member_cache
+            .resolve_chain
+            .borrow_mut()
+            .insert(member.span, result.clone());
+        result
     }
 
     /// Return the canonical identity for a rooted member expression.
@@ -187,28 +201,39 @@ impl ScopeGraph {
     /// Check writes through both a canonical root and any global-object alias.
     /// A write to an earlier segment invalidates every deeper rooted path.
     fn rooted_chain_mutated_at(&self, chain: &SymbolPath, span: Span) -> bool {
-        let segments = chain.segments();
-        if segments.len() < 2 {
-            return false;
+        let key = (SmolStr::from(chain.to_string()), span);
+        if let Some(cached) = self.member_cache.mutated_at.borrow().get(&key) {
+            return *cached;
         }
 
-        // A write through a configured realm alias changes the same promoted
-        // first segment as a write through the bare global binding.
-        if self
-            .global_objects()
-            .filter(|root| self.is_global_member(root, &segments[0]))
-            .any(|root| {
-                self.rooted_property_was_mutated_at(&(*root).into(), Some(&segments[0]), span)
+        let result = (|| {
+            let segments = chain.segments();
+            if segments.len() < 2 {
+                return false;
+            }
+
+            if self
+                .global_objects()
+                .filter(|root| self.is_global_member(root, &segments[0]))
+                .any(|root| {
+                    self.rooted_property_was_mutated_at(&(*root).into(), Some(&segments[0]), span)
+                })
+            {
+                return true;
+            }
+
+            (1..segments.len()).any(|end| {
+                let receiver = SymbolPath::from_segments(segments[..end].to_vec());
+                let property = &segments[end];
+                self.rooted_property_was_mutated_at(&receiver, Some(property.as_str()), span)
             })
-        {
-            return true;
-        }
+        })();
 
-        (1..segments.len()).any(|end| {
-            let receiver = SymbolPath::from_segments(segments[..end].to_vec());
-            let property = &segments[end];
-            self.rooted_property_was_mutated_at(&receiver, Some(property.as_str()), span)
-        })
+        self.member_cache
+            .mutated_at
+            .borrow_mut()
+            .insert(key, result);
+        result
     }
 
     pub(in crate::analysis) fn instance_member_available_at(&self, member: &MemberExpr) -> bool {
@@ -271,7 +296,7 @@ impl ScopeGraph {
     }
 }
 
-impl ScopeGraph {
+impl FrozenScopeGraph {
     /// Derived global or module-export provenance from a symbol path, falling
     /// back to [`SymbolCallProvenance::Local`].
     fn symbol_path_provenance(
@@ -352,7 +377,7 @@ impl ScopeGraph {
             .and_then(|(scope, _)| {
                 Some(BindingKey::new(BindingRoot::Binding {
                     function: self.function_scope_at(scope),
-                    binding: self.binding_id_at(scope, ident.sym.as_ref())?,
+                    binding: self.binding_id_at(scope, self.name_id(ident.sym.as_ref())?)?,
                     version: self.binding_version_at(scope, ident.sym.as_ref(), ident.span),
                 }))
             });
@@ -459,30 +484,42 @@ impl ScopeGraph {
 
     /// Produce the immutable resolver seed for a member occurrence.
     pub(in crate::analysis) fn member_value_seed(&self, member: &MemberExpr) -> MemberValueSeed {
-        let syntactic_chain = self.member_expression_chain(member);
-        let rooted_chain = syntactic_chain
-            .as_ref()
-            .and_then(|chain| self.resolve_member_chain(member, chain))
-            .or_else(|| self.rooted_member_chain(member))
-            .and_then(|path| self.name_path(&path));
-        let module_member = syntactic_chain
-            .as_ref()
-            .and_then(|chain| self.member_call_provenance_for_chain(member, &chain.to_string()));
-        let returned_member = self.returned_member(member);
-        let binding = self
-            .binding_key_for_expr(&member.obj)
-            .or_else(|| self.global_key_for_expr(&member.obj))
-            .and_then(|mut key| {
-                key.append_segment(self.name_id(self.member_property_name(member)?.as_str())?);
-                Some(key)
-            });
-        MemberValueSeed {
-            syntactic_chain,
-            rooted_chain,
-            binding,
-            module_member,
-            returned_member,
+        if let Some(cached) = self.member_cache.member_seed.borrow().get(&member.span) {
+            return cached.clone();
         }
+
+        let result = {
+            let syntactic_chain = self.member_expression_chain(member);
+            let rooted_chain = syntactic_chain
+                .as_ref()
+                .and_then(|chain| self.resolve_member_chain(member, chain))
+                .or_else(|| self.rooted_member_chain(member))
+                .and_then(|path| self.name_path(&path));
+            let module_member = syntactic_chain.as_ref().and_then(|chain| {
+                self.member_call_provenance_for_chain(member, &chain.to_string())
+            });
+            let returned_member = self.returned_member(member);
+            let binding = self
+                .binding_key_for_expr(&member.obj)
+                .or_else(|| self.global_key_for_expr(&member.obj))
+                .and_then(|mut key| {
+                    key.append_segment(self.name_id(self.member_property_name(member)?.as_str())?);
+                    Some(key)
+                });
+            MemberValueSeed {
+                syntactic_chain,
+                rooted_chain,
+                binding,
+                module_member,
+                returned_member,
+            }
+        };
+
+        self.member_cache
+            .member_seed
+            .borrow_mut()
+            .insert(member.span, result.clone());
+        result
     }
 
     /// Resolve supported import/require expressions to module/member paths.

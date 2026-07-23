@@ -9,8 +9,8 @@ use swc_ecma_ast::{Expr, Ident, MemberExpr};
 
 use crate::analysis::{
     scope::{
-        BindingProvenance, BoundArgument, IdentValueSeed, MemberValueSeed, ScopeGraph, ScopeId,
-        ScopeKind, collect::aliases::contains,
+        BindingProvenance, BoundArgument, FrozenScopeGraph, IdentValueSeed, MemberValueSeed,
+        ScopeId, ScopeKind, collect::aliases::contains,
     },
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance,

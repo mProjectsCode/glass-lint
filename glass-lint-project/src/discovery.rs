@@ -24,11 +24,24 @@ pub struct ProjectDiscovery<'adm, 'opt> {
     admission: &'adm SourceAdmission<'opt>,
     deadline: Option<Instant>,
     admitted: AdmissionSet,
+    config_budget: tsconfig::ConfigTraversalBudget,
 }
 
 pub struct DiscoveryResult {
     pub paths: Vec<AdmittedSourcePath>,
     pub diagnostics: Vec<TsconfigDiagnostic>,
+}
+
+/// Work item for iterative reference-graph traversal.
+struct RefWorkItem {
+    config: PathBuf,
+    base: PathBuf,
+    depth: usize,
+}
+
+enum RefStackItem {
+    Enter(RefWorkItem),
+    Exit,
 }
 
 impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
@@ -37,11 +50,13 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         admission: &'adm SourceAdmission<'opt>,
         deadline: Instant,
         max_files: usize,
+        config_budget: tsconfig::ConfigTraversalBudget,
     ) -> Self {
         Self {
             admission,
             deadline: Some(deadline),
             admitted: AdmissionSet::new(max_files),
+            config_budget,
         }
     }
 
@@ -122,17 +137,9 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         config: &Path,
         directory: &Path,
     ) -> Result<Vec<TsconfigDiagnostic>, ProjectLoadError> {
-        let mut visited = BTreeSet::new();
-        let mut active = Vec::new();
         let mut cycle_diagnostics = Vec::new();
         let canonical_config = SourceAdmission::canonicalize(config)?;
-        self.collect_tsconfig(
-            &canonical_config,
-            directory,
-            &mut visited,
-            &mut active,
-            &mut cycle_diagnostics,
-        )?;
+        self.collect_tsconfig_graph(&canonical_config, directory, &mut cycle_diagnostics)?;
         cycle_diagnostics.sort_by(|left, right| {
             left.config_path
                 .cmp(&right.config_path)
@@ -143,49 +150,105 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         Ok(cycle_diagnostics)
     }
 
-    fn collect_tsconfig(
+    /// Iterative reference-graph traversal with an explicit work stack.
+    /// Uses Enter/Exit markers so the `active` set correctly tracks the
+    /// current reference chain for cycle detection.
+    fn collect_tsconfig_graph(
         &mut self,
-        config: &CanonicalProjectPath,
-        fallback_directory: &Path,
-        visited: &mut BTreeSet<PathBuf>,
-        active: &mut Vec<PathBuf>,
+        root_config: &CanonicalProjectPath,
+        root_directory: &Path,
         cycle_diagnostics: &mut Vec<TsconfigDiagnostic>,
     ) -> Result<(), ProjectLoadError> {
-        let config_path = config.as_ref().to_path_buf();
-        if active.contains(&config_path) {
-            cycle_diagnostics.push(TsconfigDiagnostic {
-                config_path: config_path.clone(),
-                cycle_target: Some(config_path),
-                message: "cycle detected in project references".into(),
-            });
-            return Ok(());
-        }
-        if !visited.insert(config.as_ref().to_path_buf()) {
-            return Ok(());
-        }
+        let mut visited: BTreeSet<PathBuf> = BTreeSet::new();
+        let mut active: Vec<PathBuf> = Vec::new();
+        let mut config_count = 0usize;
+        let mut stack: Vec<RefStackItem> = Vec::new();
 
-        active.push(config.as_ref().to_path_buf());
-
-        let canonical = config.as_ref().to_path_buf();
-        let base = config
-            .as_ref()
+        let root_base = Path::new(root_config.as_ref())
             .parent()
-            .unwrap_or(fallback_directory)
+            .unwrap_or(root_directory)
             .to_path_buf();
+        stack.push(RefStackItem::Enter(RefWorkItem {
+            config: root_config.as_ref().to_path_buf(),
+            base: root_base,
+            depth: 0,
+        }));
 
-        // Phase 1-3: Build effective config (typed parse, extends resolution, merge)
-        let (effective, references) =
-            tsconfig::build_effective_config(&canonical, &base, self.deadline, cycle_diagnostics)?;
+        while let Some(item) = stack.pop() {
+            match item {
+                RefStackItem::Exit => {
+                    active.pop();
+                }
+                RefStackItem::Enter(work) => {
+                    let config_path = &work.config;
 
-        // Phase 4: Select sources using the typed effective config, admitting
-        // into the shared budget.
-        self.select_sources(&effective, &base)?;
+                    // Depth budget check
+                    if work.depth >= self.config_budget.max_depth {
+                        return Err(ProjectLoadError::ConfigBudgetExhausted {
+                            kind: "reference depth",
+                            limit: self.config_budget.max_depth,
+                        });
+                    }
 
-        // Phase 5: Traverse project references
-        let result =
-            self.collect_references_typed(&base, visited, active, cycle_diagnostics, &references);
-        active.pop();
-        result
+                    // Cycle detection
+                    if active.contains(config_path) {
+                        cycle_diagnostics.push(TsconfigDiagnostic {
+                            config_path: config_path.clone(),
+                            cycle_target: Some(config_path.clone()),
+                            message: "cycle detected in project references".into(),
+                        });
+                        continue;
+                    }
+
+                    // Already fully visited via another path
+                    if !visited.insert(config_path.clone()) {
+                        continue;
+                    }
+
+                    active.push(config_path.clone());
+
+                    // Config count is tracked inside build_effective_config.
+                    // Phase 1-3: Build effective config
+                    let (effective, references) = tsconfig::build_effective_config(
+                        config_path,
+                        &work.base,
+                        self.deadline,
+                        cycle_diagnostics,
+                        self.config_budget,
+                        &mut config_count,
+                    )?;
+
+                    // Phase 4: Select sources
+                    self.select_sources(&effective, &work.base)?;
+
+                    // Schedule Exit marker so the active stack is cleaned
+                    // up after all children have been processed.
+                    stack.push(RefStackItem::Exit);
+
+                    // Phase 5: Push references (reverse order so DFS
+                    // processes them in their original declaration order).
+                    for reference in references.iter().rev() {
+                        let mut target = work.base.join(&reference.path);
+                        if target.is_dir() {
+                            target = target.join("tsconfig.json");
+                        }
+                        if target.exists() {
+                            let canonical_target = SourceAdmission::canonicalize(&target)?;
+                            let child_base = Path::new(canonical_target.as_ref())
+                                .parent()
+                                .map_or_else(|| work.base.clone(), Path::to_path_buf);
+                            stack.push(RefStackItem::Enter(RefWorkItem {
+                                config: canonical_target.into_path_buf(),
+                                base: child_base,
+                                depth: work.depth + 1,
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 
     fn select_sources(
@@ -220,27 +283,6 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                 &mut include,
                 &mut self.admitted,
             )?;
-        }
-        Ok(())
-    }
-
-    fn collect_references_typed(
-        &mut self,
-        base: &Path,
-        visited: &mut BTreeSet<PathBuf>,
-        active: &mut Vec<PathBuf>,
-        cycle_diagnostics: &mut Vec<TsconfigDiagnostic>,
-        references: &[tsconfig::ReferenceEntry],
-    ) -> Result<(), ProjectLoadError> {
-        for reference in references {
-            let mut target = base.join(&reference.path);
-            if target.is_dir() {
-                target = target.join("tsconfig.json");
-            }
-            if target.exists() {
-                let canonical_target = SourceAdmission::canonicalize(&target)?;
-                self.collect_tsconfig(&canonical_target, base, visited, active, cycle_diagnostics)?;
-            }
         }
         Ok(())
     }

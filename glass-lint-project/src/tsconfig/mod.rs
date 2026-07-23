@@ -20,6 +20,33 @@ use serde_json::Value;
 
 use crate::{admission::realpath, error::ProjectLoadError};
 
+/// Budget for tsconfig traversal (extends and project references).
+#[derive(Clone, Copy, Debug)]
+pub struct ConfigTraversalBudget {
+    /// Maximum number of config files to process across the whole traversal.
+    pub max_config_count: usize,
+    /// Maximum inheritance (extends or reference) chain depth.
+    pub max_depth: usize,
+}
+
+impl ConfigTraversalBudget {
+    pub const fn new(max_config_count: usize, max_depth: usize) -> Self {
+        Self {
+            max_config_count,
+            max_depth,
+        }
+    }
+}
+
+impl Default for ConfigTraversalBudget {
+    fn default() -> Self {
+        Self {
+            max_config_count: 100,
+            max_depth: 20,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Field-level representation for the parsed DTO
 // ---------------------------------------------------------------------------
@@ -323,6 +350,7 @@ pub fn merge_selection(child: ParsedTsconfig, parent: Option<MergedSelection>) -
 ///
 /// Raw include/exclude strings are discarded after compilation; only the
 /// compiled [`TsconfigPatternSet`] and the explicit `files` list are retained.
+#[derive(Debug)]
 pub struct CompiledTsconfigSelection {
     /// Canonical config path.
     config_path: PathBuf,
@@ -510,6 +538,8 @@ pub fn build_effective_config(
     fallback_base: &Path,
     deadline: Option<Instant>,
     diagnostics: &mut Vec<TsconfigDiagnostic>,
+    budget: ConfigTraversalBudget,
+    config_count: &mut usize,
 ) -> Result<(CompiledTsconfigSelection, Vec<ReferenceEntry>), ProjectLoadError> {
     let mut extends_chain: Vec<PathBuf> = Vec::new();
     let (merged, references) = build_effective_config_inner(
@@ -518,6 +548,8 @@ pub fn build_effective_config(
         &mut extends_chain,
         deadline,
         diagnostics,
+        budget,
+        config_count,
     )?;
     let canonical = realpath(config_path)?;
     let compiled = CompiledTsconfigSelection::compile(canonical, merged);
@@ -540,6 +572,8 @@ fn build_effective_config_inner(
     extends_chain: &mut Vec<PathBuf>,
     deadline: Option<Instant>,
     diagnostics: &mut Vec<TsconfigDiagnostic>,
+    budget: ConfigTraversalBudget,
+    config_count: &mut usize,
 ) -> Result<(MergedSelection, Vec<ReferenceEntry>), ProjectLoadError> {
     if let Some(deadline) = deadline
         && Instant::now() >= deadline
@@ -547,7 +581,24 @@ fn build_effective_config_inner(
         return Err(ProjectLoadError::Timeout);
     }
     let canonical = realpath(config_path)?;
+
+    // Depth check (extends chain)
+    if extends_chain.len() >= budget.max_depth {
+        return Err(ProjectLoadError::ConfigBudgetExhausted {
+            kind: "extends depth",
+            limit: budget.max_depth,
+        });
+    }
     extends_chain.push(canonical.clone());
+
+    // Config count check
+    *config_count += 1;
+    if *config_count > budget.max_config_count {
+        return Err(ProjectLoadError::ConfigBudgetExhausted {
+            kind: "config count",
+            limit: budget.max_config_count,
+        });
+    }
 
     let dto = read_and_parse(config_path)?;
     for message in &dto.diagnostics {
@@ -591,6 +642,8 @@ fn build_effective_config_inner(
                                 extends_chain,
                                 deadline,
                                 diagnostics,
+                                budget,
+                                config_count,
                             );
                             Some(result.map(|(merged, _)| merged))
                         }

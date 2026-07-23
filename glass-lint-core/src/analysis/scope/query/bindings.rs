@@ -1,11 +1,11 @@
 //! Lexical binding, scope, assignment-version, and shadowing queries.
 
 use crate::analysis::scope::query::{
-    BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr, Ident,
-    ScopeGraph, ScopeId, ScopeKind, Span,
+    BindingKey, BindingProvenance, BindingRoot, BindingVersion, BoundArgument, Expr,
+    FrozenScopeGraph, Ident, ScopeId, ScopeKind, Span,
 };
 
-impl ScopeGraph {
+impl FrozenScopeGraph {
     /// Resolve the binding provenance visible at a use position.
     pub(in crate::analysis) fn binding_at(
         &self,
@@ -13,12 +13,13 @@ impl ScopeGraph {
         span: Span,
     ) -> Option<&BindingProvenance> {
         let (scope, declaration) = self.binding_with_scope_at(name, span)?;
-        // A declaration is the fallback. The last assignment at or before the
-        // read wins, which is why assignments are sorted once during collection
-        // and selected with `partition_point` here.
-        self.assignment_at(scope, name, span)
+        self.assignment_at(scope, self.name_id(name)?, span)
             .map(|assignment| &assignment.provenance)
-            .or_else(|| self.parameter_alias_for(scope, name))
+            .or_else(|| {
+                let function = self.function_for_scope(scope)?;
+                let name = self.name_id(name)?;
+                self.parameter_alias_for(function, name)
+            })
             .or(Some(declaration))
     }
 
@@ -29,7 +30,7 @@ impl ScopeGraph {
         match expr {
             Expr::Ident(ident) => {
                 let (scope, _) = self.binding_with_scope_at(ident.sym.as_ref(), ident.span)?;
-                let binding = self.binding_id_at(scope, ident.sym.as_ref())?;
+                let binding = self.binding_id_at(scope, self.name_id(ident.sym.as_ref())?)?;
                 Some(BindingKey::new(BindingRoot::Binding {
                     function: self.function_scope_at(scope),
                     binding,
@@ -82,6 +83,9 @@ impl ScopeGraph {
         name: &str,
         span: Span,
     ) -> BindingVersion {
+        let Some(name) = self.name_id(name) else {
+            return BindingVersion(0);
+        };
         self.binding_version(scope, name, span)
     }
 
@@ -94,7 +98,7 @@ impl ScopeGraph {
         if let Some((scope, _)) = self.binding_with_scope_at(name, span) {
             return Some(BindingKey::new(BindingRoot::Binding {
                 function: self.function_scope_at(scope),
-                binding: self.binding_id_at(scope, name)?,
+                binding: self.binding_id_at(scope, self.name_id(name)?)?,
                 version: self.binding_version_at(scope, name, span),
             }));
         }
@@ -109,7 +113,9 @@ impl ScopeGraph {
     ) -> Option<(ScopeId, &BindingProvenance)> {
         let mut scope = self.scope_at(span);
         loop {
-            if let Some(binding) = self.scope_binding(scope, name) {
+            if let Some(name) = self.name_id(name)
+                && let Some(binding) = self.scope_binding(scope, name)
+            {
                 return Some((scope, binding));
             }
             scope = self.scope_parent(scope)?;

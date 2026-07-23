@@ -34,7 +34,7 @@ use provenance_const::provenance_to_const_value;
 
 impl ScopeGraph {
     #[cfg(test)]
-    pub(super) fn collect(program: &Program) -> Self {
+    pub(super) fn collect(program: &Program) -> FrozenScopeGraph {
         let scoped = Self::collect_scoped_program(
             program,
             &crate::Environment::default(),

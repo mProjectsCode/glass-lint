@@ -11,6 +11,8 @@ const DEFAULT_MAX_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
 const DEFAULT_MAX_PROJECT_SOURCE_BYTES: u64 = 512 * 1024 * 1024;
 const DEFAULT_MAX_VISITED_ENTRIES: usize = 250_000;
 const DEFAULT_MAX_TIMEOUT_MS: u64 = 5 * 60 * 1000;
+const DEFAULT_MAX_CONFIG_COUNT: usize = 100;
+const DEFAULT_MAX_CONFIG_DEPTH: usize = 20;
 const MAX_TIMEOUT_MS: u64 = 86_400_000;
 const DEFAULT_EXTENSIONS: &[&str] = &[".js", ".cjs", ".mjs", ".ts", ".cts", ".mts"];
 
@@ -63,6 +65,10 @@ pub struct ProjectLoadOptions {
     pub(crate) max_visited_entries: usize,
     /// Cooperative total load/link timeout in milliseconds.
     pub(crate) max_timeout_ms: u64,
+    /// Maximum number of tsconfig files to process during traversal.
+    pub(crate) max_config_count: usize,
+    /// Maximum extends or reference chain depth.
+    pub(crate) max_config_depth: usize,
     /// Case-insensitive source suffixes accepted by discovery.
     pub(crate) extensions: Vec<String>,
     /// Directory names excluded during discovery and resolution.
@@ -144,6 +150,18 @@ impl ProjectLoadOptionsBuilder {
     }
 
     #[must_use]
+    pub fn max_config_count(mut self, value: usize) -> Self {
+        self.options.max_config_count = value;
+        self
+    }
+
+    #[must_use]
+    pub fn max_config_depth(mut self, value: usize) -> Self {
+        self.options.max_config_depth = value;
+        self
+    }
+
+    #[must_use]
     pub fn extensions(mut self, values: impl IntoIterator<Item = impl Into<String>>) -> Self {
         self.options.extensions = values.into_iter().map(Into::into).collect();
         self
@@ -185,6 +203,8 @@ impl Default for ProjectLoadOptions {
             max_project_source_bytes: DEFAULT_MAX_PROJECT_SOURCE_BYTES,
             max_visited_entries: DEFAULT_MAX_VISITED_ENTRIES,
             max_timeout_ms: DEFAULT_MAX_TIMEOUT_MS,
+            max_config_count: DEFAULT_MAX_CONFIG_COUNT,
+            max_config_depth: DEFAULT_MAX_CONFIG_DEPTH,
             extensions: DEFAULT_EXTENSIONS.iter().map(|s| (*s).to_owned()).collect(),
             excluded_directories: [".git", "node_modules", "dist", "build", "target"]
                 .into_iter()
@@ -267,6 +287,16 @@ impl ProjectLoadOptions {
                 },
             ));
         }
+        if self.max_config_count == 0 {
+            return Err(ProjectLoadError::InvalidOptions(
+                ProjectOptionError::ZeroBudget("max_config_count"),
+            ));
+        }
+        if self.max_config_depth == 0 {
+            return Err(ProjectLoadError::InvalidOptions(
+                ProjectOptionError::ZeroBudget("max_config_depth"),
+            ));
+        }
         if self.extensions.is_empty()
             || self
                 .extensions
@@ -330,6 +360,14 @@ impl ValidatedProjectLoadOptions {
 
     pub fn max_timeout_ms(&self) -> u64 {
         self.options.max_timeout_ms
+    }
+
+    pub fn max_config_count(&self) -> usize {
+        self.options.max_config_count
+    }
+
+    pub fn max_config_depth(&self) -> usize {
+        self.options.max_config_depth
     }
 
     pub fn extensions(&self) -> impl Iterator<Item = &str> {

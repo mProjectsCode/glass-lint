@@ -1,6 +1,10 @@
 use super::*;
 use crate::tests::TempProject;
 
+fn default_budget() -> ConfigTraversalBudget {
+    ConfigTraversalBudget::default()
+}
+
 #[test]
 fn parse_empty_config() {
     let dto = ParsedTsconfig::parse("{}").unwrap();
@@ -144,8 +148,16 @@ fn cycle_detection_records_diagnostic_and_skips_cyclic_extends() {
     );
 
     let mut diagnostics = Vec::new();
+    let mut config_count = 0;
     let config_path = project.root().join("tsconfig.json");
-    let result = build_effective_config(&config_path, project.root(), None, &mut diagnostics);
+    let result = build_effective_config(
+        &config_path,
+        project.root(),
+        None,
+        &mut diagnostics,
+        default_budget(),
+        &mut config_count,
+    );
 
     assert!(
         result.is_ok(),
@@ -173,6 +185,7 @@ fn cycle_fails_closed_does_not_broaden_admission() {
     );
 
     let mut diagnostics = Vec::new();
+    let mut config_count = 0;
 
     // Build effective config for A
     let result = build_effective_config(
@@ -180,6 +193,8 @@ fn cycle_fails_closed_does_not_broaden_admission() {
         project.root(),
         None,
         &mut diagnostics,
+        default_budget(),
+        &mut config_count,
     );
 
     assert!(result.is_ok());
@@ -218,11 +233,14 @@ fn extends_nonexistent_path_is_skipped_silently() {
     );
 
     let mut diagnostics = Vec::new();
+    let mut config_count = 0;
     let (config, _) = build_effective_config(
         &project.root().join("tsconfig.json"),
         project.root(),
         None,
         &mut diagnostics,
+        default_budget(),
+        &mut config_count,
     )
     .unwrap();
 
@@ -243,11 +261,14 @@ fn single_level_extends_merges_correctly() {
     );
 
     let mut diagnostics = Vec::new();
+    let mut config_count = 0;
     let (config, _) = build_effective_config(
         &project.root().join("tsconfig.json"),
         project.root(),
         None,
         &mut diagnostics,
+        default_budget(),
+        &mut config_count,
     )
     .unwrap();
 
@@ -267,4 +288,143 @@ fn single_level_extends_merges_correctly() {
         !config.pattern_set.is_included("node_modules/pkg/index.js"),
         "default node_modules exclusion applies"
     );
+}
+
+// ---------------------------------------------------------------------------
+// ConfigTraversalBudget tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn extends_within_budget_succeeds() {
+    let project = TempProject::new("budget-within-extends");
+    project.write("base.json", r#"{"include":["src/**/*"]}"#);
+    project.write(
+        "tsconfig.json",
+        r#"{"extends":"./base.json","include":["lib/**/*"]}"#,
+    );
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let budget = ConfigTraversalBudget::new(10, 5);
+    let result = build_effective_config(
+        &project.root().join("tsconfig.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        budget,
+        &mut config_count,
+    );
+
+    assert!(result.is_ok(), "within-budget extends should succeed");
+}
+
+#[test]
+fn extends_exceeding_max_depth_fails() {
+    let project = TempProject::new("budget-depth-extends");
+    // Chain: a -> b -> c with max_depth=2 should fail
+    project.write("c.json", r#"{"include":["c/**/*"]}"#);
+    project.write("b.json", r#"{"extends":"./c.json","include":["b/**/*"]}"#);
+    project.write("a.json", r#"{"extends":"./b.json","include":["a/**/*"]}"#);
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    // max_depth=2 allows root + one extends but not root + two extends
+    let budget = ConfigTraversalBudget::new(10, 2);
+    let err = build_effective_config(
+        &project.root().join("a.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        budget,
+        &mut config_count,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(
+            err,
+            ProjectLoadError::ConfigBudgetExhausted {
+                kind: "extends depth",
+                ..
+            }
+        ),
+        "expected extends depth error, got {err:?}"
+    );
+}
+
+#[test]
+fn extends_exceeding_max_config_count_fails() {
+    let project = TempProject::new("budget-count-extends");
+    // Chain: a -> b -> c with max_config_count=2 should fail (3 configs)
+    project.write("c.json", r#"{"include":["c/**/*"]}"#);
+    project.write("b.json", r#"{"extends":"./c.json","include":["b/**/*"]}"#);
+    project.write("a.json", r#"{"extends":"./b.json","include":["a/**/*"]}"#);
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let budget = ConfigTraversalBudget::new(2, 10);
+    let err = build_effective_config(
+        &project.root().join("a.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        budget,
+        &mut config_count,
+    )
+    .unwrap_err();
+
+    assert!(
+        matches!(
+            err,
+            ProjectLoadError::ConfigBudgetExhausted {
+                kind: "config count",
+                ..
+            }
+        ),
+        "expected config count error, got {err:?}"
+    );
+}
+
+#[test]
+fn extends_at_max_config_count_succeeds() {
+    let project = TempProject::new("budget-count-at");
+    // Chain: a -> b with max_config_count=2 should succeed (2 configs)
+    project.write("b.json", r#"{"include":["b/**/*"]}"#);
+    project.write("a.json", r#"{"extends":"./b.json","include":["a/**/*"]}"#);
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let budget = ConfigTraversalBudget::new(2, 10);
+    let result = build_effective_config(
+        &project.root().join("a.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        budget,
+        &mut config_count,
+    );
+
+    assert!(result.is_ok(), "at-limit extends should succeed");
+}
+
+#[test]
+fn extends_at_max_depth_succeeds() {
+    let project = TempProject::new("budget-depth-at");
+    // Chain: a -> b with max_depth=2 should succeed (depth: root=a, then b)
+    project.write("b.json", r#"{"include":["b/**/*"]}"#);
+    project.write("a.json", r#"{"extends":"./b.json","include":["a/**/*"]}"#);
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let budget = ConfigTraversalBudget::new(10, 2);
+    let result = build_effective_config(
+        &project.root().join("a.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        budget,
+        &mut config_count,
+    );
+
+    assert!(result.is_ok(), "at-limit depth extends should succeed");
 }
