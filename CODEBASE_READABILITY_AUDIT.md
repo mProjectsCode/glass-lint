@@ -159,21 +159,23 @@ Make the edit guard compare old and new values and skip no-op log entries. Use o
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Architecture
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/matching/arguments.rs:200-246`, `glass-lint-core/src/analysis/matching/mod.rs:391-416`, `glass-lint-core/src/analysis/evidence.rs:30-112`
 
 Matching creates an owned evidence value, including a cloned symbol, for each occurrence. The evidence accumulator then drains these values and groups them again by kind and symbol, causing repeated ownership transitions for data that is naturally produced as a group.
 
-Accumulate locations directly under a borrowed or compiled evidence descriptor and own the symbol once when finalizing the group. Give ordinary, constrained, and flow matching a common bounded evidence sink. Preserve deterministic location order and truncation at the sink boundary.
+`compute_constrained_evidence_from_stream_with_overlay` now collects all matching occurrences per clause before pushing evidence, and the fallback path accumulates per clause in a separate buffer before batching evidence allocation. The symbol string is cloned once per clause instead of once per occurrence.
 
 #### READ-014 — Semantic-fact projection builds two full evidence matrices
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Architecture
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/facts/mod.rs:145-178`
 
-Projection allocates one per-rule evidence matrix, calls object-flow collection to allocate another matrix of the same shape, and then extends the first from the second. Peak memory therefore includes both complete collections even though they share a final destination.
+Projection allocates one per-rule evidence matrix, calls object-flow collection to allocate another matrix of the same shape, and then extends the first from the second. Peak memory therefore includes both complete allocations even though they share a final destination.
 
-Pass a shared bounded evidence sink into both projectors, or return movable phase batches that can be merged without parallel outer matrices. Keep rule-order determinism in the accumulator rather than relying on a final append pattern. Make the memory budget apply to the combined producer set.
+`FlowEvidence` now borrows an externally-owned `&mut [Vec<ClassificationEvidence>]` and writes evidence directly into the caller's per-rule vecs. `collect_into` replaces the old allocate-merge cycle in `SemanticFacts::project`, so flow projection never allocates a second evidence matrix alongside the caller's.
 
 #### READ-015 — Export storage clones flat keys and namespace resolution retraverses exports
 - **Severity:** Medium
@@ -216,11 +218,12 @@ The test-only `QueryPlan::from_declarations` and production `CompiledMatcherPlan
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Duplication
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/facts/build/interface.rs:411-480`, `glass-lint-core/src/analysis/facts/build/interface.rs:517-546`
 
 CommonJS object export handling first validates and materializes export entries, then loops over the object properties again for function/static metadata before committing the entries. The two passes duplicate property interpretation and make atomic fail-closed behavior harder to see.
 
-Normalize each property once into a typed `CommonJsExportEntry` containing the export name, local/value identity, function metadata, and static value. Validate the complete object before mutating the interface, then commit the normalized entries in one deterministic pass. Keep unsupported properties as one explicit rejection path.
+A `CommonJsExportEntry` struct now captures the export name, local identity, expression span (for function-identity lookup), and static string value from one property traversal. `collect_commonjs_export_entries` extracts these entries once, and `record_module_exports_assignment` commits all metadata in a single pass.
 
 #### READ-020 — Frozen assignment history loses its owning abstraction
 - **Severity:** Medium
@@ -244,11 +247,10 @@ Normalize each property once into a typed `CommonJsExportEntry` containing the e
 - **Severity:** Low
 - **Fix Complexity:** Medium
 - **Category:** Complexity
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/matching/query.rs:83-95`, `glass-lint-core/src/analysis/matching/query.rs:388-485`
 
-`EventIndexView` is a record of ten optional indexes, and event dispatch repeats large constructors whose main distinction is which one or two fields are populated. The legal field combinations are implicit in match arms instead of represented by the type system.
-
-Use an enum for event families or a defaulted view with small family-specific constructors. Keep shared base and overlay mapping in one helper. Let compiler validation guarantee which event families a query can request so impossible combinations remain unrepresentable.
+`EventIndexView::base` now provides a defaulted view (`environment` set, all index fields `None`). Each match arm in `build_event_view` uses struct-update syntax (`..EventIndexView::base(env)`) and specifies only the non-default fields, making the active indexes for each event family explicit and removing the repeated `None` boilerplate. The `environment` binding is extracted once so it is not repeated in every arm.
 
 #### READ-023 — Session execution, caching, and phase state share one oversized module
 - **Severity:** Medium
@@ -282,11 +284,10 @@ The same byte loop and FNV prime have been extracted into a shared `crate::finge
 - **Severity:** Medium
 - **Fix Complexity:** Medium
 - **Category:** Encapsulation
+- **Status:** Done
 - **Location:** `glass-lint-core/src/analysis/module.rs:158-171`, `glass-lint-core/src/analysis/module.rs:212-263`
 
-`ModuleInterface` keeps export resolution, exported functions, and exported static strings in separate maps keyed by the same name. Conflict and unknown-export operations update only subsets of these maps, so consistency depends on callers remembering which metadata is meaningful after resolution changes.
-
-Model one `ExportEntry` containing resolution plus optional function and static metadata. Apply conflicts and unknown degradation atomically on that entry. Expose focused queries so consumers cannot observe auxiliary metadata without also checking the export state.
+`ModuleInterface` now stores all export metadata in one `BTreeMap<SmolStr, ExportEntry>` instead of three parallel maps. `ExportEntry` contains `resolution: Option<ModuleExport>`, `function_id: Option<FunctionId>`, and `static_value: Option<String>`. Conflict and unknown-export degradation atomically clear all metadata on the entry, and `exports()` filters to entries that have a resolution set. `add_function_export` and `add_static_string` can precede `add_export` (creating entries without a resolution), matching the existing caller order in `interface.rs`.
 
 ### Project: Discovery, Resolution, and Configuration
 
@@ -303,11 +304,12 @@ Model one `ExportEntry` containing resolution plus optional function and static 
 - **Severity:** High
 - **Fix Complexity:** Medium
 - **Category:** Architecture
+- **Status:** Done
 - **Location:** `glass-lint-project/src/tsconfig.rs:487-551`
 
 The current configuration is canonicalized before it is added to the extends chain, but the prospective parent path is checked for membership before parent canonicalization. Equivalent paths containing `..`, alternate lexical spellings, or symlink aliases can therefore evade cycle detection and recurse until another resource limit intervenes.
 
-Resolve and canonicalize the parent before cycle comparison and recursion. Track canonical paths in a set for membership and a stack for deterministic diagnostics. Treat canonicalization failure as an explicit configuration error rather than changing identity semantics.
+`build_effective_config_inner` now canonicalizes the parent path via `realpath` before checking `extends_chain.contains()` and before recursing. Canonicalization failure is treated as an explicit configuration error and recorded as a diagnostic rather than silently skipped. The chain continues to use canonical paths for deterministic cycle detection.
 
 #### READ-029 — `tsconfig` parsing, inheritance, and selection remain one clone-heavy representation
 - **Severity:** Medium

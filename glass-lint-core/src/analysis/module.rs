@@ -155,19 +155,44 @@ pub enum ModuleExport {
     Unknown,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// Resolution, function identity, and static-string value for one export name.
+///
+/// All three pieces of metadata share the same lifecycle: conflicts and unknown
+/// export shapes degrade them atomically so consumers cannot observe stale
+/// function or string data after the export resolution has been invalidated.
+pub struct ExportEntry {
+    /// The export shape (local, re-export, namespace, unknown).
+    ///
+    /// `None` when only function or static metadata has been recorded but the
+    /// export resolution itself has not yet been set. Once set, conflicts and
+    /// unknown degradation clear the optional metadata fields.
+    pub(super) resolution: Option<ModuleExport>,
+    /// Function identity, if the export resolves to a function.
+    pub(super) function_id: Option<FunctionId>,
+    /// Statically known string value, if the export is a string constant.
+    pub(super) static_value: Option<String>,
+}
+
+impl ExportEntry {
+    fn new(resolution: ModuleExport) -> Self {
+        Self {
+            resolution: Some(resolution),
+            function_id: None,
+            static_value: None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 /// Matcher-independent imports, exports, locals, and static exported values.
 pub struct ModuleInterface {
     requests: Vec<ModuleRequest>,
     requests_by_specifier: BTreeMap<SmolStr, Vec<ModuleRequestId>>,
-    exports: BTreeMap<SmolStr, ModuleExport>,
+    exports: BTreeMap<SmolStr, ExportEntry>,
     star_exports: Vec<ModuleRequestId>,
     locals: BTreeSet<SmolStr>,
     unknown_exports: bool,
-    function_exports: BTreeMap<SmolStr, FunctionId>,
-    /// Static strings exported by the module. Limited to strings for
-    /// bounded cross-module flow; other static types are not propagated.
-    static_strings: BTreeMap<SmolStr, String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -210,6 +235,8 @@ impl ModuleInterface {
     }
 
     /// Add an export, marking conflicting declarations as unknown.
+    /// If the entry already exists with only function/static metadata (no prior
+    /// resolution), the resolution is set without conflict detection.
     pub fn add_export(&mut self, name: impl Into<SmolStr>, export: ModuleExport) {
         if self.unknown_exports {
             return;
@@ -217,11 +244,21 @@ impl ModuleInterface {
         let name = name.into();
         match self.exports.get(&name) {
             None => {
-                self.exports.insert(name, export);
+                self.exports.insert(name, ExportEntry::new(export));
             }
-            Some(existing) if existing == &export => {}
+            Some(existing)
+                if existing.resolution.is_none() || existing.resolution == Some(export.clone()) =>
+            {
+                if let Some(entry) = self.exports.get_mut(&name) {
+                    entry.resolution = Some(export);
+                }
+            }
             Some(_) => {
-                self.exports.insert(name, ModuleExport::Unknown);
+                if let Some(entry) = self.exports.get_mut(&name) {
+                    entry.resolution = Some(ModuleExport::Unknown);
+                    entry.function_id = None;
+                    entry.static_value = None;
+                }
             }
         }
     }
@@ -232,20 +269,45 @@ impl ModuleInterface {
         function: FunctionId,
     ) {
         let name = name.into();
-        match self.function_exports.get(&name) {
+        match self.exports.get(&name) {
             None => {
-                self.function_exports.insert(name, function);
+                self.exports.insert(
+                    name,
+                    ExportEntry {
+                        resolution: None,
+                        function_id: Some(function),
+                        static_value: None,
+                    },
+                );
             }
-            Some(existing) if *existing == function => {}
+            Some(existing) if existing.function_id == Some(function) => {}
             Some(_) => {
-                self.function_exports.remove(&name);
+                if let Some(entry) = self.exports.get_mut(&name) {
+                    entry.function_id = None;
+                }
             }
         }
     }
 
     /// Record a statically exported string value.
     pub fn add_static_string(&mut self, name: impl Into<SmolStr>, value: impl Into<String>) {
-        self.static_strings.insert(name.into(), value.into());
+        let name = name.into();
+        let value = value.into();
+        match self.exports.get_mut(&name) {
+            Some(entry) => {
+                entry.static_value = Some(value);
+            }
+            None => {
+                self.exports.insert(
+                    name,
+                    ExportEntry {
+                        resolution: None,
+                        function_id: None,
+                        static_value: Some(value),
+                    },
+                );
+            }
+        }
     }
 
     /// Append a star-export request while the interface remains known.
@@ -264,7 +326,7 @@ impl ModuleInterface {
 
     /// Whether at least one known or deferred export exists.
     pub fn has_exports(&self) -> bool {
-        !self.exports.is_empty() || !self.star_exports.is_empty()
+        self.exports.values().any(|e| e.resolution.is_some()) || !self.star_exports.is_empty()
     }
 
     /// Iterate authored requests in source/insertion order.
@@ -295,7 +357,9 @@ impl ModuleInterface {
 
     /// Iterate named exports in deterministic key order.
     pub fn exports(&self) -> impl Iterator<Item = (&SmolStr, &ModuleExport)> {
-        self.exports.iter()
+        self.exports
+            .iter()
+            .filter_map(|(k, v)| v.resolution.as_ref().map(|r| (k, r)))
     }
 
     /// Whether a local binding of this name was recorded.
@@ -310,11 +374,11 @@ impl ModuleInterface {
 
     /// Return a statically exported string, if present.
     pub fn static_string(&self, name: &str) -> Option<&String> {
-        self.static_strings.get(name)
+        self.exports.get(name).and_then(|e| e.static_value.as_ref())
     }
 
     pub(in crate::analysis) fn function_export(&self, name: &str) -> Option<FunctionId> {
-        self.function_exports.get(name).copied()
+        self.exports.get(name).and_then(|e| e.function_id)
     }
 
     /// Convert authored requests into public resolver keys using the source

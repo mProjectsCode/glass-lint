@@ -31,48 +31,43 @@ use crate::{
         value::{ObjectId, ValueId},
     },
     api::{
-        classification::{ClassificationEvidence, MatchKind},
+        classification::{ClassificationEvidence, MatchKind, RuleIndex},
         compiler::{CompiledObjectFlow, CompiledObjectRequirement},
     },
 };
 
-pub(in crate::analysis) fn collect(
+/// Push flow evidence directly into an externally-owned per-rule vec,
+/// avoiding a separate evidence matrix allocation alongside the caller's.
+pub(in crate::analysis) fn collect_into(
     stream: &FactStream,
     effects: &FunctionEffects,
-    rules: &[(
-        crate::api::classification::RuleIndex,
-        usize,
-        &CompiledObjectFlow,
-    )],
-    rule_count: usize,
-) -> Vec<Vec<ClassificationEvidence>> {
-    collect_with_limits(stream, effects, rules, rule_count, FlowLimits::default())
-}
-
-pub(super) fn collect_with_limits(
-    stream: &FactStream,
-    effects: &FunctionEffects,
-    rules: &[(
-        crate::api::classification::RuleIndex,
-        usize,
-        &CompiledObjectFlow,
-    )],
-    rule_count: usize,
+    rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
+    evidence: &mut [Vec<ClassificationEvidence>],
     limits: FlowLimits,
-) -> Vec<Vec<ClassificationEvidence>> {
-    // Helpers are summarized before projection so a selected flow rule never
-    // changes the canonical fact walk or requires another AST traversal.
+) {
     let Some(names) = stream.names() else {
-        return vec![Vec::new(); rule_count];
+        return;
     };
     let flow_index = FlowIndex::new(rules, names);
     let helpers = FunctionSummaries::collect(stream, effects, &flow_index);
     let mut projector =
-        ObjectFlowProjector::new(stream, names, flow_index, helpers, rule_count, limits);
+        ObjectFlowProjector::new(stream, names, flow_index, helpers, evidence, limits);
     for fact in stream.facts() {
         projector.transfer(fact);
     }
-    projector.flow_evidence.into_items()
+}
+
+#[cfg(test)]
+pub(super) fn collect_with_limits(
+    stream: &FactStream,
+    effects: &FunctionEffects,
+    rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
+    rule_count: usize,
+    limits: FlowLimits,
+) -> Vec<Vec<ClassificationEvidence>> {
+    let mut evidence = vec![Vec::new(); rule_count];
+    collect_into(stream, effects, rules, &mut evidence, limits);
+    evidence
 }
 
 #[derive(Debug)]
@@ -88,7 +83,7 @@ struct ObjectFlowProjector<'rules, 'stream> {
     calls_by_result: BTreeMap<ValueId, FactId>,
     /// Evidence is grouped and deduplicated by the flow-specific evidence
     /// owner.
-    flow_evidence: FlowEvidence,
+    flow_evidence: FlowEvidence<'stream>,
     /// Each value identity and live object-flow state are owned together.
     flow_state: FlowStateTable,
     /// Object IDs are local to one projection and bounded by `limits`.
@@ -108,7 +103,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         names: &'stream NameTable,
         flow_index: FlowIndex<'rules>,
         helpers: FunctionSummaries<'stream>,
-        rule_count: usize,
+        evidence: &'stream mut [Vec<ClassificationEvidence>],
         limits: FlowLimits,
     ) -> Self {
         let calls_by_result = stream
@@ -125,7 +120,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             flow_index,
             helpers,
             calls_by_result,
-            flow_evidence: FlowEvidence::new(rule_count),
+            flow_evidence: FlowEvidence::new(evidence),
             flow_state: FlowStateTable::default(),
             next_object_id: 0,
             limits,

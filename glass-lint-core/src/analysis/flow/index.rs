@@ -17,7 +17,7 @@ const MAX_FLOW_EMISSIONS: usize = 65_536;
 
 #[derive(Debug, Clone, Copy)]
 /// Hard limits for object-flow identities, states, and emissions.
-pub(super) struct FlowLimits {
+pub(in crate::analysis) struct FlowLimits {
     /// Maximum object identities.
     objects: u32,
     /// Maximum projected states.
@@ -27,15 +27,15 @@ pub(super) struct FlowLimits {
 }
 
 impl FlowLimits {
-    pub(super) fn object_limit(&self) -> u32 {
+    pub(in crate::analysis) fn object_limit(&self) -> u32 {
         self.objects
     }
 
-    pub(super) fn state_limit(&self) -> usize {
+    pub(in crate::analysis) fn state_limit(&self) -> usize {
         self.states
     }
 
-    pub(super) fn emission_limit(&self) -> usize {
+    pub(in crate::analysis) fn emission_limit(&self) -> usize {
         self.emissions
     }
 }

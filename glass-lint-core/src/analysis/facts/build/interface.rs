@@ -10,7 +10,7 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr, ExportSpecifier, Expr,
-    ImportDecl, NamedExport,
+    ImportDecl, Lit, NamedExport, ObjectLit, Prop, PropOrSpread,
 };
 
 use crate::{
@@ -417,58 +417,33 @@ impl ModuleInterfaceBuilder {
             self.interface.mark_unknown_exports();
             return;
         }
-        if let swc_ecma_ast::Expr::Object(object) = &*assignment.right {
-            let Some(entries) = Self::commonjs_object_export_entries(object) else {
+        if let Expr::Object(object) = &*assignment.right {
+            let Some(entries) = Self::collect_commonjs_export_entries(object) else {
                 self.interface.mark_unknown_exports();
                 return;
             };
             self.interface.add_export("default", ModuleExport::Value);
-            for prop in &object.props {
-                let swc_ecma_ast::PropOrSpread::Prop(prop) = prop else {
-                    continue;
-                };
-                match &**prop {
-                    swc_ecma_ast::Prop::KeyValue(value) => {
-                        let Some(name) = property_name(&value.key) else {
-                            continue;
-                        };
-                        add_function_export_if_expr(
-                            &mut self.interface,
-                            &name,
-                            &value.value,
-                            resolver,
-                        );
-                        if let Expr::Lit(swc_ecma_ast::Lit::Str(val)) = &*value.value {
-                            self.interface
-                                .add_static_string(name, val.value.to_string_lossy());
-                        }
-                    }
-                    swc_ecma_ast::Prop::Method(method) => {
-                        if let Some(name) = property_name(&method.key) {
-                            add_function_export_if_span(
-                                &mut self.interface,
-                                &name,
-                                method.function.span(),
-                                resolver,
-                            );
-                        }
-                    }
-                    _ => {}
+            for entry in entries {
+                if let Some(span) = entry.value_span {
+                    add_function_export_if_span(&mut self.interface, &entry.name, span, resolver);
                 }
-            }
-            for (name, local) in entries {
-                if let Some(local) = &local {
+                if let Some(ref local) = entry.local {
                     add_function_export_if_name(
                         &mut self.interface,
-                        &name,
+                        &entry.name,
                         local,
                         assignment.span(),
                         resolver,
                     );
                 }
+                if let Some(value) = entry.static_value {
+                    self.interface.add_static_string(entry.name.clone(), value);
+                }
                 self.interface.add_export(
-                    name,
-                    local.map_or(ModuleExport::Value, |n| ModuleExport::Local { name: n }),
+                    entry.name,
+                    entry
+                        .local
+                        .map_or(ModuleExport::Value, |n| ModuleExport::Local { name: n }),
                 );
             }
         } else {
@@ -514,36 +489,76 @@ impl ModuleInterfaceBuilder {
         self.interface.add_export(property, export);
     }
 
-    fn commonjs_object_export_entries(
-        object: &swc_ecma_ast::ObjectLit,
-    ) -> Option<Vec<(SmolStr, Option<SmolStr>)>> {
+    fn collect_commonjs_export_entries(object: &ObjectLit) -> Option<Vec<CommonJsExportEntry>> {
         object
             .props
             .iter()
             .map(|prop| match prop {
-                swc_ecma_ast::PropOrSpread::Prop(prop) => match &**prop {
-                    swc_ecma_ast::Prop::KeyValue(value) => Some((
-                        property_name(&value.key)?,
-                        match &*value.value {
-                            Expr::Ident(ident) => Some(ident.sym.to_smolstr()),
-                            _ => None,
-                        },
-                    )),
-                    swc_ecma_ast::Prop::Assign(assign) => Some((
-                        assign.key.sym.to_smolstr(),
-                        Some(assign.key.sym.to_smolstr()),
-                    )),
-                    swc_ecma_ast::Prop::Getter(getter) => Some((property_name(&getter.key)?, None)),
-                    swc_ecma_ast::Prop::Setter(setter) => Some((property_name(&setter.key)?, None)),
-                    swc_ecma_ast::Prop::Method(method) => Some((property_name(&method.key)?, None)),
-                    swc_ecma_ast::Prop::Shorthand(ident) => {
-                        Some((ident.sym.to_smolstr(), Some(ident.sym.to_smolstr())))
+                PropOrSpread::Prop(prop) => match &**prop {
+                    Prop::KeyValue(value) => {
+                        let name = property_name(&value.key)?;
+                        let (local, static_value) = match &*value.value {
+                            Expr::Ident(ident) => (Some(ident.sym.to_smolstr()), None),
+                            Expr::Lit(Lit::Str(s)) => {
+                                (None, Some(s.value.to_string_lossy().into_owned()))
+                            }
+                            _ => (None, None),
+                        };
+                        Some(CommonJsExportEntry {
+                            name,
+                            local,
+                            value_span: Some(value.value.span()),
+                            static_value,
+                        })
                     }
+                    Prop::Assign(assign) => Some(CommonJsExportEntry {
+                        name: assign.key.sym.to_smolstr(),
+                        local: Some(assign.key.sym.to_smolstr()),
+                        value_span: None,
+                        static_value: None,
+                    }),
+                    Prop::Getter(getter) => Some(CommonJsExportEntry {
+                        name: property_name(&getter.key)?,
+                        local: None,
+                        value_span: None,
+                        static_value: None,
+                    }),
+                    Prop::Setter(setter) => Some(CommonJsExportEntry {
+                        name: property_name(&setter.key)?,
+                        local: None,
+                        value_span: None,
+                        static_value: None,
+                    }),
+                    Prop::Method(method) => Some(CommonJsExportEntry {
+                        name: property_name(&method.key)?,
+                        local: None,
+                        value_span: Some(method.function.span()),
+                        static_value: None,
+                    }),
+                    Prop::Shorthand(ident) => Some(CommonJsExportEntry {
+                        name: ident.sym.to_smolstr(),
+                        local: Some(ident.sym.to_smolstr()),
+                        value_span: None,
+                        static_value: None,
+                    }),
                 },
-                swc_ecma_ast::PropOrSpread::Spread(_) => None,
+                PropOrSpread::Spread(_) => None,
             })
             .collect()
     }
+}
+
+/// Metadata for one property in a `module.exports = { ... }` literal,
+/// extracted exactly once from the AST.
+struct CommonJsExportEntry {
+    /// Property/export name.
+    name: SmolStr,
+    /// Local binding name when the export is a simple identity re-export.
+    local: Option<SmolStr>,
+    /// Span of the value expression, used for function-identity lookup.
+    value_span: Option<Span>,
+    /// Static string value when the RHS is a string literal.
+    static_value: Option<String>,
 }
 
 fn is_commonjs_name(expr: &swc_ecma_ast::Expr, name: &str, resolver: &Resolver) -> bool {

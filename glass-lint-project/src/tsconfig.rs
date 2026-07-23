@@ -521,30 +521,47 @@ fn build_effective_config_inner(
         .and_then(|extends_str| {
             let parent_path = resolve_extends(config_path, &extends_str)
                 .filter(|parent_path| parent_path.exists());
-            match parent_path {
-                Some(parent_path) if extends_chain.contains(&parent_path) => {
-                    diagnostics.push(TsconfigDiagnostic {
-                        config_path: config_path.to_path_buf(),
-                        cycle_target: Some(parent_path),
-                        message: format!(
-                            "cycle detected: {} is already in the inheritance chain",
-                            config_path.display()
-                        ),
-                    });
-                    None
+            parent_path.and_then(|parent_path| {
+                // Canonicalize before cycle comparison so equivalent
+                // paths containing .. or symlink aliases are caught.
+                match realpath(&parent_path) {
+                    Ok(parent_canonical) => {
+                        if extends_chain.contains(&parent_canonical) {
+                            diagnostics.push(TsconfigDiagnostic {
+                                config_path: canonical.clone(),
+                                cycle_target: Some(parent_canonical),
+                                message: format!(
+                                    "cycle detected: {} is already in the inheritance chain",
+                                    canonical.display()
+                                ),
+                            });
+                            None
+                        } else {
+                            let result = build_effective_config_inner(
+                                &parent_canonical,
+                                &base,
+                                extends_chain,
+                                deadline,
+                                diagnostics,
+                            );
+                            Some(result.map(|(config, _)| config))
+                        }
+                    }
+                    Err(e) => {
+                        // Canonicalization failure is a configuration error.
+                        diagnostics.push(TsconfigDiagnostic {
+                            config_path: canonical.clone(),
+                            cycle_target: None,
+                            message: format!(
+                                "failed to resolve extends path {}: {}",
+                                parent_path.display(),
+                                e,
+                            ),
+                        });
+                        None
+                    }
                 }
-                Some(parent_path) => {
-                    let result = build_effective_config_inner(
-                        &parent_path,
-                        &base,
-                        extends_chain,
-                        deadline,
-                        diagnostics,
-                    );
-                    Some(result.map(|(config, _)| config))
-                }
-                None => None,
-            }
+            })
         })
         .transpose()?;
 

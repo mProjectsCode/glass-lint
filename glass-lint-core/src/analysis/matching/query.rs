@@ -92,6 +92,23 @@ struct EventIndexView<'a> {
 }
 
 impl<'a> EventIndexView<'a> {
+    /// Returns a view with all index fields defaulted to `None`.
+    fn base(environment: &'a Environment) -> Self {
+        Self {
+            name_any: None,
+            string_any: None,
+            path_any: None,
+            module: None,
+            global: None,
+            rooted: None,
+            literal: None,
+            module_overlay: None,
+            global_overlay: None,
+            masked: None,
+            environment,
+        }
+    }
+
     fn resolve(
         &self,
         identity: &'a IdentityConstraint,
@@ -387,97 +404,56 @@ impl OccurrenceIndexes {
         event: &EventPredicate,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
     ) -> EventIndexView<'a> {
+        let env = &self.environment;
         match event {
             EventPredicate::Call => EventIndexView {
                 name_any: Some(&self.call_indexes.calls),
-                string_any: None,
-                path_any: None,
                 module: Some(&self.call_indexes.module_calls),
                 global: Some(&self.call_indexes.global_calls),
-                rooted: None,
-                literal: None,
                 module_overlay: overlay.map(|o| &o.module_calls),
                 global_overlay: overlay.map(|o| &o.global_calls),
                 masked: overlay.map(|o| &o.masked),
-                environment: &self.environment,
+                ..EventIndexView::base(env)
             },
-            EventPredicate::MemberCall { member: _ } => EventIndexView {
-                name_any: None,
-                string_any: None,
+            EventPredicate::MemberCall { .. } => EventIndexView {
                 path_any: Some(&self.members.calls),
                 module: Some(&self.members.module_calls),
-                global: None,
                 rooted: Some(&self.members.rooted_calls),
-                literal: None,
                 module_overlay: overlay.map(|o| &o.member_calls),
-                global_overlay: None,
                 masked: overlay.map(|o| &o.masked),
-                environment: &self.environment,
+                ..EventIndexView::base(env)
             },
-            EventPredicate::MemberRead { member: _ } => EventIndexView {
-                name_any: None,
-                string_any: None,
+            EventPredicate::MemberRead { .. } => EventIndexView {
                 path_any: Some(&self.members.reads),
                 module: Some(&self.members.module_reads),
-                global: None,
                 rooted: Some(&self.members.rooted_reads),
-                literal: None,
                 module_overlay: overlay.map(|o| &o.member_reads),
-                global_overlay: None,
                 masked: overlay.map(|o| &o.masked),
-                environment: &self.environment,
+                ..EventIndexView::base(env)
             },
             EventPredicate::ClassReference => EventIndexView {
-                name_any: None,
                 string_any: Some(&self.constructions.classes),
-                path_any: None,
                 module: Some(&self.constructions.module_classes),
-                global: None,
-                rooted: None,
-                literal: None,
                 module_overlay: overlay.map(|o| &o.module_classes),
-                global_overlay: None,
                 masked: overlay.map(|o| &o.masked),
-                environment: &self.environment,
+                ..EventIndexView::base(env)
             },
             EventPredicate::Construct => EventIndexView {
                 name_any: Some(&self.constructions.constructors),
                 string_any: Some(&self.constructions.global_constructors),
-                path_any: None,
                 module: Some(&self.constructions.module_constructors),
                 global: Some(&self.constructions.global_constructors),
-                rooted: None,
-                literal: None,
                 module_overlay: overlay.map(|o| &o.module_constructors),
-                global_overlay: None,
                 masked: overlay.map(|o| &o.masked),
-                environment: &self.environment,
+                ..EventIndexView::base(env)
             },
             EventPredicate::Import => EventIndexView {
-                name_any: None,
-                string_any: None,
-                path_any: None,
-                module: None,
-                global: None,
-                rooted: None,
                 literal: Some(&self.literals.imports),
-                module_overlay: None,
-                global_overlay: None,
-                masked: None,
-                environment: &self.environment,
+                ..EventIndexView::base(env)
             },
             EventPredicate::StringReference => EventIndexView {
-                name_any: None,
-                string_any: None,
-                path_any: None,
-                module: None,
-                global: None,
-                rooted: None,
                 literal: Some(&self.literals.strings),
-                module_overlay: None,
-                global_overlay: None,
-                masked: None,
-                environment: &self.environment,
+                ..EventIndexView::base(env)
             },
         }
     }

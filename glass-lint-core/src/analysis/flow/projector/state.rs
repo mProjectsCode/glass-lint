@@ -465,17 +465,20 @@ fn remove_sorted<K: Ord, V>(vec: &mut Vec<(K, V)>, key: &K) -> Option<V> {
 
 #[derive(Debug)]
 /// Per-rule evidence with a bounded deduplication key set.
-pub(super) struct FlowEvidence {
-    /// Evidence grouped by selected rule index.
-    items: Vec<Vec<ClassificationEvidence>>,
+///
+/// Writes evidence directly into an externally-owned per-rule vec so
+/// callers never allocate a second parallel evidence matrix.
+pub(super) struct FlowEvidence<'a> {
+    /// Evidence grouped by selected rule index, owned by the caller.
+    items: &'a mut [Vec<ClassificationEvidence>],
     /// `(rule, flow, object, event)` identities already emitted.
     emitted: BTreeSet<ReportEvidenceKey>,
 }
 
-impl FlowEvidence {
-    pub(super) fn new(rule_count: usize) -> Self {
+impl<'a> FlowEvidence<'a> {
+    pub(super) fn new(evidence: &'a mut [Vec<ClassificationEvidence>]) -> Self {
         Self {
-            items: vec![Vec::new(); rule_count],
+            items: evidence,
             emitted: BTreeSet::new(),
         }
     }
@@ -489,10 +492,6 @@ impl FlowEvidence {
 
     pub(super) fn record(&mut self, rule_index: usize, evidence: ClassificationEvidence) {
         self.items[rule_index].push(evidence);
-    }
-
-    pub(super) fn into_items(self) -> Vec<Vec<ClassificationEvidence>> {
-        self.items
     }
 }
 

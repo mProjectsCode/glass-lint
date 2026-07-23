@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use crate::{
     analysis::{
-        flow::{effect::FunctionEffects, projector as object_flow},
+        flow::{effect::FunctionEffects, index::FlowLimits, projector as object_flow},
         matching::{self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes},
         module::ModuleInterface,
         project::model::ExportResolution,
@@ -168,13 +168,13 @@ impl SemanticFacts {
             identities,
             result_identities,
         );
-        for (rule_index, evidence) in
-            object_flow::collect(&self.stream, effects, &plan.flow_matchers, plan.rule_count)
-                .into_iter()
-                .enumerate()
-        {
-            projected_evidence[rule_index].extend(evidence);
-        }
+        object_flow::collect_into(
+            &self.stream,
+            effects,
+            &plan.flow_matchers,
+            &mut projected_evidence,
+            FlowLimits::default(),
+        );
         projected_evidence
     }
 }

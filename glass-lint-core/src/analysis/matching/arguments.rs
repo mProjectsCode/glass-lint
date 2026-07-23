@@ -217,31 +217,44 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
             fallback.push((*rule_index, clause));
             continue;
         };
-        for occurrence in candidates.into_iter().filter(|occurrence| {
-            stream
-                .fact(occurrence.event())
-                .is_some_and(|fact| evaluator.fact_matches_clause(fact, clause))
-        }) {
+        let matched: Vec<_> = candidates
+            .into_iter()
+            .filter(|occurrence| {
+                stream
+                    .fact(occurrence.event())
+                    .is_some_and(|fact| evaluator.fact_matches_clause(fact, clause))
+            })
+            .collect();
+        if !matched.is_empty() {
             push_owned_evidence(
                 &mut evidence[*rule_index],
                 clause.evidence.kind,
                 clause.evidence.symbol.clone(),
-                std::iter::once(occurrence),
+                matched,
             );
         }
     }
     // Unsupported index shapes are intentionally handled by one shared scan,
     // rather than rescanning the fact stream once per constrained clause.
+    // Occurrences are accumulated per clause to batch evidence allocation.
+    let mut fallback_occurrences: Vec<Vec<Occurrence>> =
+        fallback.iter().map(|_| Vec::new()).collect();
     for fact in stream.facts() {
-        for (rule_index, clause) in &fallback {
+        for (i, (_, clause)) in fallback.iter().enumerate() {
             if evaluator.fact_matches_clause(fact, clause) {
-                push_owned_evidence(
-                    &mut evidence[*rule_index],
-                    clause.evidence.kind,
-                    clause.evidence.symbol.clone(),
-                    std::iter::once(Occurrence::new(fact.id, fact.span)),
-                );
+                fallback_occurrences[i].push(Occurrence::new(fact.id, fact.span));
             }
+        }
+    }
+    for (i, (rule_index, clause)) in fallback.iter().enumerate() {
+        let occurrences = std::mem::take(&mut fallback_occurrences[i]);
+        if !occurrences.is_empty() {
+            push_owned_evidence(
+                &mut evidence[*rule_index],
+                clause.evidence.kind,
+                clause.evidence.symbol.clone(),
+                occurrences,
+            );
         }
     }
 }
@@ -634,11 +647,13 @@ mod tests {
             None,
             None,
         );
-        assert_eq!(evidence[0].len(), 2);
+        assert_eq!(evidence[0].len(), 1);
+        assert_eq!(evidence[0][0].occurrences.len(), 2);
         assert!(
-            evidence[0]
+            evidence[0][0]
+                .occurrences
                 .iter()
-                .all(|item| !item.occurrences[0].span.is_empty())
+                .all(|occ| !occ.span.is_empty())
         );
         let mut normalized = std::mem::take(&mut evidence[0]);
         crate::analysis::evidence::normalize_evidence(&mut normalized, usize::MAX);
