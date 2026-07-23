@@ -6,7 +6,7 @@
 
 use crate::{
     analysis::{
-        facts::FactStream,
+        facts::{FactStream, Frozen},
         flow::{
             index::{FlowId, FlowLimits},
             plan::BoundFlowPlan,
@@ -59,12 +59,7 @@ impl ObjectFlowProjector<'_, '_> {
                         } = &flow.requirements[index]
                         && matchers.iter().all(|matcher| {
                             args.get(matcher.index()).is_some_and(|arg| {
-                                match self.stream.values() {
-                                    Some(values) => {
-                                        matcher.matcher().matches(arg, self.names, values)
-                                    }
-                                    None => false,
-                                }
+                                matcher.matcher().matches(arg, self.names, self.stream.values())
                             })
                         })
                     {
@@ -206,7 +201,7 @@ pub(super) fn emit_if_ready(
     flow_state: &super::state::FlowStateTable,
     plan: &BoundFlowPlan<'_>,
     limits: &FlowLimits,
-    stream: &FactStream,
+    stream: &FactStream<Frozen>,
     flow: FlowId,
     object: ObjectId,
     event: FactId,
@@ -225,7 +220,7 @@ pub(super) fn emit_if_ready(
 /// Emit one bounded, source-anchored evidence item for a ready state.
 fn emit_state(
     evidence: &mut FlowEvidence,
-    stream: &FactStream,
+    stream: &FactStream<Frozen>,
     limits: &FlowLimits,
     state: &FlowState,
     flow: &CompiledObjectFlow,

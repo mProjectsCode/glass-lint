@@ -148,9 +148,7 @@ impl ProjectMatcherModel<'_, '_> {
         let Some(matcher) = self.matchers.get(rule_index) else {
             return Vec::new();
         };
-        let Some(names) = module.local().facts().names() else {
-            return Vec::new();
-        };
+        let names = module.local().facts().names();
         let mut evidence = self
             .projections
             .get(&module.id())

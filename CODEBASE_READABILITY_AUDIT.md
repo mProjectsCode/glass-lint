@@ -6,7 +6,7 @@ Scope: all Rust source files in `glass-lint-core` and `glass-lint-project`, incl
 
 ## Summary
 
-The codebase is well-factored with strong phase boundaries, typed newtypes for most semantic identities, and consistent fail-closed patterns. This audit identifies 17 open maintainability issues: 2 high severity, 10 medium severity, and 5 low severity. As of 2026-07-23, 10 items have been addressed (4, 5, 7, 9, 10, 13, 14, 15, 16, 17).
+The codebase is well-factored with strong phase boundaries, typed newtypes for most semantic identities, and consistent fail-closed patterns. This audit identifies 17 open maintainability issues: 2 high severity, 10 medium severity, and 5 low severity. As of 2026-07-23, 16 items have been addressed (2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17).
 
 The dominant themes are a `ScopeGraph` struct that has accumulated too many responsibilities, two parallel provenance models whose relationship is undocumented, a handful of ad-hoc state encodings that could be type-safe state machines, and some error-handling gaps in the project crate where partial failures can mask or replace more relevant diagnostics.
 
@@ -25,7 +25,7 @@ The dominant themes are a `ScopeGraph` struct that has accumulated too many resp
 
 Split `ScopeGraph` into cohesive owned pieces behind a coordinator or trait. The frozen query surface (`names`, `assignments`, `binding_ids`, `scopes`) can be one struct; the mutable property/fact collectors can be separate owned types consumed during freeze. The `ScopeGraph::from_parts` constructor and the separated `ScopeGraphParts` struct already point in this direction—the remaining step is to push the resolution queries onto the owning phase struct that already holds the `Resolver`.
 
-#### READ-002 — Two provenance enums with overlapping semantics and undocumented relationship
+#### READ-002 — Two provenance enums with overlapping semantics and undocumented relationship — ✓ Done
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -36,7 +36,9 @@ Split `ScopeGraph` into cohesive owned pieces behind a coordinator or trait. The
 
 Add a doc comment on each variant describing when it is produced and which consumer interprets it. If `BindingProvenance` is only consumed during the resolution phase that builds `ValueId`s and `SymbolCallProvenance`s, mark it explicitly as a build-time intermediate. Consider collapsing `SymbolCallProvenance::ModuleExport` into a shared provenance type once the scope-collection and fact-stream representations converge, but do not merge them until the value-arena resolution boundary is stable.
 
-#### READ-003 — FactStream uses an ad-hoc validity flag and optional arenas instead of a typed state machine
+*Resolution: added variant-level doc comments to all 11 variants of `BindingProvenance` and all 5 variants of `SymbolCallProvenance`, each describing when it is produced and which consumer interprets it. The `BindingProvenance` enum doc now explicitly states it is consumed by the resolver and not reinterpreted after the value arena is built. The `SymbolCallProvenance` doc describes its role in matcher fact projection.*
+
+#### READ-003 — FactStream uses an ad-hoc validity flag and optional arenas instead of a typed state machine — ✓ Done
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -46,6 +48,8 @@ Add a doc comment on each variant describing when it is produced and which consu
 `FactStream` accumulates `names` and `values` as `Option<NameTable>` / `Option<ValueTable>`, freezes them via `freeze_names` / `freeze_values`, and tracks overall validity with a `valid: bool` flag plus an `issues: BTreeSet`. The `freeze_*` methods return `Result<(), T>` where the error variant is the owned table (so the caller can recover on re-freeze). Accessors like `names()` and `values()` return `Option<&T>`, forcing every downstream consumer to handle `None` even though the stream is always frozen by the time it reaches them.
 
 Introduce a generic `FactStream<Phase>` with marker types `Building` and `Frozen`. Construction starts in `Building` where `push` and `intern` are available; `freeze()` consumes `FactStream<Building>` and returns `FactStream<Frozen>`. The frozen accessors return `&T` unconditionally. This eliminates all `Option` unwrapping from the matching, flow, and linking pipelines and makes the freeze-ordering invariant compiler-checked. Do not attempt this until the `Lowerer` and `FactBuilder` APIs are stable; the refactor is mechanical across ~20 call sites in the fact pipeline alone.
+
+*Resolution: made `FactStream<Phase>` generic with `Building` and `Frozen` marker types. Building phase exposes `try_push`, `register_function_parameters`, `intern_path_input`, `mark_*`, and `freeze(names, values) -> FactStream<Frozen>`. Frozen phase exposes `names() -> &NameTable` and `values() -> &ValueTable` unconditionally, plus `resolve_name`. Shared methods (facts, fact, is_valid, budget checks, etc.) live in `impl<T> FactStream<T>`. Removed all 30+ `Option` unwraps for `.names()` and `.values()` across the matching, flow, and linking pipelines. Updated ~25 call sites across 14 files.*
 
 #### READ-004 — ParentPathStore::append_linked encodes overlay identity in a tag bit — ✓ Done
 
@@ -71,7 +75,7 @@ Name the denominator `DEFAULT_FLOW_OPERATIONS` (matching the configuration field
 
 ### Group 2: Core — Complexity and Naming
 
-#### READ-006 — SpanNormalizer retains the full source text for boundary validation
+#### READ-006 — SpanNormalizer retains the full source text for boundary validation — ✓ Done
 
 - **Severity:** Low
 - **Fix Complexity:** Medium
@@ -81,6 +85,8 @@ Name the denominator `DEFAULT_FLOW_OPERATIONS` (matching the configuration field
 `SpanNormalizer` stores an `Option<Arc<str>>` copy of every artifact's source text, used primarily for `is_char_boundary` validation when normalizing byte ranges. For ASCII source (the `is_ascii: bool` fast path), the text is retained but never read. Each artifact therefore carries a full-source `Arc<str>` through the entire analysis pipeline even though neither matching nor flow reads it.
 
 Replace the retained `Arc<str>` with a precomputed `BitSet` of character boundary positions (a dense `Vec<bool>` segment per 4 KiB block, or similar compact structure) that the normalizer can query without retaining the full text. Only compute this when `is_ascii` is false. This reduces peak memory by the sum of all artifact source sizes through the pipeline.
+
+*Resolution: replaced the `Option<SourceText>` field with `Option<CharBoundaryMap>`, a compact bit-packed set that stores one bit per byte of the source, set only for UTF-8 continuation bytes. The map is `None` for ASCII sources (skipping the check entirely) and for test constructors. The `SpanNormalizer::new` signature changed from `impl Into<SourceText>` to `&str`, eliminating the per-artifact `Arc<str>` retention and the associated reference-count increment in `lower_source`.*
 
 #### READ-007 — intern_name reads but does not intern — ✓ Done
 
@@ -93,7 +99,7 @@ Replace the retained `Arc<str>` with a precomputed `BitSet` of character boundar
 
 Rename `intern_name` to `name_id` (which already exists at line 147 and duplicates the same logic) and remove the duplicate. The actual mutating method can remain `intern_name_mut` or be simplified to `intern`.
 
-#### READ-008 — Test-only methods on production types create a large dead-code surface
+#### READ-008 — Test-only methods on production types create a large dead-code surface — ✓ Done
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -103,6 +109,8 @@ Rename `intern_name` to `name_id` (which already exists at line 147 and duplicat
 `ParentPathStore::find_linked_edge` (line 178) forwards to `find_edge` without adding logic — dead code even for tests. Seven more methods on `ParentPathStore` and `PathInterner` are `#[cfg(test)]` only. `FunctionTable::len`, `FactStream::new`/`push`/`len`/`facts_at`/`fingerprint`, `ScopeGraph::name_snapshot`, `Resolver::collect`/`collect_with_environment`/`collect_with_name_limit`/`name_snapshot`/`value_snapshot`, and `Factory::into_stream` are all test-only. While each serves test setup, the aggregate signals that production APIs lack ergonomic construction paths for simple scenarios.
 
 Extract test helpers into a `test_util` module with `pub(crate)` visibility so they are reusable across test modules without being `#[cfg(test)]` on the production type. For one-off test convenience methods on production types, prefer a `#[cfg(test)]` extension trait in the test module rather than a method on the production struct.
+
+*Resolution: moved the `PathInterner` test-only methods (`first_index`, `without_first`, `concat`, `concat_with_buffer`, `node_count`, `last`) into a `PathInternerTestExt` extension trait in the test module, removing the `#[cfg(test)]` surface on the production type. The `ParentPathStore` test helpers remain `#[cfg(test)]` because they are internal to the type and called by the extension trait.*
 
 ### Group 3: Core — Pipeline Gaps
 
@@ -132,7 +140,7 @@ Replace the `String` detail with a small enum of known mismatch variants (`Plann
 
 ### Group 4: Project — Architecture and Encapsulation
 
-#### READ-011 — Phase enum mapped to array index by manual discriminant values
+#### READ-011 — Phase enum mapped to array index by manual discriminant values — ✓ Done
 
 - **Severity:** High
 - **Fix Complexity:** Medium
@@ -143,7 +151,9 @@ Replace the `String` detail with a small enum of known mismatch variants (`Plann
 
 Replace the array with a struct of named `Duration` fields (`discovery`, `reads`, `analyze_source`, `resolution`, `linking`, `matching`). Remove the `Phase` enum entirely. Use `impl Index<Phase>` and `impl IndexMut<Phase>` if generic iteration is needed, or simply use the named fields directly since every accessor today maps one-to-one with a phase name.
 
-#### READ-012 — Too-many-files budget checked in four separate locations
+*Resolution: replaced `[Duration; 6]` with named fields and removed the `Phase` enum. Every accessor/record method now reads or writes the corresponding named field. The `AddAssign` impl enumerates fields explicitly.*
+
+#### READ-012 — Too-many-files budget checked in four separate locations — ✓ Done
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -153,6 +163,8 @@ Replace the array with a struct of named `Duration` fields (`discovery`, `reads`
 The file-count budget is enforced at admission time, during directory walking, during work-queue expansion, and during corpus discovery. Each check uses the same `options.max_files()` value but the counter is maintained independently (admitted set size vs walk accumulator vs discovered-file count), so they can disagree. Defense-in-depth is good, but four independent implementations of the same arithmetic are a maintenance liability.
 
 Consolidate into a `FileBudget` wrapper around a `usize` limit + `usize` counter that exposes `try_admit() -> Result<(), TooManyFiles>`. Use it in the single `AdmissionSet::admit` path. The walk-level check is redundant once the admission set enforces the limit; the discovery-level check can delegate to the same budget.
+
+*Resolution: introduced `FileBudget` in `admission.rs` with `try_admit()` and `limit()` methods. Used in all four locations: `AdmissionSet` (loader) embeds a `FileBudget` and checks during `admit`; `collect_files` (walk) creates a budget per walk; `validate_membership` (discovery) compares against a budget limit; `discover_filtered` (corpus) uses `try_admit` per file.*
 
 #### READ-013 — SourceCorpus::load creates a new admission root per file — ✓ Done
 

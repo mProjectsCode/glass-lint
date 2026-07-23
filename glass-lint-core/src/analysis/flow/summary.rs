@@ -16,7 +16,7 @@
 //! [`MAX_OVERLAY_NODES`]; exhaustion fails closed.
 
 use crate::analysis::{
-    facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
+    facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
     flow::{
         effect::{EffectCall, FunctionEffects},
         index::FlowId,
@@ -342,7 +342,7 @@ impl FunctionSinkSummary {
 
 #[derive(Debug)]
 pub(super) struct FunctionSummaries<'a> {
-    stream: &'a FactStream,
+    stream: &'a FactStream<Frozen>,
     by_id: FunctionTable<FunctionSummary>,
     paths: SummaryPathStore<'a>,
 }
@@ -361,7 +361,7 @@ impl<'a> FunctionSummaries<'a> {
     }
 
     pub(super) fn collect(
-        stream: &'a FactStream,
+        stream: &'a FactStream<Frozen>,
         effects: &FunctionEffects,
         plan: &BoundFlowPlan<'_>,
     ) -> Self {
@@ -402,7 +402,7 @@ impl<'a> FunctionSummaries<'a> {
         }
     }
 
-    fn collect_direct_sinks(&mut self, stream: &FactStream, plan: &BoundFlowPlan<'_>) {
+    fn collect_direct_sinks(&mut self, stream: &FactStream<Frozen>, plan: &BoundFlowPlan<'_>) {
         let entries: Vec<(FunctionId, usize)> = self
             .by_id
             .iter()
@@ -420,7 +420,7 @@ impl<'a> FunctionSummaries<'a> {
         }
     }
 
-    fn propagate_sinks(&mut self, stream: &FactStream) {
+    fn propagate_sinks(&mut self, stream: &FactStream<Frozen>) {
         let ids: Vec<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
         for _ in 0..MAX_SUMMARY_ROUNDS {
             let mut changed = false;
@@ -454,7 +454,7 @@ impl<'a> FunctionSummaries<'a> {
         &mut self,
         call_id: FactId,
         caller: FunctionId,
-        stream: &FactStream,
+        stream: &FactStream<Frozen>,
     ) -> bool {
         let Some((target, args)) = resolve_call_target(call_id, stream) else {
             return false;
@@ -506,7 +506,7 @@ impl<'a> FunctionSummaries<'a> {
 
 fn resolve_call_target(
     call_id: FactId,
-    stream: &FactStream,
+    stream: &FactStream<Frozen>,
 ) -> Option<(FunctionId, &[CallArgInfo])> {
     let FactPayload::Call {
         target_function,
@@ -523,7 +523,7 @@ fn try_project_sink(
     target_parameters: &[ParameterBinding],
     caller_parameters: &[ParameterBinding],
     sink: &FunctionSinkSummary,
-    stream: &FactStream,
+    stream: &FactStream<Frozen>,
     args: &[CallArgInfo],
     paths: &SummaryPathStore<'_>,
 ) -> Option<FunctionSinkSummary> {
@@ -545,7 +545,7 @@ fn try_project_sink(
 }
 
 impl FunctionSummary {
-    pub(super) fn parameter_bindings<'s>(&self, stream: &'s FactStream) -> &'s [ParameterBinding] {
+    pub(super) fn parameter_bindings<'s>(&self, stream: &'s FactStream<Frozen>) -> &'s [ParameterBinding] {
         stream.function_parameters(self.id)
     }
 
@@ -565,7 +565,7 @@ impl FunctionSummary {
 impl FunctionSummary {
     pub(super) fn is_invocation_compatible(
         &self,
-        stream: &FactStream,
+        stream: &FactStream<Frozen>,
         args: &[CallArgInfo],
         paths: &SummaryPathStore<'_>,
     ) -> bool {
@@ -606,7 +606,7 @@ impl FunctionSummary {
 impl FunctionSummary {
     fn collect_sinks_for_call(
         &mut self,
-        stream: &FactStream,
+        stream: &FactStream<Frozen>,
         plan: &BoundFlowPlan<'_>,
         paths: &mut SummaryPathStore<'_>,
         call_id: FactId,
@@ -670,7 +670,7 @@ impl FunctionSummary {
 impl ParameterBinding {
     pub(super) fn project_argument(
         &self,
-        stream: &FactStream,
+        stream: &FactStream<Frozen>,
         args: &[CallArgInfo],
         paths: &SummaryPathStore<'_>,
     ) -> Option<ValueId> {
@@ -680,7 +680,7 @@ impl ParameterBinding {
 
     pub(super) fn project_argument_at(
         &self,
-        stream: &FactStream,
+        stream: &FactStream<Frozen>,
         args: &[CallArgInfo],
         paths: &SummaryPathStore<'_>,
         path: SummaryPathId,
@@ -707,23 +707,18 @@ impl ParameterBinding {
             if path.is_empty() {
                 return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
             }
-            return stream
-                .values()
-                .and_then(|values| value_at_path(values, argument.value, paths, path));
+            return value_at_path(stream.values(), argument.value, paths, path);
         }
 
         if path.is_empty() {
             return (argument.value != ValueId::UNKNOWN).then_some(argument.value);
         }
 
-        stream.values().map_or_else(
-            || self.default.filter(|value| *value != ValueId::UNKNOWN),
-            |values| {
-                let id = value_at_path(values, argument.value, paths, path)
-                    .filter(|v| *v != ValueId::UNKNOWN);
-                id.or_else(|| self.default.filter(|value| *value != ValueId::UNKNOWN))
-            },
-        )
+        {
+            let id = value_at_path(stream.values(), argument.value, paths, path)
+                .filter(|v| *v != ValueId::UNKNOWN);
+            id.or_else(|| self.default.filter(|value| *value != ValueId::UNKNOWN))
+        }
     }
 }
 
@@ -783,7 +778,7 @@ mod tests {
         let mut resolver = Resolver::collect(&parsed.program);
         let stream = facts::build::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
-        let plan = BoundFlowPlan::new(&[], stream.names().expect("test stream names"));
+        let plan = BoundFlowPlan::new(&[], stream.names());
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
         assert!(summaries.by_id.len() >= 2);
         assert_eq!(

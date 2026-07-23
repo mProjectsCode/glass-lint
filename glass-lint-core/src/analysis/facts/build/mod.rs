@@ -32,7 +32,7 @@ use crate::{
     analysis::{
         SymbolPath,
         facts::{
-            CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactKind, FactPayload,
+            Building, CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactKind, FactPayload,
             FactStream, FunctionBoundary, ParameterBinding,
         },
         resolution::Resolver,
@@ -86,7 +86,7 @@ pub struct FactBuilder<'a> {
     /// Scope and provenance answers are prepared before this AST walk.
     resolver: &'a mut Resolver,
     /// Facts are appended in source traversal order and never rewritten.
-    stream: FactStream,
+    stream: FactStream<Building>,
     /// Traversal-only state is kept separate from fact allocation and indexing.
     traversal: state::TraversalState,
     /// Call results are retained for effective-call and value-flow projections.
@@ -201,10 +201,8 @@ impl<'a> FactBuilder<'a> {
     }
 
     #[cfg(test)]
-    pub(super) fn into_stream(self) -> FactStream {
-        let mut stream = self.stream;
-        let _ = stream.freeze_names(self.resolver.name_snapshot());
-        stream
+    pub(super) fn into_stream(self) -> FactStream<crate::analysis::facts::Frozen> {
+        self.stream.freeze(self.resolver.name_snapshot(), self.resolver.value_snapshot())
     }
 
     pub(in crate::analysis) fn into_built_facts(self) -> crate::analysis::facts::BuiltFacts {
@@ -215,7 +213,7 @@ impl<'a> FactBuilder<'a> {
     }
 
     #[cfg(test)]
-    pub fn into_parts(self) -> (FactStream, crate::analysis::module::ModuleInterface) {
+    pub fn into_parts(self) -> (FactStream<Building>, crate::analysis::module::ModuleInterface) {
         let built = self.into_built_facts();
         (built.stream, built.interface)
     }
@@ -322,20 +320,17 @@ impl<'a> FactBuilder<'a> {
 pub fn build_test_stream<'a>(
     program: &'a swc_ecma_ast::Program,
     resolver: &'a mut Resolver,
-) -> FactStream {
+) -> FactStream<crate::analysis::facts::Frozen> {
     let mut builder = FactBuilder::new(resolver);
     program.visit_with(&mut builder);
-    let mut stream = builder.into_stream();
-    let _ = stream.freeze_names(resolver.name_snapshot());
-    let _ = stream.freeze_values(resolver.value_snapshot());
-    stream
+    builder.into_stream()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn build_facts(src: &str, filename: &str) -> FactStream {
+    fn build_facts(src: &str, filename: &str) -> FactStream<crate::analysis::facts::Frozen> {
         let parsed = crate::parse(src, filename).expect("source should parse");
         let mut resolver = Resolver::collect(&parsed.program);
         let mut builder = FactBuilder::new(&mut resolver);
@@ -470,7 +465,7 @@ mod tests {
             document.getElementById('root');
         ";
 
-        let extract = |stream: FactStream| {
+        let extract = |stream: FactStream<crate::analysis::facts::Frozen>| {
             stream
                 .facts()
                 .iter()

@@ -15,6 +15,34 @@ use crate::{
     corpus::read_source_bytes, error::ProjectLoadError, options::ValidatedProjectLoadOptions,
 };
 
+/// File-count budget with an authoritative admit gate.
+///
+/// Ensures every file admission path checks the same limit arithmetic.
+#[derive(Clone, Debug)]
+pub struct FileBudget {
+    limit: usize,
+    count: usize,
+}
+
+impl FileBudget {
+    pub fn new(limit: usize) -> Self {
+        Self { limit, count: 0 }
+    }
+
+    pub fn try_admit(&mut self) -> Result<(), ProjectLoadError> {
+        let next = self.count.saturating_add(1);
+        if next > self.limit {
+            return Err(ProjectLoadError::TooManyFiles(self.limit));
+        }
+        self.count = next;
+        Ok(())
+    }
+
+    pub fn limit(&self) -> usize {
+        self.limit
+    }
+}
+
 /// A path proven canonical by the filesystem admission boundary.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CanonicalProjectPath(PathBuf);

@@ -68,6 +68,7 @@ pub fn collect_files(
                     Ok(crate::admission::PathAdmission::Excluded(_))
                 )
         });
+    let mut budget = crate::admission::FileBudget::new(admission.options().max_files());
     for entry in walker {
         if let Some(deadline) = deadline
             && Instant::now() >= deadline
@@ -88,17 +89,13 @@ pub fn collect_files(
                 .unwrap_or_else(|| std::io::Error::other(message));
             ProjectLoadError::Io { path, source }
         })?;
-        if entry.file_type().is_file() && include(entry.path()) {
-            if let crate::admission::PathAdmission::Admitted(admitted) =
+        if entry.file_type().is_file()
+            && include(entry.path())
+            && let crate::admission::PathAdmission::Admitted(admitted) =
                 admission.classify(entry.path())?
-            {
-                entries.push(admitted);
-            }
-            if entries.len() > admission.options().max_files() {
-                return Err(ProjectLoadError::TooManyFiles(
-                    admission.options().max_files(),
-                ));
-            }
+        {
+            budget.try_admit()?;
+            entries.push(admitted);
         }
     }
     Ok(entries)

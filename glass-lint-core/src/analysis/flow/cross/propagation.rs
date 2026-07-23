@@ -74,7 +74,7 @@ impl UsageProjector<'_> {
             .module_fact_stream(self.context.module)
             .and_then(|stream| {
                 let value = stream.property_write_value(event)?;
-                stream.values()?.static_string(value)
+                stream.values().static_string(value)
             });
         let mut next = self.state.clone();
         for (index, requirement) in self.flow.requirements.iter().enumerate() {
@@ -130,10 +130,7 @@ impl UsageProjector<'_> {
                 && arguments.iter().all(|matcher| {
                     call_args
                         .get(matcher.index())
-                        .is_some_and(|argument| match values {
-                            Some(values) => matcher.matcher().matches(argument, self.names, values),
-                            None => false,
-                        })
+                        .is_some_and(|argument| matcher.matcher().matches(argument, self.names, values))
                 })
             {
                 next.requirements.insert(

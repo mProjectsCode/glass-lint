@@ -474,34 +474,74 @@ impl ScopeEffect {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Conservative provenance attached to a lexical binding.
+///
+/// Each variant is produced during scope collection and consumed by the
+/// resolver to build value identities. The resolver does not reinterpret
+/// `BindingProvenance` after the value arena is built.
 pub(in crate::analysis) enum BindingProvenance {
+    /// A locally declared binding (`var`, `let`, `const`, `function`,
+    /// `class`, or parameter). Produced for declarations that do not
+    /// match a more specific pattern. Consumed by the resolver to build
+    /// `ValueId::Local`.
     Local,
+    /// A binding initialized to a tracked value reference
+    /// (`const x = y` where `y` has a proven identity). Produced during
+    /// assignment collection. Consumed by the resolver to redirect the
+    /// binding to the target's value ID.
     ValueAlias {
         target: NamePath,
     },
+    /// A binding initialized to a callable with bound arguments
+    /// (`const bound = fn.bind(obj)`). Produced during assignment
+    /// collection. Consumed by the resolver to build a value identity
+    /// preserving the bound arguments.
     BoundCallable {
         target: NamePath,
         bound_arguments: Vec<Option<BoundArgument>>,
     },
+    /// A binding initialized to a module export with bound arguments.
+    /// Produced during assignment collection. Consumed by the resolver.
     BoundModuleCallable {
         module: SmolStr,
         export: SmolStr,
         bound_arguments: Vec<Option<BoundArgument>>,
     },
+    /// A binding capturing the return value of a tracked callable
+    /// (`const x = fetch(url)`). Produced during assignment collection.
+    /// Consumed by the resolver.
     ReturnedObject {
         source: NamePath,
     },
+    /// A binding aliasing a named module export
+    /// (`const { send } = require("http")` or equivalent import).
+    /// Produced during scope collection. Consumed by the resolver to
+    /// build `ValueId::ModuleExport`.
     ModuleExport {
         module: SmolStr,
         export: SmolStr,
     },
+    /// A binding capturing an entire module namespace
+    /// (`const fs = require("fs")`). Produced during scope collection.
+    /// Consumed by the resolver to build `ValueId::ModuleNamespace`.
     ModuleNamespace {
         module: SmolStr,
     },
+    /// A binding initialized to a string literal. Produced during
+    /// assignment collection. Consumed by the resolver.
     StaticString(String),
+    /// A binding initialized to a number literal. Produced during
+    /// assignment collection. Consumed by the resolver.
     StaticNumber(usize),
+    /// A binding initialized to an array of string literals. Produced
+    /// during assignment collection. Consumed by the resolver.
     StaticStringArray(Vec<String>),
+    /// A binding initialized to an object whose keys are all static
+    /// strings. Produced during assignment collection. Consumed by the
+    /// resolver.
     StaticObjectKeys(Vec<NameId>),
+    /// A binding initialized to an object whose values are all tracked
+    /// value references. Produced during assignment collection. Consumed
+    /// by the resolver.
     StaticObjectValues(BTreeMap<NameId, NamePath>),
 }
 

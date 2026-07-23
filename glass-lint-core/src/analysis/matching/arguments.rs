@@ -19,7 +19,7 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         SymbolPath,
-        facts::{ArgumentView, CallUnwrap, SemanticFact},
+        facts::{ArgumentView, CallUnwrap, Frozen, SemanticFact},
         matching::{
             CallArgInfo, ClassificationEvidence, FactPayload, FactStream, LinkedOccurrenceView,
             ModuleIdentityMap, Occurrence, OccurrenceIndexes, SymbolCallProvenance,
@@ -37,7 +37,7 @@ use crate::{
 
 struct MatcherEvaluator<'a> {
     names: &'a NameTable,
-    values: Option<&'a ValueTable>,
+    values: &'a ValueTable,
     identities: Option<&'a ModuleIdentityMap>,
     result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
 }
@@ -45,7 +45,7 @@ struct MatcherEvaluator<'a> {
 impl<'a> MatcherEvaluator<'a> {
     fn new(
         names: &'a NameTable,
-        values: Option<&'a ValueTable>,
+        values: &'a ValueTable,
         identities: Option<&'a ModuleIdentityMap>,
         result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
     ) -> Self {
@@ -198,7 +198,7 @@ impl<'a> MatcherEvaluator<'a> {
 /// predicate, so constraint evaluation follows one semantic path regardless
 /// of how candidates were collected.
 pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay(
-    stream: &FactStream,
+    stream: &FactStream<Frozen>,
     indexes: &OccurrenceIndexes,
     clauses: &[(usize, &QueryClause)],
     evidence: &mut [Vec<ClassificationEvidence>],
@@ -206,9 +206,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     identities: Option<&ModuleIdentityMap>,
     result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
 ) {
-    let Some(names) = stream.names() else {
-        return;
-    };
+    let names = stream.names();
     let values = stream.values();
     let evaluator = MatcherEvaluator::new(names, values, identities, result_identities);
     let mut fallback = Vec::new();
@@ -433,13 +431,11 @@ impl MatcherEvaluator<'_> {
         constraints.iter().all(|constraint| match constraint {
             QueryConstraint::Argument(argument) => {
                 args.get(argument.index()).is_some_and(|value| {
-                    self.values.is_some_and(|values| {
-                        argument.matcher().matches(
-                            &self.argument_with_overlay(value),
-                            self.names,
-                            values,
-                        )
-                    })
+                    argument.matcher().matches(
+                        &self.argument_with_overlay(value),
+                        self.names,
+                        self.values,
+                    )
                 })
             }
         })
@@ -464,7 +460,7 @@ mod tests {
     use crate::{
         Environment,
         analysis::{
-            facts::{CallArgInfo, FactStream, build::build_test_stream},
+            facts::{CallArgInfo, FactStream, Frozen, build::build_test_stream},
             lowering::SpanNormalizer,
             matching::{ExportResolution, ModuleExportKey, OccurrenceIndexes},
             resolution::Resolver,
@@ -481,7 +477,7 @@ mod tests {
         },
     };
 
-    fn stream(source: &str, environment: &Environment) -> FactStream {
+    fn stream(source: &str, environment: &Environment) -> FactStream<Frozen> {
         let parsed = crate::parse(source, "constrained.js").unwrap();
         let coordinates = SpanNormalizer::new(parsed.source_start, source);
         let mut resolver =
@@ -489,7 +485,7 @@ mod tests {
         build_test_stream(&parsed.program, &mut resolver)
     }
 
-    fn build_index(stream: &FactStream) -> OccurrenceIndexes {
+    fn build_index(stream: &FactStream<Frozen>) -> OccurrenceIndexes {
         let mut index = OccurrenceIndexes::default();
         if stream.is_valid() {
             index.build_from_stream(stream);
@@ -690,7 +686,7 @@ mod tests {
         assert_eq!(
             MatcherEvaluator::new(
                 &crate::analysis::name::NameTable::default(),
-                None,
+                &crate::analysis::value::ValueTable::default(),
                 Some(&identities),
                 None
             )

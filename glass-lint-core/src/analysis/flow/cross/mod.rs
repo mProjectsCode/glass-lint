@@ -463,9 +463,7 @@ impl FlowSources {
         flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
     ) {
         for module in project.modules() {
-            let Some(names) = module.local().facts().names() else {
-                continue;
-            };
+            let names = module.local().facts().names();
             let stream = module.local().facts().stream();
             // Build a per-module source index so that candidate discovery
             // looks up flows by chain instead of scanning every flow for

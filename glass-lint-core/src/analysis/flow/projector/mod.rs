@@ -20,7 +20,7 @@ use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTa
 
 use crate::{
     analysis::{
-        facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary},
+        facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary},
         flow::{
             effect::{CallEffectRef, FunctionEffects},
             index::FlowLimits,
@@ -57,15 +57,13 @@ pub(in crate::analysis) struct LocalFlowProjectionOutcome {
 /// avoiding a separate evidence matrix allocation alongside the caller's.
 /// Returns the exhaustion state and bounded counters for the caller.
 pub(in crate::analysis) fn collect_into(
-    stream: &FactStream,
+    stream: &FactStream<Frozen>,
     effects: &FunctionEffects,
     rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
     evidence: &mut [Vec<ClassificationEvidence>],
     limits: FlowLimits,
 ) -> LocalFlowProjectionOutcome {
-    let Some(names) = stream.names() else {
-        return LocalFlowProjectionOutcome::default();
-    };
+    let names = stream.names();
     let plan = BoundFlowPlan::new(rules, names);
     let helpers = FunctionSummaries::collect(stream, effects, &plan);
     let mut projector = ObjectFlowProjector::new(stream, names, plan, helpers, evidence, limits);
@@ -77,7 +75,7 @@ pub(in crate::analysis) fn collect_into(
 
 #[cfg(test)]
 pub(super) fn collect_with_limits(
-    stream: &FactStream,
+    stream: &FactStream<Frozen>,
     effects: &FunctionEffects,
     rules: &[(RuleIndex, usize, &CompiledObjectFlow)],
     rule_count: usize,
@@ -92,7 +90,7 @@ pub(super) fn collect_with_limits(
 struct ObjectFlowProjector<'rules, 'stream> {
     /// The canonical facts are the projector's only input. In particular, it
     /// must never inspect the AST or reconstruct resolution decisions.
-    stream: &'stream FactStream,
+        stream: &'stream FactStream<Frozen>,
     names: &'stream NameTable,
     plan: BoundFlowPlan<'rules>,
     helpers: FunctionSummaries<'stream>,
@@ -117,7 +115,7 @@ struct ObjectFlowProjector<'rules, 'stream> {
 
 impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     fn new(
-        stream: &'stream FactStream,
+    stream: &'stream FactStream<Frozen>,
         names: &'stream NameTable,
         plan: BoundFlowPlan<'rules>,
         helpers: FunctionSummaries<'stream>,
@@ -181,10 +179,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
                 if !self.reachable {
                     return;
                 }
-                let static_string = self
-                    .stream
-                    .values()
-                    .and_then(|values| values.static_string(*value));
+                let static_string = self.stream.values().static_string(*value);
                 self.record_property_write(
                     *receiver,
                     property.and_then(|id| self.stream.resolve_name(id)),
@@ -588,7 +583,7 @@ mod tests {
                     syntactic_path: Some(chain),
                     ..
                 } if chain
-                    .to_symbol_path(stream.names().unwrap())
+                    .to_symbol_path(stream.names())
                     .is_some_and(|s| s.eq_chain("document.head.appendChild")) =>
                 {
                     Some(fact.span)

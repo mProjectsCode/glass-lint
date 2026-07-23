@@ -112,12 +112,11 @@ impl SourceCorpus {
             if !metadata.is_dir() {
                 return Err(ProjectLoadError::CorpusRootNotFileOrDir(root.clone()));
             }
+            let mut budget = crate::admission::FileBudget::new(self.options.max_files());
             let found = walk::collect_files(&admission, root, None, &mut include)?;
             for path in found {
+                budget.try_admit()?;
                 paths.insert(path.into_path_buf());
-                if paths.len() > self.options.max_files() {
-                    return Err(ProjectLoadError::TooManyFiles(self.options.max_files()));
-                }
             }
         }
         debug_assert!(paths.len() <= self.options.max_files());

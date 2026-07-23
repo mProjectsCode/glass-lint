@@ -68,18 +68,13 @@ impl ProjectLoadOutcome {
 /// Phase timings shared with harness profiling reports.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ProjectPhaseTimings {
-    phases: [Duration; 6],
+    discovery: Duration,
+    reads: Duration,
+    analyze_source: Duration,
+    resolution: Duration,
+    linking: Duration,
+    matching: Duration,
     total: Duration,
-}
-
-#[derive(Clone, Copy, Debug)]
-enum Phase {
-    Discovery = 0,
-    Reads = 1,
-    AnalyzeSource = 2,
-    Resolution = 3,
-    Linking = 4,
-    Matching = 5,
 }
 
 impl ProjectPhaseTimings {
@@ -91,27 +86,27 @@ impl ProjectPhaseTimings {
 
     #[must_use]
     pub fn discovery(&self) -> Duration {
-        self.phases[Phase::Discovery as usize]
+        self.discovery
     }
 
     #[must_use]
     pub fn reads(&self) -> Duration {
-        self.phases[Phase::Reads as usize]
+        self.reads
     }
 
     #[must_use]
     pub fn resolution(&self) -> Duration {
-        self.phases[Phase::Resolution as usize]
+        self.resolution
     }
 
     #[must_use]
     pub fn linking(&self) -> Duration {
-        self.phases[Phase::Linking as usize]
+        self.linking
     }
 
     #[must_use]
     pub fn matching(&self) -> Duration {
-        self.phases[Phase::Matching as usize]
+        self.matching
     }
 
     #[must_use]
@@ -121,42 +116,36 @@ impl ProjectPhaseTimings {
 
     #[must_use]
     pub fn parse_and_local_analysis(&self) -> Duration {
-        self.phases[Phase::AnalyzeSource as usize]
+        self.analyze_source
     }
 
     #[must_use]
     pub fn linking_and_matching(&self) -> Duration {
-        self.phases[Phase::Linking as usize].saturating_add(self.phases[Phase::Matching as usize])
+        self.linking.saturating_add(self.matching)
     }
 
     pub fn record_discovery(&mut self, duration: Duration) {
-        self.phases[Phase::Discovery as usize] =
-            self.phases[Phase::Discovery as usize].saturating_add(duration);
+        self.discovery = self.discovery.saturating_add(duration);
     }
 
     pub fn record_reads(&mut self, duration: Duration) {
-        self.phases[Phase::Reads as usize] =
-            self.phases[Phase::Reads as usize].saturating_add(duration);
+        self.reads = self.reads.saturating_add(duration);
     }
 
     pub fn record_analyze_source(&mut self, duration: Duration) {
-        self.phases[Phase::AnalyzeSource as usize] =
-            self.phases[Phase::AnalyzeSource as usize].saturating_add(duration);
+        self.analyze_source = self.analyze_source.saturating_add(duration);
     }
 
     pub fn record_resolution(&mut self, duration: Duration) {
-        self.phases[Phase::Resolution as usize] =
-            self.phases[Phase::Resolution as usize].saturating_add(duration);
+        self.resolution = self.resolution.saturating_add(duration);
     }
 
     pub fn record_linking(&mut self, duration: Duration) {
-        self.phases[Phase::Linking as usize] =
-            self.phases[Phase::Linking as usize].saturating_add(duration);
+        self.linking = self.linking.saturating_add(duration);
     }
 
     pub fn record_matching(&mut self, duration: Duration) {
-        self.phases[Phase::Matching as usize] =
-            self.phases[Phase::Matching as usize].saturating_add(duration);
+        self.matching = self.matching.saturating_add(duration);
     }
 
     pub fn record_total(&mut self, duration: Duration) {
@@ -166,9 +155,12 @@ impl ProjectPhaseTimings {
 
 impl std::ops::AddAssign for ProjectPhaseTimings {
     fn add_assign(&mut self, rhs: Self) {
-        for (l, r) in self.phases.iter_mut().zip(rhs.phases.iter()) {
-            *l = l.saturating_add(*r);
-        }
+        self.discovery = self.discovery.saturating_add(rhs.discovery);
+        self.reads = self.reads.saturating_add(rhs.reads);
+        self.analyze_source = self.analyze_source.saturating_add(rhs.analyze_source);
+        self.resolution = self.resolution.saturating_add(rhs.resolution);
+        self.linking = self.linking.saturating_add(rhs.linking);
+        self.matching = self.matching.saturating_add(rhs.matching);
         self.total = self.total.saturating_add(rhs.total);
     }
 }
@@ -313,15 +305,27 @@ impl PathWorkQueue {
     }
 }
 
-#[derive(Debug, Default)]
-struct AdmissionSet(BTreeSet<AdmittedSourcePath>);
+#[derive(Debug)]
+struct AdmissionSet {
+    paths: BTreeSet<AdmittedSourcePath>,
+    budget: crate::admission::FileBudget,
+}
+
 impl AdmissionSet {
-    fn admit(&mut self, path: AdmittedSourcePath) -> bool {
-        self.0.insert(path)
+    fn new(limit: usize) -> Self {
+        Self {
+            paths: BTreeSet::new(),
+            budget: crate::admission::FileBudget::new(limit),
+        }
+    }
+
+    fn admit(&mut self, path: AdmittedSourcePath) -> Result<bool, ProjectLoadError> {
+        self.budget.try_admit()?;
+        Ok(self.paths.insert(path))
     }
 
     fn len(&self) -> usize {
-        self.0.len()
+        self.paths.len()
     }
 }
 
@@ -416,13 +420,14 @@ impl<'a> ProjectLoadState<'a> {
     ) -> Result<Self, ProjectLoadError> {
         let session = linter.begin_project(admission.canonical_root())?;
         let resolver = ProjectResolver::new(admission.clone(), selection)?;
+        let max_files = admission.options().max_files();
         Ok(Self {
             session,
             resolver,
             admission,
             diagnostics,
             queue: PathWorkQueue::default(),
-            admitted: AdmissionSet::default(),
+            admitted: AdmissionSet::new(max_files),
             resolved: ResolutionCache::default(),
             progress: LoadProgress::default(),
             deadline,
@@ -469,13 +474,8 @@ impl<'a> ProjectLoadState<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         self.check_timeout()?;
-        if !self.admitted.admit(admitted.clone()) {
+        if !self.admitted.admit(admitted.clone())? {
             return Ok(());
-        }
-        if self.admitted.len() > self.admission.options().max_files() {
-            return Err(ProjectLoadError::TooManyFiles(
-                self.admission.options().max_files(),
-            ));
         }
 
         let read_start = Instant::now();

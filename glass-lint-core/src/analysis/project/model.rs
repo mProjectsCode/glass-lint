@@ -13,7 +13,7 @@ use super::{
 use crate::{
     AnalysisDiagnostic, ProjectRelativePath, SourceFile,
     analysis::{
-        facts::{FactId, FactStream, SemanticFact},
+        facts::{FactId, FactStream, Frozen, SemanticFact},
         flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
         module::ModuleRequestId,
@@ -328,11 +328,14 @@ impl ProjectSemanticModel {
 
     /// Borrow the name table for a module's local artifact.
     pub(in crate::analysis) fn module_names(&self, module: ModuleId) -> Option<&NameTable> {
-        self.modules.get(&module)?.local().facts().names()
+        Some(self.modules.get(&module)?.local().facts().names())
     }
 
     /// Borrow the fact stream for a module's local artifact.
-    pub(in crate::analysis) fn module_fact_stream(&self, module: ModuleId) -> Option<&FactStream> {
+    pub(in crate::analysis) fn module_fact_stream(
+        &self,
+        module: ModuleId,
+    ) -> Option<&FactStream<Frozen>> {
         Some(self.modules.get(&module)?.local().facts().stream())
     }
 

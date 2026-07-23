@@ -71,12 +71,7 @@ impl ObjectFlowProjector<'_, '_> {
                             && source.is_rooted == rooted
                             && source.arguments.iter().all(|matcher| {
                                 args.get(matcher.index()).is_some_and(|arg| {
-                                    match self.stream.values() {
-                                        Some(values) => {
-                                            matcher.matcher().matches(arg, self.names, values)
-                                        }
-                                        None => false,
-                                    }
+                                matcher.matcher().matches(arg, self.names, self.stream.values())
                                 })
                             })
                     })

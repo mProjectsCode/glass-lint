@@ -278,53 +278,6 @@ impl PathInterner {
         self.store.starts_with(path.0, prefix.0)
     }
 
-    /// Borrow the final segment of a valid non-empty path.
-    #[cfg(test)]
-    pub(in crate::analysis) fn last(&self, path: PathId) -> Option<&PathSegment> {
-        self.store.segment(path.0)
-    }
-
-    #[cfg(test)]
-    pub(in crate::analysis) fn first_index(&self, path: PathId) -> Option<u32> {
-        self.store.first_index(path.0)
-    }
-
-    /// Remove the first segment and recover the canonical remaining path.
-    #[cfg(test)]
-    pub(in crate::analysis) fn without_first(&self, path: PathId) -> Option<PathId> {
-        self.store.without_first(path.0).map(PathId)
-    }
-
-    /// Append every segment of `suffix` to `prefix` through the interner,
-    /// reusing a caller-owned scratch buffer to avoid intermediate
-    /// allocation.
-    #[cfg(test)]
-    pub(in crate::analysis) fn concat_with_buffer(
-        &mut self,
-        prefix: PathId,
-        suffix: PathId,
-        buf: &mut Vec<PathSegment>,
-    ) -> Option<PathId> {
-        self.store.collect_segments(suffix.0, buf)?;
-        let mut result = prefix;
-        for segment in buf.drain(..) {
-            result = self.append(result, segment)?;
-        }
-        Some(result)
-    }
-
-    /// Append every segment of `suffix` to `prefix` through the interner.
-    #[cfg(test)]
-    pub(in crate::analysis) fn concat(&mut self, prefix: PathId, suffix: PathId) -> Option<PathId> {
-        let mut buf = Vec::new();
-        self.concat_with_buffer(prefix, suffix, &mut buf)
-    }
-
-    #[cfg(test)]
-    pub(in crate::analysis) fn node_count(&self) -> usize {
-        self.store.node_count()
-    }
-
     /// Borrow the underlying store (used by summary overlay for read-only
     /// access).
     pub(in crate::analysis) fn store(&self) -> &ParentPathStore {
@@ -336,6 +289,57 @@ impl PathInterner {
 mod tests {
     use super::*;
     use crate::analysis::name::NameTable;
+
+    trait PathInternerTestExt {
+        fn last(&self, path: PathId) -> Option<&PathSegment>;
+        fn first_index(&self, path: PathId) -> Option<u32>;
+        fn without_first(&self, path: PathId) -> Option<PathId>;
+        fn concat(&mut self, prefix: PathId, suffix: PathId) -> Option<PathId>;
+        fn concat_with_buffer(
+            &mut self,
+            prefix: PathId,
+            suffix: PathId,
+            buf: &mut Vec<PathSegment>,
+        ) -> Option<PathId>;
+        fn node_count(&self) -> usize;
+    }
+
+    impl PathInternerTestExt for PathInterner {
+        fn last(&self, path: PathId) -> Option<&PathSegment> {
+            self.store.segment(path.0)
+        }
+
+        fn first_index(&self, path: PathId) -> Option<u32> {
+            self.store.first_index(path.0)
+        }
+
+        fn without_first(&self, path: PathId) -> Option<PathId> {
+            self.store.without_first(path.0).map(PathId)
+        }
+
+        fn concat_with_buffer(
+            &mut self,
+            prefix: PathId,
+            suffix: PathId,
+            buf: &mut Vec<PathSegment>,
+        ) -> Option<PathId> {
+            self.store.collect_segments(suffix.0, buf)?;
+            let mut result = prefix;
+            for segment in buf.drain(..) {
+                result = self.append(result, segment)?;
+            }
+            Some(result)
+        }
+
+        fn concat(&mut self, prefix: PathId, suffix: PathId) -> Option<PathId> {
+            let mut buf = Vec::new();
+            self.concat_with_buffer(prefix, suffix, &mut buf)
+        }
+
+        fn node_count(&self) -> usize {
+            self.store.node_count()
+        }
+    }
 
     fn property(names: &mut NameTable, value: &str) -> PathSegment {
         PathSegment::Property(names.intern(value).expect("path test names fit"))

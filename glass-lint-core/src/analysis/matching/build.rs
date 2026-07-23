@@ -7,9 +7,9 @@
 use smol_str::SmolStr;
 
 use crate::analysis::{
-    facts::{ClassFactRole, SemanticFact},
+    facts::{ClassFactRole, FactStream, Frozen, SemanticFact},
     matching::{
-        FactPayload, FactStream, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
+        FactPayload, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
         occurrence::{InstanceMemberKey, ModuleExportKey, ReturnedMemberKey},
     },
     name::NameTable,
@@ -28,22 +28,16 @@ impl OccurrenceIndexes {
         self.literals.normalize();
     }
 
-    pub(in crate::analysis) fn build_from_stream(&mut self, stream: &FactStream) {
+    pub(in crate::analysis) fn build_from_stream(&mut self, stream: &FactStream<Frozen>) {
         #[cfg(test)]
         {
-            if let Some(names) = stream.names() {
-                self.test_names = names.clone();
-            }
+            self.test_names = stream.names().clone();
         }
         // This is the sole projection from semantic facts into shared matcher
         // indexes. Rule selection must happen later, in query code.
         let values = stream.values();
         stream.facts().iter().for_each(|fact| {
-            self.record_fact(
-                fact,
-                stream.names().expect("valid stream has names"),
-                values,
-            );
+            self.record_fact(fact, stream.names(), values);
         });
     }
 
@@ -51,7 +45,7 @@ impl OccurrenceIndexes {
         &mut self,
         fact: &SemanticFact,
         names: &NameTable,
-        values: Option<&crate::analysis::value::ValueTable>,
+        values: &crate::analysis::value::ValueTable,
     ) {
         match &fact.payload {
             FactPayload::Call { .. } => self.record_call_fact(fact, names),
@@ -68,12 +62,10 @@ impl OccurrenceIndexes {
 
             FactPayload::Reference { value, .. } => {
                 if let Some(static_string) =
-                    values
-                        .and_then(|v| v.get(*value))
-                        .and_then(|val| match val {
-                            crate::analysis::value::Value::StaticString(s) => Some(s),
-                            _ => None,
-                        })
+                    values.get(*value).and_then(|val| match val {
+                        crate::analysis::value::Value::StaticString(s) => Some(s),
+                        _ => None,
+                    })
                 {
                     self.literals
                         .strings

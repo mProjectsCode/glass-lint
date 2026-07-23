@@ -15,7 +15,7 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         facts::{
-            CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary,
+            CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
             ParameterBinding, SemanticFact,
         },
         flow::table::FunctionTable,
@@ -174,7 +174,7 @@ impl EffectCall {
         &self.arguments
     }
 
-    pub(in crate::analysis) fn as_ref<'s>(&'s self, stream: &'s FactStream) -> CallEffectRef<'s> {
+    pub(in crate::analysis) fn as_ref<'s>(&'s self, stream: &'s FactStream<Frozen>) -> CallEffectRef<'s> {
         CallEffectRef {
             stream,
             event: self.event,
@@ -191,7 +191,7 @@ impl EffectCall {
 /// cross-module flow.
 #[derive(Clone, Copy)]
 pub(in crate::analysis) struct CallEffectRef<'stream> {
-    pub(in crate::analysis) stream: &'stream FactStream,
+    pub(in crate::analysis) stream: &'stream FactStream<Frozen>,
     pub(in crate::analysis) event: FactId,
 }
 
@@ -313,9 +313,7 @@ impl CallEffectRef<'_> {
                 && source.is_rooted == self.rooted()
                 && source.arguments.iter().all(|matcher| {
                     args.get(matcher.index()).is_some_and(|argument| {
-                        values.is_some_and(|values| {
-                            matcher.matcher().matches(argument, names, values)
-                        })
+                        matcher.matcher().matches(argument, names, values)
                     })
                 })
         })
@@ -371,9 +369,9 @@ impl FunctionEffects {
     /// Extract matcher-independent effects from the canonical fact stream in
     /// a single ordered pass: function-enter facts create effect slots before
     /// the events they own are processed.
-    pub(in crate::analysis) fn collect(stream: &FactStream, limit: usize) -> Self {
+    pub(in crate::analysis) fn collect(stream: &FactStream<Frozen>, limit: usize) -> Self {
         let mut effects = Self::default();
-        if !stream.is_valid() || stream.names().is_none() {
+        if !stream.is_valid() {
             return effects;
         }
         let mut budget = Budget::new(limit);
@@ -477,7 +475,7 @@ impl FunctionEffect {
         event: FactId,
         receiver: ValueId,
         property: Option<&str>,
-        stream: &FactStream,
+        stream: &FactStream<Frozen>,
         budget: &mut Budget,
     ) {
         if !budget.try_push() {
@@ -514,7 +512,7 @@ impl FunctionEffect {
     /// slot or when the stream is inaccessible.
     pub(in crate::analysis) fn parameters<'s>(
         &self,
-        stream: &'s FactStream,
+        stream: &'s FactStream<Frozen>,
     ) -> &'s [ParameterBinding] {
         stream.function_parameters(self.id)
     }
@@ -563,7 +561,7 @@ impl FunctionEffect {
         }
     }
 
-    fn record_call(&mut self, fact: &SemanticFact, stream: &FactStream, budget: &mut Budget) {
+    fn record_call(&mut self, fact: &SemanticFact, stream: &FactStream<Frozen>, budget: &mut Budget) {
         let FactPayload::Call {
             args,
             result,
@@ -616,7 +614,7 @@ impl FunctionEffect {
     fn build_effect_arguments(
         &self,
         call_args: &[CallArgInfo],
-        stream: &FactStream,
+        stream: &FactStream<Frozen>,
     ) -> Vec<EffectArgument> {
         call_args
             .iter()
@@ -646,7 +644,7 @@ impl FunctionEffect {
         }
     }
 
-    fn parameter_for(&self, value: ValueId, stream: &FactStream) -> Option<ParameterRef> {
+    fn parameter_for(&self, value: ValueId, stream: &FactStream<Frozen>) -> Option<ParameterRef> {
         let root = self.value_roots.get(&value).copied().unwrap_or(value);
         stream
             .function_parameters(self.id)
@@ -674,7 +672,7 @@ impl FunctionEffect {
         &mut self,
         value: ValueId,
         value_provenance: &BTreeMap<ValueId, SymbolCallProvenance>,
-        stream: &FactStream,
+        stream: &FactStream<Frozen>,
         budget: &mut Budget,
     ) {
         let parameter = self.parameter_for(value, stream);
@@ -707,7 +705,7 @@ mod tests {
     use super::*;
     use crate::analysis::{facts, resolution::Resolver};
 
-    fn collect_effects(source: &str) -> (FactStream, FunctionEffects) {
+    fn collect_effects(source: &str) -> (FactStream<Frozen>, FunctionEffects) {
         let parsed = crate::parse(source, "test.js").expect("source should parse");
         let mut resolver = Resolver::collect(&parsed.program);
         let stream = facts::build::build_test_stream(&parsed.program, &mut resolver);
@@ -727,7 +725,7 @@ mod tests {
             stream: &stream,
             event: fact.id,
         };
-        let names = stream.names().expect("test stream has names");
+        let names = stream.names();
         let chain = cref
             .chain_owned(names)
             .expect("direct call should have a chain");
@@ -750,7 +748,7 @@ mod tests {
         let (stream, _effects) = collect_effects(
             "function fetch(url) { return url; } const alias = fetch; alias('/api');",
         );
-        let names = stream.names().expect("test stream has names");
+        let names = stream.names();
         let call_facts: Vec<_> = stream
             .facts()
             .iter()
@@ -817,12 +815,10 @@ mod tests {
             effective.len()
         );
         let values = stream.values();
-        let is_api = values.is_some_and(|values| {
-            effective[0].base_value != ValueId::UNKNOWN
-                && values
-                    .static_string(effective[0].base_value)
-                    .is_some_and(|s| s == "/api")
-        });
+        let is_api = effective[0].base_value != ValueId::UNKNOWN
+            && values
+                .static_string(effective[0].base_value)
+                .is_some_and(|s| s == "/api");
         assert!(is_api, "effective arg should be '/api'");
     }
 
@@ -851,12 +847,10 @@ mod tests {
             effective.len()
         );
         let values = stream.values();
-        let is_api = values.is_some_and(|values| {
-            effective[0].base_value != ValueId::UNKNOWN
-                && values
-                    .static_string(effective[0].base_value)
-                    .is_some_and(|s| s == "/api")
-        });
+        let is_api = effective[0].base_value != ValueId::UNKNOWN
+            && values
+                .static_string(effective[0].base_value)
+                .is_some_and(|s| s == "/api");
         assert!(is_api, "effective arg should be '/api'");
     }
 
@@ -875,7 +869,7 @@ mod tests {
         assert!(cref.provenance().is_none());
         assert!(cref.target().is_none());
         assert!(cref.effective_args().is_none());
-        let names = stream.names().expect("test stream has names");
+        let names = stream.names();
         assert!(cref.chain_owned(names).is_none());
     }
 
@@ -891,7 +885,7 @@ mod tests {
             stream: &stream,
             event: fact.id,
         };
-        let names = stream.names().expect("test stream has names");
+        let names = stream.names();
         let owned = cref.chain_owned(names).unwrap();
         let borrowed = cref.chain().unwrap();
         assert_eq!(&*owned, borrowed, "owned chain should match borrowed");

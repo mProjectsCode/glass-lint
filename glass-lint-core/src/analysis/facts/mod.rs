@@ -17,6 +17,7 @@ use crate::{
         },
         matching::{self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes},
         module::ModuleInterface,
+        name::NameTable,
         project::model::ExportResolution,
         value::{ValueId, ValueTable},
     },
@@ -31,12 +32,12 @@ mod model;
 mod stream;
 
 pub(in crate::analysis) use model::*;
-pub(in crate::analysis) use stream::FactStream;
+pub(in crate::analysis) use stream::{Building, FactStream, Frozen};
 
 /// Facts collected by the source-order visitor before names and values are
 /// frozen into the immutable semantic artifact.
 pub(in crate::analysis) struct BuiltFacts {
-    pub(in crate::analysis) stream: FactStream,
+    pub(in crate::analysis) stream: FactStream<Building>,
     pub(in crate::analysis) interface: ModuleInterface,
 }
 
@@ -91,7 +92,7 @@ impl<'a> ProjectionPlan<'a> {
 /// A malformed or budget-exhausted stream remains available for diagnostics,
 /// but indexing and projection fail closed rather than consuming partial facts.
 pub(in crate::analysis) struct SemanticFacts {
-    stream: FactStream,
+    stream: FactStream<Frozen>,
     index: OccurrenceIndexes,
     interface: ModuleInterface,
 }
@@ -99,15 +100,10 @@ pub(in crate::analysis) struct SemanticFacts {
 impl SemanticFacts {
     /// Assemble immutable indexes from the stream produced by lowering.
     pub(in crate::analysis) fn from_lowering(
-        mut stream: FactStream,
+        stream: FactStream<Frozen>,
         interface: ModuleInterface,
         environment: &crate::Environment,
-        values: ValueTable,
     ) -> Self {
-        stream
-            .freeze_values(values)
-            .expect("FactStream already owns a ValueTable");
-
         // Project the fact stream into rule-independent occurrence indexes.
         let mut index = OccurrenceIndexes::with_environment(environment);
         if stream.is_valid() {
@@ -123,11 +119,11 @@ impl SemanticFacts {
     }
 
     /// Borrow the canonical facts in deterministic source traversal order.
-    pub(in crate::analysis) fn stream(&self) -> &FactStream {
+    pub(in crate::analysis) fn stream(&self) -> &FactStream<Frozen> {
         &self.stream
     }
 
-    pub(in crate::analysis) fn names(&self) -> Option<&crate::analysis::name::NameTable> {
+    pub(in crate::analysis) fn names(&self) -> &NameTable {
         self.stream.names()
     }
 
@@ -136,7 +132,7 @@ impl SemanticFacts {
     }
 
     /// Borrow the frozen value arena for shape lookups by ValueId.
-    pub(in crate::analysis) fn values(&self) -> Option<&ValueTable> {
+    pub(in crate::analysis) fn values(&self) -> &ValueTable {
         self.stream.values()
     }
 
@@ -162,10 +158,7 @@ impl SemanticFacts {
     ) {
         let mut projected_evidence = vec![Vec::new(); plan.rule_count];
         if !self.stream.is_valid()
-            || self
-                .values()
-                .and_then(|values| values.get(ValueId::UNKNOWN))
-                .is_none()
+            || self.values().get(ValueId::UNKNOWN).is_none()
         {
             return (projected_evidence, LocalFlowProjectionOutcome::default());
         }
@@ -254,7 +247,7 @@ mod tests {
     #[test]
     fn direct_lookup_and_linear_test_helper_preserve_fact_order() {
         let span = ByteRange::new(10, 20).unwrap();
-        let mut stream = FactStream::new();
+        let mut stream = FactStream::<Building>::new();
         stream.push(test_fact(0, FactKind::Call, span));
         stream.push(test_fact(1, FactKind::MemberRead, span));
         stream.push(test_fact(2, FactKind::Call, span));
@@ -281,7 +274,7 @@ mod tests {
     #[test]
     fn dense_fact_stream_preserves_every_same_span_fact() {
         let span = ByteRange::new(100, 120).unwrap();
-        let mut stream = FactStream::new();
+        let mut stream = FactStream::<Building>::new();
         for id in 0..10_001 {
             stream.push(test_fact(id, FactKind::Call, span));
         }
@@ -328,18 +321,13 @@ mod tests {
             let _ = (matchers, selected);
             let mut builder = FactBuilder::new(&mut resolver);
             swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
-            let (mut stream, interface) = builder.into_parts();
+            let (stream, interface) = builder.into_parts();
             let (names, values) = resolver.into_parts();
-            let _ = stream.freeze_names(names);
+            let stream = stream.freeze(names, values);
             format!(
                 "{:?}",
-                SemanticFacts::from_lowering(
-                    stream,
-                    interface,
-                    &crate::Environment::default(),
-                    values,
-                )
-                .index
+                SemanticFacts::from_lowering(stream, interface, &crate::Environment::default())
+                    .index
             )
         };
 
@@ -373,9 +361,7 @@ mod tests {
 
         let mut builder = FactBuilder::new(&mut resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
-        let mut stream = builder.into_stream();
-        let _ = stream.freeze_names(resolver.name_snapshot());
-        let _ = stream.freeze_values(resolver.value_snapshot());
+        let stream = builder.into_stream();
         let mut index = OccurrenceIndexes::default();
         index.build_from_stream(&stream);
         index.normalize_occurrences();
