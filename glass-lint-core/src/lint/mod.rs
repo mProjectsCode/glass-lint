@@ -5,11 +5,12 @@
 //! policy stay separate from semantic fact construction.
 
 mod catalog;
-mod findings;
 mod linter;
 mod ranges;
+mod report;
 mod selection;
 
 pub use catalog::{ProviderCatalogError, RuleCatalog};
-pub use linter::{Linter, LinterConfig, ProjectAnalysis};
+pub use linter::{Linter, LinterConfig};
+pub use report::{ProjectAnalysis, ReportAssembly};
 pub use selection::{LintConfigError, RuleBaseline, RuleOverride, RuleSelection, RuleState};

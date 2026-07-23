@@ -235,7 +235,8 @@ impl<'a> FactBuilder<'a> {
     }
 
     pub(super) fn record_export_decl(&mut self, declaration: &swc_ecma_ast::Decl) {
-        self.interface.record_export_decl(declaration, self.resolver);
+        self.interface
+            .record_export_decl(declaration, self.resolver);
     }
 
     pub(super) fn record_module_call_request(&mut self, call: &CallExpr) {
@@ -287,7 +288,8 @@ impl<'a> FactBuilder<'a> {
             let Some(span) = self.byte_range(source.span) else {
                 return;
             };
-            self.interface.record_reexports_from_source(export, source, span);
+            self.interface
+                .record_reexports_from_source(export, source, span);
         } else {
             self.interface
                 .record_local_named_exports_only(&export.specifiers, self.resolver);
@@ -310,7 +312,8 @@ impl<'a> FactBuilder<'a> {
     }
 
     pub(super) fn record_commonjs_export(&mut self, assignment: &swc_ecma_ast::AssignExpr) {
-        self.interface.record_commonjs_export(assignment, self.resolver);
+        self.interface
+            .record_commonjs_export(assignment, self.resolver);
     }
 }
 

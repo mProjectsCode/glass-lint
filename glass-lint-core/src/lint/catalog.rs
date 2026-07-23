@@ -6,7 +6,14 @@ use std::{
     fmt,
 };
 
-use crate::{RuleId, RuleMetadata, api::compiler::CompiledRuleRecord};
+use crate::{
+    RuleId, RuleMetadata,
+    api::{
+        classification::RuleIndex,
+        compiler::{CompiledRuleRecord, compile_records},
+        rule::{CompiledCatalogError, Rule},
+    },
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Catalog construction failure.
@@ -14,7 +21,7 @@ pub enum ProviderCatalogError {
     /// Provider prefix or full rule ID is invalid.
     InvalidRuleId(String),
     /// A rule failed catalog validation, including duplicate identity.
-    InvalidRule(String, String),
+    InvalidRule(RuleId, String),
 }
 
 impl fmt::Display for ProviderCatalogError {
@@ -34,45 +41,45 @@ pub struct RuleCatalog {
     /// Compiled rule records (no source declaration trees retained).
     pub(crate) records: Vec<CompiledRuleRecord>,
     rule_ids: Vec<RuleId>,
-    rule_indices: BTreeMap<RuleId, crate::api::classification::RuleIndex>,
+    rule_indices: BTreeMap<RuleId, RuleIndex>,
 }
 
 impl RuleCatalog {
     /// Build a provider catalog from locally named rules.
     pub fn new(
         provider: impl Into<String>,
-        rules: Vec<crate::api::rule::Rule>,
+        rules: Vec<Rule>,
     ) -> Result<Self, ProviderCatalogError> {
         let provider = provider.into();
         RuleId::parse(format!("{provider}:placeholder"))?;
 
-        let rules = rules
+        let rules_and_ids = rules
             .into_iter()
             .map(|rule| {
-                let id = format!("{provider}:{}", rule.id());
-                rule.validate_and_normalize()
-                    .map_err(|error| ProviderCatalogError::InvalidRule(id, error.to_string()))
+                let rule_id = RuleId::parse(format!("{provider}:{}", rule.id()))?;
+                let validated = rule.validate_and_normalize().map_err(|error| {
+                    ProviderCatalogError::InvalidRule(rule_id.clone(), error.to_string())
+                })?;
+                Ok((validated, rule_id))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        // Compile once into immutable records (no declarations retained).
-        let records =
-            crate::api::compiler::compile_records(&rules).map_err(|error| match error {
-                crate::api::rule::CompiledCatalogError::InvalidMatcher(message) => {
-                    ProviderCatalogError::InvalidRule("<catalog>".into(), message)
-                }
-            })?;
+        let (rules, rule_ids): (Vec<_>, Vec<_>) = rules_and_ids.into_iter().unzip();
 
-        let rule_ids = rules
-            .iter()
-            .map(|rule| RuleId::parse(format!("{provider}:{}", rule.id())))
-            .collect::<Result<Vec<_>, _>>()?;
+        // Compile once into immutable records (no declarations retained).
+        let provider_compile =
+            RuleId::parse(format!("{provider}:compile")).expect("valid provider and name");
+        let records = compile_records(&rules).map_err(|error| match error {
+            CompiledCatalogError::InvalidMatcher(message) => {
+                ProviderCatalogError::InvalidRule(provider_compile, message)
+            }
+        })?;
 
         let rule_indices = rule_ids
             .iter()
             .cloned()
             .enumerate()
-            .map(|(index, id)| (id, crate::api::classification::RuleIndex::new(index)))
+            .map(|(index, id)| (id, RuleIndex::new(index)))
             .collect();
         Ok(Self {
             records,
@@ -100,7 +107,7 @@ impl RuleCatalog {
             for (record, rule_id) in catalog.records.into_iter().zip(catalog.rule_ids) {
                 if !seen.insert(rule_id.clone()) {
                     return Err(ProviderCatalogError::InvalidRule(
-                        rule_id.to_string(),
+                        rule_id,
                         "duplicate rule".into(),
                     ));
                 }
@@ -114,7 +121,7 @@ impl RuleCatalog {
             .iter()
             .cloned()
             .enumerate()
-            .map(|(index, id)| (id, crate::api::classification::RuleIndex::new(index)))
+            .map(|(index, id)| (id, RuleIndex::new(index)))
             .collect();
         Ok(Self {
             records,
@@ -149,7 +156,7 @@ impl RuleCatalog {
 
     #[must_use]
     /// Borrow the ID at a stable catalog index.
-    pub fn rule_id(&self, index: crate::api::classification::RuleIndex) -> Option<&RuleId> {
+    pub fn rule_id(&self, index: RuleIndex) -> Option<&RuleId> {
         self.rule_ids.get(index.get())
     }
 
@@ -159,7 +166,7 @@ impl RuleCatalog {
     }
 
     /// Resolve a fully-qualified ID to its catalog index.
-    pub fn rule_index(&self, id: &RuleId) -> Option<crate::api::classification::RuleIndex> {
+    pub fn rule_index(&self, id: &RuleId) -> Option<RuleIndex> {
         self.rule_indices.get(id).copied()
     }
 }
@@ -192,7 +199,10 @@ mod tests {
 
         assert_eq!(
             error,
-            ProviderCatalogError::InvalidRule("same:request".into(), "duplicate rule".into())
+            ProviderCatalogError::InvalidRule(
+                RuleId::parse("same:request").unwrap(),
+                "duplicate rule".into()
+            )
         );
     }
 

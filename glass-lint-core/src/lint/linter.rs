@@ -1,27 +1,14 @@
-use std::{collections::BTreeMap, sync::Arc};
-
 use crate::{
-    AnalysisReport, Environment, ProjectInput, ProjectInputError, ProviderCatalogError,
-    REPORT_VERSION, RuleId,
-    analysis::{LocalArtifact, ProjectSemanticModel, project::projection::ProjectionOutcome},
-    api::classification::ClassificationResult,
+    AnalysisLimits, AnalysisReport, Environment, ProjectCollection, ProjectInput,
+    ProjectInputError, ProviderCatalogError, RuleId,
+    analysis::ArtifactCacheHandle,
+    api::classification::RuleIndex,
     lint::{
         catalog::RuleCatalog,
         selection::{LintConfigError, RuleBaseline, RuleSelection, RuleState},
     },
-    project::{ModuleId, input::ValidatedProjectInput},
+    project::SessionState,
 };
-
-type AnalyzedModules = BTreeMap<crate::ProjectRelativePath, LocalArtifact>;
-
-/// Outcome of linking and matching a resolved project, with phase timings
-/// so `glass-lint-project` can observe pipeline boundaries without parsing
-/// a positional tuple.
-pub struct ProjectAnalysis {
-    pub report: AnalysisReport,
-    pub linking: std::time::Duration,
-    pub matching: std::time::Duration,
-}
 
 /// Caller-supplied input to linter construction. Validation occurs in
 /// [`Linter::new`].
@@ -34,7 +21,7 @@ pub struct LinterConfig {
     /// Baseline and per-rule overrides for the combined catalog.
     selection: RuleSelection,
     /// Parser and semantic operation bounds.
-    limits: crate::AnalysisLimits,
+    limits: AnalysisLimits,
 }
 
 impl LinterConfig {
@@ -43,7 +30,7 @@ impl LinterConfig {
             catalogs,
             environment,
             selection: RuleSelection::default(),
-            limits: crate::AnalysisLimits::default(),
+            limits: AnalysisLimits::default(),
         }
     }
 
@@ -54,7 +41,7 @@ impl LinterConfig {
     }
 
     #[must_use]
-    pub fn with_limits(mut self, limits: crate::AnalysisLimits) -> Self {
+    pub fn with_limits(mut self, limits: AnalysisLimits) -> Self {
         self.limits = limits;
         self
     }
@@ -75,11 +62,11 @@ pub struct Linter {
     /// Host environment used during semantic fact construction.
     environment: Environment,
     /// Enabled rule indexes in deterministic catalog order.
-    enabled: Vec<crate::api::classification::RuleIndex>,
+    enabled: Vec<RuleIndex>,
     /// Parser and semantic operation bounds.
-    limits: crate::AnalysisLimits,
+    limits: AnalysisLimits,
     /// Shared bounded cache of successfully lowered artifacts.
-    artifact_cache: crate::analysis::ArtifactCacheHandle,
+    artifact_cache: ArtifactCacheHandle,
 }
 
 impl Clone for Linter {
@@ -99,8 +86,16 @@ impl Linter {
     pub fn begin_project(
         &self,
         root: impl Into<std::path::PathBuf>,
-    ) -> Result<crate::ProjectCollection<'_>, ProjectInputError> {
-        crate::ProjectCollection::new(self, root)
+    ) -> Result<ProjectCollection<'_>, ProjectInputError> {
+        let state = SessionState::new(
+            self.analysis_environment(),
+            self.analysis_limits(),
+            self.artifact_cache_handle(),
+            &self.catalog,
+            &self.enabled,
+            self.limits.evidence_items(),
+        );
+        ProjectCollection::new(state, root)
     }
 
     /// Construct a linter from validated catalogs, environment, rule
@@ -109,9 +104,7 @@ impl Linter {
     /// overrides are applied in declaration order, and limits are validated.
     pub fn new(config: LinterConfig) -> Result<Self, LintConfigError> {
         let catalog = RuleCatalog::combine(config.catalogs).map_err(|error| match error {
-            ProviderCatalogError::InvalidRule(id, _) => {
-                LintConfigError::DuplicateRule(RuleId::parse(id).expect("catalog IDs validated"))
-            }
+            ProviderCatalogError::InvalidRule(id, _) => LintConfigError::DuplicateRule(id),
             ProviderCatalogError::InvalidRuleId(id) => LintConfigError::InvalidSelector(id),
         })?;
         config.selection.validate_against(&catalog)?;
@@ -131,7 +124,7 @@ impl Linter {
                 }
             }
             if state {
-                enabled.push(crate::api::classification::RuleIndex::new(index));
+                enabled.push(RuleIndex::new(index));
             }
         }
         // Limits are guaranteed valid by construction through
@@ -141,7 +134,7 @@ impl Linter {
             environment: config.environment,
             enabled,
             limits: config.limits,
-            artifact_cache: crate::analysis::ArtifactCacheHandle::default(),
+            artifact_cache: ArtifactCacheHandle::default(),
         })
     }
 
@@ -161,7 +154,7 @@ impl Linter {
     }
 
     /// Borrow the validated parser and semantic safety limits.
-    pub fn analysis_limits(&self) -> &crate::AnalysisLimits {
+    pub fn analysis_limits(&self) -> &AnalysisLimits {
         &self.limits
     }
 
@@ -170,7 +163,7 @@ impl Linter {
         &self.environment
     }
 
-    pub(crate) fn artifact_cache_handle(&self) -> crate::analysis::ArtifactCacheHandle {
+    pub(crate) fn artifact_cache_handle(&self) -> ArtifactCacheHandle {
         self.artifact_cache.clone()
     }
 
@@ -245,274 +238,6 @@ impl Linter {
         let mut collection = self.begin_project(".")?;
         collection.analyze_source(crate::SourceFile::new(filename.to_string(), source)?)?;
         collection.finish_local().resolve([])?.finish()
-    }
-
-    /// Finish the canonical project analysis and expose phase timings as
-    /// observers of the same report-producing path.
-    pub(crate) fn finish_analyzed_project(
-        &self,
-        input: ValidatedProjectInput,
-        analyzed: AnalyzedModules,
-        parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
-    ) -> Result<ProjectAnalysis, ProjectInputError> {
-        let (mut files, parse_failure_codes) =
-            Self::initialize_project_files(&input, parse_diagnostics);
-
-        tracing::debug!(
-            target: "glass_lint::project::link",
-            modules = analyzed.len(),
-            resolutions = input.resolution_count(),
-            "stage started"
-        );
-        let linking_start = std::time::Instant::now();
-        let mut project = ProjectSemanticModel::link_with_limits(input, analyzed, &self.limits)?;
-        for (path, code) in parse_failure_codes {
-            project.record_parse_failure(path, &code);
-        }
-
-        let linking = linking_start.elapsed();
-        let link_counts = project.operation_counts(0);
-        tracing::info!(
-            target: "glass_lint::project::link",
-            files = link_counts.files,
-            requests = link_counts.requests,
-            edges = link_counts.edges,
-            elapsed = ?linking,
-            "stage finished"
-        );
-        let matching_start = std::time::Instant::now();
-        tracing::debug!(target: "glass_lint::project::matching", rules = self.enabled.len(), "stage started");
-        let (classifications, projection_outcome) = project.classify_with_evidence_limit(
-            self.catalog.compiled(),
-            &self.enabled,
-            self.limits.evidence_items(),
-        );
-        project.record_flow_exhaustion(&projection_outcome);
-        let matching = matching_start.elapsed();
-        self.populate_project_files(&project, &classifications, &mut files);
-
-        let diagnostics = Self::attach_project_diagnostics(&project, &mut files);
-        let report =
-            Self::assemble_project_report(&project, files, diagnostics, &projection_outcome);
-
-        let summary = report.summary();
-        tracing::info!(
-            target: "glass_lint::project::matching",
-            files = report.operations.files,
-            findings = summary.findings,
-            evidence = report.operations.evidence,
-            diagnostics = report.diagnostics.len() + summary.parse_diagnostics,
-            elapsed = ?matching,
-            "stage finished"
-        );
-
-        Ok(ProjectAnalysis {
-            report,
-            linking,
-            matching,
-        })
-    }
-
-    fn populate_project_files(
-        &self,
-        project: &ProjectSemanticModel,
-        classifications: &BTreeMap<ModuleId, ClassificationResult>,
-        files: &mut BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
-    ) {
-        for module in project.modules() {
-            let Some(classification) = classifications.get(&module.id()) else {
-                continue;
-            };
-            let mut findings = self.project_findings_for_module(project, module, classification);
-            findings.sort_by(|a, b| {
-                a.location
-                    .range
-                    .start()
-                    .line()
-                    .cmp(&b.location.range.start().line())
-                    .then_with(|| {
-                        a.location
-                            .range
-                            .start()
-                            .column()
-                            .cmp(&b.location.range.start().column())
-                    })
-                    .then_with(|| a.rule_id.as_str().cmp(b.rule_id.as_str()))
-            });
-            findings.dedup();
-            files.insert(
-                module.path().clone(),
-                crate::FileReport {
-                    path: module.path().clone(),
-                    findings,
-                    diagnostics: Vec::new(),
-                },
-            );
-        }
-    }
-
-    fn project_findings_for_module(
-        &self,
-        project: &ProjectSemanticModel,
-        module: &crate::analysis::ProjectModule,
-        classification: &ClassificationResult,
-    ) -> Vec<crate::Finding> {
-        let lines = &module.source_context().lines;
-        let path = module.path();
-
-        let mut by_rule: BTreeMap<
-            crate::api::classification::RuleIndex,
-            (Vec<crate::Finding>, Vec<crate::Evidence>),
-        > = BTreeMap::new();
-
-        for capability in classification.capabilities() {
-            let related: Vec<_> = capability
-                .evidence()
-                .iter()
-                .flat_map(|evidence| &evidence.related)
-                .filter_map(|related| {
-                    let mut evidence =
-                        project.fact_location(ModuleId::new(related.module), related.event)?;
-                    evidence.message.clone_from(&related.symbol);
-                    Some(evidence)
-                })
-                .collect();
-            let cap_findings = self.findings_for_capability(capability, lines, path);
-
-            let (rule_findings, rule_related) = by_rule.entry(capability.rule_index).or_default();
-            rule_findings.extend(cap_findings);
-            rule_related.extend(related);
-        }
-
-        let mut result: Vec<crate::Finding> = Vec::new();
-        for (_, (mut rule_findings, related)) in by_rule {
-            if !related.is_empty() {
-                let shared: Arc<[crate::Evidence]> = related.into();
-                for finding in &mut rule_findings {
-                    finding.set_shared_evidence(Arc::clone(&shared));
-                }
-            }
-            result.append(&mut rule_findings);
-        }
-        result
-    }
-
-    fn initialize_project_files(
-        input: &ValidatedProjectInput,
-        mut parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
-    ) -> (
-        BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
-        BTreeMap<crate::ProjectRelativePath, String>,
-    ) {
-        let mut files: BTreeMap<crate::ProjectRelativePath, crate::FileReport> = BTreeMap::new();
-        let mut parse_failure_codes: BTreeMap<crate::ProjectRelativePath, String> = BTreeMap::new();
-        for source in input.source_map().values() {
-            let path = source.path.clone();
-            match parse_diagnostics.remove(&path) {
-                Some(diagnostic) => {
-                    parse_failure_codes.insert(path.clone(), diagnostic.code.as_str().to_owned());
-                    files.insert(
-                        path,
-                        crate::FileReport {
-                            path: source.path.clone(),
-                            findings: Vec::new(),
-                            diagnostics: vec![crate::Diagnostic::parse(
-                                source.path.clone(),
-                                diagnostic,
-                            )],
-                        },
-                    );
-                }
-                None => {
-                    files.insert(
-                        path,
-                        crate::FileReport {
-                            path: source.path.clone(),
-                            findings: Vec::new(),
-                            diagnostics: Vec::new(),
-                        },
-                    );
-                }
-            }
-        }
-        // Any remaining parse diagnostics (keys not in the source map)
-        // are consumed for status recording rather than leaked.
-        for (path, diagnostic) in parse_diagnostics {
-            parse_failure_codes.insert(path.clone(), diagnostic.code.as_str().to_owned());
-        }
-        (files, parse_failure_codes)
-    }
-
-    fn attach_project_diagnostics(
-        project: &ProjectSemanticModel,
-        files: &mut BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
-    ) -> Vec<crate::Diagnostic> {
-        let (status_files, status_project) = project.status_diagnostics();
-        for (path, mut diagnostic) in status_files {
-            diagnostic.location = Some(crate::SourceLocation {
-                path: path.clone(),
-                range: crate::SourceRange::new(
-                    crate::Position::new(1, 1).expect("one-based position"),
-                    crate::Position::new(1, 1).expect("one-based position"),
-                )
-                .expect("ordered source range"),
-            });
-            if let Some(file) = files.get_mut(&path) {
-                file.diagnostics
-                    .push(crate::Diagnostic::project(diagnostic));
-            }
-        }
-
-        let mut diagnostics = Vec::new();
-        for diagnostic in project.diagnostics().iter().cloned() {
-            if let Some(path) = diagnostic
-                .location
-                .as_ref()
-                .map(|location| location.path.clone())
-            {
-                if let Some(file) = files.get_mut(&path) {
-                    file.diagnostics
-                        .push(crate::Diagnostic::project(diagnostic));
-                }
-            } else {
-                diagnostics.push(crate::Diagnostic::project(diagnostic));
-            }
-        }
-        diagnostics.extend(status_project.into_iter().map(crate::Diagnostic::project));
-        diagnostics.sort_by(|left, right| left.code().cmp(right.code()));
-        diagnostics
-    }
-
-    fn assemble_project_report(
-        project: &ProjectSemanticModel,
-        files: BTreeMap<crate::ProjectRelativePath, crate::FileReport>,
-        diagnostics: Vec<crate::Diagnostic>,
-        outcome: &ProjectionOutcome,
-    ) -> AnalysisReport {
-        let evidence = files
-            .values()
-            .map(|file| {
-                file.findings
-                    .iter()
-                    .map(|finding| finding.evidence.len())
-                    .sum::<usize>()
-            })
-            .sum();
-        let is_partial = !project.is_complete();
-        let mut operations = project.operation_counts(evidence);
-        operations.effect_projections = outcome.effect_projections;
-        AnalysisReport {
-            schema_version: REPORT_VERSION,
-            tool_version: env!("CARGO_PKG_VERSION").into(),
-            files: files.into_values().collect(),
-            diagnostics,
-            operations,
-            completion: if is_partial {
-                crate::ReportCompletion::Partial
-            } else {
-                crate::ReportCompletion::Complete
-            },
-        }
     }
 }
 

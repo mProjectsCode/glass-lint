@@ -4,6 +4,26 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::{collections::BTreeMap, num::NonZeroUsize, sync::Arc};
 
+use crate::{
+    AnalysisLimits, Environment, LocalExecutionError, ParseDiagnostic, ProjectRelativePath,
+    RuleCatalog,
+    analysis::{
+        ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
+        Lowerer, QualifiedRequestId, SemanticArtifact, SharedSemanticArtifact,
+    },
+    api::classification::RuleIndex,
+    lint::ReportAssembly,
+    project::{
+        AnalysisReport, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
+        ResolverOutcome, SourceFile,
+        input::{
+            ValidatedProjectInput, normalize_relative, normalize_resolution_key, normalize_result,
+            normalize_root,
+        },
+        tables::{ResolutionTable, SourceTable},
+    },
+};
+
 struct LocalJob {
     path: ProjectRelativePath,
     source: SourceFile,
@@ -14,7 +34,7 @@ struct LocalJobResult {
     path: ProjectRelativePath,
     source: SourceFile,
     key: ArtifactCacheKey,
-    result: Result<Arc<crate::analysis::SemanticArtifact>, ParseDiagnostic>,
+    result: Result<Arc<SemanticArtifact>, ParseDiagnostic>,
 }
 
 trait LocalJobExecutor {
@@ -22,7 +42,7 @@ trait LocalJobExecutor {
         &self,
         jobs: Box<dyn Iterator<Item = LocalJob>>,
         worker_limit: NonZeroUsize,
-        linter: &Linter,
+        lowerer: &Lowerer,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
     ) -> Result<(), LocalExecutionError>;
@@ -163,7 +183,7 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
         &self,
         jobs: Box<dyn Iterator<Item = LocalJob>>,
         worker_limit: NonZeroUsize,
-        linter: &Linter,
+        lowerer: &Lowerer,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
     ) -> Result<(), LocalExecutionError> {
@@ -188,8 +208,7 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
                         observer.observe(ExecutionEvent::Started);
                         observer.observe(ExecutionEvent::ParseAttempted);
                         observer.observe(ExecutionEvent::LowerAttempted);
-                        let result = crate::analysis::lower_source(linter, &job.source)
-                            .map(|ls| ls.semantic);
+                        let result = lowerer.lower_source(&job.source).map(|ls| ls.semantic);
                         observer.observe(ExecutionEvent::Finished);
                         result_tx
                             .send(LocalJobResult {
@@ -256,7 +275,7 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
         &self,
         jobs: Box<dyn Iterator<Item = LocalJob>>,
         _worker_limit: NonZeroUsize,
-        linter: &Linter,
+        lowerer: &Lowerer,
         observer: &dyn ExecutionObserver,
         release: &mut dyn FnMut(LocalJobResult),
     ) -> Result<(), LocalExecutionError> {
@@ -276,7 +295,7 @@ impl LocalJobExecutor for ControlledLocalJobExecutor {
             observer.observe(ExecutionEvent::Started);
             observer.observe(ExecutionEvent::ParseAttempted);
             observer.observe(ExecutionEvent::LowerAttempted);
-            let result = crate::analysis::lower_source(linter, &job.source).map(|ls| ls.semantic);
+            let result = lowerer.lower_source(&job.source).map(|ls| ls.semantic);
             observer.observe(ExecutionEvent::Finished);
             release(LocalJobResult {
                 path: job.path,
@@ -375,25 +394,37 @@ fn insert_and_notify(
     }
 }
 
-use crate::{
-    Linter, LocalExecutionError, ParseDiagnostic, ProjectRelativePath,
-    analysis::{
-        ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
-        QualifiedRequestId, SemanticArtifact, SharedSemanticArtifact,
-    },
-    project::{
-        AnalysisReport, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
-        ResolverOutcome, SourceFile,
-        input::{
-            ValidatedProjectInput, normalize_relative, normalize_resolution_key, normalize_result,
-            normalize_root,
-        },
-        tables::{ResolutionTable, SourceTable},
-    },
-};
+/// Borrowed session state that replaces direct `&Linter` references in the
+/// collection, analysis, and resolution chain.
+pub struct SessionState<'a> {
+    pub(super) lowerer: Lowerer<'a>,
+    pub(super) artifact_cache: ArtifactCacheHandle,
+    catalog: &'a RuleCatalog,
+    enabled: &'a [RuleIndex],
+    evidence_limit: usize,
+}
+
+impl<'a> SessionState<'a> {
+    pub(crate) fn new(
+        environment: &'a Environment,
+        limits: &'a AnalysisLimits,
+        artifact_cache: ArtifactCacheHandle,
+        catalog: &'a RuleCatalog,
+        enabled: &'a [RuleIndex],
+        evidence_limit: usize,
+    ) -> Self {
+        Self {
+            lowerer: Lowerer::new(environment, limits),
+            artifact_cache,
+            catalog,
+            enabled,
+            evidence_limit,
+        }
+    }
+}
 
 pub struct ProjectCollection<'a> {
-    pub(super) linter: &'a Linter,
+    state: SessionState<'a>,
     pub(super) root: std::path::PathBuf,
     pub(super) sources: SourceTable,
     artifacts: AnalysisArtifacts,
@@ -407,7 +438,7 @@ pub struct ProjectCollection<'a> {
 /// Project state after every admitted source has completed local analysis.
 /// The consuming transition prevents adding sources after this point.
 pub struct LocallyAnalyzedProject<'a> {
-    linter: &'a Linter,
+    state: SessionState<'a>,
     root: std::path::PathBuf,
     sources: SourceTable,
     artifacts: AnalysisArtifacts,
@@ -416,7 +447,7 @@ pub struct LocallyAnalyzedProject<'a> {
 /// Project state after the authored resolution table has been validated.
 /// Linking and matching are available only from this phase.
 pub struct ResolvedProject<'a> {
-    linter: &'a Linter,
+    state: SessionState<'a>,
     input: ValidatedProjectInput,
     artifacts: AnalysisArtifacts,
 }
@@ -429,24 +460,24 @@ impl<'a> ProjectCollection<'a> {
         {
             return ArtifactCacheKey::new(
                 source,
-                self.linter.analysis_environment(),
-                self.linter.analysis_limits(),
+                self.state.lowerer.environment(),
+                self.state.lowerer.limits(),
             );
         }
         self.fingerprint_normalization.map_or_else(
             || {
                 ArtifactCacheKey::for_engine_version(
                     source,
-                    self.linter.analysis_environment(),
-                    self.linter.analysis_limits(),
+                    self.state.lowerer.environment(),
+                    self.state.lowerer.limits(),
                     self.fingerprint_engine_version,
                 )
             },
             |normalization| {
                 ArtifactCacheKey::for_test_inputs(
                     source,
-                    self.linter.analysis_environment(),
-                    self.linter.analysis_limits(),
+                    self.state.lowerer.environment(),
+                    self.state.lowerer.limits(),
                     normalization,
                     self.fingerprint_engine_version,
                 )
@@ -458,8 +489,8 @@ impl<'a> ProjectCollection<'a> {
     fn artifact_fingerprint(&self, source: &SourceFile) -> ArtifactCacheKey {
         ArtifactCacheKey::new(
             source,
-            self.linter.analysis_environment(),
-            self.linter.analysis_limits(),
+            self.state.lowerer.environment(),
+            self.state.lowerer.limits(),
         )
     }
 
@@ -481,15 +512,16 @@ impl<'a> ProjectCollection<'a> {
 
     /// Start an empty parse-once project session under a canonical root.
     pub fn new(
-        linter: &'a Linter,
+        state: SessionState<'a>,
         root: impl Into<std::path::PathBuf>,
     ) -> Result<Self, ProjectInputError> {
+        let artifact_cache = state.artifact_cache.clone();
         Ok(Self {
-            linter,
+            state,
             root: normalize_root(&root.into())?,
             sources: SourceTable::default(),
             artifacts: AnalysisArtifacts::default(),
-            artifact_cache: linter.artifact_cache_handle(),
+            artifact_cache,
             #[cfg(test)]
             fingerprint_engine_version: env!("CARGO_PKG_VERSION"),
             #[cfg(test)]
@@ -545,7 +577,7 @@ impl<'a> ProjectCollection<'a> {
             CacheLookup::Miss(key) => {
                 observer.observe(ExecutionEvent::ParseAttempted);
                 observer.observe(ExecutionEvent::LowerAttempted);
-                let lowered = match crate::analysis::lower_source(self.linter, source) {
+                let lowered = match self.state.lowerer.lower_source(source) {
                     Ok(lowered) => lowered,
                     Err(error) => {
                         self.artifacts.record_parse_failure(path.clone(), error);
@@ -675,7 +707,7 @@ impl<'a> ProjectCollection<'a> {
             .execute(
                 Box::new(uncached.into_iter()),
                 worker_count,
-                self.linter,
+                &self.state.lowerer,
                 observer,
                 &mut release,
             )
@@ -742,7 +774,7 @@ impl<'a> ProjectCollection<'a> {
     /// request set for the resolution phase.
     pub fn finish_local(self) -> LocallyAnalyzedProject<'a> {
         LocallyAnalyzedProject {
-            linter: self.linter,
+            state: self.state,
             root: self.root,
             sources: self.sources,
             artifacts: self.artifacts,
@@ -783,21 +815,19 @@ impl<'a> LocallyAnalyzedProject<'a> {
                 let interface = local.interface();
                 let lines = &local.source_context().lines;
                 let requests = interface.requests_with_ids(path, lines);
-                requests
-                    .into_iter()
-                    .map(move |(req_id, authored)| {
-                        (
-                            authored.key,
-                            QualifiedRequestId {
-                                module: module_id,
-                                request: req_id,
-                            },
-                        )
-                    })
+                requests.into_iter().map(move |(req_id, authored)| {
+                    (
+                        authored.key,
+                        QualifiedRequestId {
+                            module: module_id,
+                            request: req_id,
+                        },
+                    )
+                })
             })
             .collect();
         Ok(ResolvedProject {
-            linter: self.linter,
+            state: self.state,
             input: input.with_request_ids(request_ids),
             artifacts: self.artifacts,
         })
@@ -812,10 +842,16 @@ impl ResolvedProject<'_> {
     }
 
     pub fn finish_with_timings(self) -> Result<crate::lint::ProjectAnalysis, ProjectInputError> {
-        self.linter.finish_analyzed_project(
+        let assembly = ReportAssembly::new(
+            self.state.catalog,
+            self.state.enabled,
+            self.state.evidence_limit,
+        );
+        assembly.finish(
             self.input,
             self.artifacts.analyzed,
             self.artifacts.parse_diagnostics,
+            self.state.lowerer.limits(),
         )
     }
 }

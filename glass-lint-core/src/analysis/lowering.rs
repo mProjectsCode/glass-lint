@@ -10,13 +10,13 @@ use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
 use crate::{
-    ParseDiagnostic, SourceFile,
+    AnalysisLimits, Environment, ParseDiagnostic, SourceFile, SourceText,
     analysis::{
         LocatedSourceContext, SemanticArtifact,
         facts::{self, SemanticFacts},
         flow::effect::FunctionEffects,
         module,
-        name::NameTable,
+        name::{MAX_NAMES, NameTable},
         resolution,
         scope::ScopeGraph,
         status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
@@ -51,7 +51,7 @@ pub(in crate::analysis) struct SpanNormalizer {
     /// Length of the authored source in bytes.
     len: u32,
     /// Retained source text for boundary validation, when available.
-    text: Option<crate::SourceText>,
+    text: Option<SourceText>,
     /// True when the source text is entirely ASCII; boundary checks are then
     /// redundant since every byte position is a valid UTF-8 boundary.
     is_ascii: bool,
@@ -60,7 +60,7 @@ pub(in crate::analysis) struct SpanNormalizer {
 impl SpanNormalizer {
     pub(in crate::analysis) fn new(
         source_start: swc_common::BytePos,
-        source: impl Into<crate::SourceText>,
+        source: impl Into<SourceText>,
     ) -> Self {
         let source = source.into();
         let is_ascii = source.is_ascii();
@@ -113,30 +113,47 @@ pub struct LoweredSource {
     pub(crate) semantic: Arc<SemanticArtifact>,
 }
 
-/// Lower one source file into an immutable semantic artifact. Parsing,
-/// scope collection, fact construction, and effect extraction all happen in
-/// one pass. The result is ready for project linking and matcher projection.
-pub fn lower_source(
-    linter: &crate::Linter,
-    source: &SourceFile,
-) -> Result<LoweredSource, ParseDiagnostic> {
-    let parsed = crate::parse::parse_with_language_and_depth(
-        &source.source,
-        &source.path,
-        source.language,
-        linter.analysis_limits().syntax_depth(),
-    )?;
-    let coordinates = SpanNormalizer::new(parsed.source_start, source.source.clone());
-    let semantic = lower_program(
-        &parsed.program,
-        linter.analysis_environment(),
-        linter.analysis_limits(),
-        &coordinates,
-    );
-    Ok(LoweredSource {
-        source: LocatedSourceContext::new(source),
-        semantic: Arc::new(semantic),
-    })
+/// Per-file lowering stage. Owns the environment and limits that the
+/// lowering pipeline needs, without coupling to the full `Linter`.
+pub struct Lowerer<'a> {
+    environment: &'a Environment,
+    limits: &'a AnalysisLimits,
+}
+
+impl<'a> Lowerer<'a> {
+    pub fn new(environment: &'a Environment, limits: &'a AnalysisLimits) -> Self {
+        Self {
+            environment,
+            limits,
+        }
+    }
+
+    pub fn environment(&self) -> &Environment {
+        self.environment
+    }
+
+    pub fn limits(&self) -> &AnalysisLimits {
+        self.limits
+    }
+
+    /// Lower one source file into an immutable semantic artifact. Parsing,
+    /// scope collection, fact construction, and effect extraction all happen in
+    /// one pass. The result is ready for project linking and matcher
+    /// projection.
+    pub fn lower_source(&self, source: &SourceFile) -> Result<LoweredSource, ParseDiagnostic> {
+        let parsed = crate::parse::parse_with_language_and_depth(
+            &source.source,
+            &source.path,
+            source.language,
+            self.limits.syntax_depth(),
+        )?;
+        let coordinates = SpanNormalizer::new(parsed.source_start, source.source.clone());
+        let semantic = lower_program(&parsed.program, self.environment, self.limits, &coordinates);
+        Ok(LoweredSource {
+            source: LocatedSourceContext::new(source),
+            semantic: Arc::new(semantic),
+        })
+    }
 }
 
 /// Lower an already-parsed SWC program into a `SemanticArtifact`. Used
@@ -144,23 +161,17 @@ pub fn lower_source(
 /// control over limits or name budgets.
 pub fn lower_program(
     program: &Program,
-    environment: &crate::Environment,
-    limits: &crate::AnalysisLimits,
+    environment: &Environment,
+    limits: &AnalysisLimits,
     coordinates: &SpanNormalizer,
 ) -> SemanticArtifact {
-    lower_program_with_name_limit(
-        program,
-        environment,
-        limits,
-        coordinates,
-        crate::analysis::name::MAX_NAMES,
-    )
+    lower_program_with_name_limit(program, environment, limits, coordinates, MAX_NAMES)
 }
 
 fn check_facts_budget(
     stream: &facts::FactStream,
     resolver: &resolution::Resolver,
-    limits: &crate::AnalysisLimits,
+    limits: &AnalysisLimits,
 ) -> Option<IncompleteReason> {
     let name_exhausted = resolver.name_table_exhausted();
     if stream.budget_exhausted()
@@ -195,7 +206,7 @@ fn check_name_exhaustion(resolver: &resolution::Resolver) -> Option<IncompleteRe
 
 fn check_effects_budget(
     effects: &FunctionEffects,
-    limits: &crate::AnalysisLimits,
+    limits: &AnalysisLimits,
 ) -> Option<IncompleteReason> {
     effects
         .budget_exhausted()
@@ -208,8 +219,8 @@ fn check_effects_budget(
 
 fn lower_program_with_name_limit(
     program: &Program,
-    environment: &crate::Environment,
-    limits: &crate::AnalysisLimits,
+    environment: &Environment,
+    limits: &AnalysisLimits,
     coordinates: &SpanNormalizer,
     name_limit: usize,
 ) -> SemanticArtifact {
@@ -226,8 +237,8 @@ fn lower_program_with_name_limit(
 /// transition in one owner makes it difficult for callers to observe or reuse
 /// an intermediate scope, resolution, or fact state.
 struct LocalLowering<'a> {
-    environment: &'a crate::Environment,
-    limits: &'a crate::AnalysisLimits,
+    environment: &'a Environment,
+    limits: &'a AnalysisLimits,
     coordinates: &'a SpanNormalizer,
     name_limit: usize,
 }

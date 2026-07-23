@@ -32,10 +32,9 @@ pub use local::{
     ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, ProjectModule,
     SemanticArtifact, SharedSemanticArtifact,
 };
-pub use lowering::{LoweredSource, lower_source};
-pub use project::model::ProjectSemanticModel;
-pub use project::model::QualifiedRequestId;
+pub use lowering::{LoweredSource, Lowerer};
 pub(in crate::analysis) use project::model::ExportResolution;
+pub use project::model::{ProjectSemanticModel, QualifiedRequestId};
 pub use value::SymbolPath;
 
 #[cfg(test)]

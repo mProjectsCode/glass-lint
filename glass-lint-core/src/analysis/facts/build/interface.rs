@@ -9,8 +9,8 @@
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
-    DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr, ExportSpecifier, Expr, ImportDecl,
-    NamedExport,
+    DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr, ExportSpecifier, Expr,
+    ImportDecl, NamedExport,
 };
 
 use crate::{
@@ -103,7 +103,8 @@ impl ModuleInterfaceBuilder {
             }
             swc_ecma_ast::Decl::Fn(function) => {
                 self.record_local(function.ident.sym.to_string());
-                if let Some(id) = resolver.function_id_for_expr(&Expr::Ident(function.ident.clone()))
+                if let Some(id) =
+                    resolver.function_id_for_expr(&Expr::Ident(function.ident.clone()))
                 {
                     self.interface
                         .add_function_export(function.ident.sym.to_string(), id);
@@ -144,11 +145,7 @@ impl ModuleInterfaceBuilder {
     }
 
     /// Record a dynamic-import request at a resolved byte range.
-    pub(super) fn record_import_request(
-        &mut self,
-        span: ByteRange,
-        specifier: &swc_ecma_ast::Str,
-    ) {
+    pub(super) fn record_import_request(&mut self, span: ByteRange, specifier: &swc_ecma_ast::Str) {
         self.interface.add_request(
             span,
             ResolutionRequestKind::DynamicImport,
@@ -190,11 +187,7 @@ impl ModuleInterfaceBuilder {
         self.record_reexports(export, source, source_span);
     }
 
-    fn record_local_named_exports(
-        &mut self,
-        specifiers: &[ExportSpecifier],
-        resolver: &Resolver,
-    ) {
+    fn record_local_named_exports(&mut self, specifiers: &[ExportSpecifier], resolver: &Resolver) {
         for specifier in specifiers {
             if let ExportSpecifier::Named(named) = specifier
                 && !named.is_type_only
@@ -294,11 +287,7 @@ impl ModuleInterfaceBuilder {
     }
 
     /// Record a star export as a deferred request for the project linker.
-    pub(super) fn record_export_all(
-        &mut self,
-        export: &ExportAll,
-        source_span: ByteRange,
-    ) {
+    pub(super) fn record_export_all(&mut self, export: &ExportAll, source_span: ByteRange) {
         if export.type_only {
             return;
         }
@@ -315,11 +304,7 @@ impl ModuleInterfaceBuilder {
     /// Record the default export's supported function, local, or value shape.
     /// Returns true when a named local was recorded so the caller may visit
     /// the expression subtree if needed.
-    pub(super) fn record_default_expr(
-        &mut self,
-        export: &ExportDefaultExpr,
-        resolver: &Resolver,
-    ) {
+    pub(super) fn record_default_expr(&mut self, export: &ExportDefaultExpr, resolver: &Resolver) {
         if let Expr::Ident(ident) = &*export.expr {
             if let Some(id) = resolver.function_id_for_expr(&Expr::Ident(ident.clone())) {
                 self.interface.add_function_export("default", id);
@@ -340,18 +325,12 @@ impl ModuleInterfaceBuilder {
 
     /// Record a default declaration without claiming an anonymous value is a
     /// named local when no stable identity exists.
-    pub(super) fn record_default_decl(
-        &mut self,
-        export: &ExportDefaultDecl,
-        resolver: &Resolver,
-    ) {
+    pub(super) fn record_default_decl(&mut self, export: &ExportDefaultDecl, resolver: &Resolver) {
         match &export.decl {
             DefaultDecl::Fn(function) => {
                 if let Some(ident) = &function.ident {
                     self.record_local(ident.sym.to_string());
-                    if let Some(id) =
-                        resolver.function_id_for_expr(&Expr::Ident(ident.clone()))
-                    {
+                    if let Some(id) = resolver.function_id_for_expr(&Expr::Ident(ident.clone())) {
                         self.interface.add_function_export("default", id);
                     }
                     self.interface.add_export(
@@ -453,7 +432,12 @@ impl ModuleInterfaceBuilder {
                         let Some(name) = property_name(&value.key) else {
                             continue;
                         };
-                        add_function_export_if_expr(&mut self.interface, &name, &value.value, resolver);
+                        add_function_export_if_expr(
+                            &mut self.interface,
+                            &name,
+                            &value.value,
+                            resolver,
+                        );
                         if let Expr::Lit(swc_ecma_ast::Lit::Str(val)) = &*value.value {
                             self.interface
                                 .add_static_string(name, val.value.to_string_lossy());
@@ -461,10 +445,10 @@ impl ModuleInterfaceBuilder {
                     }
                     swc_ecma_ast::Prop::Method(method) => {
                         if let Some(name) = property_name(&method.key) {
-                                add_function_export_if_span(
-                                    &mut self.interface,
-                                    &name,
-                                    method.function.span(),
+                            add_function_export_if_span(
+                                &mut self.interface,
+                                &name,
+                                method.function.span(),
                                 resolver,
                             );
                         }
@@ -549,15 +533,9 @@ impl ModuleInterfaceBuilder {
                         assign.key.sym.to_smolstr(),
                         Some(assign.key.sym.to_smolstr()),
                     )),
-                    swc_ecma_ast::Prop::Getter(getter) => {
-                        Some((property_name(&getter.key)?, None))
-                    }
-                    swc_ecma_ast::Prop::Setter(setter) => {
-                        Some((property_name(&setter.key)?, None))
-                    }
-                    swc_ecma_ast::Prop::Method(method) => {
-                        Some((property_name(&method.key)?, None))
-                    }
+                    swc_ecma_ast::Prop::Getter(getter) => Some((property_name(&getter.key)?, None)),
+                    swc_ecma_ast::Prop::Setter(setter) => Some((property_name(&setter.key)?, None)),
+                    swc_ecma_ast::Prop::Method(method) => Some((property_name(&method.key)?, None)),
                     swc_ecma_ast::Prop::Shorthand(ident) => {
                         Some((ident.sym.to_smolstr(), Some(ident.sym.to_smolstr())))
                     }
@@ -568,11 +546,7 @@ impl ModuleInterfaceBuilder {
     }
 }
 
-fn is_commonjs_name(
-    expr: &swc_ecma_ast::Expr,
-    name: &str,
-    resolver: &Resolver,
-) -> bool {
+fn is_commonjs_name(expr: &swc_ecma_ast::Expr, name: &str, resolver: &Resolver) -> bool {
     matches!(expr, Expr::Ident(ident) if resolver.is_unshadowed_commonjs_name(ident, name))
 }
 
