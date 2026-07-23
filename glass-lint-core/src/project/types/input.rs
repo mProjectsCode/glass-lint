@@ -59,6 +59,16 @@ impl SourceFile {
             source: source.into().into(),
         })
     }
+
+    /// Construct from a validated project-relative path without re-parsing.
+    pub fn from_relative(path: ProjectRelativePath, source: impl Into<SourceText>) -> Self {
+        let language = SourceLanguage::from_filename(&path);
+        Self {
+            path,
+            language,
+            source: source.into(),
+        }
+    }
 }
 
 #[derive(

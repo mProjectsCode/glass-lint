@@ -118,6 +118,7 @@ pub struct ArtifactCacheKey {
     environment: crate::Environment,
     limits: LocalLoweringConfig,
     engine_version: &'static str,
+    fingerprint: ArtifactFingerprint,
 }
 
 impl ArtifactCacheKey {
@@ -155,26 +156,29 @@ impl ArtifactCacheKey {
         normalization_mode: &'static str,
         engine_version: &'static str,
     ) -> Self {
+        let config = LocalLoweringConfig::from(limits);
+        let fingerprint = ArtifactFingerprint::compute(
+            &source.source,
+            source.language,
+            normalization_mode,
+            environment,
+            &config,
+            engine_version,
+        );
         Self {
             source: source.source.clone(),
             language: source.language,
             normalization_mode,
             environment: environment.clone(),
-            limits: LocalLoweringConfig::from(limits),
+            limits: config,
             engine_version,
+            fingerprint,
         }
     }
 
-    /// Compute the deterministic fingerprint for this key.
+    /// Return the pre-computed deterministic fingerprint for this key.
     pub(crate) fn fingerprint(&self) -> ArtifactFingerprint {
-        ArtifactFingerprint::compute(
-            &self.source,
-            self.language,
-            self.normalization_mode,
-            &self.environment,
-            &self.limits,
-            self.engine_version,
-        )
+        self.fingerprint
     }
 
     #[cfg(test)]

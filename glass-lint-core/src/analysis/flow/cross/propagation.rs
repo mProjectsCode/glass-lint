@@ -14,16 +14,13 @@ use crate::{
         name::NameTable,
         value::NamePath,
     },
-    api::{
-        classification::ClassificationEvidence,
-        compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments},
-    },
+    api::compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments},
     project::ModuleId,
 };
 
 pub(super) struct UsageProjector<'a> {
     pub(super) project: &'a ProjectSemanticModel,
-    pub(super) evidence: &'a mut BTreeMap<ModuleId, Vec<Vec<ClassificationEvidence>>>,
+    pub(super) evidence: &'a mut BTreeMap<ModuleId, super::ModuleEvidence>,
     pub(super) context: &'a CallContext,
     pub(super) effect: &'a FunctionEffect,
     pub(super) flow: &'a CompiledObjectFlow,
@@ -128,9 +125,9 @@ impl UsageProjector<'_> {
                 && let CompiledObjectRequirement::MemberCall { arguments, .. } =
                     &self.flow.requirements[index]
                 && arguments.iter().all(|matcher| {
-                    call_args
-                        .get(matcher.index())
-                        .is_some_and(|argument| matcher.matcher().matches(argument, self.names, values))
+                    call_args.get(matcher.index()).is_some_and(|argument| {
+                        matcher.matcher().matches(argument, self.names, values)
+                    })
                 })
             {
                 next.requirements.insert(

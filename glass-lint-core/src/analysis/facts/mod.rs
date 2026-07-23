@@ -157,9 +157,7 @@ impl SemanticFacts {
         LocalFlowProjectionOutcome,
     ) {
         let mut projected_evidence = vec![Vec::new(); plan.rule_count];
-        if !self.stream.is_valid()
-            || self.values().get(ValueId::UNKNOWN).is_none()
-        {
+        if !self.stream.is_valid() || self.values().get(ValueId::UNKNOWN).is_none() {
             return (projected_evidence, LocalFlowProjectionOutcome::default());
         }
         matching::compute_constrained_evidence_from_stream_with_overlay(

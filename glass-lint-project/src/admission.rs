@@ -216,7 +216,10 @@ impl<'a> SourceAdmission<'a> {
         admitted: &AdmittedSourcePath,
     ) -> Result<SourceFile, ProjectLoadError> {
         let corpus_file = read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())?;
-        SourceFile::new(admitted.relative().to_string(), corpus_file.source).map_err(Into::into)
+        Ok(SourceFile::from_relative(
+            admitted.relative().clone(),
+            corpus_file.source,
+        ))
     }
 }
 

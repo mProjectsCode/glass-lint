@@ -13,27 +13,12 @@
 use std::{
     fmt,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicUsize, Ordering},
     time::Instant,
 };
 
 use serde_json::Value;
 
 use crate::{admission::realpath, error::ProjectLoadError};
-
-static COMPILE_COUNTER: AtomicUsize = AtomicUsize::new(0);
-
-/// Reset the compile counter (test only).
-#[cfg(test)]
-pub fn reset_compile_counter() {
-    COMPILE_COUNTER.store(0, Ordering::SeqCst);
-}
-
-/// Read the compile counter (test only).
-#[cfg(test)]
-pub fn compile_count() -> usize {
-    COMPILE_COUNTER.load(Ordering::SeqCst)
-}
 
 // ---------------------------------------------------------------------------
 // Field-level representation for the parsed DTO
@@ -398,8 +383,6 @@ fn matches_relative(pattern: &glob::Pattern, relative: &str) -> bool {
 
 impl TsconfigPatternSet {
     fn new(includes: &[String], excludes: &[String]) -> Self {
-        COMPILE_COUNTER.fetch_add(1, Ordering::SeqCst);
-
         let normalize = |pattern: &str| -> String {
             let normalized = pattern.replace('\\', "/");
             if normalized.ends_with('/') {

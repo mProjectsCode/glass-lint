@@ -46,8 +46,8 @@ pub(in crate::analysis) struct Frozen;
 ///
 /// The `Phase` parameter distinguishes the mutable building phase
 /// ([`Building`]) from the frozen phase ([`Frozen`]). Names and values are
-/// always `None` during building; after [`freeze`](FactStream<Building>::freeze)
-/// they are always `Some`.
+/// always `None` during building; after
+/// [`freeze`](FactStream<Building>::freeze) they are always `Some`.
 pub(in crate::analysis) struct FactStream<Phase = Building> {
     /// Dense facts in canonical visitor order.
     facts: Vec<SemanticFact>,
@@ -286,16 +286,23 @@ impl FactStream<Building> {
 impl FactStream<Frozen> {
     /// Borrow the frozen name table.
     pub(in crate::analysis) fn names(&self) -> &NameTable {
-        self.names.as_ref().expect("FactStream<Frozen> always has names")
+        self.names
+            .as_ref()
+            .expect("FactStream<Frozen> always has names")
     }
 
     /// Borrow the frozen value arena for shape lookups by ValueId.
     pub(in crate::analysis) fn values(&self) -> &ValueTable {
-        self.values.as_ref().expect("FactStream<Frozen> always has values")
+        self.values
+            .as_ref()
+            .expect("FactStream<Frozen> always has values")
     }
 
     /// Resolve a `NameId` to a `&str` via the frozen name table.
-    pub(in crate::analysis) fn resolve_name(&self, id: crate::analysis::name::NameId) -> Option<&str> {
+    pub(in crate::analysis) fn resolve_name(
+        &self,
+        id: crate::analysis::name::NameId,
+    ) -> Option<&str> {
         self.names().resolve(id)
     }
 }

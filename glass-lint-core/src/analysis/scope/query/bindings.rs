@@ -120,7 +120,7 @@ impl ScopeGraph {
     pub(in crate::analysis) fn has_dynamic_lookup_at(&self, span: Span) -> bool {
         let scope = self.scope_at(span);
         self.scope_or_ancestor_has_kind(scope, ScopeKind::Dynamic)
-            || self.has_eval_after(scope, span)
+            || self.has_prior_eval(scope, span)
     }
 
     /// Test a scope and all parents for a specific scope kind.

@@ -209,29 +209,11 @@ impl ScopePass for ScopePlanner {
         {
             self.name_exhausted = true;
         }
-        if let Some(path) = crate::analysis::syntax::member_expression_chain(member) {
-            for segment in path.segments() {
-                if self.names.intern(segment).is_err() {
-                    self.name_exhausted = true;
-                }
-            }
-        }
     }
 
     fn visit_prop_name(&mut self, property: &PropName) {
         if let Some(property) = crate::analysis::syntax::property_name(property)
             && self.names.intern(property.as_str()).is_err()
-        {
-            self.name_exhausted = true;
-        }
-    }
-
-    fn visit_lit(&mut self, literal: &Lit) {
-        if let Lit::Str(value) = literal
-            && self
-                .names
-                .intern(value.value.to_string_lossy().as_ref())
-                .is_err()
         {
             self.name_exhausted = true;
         }
@@ -245,6 +227,17 @@ impl ScopePass for ScopePlanner {
         let scope = self.binding_scope(declaration.kind);
         for declarator in &declaration.decls {
             self.insert_pat_locals(scope, &declarator.name);
+        }
+    }
+
+    fn visit_lit(&mut self, literal: &Lit) {
+        if let Lit::Str(value) = literal
+            && self
+                .names
+                .intern(value.value.to_string_lossy().as_ref())
+                .is_err()
+        {
+            self.name_exhausted = true;
         }
     }
 

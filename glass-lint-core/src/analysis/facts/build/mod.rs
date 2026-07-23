@@ -202,7 +202,10 @@ impl<'a> FactBuilder<'a> {
 
     #[cfg(test)]
     pub(super) fn into_stream(self) -> FactStream<crate::analysis::facts::Frozen> {
-        self.stream.freeze(self.resolver.name_snapshot(), self.resolver.value_snapshot())
+        self.stream.freeze(
+            self.resolver.name_snapshot(),
+            self.resolver.value_snapshot(),
+        )
     }
 
     pub(in crate::analysis) fn into_built_facts(self) -> crate::analysis::facts::BuiltFacts {
@@ -213,7 +216,12 @@ impl<'a> FactBuilder<'a> {
     }
 
     #[cfg(test)]
-    pub fn into_parts(self) -> (FactStream<Building>, crate::analysis::module::ModuleInterface) {
+    pub fn into_parts(
+        self,
+    ) -> (
+        FactStream<Building>,
+        crate::analysis::module::ModuleInterface,
+    ) {
         let built = self.into_built_facts();
         (built.stream, built.interface)
     }

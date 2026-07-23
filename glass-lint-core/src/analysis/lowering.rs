@@ -71,7 +71,10 @@ impl CharBoundaryMap {
                 invalid[i >> 3] |= 1 << (i & 7);
             }
         }
-        Some(Self { invalid, source_len })
+        Some(Self {
+            invalid,
+            source_len,
+        })
     }
 
     /// Whether `pos` is a valid UTF-8 character boundary in the original
@@ -110,10 +113,7 @@ pub(in crate::analysis) struct SpanNormalizer {
 }
 
 impl SpanNormalizer {
-    pub(in crate::analysis) fn new(
-        source_start: swc_common::BytePos,
-        source: &str,
-    ) -> Self {
+    pub(in crate::analysis) fn new(source_start: swc_common::BytePos, source: &str) -> Self {
         let is_ascii = source.is_ascii();
         let boundaries = if is_ascii {
             None
@@ -193,10 +193,10 @@ impl<'a> Lowerer<'a> {
         self.limits
     }
 
-    /// Lower one source file into an immutable semantic artifact. Parsing,
-    /// scope collection, fact construction, and effect extraction all happen in
-    /// one pass. The result is ready for project linking and matcher
-    /// projection.
+    /// Lower one source file into an immutable semantic artifact. The lowering
+    /// runs three sequential passes: scope planning, collection against the
+    /// plan, and fact building against the frozen resolver. The result is ready
+    /// for project linking and matcher projection.
     pub fn lower_source(&self, source: &SourceFile) -> Result<LoweredSource, ParseDiagnostic> {
         let parsed = crate::parse::parse_with_language_and_depth(
             &source.source,
@@ -246,7 +246,9 @@ fn check_facts_budget(
     }
 }
 
-fn check_invalid_parser_span(stream: &facts::FactStream<facts::Building>) -> Option<IncompleteReason> {
+fn check_invalid_parser_span(
+    stream: &facts::FactStream<facts::Building>,
+) -> Option<IncompleteReason> {
     stream
         .invalid_parser_span()
         .then_some(IncompleteReason::InvalidParserSpan)

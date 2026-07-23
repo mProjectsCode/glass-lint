@@ -174,7 +174,10 @@ impl EffectCall {
         &self.arguments
     }
 
-    pub(in crate::analysis) fn as_ref<'s>(&'s self, stream: &'s FactStream<Frozen>) -> CallEffectRef<'s> {
+    pub(in crate::analysis) fn as_ref<'s>(
+        &'s self,
+        stream: &'s FactStream<Frozen>,
+    ) -> CallEffectRef<'s> {
         CallEffectRef {
             stream,
             event: self.event,
@@ -312,9 +315,8 @@ impl CallEffectRef<'_> {
                 .is_some_and(|member| member == *chain)
                 && source.is_rooted == self.rooted()
                 && source.arguments.iter().all(|matcher| {
-                    args.get(matcher.index()).is_some_and(|argument| {
-                        matcher.matcher().matches(argument, names, values)
-                    })
+                    args.get(matcher.index())
+                        .is_some_and(|argument| matcher.matcher().matches(argument, names, values))
                 })
         })
     }
@@ -561,7 +563,12 @@ impl FunctionEffect {
         }
     }
 
-    fn record_call(&mut self, fact: &SemanticFact, stream: &FactStream<Frozen>, budget: &mut Budget) {
+    fn record_call(
+        &mut self,
+        fact: &SemanticFact,
+        stream: &FactStream<Frozen>,
+        budget: &mut Budget,
+    ) {
         let FactPayload::Call {
             args,
             result,

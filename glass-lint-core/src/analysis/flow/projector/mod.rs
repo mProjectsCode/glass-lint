@@ -20,7 +20,9 @@ use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTa
 
 use crate::{
     analysis::{
-        facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary},
+        facts::{
+            CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
+        },
         flow::{
             effect::{CallEffectRef, FunctionEffects},
             index::FlowLimits,
@@ -90,7 +92,7 @@ pub(super) fn collect_with_limits(
 struct ObjectFlowProjector<'rules, 'stream> {
     /// The canonical facts are the projector's only input. In particular, it
     /// must never inspect the AST or reconstruct resolution decisions.
-        stream: &'stream FactStream<Frozen>,
+    stream: &'stream FactStream<Frozen>,
     names: &'stream NameTable,
     plan: BoundFlowPlan<'rules>,
     helpers: FunctionSummaries<'stream>,
@@ -115,7 +117,7 @@ struct ObjectFlowProjector<'rules, 'stream> {
 
 impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     fn new(
-    stream: &'stream FactStream<Frozen>,
+        stream: &'stream FactStream<Frozen>,
         names: &'stream NameTable,
         plan: BoundFlowPlan<'rules>,
         helpers: FunctionSummaries<'stream>,

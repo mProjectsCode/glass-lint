@@ -18,15 +18,11 @@ impl ModuleGraph {
         self.forward.entry(id).or_default();
     }
 
-    /// Insert one internal edge.
-    pub(in crate::analysis) fn insert_edge(&mut self, from: ModuleId, to: ModuleId) -> bool {
+    /// Insert one internal edge. Duplicates are removed by `normalize`.
+    pub(in crate::analysis) fn insert_edge(&mut self, from: ModuleId, to: ModuleId) {
         self.ensure_node(from);
         let targets = self.forward.entry(from).or_default();
-        if targets.contains(&to) {
-            return false;
-        }
         targets.push(to);
-        true
     }
 
     /// Sort and deduplicate all graph collections for deterministic output.
@@ -69,10 +65,6 @@ impl ModuleExports {
         self.0.insert(name, value)
     }
 
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
     pub fn iter(&self) -> impl Iterator<Item = (&SmolStr, &ExportResolution)> {
         self.0.iter()
     }
@@ -80,7 +72,10 @@ impl ModuleExports {
 
 #[derive(Debug, Default)]
 /// Qualified export identities indexed by module and export name.
-pub(in crate::analysis) struct ExportTable(BTreeMap<ModuleId, ModuleExports>);
+pub(in crate::analysis) struct ExportTable {
+    exports: BTreeMap<ModuleId, ModuleExports>,
+    total_entries: usize,
+}
 impl ExportTable {
     /// Look up the current fixed-point value for one export.
     pub(in crate::analysis) fn resolve(
@@ -88,7 +83,7 @@ impl ExportTable {
         module: ModuleId,
         export: &SmolStr,
     ) -> Option<&ExportResolution> {
-        self.0.get(&module)?.get(export)
+        self.exports.get(&module)?.get(export)
     }
 
     /// Store a changed export identity and report whether it changed.
@@ -98,22 +93,26 @@ impl ExportTable {
         export: &SmolStr,
         value: ExportResolution,
     ) -> bool {
-        let entry = self.0.entry(module).or_default();
+        let entry = self.exports.entry(module).or_default();
 
         if entry.get(export) == Some(&value) {
             return false;
         }
+        let is_new = entry.get(export).is_none();
         entry.insert(export.clone(), value);
+        if is_new {
+            self.total_entries = self.total_entries.saturating_add(1);
+        }
         true
     }
 
     /// Return the total number of resolved module/export entries.
     pub(in crate::analysis) fn len(&self) -> usize {
-        self.0.values().map(ModuleExports::len).sum()
+        self.total_entries
     }
 
     /// Borrow the resolved exports for one module.
     pub(in crate::analysis) fn module_exports(&self, module: ModuleId) -> Option<&ModuleExports> {
-        self.0.get(&module)
+        self.exports.get(&module)
     }
 }

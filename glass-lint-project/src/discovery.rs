@@ -106,8 +106,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         }
         paths.sort();
         paths.dedup();
-        let budget =
-            crate::admission::FileBudget::new(self.admission.options().max_files());
+        let budget = crate::admission::FileBudget::new(self.admission.options().max_files());
         if paths.len() > budget.limit() {
             return Err(ProjectLoadError::TooManyFiles(budget.limit()));
         }

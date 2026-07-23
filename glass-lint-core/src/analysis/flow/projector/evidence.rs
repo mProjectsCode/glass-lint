@@ -59,7 +59,9 @@ impl ObjectFlowProjector<'_, '_> {
                         } = &flow.requirements[index]
                         && matchers.iter().all(|matcher| {
                             args.get(matcher.index()).is_some_and(|arg| {
-                                matcher.matcher().matches(arg, self.names, self.stream.values())
+                                matcher
+                                    .matcher()
+                                    .matches(arg, self.names, self.stream.values())
                             })
                         })
                     {

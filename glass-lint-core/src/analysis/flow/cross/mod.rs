@@ -374,12 +374,17 @@ pub(in crate::analysis) fn collect(
             flows.insert(FlowId::new(rule_index, flow_index), flow);
         }
     }
+    let rule_count = matchers.len();
     let mut evidence = project
         .modules()
-        .map(|module| (module.id(), vec![Vec::new(); matchers.len()]))
+        .map(|module| (module.id(), ModuleEvidence::new(rule_count)))
         .collect::<BTreeMap<_, _>>();
     if flows.is_empty() {
-        return (evidence, false, 0);
+        let empty = evidence
+            .into_iter()
+            .map(|(id, m)| (id, m.evidence))
+            .collect();
+        return (empty, false, 0);
     }
 
     let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows);
@@ -436,13 +441,17 @@ pub(in crate::analysis) fn collect(
     let exhausted =
         return_budget_exhausted || step_budget.exhausted() || worklist.len() >= MAX_CONTEXTS;
     if exhausted {
-        for values in evidence.values_mut() {
-            for rule in values {
+        for module_evidence in evidence.values_mut() {
+            for rule in &mut module_evidence.evidence {
                 rule.clear();
             }
         }
     }
-    (evidence, exhausted, projections)
+    let output = evidence
+        .into_iter()
+        .map(|(id, m)| (id, m.evidence))
+        .collect();
+    (output, exhausted, projections)
 }
 
 impl FlowSources {
@@ -603,9 +612,23 @@ pub(super) fn usage_matches_context(
     }
 }
 
+pub(super) struct ModuleEvidence {
+    pub(super) evidence: Vec<Vec<ClassificationEvidence>>,
+    pub(super) seen: Vec<BTreeSet<(MatchKind, String, u32)>>,
+}
+
+impl ModuleEvidence {
+    pub(super) fn new(rule_count: usize) -> Self {
+        Self {
+            evidence: vec![Vec::new(); rule_count],
+            seen: vec![BTreeSet::new(); rule_count],
+        }
+    }
+}
+
 pub(super) fn emit(
     project: &ProjectSemanticModel,
-    evidence: &mut BTreeMap<ModuleId, Vec<Vec<ClassificationEvidence>>>,
+    evidence: &mut BTreeMap<ModuleId, ModuleEvidence>,
     module: ModuleId,
     flow_id: FlowId,
     state: &CrossFlowState,
@@ -615,21 +638,14 @@ pub(super) fn emit(
     let Some(values) = evidence.get_mut(&module) else {
         return;
     };
-    let seen = values[flow_id.rule_index().get()].iter().any(|existing| {
-        existing
-            .occurrences
-            .iter()
-            .any(|occurrence| occurrence.fact == Some(event.0))
-            && existing.symbol == flow.symbol
-            && existing.kind == MatchKind::CallArgument
-    });
-    if seen {
+    let rule_idx = flow_id.rule_index().get();
+    if !values.seen[rule_idx].insert((MatchKind::CallArgument, flow.symbol.clone(), event.0)) {
         return;
     }
     let span = project
         .fact(module, event)
         .map_or_else(crate::ByteRange::empty, |fact| fact.span);
-    values[flow_id.rule_index().get()].push(ClassificationEvidence {
+    values.evidence[rule_idx].push(ClassificationEvidence {
         kind: MatchKind::CallArgument,
         symbol: flow.evidence_symbol(),
         count: 1,
@@ -642,7 +658,6 @@ pub(super) fn emit(
         ],
         related: related_evidence(state, module, event),
     });
-    let _ = state;
 }
 
 pub(super) fn related_evidence(

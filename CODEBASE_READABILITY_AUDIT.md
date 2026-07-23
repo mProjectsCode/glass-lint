@@ -16,7 +16,8 @@ the wrong quantity, while some of the hottest operations repeat recursive
 resolution, allocate equivalent paths, or rescan whole fixed-point state.
 
 This audit records 37 findings: 18 high severity, 15 medium severity, and 4 low
-severity. The highest-priority changes are:
+severity. 10 findings have been addressed (1 high, 5 medium, 4 low). The highest-priority
+changes remaining are:
 
 1. make project admission limits global and count unique files;
 2. parallelize local lowering in `ProjectLoader`;
@@ -152,6 +153,7 @@ dependency-heavy tree before and after the change.
 - **Fix Complexity:** Low
 - **Category:** Newtype
 - **Location:** `glass-lint-project/src/admission.rs:211-219`, `glass-lint-project/src/corpus.rs:31-72`
+- **Status:** Done — added `SourceFile::from_relative(path: ProjectRelativePath, source: impl Into<SourceText>)` that infers language from the typed path without re-parsing; updated `load_admitted_source_file` to use it
 
 `load_admitted_source_file` reads a `CorpusFile`, discards its path wrapper,
 converts the already validated relative path to a `String`, and asks
@@ -171,6 +173,7 @@ cannot bypass project-relative path validation.
 - **Fix Complexity:** Low
 - **Category:** Testing
 - **Location:** `glass-lint-project/src/tsconfig/mod.rs:13-24`, `glass-lint-project/src/tsconfig/mod.rs:400-402`, `glass-lint-project/src/tsconfig/tests.rs:102-109`, `glass-lint-project/src/tsconfig/tests.rs:174-194`
+- **Status:** Done — counter gated behind `#[cfg(test)]`, uses relaxed ordering, test now resets and asserts
 
 Every effective-config compilation performs a sequentially consistent atomic
 increment in non-test builds. The counter is global, so reset-and-read tests
@@ -190,6 +193,7 @@ and make both named tests assert an exact delta.
 - **Fix Complexity:** Low
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/local.rs:55-84`, `glass-lint-core/src/analysis/local.rs:234-253`, `glass-lint-core/src/project/session/artifacts.rs:90-94`, `glass-lint-core/src/project/session/mod.rs:218-231`, `glass-lint-core/src/project/session/mod.rs:314-334`
+- **Status:** Done — `ArtifactFingerprint` computed eagerly in `ArtifactCacheKey::from_inputs` and stored as a field; `fingerprint()` is now a trivial field access
 
 Cache lookup computes the artifact fingerprint over the complete source,
 environment, and limits. A miss carries only the cache key, so insertion
@@ -207,6 +211,7 @@ false hit.
 - **Fix Complexity:** Low
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/scope/collect/plan.rs:200-237`
+- **Status:** Partially done — removed redundant full-chain interning from `visit_member_expr`; `visit_lit` string-literal interning retained because constant string resolution for computed properties depends on the name table
 
 For every `MemberExpr`, the planner interns the direct static property, then
 constructs the complete member chain and interns every segment again. Because
@@ -314,6 +319,7 @@ shapes that lack an index.
 - **Fix Complexity:** Low
 - **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/analysis/project/state.rs:81-118`, `glass-lint-core/src/analysis/project/graph.rs:149-163`
+- **Status:** Done — `ExportTable` now owns a `total_entries` counter updated on vacant insertion; `len()` returns it directly instead of summing every module's export map
 
 After each newly changed export, the linker calls `ExportTable::len`, which
 sums the lengths of every module export map. Building `E` exports can
@@ -352,6 +358,7 @@ a metric.
 - **Fix Complexity:** Low
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/project/state.rs:21-37`, `glass-lint-core/src/analysis/project/graph.rs:235-238`, `glass-lint-core/src/analysis/project/graph.rs:376-395`
+- **Status:** Done — removed `contains` check from `insert_edge`; caller was already ignoring the boolean return value. `normalize` still handles sort/dedup.
 
 Module adjacency calls `Vec::contains` before every insertion even though a
 later normalization pass sorts and deduplicates. SCC DAG construction repeats
@@ -486,6 +493,7 @@ parameters.
 - **Fix Complexity:** Low
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/flow/cross/mod.rs:606-645`
+- **Status:** Done — `emit` now uses a `BTreeSet` keyed by `(MatchKind, symbol, event)` per module/rule, making dedup O(log n) per emission and eliminating the quadratic scan of all prior evidence
 
 Each emitted cross-flow occurrence scans existing rule evidence and its
 occurrences to detect a duplicate. A rule with many proven cross-module sinks
@@ -505,6 +513,7 @@ at publication.
 - **Fix Complexity:** Low
 - **Category:** Naming
 - **Location:** `glass-lint-core/src/analysis/scope/model.rs:369-378`, `glass-lint-core/src/analysis/scope/query/bindings.rs:119-124`
+- **Status:** Done — renamed to `has_prior_eval` in both definition and call site
 
 `has_eval_after(span)` uses `partition_point` to determine whether an eval
 ends before the supplied span; its caller and comment both interpret it as a
@@ -520,6 +529,7 @@ eval before, overlapping, and after the queried use.
 - **Fix Complexity:** Low
 - **Category:** API
 - **Location:** `glass-lint-core/src/project/mod.rs:14-18`, `glass-lint-core/src/project/session/mod.rs:42-67`, `glass-lint-core/src/project/session/mod.rs:156-172`
+- **Status:** Done — `SessionState` changed to `pub(crate)` and its `pub use` export removed; `ProjectCollection::new` kept public because `glass-lint-project` still uses it
 
 `ProjectCollection::new` is public and requires `SessionState`, but
 `SessionState::new` and its fields are crate-private. The meaningful public
@@ -539,9 +549,10 @@ constructor for compatibility.
 - **Fix Complexity:** Low
 - **Category:** Other
 - **Location:** `glass-lint-core/src/analysis/lowering.rs:196-199`, `glass-lint-core/src/analysis/lowering.rs:300-320`, `glass-lint-core/src/analysis/scope/mod.rs:46-59`
+- **Status:** Done — `lower_source` doc now describes "three sequential passes: scope planning, collection against the plan, and fact building against the frozen resolver"
 
-The lowering documentation says scopes, facts, and indexes “all happen in one
-pass.” Current lowering runs a scope-planning traversal, a collection
+The lowering documentation says scopes, facts, and indexes "all happen in one
+pass." Current lowering runs a scope-planning traversal, a collection
 traversal against the plan, and a fact-building traversal against the frozen
 resolver. The separation is defensible—it enables hoisting and strict
 identity—but the inaccurate claim obscures the fixed per-file performance

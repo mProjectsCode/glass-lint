@@ -100,15 +100,6 @@ fn pattern_set_no_slash_matches_basename() {
 }
 
 #[test]
-fn compile_counter_increments() {
-    reset_compile_counter();
-    let _ps1 = TsconfigPatternSet::new(&["**/*".to_string()], &[]);
-    assert_eq!(compile_count(), 1);
-    let _ps2 = TsconfigPatternSet::new(&["**/*".to_string()], &[]);
-    assert_eq!(compile_count(), 2);
-}
-
-#[test]
 fn merge_selection_inherits_fields() {
     let parent_dto =
         ParsedTsconfig::parse(r#"{"include":["src/**/*"],"exclude":["**/*.test.ts"]}"#).unwrap();
@@ -169,28 +160,6 @@ fn cycle_detection_records_diagnostic_and_skips_cyclic_extends() {
     // Cycle diagnostics recorded
     assert_eq!(diagnostics.len(), 1);
     assert!(diagnostics[0].message.contains("cycle"));
-}
-
-#[test]
-fn compile_counter_increments_once_per_effective_config() {
-    // Build a config with no parent to measure exactly one compilation.
-    let project = TempProject::new("tsconfig-compile");
-    project.write(
-        "tsconfig.json",
-        r#"{"include":["src/**/*"],"exclude":["**/*.test.ts"]}"#,
-    );
-
-    let (config, _) = build_effective_config(
-        &project.root().join("tsconfig.json"),
-        project.root(),
-        None,
-        &mut Vec::new(),
-    )
-    .unwrap();
-
-    // Matching should reuse the compiled set (no additional compilation)
-    config.pattern_set.is_included("src/main.ts");
-    config.pattern_set.is_included("src/test.ts");
 }
 
 #[test]

@@ -366,7 +366,7 @@ impl ScopeGraph {
         })
     }
 
-    pub(super) fn has_eval_after(&self, scope: ScopeId, span: Span) -> bool {
+    pub(super) fn has_prior_eval(&self, scope: ScopeId, span: Span) -> bool {
         let mut current = Some(scope);
         while let Some(scope) = current {
             if let Some(evals) = self.dynamic_evals_by_scope.get(&scope)
@@ -488,9 +488,7 @@ pub(in crate::analysis) enum BindingProvenance {
     /// (`const x = y` where `y` has a proven identity). Produced during
     /// assignment collection. Consumed by the resolver to redirect the
     /// binding to the target's value ID.
-    ValueAlias {
-        target: NamePath,
-    },
+    ValueAlias { target: NamePath },
     /// A binding initialized to a callable with bound arguments
     /// (`const bound = fn.bind(obj)`). Produced during assignment
     /// collection. Consumed by the resolver to build a value identity
@@ -509,23 +507,16 @@ pub(in crate::analysis) enum BindingProvenance {
     /// A binding capturing the return value of a tracked callable
     /// (`const x = fetch(url)`). Produced during assignment collection.
     /// Consumed by the resolver.
-    ReturnedObject {
-        source: NamePath,
-    },
+    ReturnedObject { source: NamePath },
     /// A binding aliasing a named module export
     /// (`const { send } = require("http")` or equivalent import).
     /// Produced during scope collection. Consumed by the resolver to
     /// build `ValueId::ModuleExport`.
-    ModuleExport {
-        module: SmolStr,
-        export: SmolStr,
-    },
+    ModuleExport { module: SmolStr, export: SmolStr },
     /// A binding capturing an entire module namespace
     /// (`const fs = require("fs")`). Produced during scope collection.
     /// Consumed by the resolver to build `ValueId::ModuleNamespace`.
-    ModuleNamespace {
-        module: SmolStr,
-    },
+    ModuleNamespace { module: SmolStr },
     /// A binding initialized to a string literal. Produced during
     /// assignment collection. Consumed by the resolver.
     StaticString(String),

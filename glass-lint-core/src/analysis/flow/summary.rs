@@ -545,7 +545,10 @@ fn try_project_sink(
 }
 
 impl FunctionSummary {
-    pub(super) fn parameter_bindings<'s>(&self, stream: &'s FactStream<Frozen>) -> &'s [ParameterBinding] {
+    pub(super) fn parameter_bindings<'s>(
+        &self,
+        stream: &'s FactStream<Frozen>,
+    ) -> &'s [ParameterBinding] {
         stream.function_parameters(self.id)
     }
 
