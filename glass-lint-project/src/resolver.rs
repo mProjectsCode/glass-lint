@@ -11,7 +11,7 @@ use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 use crate::{
     admission::{PathAdmission, SourceAdmission, absolute_path},
     error::ProjectLoadError,
-    options::{ProjectSelection, ValidatedProjectLoadOptions},
+    options::ProjectSelection,
 };
 
 /// Keeps import and CommonJS resolution policy together for one project.
@@ -27,58 +27,41 @@ impl<'a> ProjectResolver<'a> {
         admission: SourceAdmission<'a>,
         selection: &ProjectSelection,
     ) -> Result<Self, ProjectLoadError> {
-        let import = Resolver::new(Self::build_options(
-            admission.canonical_root(),
-            selection,
-            admission.options(),
-            false,
-        )?);
-        let require = import.clone_with_options(Self::build_options(
-            admission.canonical_root(),
-            selection,
-            admission.options(),
-            true,
-        )?);
-        Ok(Self {
-            admission,
-            import,
-            require,
-        })
-    }
-
-    fn build_options(
-        root: &Path,
-        selection: &ProjectSelection,
-        options: &ValidatedProjectLoadOptions,
-        require: bool,
-    ) -> Result<ResolveOptions, ProjectLoadError> {
+        let options = admission.options();
         let extension_alias = options
             .extension_aliases()
             .iter()
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
-        let mut resolver_options = ResolveOptions {
-            condition_names: if require {
-                vec!["node".into(), "require".into()]
-            } else {
-                vec!["node".into(), "import".into()]
-            },
+        let mut base = ResolveOptions {
             extensions: options.extensions().map(str::to_owned).collect(),
             extension_alias,
             symlinks: options.follow_symlinks(),
-            roots: vec![root.to_path_buf()],
+            roots: vec![admission.canonical_root().to_path_buf()],
             builtin_modules: true,
             ..ResolveOptions::default()
         };
         if let ProjectSelection::Tsconfig(path) = selection {
-            resolver_options.tsconfig = Some(oxc_resolver::TsconfigDiscovery::Manual(
+            base.tsconfig = Some(oxc_resolver::TsconfigDiscovery::Manual(
                 oxc_resolver::TsconfigOptions {
                     config_file: absolute_path(path)?,
                     references: oxc_resolver::TsconfigReferences::Auto,
                 },
             ));
         }
-        Ok(resolver_options)
+        let import = Resolver::new(ResolveOptions {
+            condition_names: vec!["node".into(), "import".into()],
+            ..base.clone()
+        });
+        let require = import.clone_with_options(ResolveOptions {
+            condition_names: vec!["node".into(), "require".into()],
+            ..base
+        });
+        Ok(Self {
+            admission,
+            import,
+            require,
+        })
     }
 
     /// Resolve one request into a provider-neutral, root-classified outcome.

@@ -330,25 +330,11 @@ impl ValidatedProjectLoadOptions {
     }
 
     pub fn supports(&self, path: &Path) -> bool {
-        let name = path.to_string_lossy().to_ascii_lowercase();
-        self.extensions
-            .0
-            .iter()
-            .any(|extension| name.ends_with(extension))
-            && ![".d.ts", ".d.cts", ".d.mts"]
-                .iter()
-                .any(|suffix| name.ends_with(suffix))
+        self.options.supports(path)
     }
 
     pub fn excludes_path(&self, root: &Path, path: &Path) -> bool {
-        path.strip_prefix(root).is_ok_and(|relative| {
-            relative.components().any(|component| {
-                component
-                    .as_os_str()
-                    .to_str()
-                    .is_some_and(|name| self.options.excluded_directories.contains(name))
-            })
-        })
+        self.options.excludes_path(root, path)
     }
 }
 

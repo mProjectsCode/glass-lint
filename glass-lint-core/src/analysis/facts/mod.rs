@@ -299,8 +299,7 @@ mod tests {
             let mut builder = FactBuilder::new(&mut resolver);
             swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
             let (mut stream, interface) = builder.into_parts();
-            let names = resolver.name_snapshot();
-            let values = resolver.into_values();
+            let (names, values) = resolver.into_parts();
             let _ = stream.freeze_names(names);
             format!(
                 "{:?}",

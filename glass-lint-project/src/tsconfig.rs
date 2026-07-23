@@ -30,24 +30,41 @@ pub fn compile_count() -> usize {
 // Field-level representation for the parsed DTO
 // ---------------------------------------------------------------------------
 
-/// Distinguishes absent, null, wrong-type, and present for string fields.
+/// Generic parsed field representation distinguishing absent, null,
+/// wrong-type, and present states.
 #[derive(Clone, Debug)]
-pub enum StringField {
+pub enum ParsedField<T> {
     Absent,
     Null,
     #[allow(dead_code)]
     WrongType(String),
-    Present(String),
+    Present(T),
 }
 
-impl StringField {
-    fn ok(self) -> Option<String> {
+pub type StringField = ParsedField<String>;
+pub type StringArrayField = ParsedField<Vec<String>>;
+
+impl<T> ParsedField<T> {
+    fn ok(self) -> Option<T> {
         match self {
             Self::Present(v) => Some(v),
             _ => None,
         }
     }
 
+    fn from_value_opt(value: Option<&Value>) -> Self
+    where
+        Self: FromValue,
+    {
+        value.map_or(Self::Absent, Self::from_value)
+    }
+}
+
+trait FromValue: Sized {
+    fn from_value(value: &Value) -> Self;
+}
+
+impl FromValue for ParsedField<String> {
     fn from_value(value: &Value) -> Self {
         match value {
             Value::Null => Self::Null,
@@ -55,47 +72,29 @@ impl StringField {
             other => Self::WrongType(format!("expected string, got {}", type_name(other))),
         }
     }
-
-    fn from_value_opt(value: Option<&Value>) -> Self {
-        value.map_or(Self::Absent, Self::from_value)
-    }
 }
 
-/// Distinguishes absent, null, wrong-type, and present for array-of-strings
-/// fields.
-#[derive(Clone, Debug)]
-pub enum StringArrayField {
-    Absent,
-    Null,
-    #[allow(dead_code)]
-    WrongType(String),
-    Present(Vec<String>),
-}
-
-impl StringArrayField {
-    fn ok(self) -> Option<Vec<String>> {
-        match self {
-            Self::Present(v) => Some(v),
-            _ => None,
-        }
-    }
-
+impl FromValue for ParsedField<Vec<String>> {
     fn from_value(value: &Value) -> Self {
         match value {
             Value::Null => Self::Null,
             Value::Array(arr) => {
-                let items: Vec<String> = arr
-                    .iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect();
+                let mut items = Vec::with_capacity(arr.len());
+                for v in arr {
+                    match v.as_str() {
+                        Some(s) => items.push(s.to_owned()),
+                        None => {
+                            return Self::WrongType(format!(
+                                "expected string element in array, got {}",
+                                type_name(v)
+                            ));
+                        }
+                    }
+                }
                 Self::Present(items)
             }
             other => Self::WrongType(format!("expected array, got {}", type_name(other))),
         }
-    }
-
-    fn from_value_opt(value: Option<&Value>) -> Self {
-        value.map_or(Self::Absent, Self::from_value)
     }
 }
 
@@ -226,17 +225,7 @@ trait FieldState {
     fn error(&self) -> Option<String>;
 }
 
-impl FieldState for StringField {
-    fn error(&self) -> Option<String> {
-        match self {
-            Self::WrongType(message) => Some(message.clone()),
-            Self::Null => Some("value is null".into()),
-            Self::Absent | Self::Present(_) => None,
-        }
-    }
-}
-
-impl FieldState for StringArrayField {
+impl<T> FieldState for ParsedField<T> {
     fn error(&self) -> Option<String> {
         match self {
             Self::WrongType(message) => Some(message.clone()),
@@ -433,7 +422,9 @@ pub struct TsconfigDiagnostic {
     /// The canonical config path where the cycle was detected.
     pub config_path: PathBuf,
     /// The canonical path of the parent/reference that created the cycle.
-    pub cycle_target: PathBuf,
+    /// `None` when the diagnostic is not about a cycle (e.g. parse errors or
+    /// pattern issues).
+    pub cycle_target: Option<PathBuf>,
     /// Human-readable description.
     pub message: String,
 }
@@ -488,7 +479,7 @@ pub fn build_effective_config(
     config_path: &Path,
     fallback_base: &Path,
     diagnostics: &mut Vec<TsconfigDiagnostic>,
-) -> Result<Tsconfig, ProjectLoadError> {
+) -> Result<(Tsconfig, Vec<ReferenceEntry>), ProjectLoadError> {
     let mut extends_chain: Vec<PathBuf> = Vec::new();
     build_effective_config_inner(config_path, fallback_base, &mut extends_chain, diagnostics)
 }
@@ -498,14 +489,14 @@ fn build_effective_config_inner(
     fallback_base: &Path,
     extends_chain: &mut Vec<PathBuf>,
     diagnostics: &mut Vec<TsconfigDiagnostic>,
-) -> Result<Tsconfig, ProjectLoadError> {
+) -> Result<(Tsconfig, Vec<ReferenceEntry>), ProjectLoadError> {
     let canonical = realpath(config_path)?;
 
     // Cycle detection in the extends chain
     if extends_chain.contains(&canonical) {
         diagnostics.push(TsconfigDiagnostic {
             config_path: config_path.to_path_buf(),
-            cycle_target: canonical,
+            cycle_target: Some(canonical),
             message: format!(
                 "cycle detected: {} is already in the inheritance chain",
                 config_path.display()
@@ -515,15 +506,18 @@ fn build_effective_config_inner(
         // We signal this by returning a special config; the caller checks
         // for `files: Some(Vec::new())` to detect that the extends chain
         // should be treated as absent.
-        return Ok(Tsconfig {
-            config_path: config_path.to_path_buf(),
-            base: fallback_base.to_path_buf(),
-            files: Some(Vec::new()),
-            include: Vec::new(),
-            exclude: vec!["**/*".to_string()],
-            pattern_set: TsconfigPatternSet::new(&[], &["**/*".to_string()]),
-            pattern_diagnostics: Vec::new(),
-        });
+        return Ok((
+            Tsconfig {
+                config_path: config_path.to_path_buf(),
+                base: fallback_base.to_path_buf(),
+                files: Some(Vec::new()),
+                include: Vec::new(),
+                exclude: vec!["**/*".to_string()],
+                pattern_set: TsconfigPatternSet::new(&[], &["**/*".to_string()]),
+                pattern_diagnostics: Vec::new(),
+            },
+            Vec::new(),
+        ));
     }
 
     extends_chain.push(canonical.clone());
@@ -532,7 +526,7 @@ fn build_effective_config_inner(
     for message in &dto.diagnostics {
         diagnostics.push(TsconfigDiagnostic {
             config_path: canonical.clone(),
-            cycle_target: canonical.clone(),
+            cycle_target: None,
             message: message.clone(),
         });
     }
@@ -542,11 +536,13 @@ fn build_effective_config_inner(
     // A parent with `files: Some(Vec::new())` is a cycle sentinel that must
     // be treated as absent so the cyclic branch does not propagate empty
     // files upward through the merge chain.
+    let references = dto.references.clone();
     let parent_tsconfig = match dto.extends.clone().ok() {
         Some(extends_str) => resolve_extends(config_path, &extends_str)
             .filter(|parent_path| parent_path.exists())
             .map(|parent_path| {
                 build_effective_config_inner(&parent_path, &base, extends_chain, diagnostics)
+                    .map(|(config, _)| config)
             })
             .transpose()?
             .filter(|parent| !matches!(&parent.files, Some(v) if v.is_empty())),
@@ -562,11 +558,11 @@ fn build_effective_config_inner(
             .iter()
             .map(|message| TsconfigDiagnostic {
                 config_path: effective.config_path.clone(),
-                cycle_target: effective.config_path.clone(),
+                cycle_target: None,
                 message: message.clone(),
             }),
     );
-    Ok(effective)
+    Ok((effective, references))
 }
 
 #[cfg(test)]
@@ -754,7 +750,7 @@ mod tests {
             "build_effective_config failed: {:?}",
             result.err()
         );
-        let config = result.unwrap();
+        let (config, _references) = result.unwrap();
         // Cycle extends is skipped; config uses its own include
         assert_eq!(config.files, None);
         assert!(config.include.contains(&"src/**/*".to_string()));
@@ -772,7 +768,7 @@ mod tests {
             r#"{"include":["src/**/*"],"exclude":["**/*.test.ts"]}"#,
         );
 
-        let config = build_effective_config(
+        let (config, _) = build_effective_config(
             &project.root().join("tsconfig.json"),
             project.root(),
             &mut Vec::new(),
@@ -804,7 +800,7 @@ mod tests {
         );
 
         assert!(result.is_ok());
-        let config = result.unwrap();
+        let (config, _) = result.unwrap();
         // A should have include: ["src/**/*"] (its own setting)
         // The cycle in extends should NOT bring in B's patterns
         assert!(config.files.is_none(), "no explicit files");
@@ -836,7 +832,7 @@ mod tests {
         );
 
         let mut diagnostics = Vec::new();
-        let config = build_effective_config(
+        let (config, _) = build_effective_config(
             &project.root().join("tsconfig.json"),
             project.root(),
             &mut diagnostics,
@@ -860,7 +856,7 @@ mod tests {
         );
 
         let mut diagnostics = Vec::new();
-        let config = build_effective_config(
+        let (config, _) = build_effective_config(
             &project.root().join("tsconfig.json"),
             project.root(),
             &mut diagnostics,

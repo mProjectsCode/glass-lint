@@ -30,13 +30,11 @@ pub struct ArtifactFingerprint(u64);
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x100_0000_01b3;
 
-fn fnv_hash(bytes: &[u8]) -> u64 {
-    let mut h = FNV_OFFSET;
+fn fnv_write(h: &mut u64, bytes: &[u8]) {
     for &b in bytes {
-        h ^= u64::from(b);
-        h = h.wrapping_mul(FNV_PRIME);
+        *h ^= u64::from(b);
+        *h = h.wrapping_mul(FNV_PRIME);
     }
-    h
 }
 
 /// Current hash version – bump when the encoding of any fingerprint
@@ -55,25 +53,27 @@ impl ArtifactFingerprint {
         limits: &crate::AnalysisLimits,
         engine_version: &str,
     ) -> Self {
-        // Collect all fields into one byte buffer so the hash is a single pass.
-        let mut buf = Vec::new();
-        buf.extend_from_slice(&FINGERPRINT_VERSION.to_le_bytes());
-        buf.extend_from_slice(source.as_bytes());
-        buf.push(match language {
-            crate::SourceLanguage::JavaScript => 0u8,
-            crate::SourceLanguage::TypeScript => 1u8,
-        });
-        buf.extend_from_slice(normalization_mode.as_bytes());
-        buf.push(0u8); // separator
-        environment.write_fingerprint_bytes(&mut buf);
-        buf.extend_from_slice(&limits.syntax_depth().to_le_bytes());
-        buf.extend_from_slice(&limits.semantic_operations().to_le_bytes());
-        buf.extend_from_slice(&limits.effect_operations().to_le_bytes());
-        buf.extend_from_slice(&limits.evidence_items().to_le_bytes());
-        buf.extend_from_slice(&limits.link_operations().to_le_bytes());
-        buf.extend_from_slice(&limits.flow_operations().to_le_bytes());
-        buf.extend_from_slice(engine_version.as_bytes());
-        Self(fnv_hash(&buf))
+        let mut h = FNV_OFFSET;
+        fnv_write(&mut h, &FINGERPRINT_VERSION.to_le_bytes());
+        fnv_write(&mut h, source.as_bytes());
+        fnv_write(
+            &mut h,
+            &[match language {
+                crate::SourceLanguage::JavaScript => 0u8,
+                crate::SourceLanguage::TypeScript => 1u8,
+            }],
+        );
+        fnv_write(&mut h, normalization_mode.as_bytes());
+        fnv_write(&mut h, &[0u8]); // separator
+        environment.write_fingerprint_bytes(&mut h);
+        fnv_write(&mut h, &limits.syntax_depth().to_le_bytes());
+        fnv_write(&mut h, &limits.semantic_operations().to_le_bytes());
+        fnv_write(&mut h, &limits.effect_operations().to_le_bytes());
+        fnv_write(&mut h, &limits.evidence_items().to_le_bytes());
+        fnv_write(&mut h, &limits.link_operations().to_le_bytes());
+        fnv_write(&mut h, &limits.flow_operations().to_le_bytes());
+        fnv_write(&mut h, engine_version.as_bytes());
+        Self(h)
     }
 }
 

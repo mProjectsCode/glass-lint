@@ -242,7 +242,7 @@ impl LocalLowering<'_> {
         } = self;
         let names = NameTable::with_max_entries(name_limit);
         let scoped_program = ScopeGraph::collect_scoped_program(program, environment, names);
-        let (scope_graph, _issues) = scoped_program.into_parts();
+        let (scope_graph, issues) = scoped_program.into_parts();
         let mut resolver = resolution::Resolver::new(scope_graph, coordinates.clone());
 
         let mut builder =
@@ -253,6 +253,15 @@ impl LocalLowering<'_> {
         let mut stream = built.stream;
         let interface = built.interface;
         let mut status = AnalysisStatus::default();
+
+        if !issues.is_empty() {
+            status.record(
+                StatusScope::Project,
+                IncompleteReason::ScopeShapeMismatch {
+                    detail: format!("{} scope collection issue(s)", issues.len()),
+                },
+            );
+        }
 
         if let Some(reason) = check_facts_budget(&stream, &resolver, limits) {
             status.record(StatusScope::Project, reason);
@@ -282,8 +291,7 @@ impl LocalLowering<'_> {
             stream.mark_name_exhausted();
         }
 
-        let names = resolver.name_table().clone();
-        let values = resolver.into_values();
+        let (names, values) = resolver.into_parts();
         stream
             .freeze_names(names)
             .expect("Stream already owns a NameTable");

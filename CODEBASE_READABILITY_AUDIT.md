@@ -6,7 +6,7 @@ The audit found 50 readability and maintainability issues across `glass-lint-cor
 
 ## Findings
 
-### READ-001 — Scope-collection issues are silently discarded
+### READ-001 — Scope-collection issues are silently discarded  ✅
 
 - **Severity:** High
 - **Category:** Architecture
@@ -38,7 +38,7 @@ Recursive config construction represents a cycle by returning a synthetic config
 
 Include and exclude fields are collapsed with `ok().unwrap_or_default()` before inheritance is applied, so an explicit empty array and an absent field become the same value despite the parser having modeled their distinction. Preserve the parsed field state through merging and decide inheritance from presence, not collection emptiness.
 
-### READ-005 — Cross-function flow deduplication forgets completed contexts
+### READ-005 — Cross-function flow deduplication forgets completed contexts  ✅
 
 - **Severity:** High
 - **Category:** Complexity
@@ -54,7 +54,7 @@ Include and exclude fields are collapsed with `ok().unwrap_or_default()` before 
 
 Although checkpoints themselves are described as cheap, joining branches clones the full reachable-alias and state tables for every branch before intersecting them. A streaming accumulator or persistent state representation would make the branch/join phase explicit and substantially reduce peak memory for wide or deeply nested control flow.
 
-### READ-007 — `EvidenceList` exposes inconsistent views and allocation-heavy traits
+### READ-007 — `EvidenceList` exposes inconsistent views and allocation-heavy traits  ✅
 
 - **Severity:** Medium
 - **Category:** Encapsulation
@@ -62,7 +62,7 @@ Although checkpoints themselves are described as cheap, joining branches clones 
 
 The collection's `len`, indexing, and iteration cover shared and local evidence, while `as_slice` exposes only local evidence; equality and serialization additionally allocate temporary `Vec<&Evidence>` values, and owned iteration clones shared content. Rename or remove the partial slice view and implement traits directly over a unified iterator or a storage model with one coherent borrowed view.
 
-### READ-008 — Artifact fingerprints allocate source-sized temporary buffers
+### READ-008 — Artifact fingerprints allocate source-sized temporary buffers  ✅
 
 - **Severity:** Medium
 - **Category:** Encapsulation
@@ -126,7 +126,7 @@ The input validator creates normalized path newtypes, but collection admission a
 
 Local analysis snapshots every pending `SourceFile` and path into a new vector because source storage and artifact mutation cannot otherwise be borrowed together. A draining work queue or phase-owned pending batch could move the work items and make the collection-to-local-analysis transition explicit.
 
-### READ-016 — Lowering clones the complete name table during artifact assembly
+### READ-016 — Lowering clones the complete name table during artifact assembly  ✅
 
 - **Severity:** Medium
 - **Category:** Encapsulation
@@ -166,7 +166,7 @@ Normal calls versus `.call`/`.apply` argument interpretation is repeated in the 
 
 Both types independently implement root, first/last, append, removal, binding, and descendant operations, while conversions exist both on the path type and `NameTable`. Share an internal path container/algorithm layer and keep name-to-symbol conversion on the table that owns resolution knowledge.
 
-### READ-021 — Assignment-history operations expose repeated nested-map mechanics
+### READ-021 — Assignment-history operations expose repeated nested-map mechanics  ✅
 
 - **Severity:** Medium
 - **Category:** Encapsulation
@@ -198,7 +198,7 @@ The visitor contains repeated branches for dynamic import versus `require`, defa
 
 Entries, fingerprint lookup, and FIFO order are stored separately and manually updated during insertion and eviction, with internal `expect` calls depending on synchronization. A single ordered entry collection or a dedicated index type would reduce invariants and make eviction behavior easier to verify at the cache's small fixed capacity.
 
-### READ-025 — Validated and unvalidated load options duplicate policy behavior
+### READ-025 — Validated and unvalidated load options duplicate policy behavior  ✅
 
 - **Severity:** Medium
 - **Category:** Duplication
@@ -206,7 +206,7 @@ Entries, fingerprint lookup, and FIFO order are stored separately and manually u
 
 Both option types implement near-identical extension support and exclusion checks, while the validated wrapper retains the original options alongside normalized extensions and forwards numerous getters. Put behavior on normalized storage and use small validated budget/value types to centralize the repeated nonzero checks.
 
-### READ-026 — Tsconfig field wrappers duplicate parsing state and weaken array validation
+### READ-026 — Tsconfig field wrappers duplicate parsing state and weaken array validation  ✅
 
 - **Severity:** Medium
 - **Category:** Duplication
@@ -214,7 +214,7 @@ Both option types implement near-identical extension support and exclusion check
 
 String and string-array fields separately implement the same absent/null/wrong-type/present state machine, and the array parser silently drops non-string elements with `filter_map`. A generic parsed-field representation with strict element parsing would preserve diagnostics and remove parallel state logic.
 
-### READ-027 — Discovery reads and parses each tsconfig twice
+### READ-027 — Discovery reads and parses each tsconfig twice  ✅
 
 - **Severity:** Medium
 - **Category:** Architecture
@@ -222,7 +222,7 @@ String and string-array fields separately implement the same absent/null/wrong-t
 
 Effective-config construction reads and parses the file, after which reference discovery rereads and reparses the same DTO. Return reference metadata with the effective node or cache parsed configs in the traversal graph so discovery has one source of config truth.
 
-### READ-028 — Tsconfig diagnostics conflate cycles with general config errors
+### READ-028 — Tsconfig diagnostics conflate cycles with general config errors  ✅
 
 - **Severity:** Medium
 - **Category:** API
@@ -246,7 +246,7 @@ Walkers and loader loops each perform their own deadline checks, but recursive `
 
 Reading a path immediately invokes core local analysis, resolution mutates caches and queues more paths, and final linking/reporting later returns unnamed timings. Model frontier expansion as a typed stage/result, followed by an explicit closed-project link/match stage, so lifecycle and partial-failure handling are apparent without reading the whole loader.
 
-### READ-031 — Resolution-cache use duplicates keys and performs multiple lookups
+### READ-031 — Resolution-cache use duplicates keys and performs multiple lookups  ✅
 
 - **Severity:** Medium
 - **Category:** Encapsulation
@@ -254,7 +254,7 @@ Reading a path immediately invokes core local analysis, resolution mutates cache
 
 Request recording clones cache keys, probes the cache, resolves on a miss, inserts, and then looks up again with an `expect`. Give `ResolutionCache` an entry-style `resolve_or_get` operation that owns this state transition and returns the stored outcome directly.
 
-### READ-032 — Resolver modes duplicate almost-complete option structures
+### READ-032 — Resolver modes duplicate almost-complete option structures  ✅
 
 - **Severity:** Medium
 - **Category:** Duplication

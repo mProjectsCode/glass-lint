@@ -165,7 +165,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         if active.contains(&config_path) {
             cycle_diagnostics.push(TsconfigDiagnostic {
                 config_path: config_path.clone(),
-                cycle_target: config_path,
+                cycle_target: Some(config_path),
                 message: "cycle detected in project references".into(),
             });
             return Ok(());
@@ -184,19 +184,20 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
             .to_path_buf();
 
         // Phase 1-3: Build effective config (typed parse, extends resolution, merge)
-        let effective = tsconfig::build_effective_config(&canonical, &base, cycle_diagnostics)?;
+        let (effective, references) =
+            tsconfig::build_effective_config(&canonical, &base, cycle_diagnostics)?;
 
         // Phase 4: Select sources using the typed effective config
         self.select_sources(&effective, &base, selected)?;
 
         // Phase 5: Traverse project references
-        let result = self.collect_references(
-            &canonical,
+        let result = self.collect_references_typed(
             &base,
             visited,
             active,
             selected,
             cycle_diagnostics,
+            &references,
         );
         active.pop();
         result
@@ -237,18 +238,16 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         Ok(())
     }
 
-    fn collect_references(
+    fn collect_references_typed(
         &self,
-        config_path: &Path,
         base: &Path,
         visited: &mut BTreeSet<PathBuf>,
         active: &mut Vec<PathBuf>,
         selected: &mut BTreeSet<AdmittedSourcePath>,
         cycle_diagnostics: &mut Vec<TsconfigDiagnostic>,
+        references: &[tsconfig::ReferenceEntry],
     ) -> Result<(), ProjectLoadError> {
-        // Re-read config DTO to get typed references
-        let dto = tsconfig::read_and_parse(config_path)?;
-        for reference in &dto.references {
+        for reference in references {
             let mut target = base.join(&reference.path);
             if target.is_dir() {
                 target = target.join("tsconfig.json");

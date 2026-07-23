@@ -164,8 +164,8 @@ impl ScopeGraph {
         self.names.exhausted()
     }
 
-    pub(in crate::analysis) fn name_table(&self) -> &NameTable {
-        &self.names
+    pub(in crate::analysis) fn into_name_table(self) -> NameTable {
+        self.names
     }
 
     pub(in crate::analysis) fn name_table_mut(&mut self) -> &mut NameTable {
@@ -261,6 +261,13 @@ impl ScopeGraph {
         self.environment.global_objects()
     }
 
+    /// Look up the assignment history for a scope-local name, or `None` if the
+    /// name is unknown or has no recorded assignments.
+    fn assignments_for(&self, scope: ScopeId, name: &str) -> Option<&Vec<AliasAssignment>> {
+        self.name_id(name)
+            .and_then(|name| self.assignments.get(&scope)?.get(&name))
+    }
+
     /// Find the latest assignment at or before a source position.
     pub(super) fn assignment_at(
         &self,
@@ -268,18 +275,12 @@ impl ScopeGraph {
         name: &str,
         span: Span,
     ) -> Option<&AliasAssignment> {
-        self.name_id(name)
-            .and_then(|name| {
-                self.assignments
-                    .get(&scope)
-                    .and_then(|assignments| assignments.get(&name))
-            })
-            .and_then(|assignments| {
-                assignments
-                    .partition_point(|assignment| assignment.span.lo <= span.lo)
-                    .checked_sub(1)
-                    .and_then(|index| assignments.get(index))
-            })
+        self.assignments_for(scope, name).and_then(|assignments| {
+            assignments
+                .partition_point(|assignment| assignment.span.lo <= span.lo)
+                .checked_sub(1)
+                .and_then(|index| assignments.get(index))
+        })
     }
 
     pub(super) fn binding_id_at(&self, scope: ScopeId, name: &str) -> Option<BindingId> {
@@ -346,9 +347,7 @@ impl ScopeGraph {
         start: BytePos,
         end: BytePos,
     ) -> bool {
-        self.assignments
-            .get(&scope)
-            .and_then(|assignments| self.name_id(name).and_then(|name| assignments.get(&name)))
+        self.assignments_for(scope, name)
             .is_some_and(|assignments| {
                 assignments
                     .iter()
@@ -357,9 +356,7 @@ impl ScopeGraph {
     }
 
     pub(super) fn binding_version(&self, scope: ScopeId, name: &str, span: Span) -> BindingVersion {
-        self.assignments
-            .get(&scope)
-            .and_then(|assignments| self.name_id(name).and_then(|name| assignments.get(&name)))
+        self.assignments_for(scope, name)
             .and_then(|assignments| {
                 assignments
                     .partition_point(|assignment| assignment.span.lo <= span.lo)

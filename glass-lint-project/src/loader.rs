@@ -332,12 +332,20 @@ impl AdmissionSet {
 #[derive(Debug, Default)]
 struct ResolutionCache(BTreeMap<glass_lint_core::ResolutionRequestKey, ResolverOutcome>);
 impl ResolutionCache {
-    fn get(&self, key: &glass_lint_core::ResolutionRequestKey) -> Option<&ResolverOutcome> {
-        self.0.get(key)
-    }
-
-    fn insert(&mut self, key: glass_lint_core::ResolutionRequestKey, result: ResolverOutcome) {
-        self.0.insert(key, result);
+    /// Resolve a request if not already cached and return the stored outcome.
+    /// The returned `bool` is `true` when a real resolution was performed.
+    fn resolve_or_get(
+        &mut self,
+        request: &ResolutionRequest,
+        resolver: &ProjectResolver,
+    ) -> (&ResolverOutcome, bool) {
+        let cache_key = request.key.clone();
+        match self.0.entry(cache_key) {
+            std::collections::btree_map::Entry::Occupied(e) => (e.into_mut(), false),
+            std::collections::btree_map::Entry::Vacant(e) => {
+                (e.insert(resolver.resolve(request)), true)
+            }
+        }
     }
 
     fn into_iter(
@@ -479,17 +487,11 @@ impl<'a> ProjectLoadState<'a> {
     ) -> Result<(), ProjectLoadError> {
         for request in requests {
             self.check_timeout()?;
-            let cache_key = request.key.clone();
-            if self.resolved.get(&cache_key).is_none() {
-                let resolve_start = Instant::now();
-                let result = self.resolver.resolve(&request);
+            let resolve_start = Instant::now();
+            let (result, resolved) = self.resolved.resolve_or_get(&request, &self.resolver);
+            if resolved {
                 metrics.timings.record_resolution(resolve_start.elapsed());
-                self.resolved.insert(cache_key.clone(), result);
             }
-            let result = self
-                .resolved
-                .get(&cache_key)
-                .expect("resolution was inserted");
             let internal_target = match result {
                 ResolverOutcome::Internal { path } => Some(path.clone()),
                 _ => None,

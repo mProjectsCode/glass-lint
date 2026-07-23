@@ -298,31 +298,38 @@ impl Environment {
         self.inner().global_objects.contains_key(name)
     }
 
-    /// Append a deterministic byte representation for cache fingerprinting.
-    /// Iteration order follows BTreeSet/BTreeMap keys, which is stable.
-    pub(crate) fn write_fingerprint_bytes(&self, buf: &mut Vec<u8>) {
+    /// Hash a deterministic byte representation for cache fingerprinting
+    /// directly into the FNV-1a state. Iteration order follows
+    /// BTreeSet/BTreeMap keys, which is stable.
+    pub(crate) fn write_fingerprint_bytes(&self, h: &mut u64) {
+        fn write(h: &mut u64, bytes: &[u8]) {
+            for &b in bytes {
+                *h ^= u64::from(b);
+                *h = h.wrapping_mul(0x100_0000_01b3);
+            }
+        }
         let inner = self.inner();
         // Global bindings (sorted).
-        buf.extend_from_slice(&(inner.global_bindings.len() as u64).to_le_bytes());
+        write(h, &(inner.global_bindings.len() as u64).to_le_bytes());
         for name in &inner.global_bindings {
-            buf.extend_from_slice(name.as_bytes());
-            buf.push(0u8);
+            write(h, name.as_bytes());
+            write(h, &[0u8]);
         }
         // Global objects (sorted by name).
-        buf.extend_from_slice(&(inner.global_objects.len() as u64).to_le_bytes());
+        write(h, &(inner.global_objects.len() as u64).to_le_bytes());
         for (name, members) in &inner.global_objects {
-            buf.extend_from_slice(name.as_bytes());
-            buf.push(0u8);
+            write(h, name.as_bytes());
+            write(h, &[0u8]);
             match members {
                 GlobalObjectMembers::ConfiguredGlobals => {
-                    buf.push(0u8);
+                    write(h, &[0u8]);
                 }
                 GlobalObjectMembers::Restricted(member_set) => {
-                    buf.push(1u8);
-                    buf.extend_from_slice(&(member_set.len() as u64).to_le_bytes());
+                    write(h, &[1u8]);
+                    write(h, &(member_set.len() as u64).to_le_bytes());
                     for member in member_set {
-                        buf.extend_from_slice(member.as_bytes());
-                        buf.push(0u8);
+                        write(h, member.as_bytes());
+                        write(h, &[0u8]);
                     }
                 }
             }

@@ -149,10 +149,10 @@ impl Lookup for Resolver {
 }
 
 impl Resolver {
-    /// Freeze the interning arena after lowering so artifact consumers retain
-    /// the authoritative value shapes alongside the fact stream.
-    pub(in crate::analysis) fn into_values(self) -> ValueTable {
-        self.values
+    /// Consume the resolver and return the name and value tables together,
+    /// avoiding a clone of the name table.
+    pub(in crate::analysis) fn into_parts(self) -> (NameTable, ValueTable) {
+        (self.scopes.into_name_table(), self.values)
     }
 
     /// Convert a canonical member chain into the arena's structured value.
@@ -241,10 +241,6 @@ impl Resolver {
     #[cfg(test)]
     pub(super) fn name_snapshot(&self) -> NameTable {
         self.scopes.name_snapshot()
-    }
-
-    pub(in crate::analysis) fn name_table(&self) -> &NameTable {
-        self.scopes.name_table()
     }
 
     pub(in crate::analysis) fn normalize_span(

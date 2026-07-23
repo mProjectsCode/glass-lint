@@ -31,9 +31,7 @@ pub struct EvidenceList {
 
 impl PartialEq for EvidenceList {
     fn eq(&self, other: &Self) -> bool {
-        let self_slice = self.as_combined_slice();
-        let other_slice = other.as_combined_slice();
-        self_slice == other_slice
+        self.iter().eq(other.iter())
     }
 }
 
@@ -42,9 +40,8 @@ impl Eq for EvidenceList {}
 impl serde::Serialize for EvidenceList {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeSeq;
-        let combined = self.as_combined_slice();
-        let mut seq = serializer.serialize_seq(Some(combined.len()))?;
-        for item in combined {
+        let mut seq = serializer.serialize_seq(Some(self.len()))?;
+        for item in self {
             seq.serialize_element(item)?;
         }
         seq.end()
@@ -71,17 +68,6 @@ impl EvidenceList {
         self.shared = Some(shared);
     }
 
-    /// Return the combined view of local evidence followed by shared evidence.
-    fn as_combined_slice(&self) -> Vec<&Evidence> {
-        let mut combined: Vec<&Evidence> =
-            Vec::with_capacity(self.local.len() + self.shared.as_ref().map_or(0, |s| s.len()));
-        combined.extend(self.local.iter());
-        if let Some(shared) = &self.shared {
-            combined.extend(shared.iter());
-        }
-        combined
-    }
-
     /// Add evidence unless an identical record is already present.
     ///
     /// Identity is determined by message and location only, matching the
@@ -94,10 +80,6 @@ impl EvidenceList {
         {
             self.local.push(item);
         }
-    }
-
-    pub fn as_slice(&self) -> &[Evidence] {
-        &self.local
     }
 
     pub fn is_empty(&self) -> bool {

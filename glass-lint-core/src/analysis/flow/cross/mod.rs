@@ -117,7 +117,6 @@ impl ContextWorklist {
 
     pub(super) fn pop_front(&mut self) -> Option<CallContext> {
         let context = self.queue.pop_front()?;
-        self.seen.remove(&context);
         Some(context)
     }
 
