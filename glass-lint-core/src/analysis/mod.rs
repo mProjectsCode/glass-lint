@@ -59,7 +59,7 @@ mod tests {
             &crate::AnalysisLimits::default(),
             &coordinates,
         );
-        let source = crate::SourceFile::new(
+        let source = crate::project::SourceFile::new(
             "projection-invariant.js",
             "fetch('/remote'); document.createElement('div');",
         )

@@ -5,7 +5,9 @@
 
 use std::collections::BTreeSet;
 
-use glass_lint_core::{AnalysisReport, Environment, LinterConfig, RuleCatalog, RuleMetadata};
+use glass_lint_core::{
+    Environment, LinterConfig, RuleCatalog, RuleMetadata, project::AnalysisReport,
+};
 
 mod catalog;
 mod rules;

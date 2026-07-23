@@ -374,7 +374,7 @@ fn load_project_tools(
                 .map(|mut expected| {
                     if expected.path.is_none() {
                         expected.path = Some(
-                            glass_lint_core::ProjectRelativePath::new(file.path.clone())
+                            glass_lint_core::project::ProjectRelativePath::new(file.path.clone())
                                 .map_err(|error| anyhow::anyhow!(error))?,
                         );
                     }
@@ -386,7 +386,7 @@ fn load_project_tools(
                 .map(|mut expected| {
                     if expected.path.is_none() {
                         expected.path = Some(
-                            glass_lint_core::ProjectRelativePath::new(file.path.clone())
+                            glass_lint_core::project::ProjectRelativePath::new(file.path.clone())
                                 .map_err(|error| anyhow::anyhow!(error))?,
                         );
                     }

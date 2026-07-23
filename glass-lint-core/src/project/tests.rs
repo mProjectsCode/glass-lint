@@ -55,7 +55,7 @@ fn consuming_project_phases_validate_requests_at_the_boundary() {
     let key = analysis.requests_ref()[0].key.clone();
     let local = collection.finish_local();
     let resolved = local
-        .resolve([(key, crate::ResolverOutcome::Missing)])
+        .resolve([(key, crate::project::ResolverOutcome::Missing)])
         .unwrap();
     let report = resolved.finish().unwrap();
     assert_eq!(report.files.len(), 1);
@@ -73,12 +73,15 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         .unwrap();
     let key = analysis.requests_ref()[0].key.clone();
     let mut unknown = key;
-    unknown.kind = crate::ResolutionRequestKind::Require;
+    unknown.kind = crate::project::ResolutionRequestKind::Require;
     let local = collection.finish_local();
-    let Err(error) = local.resolve([(unknown, crate::ResolverOutcome::Missing)]) else {
+    let Err(error) = local.resolve([(unknown, crate::project::ResolverOutcome::Missing)]) else {
         panic!("unknown requests must be rejected")
     };
-    assert!(matches!(error, crate::ProjectInputError::UnknownRequest(_)));
+    assert!(matches!(
+        error,
+        crate::project::ProjectInputError::UnknownRequest(_)
+    ));
 
     let mut collection = linter.begin_project("/project").unwrap();
     let analysis = collection
@@ -89,14 +92,14 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
         .unwrap();
     let key = analysis.requests_ref()[0].key.clone();
     let Err(error) = collection.finish_local().resolve([
-        (key.clone(), crate::ResolverOutcome::Missing),
-        (key, crate::ResolverOutcome::Missing),
+        (key.clone(), crate::project::ResolverOutcome::Missing),
+        (key, crate::project::ResolverOutcome::Missing),
     ]) else {
         panic!("duplicate outcomes must be rejected")
     };
     assert!(matches!(
         error,
-        crate::ProjectInputError::DuplicateResolution(_)
+        crate::project::ProjectInputError::DuplicateResolution(_)
     ));
 }
 

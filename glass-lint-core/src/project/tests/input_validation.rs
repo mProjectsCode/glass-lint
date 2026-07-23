@@ -1,54 +1,48 @@
-use crate::project::tests::*;
+use crate::{
+    Position, SourceRange,
+    project::{
+        ProjectInputError, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, tests::*,
+    },
+};
 
 #[test]
-fn validation_normalizes_and_sorts_sources_and_edges() {
-    let validated = ProjectInput {
-        root: "/project".into(),
-        sources: vec![source_file("./z.js", ""), source_file("a.js", "")],
-        resolutions: vec![(
-            key("./z.js"),
-            ResolverOutcome::Internal {
-                path: project_path("./a.js"),
-            },
-        )],
-    }
-    .validate()
-    .unwrap();
-
-    let paths: Vec<_> = validated.sources().map(|(p, _)| p.as_str()).collect();
-    assert_eq!(paths, ["a.js", "z.js"]);
-
-    let res: Vec<_> = validated.resolutions().collect();
-    assert_eq!(res[0].0.importer.as_str(), "z.js");
-    assert_eq!(
-        res[0].1,
-        &ResolverOutcome::Internal {
-            path: project_path("a.js")
-        }
-    );
+fn staged_session_normalizes_and_sorts_sources() {
+    let linter = test_linter();
+    let mut collection = linter.begin_project("/project").unwrap();
+    collection
+        .analyze_source(source_file("./z.js", ""))
+        .unwrap();
+    collection.analyze_source(source_file("a.js", "")).unwrap();
+    let report = finish_collection(collection);
+    assert_eq!(report.files.len(), 2);
+    assert_eq!(report.files[0].path, "a.js");
+    assert_eq!(report.files[1].path, "z.js");
 }
 
 #[test]
-fn duplicate_and_foreign_records_are_rejected() {
-    let duplicate = ProjectInput {
-        root: "/project".into(),
-        sources: vec![source_file("a.js", ""), source_file("./a.js", "")],
-        resolutions: vec![],
-    }
-    .validate();
-    assert!(matches!(
-        duplicate,
-        Err(ProjectInputError::DuplicateSource(_))
-    ));
+fn staged_session_rejects_duplicate_sources() {
+    let linter = test_linter();
+    let mut collection = linter.begin_project("/project").unwrap();
+    assert!(collection.analyze_source(source_file("a.js", "")).is_ok());
+    let result = collection.analyze_source(source_file("a.js", ""));
+    assert!(result.is_err());
+    assert!(matches!(result, Err(ProjectInputError::DuplicateSource(_))));
+}
 
-    let foreign = ProjectInput {
-        root: "/project".into(),
-        sources: vec![source_file("a.js", "")],
-        resolutions: vec![(key("missing.js"), ResolverOutcome::Missing)],
-    }
-    .validate();
-    assert!(matches!(
-        foreign,
-        Err(ProjectInputError::UnknownImporter(_))
-    ));
+#[test]
+fn staged_session_rejects_unknown_resolution_importers() {
+    let linter = test_linter();
+    let mut collection = linter.begin_project("/project").unwrap();
+    assert!(collection.analyze_source(source_file("a.js", "")).is_ok());
+    let result = collection.finish_local().resolve([(
+        ResolutionRequestKey {
+            importer: project_path("missing.js"),
+            kind: ResolutionRequestKind::StaticImport,
+            range: SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 8).unwrap())
+                .unwrap(),
+        },
+        ResolverOutcome::Missing,
+    )]);
+    assert!(result.is_err());
+    assert!(matches!(result, Err(ProjectInputError::UnknownRequest(_))));
 }

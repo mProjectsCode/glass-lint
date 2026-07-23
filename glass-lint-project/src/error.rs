@@ -1,6 +1,6 @@
 use std::{fmt, path::PathBuf};
 
-use glass_lint_core::ProjectInputError;
+use glass_lint_core::project::ProjectInputError;
 
 /// Operational and semantic errors from project construction.
 #[derive(Debug)]

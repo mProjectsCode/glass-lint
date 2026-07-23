@@ -17,9 +17,9 @@ pub use tables::EvidenceList;
 pub use types::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,
     DiagnosticCode, Evidence, FileReport, Finding, LinkedModuleTarget, LocalExecutionError,
-    ModuleId, ProjectInput, ProjectInputError, ProjectRelativePath, ReportCompletion,
-    ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile,
-    SourceLocation, SourceText, is_internal_module_request,
+    ModuleId, ProjectInputError, ProjectRelativePath, ReportCompletion, ResolutionRequest,
+    ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceLocation,
+    SourceText, is_internal_module_request,
 };
 
 #[cfg(test)]

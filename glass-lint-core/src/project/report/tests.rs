@@ -1,9 +1,11 @@
 use super::*;
 use crate::{
-    AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, Evidence, FileReport, Finding,
-    Position, ProjectRelativePath, RuleCatalog, RuleId, Severity, SourceFile, SourceLocation,
-    SourceRange,
+    Position, RuleCatalog, RuleId, Severity, SourceRange,
     api::rule::{Confidence, MatcherDecl, Rule, Severity as RuleSeverity},
+    project::{
+        AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, Evidence, FileReport, Finding,
+        ProjectRelativePath, SourceFile, SourceLocation,
+    },
 };
 
 fn source_file(path: impl Into<String>, source: impl Into<String>) -> SourceFile {
@@ -267,15 +269,6 @@ fn direct_qualification_matches_one_file_project_shape() {
         .unwrap()
         .finish()
         .unwrap();
-    let project = linter
-        .lint_project(crate::ProjectInput {
-            root: "/project".into(),
-            sources: vec![source_file("main.js", source)],
-            resolutions: Vec::new(),
-        })
-        .unwrap();
-
-    assert_eq!(direct, project.files[0]);
     assert_eq!(direct, manual.files[0]);
 }
 
@@ -350,15 +343,18 @@ fn parse_and_valid_sources_each_produce_one_file_report() {
     .unwrap();
 
     // One valid file, one parse-failure file
-    let report = linter
-        .lint_project(crate::ProjectInput {
-            root: "/project".into(),
-            sources: vec![
-                source_file("valid.js", "fetch('/a');"),
-                source_file("broken.js", "fetch("),
-            ],
-            resolutions: Vec::new(),
-        })
+    let mut collection = linter.begin_project("/project").unwrap();
+    collection
+        .analyze_source(source_file("valid.js", "fetch('/a');"))
+        .unwrap();
+    collection
+        .analyze_source(source_file("broken.js", "fetch("))
+        .unwrap();
+    let report = collection
+        .finish_local()
+        .resolve([])
+        .unwrap()
+        .finish()
         .unwrap();
 
     assert_eq!(report.files.len(), 2);

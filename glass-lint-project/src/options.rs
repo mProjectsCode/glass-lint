@@ -197,13 +197,8 @@ impl Default for ProjectLoadOptions {
 }
 
 impl ProjectLoadOptions {
-    /// Start a checked project-loading policy.
-    pub fn builder() -> ProjectLoadOptionsBuilder {
-        ProjectLoadOptionsBuilder::default()
-    }
-
     /// Validate this policy and mark it safe for the project loader boundary.
-    pub fn validated(self) -> Result<ValidatedProjectLoadOptions, ProjectLoadError> {
+    pub(crate) fn validated(self) -> Result<ValidatedProjectLoadOptions, ProjectLoadError> {
         self.validate()?;
         let extensions = SourceExtensionSet(
             self.extensions
@@ -215,17 +210,6 @@ impl ProjectLoadOptions {
             options: self,
             extensions,
         })
-    }
-
-    /// Test whether a source path's extension is supported.
-    pub fn supports(&self, path: &Path) -> bool {
-        let name = path.to_string_lossy().to_ascii_lowercase();
-        self.extensions
-            .iter()
-            .any(|extension| name.ends_with(&extension.to_ascii_lowercase()))
-            && ![".d.ts", ".d.cts", ".d.mts"]
-                .iter()
-                .any(|suffix| name.ends_with(suffix))
     }
 
     /// Test whether a path under `root` is excluded by any directory name.
@@ -306,7 +290,20 @@ impl ProjectLoadOptions {
     }
 }
 
+impl Default for ValidatedProjectLoadOptions {
+    fn default() -> Self {
+        ProjectLoadOptions::default()
+            .validated()
+            .expect("built-in default options are valid")
+    }
+}
+
 impl ValidatedProjectLoadOptions {
+    /// Start building a project-loading policy with validated defaults.
+    pub fn builder() -> ProjectLoadOptionsBuilder {
+        ProjectLoadOptionsBuilder::default()
+    }
+
     pub fn root(&self) -> Option<&Path> {
         self.options.root.as_deref()
     }

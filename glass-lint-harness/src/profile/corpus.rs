@@ -3,7 +3,7 @@
 use std::{collections::BTreeSet, path::PathBuf};
 
 use anyhow::{Context, Result};
-use glass_lint_project::{ProjectLoadOptions, SourceCorpus};
+use glass_lint_project::{SourceCorpus, ValidatedProjectLoadOptions};
 use glob::{MatchOptions, Pattern};
 
 /// Discover supported source files in deterministic path order.
@@ -14,7 +14,7 @@ pub fn discover_profile_files(
 ) -> Result<Vec<PathBuf>> {
     let includes = compile_globs(includes)?;
     let excludes = compile_globs(excludes)?;
-    let corpus_options = ProjectLoadOptions::builder()
+    let corpus_options = ValidatedProjectLoadOptions::builder()
         .max_files(usize::MAX)
         .build()?;
     let corpus = SourceCorpus::from_validated(&corpus_options);

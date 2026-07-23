@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use glass_lint_core::{ProjectRelativePath, SourceFile};
+use glass_lint_core::project::{ProjectRelativePath, SourceFile};
 
 use crate::{
     corpus::read_source_bytes, error::ProjectLoadError, options::ValidatedProjectLoadOptions,
@@ -190,7 +190,7 @@ impl<'a> SourceAdmission<'a> {
     }
 
     /// Resolve a path to its canonical form through the filesystem.
-    pub fn canonicalize(&self, path: &Path) -> Result<CanonicalProjectPath, ProjectLoadError> {
+    pub fn canonicalize(path: &Path) -> Result<CanonicalProjectPath, ProjectLoadError> {
         realpath(path).map(CanonicalProjectPath)
     }
 
@@ -199,23 +199,10 @@ impl<'a> SourceAdmission<'a> {
         path.strip_prefix(&self.canonical_root).is_ok()
     }
 
-    /// Fail with [`ProjectLoadError::SelectionOutsideRoot`] when `path` lies
-    /// outside the root.
-    pub fn check_inside_root(&self, path: &Path) -> Result<(), ProjectLoadError> {
-        if self.is_inside_root(path) {
-            Ok(())
-        } else {
-            Err(ProjectLoadError::SelectionOutsideRoot {
-                selection: path.to_path_buf(),
-                root: self.canonical_root.clone(),
-            })
-        }
-    }
-
     /// Canonicalize a path and apply containment, exclusion, and extension
     /// policy exactly once.
     pub(crate) fn classify(&self, path: &Path) -> Result<PathAdmission, ProjectLoadError> {
-        let canonical = self.canonicalize(path)?;
+        let canonical = Self::canonicalize(path)?;
         if !self.is_inside_root(canonical.as_ref()) {
             return Ok(PathAdmission::Outside(canonical));
         }
@@ -251,23 +238,6 @@ impl<'a> SourceAdmission<'a> {
     /// Test whether a path under the root has an excluded directory ancestor.
     pub fn is_excluded(&self, path: &Path) -> bool {
         self.options.excludes_path(&self.canonical_root, path)
-    }
-
-    /// Canonicalize, check containment and support, read, and produce a
-    /// normalized [`SourceFile`] in one pass.
-    ///
-    /// This is the single entry-point for loading an unvalidated path.
-    pub fn load_source_file(&self, path: &Path) -> Result<SourceFile, ProjectLoadError> {
-        match self.classify(path)? {
-            PathAdmission::Admitted(admitted) => self.load_admitted_source_file(&admitted),
-            PathAdmission::Outside(path) => Err(ProjectLoadError::SelectionOutsideRoot {
-                selection: path.into_path_buf(),
-                root: self.canonical_root.clone(),
-            }),
-            PathAdmission::Excluded(path) | PathAdmission::Unsupported(path) => {
-                Err(ProjectLoadError::UnsupportedSource(path.into_path_buf()))
-            }
-        }
     }
 
     /// Read a path returned by [`Self::admitted_path`] without repeating the

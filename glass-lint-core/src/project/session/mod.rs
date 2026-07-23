@@ -22,7 +22,7 @@ use execution::{
 };
 
 use crate::{
-    AnalysisLimits, Environment, ProjectRelativePath, RuleCatalog, SourceFile,
+    AnalysisLimits, Environment, RuleCatalog,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LoweredSource, Lowerer, QualifiedRequestId,
         ResolvedLinkInput,
@@ -30,8 +30,8 @@ use crate::{
     api::classification::RuleIndex,
     lint::ReportAssembly,
     project::{
-        AnalysisReport, ModuleId, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
-        ResolverOutcome,
+        AnalysisReport, ModuleId, ProjectInputError, ProjectRelativePath, ResolutionRequest,
+        ResolutionRequestKey, ResolverOutcome, SourceFile,
         input::{normalize_relative, normalize_resolution_key, normalize_result, normalize_root},
         tables::{ResolutionTable, SourceTable},
     },
@@ -174,13 +174,6 @@ impl<'a> ProjectCollection<'a> {
 
     fn admit_normalized_source(&mut self, mut source: SourceFile) -> Result<(), ProjectInputError> {
         source.set_path(normalize_relative(source.path())?);
-        self.sources.insert(source)
-    }
-
-    pub(crate) fn admit_validated_source(
-        &mut self,
-        source: SourceFile,
-    ) -> Result<(), ProjectInputError> {
         self.sources.insert(source)
     }
 

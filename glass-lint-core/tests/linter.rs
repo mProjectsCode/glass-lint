@@ -38,7 +38,11 @@ fn catalog_linter(catalog: RuleCatalog) -> Linter {
     test_linter(catalog, environment)
 }
 
-fn snippet(linter: &Linter, source: &str, filename: &str) -> glass_lint_core::AnalysisReport {
+fn snippet(
+    linter: &Linter,
+    source: &str,
+    filename: &str,
+) -> glass_lint_core::project::AnalysisReport {
     linter.lint_snippet(source, filename).unwrap()
 }
 

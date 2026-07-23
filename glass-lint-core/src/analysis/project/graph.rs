@@ -191,12 +191,12 @@ impl ProjectSemanticModel {
                                 },
                             );
                         }
-                        None => self.diagnostics.push(crate::AnalysisDiagnostic {
+                        None => self.diagnostics.push(crate::project::AnalysisDiagnostic {
                             code: crate::project::types::DiagnosticKind::MissingImportedExport
                                 .into(),
                             message: format!("module does not export `{imported}`"),
                             location: self.modules.get(&module.id()).and_then(|module| {
-                                Some(crate::SourceLocation {
+                                Some(crate::project::SourceLocation {
                                     path: ProjectRelativePath::from_normalized(
                                         module.path().to_string(),
                                     ),

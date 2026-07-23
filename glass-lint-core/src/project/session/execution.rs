@@ -8,8 +8,9 @@ use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::{
-    LocalExecutionError, ParseDiagnostic, ProjectRelativePath, SourceFile,
+    ParseDiagnostic,
     analysis::{ArtifactCacheKey, LoweredSource, Lowerer},
+    project::{LocalExecutionError, ProjectRelativePath, SourceFile},
 };
 
 pub(super) struct LocalJob {

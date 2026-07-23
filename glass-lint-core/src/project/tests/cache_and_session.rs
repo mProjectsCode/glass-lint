@@ -1,9 +1,11 @@
 use super::*;
 use crate::{
-    AnalysisLimits, Diagnostic, Environment, ReportCompletion, RuleBaseline, RuleSelection,
-    SourceFile, SourceText,
+    AnalysisLimits, Environment, RuleBaseline, RuleSelection,
     analysis::ArtifactCacheHandle,
-    project::session::{CountingExecutionObserver, InvocationCounts},
+    project::{
+        Diagnostic, ReportCompletion, SourceFile, SourceText,
+        session::{CountingExecutionObserver, InvocationCounts},
+    },
 };
 
 #[test]
@@ -185,7 +187,7 @@ fn setup_baseline_and_base_cache() -> (crate::Linter, crate::analysis::ArtifactC
         .admit_test_source(source_file("base.js", "fetch('/api');"))
         .unwrap();
     baseline
-        .analyze_source_at_path(&crate::ProjectRelativePath::new("base.js").unwrap())
+        .analyze_source_at_path(&crate::project::ProjectRelativePath::new("base.js").unwrap())
         .unwrap();
     let base_cache = baseline.artifact_cache.clone();
     (base_linter, base_cache)
@@ -195,7 +197,7 @@ fn assert_miss_for(
     base_cache: &crate::analysis::ArtifactCacheHandle,
     linter: &crate::Linter,
     source: SourceFile,
-    configure: fn(&mut crate::ProjectCollection<'_>),
+    configure: fn(&mut crate::project::ProjectCollection<'_>),
 ) {
     let path = source.path().to_string();
     let mut session = linter.begin_project("/project").unwrap();
@@ -212,7 +214,7 @@ fn assert_hit_for(
     base_cache: &crate::analysis::ArtifactCacheHandle,
     linter: &crate::Linter,
     source: SourceFile,
-    configure: fn(&mut crate::ProjectCollection<'_>),
+    configure: fn(&mut crate::project::ProjectCollection<'_>),
 ) {
     let path = source.path().to_string();
     let mut session = linter.begin_project("/project").unwrap();

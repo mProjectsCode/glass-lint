@@ -10,7 +10,7 @@ use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
 use crate::{
-    AnalysisLimits, Environment, ParseDiagnostic, SourceFile,
+    AnalysisLimits, Environment, ParseDiagnostic,
     analysis::{
         LocatedSourceContext, SemanticArtifact,
         facts::{self, SemanticFacts},
@@ -21,6 +21,7 @@ use crate::{
         scope::ScopeGraph,
         status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
     },
+    project::SourceFile,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

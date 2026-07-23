@@ -7,7 +7,7 @@ use clap::ValueEnum;
 use glass_lint_core::{
     CoreConfig, Linter, MAX_SOURCE_BYTES, RuleBaseline, RuleCatalog, RuleSelection, Severity,
 };
-use glass_lint_project::{ProjectLoadOptions, ValidatedProjectLoadOptions};
+use glass_lint_project::ValidatedProjectLoadOptions;
 use serde::{Deserialize, Serialize};
 
 use crate::args::Args;
@@ -276,7 +276,7 @@ impl Config {
     /// Construct and validate the project-loading policy used by linting
     /// modes.
     pub fn project_load_options(&self) -> Result<ValidatedProjectLoadOptions> {
-        ProjectLoadOptions::builder()
+        ValidatedProjectLoadOptions::builder()
             .max_source_bytes(self.cli.project.max_source_bytes)
             .max_project_source_bytes(self.cli.project.max_project_source_bytes)
             .max_visited_entries(self.cli.project.max_visited_entries)
@@ -286,8 +286,8 @@ impl Config {
     }
 
     /// Apply the CLI completion, diagnostic, and finding policy to one report.
-    pub fn report_fails(&self, report: &glass_lint_core::AnalysisReport) -> bool {
-        report.completion == glass_lint_core::ReportCompletion::Partial
+    pub fn report_fails(&self, report: &glass_lint_core::project::AnalysisReport) -> bool {
+        report.completion == glass_lint_core::project::ReportCompletion::Partial
             || !report.diagnostics.is_empty()
             || report.files.iter().any(|file| {
                 file.has_parse_diagnostics()

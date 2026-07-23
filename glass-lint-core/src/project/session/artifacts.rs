@@ -7,11 +7,12 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use super::execution::ExecutionEvent;
 use crate::{
-    ParseDiagnostic, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, SourceFile,
+    ParseDiagnostic,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
         SharedSemanticArtifact, module::ModuleRequestId,
     },
+    project::{ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, SourceFile},
 };
 
 /// Pre-computed index of authored requests for membership validation and

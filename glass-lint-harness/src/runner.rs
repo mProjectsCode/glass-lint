@@ -10,7 +10,7 @@ use std::{
 };
 
 use anyhow::Result;
-use glass_lint_core::Finding;
+use glass_lint_core::project::Finding;
 use tracing::info;
 
 use crate::{
@@ -188,8 +188,8 @@ mod tests {
             rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
             message: "text".into(),
             severity: Severity::Warning,
-            location: glass_lint_core::SourceLocation {
-                path: glass_lint_core::ProjectRelativePath::new("main.js").unwrap(),
+            location: glass_lint_core::project::SourceLocation {
+                path: glass_lint_core::project::ProjectRelativePath::new("main.js").unwrap(),
                 range: glass_lint_core::SourceRange::new(
                     glass_lint_core::Position::new(2, 3).unwrap(),
                     glass_lint_core::Position::new(2, 4).unwrap(),

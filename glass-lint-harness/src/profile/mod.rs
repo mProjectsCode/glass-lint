@@ -30,7 +30,7 @@ mod tests {
         time::Duration,
     };
 
-    use glass_lint_core::ReportCompletion;
+    use glass_lint_core::project::ReportCompletion;
 
     use super::{types::MeasuredRepetitionAccumulator, *};
 

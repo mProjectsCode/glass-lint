@@ -12,7 +12,7 @@ use std::{
 
 use console::{Style, measure_text_width};
 
-use crate::{FileReport, SourceRange};
+use crate::{SourceRange, project::FileReport};
 
 #[derive(Clone, Copy, Debug)]
 /// Display controls for pretty report rendering.
@@ -206,7 +206,8 @@ impl<'a> PrettyReports<'a> {
                     .diagnostics
                     .iter()
                     .filter_map(move |diagnostic| {
-                        let crate::Diagnostic::Parse { diagnostic, .. } = diagnostic else {
+                        let crate::project::Diagnostic::Parse { diagnostic, .. } = diagnostic
+                        else {
                             return None;
                         };
                         Some((file, diagnostic))

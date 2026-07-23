@@ -11,7 +11,6 @@ use super::{
     state::{ExportTable, ModuleGraph, SccPartition},
 };
 use crate::{
-    AnalysisDiagnostic, ProjectRelativePath, SourceFile,
     analysis::{
         facts::{FactId, FactStream, Frozen, SemanticFact},
         flow::effect::FunctionEffect,
@@ -30,7 +29,8 @@ use crate::{
     },
     budget::BudgetTracker,
     project::{
-        LinkedModuleTarget, ModuleId, ProjectInputError, ResolutionRequestKey, ResolverOutcome,
+        AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectInputError, ProjectRelativePath,
+        ResolutionRequestKey, ResolverOutcome, SourceFile,
     },
 };
 
@@ -367,15 +367,15 @@ impl ProjectSemanticModel {
     }
 
     /// Convert a module/fact identity into reportable related evidence.
-    pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<crate::Evidence> {
+    pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<crate::project::Evidence> {
         let module = self.modules.get(&module)?;
         let fact = module.local().facts().stream().fact(FactId(fact))?;
         let range = module.source_context().range(fact.span).ok()?;
-        Some(crate::Evidence {
+        Some(crate::project::Evidence {
             message: "related semantic path event".into(),
             count: 1,
             evidence_truncated: false,
-            location: Some(crate::SourceLocation {
+            location: Some(crate::project::SourceLocation {
                 path: module.path().clone(),
                 range,
             }),
@@ -449,8 +449,8 @@ impl ProjectSemanticModel {
     }
 
     /// Return deterministic phase and evidence operation counts.
-    pub fn operation_counts(&self, evidence: usize) -> crate::AnalysisOperationCounts {
-        crate::AnalysisOperationCounts {
+    pub fn operation_counts(&self, evidence: usize) -> crate::project::AnalysisOperationCounts {
+        crate::project::AnalysisOperationCounts {
             files: self.modules.len(),
             requests: self
                 .modules

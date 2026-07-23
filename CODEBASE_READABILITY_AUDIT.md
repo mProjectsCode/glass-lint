@@ -16,7 +16,7 @@ the wrong quantity, while some of the hottest operations repeat recursive
 resolution, allocate equivalent paths, or rescan whole fixed-point state.
 
 This audit records 37 findings: 18 high severity, 15 medium severity, and 4 low
-severity. 19 findings have been addressed (5 high, 10 medium, 4 low). The highest-priority
+severity. 24 findings have been addressed (7 high, 13 medium, 4 low). The highest-priority
 changes remaining are:
 
 1. parallelize local lowering in `ProjectLoader`;
@@ -59,20 +59,7 @@ can return an over-limit corpus.
 - **Fix Complexity:** Medium
 - **Category:** Architecture
 - **Location:** `glass-lint-project/src/corpus.rs:75-143`
-
-Corpus construction stores options but no canonical admission authority.
-Discovery creates a `SourceAdmission` from each caller-supplied root, ignoring
-the configured `options.root`. Loading uses the configured root when present
-and otherwise uses each file's parent. Discovery and loading can therefore
-disagree about whether a path is inside the project, and a multi-root corpus
-can apply a different containment boundary to every file. Loading also
-canonicalizes the root repeatedly.
-
-Make corpus construction establish one canonical `SourceAdmission` and return
-a typed error if it cannot. Require discovery roots to be inside that
-authority. If no root is configured, require the caller to provide one
-top-level root when constructing the corpus rather than deriving authority
-per file. Reuse the same admission object for discovery and loading.
+- **Status:** Done — `SourceCorpus` now stores a `canonical_root: Option<PathBuf>` established at construction from `options.root()` when available. A new `with_root` constructor requires an explicit canonical root. A private `admission()` helper creates a `SourceAdmission` from the stored canonical root (or a caller-supplied fallback), so discovery and loading share the same admission boundary. `discover_filtered` validates that all discovery roots are inside the canonical root when one is configured. `load` uses the canonical root instead of deriving it per file.
 
 #### READ-003 — ProjectLoader serializes the per-file parse and lowering hot path
 
@@ -567,6 +554,7 @@ boundary.
 - **Fix Complexity:** Medium
 - **Category:** API
 - **Location:** `glass-lint-core/src/lib.rs:13-57`, `glass-lint-core/src/project/mod.rs:8-27`
+- **Status:** Done — removed all duplicate project type re-exports from `lib.rs` root. Project types (`AnalysisReport`, `SourceFile`, `ProjectRelativePath`, etc.) are now reachable only through `crate::project::` or `glass_lint_core::project::`. Updated every internal and external caller across all workspace crates. `glass-lint-core/lib.rs` root is now deliberately small, containing only non-project APIs.
 
 Project types are reachable both as root exports and through the public
 `project::{input, types}` tree, while rule types are split among root exports,
@@ -586,6 +574,7 @@ namespace layout so future internal moves do not create API churn.
 - **Fix Complexity:** Medium
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/project/types/input.rs:132-139`, `glass-lint-core/src/project/input.rs:15-119`, `glass-lint-core/src/lint/linter.rs:176-236`, `glass-lint-core/src/project/session/mod.rs:69-493`
+- **Status:** Done — removed `ProjectInput` struct, `ValidatedProjectInput` struct, their `From` conversion, `ProjectInput::validate()`, `normalize_sources()`, and `Linter::lint_project()`. Removed `admit_validated_source()` from `ProjectCollection` (its only caller). Removed `ProjectInput` from all re-export paths across `lib.rs`, `project/mod.rs`, and `project/types/mod.rs`. Rewrote all test callers (`public_surface.rs`, `report/tests.rs`, `input_validation.rs`) to use the staged session API (`begin_project` → `analyze_source` → `finish_local` → `resolve` → `finish`). `lint_snippet` remains as the sole one-shot convenience adapter.
 
 The core exposes both a staged collect/analyze/resolve API and
 `Linter::lint_project(ProjectInput)`. The bulk adapter repeats source and
@@ -684,20 +673,7 @@ compatibility validation pass.
 - **Fix Complexity:** Medium
 - **Category:** API
 - **Location:** `glass-lint-project/src/lib.rs:10-28`, `glass-lint-project/src/admission.rs:22-224`, `glass-lint-project/src/corpus.rs:18-143`
-
-The crate root exports `CanonicalProjectPath`, `SourceAdmission`,
-`CorpusFile`, and `SourceCorpus` beside the high-level `ProjectLoader`.
-`FileBudget`, `PathAdmission`, discovery, and resolver types also use broad
-`pub` visibility inside private modules. The low-level corpus is currently
-used by CLI snippet mode and profiling, but it exposes the same root and
-admission inconsistencies described in READ-001/002 as a supported contract.
-
-Keep `ProjectLoader` plus validated selection/policy types as the primary
-public API. Replace corpus use with a focused high-level
-`discover_sources`/`load_source` service whose constructor establishes one
-root authority, or move profiling-only discovery to the harness. Make
-canonical paths, admission outcomes, budgets, raw readers, discovery, and
-resolver machinery `pub(crate)`; do not retain aliases for the old exports.
+- **Status:** Done — removed `CanonicalProjectPath`, `SourceAdmission`, and `PathAdmission` from the crate root re-exports. These types are still used internally in `discovery`, `corpus`, `loader`, `resolver`, and `walk` but are no longer part of the public contract. `CorpusFile` and `SourceCorpus` remain public because they have external callers in the CLI and harness. The unused methods `check_inside_root` and `load_source_file` on `SourceAdmission` were also removed.
 
 #### READ-034 — Project loading exposes both unchecked and checked option types with duplicated behavior
 
@@ -705,19 +681,7 @@ resolver machinery `pub(crate)`; do not retain aliases for the old exports.
 - **Fix Complexity:** Medium
 - **Category:** API
 - **Location:** `glass-lint-project/src/options.rs:18-104`, `glass-lint-project/src/options.rs:106-332`
-
-`ProjectLoadOptions`, its builder, and `ValidatedProjectLoadOptions` are all
-public. The unchecked type has public `validate`, `validated`, `supports`, and
-`excludes_path` behavior, while the checked type repeats support/exclusion
-accessors. This makes it possible to write substantial caller logic against
-policy that has not passed cross-field validation and creates two owners for
-extension matching.
-
-Expose one finished `ProjectLoadPolicy` with private validated fields and one
-builder whose `build` returns it. Keep any raw deserialization shape private
-to the CLI and convert it through the builder. Delete the unchecked public
-type and duplicated methods rather than preserving `validated()` as a
-compatibility path.
+- **Status:** Done — `ProjectLoadOptions` is no longer exported from the crate root; `ValidatedProjectLoadOptions` is the single public policy type. Added `ValidatedProjectLoadOptions::builder()` and implemented `Default for ValidatedProjectLoadOptions`. Unused public methods (`builder()`, `supports()`) on `ProjectLoadOptions` were removed. External callers in the CLI and harness were updated to import only `ValidatedProjectLoadOptions` or `ProjectLoadOptionsBuilder`.
 
 #### READ-035 — Serde is mandatory and implemented on operational and intermediate engine types
 

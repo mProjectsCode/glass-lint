@@ -9,7 +9,7 @@ use std::{
 
 use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
 
-use crate::{ProjectLoadError, ProjectLoadOptions, ProjectLoader, ProjectSelection};
+use crate::{ProjectLoadError, ProjectLoader, ProjectSelection, options::ProjectLoadOptions};
 
 /// RAII temporary project directory that is created on construction and cleaned
 /// up on drop (including on panic).  Shared across tests to avoid repeating the
@@ -137,7 +137,7 @@ fn deterministic_loader_budget_returns_partial_report_and_error() {
     ));
     assert_eq!(
         outcome.report.completion,
-        glass_lint_core::ReportCompletion::Partial
+        glass_lint_core::project::ReportCompletion::Partial
     );
     assert_eq!(outcome.report.files.len(), 1);
     assert!(

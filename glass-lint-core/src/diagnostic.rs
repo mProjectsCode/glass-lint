@@ -214,7 +214,7 @@ impl<'de> Deserialize<'de> for Position {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SourceLineIndex {
     starts: Vec<usize>,
-    source: crate::SourceText,
+    source: crate::project::SourceText,
     /// Per-line checkpoint intervals for fast column computation on long lines.
     /// Each checkpoint is `(byte_offset_from_line_start, char_count)`.
     /// Empty for lines under 256 bytes.
@@ -247,7 +247,7 @@ fn compute_checkpoints(source: &str, starts: &[usize]) -> Vec<Vec<(usize, usize)
 }
 
 impl SourceLineIndex {
-    fn from_source(source: crate::SourceText) -> Self {
+    fn from_source(source: crate::project::SourceText) -> Self {
         let mut starts = vec![0];
         starts.extend(source.match_indices('\n').map(|(offset, _)| offset + 1));
         let checkpoints = compute_checkpoints(&source, &starts);
@@ -267,7 +267,7 @@ impl SourceLineIndex {
     /// Build an index while retaining the source allocation admitted by the
     /// project boundary.
     #[must_use]
-    pub fn from_text(source: crate::SourceText) -> Self {
+    pub fn from_text(source: crate::project::SourceText) -> Self {
         Self::from_source(source)
     }
 
@@ -477,7 +477,7 @@ mod tests {
     fn new_and_from_text_delegate_to_same_constructor() {
         let source = "é\r\nfetch();\n";
         let index_borrowed = SourceLineIndex::new(source);
-        let text: crate::SourceText = source.into();
+        let text: crate::project::SourceText = source.into();
         let index_owned = SourceLineIndex::from_text(text);
 
         // Both constructors produce identical positions.

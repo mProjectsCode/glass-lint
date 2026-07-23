@@ -6,7 +6,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use glass_lint_core::{AnalysisReport, Linter, ResolutionRequest, ResolverOutcome};
+use glass_lint_core::{
+    Linter,
+    project::{AnalysisReport, ResolutionRequest, ResolverOutcome},
+};
 
 use crate::{
     admission::{AdmissionSet, AdmittedSourcePath, SourceAdmission, absolute_path},
@@ -45,13 +48,13 @@ impl ProjectLoadOutcome {
     }
 
     fn partial(mut report: AnalysisReport, reason: ProjectLoadError) -> Self {
-        let code = glass_lint_core::DiagnosticCode::new("incomplete_project")
+        let code = glass_lint_core::project::DiagnosticCode::new("incomplete_project")
             .expect("incomplete_project is a valid diagnostic code");
-        report.completion = glass_lint_core::ReportCompletion::Partial;
+        report.completion = glass_lint_core::project::ReportCompletion::Partial;
         report
             .diagnostics
-            .push(glass_lint_core::Diagnostic::Project(
-                glass_lint_core::AnalysisDiagnostic {
+            .push(glass_lint_core::project::Diagnostic::Project(
+                glass_lint_core::project::AnalysisDiagnostic {
                     code,
                     message: reason.to_string(),
                     location: None,
@@ -271,7 +274,7 @@ impl<'a> ProjectPaths<'a> {
         }
         let root = project_root(options, selection, &selection_path)?;
         let admission = SourceAdmission::new(&root, options)?;
-        let canonical_selection = admission.canonicalize(&selection_path)?;
+        let canonical_selection = SourceAdmission::canonicalize(&selection_path)?;
         if !admission.is_inside_root(canonical_selection.as_ref()) {
             return Err(ProjectLoadError::SelectionOutsideRoot {
                 selection: canonical_selection.into_path_buf(),
@@ -306,7 +309,7 @@ impl PathWorkQueue {
 }
 
 #[derive(Debug, Default)]
-struct ResolutionCache(BTreeMap<glass_lint_core::ResolutionRequestKey, ResolverOutcome>);
+struct ResolutionCache(BTreeMap<glass_lint_core::project::ResolutionRequestKey, ResolverOutcome>);
 impl ResolutionCache {
     /// Resolve a request if not already cached and return the stored outcome.
     /// The returned `bool` is `true` when a real resolution was performed.
@@ -326,7 +329,12 @@ impl ResolutionCache {
 
     fn into_iter(
         self,
-    ) -> impl Iterator<Item = (glass_lint_core::ResolutionRequestKey, ResolverOutcome)> {
+    ) -> impl Iterator<
+        Item = (
+            glass_lint_core::project::ResolutionRequestKey,
+            ResolverOutcome,
+        ),
+    > {
         self.0.into_iter()
     }
 }
@@ -375,7 +383,7 @@ impl LoadProgress {
 /// Mutable state for one project construction. Keeping the queue, cache, and
 /// counters together makes the main loading phases explicit and auditable.
 struct ProjectLoadState<'a> {
-    session: glass_lint_core::ProjectCollection<'a>,
+    session: glass_lint_core::project::ProjectCollection<'a>,
     resolver: ProjectResolver<'a>,
     admission: SourceAdmission<'a>,
     diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
@@ -503,7 +511,7 @@ impl<'a> ProjectLoadState<'a> {
 
     fn enqueue_internal_target(
         &mut self,
-        path: Option<glass_lint_core::ProjectRelativePath>,
+        path: Option<glass_lint_core::project::ProjectRelativePath>,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         if let Some(path) = path {
@@ -525,7 +533,7 @@ impl<'a> ProjectLoadState<'a> {
 /// Frontier expansion (file reading, local analysis, resolution) is complete;
 /// the only remaining transition is linking and matching.
 struct ClosedFrontier<'a> {
-    session: glass_lint_core::ProjectCollection<'a>,
+    session: glass_lint_core::project::ProjectCollection<'a>,
     resolved: ResolutionCache,
     diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
     deadline: Instant,
@@ -560,20 +568,22 @@ impl ClosedFrontier<'_> {
         metrics.timings.record_linking(result.linking);
         metrics.timings.record_matching(result.matching);
         let mut report = result.report;
-        let code = glass_lint_core::DiagnosticCode::new("tsconfig")
+        let code = glass_lint_core::project::DiagnosticCode::new("tsconfig")
             .expect("tsconfig is a valid diagnostic code");
         report
             .diagnostics
             .extend(self.diagnostics.into_iter().map(|diagnostic| {
-                glass_lint_core::Diagnostic::Project(glass_lint_core::AnalysisDiagnostic {
-                    code: code.clone(),
-                    message: format!(
-                        "{}: {}",
-                        diagnostic.config_path.display(),
-                        diagnostic.message
-                    ),
-                    location: None,
-                })
+                glass_lint_core::project::Diagnostic::Project(
+                    glass_lint_core::project::AnalysisDiagnostic {
+                        code: code.clone(),
+                        message: format!(
+                            "{}: {}",
+                            diagnostic.config_path.display(),
+                            diagnostic.message
+                        ),
+                        location: None,
+                    },
+                )
             }));
         Ok(report)
     }

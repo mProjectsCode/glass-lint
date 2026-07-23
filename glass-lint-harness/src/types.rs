@@ -3,7 +3,8 @@
 use std::collections::BTreeMap;
 
 use glass_lint_core::{
-    Finding, ProjectRelativePath, ResolutionRequestKind, ResolverOutcome, RuleId, Severity,
+    RuleId, Severity,
+    project::{Finding, ProjectRelativePath, ResolutionRequestKind, ResolverOutcome},
 };
 use serde::{Deserialize, Serialize};
 

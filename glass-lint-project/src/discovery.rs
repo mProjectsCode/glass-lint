@@ -125,7 +125,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
         let mut visited = BTreeSet::new();
         let mut active = Vec::new();
         let mut cycle_diagnostics = Vec::new();
-        let canonical_config = self.admission.canonicalize(config)?;
+        let canonical_config = SourceAdmission::canonicalize(config)?;
         self.collect_tsconfig(
             &canonical_config,
             directory,
@@ -238,7 +238,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                 target = target.join("tsconfig.json");
             }
             if target.exists() {
-                let canonical_target = self.admission.canonicalize(&target)?;
+                let canonical_target = SourceAdmission::canonicalize(&target)?;
                 self.collect_tsconfig(&canonical_target, base, visited, active, cycle_diagnostics)?;
             }
         }

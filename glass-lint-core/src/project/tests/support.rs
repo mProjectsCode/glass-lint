@@ -9,7 +9,7 @@ pub fn project_path(path: &str) -> ProjectRelativePath {
     ProjectRelativePath::new(path).unwrap()
 }
 
-pub fn finish_collection(collection: crate::ProjectCollection<'_>) -> AnalysisReport {
+pub fn finish_collection(collection: crate::project::ProjectCollection<'_>) -> AnalysisReport {
     collection
         .finish_local()
         .resolve([])
@@ -19,7 +19,7 @@ pub fn finish_collection(collection: crate::ProjectCollection<'_>) -> AnalysisRe
 }
 
 pub fn finish_collection_with(
-    collection: crate::ProjectCollection<'_>,
+    collection: crate::project::ProjectCollection<'_>,
     outcomes: impl IntoIterator<Item = (ResolutionRequestKey, ResolverOutcome)>,
 ) -> AnalysisReport {
     collection
@@ -159,7 +159,7 @@ pub fn key(importer: &str) -> ResolutionRequestKey {
 }
 
 pub struct ProjectFixture<'a> {
-    session: crate::ProjectCollection<'a>,
+    session: crate::project::ProjectCollection<'a>,
     outcomes: Vec<(ResolutionRequestKey, ResolverOutcome)>,
 }
 

@@ -1,4 +1,7 @@
-use crate::{EvidenceList, RuleId, Severity, SourceRange, project::types::ProjectRelativePath};
+use crate::{
+    RuleId, Severity, SourceRange,
+    project::{EvidenceList, types::ProjectRelativePath},
+};
 
 /// Stable machine-readable identity for a project diagnostic.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]

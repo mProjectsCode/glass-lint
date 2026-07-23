@@ -56,7 +56,7 @@ impl ArtifactFingerprint {
     /// Versioned deterministic hash of all artifact-affecting inputs.
     /// Rule selection is intentionally excluded.
     fn compute(
-        source: &crate::SourceText,
+        source: &crate::project::SourceText,
         language: crate::SourceLanguage,
         normalization_mode: &str,
         environment: &crate::Environment,
@@ -91,7 +91,7 @@ pub struct LocatedSourceContext {
 }
 
 impl LocatedSourceContext {
-    pub(crate) fn new(source: &crate::SourceFile) -> Self {
+    pub(crate) fn new(source: &crate::project::SourceFile) -> Self {
         Self {
             path: source.path().clone(),
             lines: Arc::new(crate::SourceLineIndex::from_text(source.source().clone())),
@@ -112,7 +112,7 @@ impl LocatedSourceContext {
 /// stored; evidence, link, and flow budgets have no impact on lowering.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactCacheKey {
-    source: crate::SourceText,
+    source: crate::project::SourceText,
     language: crate::SourceLanguage,
     normalization_mode: &'static str,
     environment: crate::Environment,
@@ -123,7 +123,7 @@ pub struct ArtifactCacheKey {
 
 impl ArtifactCacheKey {
     pub fn new(
-        source: &crate::SourceFile,
+        source: &crate::project::SourceFile,
         environment: &crate::Environment,
         limits: &crate::AnalysisLimits,
     ) -> Self {
@@ -131,7 +131,7 @@ impl ArtifactCacheKey {
     }
 
     fn with_engine_version(
-        source: &crate::SourceFile,
+        source: &crate::project::SourceFile,
         environment: &crate::Environment,
         limits: &crate::AnalysisLimits,
         engine_version: &'static str,
@@ -150,7 +150,7 @@ impl ArtifactCacheKey {
     }
 
     fn from_inputs(
-        source: &crate::SourceFile,
+        source: &crate::project::SourceFile,
         environment: &crate::Environment,
         limits: &crate::AnalysisLimits,
         normalization_mode: &'static str,
@@ -183,7 +183,7 @@ impl ArtifactCacheKey {
 
     #[cfg(test)]
     pub(crate) fn for_engine_version(
-        source: &crate::SourceFile,
+        source: &crate::project::SourceFile,
         environment: &crate::Environment,
         limits: &crate::AnalysisLimits,
         engine_version: &'static str,
@@ -193,7 +193,7 @@ impl ArtifactCacheKey {
 
     #[cfg(test)]
     pub(crate) fn for_test_inputs(
-        source: &crate::SourceFile,
+        source: &crate::project::SourceFile,
         environment: &crate::Environment,
         limits: &crate::AnalysisLimits,
         normalization_mode: &'static str,
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn source_context_reuses_one_line_index() {
-        let source = crate::SourceFile::new("main.js", "fetch('/');").unwrap();
+        let source = crate::project::SourceFile::new("main.js", "fetch('/');").unwrap();
         let context = LocatedSourceContext::new(&source);
         let cloned = context.clone();
         assert!(Arc::ptr_eq(&context.lines, &cloned.lines));

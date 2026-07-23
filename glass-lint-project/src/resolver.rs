@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use glass_lint_core::{
+use glass_lint_core::project::{
     ResolutionRequest, ResolutionRequestKind, ResolverOutcome, is_internal_module_request,
 };
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
@@ -135,7 +135,10 @@ fn package_name(request: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use glass_lint_core::{Position, ProjectRelativePath, ResolutionRequestKey, SourceRange};
+    use glass_lint_core::{
+        Position, SourceRange,
+        project::{ProjectRelativePath, ResolutionRequestKey},
+    };
 
     use super::*;
     use crate::options::ProjectLoadOptions;

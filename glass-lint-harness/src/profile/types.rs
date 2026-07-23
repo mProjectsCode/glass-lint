@@ -1,7 +1,10 @@
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::Result;
-use glass_lint_core::{AnalysisOperationCounts, AnalysisReport, Linter, ReportCompletion};
+use glass_lint_core::{
+    Linter,
+    project::{AnalysisOperationCounts, AnalysisReport, ReportCompletion},
+};
 use glass_lint_project::ProjectPhaseTimings;
 
 use crate::profile::{

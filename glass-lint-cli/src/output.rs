@@ -8,7 +8,8 @@ use std::{
 use anyhow::{Result, bail};
 use console::{Style, measure_text_width};
 use glass_lint_core::{
-    AnalysisReport, AnalysisReportSummary, PrettyFile, PrettyOptions, PrettyReports, RuleMetadata,
+    PrettyFile, PrettyOptions, PrettyReports, RuleMetadata,
+    project::{AnalysisReport, AnalysisReportSummary},
 };
 
 use crate::config::{Config, OutputFormat};
@@ -358,8 +359,10 @@ fn color_enabled(config: &Config) -> bool {
 #[cfg(test)]
 mod tests {
     use glass_lint_core::{
-        AnalysisDiagnostic, AnalysisLimits, AnalysisReport, Diagnostic, DiagnosticCode,
-        Environment, Linter, ReportCompletion, Rule, RuleCatalog, Severity,
+        AnalysisLimits, Environment, Linter, Rule, RuleCatalog, Severity,
+        project::{
+            AnalysisDiagnostic, AnalysisReport, Diagnostic, DiagnosticCode, ReportCompletion,
+        },
         rules::{Confidence, MatcherDecl},
     };
 

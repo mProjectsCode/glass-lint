@@ -6,7 +6,7 @@
 use std::fmt::Write;
 
 use anyhow::Result;
-use glass_lint_core::AnalysisReport;
+use glass_lint_core::project::AnalysisReport;
 
 use crate::types::{CaseResult, SuiteReport, ToolResult};
 

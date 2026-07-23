@@ -1,9 +1,6 @@
 //! Project finding assembly and deterministic evidence ownership.
 
-use crate::{
-    ProjectRelativePath,
-    project::{AnalysisReport, Evidence, Finding, ReportCompletion},
-};
+use crate::project::{AnalysisReport, Evidence, Finding, ProjectRelativePath, ReportCompletion};
 
 /// Why independently produced reports could not be combined losslessly.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -38,7 +35,7 @@ impl AnalysisReport {
     /// Losslessly combine reports produced by independent analyses.
     ///
     /// ```
-    /// # use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog, AnalysisReport};
+    /// # use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog, project::AnalysisReport};
     /// let linter = Linter::new(LinterConfig::new(
     ///     vec![RuleCatalog::new("example", vec![]).unwrap()],
     ///     Environment::default(),

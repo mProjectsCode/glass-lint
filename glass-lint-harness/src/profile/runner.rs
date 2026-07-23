@@ -12,10 +12,10 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{
-    AnalysisReport, Linter, LinterConfig, ReportCompletion, RuleBaseline, RuleId, RuleOverride,
-    RuleSelection, RuleState,
+    Linter, LinterConfig, RuleBaseline, RuleId, RuleOverride, RuleSelection, RuleState,
+    project::{AnalysisReport, ReportCompletion},
 };
-use glass_lint_project::{ProjectLoadOptions, ProjectLoader, ProjectSelection};
+use glass_lint_project::{ProjectLoader, ProjectSelection, ValidatedProjectLoadOptions};
 
 use crate::{
     builtins::{self, BuiltinProfile},
@@ -189,7 +189,7 @@ fn profile_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     let total_start = Instant::now();
     let (_, manifest_digest, _) = selected_profile_paths(config)?;
     let linters = build_linters(config.provider, config.mode, &config.rules)?;
-    let loader = ProjectLoader::new(ProjectLoadOptions::default().validated()?);
+    let loader = ProjectLoader::new(ValidatedProjectLoadOptions::default());
     let mut totals = ProfileTotals::default();
     let mut phases = ProfilePhaseTimings::default();
     let mut counts = ProfileOperationCounts::default();
@@ -477,7 +477,7 @@ fn admitted_project_run(
                 file.path.display()
             )
         })?;
-        sources.push(glass_lint_core::SourceFile::new(
+        sources.push(glass_lint_core::project::SourceFile::new(
             relative.to_string_lossy(),
             file.source.clone(),
         )?);

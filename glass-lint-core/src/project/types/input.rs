@@ -1,4 +1,4 @@
-use std::{ops::Deref, path::PathBuf, sync::Arc};
+use std::{ops::Deref, sync::Arc};
 
 use crate::{SourceLanguage, project::types::ProjectRelativePath};
 
@@ -160,14 +160,6 @@ pub enum LinkedModuleTarget {
     Unsupported {
         reason: String,
     },
-}
-
-/// Unvalidated caller-supplied project sources and resolver answers.
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-pub struct ProjectInput {
-    pub root: PathBuf,
-    pub sources: Vec<SourceFile>,
-    pub resolutions: Vec<(ResolutionRequestKey, ResolverOutcome)>,
 }
 
 /// Errors from local job execution (worker panic, channel failure, etc.).

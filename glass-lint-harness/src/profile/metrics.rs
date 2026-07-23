@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use glass_lint_core::AnalysisReport;
+use glass_lint_core::project::AnalysisReport;
 use sha2::{Digest, Sha256};
 
 use crate::{ProfileOperationCounts, ProfileRepetitionSummary, ProfileWorkloadSummary};
@@ -67,13 +67,13 @@ pub(super) fn repetition_from_files(
     duration: Duration,
     files: &[ProfileWorkloadSummary],
 ) -> ProfileRepetitionSummary {
-    let mut completion = glass_lint_core::ReportCompletion::Complete;
+    let mut completion = glass_lint_core::project::ReportCompletion::Complete;
     let mut operation_counts = ProfileOperationCounts::default();
     let mut digests = Vec::new();
     let mut run_completions = Vec::new();
     for file in files {
-        if file.completion == glass_lint_core::ReportCompletion::Partial {
-            completion = glass_lint_core::ReportCompletion::Partial;
+        if file.completion == glass_lint_core::project::ReportCompletion::Partial {
+            completion = glass_lint_core::project::ReportCompletion::Partial;
         }
         operation_counts += file.operation_counts;
         digests.push(file.evidence_order_digest.clone());

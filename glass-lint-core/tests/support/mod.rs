@@ -8,7 +8,8 @@
 #![allow(dead_code)]
 
 use glass_lint_core::{
-    Environment, FileReport, Linter, LinterConfig, RuleCatalog,
+    Environment, Linter, LinterConfig, RuleCatalog,
+    project::FileReport,
     rules::{Builder, Confidence, Rule, Severity},
 };
 

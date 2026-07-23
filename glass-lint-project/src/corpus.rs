@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    admission::{AdmissionSet, PathAdmission, SourceAdmission},
+    admission::{AdmissionSet, PathAdmission, SourceAdmission, realpath},
     error::ProjectLoadError,
     options::ValidatedProjectLoadOptions,
     walk,
@@ -71,16 +71,61 @@ pub fn read_source_bytes(
     })
 }
 
+/// A bounded source corpus with one canonical project root.
+///
+/// Construction establishes one canonical [`SourceAdmission`] from either the
+/// configured policy root or the first discovery root. That same admission is
+/// reused for every discovery and load operation within the corpus, so the
+/// containment boundary, exclusion rules, and extension policy are applied
+/// consistently across all files.
 pub struct SourceCorpus {
     options: ValidatedProjectLoadOptions,
+    canonical_root: Option<PathBuf>,
 }
 
 impl SourceCorpus {
     /// Create a corpus from a policy already checked at the loader boundary.
+    ///
+    /// If the policy contains a configured root, it is canonicalized once and
+    /// stored as the single project boundary for this corpus. Without a
+    /// configured root, the boundary is derived from each caller-supplied
+    /// discovery root.
     pub fn from_validated(options: &ValidatedProjectLoadOptions) -> Self {
+        let canonical_root = options.root().and_then(|root| realpath(root).ok());
         Self {
             options: options.clone(),
+            canonical_root,
         }
+    }
+
+    /// Create a corpus with an explicit canonical project root.
+    ///
+    /// The root is canonicalized immediately; discovery roots passed to
+    /// [`discover_filtered`] must be inside this root or equal to it.
+    pub fn with_root(
+        options: &ValidatedProjectLoadOptions,
+        root: &Path,
+    ) -> Result<Self, ProjectLoadError> {
+        let canonical_root = realpath(root)?;
+        Ok(Self {
+            options: options.clone(),
+            canonical_root: Some(canonical_root),
+        })
+    }
+
+    /// Build or borrow the source admission for this corpus.
+    ///
+    /// When a canonical root was established at construction, uses it for every
+    /// call. Otherwise derives the authority from `fallback_root` (backward
+    /// compatible with callers that provide a per-call root).
+    fn admission(&self, fallback_root: &Path) -> Result<SourceAdmission<'_>, ProjectLoadError> {
+        let root = self.canonical_root.as_deref().unwrap_or(fallback_root);
+        SourceAdmission::new(root, &self.options)
+    }
+
+    /// The canonical project root if one was established at construction.
+    pub fn root(&self) -> Option<&Path> {
+        self.canonical_root.as_deref()
     }
 
     /// Discover supported files in deterministic path order.
@@ -89,6 +134,9 @@ impl SourceCorpus {
     }
 
     /// Discover files while applying a caller-owned membership predicate.
+    ///
+    /// When a canonical root was established at construction, every root in
+    /// `roots` must be inside or equal to that root.
     pub fn discover_filtered(
         &self,
         roots: &[PathBuf],
@@ -96,10 +144,19 @@ impl SourceCorpus {
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut admitted = AdmissionSet::new(self.options.max_files());
         for root in roots {
+            if let Some(canonical_root) = &self.canonical_root
+                && root != canonical_root
+                && root.strip_prefix(canonical_root).is_err()
+            {
+                return Err(ProjectLoadError::SelectionOutsideRoot {
+                    selection: root.clone(),
+                    root: canonical_root.clone(),
+                });
+            }
             let Some(metadata) = walk::resolve_root(&self.options, root)? else {
                 continue;
             };
-            let admission = SourceAdmission::new(root, &self.options)?;
+            let admission = self.admission(root)?;
             if metadata.is_file() {
                 if include(root)
                     && let PathAdmission::Admitted(path) = admission.classify(root)?
@@ -120,12 +177,16 @@ impl SourceCorpus {
     }
 
     /// Read one supported source file after enforcing the byte budget.
+    ///
+    /// Uses the canonical root established at construction when available;
+    /// otherwise derives the project boundary from the file's parent directory.
     pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
         let root = self
-            .options
-            .root()
+            .canonical_root
+            .as_deref()
+            .or_else(|| self.options.root())
             .unwrap_or_else(|| path.parent().unwrap_or_else(|| Path::new(".")));
-        let admission = SourceAdmission::new(root, &self.options)?;
+        let admission = self.admission(root)?;
         match admission.classify(path)? {
             PathAdmission::Admitted(admitted) => {
                 read_source_bytes(admitted.as_ref(), self.options.max_source_bytes())

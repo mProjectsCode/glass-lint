@@ -1,14 +1,15 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
-    AnalysisLimits, AnalysisReport, Diagnostic, EvidenceList, FileReport, Finding, ParseDiagnostic,
-    Position, ProjectInputError, ProjectRelativePath, REPORT_VERSION, SourceFile, SourceLocation,
-    SourceRange,
+    AnalysisLimits, ParseDiagnostic, Position, REPORT_VERSION, SourceRange,
     analysis::{ProjectSemanticModel, ResolvedLinkInput, project::projection::ProjectionOutcome},
     api::classification::{ClassificationResult, MatchedCapability, RuleIndex},
     diagnostic::SourceLineIndex,
     lint::catalog::RuleCatalog,
-    project::ModuleId,
+    project::{
+        AnalysisReport, Diagnostic, EvidenceList, FileReport, Finding, ModuleId, ProjectInputError,
+        ProjectRelativePath, SourceFile, SourceLocation,
+    },
 };
 
 /// Outcome of linking and matching a resolved project, with phase timings.
@@ -149,7 +150,7 @@ impl<'a> ReportAssembly<'a> {
         let lines = &module.source_context().lines;
         let path = module.path();
 
-        let mut by_rule: BTreeMap<RuleIndex, (Vec<Finding>, Vec<crate::Evidence>)> =
+        let mut by_rule: BTreeMap<RuleIndex, (Vec<Finding>, Vec<crate::project::Evidence>)> =
             BTreeMap::new();
 
         for capability in classification.capabilities() {
@@ -174,7 +175,7 @@ impl<'a> ReportAssembly<'a> {
         let mut result: Vec<Finding> = Vec::new();
         for (_, (mut rule_findings, related)) in by_rule {
             if !related.is_empty() {
-                let shared: Arc<[crate::Evidence]> = related.into();
+                let shared: Arc<[crate::project::Evidence]> = related.into();
                 for finding in &mut rule_findings {
                     finding.set_shared_evidence(Arc::clone(&shared));
                 }
@@ -246,7 +247,7 @@ impl<'a> ReportAssembly<'a> {
                     .iter()
                     .map(|(ev_idx, item_range)| {
                         let ev = &evidence_items[*ev_idx];
-                        crate::Evidence {
+                        crate::project::Evidence {
                             message: format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
                             count: ev.count,
                             evidence_truncated: ev.evidence_truncated,
@@ -375,9 +376,9 @@ impl<'a> ReportAssembly<'a> {
             diagnostics,
             operations,
             completion: if is_partial {
-                crate::ReportCompletion::Partial
+                crate::project::ReportCompletion::Partial
             } else {
-                crate::ReportCompletion::Complete
+                crate::project::ReportCompletion::Complete
             },
         }
     }

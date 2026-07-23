@@ -118,7 +118,7 @@ fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<b
 mod tests {
     use std::fs;
 
-    use glass_lint_project::{ProjectLoadOptions, ProjectSelection, SourceCorpus};
+    use glass_lint_project::{ProjectSelection, SourceCorpus, ValidatedProjectLoadOptions};
 
     use super::*;
 
@@ -152,7 +152,7 @@ mod tests {
             fs::write(root.join(filename), "").unwrap();
         }
 
-        let options = ProjectLoadOptions::default().validated().unwrap();
+        let options = ValidatedProjectLoadOptions::default();
         let paths = SourceCorpus::from_validated(&options)
             .discover(std::slice::from_ref(&root))
             .unwrap();

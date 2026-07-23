@@ -19,13 +19,10 @@ mod resolver;
 mod tsconfig;
 mod walk;
 
-pub use admission::{CanonicalProjectPath, SourceAdmission};
 pub use corpus::{CorpusFile, SourceCorpus};
 pub use error::{ProjectLoadError, ProjectOptionError};
 pub use loader::{ProjectLoadMetrics, ProjectLoadOutcome, ProjectLoader, ProjectPhaseTimings};
-pub use options::{
-    ProjectLoadOptions, ProjectLoadOptionsBuilder, ProjectSelection, ValidatedProjectLoadOptions,
-};
+pub use options::{ProjectLoadOptionsBuilder, ProjectSelection, ValidatedProjectLoadOptions};
 
 #[cfg(test)]
 mod tests;

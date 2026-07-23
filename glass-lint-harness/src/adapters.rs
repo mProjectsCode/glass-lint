@@ -11,7 +11,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use glass_lint_core::{
-    Finding, Linter, LinterConfig, RuleBaseline, RuleOverride, RuleSelection, RuleState, SourceFile,
+    Linter, LinterConfig, RuleBaseline, RuleOverride, RuleSelection, RuleState,
+    project::{Finding, SourceFile},
 };
 
 use crate::types::{
@@ -115,7 +116,7 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
     let linter = configured_linter(expectation)?;
     let report = if project.filesystem {
         glass_lint_project::ProjectLoader::new(
-            glass_lint_project::ProjectLoadOptions::default().validated()?,
+            glass_lint_project::ValidatedProjectLoadOptions::default(),
         )
         .load_and_lint(
             &linter,
@@ -161,7 +162,7 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
     project_report_to_run(report)
 }
 
-fn project_report_to_run(report: glass_lint_core::AnalysisReport) -> Result<AdapterRun> {
+fn project_report_to_run(report: glass_lint_core::project::AnalysisReport) -> Result<AdapterRun> {
     // Keep diagnostics fatal for harness execution: a partial project report
     // cannot be compared reliably against finding expectations.
     let diagnostics = report

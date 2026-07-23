@@ -4,8 +4,9 @@
 //! width bounds, missing-source resilience, and optional terminal coloring.
 
 use glass_lint_core::{
-    Evidence, FileReport, Finding, Position, PrettyFile, PrettyOptions, PrettyReport,
-    PrettyReports, ProjectRelativePath, RuleId, Severity, SourceLocation, SourceRange,
+    Position, PrettyFile, PrettyOptions, PrettyReport, PrettyReports, RuleId, Severity,
+    SourceRange,
+    project::{Evidence, FileReport, Finding, ProjectRelativePath, SourceLocation},
 };
 
 fn path(path: &str) -> ProjectRelativePath {

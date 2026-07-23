@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
 use crate::{
-    AnalysisLimits, AnalysisReport, Environment, ProjectCollection, ProjectInput,
-    ProjectInputError, ProviderCatalogError, RuleId,
+    AnalysisLimits, Environment, ProviderCatalogError, RuleId,
     analysis::ArtifactCacheHandle,
     api::classification::RuleIndex,
     lint::{
         catalog::RuleCatalog,
         selection::{LintConfigError, RuleBaseline, RuleSelection, RuleState},
     },
-    project::SessionState,
+    project::{AnalysisReport, ProjectCollection, ProjectInputError, SessionState},
 };
 
 /// Caller-supplied input to linter construction. Validation occurs in
@@ -177,70 +176,11 @@ impl Linter {
         self.artifact_cache.clone()
     }
 
-    /// Lints an in-memory project using explicit, already-classified
-    /// resolution results.  Filesystem loading belongs to the project crate.
-    ///
-    /// This is a thin adapter into the staged session pipeline: it normalizes
-    /// root and sources, enforces DTO budgets, then delegates resolution
-    /// validation and identity assignment to
-    /// [`LocallyAnalyzedProject::resolve`].
-    ///
-    /// ```
-    /// use glass_lint_core::{
-    ///     Environment, Linter, LinterConfig, ProjectInput, RuleCatalog, SourceFile,
-    /// };
-    ///
-    /// let linter = Linter::new(LinterConfig::new(
-    ///     vec![RuleCatalog::new("example", vec![]).unwrap()],
-    ///     Environment::default(),
-    /// ))
-    /// .unwrap();
-    /// let report = linter
-    ///     .lint_project(ProjectInput {
-    ///         root: ".".into(),
-    ///         sources: vec![SourceFile::new("main.js", "").unwrap()],
-    ///         resolutions: vec![],
-    ///     })
-    ///     .unwrap();
-    /// assert_eq!(report.files.len(), 1);
-    /// ```
-    pub fn lint_project(&self, input: ProjectInput) -> Result<AnalysisReport, ProjectInputError> {
-        let ProjectInput {
-            root,
-            sources,
-            resolutions,
-        } = input;
-        let file_count = sources.len();
-        let resolution_count = resolutions.len();
-
-        if resolution_count > 500_000 {
-            return Err(ProjectInputError::BudgetExceeded("resolution count".into()));
-        }
-
-        let (root, source_map) = crate::project::input::normalize_sources(root, sources)?;
-
-        tracing::info!(
-            target: "glass_lint::project",
-            files = file_count,
-            resolutions = resolution_count,
-            "project analysis started"
-        );
-        let mut collection = self.begin_project(root)?;
-        for (path, source) in source_map {
-            collection.admit_validated_source(source)?;
-            collection.analyze_source_at_path(&path)?;
-        }
-        let local = collection.finish_local();
-        local
-            .resolve(resolutions)
-            .and_then(crate::ResolvedProject::finish)
-    }
-
     /// Analyze one in-memory source through the canonical project session.
     ///
     /// A snippet is a project containing one source. This convenience method
-    /// returns the same source-free [`AnalysisReport`] shape as
-    /// [`Self::lint_project`].
+    /// returns the same source-free [`AnalysisReport`] shape as the full
+    /// staged session pipeline.
     ///
     /// ```
     /// use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
@@ -258,9 +198,12 @@ impl Linter {
         source: &str,
         filename: &str,
     ) -> Result<AnalysisReport, ProjectInputError> {
-        let filename = crate::ProjectRelativePath::new(filename)?;
+        let filename = crate::project::ProjectRelativePath::new(filename)?;
         let mut collection = self.begin_project(".")?;
-        collection.analyze_source(crate::SourceFile::new(filename.to_string(), source)?)?;
+        collection.analyze_source(crate::project::SourceFile::new(
+            filename.to_string(),
+            source,
+        )?)?;
         collection.finish_local().resolve([])?.finish()
     }
 }
