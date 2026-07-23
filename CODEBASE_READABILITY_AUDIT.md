@@ -6,7 +6,7 @@ Scope: the entirety of `glass-lint-core` and `glass-lint-project`, with emphasis
 
 ## Summary
 
-This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 8 open findings remain (8 medium). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
+This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 6 open findings remain (6 medium). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
 
 The broad architectural opportunity is to make each pipeline transition consume one phase-owned type and produce the next. Today, several boundaries retain raw and compiled forms together, erase semantic newtypes and reconstruct them later, or build parallel maps that describe one logical record. Those choices obscure the intended pipeline and cause avoidable clones, repeated validation, repeated indexing, and transient collections.
 
@@ -67,17 +67,15 @@ The link graph stores SCC components and a provenance map, but the global-export
 
 `ValidatedProjectInput` no longer stores pre-computed `module_ids` or `request_ids` as parallel maps, and no longer exposes a five-element tuple via `into_parts()`. The private `ValidatedLinkInput` has been promoted to a public `ResolvedLinkInput` that owns `modules` (ModuleId → ProjectModule) and `resolutions` (QualifiedRequestId → LinkedModuleTarget), pairing each resolution outcome with its qualified identity directly. The `ResolvedProject` phase holds the source map separately from the linker input so source text can be dropped after linking; the report's `initialize_project_files` operates on a borrowed source map instead of receiving the full validated input. Module IDs are computed locally by `ResolvedLinkInput::build` and by `resolve()` rather than stored ahead of time. The `Linter::lint_project` path uses `into_components()` (a three-element destructuring) instead of discarding computed IDs.
 
-#### READ-005 — Direct project linting assigns identities and then rebuilds the project
+#### READ-005 — Direct project linting assigns identities and then rebuilds the project - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Duplication
-- **Location:** `glass-lint-core/src/lint/linter.rs:192-213`, `glass-lint-core/src/project/input.rs:40-89`, `glass-lint-core/src/project/session.rs:785-833`
+- **Location:** `glass-lint-core/src/lint/linter.rs:202-231`, `glass-lint-core/src/project/input.rs:17-71`
 
-`Linter::lint_project` validates `ProjectInput` and computes module/request IDs, then discards those maps and re-admits the same data through `ProjectCollection`. Session resolution subsequently recomputes identities and revalidates outcomes, leaving two project-construction paths with overlapping responsibilities.
+`Linter::lint_project` is now a thin adapter that destructures `ProjectInput` into `root`, `sources`, and `resolutions`, calls `normalize_sources` (source-only normalization with budget enforcement), and passes raw resolutions to `LocallyAnalyzedProject::resolve` — the single point where resolution outcomes are validated and module/request identities are assigned. The early `ValidatedProjectInput` resolution map and `into_components` destructuring have been removed.
 
-Keep `Linter::lint_project(ProjectInput)` as the public convenience API documented by core, but make it a thin adapter into the same staged session pipeline. Its initial admission should normalize the root and sources and enforce DTO size/duplicate constraints without assigning module/request IDs; after local analysis discovers the authoritative request set, `LocallyAnalyzedProject::resolve` should validate outcomes and assign both identity tables exactly once. Delete the early ID maps and the second normalization path rather than maintaining a separate direct-input linker.
-
-#### READ-006 — Authored requests are materialized and projected more than once
+#### READ-006 — Authored requests are materialized and projected more than once - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Duplication
@@ -86,6 +84,8 @@ Keep `Linter::lint_project(ProjectInput)` as the public convenience API document
 Local artifacts store a `BTreeMap` whose value repeats the complete request even though later code primarily needs membership. Resolution then calls `requests_with_ids` again, recreating request strings and keys to recover local IDs; the module interface also converts typed importer paths to strings and rebuilds them.
 
 Build an `AuthoredRequestTable` once per module, containing the local request ID and the public request record. Keep a key-to-ID index for validation and qualify it once after module IDs are assigned. Expose borrowed iteration internally and reserve owned request conversion for the API boundary.
+
+`AnalysisArtifacts.authored_requests` is now an `AuthoredRequestTable` (key → `ModuleRequestId` index) instead of `BTreeMap<ResolutionRequestKey, ResolutionRequest>`. The `resolve()` method iterates the table directly instead of re-traversing each module's interface via `requests_with_ids`. The string-based `authored_requests` conversion on `ModuleInterface` was removed as dead code; the typed `requests_with_ids` method is retained as the single canonical conversion point.
 
 ### Core: Facts, Flow, Matching, and Linking
 
@@ -167,7 +167,7 @@ None remain after tracing the current status model, public documentation, tests,
 
 1. **Local-flow exhaustion makes the report partial.** Resolved in READ-002 — `LocalFlowProjectionOutcome` carries exhaustion state, `ProjectionOutcome` tracks `local_exhausted`, and `record_flow_exhaustion` sets project completion to `Partial`.
 2. **Resolved by the SCC-DAG linker.** See `private/scc-plan.md`. SCCs become the primary driver of export resolution order; single-node SCCs resolve in one pass, cycles get a local fixed-point. Edge provenance is removed as dead data until a concrete diagnostic consumes it.
-3. **`Linter::lint_project(ProjectInput)` remains a public convenience facade, not a second internal pipeline.** Its documented API is useful for in-memory callers, but it should feed the staged collection/local/resolution pipeline before IDs are assigned. Module and request identities should be created once, after the authoritative source and authored-request sets exist.
+3. **`Linter::lint_project(ProjectInput)` is now a thin adapter.** Resolved in READ-005 — it destructures `ProjectInput`, normalizes sources only, and feeds raw resolutions into `LocallyAnalyzedProject::resolve` which validates outcomes and assigns identities once.
 4. **A `tsconfig` extends cycle drops only the offending edge.** Emit a deterministic diagnostic, retain the current config's local settings and previously resolved acyclic inheritance, and do not broaden selection with the cyclic parent. This is the behavior asserted by the existing cycle tests; canonicalizing the candidate parent before membership checks closes the remaining alias-path hole.
 5. **Cheap `Linter` cloning is a public contract.** The type documentation promises it for concurrent use, so immutable compiled configuration should be shared with `Arc`; only runtime handles with intentionally different sharing semantics should remain separate.
 

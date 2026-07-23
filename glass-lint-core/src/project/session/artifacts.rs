@@ -10,13 +10,36 @@ use crate::{
     ParseDiagnostic, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, SourceFile,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
-        SharedSemanticArtifact,
+        SharedSemanticArtifact, module::ModuleRequestId,
     },
 };
 
+/// Pre-computed index of authored requests for membership validation and
+/// qualified-ID construction. Built once during lowering and reused during
+/// resolution, avoiding per-module re-traversal of the module interface.
+#[derive(Default)]
+pub(super) struct AuthoredRequestTable {
+    /// Key → ModuleRequestId for membership and qualified-ID production.
+    by_key: BTreeMap<ResolutionRequestKey, ModuleRequestId>,
+}
+
+impl AuthoredRequestTable {
+    pub(super) fn contains_key(&self, key: &ResolutionRequestKey) -> bool {
+        self.by_key.contains_key(key)
+    }
+
+    pub(super) fn insert(&mut self, key: ResolutionRequestKey, id: ModuleRequestId) {
+        self.by_key.insert(key, id);
+    }
+
+    pub(super) fn iter(&self) -> impl Iterator<Item = (&ResolutionRequestKey, ModuleRequestId)> {
+        self.by_key.iter().map(|(key, id)| (key, *id))
+    }
+}
+
 #[derive(Default)]
 pub(super) struct AnalysisArtifacts {
-    pub(super) authored_requests: BTreeMap<ResolutionRequestKey, ResolutionRequest>,
+    pub(super) authored_requests: AuthoredRequestTable,
     pub(super) analyzed: BTreeMap<ProjectRelativePath, LocalArtifact>,
     pub(super) parse_diagnostics: BTreeMap<ProjectRelativePath, ParseDiagnostic>,
 }
@@ -53,15 +76,14 @@ impl AnalysisArtifacts {
         lowered: LoweredSource,
     ) -> Vec<ResolutionRequest> {
         let local = LocalArtifact::new(lowered.source.clone(), lowered.semantic);
-        let requests = local
+        let with_ids = local
             .interface()
-            .authored_requests(path, &local.source_context().lines);
-        for request in &requests {
-            self.authored_requests
-                .insert(request.key.clone(), request.clone());
+            .requests_with_ids(path, &local.source_context().lines);
+        for (req_id, request) in &with_ids {
+            self.authored_requests.insert(request.key.clone(), *req_id);
         }
         self.analyzed.insert(path.clone(), local);
-        requests
+        with_ids.into_iter().map(|(_, request)| request).collect()
     }
 }
 

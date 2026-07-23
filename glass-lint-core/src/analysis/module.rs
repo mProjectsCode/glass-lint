@@ -381,23 +381,8 @@ impl ModuleInterface {
         self.exports.get(name).and_then(|e| e.function_id)
     }
 
-    /// Convert authored requests into public resolver keys using the source
-    /// line index.
-    pub fn authored_requests(
-        &self,
-        importer: &str,
-        lines: &crate::SourceLineIndex,
-    ) -> Vec<ResolutionRequest> {
-        let importer = ProjectRelativePath::from_normalized(importer.to_string());
-        self.requests_with_ids(&importer, lines)
-            .into_iter()
-            .map(|(_, request)| request)
-            .collect()
-    }
-
-    /// Canonical projection from authored requests into (id, ResolutionRequest)
-    /// pairs. Both `authored_requests` and downstream `ProjectModule` methods
-    /// delegate here so the conversion logic has one owner.
+    /// Project authored requests into (ModuleRequestId, ResolutionRequest)
+    /// pairs using the typed importer path and source line index.
     pub(crate) fn requests_with_ids(
         &self,
         importer: &ProjectRelativePath,

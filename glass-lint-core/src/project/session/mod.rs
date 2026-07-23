@@ -452,25 +452,17 @@ impl<'a> LocallyAnalyzedProject<'a> {
 
         let request_ids: BTreeMap<ResolutionRequestKey, QualifiedRequestId> = self
             .artifacts
-            .analyzed
+            .authored_requests
             .iter()
-            .filter_map(|(path, local)| {
-                let module_id = module_ids.get(path).copied()?;
-                Some((path, local, module_id))
-            })
-            .flat_map(|(path, local, module_id)| {
-                let interface = local.interface();
-                let lines = &local.source_context().lines;
-                let requests = interface.requests_with_ids(path, lines);
-                requests.into_iter().map(move |(req_id, authored)| {
-                    (
-                        authored.key,
-                        QualifiedRequestId {
-                            module: module_id,
-                            request: req_id,
-                        },
-                    )
-                })
+            .filter_map(|(key, req_id)| {
+                let module_id = module_ids.get(&key.importer).copied()?;
+                Some((
+                    key.clone(),
+                    QualifiedRequestId {
+                        module: module_id,
+                        request: req_id,
+                    },
+                ))
             })
             .collect();
 

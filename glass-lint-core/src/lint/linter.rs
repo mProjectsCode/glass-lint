@@ -180,6 +180,11 @@ impl Linter {
     /// Lints an in-memory project using explicit, already-classified
     /// resolution results.  Filesystem loading belongs to the project crate.
     ///
+    /// This is a thin adapter into the staged session pipeline: it normalizes
+    /// root and sources, enforces DTO budgets, then delegates resolution
+    /// validation and identity assignment to
+    /// [`LocallyAnalyzedProject::resolve`].
+    ///
     /// ```
     /// use glass_lint_core::{
     ///     Environment, Linter, LinterConfig, ProjectInput, RuleCatalog, SourceFile,
@@ -200,9 +205,19 @@ impl Linter {
     /// assert_eq!(report.files.len(), 1);
     /// ```
     pub fn lint_project(&self, input: ProjectInput) -> Result<AnalysisReport, ProjectInputError> {
-        let validated = input.admit()?;
-        let file_count = validated.source_count();
-        let resolution_count = validated.resolution_count();
+        let ProjectInput {
+            root,
+            sources,
+            resolutions,
+        } = input;
+        let file_count = sources.len();
+        let resolution_count = resolutions.len();
+
+        if resolution_count > 500_000 {
+            return Err(ProjectInputError::BudgetExceeded("resolution count".into()));
+        }
+
+        let (root, source_map) = crate::project::input::normalize_sources(root, sources)?;
 
         tracing::info!(
             target: "glass_lint::project",
@@ -210,9 +225,8 @@ impl Linter {
             resolutions = resolution_count,
             "project analysis started"
         );
-        let (root, sources, resolutions) = validated.into_components();
         let mut collection = self.begin_project(root)?;
-        for (path, source) in sources {
+        for (path, source) in source_map {
             collection.admit_validated_source(source)?;
             collection.analyze_source_at_path(&path)?;
         }

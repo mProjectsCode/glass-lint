@@ -13,41 +13,13 @@ use crate::{
 };
 
 impl ProjectInput {
-    /// Admit the public DTO into the normalized, internal project stage.
-    pub(crate) fn admit(self) -> Result<ValidatedProjectInput, ProjectInputError> {
-        self.validate()
-    }
-
     /// Validate, normalize, deduplicate, and assign stable module IDs.
     /// Returns a map-backed validated type with deterministic ordering.
     pub fn validate(self) -> Result<ValidatedProjectInput, ProjectInputError> {
-        if self.sources.len() > 100_000 {
-            return Err(ProjectInputError::BudgetExceeded("source count".into()));
-        }
         if self.resolutions.len() > 500_000 {
             return Err(ProjectInputError::BudgetExceeded("resolution count".into()));
         }
-        if self
-            .sources
-            .iter()
-            .map(|source| source.source.len())
-            .sum::<usize>()
-            > 512 * 1024 * 1024
-        {
-            return Err(ProjectInputError::BudgetExceeded(
-                "project source bytes".into(),
-            ));
-        }
-
-        let root = normalize_root(&self.root)?;
-        let mut sources = BTreeMap::new();
-        for mut source in self.sources {
-            source.path = normalize_relative(&source.path)?;
-            if sources.contains_key(&source.path) {
-                return Err(ProjectInputError::DuplicateSource(source.path.to_string()));
-            }
-            sources.insert(source.path.clone(), source);
-        }
+        let (root, sources) = normalize_sources(self.root, self.sources)?;
 
         let mut resolutions = BTreeMap::new();
         for (mut key, mut result) in self.resolutions {
@@ -68,6 +40,35 @@ impl ProjectInput {
             resolutions,
         })
     }
+}
+
+/// Normalize root, validate source budgets, and return a deduplicated
+/// deterministic-ordered source map.  Resolution validation is deliberately
+/// excluded — the session pipeline owns that via
+/// `LocallyAnalyzedProject::resolve`.
+pub(crate) fn normalize_sources(
+    root: impl Into<PathBuf>,
+    sources: Vec<SourceFile>,
+) -> Result<(PathBuf, BTreeMap<ProjectRelativePath, SourceFile>), ProjectInputError> {
+    let root = root.into();
+    if sources.len() > 100_000 {
+        return Err(ProjectInputError::BudgetExceeded("source count".into()));
+    }
+    if sources.iter().map(|s| s.source.len()).sum::<usize>() > 512 * 1024 * 1024 {
+        return Err(ProjectInputError::BudgetExceeded(
+            "project source bytes".into(),
+        ));
+    }
+    let root = normalize_root(&root)?;
+    let mut result = BTreeMap::new();
+    for mut source in sources {
+        source.path = normalize_relative(&source.path)?;
+        if result.contains_key(&source.path) {
+            return Err(ProjectInputError::DuplicateSource(source.path.to_string()));
+        }
+        result.insert(source.path.clone(), source);
+    }
+    Ok((root, result))
 }
 
 /// Project records after path, target, duplicate, and cross-reference
@@ -105,17 +106,6 @@ impl ValidatedProjectInput {
     /// Iterate over (key, outcome) pairs in deterministic order.
     pub fn resolutions(&self) -> impl Iterator<Item = (&ResolutionRequestKey, &ResolverOutcome)> {
         self.resolutions.iter()
-    }
-
-    /// Consume and return all components.
-    pub(crate) fn into_components(
-        self,
-    ) -> (
-        PathBuf,
-        BTreeMap<ProjectRelativePath, crate::SourceFile>,
-        BTreeMap<ResolutionRequestKey, ResolverOutcome>,
-    ) {
-        (self.root, self.sources, self.resolutions)
     }
 }
 
