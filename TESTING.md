@@ -52,7 +52,7 @@ Only tools named in a leading `@tool` directive run:
 import { requestUrl } from "obsidian";
 
 requestUrl("https://example.com");
-// @expect-error-after glass-lint rule=obsidian:network.request message_id=detected
+// @expect-error-after glass-lint rule=obsidian:network.request
 ```
 
 The built-in adapter accepts either comma-separated `rules=` or
@@ -80,7 +80,7 @@ Expectation fields are:
 | Field | Meaning |
 |---|---|
 | `rule` | Required namespaced rule ID |
-| `message_id` | Stable message identifier |
+| `message_id` | Removed — all findings use the canonical rule description |
 | `severity` | `info`, `warning`, or `error` |
 | `count` | Expected count or `any` |
 | `line` | One-based source line or `any` |

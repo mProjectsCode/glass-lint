@@ -31,7 +31,8 @@ pub fn rule() -> Rule {
                         .build(),
                 ]))
                 .complete_at(FlowCompletion::configuration())
-                .build(),
+                .build()
+                .unwrap(),
         ))
         .declaration(
             MatcherDecl::builder()

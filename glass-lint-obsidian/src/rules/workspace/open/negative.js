@@ -2,31 +2,31 @@
 // @tool glass-lint rules=obsidian:workspace.open
 
 const localApp = { workspace: { openLinkText() {} } };
-// @expect-no-error glass-lint rule=obsidian:workspace.open message_id=detected
+// @expect-no-error glass-lint rule=obsidian:workspace.open
 localApp.workspace.openLinkText(name, source);
 
 function shadowed(app) {
-  // @expect-no-error glass-lint rule=obsidian:workspace.open message_id=detected
+  // @expect-no-error glass-lint rule=obsidian:workspace.open
   app.workspace.openLinkText(name, source);
 }
 shadowed({ workspace: { openLinkText() {} } });
 
 // Dynamic and unlisted methods are outside the configured calls.
-// @expect-no-error glass-lint rule=obsidian:workspace.open message_id=detected
+// @expect-no-error glass-lint rule=obsidian:workspace.open
 app.workspace[method](name, source);
-// @expect-no-error glass-lint rule=obsidian:workspace.open message_id=detected
+// @expect-no-error glass-lint rule=obsidian:workspace.open
 app.workspace.openFile(file);
 // A reassigned returned leaf no longer has return provenance.
-// @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
+// @expect-error glass-lint rule=obsidian:workspace.open
 app.workspace.getLeaf().openFile(file);
 let leaf = app.workspace.getLeaf();
 leaf = localLeaf;
-// @expect-no-error glass-lint rule=obsidian:workspace.open message_id=detected
+// @expect-no-error glass-lint rule=obsidian:workspace.open
 leaf.openFile(file);
 
 let workspace = app.workspace;
-// @expect-error glass-lint rule=obsidian:workspace.open message_id=detected
+// @expect-error glass-lint rule=obsidian:workspace.open
 workspace.openLinkText(name, source);
 workspace = localWorkspace;
-// @expect-no-error-after glass-lint rule=obsidian:workspace.open message_id=detected
+// @expect-no-error-after glass-lint rule=obsidian:workspace.open
 workspace.openLinkText(name, source);

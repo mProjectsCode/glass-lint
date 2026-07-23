@@ -6,6 +6,8 @@
 
 use smol_str::SmolStr;
 
+use crate::api::rule::MatcherBuildError;
+
 /// A context-independent predicate over an argument value.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ValueMatcher {
@@ -482,12 +484,10 @@ pub struct ObjectFlowMatcher {
     condition: Option<FlowCondition>,
     /// Completion/emission mode.
     completion: Option<FlowCompletion>,
-    /// Deferred builder error, reported when the containing catalog validates.
-    invalid_operation: Option<&'static str>,
 }
 
 impl ObjectFlowMatcher {
-    /// Start an unvalidated builder for a named object flow.
+    /// Start a builder for a named object flow.
     pub fn builder(symbol: impl Into<String>) -> ObjectFlowMatcherBuilder {
         ObjectFlowMatcherBuilder {
             symbol: symbol.into(),
@@ -496,6 +496,21 @@ impl ObjectFlowMatcher {
             completion: None,
             invalid_operation: None,
         }
+    }
+
+    /// Validate that the matcher is complete and well-formed.
+    pub(crate) fn validate(&self) -> Result<(), MatcherBuildError> {
+        if self.sources.is_empty() {
+            return Err(MatcherBuildError::Generic(
+                "at least one source is required".into(),
+            ));
+        }
+        if self.completion.is_none() {
+            return Err(MatcherBuildError::Generic(
+                "completion mode is required".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// Borrow the evidence symbol.
@@ -544,8 +559,6 @@ impl ObjectFlowMatcherBuilder {
     #[must_use]
     /// Set the configuration condition exactly once.
     pub fn configured_by(mut self, condition: FlowCondition) -> Self {
-        // Keep the first invalid operation so the builder reports a stable,
-        // actionable error instead of silently choosing one configuration.
         if self.condition.is_some() {
             self.invalid_operation = Some("configured_by may only be specified once");
         } else {
@@ -565,16 +578,19 @@ impl ObjectFlowMatcherBuilder {
         self
     }
 
-    /// Build an object-flow matcher. Shape validation is deferred until its
-    /// containing catalog is built.
-    pub fn build(self) -> ObjectFlowMatcher {
-        ObjectFlowMatcher {
+    /// Build and validate the object-flow matcher.
+    pub fn build(self) -> Result<ObjectFlowMatcher, MatcherBuildError> {
+        if let Some(error) = self.invalid_operation {
+            return Err(MatcherBuildError::Generic(error.into()));
+        }
+        let matcher = ObjectFlowMatcher {
             symbol: self.symbol,
             sources: self.sources,
             condition: self.condition,
             completion: self.completion,
-            invalid_operation: self.invalid_operation,
-        }
+        };
+        matcher.validate()?;
+        Ok(matcher)
     }
 }
 
@@ -595,7 +611,8 @@ mod tests {
                 ValueMatcher::static_string().equals("file"),
             )))
             .complete_at(FlowCompletion::configuration())
-            .build();
+            .build()
+            .unwrap();
         assert_eq!(matcher.symbol(), "input");
     }
 
@@ -605,10 +622,23 @@ mod tests {
             .source(source())
             .configured_by(FlowCondition::any_of(Vec::<ObjectEventMatcher>::new()))
             .complete_at(FlowCompletion::configuration())
-            .build();
+            .build()
+            .unwrap();
         assert_eq!(empty.symbol(), "empty");
 
-        let duplicate = ObjectFlowMatcher::builder("duplicate")
+        let err = ObjectFlowMatcher::builder("no_source")
+            .complete_at(FlowCompletion::configuration())
+            .build()
+            .unwrap_err();
+        assert!(err.to_string().contains("source"));
+
+        let err = ObjectFlowMatcher::builder("no_completion")
+            .source(source())
+            .build()
+            .unwrap_err();
+        assert!(err.to_string().contains("completion"));
+
+        let err = ObjectFlowMatcher::builder("duplicate")
             .source(source())
             .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
                 "ready",
@@ -619,7 +649,8 @@ mod tests {
                 ValueMatcher::any_value(),
             )))
             .complete_at(FlowCompletion::configuration())
-            .build();
-        assert_eq!(duplicate.symbol(), "duplicate");
+            .build()
+            .unwrap_err();
+        assert!(err.to_string().contains("once"));
     }
 }

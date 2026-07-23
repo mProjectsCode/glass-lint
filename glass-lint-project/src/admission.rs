@@ -5,6 +5,7 @@
 //! authoritative implementation here.
 
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
 };
@@ -38,8 +39,69 @@ impl FileBudget {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn limit(&self) -> usize {
         self.limit
+    }
+}
+
+/// A set of admitted source paths with a shared file-count budget.
+///
+/// Duplicate admit attempts do not consume the budget; only unique files are
+/// counted toward the configured limit. Returns
+/// [`ProjectLoadError::TooManyFiles`] when the set reaches its capacity, which
+/// stops the caller's traversal.
+#[derive(Clone, Debug)]
+pub struct AdmissionSet {
+    paths: BTreeSet<AdmittedSourcePath>,
+    budget: FileBudget,
+}
+
+impl AdmissionSet {
+    pub fn new(limit: usize) -> Self {
+        Self {
+            paths: BTreeSet::new(),
+            budget: FileBudget::new(limit),
+        }
+    }
+
+    pub fn admit(&mut self, path: &AdmittedSourcePath) -> Result<bool, ProjectLoadError> {
+        if self.paths.contains(path) {
+            return Ok(false);
+        }
+        self.budget.try_admit()?;
+        self.paths.insert(path.clone());
+        Ok(true)
+    }
+
+    pub fn len(&self) -> usize {
+        self.paths.len()
+    }
+
+    #[allow(dead_code)]
+    pub fn contains(&self, path: &AdmittedSourcePath) -> bool {
+        self.paths.contains(path)
+    }
+
+    #[allow(dead_code)]
+    pub fn limit(&self) -> usize {
+        self.budget.limit()
+    }
+
+    pub fn into_path_bufs(self) -> Vec<PathBuf> {
+        self.paths
+            .into_iter()
+            .map(AdmittedSourcePath::into_path_buf)
+            .collect()
+    }
+
+    pub fn into_admitted_paths(self) -> Vec<AdmittedSourcePath> {
+        self.paths.into_iter().collect()
+    }
+
+    #[allow(dead_code)]
+    pub fn iter(&self) -> impl Iterator<Item = &AdmittedSourcePath> {
+        self.paths.iter()
     }
 }
 

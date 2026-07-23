@@ -217,7 +217,7 @@ impl SourceTable {
     /// Insert one normalized source path, rejecting replacement of an existing
     /// source.
     pub fn insert(&mut self, source: SourceFile) -> Result<(), ProjectInputError> {
-        let path = source.path.clone();
+        let path = source.path().clone();
         if self.0.contains_key(&path) {
             return Err(ProjectInputError::DuplicateSource(path.to_string()));
         }

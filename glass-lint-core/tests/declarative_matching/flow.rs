@@ -104,7 +104,8 @@ fn value_flow_supports_member_call_configuration_and_helper_sinks() {
                     "document.head.appendChild",
                     0,
                 )]))
-                .build(),
+                .build()
+                .unwrap(),
         ))
         .build()
         .unwrap()];
@@ -263,7 +264,8 @@ fn value_flow_static_prefix_requires_static_values() {
                     "document.body.appendChild",
                     0,
                 )]))
-                .build(),
+                .build()
+                .unwrap(),
         ))
         .build()
         .unwrap()];
@@ -299,7 +301,8 @@ fn flow_can_require_all_requirements() {
                     "document.head.appendChild",
                     0,
                 )]))
-                .build(),
+                .build()
+                .unwrap(),
         ))
         .build()
         .unwrap()];

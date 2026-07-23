@@ -133,7 +133,8 @@ pub fn flow_linter() -> crate::Linter {
                     "document.head.appendChild",
                     0,
                 )]))
-                .build(),
+                .build()
+                .unwrap(),
         ))
         .build()
         .unwrap();

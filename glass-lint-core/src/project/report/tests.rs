@@ -21,7 +21,6 @@ fn range(line: u32, start: u32, end: u32) -> SourceRange {
 fn finding() -> Finding {
     Finding {
         rule_id: RuleId::parse("js:network.request").unwrap(),
-        message_id: "detected".into(),
         message: "request detected".into(),
         severity: Severity::Warning,
         location: SourceLocation {

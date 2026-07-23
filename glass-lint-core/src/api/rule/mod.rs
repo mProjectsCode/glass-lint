@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn defers_invalid_matcher_shapes_to_catalog_construction() {
+    fn rejects_empty_and_incomplete_matchers() {
         let rule = Rule::builder("network.fetch")
             .description("rule")
             .category("network")
@@ -309,18 +309,12 @@ mod tests {
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
 
-        let flow = ObjectFlowMatcher::builder("incomplete")
-            .source(ObjectSourceMatcher::returned_by("document.createElement"))
-            .build();
-        let rule = Rule::builder("incomplete")
-            .description("rule")
-            .category("flow")
-            .severity(Severity::Info)
-            .confidence(Confidence::High)
-            .declaration(MatcherDecl::from_object_flow(&flow))
-            .build()
-            .unwrap();
-        assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
+        assert!(
+            ObjectFlowMatcher::builder("incomplete")
+                .source(ObjectSourceMatcher::returned_by("document.createElement"))
+                .build()
+                .is_err()
+        );
 
         let rule = Rule::builder("class.invalid-global")
             .description("rule")

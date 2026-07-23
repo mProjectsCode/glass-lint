@@ -165,6 +165,42 @@ fn extensionless_internal_import_is_followed() {
 }
 
 #[test]
+fn file_budget_deduplicates_shared_imports() {
+    let project = TempProject::new("dedup");
+    project.write("main.js", "import './a'; import './b';");
+    project.write("a.js", "import './shared';");
+    project.write("b.js", "import './shared';");
+    project.write("shared.js", "export const x = 1;");
+    let options = ProjectLoadOptions {
+        max_files: 4,
+        ..Default::default()
+    };
+    let outcome = ProjectLoader::new(options.validated().unwrap())
+        .load_and_lint(
+            &linter(),
+            &ProjectSelection::entry(project.root().join("main.js")),
+        )
+        .unwrap();
+    assert_eq!(outcome.report.files.len(), 4);
+    assert_eq!(outcome.metrics.files, 4);
+}
+
+#[test]
+fn file_budget_exhaustion_returns_error_at_limit() {
+    let project = TempProject::new("exact-limit");
+    project.write("a.js", "");
+    project.write("b.js", "");
+    let options = ProjectLoadOptions {
+        max_files: 1,
+        ..Default::default()
+    };
+    let error = ProjectLoader::new(options.validated().unwrap())
+        .load_and_lint(&linter(), &ProjectSelection::directory(project.root()))
+        .unwrap_err();
+    assert!(matches!(error, ProjectLoadError::TooManyFiles(1)));
+}
+
+#[test]
 fn reports_project_phase_metrics_and_operation_counts() {
     let project = TempProject::new("metrics");
     project.write("main.js", "import './helper';");

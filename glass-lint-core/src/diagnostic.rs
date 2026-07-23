@@ -1,7 +1,5 @@
 //! Provider-neutral diagnostic and serialized report data types.
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::RuleId;
@@ -399,11 +397,6 @@ pub struct RuleMetadata {
     pub description: String,
     /// Default severity assigned when the rule reports a finding.
     pub default_severity: Severity,
-    /// Stable message templates keyed by message ID. Each entry maps a
-    /// message identifier (e.g. `"detected"`) to a human-readable template
-    /// string used for report output.
-    #[serde(default)]
-    pub messages: BTreeMap<String, String>,
 }
 
 #[cfg(test)]

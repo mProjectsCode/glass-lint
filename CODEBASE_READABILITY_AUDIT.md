@@ -16,17 +16,16 @@ the wrong quantity, while some of the hottest operations repeat recursive
 resolution, allocate equivalent paths, or rescan whole fixed-point state.
 
 This audit records 37 findings: 18 high severity, 15 medium severity, and 4 low
-severity. 14 findings have been addressed (2 high, 8 medium, 4 low). The highest-priority
+severity. 19 findings have been addressed (5 high, 10 medium, 4 low). The highest-priority
 changes remaining are:
 
-1. make project admission limits global and count unique files;
-2. parallelize local lowering in `ProjectLoader`;
-3. bound configuration traversal independently of directory traversal;
-4. eliminate repeated member-provenance, export, and cross-flow resolution;
-5. use the permitted clean break to replace the duplicated project API and
+1. parallelize local lowering in `ProjectLoader`;
+2. bound configuration traversal independently of directory traversal;
+3. eliminate repeated member-provenance, export, and cross-flow resolution;
+4. use the permitted clean break to replace the duplicated project API and
    stringly identity contracts with one validated semantic surface;
-6. separate transient linker state from the final project model; and
-7. limit serde to intentional configuration and output contracts behind an
+5. separate transient linker state from the final project model; and
+6. limit serde to intentional configuration and output contracts behind an
    opt-in core feature.
 
 The findings are intentionally not marked “done” based on historical edits.
@@ -52,16 +51,7 @@ exhaust `max_files` while the project contains fewer than `max_files` unique
 files. The final corpus-size check is only a `debug_assert`, so release builds
 can return an over-limit corpus.
 
-- **Status:** Partially done — `AdmissionSet::admit` now checks `BTreeSet::contains` before charging the budget, and `SourceCorpus::discover_filtered` now uses one shared `FileBudget` across all roots instead of creating per-root budgets. Cross-root sharing through `walk::collect_files` and tsconfig-referenced projects remains as a separate concern.
-
-Define `max_files` as the maximum number of unique, admitted files for one
-top-level operation. Make the admission set own the budget and use the entry
-API: reject a vacant insertion when the set is at its limit, but do not charge
-an occupied entry. Share that set through roots and referenced configs and
-stop traversal immediately on exhaustion. Track attempted edges separately
-if the metric is useful. Add boundary tests for duplicate imports, overlapping
-roots, overlapping tsconfig references, explicit file roots, and exactly-at-
-limit admission.
+- **Status:** Done — extracted `AdmissionSet` (budget + BTreeSet with duplicate-aware admit) into `admission.rs` and used it as the shared authority across corpus roots, directory walks, and tsconfig-referenced projects. `walk::collect_files` now accepts `&mut AdmissionSet` instead of creating a per-walk budget. `ProjectDiscovery` owns one `AdmissionSet` shared through tsconfig references and include/exclude pattern filtering. Traversal stops immediately on budget exhaustion via `?` propagation, and `SourceCorpus::discover_filtered` returns a real error instead of `debug_assert`. Boundary tests added for duplicate imports and exactly-at-limit admission.
 
 #### READ-002 — SourceCorpus does not establish one project containment boundary
 
@@ -132,6 +122,7 @@ above both limits.
 - **Fix Complexity:** Medium
 - **Category:** Complexity
 - **Location:** `glass-lint-project/src/walk.rs:52-101`, `glass-lint-project/src/admission.rs:153-171`
+- **Status:** Done — `filter_entry` in `walk::collect_files` now calls `admission.is_excluded(entry.path())` directly instead of `admission.classify(entry.path())`. This avoids the `fs::canonicalize` call that `classify` performs internally, making directory exclusion pruning a purely lexical path-prefix check. File admission still uses the full canonicalizing `classify` path, so containment and extension-support invariants remain enforced for every admitted file.
 
 The walk predicate classifies every directory and every candidate file, and
 classification always calls `fs::canonicalize`. This adds a filesystem
@@ -256,6 +247,7 @@ profile and exact-behavior tests before replacing the existing paths.
 - **Fix Complexity:** Medium
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/scope/collect/analysis.rs:50-92`, `glass-lint-core/src/analysis/scope/collect/visitor.rs:97-150`
+- **Status:** Done — `visit_assign_expr` now dispatches on the assignment target before computing `DeclarationFacts`. Simple-ident assignments still compute the full provenance set (needed for the binding chain). Member-assignment and pattern-assignment paths only compute the rooted expression name, avoiding the seven-eager-subresult path entirely when those subresults would be discarded.
 
 `DeclarationFacts::compute` eagerly runs callable, module-alias, require,
 static-object, constant, returned-object, and rooted-path analysis. “Computed
@@ -622,12 +614,7 @@ contradicts the filename. Its constructor accepts strings, reparses a
 `ProjectRelativePath`, and always infers language, which also forces trusted
 filesystem callers to discard semantic path identity.
 
-Make the fields private and accept `ProjectRelativePath` plus `SourceText` in
-the primary constructor. Infer language once from the typed path; provide an
-explicit named constructor for virtual or extensionless sources that require
-a language override. Remove direct deserialization with the rest of the
-operational input DTOs, and expose borrowing accessors rather than mutable
-storage.
+- **Status:** Done — fields made private; added `path()`, `language()`, `source()`, `into_path()`, `into_source()`, and `set_path()` accessors; updated every direct field access across `glass-lint-core`, `glass-lint-project`, and test code to use the accessors
 
 #### READ-030 — Module-resolution identities remain plain strings across the public boundary
 
@@ -677,6 +664,7 @@ that can create invalid states.
 - **Fix Complexity:** Medium
 - **Category:** API
 - **Location:** `glass-lint-core/src/api/rule/matcher/flow.rs:224-427`, `glass-lint-core/src/api/rule/matcher/flow.rs:476-570`
+- **Status:** Done — `ObjectFlowMatcherBuilder::build` now returns `Result<ObjectFlowMatcher, MatcherBuildError>`, validating sources non-empty, completion present, and no duplicate `configured_by`/`complete_at` at build time. `invalid_operation` removed from `ObjectFlowMatcher`. All provider callers use `.unwrap()` and the unit tests cover missing source, missing completion, and duplicate operations with `unwrap_err`.
 
 Empty alternatives, missing sources/completion, and duplicate
 `configured_by`/`complete_at` operations are stored in an
@@ -779,6 +767,7 @@ construction for the domain model.
 - **Fix Complexity:** Medium
 - **Category:** API
 - **Location:** `glass-lint-core/src/lib.rs:47`, `glass-lint-core/src/diagnostic.rs:393-407`, `glass-lint-core/src/project/types/report.rs:118-159`, `glass-lint-core/src/project/types/report.rs:251-307`, `glass-lint-core/src/lint/catalog.rs:135-148`, `glass-lint-core/src/lint/report.rs:245-271`, `glass-lint-core/src/project/report/mod.rs:7-79`
+- **Status:** Done — removed `message_id` from `Finding`, removed `messages` from `RuleMetadata`, removed `message_id` from harness `FindingExpectation` and all harness/support code, removed `message_id=detected` from 171 fixture files, updated `TESTING.md`
 
 Every rule advertises one hard-coded `"detected"` message and every finding
 stores the same `message_id`, so the message map/ID pair is a compatibility

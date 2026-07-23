@@ -388,7 +388,8 @@ fn script_insertion_matcher() -> MatcherDecl {
                 "document.head.appendChild",
                 0,
             )]))
-            .build(),
+            .build()
+            .unwrap(),
     )
 }
 

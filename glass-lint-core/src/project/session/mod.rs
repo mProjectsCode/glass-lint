@@ -173,7 +173,7 @@ impl<'a> ProjectCollection<'a> {
     }
 
     fn admit_normalized_source(&mut self, mut source: SourceFile) -> Result<(), ProjectInputError> {
-        source.path = normalize_relative(&source.path)?;
+        source.set_path(normalize_relative(source.path())?);
         self.sources.insert(source)
     }
 
@@ -189,7 +189,7 @@ impl<'a> ProjectCollection<'a> {
         &mut self,
         source: SourceFile,
     ) -> Result<SourceAnalysis, ProjectInputError> {
-        let path = source.path.clone();
+        let path = source.path().clone();
         self.admit_normalized_source(source)?;
         Ok(SourceAnalysis {
             requests: self.analyze_source_at_path(&path)?,

@@ -41,9 +41,9 @@ impl From<&str> for SourceText {
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
 pub struct SourceFile {
-    pub path: ProjectRelativePath,
-    pub language: SourceLanguage,
-    pub source: SourceText,
+    path: ProjectRelativePath,
+    language: SourceLanguage,
+    source: SourceText,
 }
 
 impl SourceFile {
@@ -68,6 +68,30 @@ impl SourceFile {
             language,
             source: source.into(),
         }
+    }
+
+    pub fn path(&self) -> &ProjectRelativePath {
+        &self.path
+    }
+
+    pub fn language(&self) -> SourceLanguage {
+        self.language
+    }
+
+    pub fn source(&self) -> &SourceText {
+        &self.source
+    }
+
+    pub fn into_path(self) -> ProjectRelativePath {
+        self.path
+    }
+
+    pub fn into_source(self) -> SourceText {
+        self.source
+    }
+
+    pub(crate) fn set_path(&mut self, path: ProjectRelativePath) {
+        self.path = path;
     }
 }
 

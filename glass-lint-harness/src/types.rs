@@ -247,8 +247,6 @@ pub struct FindingExpectation {
     pub(crate) path: Option<ProjectRelativePath>,
     /// Stable rule ID to compare.
     pub(crate) rule_id: RuleId,
-    /// Optional message ID constraint.
-    pub(crate) message_id: Option<String>,
     /// Optional severity constraint.
     pub(crate) severity: Option<Severity>,
     /// Exact expected count when specified.
@@ -277,7 +275,6 @@ impl FindingExpectation {
         Ok(Self {
             path: None,
             rule_id,
-            message_id: None,
             severity: None,
             count: ExpectedCount::Exactly(1),
             line: None,
@@ -289,12 +286,6 @@ impl FindingExpectation {
     pub fn with_path(mut self, path: impl Into<String>) -> Result<Self, String> {
         self.path = Some(ProjectRelativePath::new(path.into()).map_err(|error| error.to_string())?);
         Ok(self)
-    }
-
-    #[must_use]
-    pub fn with_message_id(mut self, message_id: impl Into<String>) -> Self {
-        self.message_id = Some(message_id.into());
-        self
     }
 
     #[must_use]

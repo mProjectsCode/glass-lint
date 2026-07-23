@@ -3,19 +3,19 @@
 import { Plugin } from "obsidian";
 class TestPlugin extends Plugin {
   run() {
-// @expect-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+// @expect-error glass-lint rule=obsidian:ui.ribbon
 this.addRibbonIcon("x", "x", fn);
 
-// @expect-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+// @expect-error glass-lint rule=obsidian:ui.ribbon
 this["addRibbonIcon"]("computed", "computed", handler);
 
 function unrelatedReceiver() {
-  // @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+  // @expect-no-error glass-lint rule=obsidian:ui.ribbon
   this.addRibbonIcon("same-shaped", "same-shaped", handler);
 }
 
 this.addRibbonIcon = replacement;
-// @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.ribbon
 this.addRibbonIcon("reassigned", "reassigned", handler);
   }
 }

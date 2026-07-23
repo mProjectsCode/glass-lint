@@ -3,20 +3,20 @@
 import { Plugin } from "obsidian";
 class TestPlugin extends Plugin {
   run() {
-// @expect-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
+// @expect-error glass-lint rule=obsidian:storage.plugin-data-write
 this.saveData(data);
-// @expect-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
+// @expect-error glass-lint rule=obsidian:storage.plugin-data-write
 this['saveData'](secondData);
 
 // Receiver provenance is intentionally not established by this heuristic.
 function unrelatedReceiver() {
-    // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
+    // @expect-no-error glass-lint rule=obsidian:storage.plugin-data-write
     this.saveData(data);
 }
 
 // Reassignment invalidates the member identity.
 this.saveData = replacement;
-// @expect-no-error glass-lint rule=obsidian:storage.plugin-data-write message_id=detected
+// @expect-no-error glass-lint rule=obsidian:storage.plugin-data-write
 this.saveData(data);
   }
 }

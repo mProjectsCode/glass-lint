@@ -3,22 +3,22 @@
 import { Plugin } from "obsidian";
 class TestPlugin extends Plugin {
   run() {
-// @expect-error glass-lint rule=obsidian:lifecycle.events message_id=detected
+// @expect-error glass-lint rule=obsidian:lifecycle.events
 this.registerEvent(app.vault.on('changed',fn));
-// @expect-error glass-lint rule=obsidian:lifecycle.events message_id=detected
+// @expect-error glass-lint rule=obsidian:lifecycle.events
 this.registerDomEvent(element, 'click', fn);
-// @expect-error glass-lint rule=obsidian:lifecycle.events message_id=detected
+// @expect-error glass-lint rule=obsidian:lifecycle.events
 this.registerInterval(setInterval(() => {}, 1000));
 
 // Static computed names are canonicalized by the heuristic matcher.
-// @expect-error glass-lint rule=obsidian:lifecycle.events message_id=detected
+// @expect-error glass-lint rule=obsidian:lifecycle.events
 this['registerEvent'](eventRef);
-// @expect-error glass-lint rule=obsidian:lifecycle.events message_id=detected
+// @expect-error glass-lint rule=obsidian:lifecycle.events
 this.registerObsidianProtocolHandler("protocol", handler);
 
 // Receiver provenance is intentionally not established.
 function unrelatedReceiver() {
-    // @expect-no-error glass-lint rule=obsidian:lifecycle.events message_id=detected
+    // @expect-no-error glass-lint rule=obsidian:lifecycle.events
     this.registerDomEvent(element, 'click', fn);
 }
   }

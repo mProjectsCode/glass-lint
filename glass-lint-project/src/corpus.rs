@@ -1,14 +1,13 @@
 //! Bounded source corpus discovery and loading without project linking.
 
 use std::{
-    collections::BTreeSet,
     fs,
     io::Read,
     path::{Path, PathBuf},
 };
 
 use crate::{
-    admission::{PathAdmission, SourceAdmission},
+    admission::{AdmissionSet, PathAdmission, SourceAdmission},
     error::ProjectLoadError,
     options::ValidatedProjectLoadOptions,
     walk,
@@ -95,8 +94,7 @@ impl SourceCorpus {
         roots: &[PathBuf],
         mut include: impl FnMut(&Path) -> bool,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
-        let mut paths: BTreeSet<PathBuf> = BTreeSet::new();
-        let mut budget = crate::admission::FileBudget::new(self.options.max_files());
+        let mut admitted = AdmissionSet::new(self.options.max_files());
         for root in roots {
             let Some(metadata) = walk::resolve_root(&self.options, root)? else {
                 continue;
@@ -106,22 +104,19 @@ impl SourceCorpus {
                 if include(root)
                     && let PathAdmission::Admitted(path) = admission.classify(root)?
                 {
-                    budget.try_admit()?;
-                    paths.insert(path.into_path_buf());
+                    admitted.admit(&path)?;
                 }
                 continue;
             }
             if !metadata.is_dir() {
                 return Err(ProjectLoadError::CorpusRootNotFileOrDir(root.clone()));
             }
-            let found = walk::collect_files(&admission, root, None, &mut include)?;
-            for path in found {
-                budget.try_admit()?;
-                paths.insert(path.into_path_buf());
-            }
+            walk::collect_files(&admission, root, None, &mut include, &mut admitted)?;
         }
-        debug_assert!(paths.len() <= self.options.max_files());
-        Ok(paths.into_iter().collect())
+        if admitted.len() > self.options.max_files() {
+            return Err(ProjectLoadError::TooManyFiles(self.options.max_files()));
+        }
+        Ok(admitted.into_path_bufs())
     }
 
     /// Read one supported source file after enforcing the byte budget.

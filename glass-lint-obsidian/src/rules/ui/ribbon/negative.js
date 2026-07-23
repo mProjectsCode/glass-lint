@@ -3,17 +3,17 @@
 import { Plugin } from "obsidian";
 class TestPlugin extends Plugin {
   run() {
-// @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.ribbon
 plugin.addRibbonIcon("other");
 
 const addRibbonIcon = this.addRibbonIcon;
-// @expect-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+// @expect-error glass-lint rule=obsidian:ui.ribbon
 addRibbonIcon("alias");
 
-// @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.ribbon
 this[dynamicProperty]("dynamic");
 
-// @expect-no-error glass-lint rule=obsidian:ui.ribbon message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.ribbon
 this.addRibbonIcons("near-name");
   }
 }

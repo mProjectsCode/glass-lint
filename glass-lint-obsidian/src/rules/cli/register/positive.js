@@ -4,7 +4,7 @@ import { Plugin } from "obsidian";
 
 class TestPlugin extends Plugin {
     run() {
-        // @expect-error glass-lint rule=obsidian:cli.register message_id=detected
+        // @expect-error glass-lint rule=obsidian:cli.register
         this.registerCliHandler("command", handler);
     }
 }

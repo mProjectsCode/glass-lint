@@ -199,12 +199,12 @@ impl<'a> Lowerer<'a> {
     /// for project linking and matcher projection.
     pub fn lower_source(&self, source: &SourceFile) -> Result<LoweredSource, ParseDiagnostic> {
         let parsed = crate::parse::parse_with_language_and_depth(
-            &source.source,
-            &source.path,
-            source.language,
+            source.source(),
+            source.path(),
+            source.language(),
             self.limits.syntax_depth(),
         )?;
-        let coordinates = SpanNormalizer::new(parsed.source_start, source.source.as_str());
+        let coordinates = SpanNormalizer::new(parsed.source_start, source.source().as_str());
         let semantic = lower_program(&parsed.program, self.environment, self.limits, &coordinates);
         Ok(LoweredSource {
             source: LocatedSourceContext::new(source),

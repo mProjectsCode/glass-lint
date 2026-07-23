@@ -46,7 +46,6 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
     let range = |line| range(line, 1, 6);
     let finding = |line| Finding {
         rule_id: RuleId::parse("test:fetch").unwrap(),
-        message_id: "detected".into(),
         message: "Uses fetch".into(),
         severity: Severity::Warning,
         location: location(range(line)),
@@ -98,7 +97,6 @@ fn can_hide_source_excerpts_for_evidence_rows() {
         path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:fetch").unwrap(),
-            message_id: "detected".into(),
             message: "Uses fetch".into(),
             severity: Severity::Warning,
             location: location(range.clone()),
@@ -164,7 +162,6 @@ fn renders_terminal_controls_visibly() {
         path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:fetch").unwrap(),
-            message_id: "detected".into(),
             message: "message\u{1b}[31m".into(),
             severity: Severity::Warning,
             location: location(range(1, 1, 2)),
@@ -191,7 +188,6 @@ fn bounds_long_excerpt() {
         path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:long-line").unwrap(),
-            message_id: "detected".into(),
             message: "long line".into(),
             severity: Severity::Warning,
             location: location(range(1, 201, 206)),
@@ -226,7 +222,6 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
         path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:unicode").unwrap(),
-            message_id: "detected".into(),
             message: "unicode".into(),
             severity: Severity::Info,
             location: location(range(1, 9, 12)),
@@ -261,7 +256,6 @@ fn renders_missing_source_lines_without_panicking() {
         path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:missing").unwrap(),
-            message_id: "detected".into(),
             message: "missing".into(),
             severity: Severity::Error,
             location: location(range(99, 1, 2)),
@@ -288,7 +282,6 @@ fn renders_colored_findings_when_enabled() {
         path: path("main.js"),
         findings: vec![Finding {
             rule_id: RuleId::parse("test:color").unwrap(),
-            message_id: "detected".into(),
             message: "colored".into(),
             severity: Severity::Error,
             location: location(range(1, 1, 2)),

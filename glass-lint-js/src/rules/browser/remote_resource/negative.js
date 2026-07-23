@@ -1,6 +1,6 @@
 // @case description negative fixture for browser:dom.remote-resource
 // @tool glass-lint rules=browser:dom.remote-resource
-// @expect-no-error glass-lint rule=browser:dom.remote-resource message_id=detected
+// @expect-no-error glass-lint rule=browser:dom.remote-resource
 // Local URLs are not remote resources.
 const localScript = document.createElement("script");
 localScript.src = "/local.js";

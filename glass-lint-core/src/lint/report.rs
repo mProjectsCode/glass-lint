@@ -259,7 +259,6 @@ impl<'a> ReportAssembly<'a> {
                     .collect();
                 Finding {
                     rule_id: rule_id.clone(),
-                    message_id: "detected".into(),
                     message: label.to_string(),
                     severity,
                     location: SourceLocation {
@@ -282,16 +281,16 @@ impl<'a> ReportAssembly<'a> {
         let mut files: BTreeMap<ProjectRelativePath, FileReport> = BTreeMap::new();
         let mut parse_failure_codes: BTreeMap<ProjectRelativePath, String> = BTreeMap::new();
         for source in source_map.values() {
-            let path = source.path.clone();
+            let path = source.path().clone();
             match parse_diagnostics.remove(&path) {
                 Some(diagnostic) => {
                     parse_failure_codes.insert(path.clone(), diagnostic.code.as_str().to_owned());
                     files.insert(
                         path,
                         FileReport {
-                            path: source.path.clone(),
+                            path: source.path().clone(),
                             findings: Vec::new(),
-                            diagnostics: vec![Diagnostic::parse(source.path.clone(), diagnostic)],
+                            diagnostics: vec![Diagnostic::parse(source.path().clone(), diagnostic)],
                         },
                     );
                 }
@@ -299,7 +298,7 @@ impl<'a> ReportAssembly<'a> {
                     files.insert(
                         path,
                         FileReport {
-                            path: source.path.clone(),
+                            path: source.path().clone(),
                             findings: Vec::new(),
                             diagnostics: Vec::new(),
                         },

@@ -3,19 +3,19 @@
 import { Plugin } from "obsidian";
 class TestPlugin extends Plugin {
   run() {
-// @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+// @expect-error glass-lint rule=obsidian:ui.status-bar
 this.addStatusBarItem();
 
-// @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+// @expect-error glass-lint rule=obsidian:ui.status-bar
 this["addStatusBarItem"]();
 
 function unrelatedReceiver() {
-  // @expect-no-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+  // @expect-no-error glass-lint rule=obsidian:ui.status-bar
   this.addStatusBarItem();
 }
 
 this.addStatusBarItem = replacement;
-// @expect-no-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.status-bar
 this.addStatusBarItem();
   }
 }

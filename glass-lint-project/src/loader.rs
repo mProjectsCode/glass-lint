@@ -1,7 +1,7 @@
 //! Public project loading API and the bounded construction loop.
 
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeMap, VecDeque},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -9,7 +9,7 @@ use std::{
 use glass_lint_core::{AnalysisReport, Linter, ResolutionRequest, ResolverOutcome};
 
 use crate::{
-    admission::{AdmittedSourcePath, SourceAdmission, absolute_path},
+    admission::{AdmissionSet, AdmittedSourcePath, SourceAdmission, absolute_path},
     discovery::{DiscoveryResult, ProjectDiscovery},
     error::ProjectLoadError,
     options::{ProjectSelection, ValidatedProjectLoadOptions},
@@ -278,9 +278,9 @@ impl<'a> ProjectPaths<'a> {
                 root,
             });
         }
+        let discover = ProjectDiscovery::with_deadline(&admission, deadline, options.max_files());
         let DiscoveryResult { paths, diagnostics } =
-            ProjectDiscovery::with_deadline(&admission, deadline)
-                .initial_paths(selection, canonical_selection.as_ref())?;
+            discover.initial_paths(selection, canonical_selection.as_ref())?;
         Ok(Self {
             admission,
             initial_paths: paths.into(),
@@ -302,34 +302,6 @@ impl PathWorkQueue {
 
     fn push(&mut self, path: AdmittedSourcePath) {
         self.0.push_back(path);
-    }
-}
-
-#[derive(Debug)]
-struct AdmissionSet {
-    paths: BTreeSet<AdmittedSourcePath>,
-    budget: crate::admission::FileBudget,
-}
-
-impl AdmissionSet {
-    fn new(limit: usize) -> Self {
-        Self {
-            paths: BTreeSet::new(),
-            budget: crate::admission::FileBudget::new(limit),
-        }
-    }
-
-    fn admit(&mut self, path: AdmittedSourcePath) -> Result<bool, ProjectLoadError> {
-        if self.paths.contains(&path) {
-            return Ok(false);
-        }
-        self.budget.try_admit()?;
-        self.paths.insert(path);
-        Ok(true)
-    }
-
-    fn len(&self) -> usize {
-        self.paths.len()
     }
 }
 
@@ -478,7 +450,7 @@ impl<'a> ProjectLoadState<'a> {
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<(), ProjectLoadError> {
         self.check_timeout()?;
-        if !self.admitted.admit(admitted.clone())? {
+        if !self.admitted.admit(admitted)? {
             return Ok(());
         }
 
@@ -487,7 +459,7 @@ impl<'a> ProjectLoadState<'a> {
         metrics.timings.record_reads(read_start.elapsed());
         let source_limit = self.admission.options().max_project_source_bytes();
         let source_bytes =
-            u64::try_from(source.source.len()).unwrap_or_else(|_| source_limit.saturating_add(1));
+            u64::try_from(source.source().len()).unwrap_or_else(|_| source_limit.saturating_add(1));
         self.progress
             .record_source_bytes(source_bytes, source_limit)?;
 

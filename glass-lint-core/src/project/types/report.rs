@@ -128,7 +128,6 @@ pub struct Evidence {
 #[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct Finding {
     pub rule_id: RuleId,
-    pub message_id: String,
     pub message: String,
     pub severity: Severity,
     pub location: SourceLocation,

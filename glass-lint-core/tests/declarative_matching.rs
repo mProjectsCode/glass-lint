@@ -48,7 +48,8 @@ fn script_insertion_flow() -> MatcherDecl {
                 "document.head.appendChild",
                 0,
             )]))
-            .build(),
+            .build()
+            .unwrap(),
     )
 }
 

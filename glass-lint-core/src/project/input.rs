@@ -54,7 +54,7 @@ pub(crate) fn normalize_sources(
     if sources.len() > 100_000 {
         return Err(ProjectInputError::BudgetExceeded("source count".into()));
     }
-    if sources.iter().map(|s| s.source.len()).sum::<usize>() > 512 * 1024 * 1024 {
+    if sources.iter().map(|s| s.source().len()).sum::<usize>() > 512 * 1024 * 1024 {
         return Err(ProjectInputError::BudgetExceeded(
             "project source bytes".into(),
         ));
@@ -62,11 +62,12 @@ pub(crate) fn normalize_sources(
     let root = normalize_root(&root)?;
     let mut result = BTreeMap::new();
     for mut source in sources {
-        source.path = normalize_relative(&source.path)?;
-        if result.contains_key(&source.path) {
-            return Err(ProjectInputError::DuplicateSource(source.path.to_string()));
+        let normalized = normalize_relative(source.path())?;
+        if result.contains_key(&normalized) {
+            return Err(ProjectInputError::DuplicateSource(normalized.to_string()));
         }
-        result.insert(source.path.clone(), source);
+        source.set_path(normalized);
+        result.insert(source.path().clone(), source);
     }
     Ok((root, result))
 }

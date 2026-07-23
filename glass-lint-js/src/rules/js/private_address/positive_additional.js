@@ -3,7 +3,7 @@
 
 // These markers are tested separately because the shared evidence limit keeps
 // a single case from asserting every configured literal marker at once.
-// @expect-error glass-lint rule=js:network.private-address message_id=detected
+// @expect-error glass-lint rule=js:network.private-address
 const localhost = "localhost";
-// @expect-error glass-lint rule=js:network.private-address message_id=detected
+// @expect-error glass-lint rule=js:network.private-address
 const httpsLan = "https://192.168.1.2";

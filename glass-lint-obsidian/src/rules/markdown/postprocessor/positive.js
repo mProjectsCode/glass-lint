@@ -3,14 +3,14 @@
 import { Plugin } from "obsidian";
 class TestPlugin extends Plugin {
   run() {
-// @expect-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected
+// @expect-error glass-lint rule=obsidian:markdown.postprocessor
 this.registerMarkdownPostProcessor(fn);
-// @expect-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected
+// @expect-error glass-lint rule=obsidian:markdown.postprocessor
 this['registerMarkdownPostProcessor'](secondProcessor);
 
 // Receiver provenance is intentionally not established by this heuristic.
 function unrelatedReceiver() {
-    // @expect-no-error glass-lint rule=obsidian:markdown.postprocessor message_id=detected
+    // @expect-no-error glass-lint rule=obsidian:markdown.postprocessor
     this.registerMarkdownPostProcessor(unrelatedProcessor);
 }
   }

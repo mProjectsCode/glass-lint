@@ -140,10 +140,6 @@ impl RuleCatalog {
                 id: id.clone(),
                 description: record.description.clone(),
                 default_severity: record.severity,
-                messages: BTreeMap::from([(
-                    String::from("detected"),
-                    String::from("Detected matching capability"),
-                )]),
             })
             .collect()
     }

@@ -3,17 +3,17 @@
 import { Plugin } from "obsidian";
 class TestPlugin extends Plugin {
   run() {
-// @expect-no-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.status-bar
 plugin.addStatusBarItem();
 
 const addStatusBarItem = this.addStatusBarItem;
-// @expect-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+// @expect-error glass-lint rule=obsidian:ui.status-bar
 addStatusBarItem();
 
-// @expect-no-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.status-bar
 this[dynamicProperty]();
 
-// @expect-no-error glass-lint rule=obsidian:ui.status-bar message_id=detected
+// @expect-no-error glass-lint rule=obsidian:ui.status-bar
 this.addStatusBarItems();
   }
 }

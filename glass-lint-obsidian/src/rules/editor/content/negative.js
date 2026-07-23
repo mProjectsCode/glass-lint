@@ -5,19 +5,19 @@ const localEditor = {
   setValue() {},
   getRange() {},
 };
-// @expect-no-error glass-lint rule=obsidian:editor.content message_id=detected
+// @expect-no-error glass-lint rule=obsidian:editor.content
 localEditor.getValue();
 
 function unrelatedReceiver() {
-  // @expect-no-error glass-lint rule=obsidian:editor.content message_id=detected
+  // @expect-no-error glass-lint rule=obsidian:editor.content
   this.getValue();
 }
 
 const method = getMethodName();
-// @expect-no-error glass-lint rule=obsidian:editor.content message_id=detected
+// @expect-no-error glass-lint rule=obsidian:editor.content
 localEditor[method]();
 
 let editor = localEditor;
 editor = anotherEditor;
-// @expect-no-error glass-lint rule=obsidian:editor.content message_id=detected
+// @expect-no-error glass-lint rule=obsidian:editor.content
 editor.setValue(value);

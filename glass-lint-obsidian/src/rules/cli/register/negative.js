@@ -4,14 +4,14 @@ import { Plugin } from "obsidian";
 
 class TestPlugin extends Plugin {
     run() {
-        // @expect-no-error glass-lint rule=obsidian:cli.register message_id=detected
+        // @expect-no-error glass-lint rule=obsidian:cli.register
         this[method]("command", handler);
         const register = this.registerCliHandler;
-        // @expect-error glass-lint rule=obsidian:cli.register message_id=detected
+        // @expect-error glass-lint rule=obsidian:cli.register
         register("command", handler);
     }
 }
 
 const localPlugin = { registerCliHandler() {} };
-// @expect-no-error glass-lint rule=obsidian:cli.register message_id=detected
+// @expect-no-error glass-lint rule=obsidian:cli.register
 localPlugin.registerCliHandler("command", handler);

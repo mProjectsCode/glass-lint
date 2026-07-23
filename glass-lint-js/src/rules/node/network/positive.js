@@ -1,72 +1,72 @@
 // @case description positive fixture for node:node.network
 // @tool glass-lint rules=node:node.network
 // Every configured HTTP module is reported at its ESM load.
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import http from "http";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import https from "https";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import nodeHttp from "node:http";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import nodeHttps from "node:https";
 
 // Unshadowed static CommonJS loads retain module provenance.
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 const loadedHttp = require("http");
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 const loadedHttps = require("node:https");
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import http2 from "node:http2";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import net from "node:net";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import tls from "node:tls";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import dgram from "node:dgram";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import dns from "node:dns";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import dnsPromises from "dns/promises";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import nodeDnsPromises from "node:dns/promises";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import undici from "undici";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import axios from "axios";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import fetchClient from "node-fetch";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import got from "got";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import superagent from "superagent";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import ws from "ws";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import crossFetch from "cross-fetch";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import ky from "ky";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import graphqlRequest from "graphql-request";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import request from "request";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import needle from "needle";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import grpc from "@grpc/grpc-js";
 // Additional exact clients and transport helpers remain network indicators.
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import apollo from "@apollo/client";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import graphql from "graphql";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import elastic from "@elastic/elasticsearch";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import retry from "fetch-retry";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import formData from "form-data";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import proxy from "http-proxy";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import proxyAgent from "https-proxy-agent";
-// @expect-error glass-lint rule=node:node.network message_id=detected
+// @expect-error glass-lint rule=node:node.network
 import fetchImpl from "@whatwg-node/fetch";

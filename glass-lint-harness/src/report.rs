@@ -82,9 +82,8 @@ pub fn render_suite_failures(report: &SuiteReport) -> String {
             for finding in &result.findings {
                 let _ = writeln!(
                     out,
-                    "  finding: {}:{} at {}:{} - {}",
+                    "  finding: {} at {}:{} - {}",
                     finding.rule_id,
-                    finding.message_id,
                     finding.location.range.start().line(),
                     finding.location.range.start().column(),
                     finding.message
@@ -233,9 +232,8 @@ pub fn render_adapter_comparison(report: &SuiteReport) -> String {
             for finding in &result.findings {
                 let _ = writeln!(
                     out,
-                    "- {}:{} at {}:{} - {}",
+                    "- {} at {}:{} - {}",
                     finding.rule_id,
-                    finding.message_id,
                     finding.location.range.start().line(),
                     finding.location.range.start().column(),
                     finding.message

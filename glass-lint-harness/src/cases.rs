@@ -481,7 +481,6 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
         .get_mut(tool)
         .with_context(|| format!("@expect-error references unconfigured tool `{tool}`"))?;
     let mut rule_id = None;
-    let mut message_id = None;
     let mut severity = None;
     let mut count = ExpectedCount::Exactly(1);
     let mut expected_line = Some(line);
@@ -490,7 +489,6 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
     for (key, value) in parse_fields(fields)? {
         match key.as_str() {
             "rule" => rule_id = Some(value),
-            "message_id" => message_id = Some(value),
             "severity" => severity = Some(parse_severity(&value)?),
             "count" => count = parse_expected_count(&value)?,
             "line" => expected_line = parse_optional_u32(&value)?,
@@ -503,7 +501,6 @@ fn add_expectation(case: &mut Case, rest: &str, line: u32, required: bool) -> Re
         rule_id.with_context(|| format!("@expect-error for {tool} must specify rule="))?,
     )
     .map_err(|error| anyhow::anyhow!(error))?;
-    diagnostic.message_id = message_id;
     diagnostic.severity = severity;
     diagnostic.count = count;
     diagnostic.line = expected_line;
@@ -563,7 +560,7 @@ mod tests {
         let source = "\
 // @case description Dynamic code
 // @tool glass-lint rules=js:dynamic-code.string-timer
-// @expect-error glass-lint rule=js:dynamic-code.string-timer message_id=detected
+// @expect-error glass-lint rule=js:dynamic-code.string-timer
 globalThis.setTimeout('run()', 10);
 ";
         let case = parse_case(

@@ -9,10 +9,7 @@ use std::{fs, path::Path, time::Instant};
 
 use walkdir::WalkDir;
 
-use crate::{
-    admission::{AdmittedSourcePath, SourceAdmission},
-    error::ProjectLoadError,
-};
+use crate::{admission::SourceAdmission, error::ProjectLoadError};
 
 /// Resolve root metadata respecting the symlink-follow policy.
 ///
@@ -49,26 +46,22 @@ pub fn resolve_root(
 /// When `deadline` is provided, the walk checks elapsed time between entry
 /// iterations and returns [`ProjectLoadError::Timeout`] if the deadline
 /// passes.
+///
+/// Each admissible file is passed through `admitted_set` which enforces the
+/// shared file-count budget and deduplicates across calls and roots.
 pub fn collect_files(
     admission: &SourceAdmission<'_>,
     root: &Path,
     deadline: Option<Instant>,
     include: &mut dyn FnMut(&Path) -> bool,
-) -> Result<Vec<AdmittedSourcePath>, ProjectLoadError> {
-    let mut entries = Vec::new();
+    admitted_set: &mut crate::admission::AdmissionSet,
+) -> Result<(), ProjectLoadError> {
     let mut visited = 0usize;
     let walker = WalkDir::new(root)
         .follow_links(admission.options().follow_symlinks())
         .sort_by_file_name()
         .into_iter()
-        .filter_entry(|entry| {
-            !entry.file_type().is_dir()
-                || !matches!(
-                    admission.classify(entry.path()),
-                    Ok(crate::admission::PathAdmission::Excluded(_))
-                )
-        });
-    let mut budget = crate::admission::FileBudget::new(admission.options().max_files());
+        .filter_entry(|entry| !entry.file_type().is_dir() || !admission.is_excluded(entry.path()));
     for entry in walker {
         if let Some(deadline) = deadline
             && Instant::now() >= deadline
@@ -94,9 +87,8 @@ pub fn collect_files(
             && let crate::admission::PathAdmission::Admitted(admitted) =
                 admission.classify(entry.path())?
         {
-            budget.try_admit()?;
-            entries.push(admitted);
+            admitted_set.admit(&admitted)?;
         }
     }
-    Ok(entries)
+    Ok(())
 }

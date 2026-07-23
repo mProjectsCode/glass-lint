@@ -32,7 +32,8 @@ pub fn rule() -> Rule {
                     FlowSinkMatcher::argument_of("document.head.appendChild", 0),
                     FlowSinkMatcher::argument_of("document.body.appendChild", 0),
                 ]))
-                .build(),
+                .build()
+                .unwrap(),
         ))
         .declaration(
             MatcherDecl::builder()

@@ -4,7 +4,7 @@ import { Plugin } from "obsidian";
 
 class TestPlugin extends Plugin {
     run() {
-        // @expect-error glass-lint rule=obsidian:bases.register message_id=detected
+        // @expect-error glass-lint rule=obsidian:bases.register
         this.registerBasesView("view", factory);
     }
 }

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     AnalysisLimits, Diagnostic, Environment, ReportCompletion, RuleBaseline, RuleSelection,
-    SourceFile, SourceLanguage,
+    SourceFile, SourceText,
     analysis::ArtifactCacheHandle,
     project::session::{CountingExecutionObserver, InvocationCounts},
 };
@@ -197,7 +197,7 @@ fn assert_miss_for(
     source: SourceFile,
     configure: fn(&mut crate::ProjectCollection<'_>),
 ) {
-    let path = source.path.to_string();
+    let path = source.path().to_string();
     let mut session = linter.begin_project("/project").unwrap();
     session.artifact_cache = base_cache.clone();
     configure(&mut session);
@@ -214,7 +214,7 @@ fn assert_hit_for(
     source: SourceFile,
     configure: fn(&mut crate::ProjectCollection<'_>),
 ) {
-    let path = source.path.to_string();
+    let path = source.path().to_string();
     let mut session = linter.begin_project("/project").unwrap();
     session.artifact_cache = base_cache.clone();
     configure(&mut session);
@@ -238,11 +238,7 @@ fn all_fingerprint_dimensions_have_independent_hit_miss_tests() {
     assert_miss_for(
         &base_cache,
         &base_linter,
-        SourceFile {
-            path: project_path("typed.ts"),
-            language: SourceLanguage::TypeScript,
-            source: "fetch('/api');".into(),
-        },
+        SourceFile::from_relative(project_path("typed.ts"), SourceText::from("fetch('/api');")),
         |_| {},
     );
 

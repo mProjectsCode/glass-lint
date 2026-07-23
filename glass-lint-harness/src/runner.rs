@@ -106,10 +106,6 @@ impl FindingExpectation {
     fn matches(&self, finding: &Finding) -> bool {
         finding.rule_id == self.rule_id
             && self
-                .message_id
-                .as_ref()
-                .is_none_or(|id| &finding.message_id == id)
-            && self
                 .severity
                 .is_none_or(|severity| finding.severity == severity)
             && self
@@ -172,8 +168,8 @@ fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
             .any(|forbidden| forbidden.matches(finding));
         if !is_required && !is_forbidden {
             errors.push(format!(
-                "unexpected {}:{} at {:?}",
-                finding.rule_id, finding.message_id, finding.location.range
+                "unexpected {} at {:?}",
+                finding.rule_id, finding.location.range
             ));
         }
     }
@@ -190,7 +186,6 @@ mod tests {
     fn finding() -> Finding {
         Finding {
             rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
-            message_id: "m".into(),
             message: "text".into(),
             severity: Severity::Warning,
             location: glass_lint_core::SourceLocation {
@@ -212,7 +207,6 @@ mod tests {
             vec![FindingExpectation {
                 path: None,
                 rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
-                message_id: None,
                 severity: None,
                 count: ExpectedCount::Exactly(2),
                 line: None,
@@ -244,7 +238,6 @@ mod tests {
             vec![FindingExpectation {
                 path: None,
                 rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
-                message_id: None,
                 severity: None,
                 count: ExpectedCount::Exactly(1),
                 line: None,

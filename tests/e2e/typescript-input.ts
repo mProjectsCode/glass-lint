@@ -8,7 +8,7 @@ type FetchType = typeof fetch;
 import type { fetch as ImportedFetch } from "api";
 
 const request = (value: RequestShape): ReturnType<FetchType> =>
-    fetch(value.url); // @expect-error glass-lint rule=browser:network.request message_id=detected
+    fetch(value.url); // @expect-error glass-lint rule=browser:network.request
 
 declare const fetchTypeOnly: ImportedFetch;
 void fetchTypeOnly;

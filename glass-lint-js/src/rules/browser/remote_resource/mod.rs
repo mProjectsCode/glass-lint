@@ -104,4 +104,5 @@ fn remote_element_flow(symbol: &str, tag: &str, property: &str) -> ObjectFlowMat
             ),
         ))
         .build()
+        .unwrap()
 }

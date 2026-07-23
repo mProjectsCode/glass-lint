@@ -93,8 +93,8 @@ pub struct LocatedSourceContext {
 impl LocatedSourceContext {
     pub(crate) fn new(source: &crate::SourceFile) -> Self {
         Self {
-            path: source.path.clone(),
-            lines: Arc::new(crate::SourceLineIndex::from_text(source.source.clone())),
+            path: source.path().clone(),
+            lines: Arc::new(crate::SourceLineIndex::from_text(source.source().clone())),
         }
     }
 
@@ -136,7 +136,7 @@ impl ArtifactCacheKey {
         limits: &crate::AnalysisLimits,
         engine_version: &'static str,
     ) -> Self {
-        let normalization_mode = match source.language {
+        let normalization_mode = match source.language() {
             crate::SourceLanguage::JavaScript => "swc-js-normalization-v1",
             crate::SourceLanguage::TypeScript => "swc-ts-strip-normalization-v1",
         };
@@ -158,16 +158,16 @@ impl ArtifactCacheKey {
     ) -> Self {
         let config = LocalLoweringConfig::from(limits);
         let fingerprint = ArtifactFingerprint::compute(
-            &source.source,
-            source.language,
+            source.source(),
+            source.language(),
             normalization_mode,
             environment,
             &config,
             engine_version,
         );
         Self {
-            source: source.source.clone(),
-            language: source.language,
+            source: source.source().clone(),
+            language: source.language(),
             normalization_mode,
             environment: environment.clone(),
             limits: config,

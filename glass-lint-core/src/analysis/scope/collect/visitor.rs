@@ -95,9 +95,10 @@ impl ScopePass for ScopeCollector {
     }
 
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
-        let provenance = DeclarationFacts::compute(self, &assignment.right).assignment_provenance();
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
+                let provenance =
+                    DeclarationFacts::compute(self, &assignment.right).assignment_provenance();
                 if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
                     self.name_id(ident.id.sym.as_ref())
                         .is_some_and(|name| self.scopes[*scope].bindings.contains_key(&name))
