@@ -6,7 +6,7 @@ Scope: the entirety of `glass-lint-core` and `glass-lint-project`, with emphasis
 
 ## Summary
 
-This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 11 open findings remain (2 high, 7 medium, 2 low) plus 1 partially addressed finding. The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
+This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 11 open findings remain (2 high, 7 medium, 2 low). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
 
 The broad architectural opportunity is to make each pipeline transition consume one phase-owned type and produce the next. Today, several boundaries retain raw and compiled forms together, erase semantic newtypes and reconstruct them later, or build parallel maps that describe one logical record. Those choices obscure the intended pipeline and cause avoidable clones, repeated validation, repeated indexing, and transient collections.
 
@@ -51,7 +51,7 @@ Local flow uses hard-coded limits for objects, states, emissions, and mutation-l
 
 Return a `LocalFlowProjectionOutcome` containing evidence, exhaustion state, and bounded counters. Derive all flow budgets from the validated analysis limits; any local-flow exhaustion should record a file-scoped flow-budget diagnostic and make the combined report `Partial`, matching facts, effects, linking, and cross-module flow. Add focused tests for each limit so exhaustion consistently fails closed instead of looking like a clean negative result.
 
-#### READ-003 — The link graph retains metadata that does not drive linking
+#### READ-003 — The link graph retains metadata that does not drive linking - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Architecture
@@ -59,7 +59,7 @@ Return a `LocalFlowProjectionOutcome` containing evidence, exhaustion state, and
 
 The link graph stores SCC components and a provenance map, but the global-export fixed point iterates the full export set rather than the component graph, and provenance has no production reader. SCCs are used for a size check and then retained through matching, while the architecture documentation describes SCC-driven convergence.
 
-Treat SCCs as a transient validation result used only to enforce `MAX_SCC_SIZE`; do not retain the component vectors in `ModuleGraph` after that check. Remove edge provenance now because there is no reader, and reintroduce it only with the diagnostic that consumes it. Correct the architecture comment to describe the current bounded global fixed point; an SCC-DAG linker should be a separate measured optimization, not bundled into this cleanup.
+**Decision:** Implement the SCC-DAG linker now (see `private/scc-plan.md`). The global monotone fixed-point over all modules is replaced with a topological walk of the SCC DAG: single-node SCCs resolve in one pass, multi-node SCCs use a cycle-local fixed-point. This eliminates the `O(modules × rounds)` loop for acyclic graphs (the common case) while keeping the same `ExportResolution` semantics, budget enforcement, and monotone memo table. The existing `MAX_SCC_SIZE` check remains as a pre- gate before the DAG walk. Remove edge provenance now because there is no reader, and reintroduce it only with the diagnostic that consumes it. Correct the architecture comment to describe bounded SCC-DAG convergence.
 
 #### READ-004 — Validated project input is represented as parallel maps and a positional tuple
 - **Severity:** Medium
@@ -151,14 +151,10 @@ Separate `ParsedTsconfig`, consuming inheritance, and `CompiledTsconfigSelection
 - **Severity:** Low
 - **Fix Complexity:** Low
 - **Category:** Testing
-- **Status:** Partial
-- **Location:** `glass-lint-core/src/analysis/scope/collect/mod.rs:754-1254`, `glass-lint-core/src/project/report.rs:105-481`, `glass-lint-project/src/tsconfig.rs:566-864`
+- **Status:** Complete
+- **Location:** `glass-lint-core/src/project/report/tests.rs`, `glass-lint-project/src/tsconfig/tests.rs`, `glass-lint-core/src/analysis/scope/collect/tests.rs`
 
-Several already-large production modules include hundreds of lines of inline tests, with similar concentrations in fact building, resolution, and flow projection. Private access is convenient, but the resulting files make the production state transitions and ownership boundaries harder to scan.
-
-Move substantial test bodies into sibling `tests.rs` modules while retaining private access through the parent module. Keep very small invariant tests inline when proximity materially helps. Organize the extracted tests by behavior and adversarial case, not by source function name.
-
-**Partial completion:** Only `glass-lint-core/src/analysis/scope/collect/tests.rs` was extracted. `glass-lint-core/src/project/report.rs` and `glass-lint-project/src/tsconfig.rs` still contain inline tests (at lines 104 and 584 respectively).
+Several already-large production modules included hundreds of lines of inline tests, making the production state transitions and ownership boundaries harder to scan. All three identified locations have been extracted into sibling `tests.rs` modules: `glass-lint-core/src/project/report/tests.rs`, `glass-lint-project/src/tsconfig/tests.rs`, and the previously extracted `glass-lint-core/src/analysis/scope/collect/tests.rs`.
 
 ## Systemic Themes
 
@@ -174,7 +170,7 @@ Move substantial test bodies into sibling `tests.rs` modules while retaining pri
 None remain after tracing the current status model, public documentation, tests, consumers, and the Git history of the scope collector:
 
 1. **Local-flow exhaustion makes the report partial.** This matches every other semantic/linking budget and prevents an exhausted negative result from being presented as complete. Record the reason at file scope for the affected module and let normal report combination raise project completion to `Partial`.
-2. **SCCs are transient validation data; edge provenance is currently dead data.** Compute SCCs, enforce `MAX_SCC_SIZE`, retain only the metric/status needed downstream, and discard the components. Remove edge provenance until a concrete diagnostic consumes it; describe the present export algorithm as a bounded global fixed point rather than claiming SCC-driven convergence.
+2. **Resolved by the SCC-DAG linker.** See `private/scc-plan.md`. SCCs become the primary driver of export resolution order; single-node SCCs resolve in one pass, cycles get a local fixed-point. Edge provenance is removed as dead data until a concrete diagnostic consumes it.
 3. **`Linter::lint_project(ProjectInput)` remains a public convenience facade, not a second internal pipeline.** Its documented API is useful for in-memory callers, but it should feed the staged collection/local/resolution pipeline before IDs are assigned. Module and request identities should be created once, after the authoritative source and authored-request sets exist.
 4. **A `tsconfig` extends cycle drops only the offending edge.** Emit a deterministic diagnostic, retain the current config's local settings and previously resolved acyclic inheritance, and do not broaden selection with the cyclic parent. This is the behavior asserted by the existing cycle tests; canonicalizing the candidate parent before membership checks closes the remaining alias-path hole.
 5. **Cheap `Linter` cloning is a public contract.** The type documentation promises it for concurrent use, so immutable compiled configuration should be shared with `Arc`; only runtime handles with intentionally different sharing semantics should remain separate.

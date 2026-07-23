@@ -8,7 +8,7 @@ use smol_str::SmolStr;
 
 use super::{
     projection::ProjectionOutcome,
-    state::{ExportTable, ModuleGraph},
+    state::{ExportTable, ModuleGraph, SccPartition},
 };
 use crate::{
     AnalysisDiagnostic, ProjectRelativePath,
@@ -195,10 +195,12 @@ pub struct ProjectSemanticModel {
     pub(super) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
     /// Fixed-point export identities for linked modules.
     pub(super) exports: ExportTable,
-    /// Internal module graph and strongly connected components.
+    /// Internal module graph.
     pub(super) graph: ModuleGraph,
-    /// Number of export-linking refinement rounds.
-    pub(super) link_rounds: usize,
+    /// SCC partition with DAG and topological order.
+    pub(super) scc_partition: SccPartition,
+    /// Sum of cycle-local fixed-point rounds (0 for acyclic graphs).
+    pub(super) link_cycle_rounds: usize,
     /// Project diagnostics accumulated during linking and budgets.
     pub(super) diagnostics: Vec<AnalysisDiagnostic>,
     pub(super) status: AnalysisStatus,
@@ -238,10 +240,14 @@ impl ProjectSemanticModel {
             graph: {
                 let mut graph = ModuleGraph::default();
                 graph.ensure_node(ModuleId::new(0));
-                graph.set_components(vec![vec![ModuleId::new(0)]]);
                 graph
             },
-            link_rounds: 0,
+            scc_partition: SccPartition {
+                components: vec![vec![ModuleId::new(0)]],
+                dag: BTreeMap::new(),
+                order: vec![0],
+            },
+            link_cycle_rounds: 0,
             diagnostics: Vec::new(),
             status,
             link_budget: BudgetTracker::default(),
@@ -266,7 +272,12 @@ impl ProjectSemanticModel {
             resolutions: validated.resolutions,
             exports: ExportTable::default(),
             graph: ModuleGraph::default(),
-            link_rounds: 0,
+            scc_partition: SccPartition {
+                components: Vec::new(),
+                dag: BTreeMap::new(),
+                order: Vec::new(),
+            },
+            link_cycle_rounds: 0,
             diagnostics: Vec::new(),
             status: AnalysisStatus::default(),
             link_budget: BudgetTracker::default(),
@@ -445,7 +456,7 @@ impl ProjectSemanticModel {
                 .sum(),
             edges: self.graph.edge_count(),
             exports: self.exports.len(),
-            scc_rounds: self.link_rounds,
+            scc_rounds: self.link_cycle_rounds,
             effect_projections: 0,
             evidence,
         }

@@ -1,23 +1,16 @@
 //! Owned state for project linking.
-//!
-//! The graph stores adjacency separately from request provenance so edge
-//! deduplication cannot discard the source locations that explain a link.
 
 use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use crate::analysis::{ExportResolution, ModuleId, QualifiedRequestId};
+use crate::analysis::{ExportResolution, ModuleId};
 
 #[derive(Debug, Default)]
-/// Deterministic internal-module graph and its SCC decomposition.
+/// Deterministic internal-module graph.
 pub(in crate::analysis) struct ModuleGraph {
     /// Outgoing internal edges by importer.
     forward: BTreeMap<ModuleId, Vec<ModuleId>>,
-    /// Authored request keys that justify each collapsed edge.
-    provenance: BTreeMap<(ModuleId, ModuleId), Vec<QualifiedRequestId>>,
-    /// Sorted strongly connected components of the graph.
-    components: Vec<Vec<ModuleId>>,
 }
 impl ModuleGraph {
     /// Ensure a module appears even when it has no internal dependencies.
@@ -25,15 +18,9 @@ impl ModuleGraph {
         self.forward.entry(id).or_default();
     }
 
-    /// Insert one internal edge and retain its request provenance.
-    pub(in crate::analysis) fn insert_edge(
-        &mut self,
-        from: ModuleId,
-        to: ModuleId,
-        request: QualifiedRequestId,
-    ) -> bool {
+    /// Insert one internal edge.
+    pub(in crate::analysis) fn insert_edge(&mut self, from: ModuleId, to: ModuleId) -> bool {
         self.ensure_node(from);
-        self.provenance.entry((from, to)).or_default().push(request);
         let targets = self.forward.entry(from).or_default();
         if targets.contains(&to) {
             return false;
@@ -48,10 +35,6 @@ impl ModuleGraph {
             values.sort_unstable();
             values.dedup();
         }
-        for requests in self.provenance.values_mut() {
-            requests.sort_unstable();
-            requests.dedup();
-        }
     }
 
     /// Borrow outgoing adjacency for graph traversal.
@@ -59,20 +42,19 @@ impl ModuleGraph {
         &self.forward
     }
 
-    /// Borrow the computed SCCs.
-    pub(in crate::analysis) fn components(&self) -> &[Vec<ModuleId>] {
-        &self.components
-    }
-
-    /// Store the sorted SCC decomposition produced by the linker.
-    pub(in crate::analysis) fn set_components(&mut self, components: Vec<Vec<ModuleId>>) {
-        self.components = components;
-    }
-
     /// Count unique outgoing internal edges.
     pub(in crate::analysis) fn edge_count(&self) -> usize {
         self.forward.values().map(Vec::len).sum()
     }
+}
+
+/// Strongly connected component partition, DAG, and topological order.
+#[derive(Debug)]
+pub(in crate::analysis) struct SccPartition {
+    pub components: Vec<Vec<ModuleId>>,
+    #[allow(dead_code)]
+    pub dag: BTreeMap<usize, Vec<usize>>,
+    pub order: Vec<usize>,
 }
 
 #[derive(Debug, Default)]
@@ -102,13 +84,6 @@ impl ExportTable {
         }
         self.0.insert(key, value);
         true
-    }
-
-    /// Fail closed for every known export after linker non-convergence.
-    pub(in crate::analysis) fn mark_unknown(&mut self) {
-        for value in self.0.values_mut() {
-            *value = ExportResolution::Unknown;
-        }
     }
 
     /// Return the number of indexed module/export entries.
