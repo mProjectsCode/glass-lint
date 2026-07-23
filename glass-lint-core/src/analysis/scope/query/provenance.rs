@@ -36,11 +36,8 @@ impl FrozenScopeGraph {
         }
 
         let receiver = self.binding_key_for_name(root, span)?;
-        let written = self.property_was_written_at(
-            &receiver,
-            self.name_path(&SymbolPath::from_chain(member))?,
-            span,
-        );
+        let path = self.name_path(&SymbolPath::from_chain(member))?;
+        let written = self.property_was_written_at(&receiver, &path, span);
         if written {
             return None;
         }
@@ -70,92 +67,78 @@ impl FrozenScopeGraph {
         member: &MemberExpr,
         syntactic_chain: &SymbolPath,
     ) -> Option<SymbolPath> {
-        if let Some(cached) = self.member_cache.resolve_chain.borrow().get(&member.span) {
-            return cached.clone();
+        if self.has_dynamic_lookup_at(member.span) {
+            return None;
         }
 
-        let result = (|| {
-            if self.has_dynamic_lookup_at(member.span) {
-                return None;
-            }
+        let Some(root) = member_root_identifier(member) else {
+            return (syntactic_chain.first_segment() == Some("this"))
+                .then(|| syntactic_chain.clone());
+        };
 
-            let Some(root) = member_root_identifier(member) else {
-                return (syntactic_chain.first_segment() == Some("this"))
-                    .then(|| syntactic_chain.clone());
+        let receiver_key = self.binding_key_for_name(root.sym.as_ref(), root.span)?;
+        let segments = syntactic_chain.segments();
+        let name_path = self.name_path(syntactic_chain)?;
+        let name_segments = name_path.segments();
+
+        for prefix_end in (2..=segments.len()).rev() {
+            let Some(assignments) =
+                self.property_aliases(&receiver_key, &name_segments[1..prefix_end])
+            else {
+                continue;
             };
 
-            let receiver_key = self.binding_key_for_name(root.sym.as_ref(), root.span)?;
-            let segments = syntactic_chain.segments();
+            let prior_count =
+                assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
 
-            for prefix_end in (2..=segments.len()).rev() {
-                let path = segments[1..prefix_end].to_vec();
-                let Some(path) = self.name_path(&SymbolPath::from_segments(path)) else {
-                    continue;
-                };
-                let Some(assignments) = self.property_aliases(&(receiver_key.clone(), path)) else {
-                    continue;
-                };
-
-                let prior_count =
-                    assignments.partition_point(|assignment| assignment.span.lo <= member.span.lo);
-
-                if let Some(assignment) =
-                    assignments[..prior_count].iter().rev().find(|assignment| {
-                        self.scope_span(assignment.scope)
-                            .is_some_and(|scope| contains(scope, member.span))
-                    })
-                {
-                    let target = assignment.target.as_ref()?;
-                    let suffix = SymbolPath::from_segments(segments[prefix_end..].to_vec());
-                    return Some(target.append_path(&suffix));
-                }
+            if let Some(assignment) = assignments[..prior_count].iter().rev().find(|assignment| {
+                self.scope_span(assignment.scope)
+                    .is_some_and(|scope| contains(scope, member.span))
+            }) {
+                let target = assignment.target.as_ref()?;
+                let suffix = SymbolPath::from_segments(segments[prefix_end..].to_vec());
+                return Some(target.append_path(&suffix));
             }
+        }
 
-            let suffix = SymbolPath::from_segments(segments[1..].to_vec());
-            match self.binding_at(root.sym.as_ref(), root.span) {
-                Some(BindingProvenance::ValueAlias { target })
-                    if self.rooted_path_available(target) =>
-                {
-                    Some(self.symbol_path(target)?.append_path(&suffix))
-                }
-                Some(BindingProvenance::BoundCallable { target, .. })
-                    if self.rooted_path_available(target) =>
-                {
-                    Some(self.symbol_path(target)?.append_path(&suffix))
-                }
-                Some(BindingProvenance::ReturnedObject { source })
-                    if self.rooted_path_available(source) =>
-                {
-                    Some(self.symbol_path(source)?.append_path(&suffix))
-                }
-                Some(
-                    BindingProvenance::ValueAlias { .. }
-                    | BindingProvenance::BoundCallable { .. }
-                    | BindingProvenance::ReturnedObject { .. },
-                ) => None,
-                Some(
-                    BindingProvenance::Local
-                    | BindingProvenance::ModuleExport { .. }
-                    | BindingProvenance::ModuleNamespace { .. }
-                    | BindingProvenance::BoundModuleCallable { .. }
-                    | BindingProvenance::StaticString(_)
-                    | BindingProvenance::StaticNumber(_)
-                    | BindingProvenance::StaticStringArray(_)
-                    | BindingProvenance::StaticObjectKeys(_)
-                    | BindingProvenance::StaticObjectValues(_),
-                ) => None,
-                None if self.is_global(root.sym.as_ref()) => {
-                    self.rooted_chain_available_at(syntactic_chain, member.span)
-                }
-                None => None,
+        let suffix = SymbolPath::from_segments(segments[1..].to_vec());
+        match self.binding_at(root.sym.as_ref(), root.span) {
+            Some(BindingProvenance::ValueAlias { target })
+                if self.rooted_path_available(target) =>
+            {
+                Some(self.symbol_path(target)?.append_path(&suffix))
             }
-        })();
-
-        self.member_cache
-            .resolve_chain
-            .borrow_mut()
-            .insert(member.span, result.clone());
-        result
+            Some(BindingProvenance::BoundCallable { target, .. })
+                if self.rooted_path_available(target) =>
+            {
+                Some(self.symbol_path(target)?.append_path(&suffix))
+            }
+            Some(BindingProvenance::ReturnedObject { source })
+                if self.rooted_path_available(source) =>
+            {
+                Some(self.symbol_path(source)?.append_path(&suffix))
+            }
+            Some(
+                BindingProvenance::ValueAlias { .. }
+                | BindingProvenance::BoundCallable { .. }
+                | BindingProvenance::ReturnedObject { .. },
+            ) => None,
+            Some(
+                BindingProvenance::Local
+                | BindingProvenance::ModuleExport { .. }
+                | BindingProvenance::ModuleNamespace { .. }
+                | BindingProvenance::BoundModuleCallable { .. }
+                | BindingProvenance::StaticString(_)
+                | BindingProvenance::StaticNumber(_)
+                | BindingProvenance::StaticStringArray(_)
+                | BindingProvenance::StaticObjectKeys(_)
+                | BindingProvenance::StaticObjectValues(_),
+            ) => None,
+            None if self.is_global(root.sym.as_ref()) => {
+                self.rooted_chain_available_at(syntactic_chain, member.span)
+            }
+            None => None,
+        }
     }
 
     /// Return the canonical identity for a rooted member expression.
@@ -201,39 +184,33 @@ impl FrozenScopeGraph {
     /// Check writes through both a canonical root and any global-object alias.
     /// A write to an earlier segment invalidates every deeper rooted path.
     fn rooted_chain_mutated_at(&self, chain: &SymbolPath, span: Span) -> bool {
-        let key = (SmolStr::from(chain.to_string()), span);
-        if let Some(cached) = self.member_cache.mutated_at.borrow().get(&key) {
-            return *cached;
+        let Some(path) = self.name_path(chain) else {
+            return false;
+        };
+        let segments = path.segments();
+        if segments.len() < 2 {
+            return false;
         }
 
-        let result = (|| {
-            let segments = chain.segments();
-            if segments.len() < 2 {
-                return false;
-            }
-
-            if self
-                .global_objects()
-                .filter(|root| self.is_global_member(root, &segments[0]))
+        let first = segments[0];
+        if self.resolve_name_id(first).is_some_and(|first_name| {
+            self.global_objects()
+                .filter(|root| self.is_global_member(root, &first_name))
+                .filter_map(|root| self.name_id(root))
                 .any(|root| {
-                    self.rooted_property_was_mutated_at(&(*root).into(), Some(&segments[0]), span)
+                    self.rooted_property_ids_were_mutated_at(
+                        std::slice::from_ref(&root),
+                        Some(first),
+                        span,
+                    )
                 })
-            {
-                return true;
-            }
+        }) {
+            return true;
+        }
 
-            (1..segments.len()).any(|end| {
-                let receiver = SymbolPath::from_segments(segments[..end].to_vec());
-                let property = &segments[end];
-                self.rooted_property_was_mutated_at(&receiver, Some(property.as_str()), span)
-            })
-        })();
-
-        self.member_cache
-            .mutated_at
-            .borrow_mut()
-            .insert(key, result);
-        result
+        (1..segments.len()).any(|end| {
+            self.rooted_property_ids_were_mutated_at(&segments[..end], Some(segments[end]), span)
+        })
     }
 
     pub(in crate::analysis) fn instance_member_available_at(&self, member: &MemberExpr) -> bool {
@@ -257,10 +234,10 @@ impl FrozenScopeGraph {
     fn property_was_written_at(
         &self,
         receiver: &BindingKey,
-        path: crate::analysis::value::NamePath,
+        path: &crate::analysis::value::NamePath,
         span: Span,
     ) -> bool {
-        self.property_aliases(&(receiver.clone(), path))
+        self.property_aliases(receiver, path.segments())
             .is_some_and(|assignments| {
                 assignments.iter().any(|assignment| {
                     assignment.span.lo <= span.lo
@@ -282,7 +259,16 @@ impl FrozenScopeGraph {
             return false;
         };
         let property = property.and_then(|property| self.name_id(property));
-        self.rooted_mutations(&root).is_some_and(|mutations| {
+        self.rooted_property_ids_were_mutated_at(root.segments(), property, span)
+    }
+
+    fn rooted_property_ids_were_mutated_at(
+        &self,
+        root: &[crate::analysis::name::NameId],
+        property: Option<crate::analysis::name::NameId>,
+        span: Span,
+    ) -> bool {
+        self.rooted_mutations(root).is_some_and(|mutations| {
             mutations.iter().any(|mutation| {
                 mutation.span.lo <= span.lo
                     && mutation
@@ -453,24 +439,19 @@ impl FrozenScopeGraph {
     pub(in crate::analysis) fn member_call_provenance_for_chain(
         &self,
         member: &MemberExpr,
-        chain: &str,
+        chain: &SymbolPath,
     ) -> Option<SymbolMemberProvenance> {
         if self.has_dynamic_lookup_at(member.span) {
             return None;
         }
-        if let Some((module, prefix)) = self.module_member_for_expr(&member.obj) {
-            let property = self.member_property_name(member)?;
-            return Some(SymbolMemberProvenance::ModuleNamespace {
-                module,
-                member: if prefix.is_empty() {
-                    property
-                } else {
-                    format!("{prefix}.{property}").to_smolstr()
-                },
-            });
+        if let Some((module, member)) = self.module_member_for_member(member) {
+            return Some(SymbolMemberProvenance::ModuleNamespace { module, member });
         }
         let root = member_root_identifier(member)?;
-        let member = chain.strip_prefix(root.sym.as_ref())?.strip_prefix('.')?;
+        if chain.first_segment() != Some(root.sym.as_ref()) {
+            return None;
+        }
+        let member = chain.segments().get(1..)?.join(".");
         match self.binding_at(root.sym.as_ref(), root.span) {
             Some(BindingProvenance::ModuleNamespace { module }) => {
                 Some(SymbolMemberProvenance::ModuleNamespace {
@@ -484,70 +465,55 @@ impl FrozenScopeGraph {
 
     /// Produce the immutable resolver seed for a member occurrence.
     pub(in crate::analysis) fn member_value_seed(&self, member: &MemberExpr) -> MemberValueSeed {
-        if let Some(cached) = self.member_cache.member_seed.borrow().get(&member.span) {
-            return cached.clone();
-        }
-
-        let result = {
-            let syntactic_chain = self.member_expression_chain(member);
-            let rooted_chain = syntactic_chain
-                .as_ref()
-                .and_then(|chain| self.resolve_member_chain(member, chain))
-                .or_else(|| self.rooted_member_chain(member))
-                .and_then(|path| self.name_path(&path));
-            let module_member = syntactic_chain.as_ref().and_then(|chain| {
-                self.member_call_provenance_for_chain(member, &chain.to_string())
+        let syntactic_chain = self.member_expression_chain(member);
+        let rooted_chain = syntactic_chain
+            .as_ref()
+            .and_then(|chain| self.resolve_member_chain(member, chain))
+            .and_then(|path| self.name_path(&path));
+        let module_member = syntactic_chain
+            .as_ref()
+            .and_then(|chain| self.member_call_provenance_for_chain(member, chain));
+        let returned_member = self.returned_member(member);
+        let binding = self
+            .binding_key_for_expr(&member.obj)
+            .or_else(|| self.global_key_for_expr(&member.obj))
+            .and_then(|mut key| {
+                key.append_segment(self.name_id(self.member_property_name(member)?.as_str())?);
+                Some(key)
             });
-            let returned_member = self.returned_member(member);
-            let binding = self
-                .binding_key_for_expr(&member.obj)
-                .or_else(|| self.global_key_for_expr(&member.obj))
-                .and_then(|mut key| {
-                    key.append_segment(self.name_id(self.member_property_name(member)?.as_str())?);
-                    Some(key)
-                });
-            MemberValueSeed {
-                syntactic_chain,
-                rooted_chain,
-                binding,
-                module_member,
-                returned_member,
-            }
-        };
-
-        self.member_cache
-            .member_seed
-            .borrow_mut()
-            .insert(member.span, result.clone());
-        result
+        MemberValueSeed {
+            syntactic_chain,
+            rooted_chain,
+            binding,
+            module_member,
+            returned_member,
+        }
     }
 
-    /// Resolve supported import/require expressions to module/member paths.
-    pub(in crate::analysis) fn module_member_for_expr(
+    fn module_member_for_member(&self, member: &MemberExpr) -> Option<(SmolStr, SmolStr)> {
+        let mut members = vec![self.member_property_name(member)?];
+        let (module, base) = self.collect_module_member(&member.obj, &mut members)?;
+        Some((module, Self::join_module_member(base.as_ref(), &members)))
+    }
+
+    /// Collect member names from leaf to root, deferring formatting until the
+    /// one retained module-member identity is assembled.
+    fn collect_module_member(
         &self,
         expr: &Expr,
-    ) -> Option<(SmolStr, SmolStr)> {
+        members: &mut Vec<SmolStr>,
+    ) -> Option<(SmolStr, Option<SmolStr>)> {
         match expr {
             Expr::Ident(ident) => match self.binding_at(ident.sym.as_ref(), ident.span)? {
                 BindingProvenance::ModuleExport { module, export } => {
-                    Some((module.clone(), export.clone()))
+                    Some((module.clone(), Some(export.clone())))
                 }
-                BindingProvenance::ModuleNamespace { module } => {
-                    Some((module.clone(), SmolStr::new("")))
-                }
+                BindingProvenance::ModuleNamespace { module } => Some((module.clone(), None)),
                 _ => None,
             },
             Expr::Member(member) => {
-                let (module, prefix) = self.module_member_for_expr(&member.obj)?;
-                let property = self.member_property_name(member)?;
-                Some((
-                    module,
-                    if prefix.is_empty() {
-                        property
-                    } else {
-                        format!("{prefix}.{property}").to_smolstr()
-                    },
-                ))
+                members.push(self.member_property_name(member)?);
+                self.collect_module_member(&member.obj, members)
             }
             Expr::Call(call) => {
                 let swc_ecma_ast::Callee::Expr(callee) = &call.callee else {
@@ -567,18 +533,30 @@ impl FrozenScopeGraph {
                 let Expr::Lit(swc_ecma_ast::Lit::Str(module)) = &*argument.expr else {
                     return None;
                 };
-                Some((
-                    module.value.to_string_lossy().to_smolstr(),
-                    SmolStr::new(""),
-                ))
+                Some((module.value.to_string_lossy().to_smolstr(), None))
             }
-            Expr::Paren(paren) => self.module_member_for_expr(&paren.expr),
+            Expr::Paren(paren) => self.collect_module_member(&paren.expr, members),
             Expr::Seq(sequence) => sequence
                 .exprs
                 .last()
-                .and_then(|expr| self.module_member_for_expr(expr)),
+                .and_then(|expr| self.collect_module_member(expr, members)),
             _ => None,
         }
+    }
+
+    fn join_module_member(base: Option<&SmolStr>, members: &[SmolStr]) -> SmolStr {
+        let segment_count = members.len() + usize::from(base.is_some());
+        let capacity = base.map_or(0, SmolStr::len)
+            + members.iter().map(SmolStr::len).sum::<usize>()
+            + segment_count.saturating_sub(1);
+        let mut path = String::with_capacity(capacity);
+        for segment in base.into_iter().chain(members.iter().rev()) {
+            if !path.is_empty() {
+                path.push('.');
+            }
+            path.push_str(segment);
+        }
+        path.into()
     }
 
     /// Returns the proven source call or rooted object that produced `expr`.

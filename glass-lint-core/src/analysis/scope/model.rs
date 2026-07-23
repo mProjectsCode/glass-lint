@@ -5,8 +5,8 @@
 //! contract so aliases cannot cross a reassignment or lexical boundary.
 
 use std::{
-    cell::{Cell, RefCell},
-    collections::{BTreeMap, BTreeSet, HashMap},
+    cell::Cell,
+    collections::{BTreeMap, BTreeSet},
 };
 
 use smol_str::SmolStr;
@@ -296,7 +296,8 @@ impl BindingIndex {
 
 #[derive(Debug)]
 pub(super) struct MutationIndex {
-    pub(super) property_assignments: BTreeMap<(BindingKey, NamePath), Vec<PropertyAliasFact>>,
+    pub(super) property_assignments:
+        BTreeMap<BindingKey, BTreeMap<NamePath, Vec<PropertyAliasFact>>>,
     pub(super) rooted_property_mutations: BTreeMap<NamePath, Vec<RootedPropertyMutationFact>>,
     pub(super) dynamic_evals_by_scope: BTreeMap<ScopeId, Vec<ScopeEffect>>,
     pub(super) mutable_static_objects: BTreeSet<ScopedName>,
@@ -314,14 +315,18 @@ impl MutationIndex {
 
     pub(super) fn property_aliases(
         &self,
-        key: &(BindingKey, NamePath),
+        receiver: &BindingKey,
+        path: &[NameId],
     ) -> Option<&[PropertyAliasFact]> {
-        self.property_assignments.get(key).map(Vec::as_slice)
+        self.property_assignments
+            .get(receiver)?
+            .get(path)
+            .map(Vec::as_slice)
     }
 
     pub(super) fn rooted_mutations(
         &self,
-        root: &NamePath,
+        root: &[NameId],
     ) -> Option<&[RootedPropertyMutationFact]> {
         self.rooted_property_mutations.get(root).map(Vec::as_slice)
     }
@@ -348,8 +353,6 @@ pub(in crate::analysis) struct ScopeGraph {
     pub(super) mutations: MutationIndex,
     /// False when source-order collection did not consume the planned shape.
     scope_shape_valid: bool,
-    /// Lazy cache for member chain provenance queries.
-    pub(super) member_cache: MemberChainCache,
 }
 
 #[derive(Debug)]
@@ -364,8 +367,6 @@ pub(in crate::analysis) struct FrozenScopeGraph {
     pub(super) scopes: LexicalScopeIndex,
     pub(super) bindings: BindingIndex,
     pub(super) mutations: MutationIndex,
-    /// Lazy cache for member chain provenance queries.
-    pub(super) member_cache: MemberChainCache,
 }
 
 impl ScopeGraph {
@@ -385,7 +386,6 @@ impl ScopeGraph {
             ),
             mutations: MutationIndex::new(BTreeSet::new()),
             scope_shape_valid: true,
-            member_cache: MemberChainCache::default(),
         }
     }
 
@@ -404,7 +404,6 @@ impl ScopeGraph {
             ),
             mutations: MutationIndex::new(parts.mutable_static_objects),
             scope_shape_valid: parts.scope_shape_valid,
-            member_cache: MemberChainCache::default(),
         }
     }
 
@@ -415,7 +414,6 @@ impl ScopeGraph {
             scopes: self.scopes,
             bindings: self.bindings,
             mutations: self.mutations,
-            member_cache: self.member_cache,
         }
     }
 
@@ -502,7 +500,9 @@ impl ScopeGraph {
                 .unwrap_or_default();
             self.mutations
                 .property_assignments
-                .entry((receiver_key, path))
+                .entry(receiver_key)
+                .or_default()
+                .entry(path)
                 .or_default()
                 .push(PropertyAliasFact {
                     span: assignment.span,
@@ -510,8 +510,10 @@ impl ScopeGraph {
                     target: assignment.target,
                 });
         }
-        for assignments in self.mutations.property_assignments.values_mut() {
-            assignments.sort_by_key(|assignment| assignment.span.lo);
+        for receiver_assignments in self.mutations.property_assignments.values_mut() {
+            for assignments in receiver_assignments.values_mut() {
+                assignments.sort_by_key(|assignment| assignment.span.lo);
+            }
         }
         for mutation in rooted_mutations {
             self.mutations
@@ -763,17 +765,6 @@ pub(in crate::analysis) struct MemberValueSeed {
     pub(in crate::analysis) returned_member: Option<(NamePath, NamePath)>,
 }
 
-#[derive(Debug, Default)]
-/// Lazy cache for member chain provenance queries on the frozen scope graph.
-pub(in crate::analysis) struct MemberChainCache {
-    /// Resolved member chain results keyed by member expression span.
-    pub(in crate::analysis) resolve_chain: RefCell<HashMap<Span, Option<SymbolPath>>>,
-    /// Rooted chain mutation results keyed by (chain, span).
-    pub(in crate::analysis) mutated_at: RefCell<HashMap<(SmolStr, Span), bool>>,
-    /// Complete member value seed results keyed by member expression span.
-    pub(in crate::analysis) member_seed: RefCell<HashMap<Span, MemberValueSeed>>,
-}
-
 #[derive(Debug, Clone)]
 /// One source-ordered reassignment of a lexical binding.
 pub(in crate::analysis) struct AliasAssignment {
@@ -1008,14 +999,15 @@ impl FrozenScopeGraph {
 
     pub(super) fn property_aliases(
         &self,
-        key: &(BindingKey, NamePath),
+        receiver: &BindingKey,
+        path: &[NameId],
     ) -> Option<&[PropertyAliasFact]> {
-        self.mutations.property_aliases(key)
+        self.mutations.property_aliases(receiver, path)
     }
 
     pub(super) fn rooted_mutations(
         &self,
-        root: &NamePath,
+        root: &[NameId],
     ) -> Option<&[RootedPropertyMutationFact]> {
         self.mutations.rooted_mutations(root)
     }

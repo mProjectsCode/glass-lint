@@ -212,6 +212,12 @@ impl NamePath {
     }
 }
 
+impl std::borrow::Borrow<[NameId]> for NamePath {
+    fn borrow(&self) -> &[NameId] {
+        self.segments()
+    }
+}
+
 /// Canonical member path represented as individual segments rather than a
 /// formatted string, so identity and display concerns stay separate.
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -145,6 +145,63 @@ fn follows_nested_destructured_rooted_members() {
 }
 
 #[test]
+fn follows_a_deep_property_alias_without_changing_identity() {
+    let receiver = (0..48).fold(String::from("holder"), |chain, index| {
+        format!("{chain}.p{index}")
+    });
+    let source =
+        format!("const holder = {{}}; {receiver} = app.commands; {receiver}.execute('open');");
+
+    assert_matches(
+        &source,
+        MatcherDecl::builder()
+            .member_call_rooted("app.commands.execute")
+            .arg_static_strings(0, ["open"])
+            .build()
+            .unwrap(),
+        1,
+    );
+}
+
+#[test]
+fn preserves_deep_module_member_provenance() {
+    let member = (0..48)
+        .map(|index| format!("p{index}"))
+        .chain(std::iter::once(String::from("send")))
+        .collect::<Vec<_>>()
+        .join(".");
+    let source = format!("import * as sdk from 'sdk'; sdk.{member}();");
+
+    assert_matches(
+        &source,
+        MatcherDecl::builder()
+            .member_call_module("sdk", &member)
+            .build()
+            .unwrap(),
+        1,
+    );
+}
+
+#[test]
+fn a_deep_rooted_chain_fails_closed_after_an_earlier_prefix_mutation() {
+    let suffix = (0..48)
+        .map(|index| format!("p{index}"))
+        .collect::<Vec<_>>()
+        .join(".");
+    let chain = format!("app.{suffix}.execute");
+    let source = format!("app.p0.p1 = replacement; {chain}();");
+
+    assert_matches(
+        &source,
+        MatcherDecl::builder()
+            .member_call_rooted(&chain)
+            .build()
+            .unwrap(),
+        0,
+    );
+}
+
+#[test]
 fn follows_rooted_members_called_via_sequence_expressions() {
     assert_matches(
         "(0, app.commands.execute)('open');",

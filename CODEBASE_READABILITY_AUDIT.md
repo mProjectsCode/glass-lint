@@ -225,7 +225,19 @@ owned prefixes. Preserve source-position-sensitive mutation checks,
 shadowing, reassignment, and fail-closed ambiguity. Add a deep minified-chain
 profile and exact-behavior tests before replacing the existing paths.
 
-- **Status:** Done — added `MemberChainCache` (three `RefCell<HashMap<...>>` caches) to `ScopeGraph`; `resolve_member_chain` caches `Option<SymbolPath>` keyed by `member.span`; `rooted_chain_mutated_at` caches `bool` keyed by `(chain_string, span)`; `member_value_seed` caches the complete `MemberValueSeed` keyed by `member.span`. Repeated nested-member resolution now returns cached results instead of recomputing all prefixes.
+- **Status:** Done — the first cache-based implementation was removed after
+  profiling showed no measurable improvement: `Resolver` already caches each
+  resolved member by source range, so the three `RefCell<HashMap<...>>` caches
+  duplicated ownership and the mutation cache allocated a string key for
+  mostly one-shot work. Property aliases are now indexed first by
+  `BindingKey`, allowing successive `NameId` prefixes to query the inner map
+  as borrowed slices. Rooted-mutation checks likewise convert the complete
+  chain once and query borrowed ID slices instead of allocating every receiver
+  prefix. `member_value_seed` no longer retries the same failed chain
+  resolution, and module provenance no longer formats a chain merely to split
+  it again or formats each intermediate module-member prefix. Deep rooted,
+  alias, and module-member positives plus a prefix-mutation negative preserve
+  strict, position-sensitive behavior.
 
 #### READ-011 — DeclarationFacts eagerly performs seven overlapping analyses even when the result is discarded
 
