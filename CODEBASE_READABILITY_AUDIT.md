@@ -86,7 +86,7 @@ Each module independently flattens selected rules into new constrained-clause an
 
 `ExportResolution` and `LinkedModuleIdentity` carry the same six variants and are converted one-for-one during matching. Use one domain identity type, or expose a narrow borrowed view where a layer-specific API is required, to remove conversion code and future variant synchronization.
 
-### READ-011 — Matcher declarations mix unvalidated input with compiled state
+### READ-011 — Matcher declarations mix unvalidated input with compiled state  ✅
 
 - **Severity:** Medium
 - **Category:** API
@@ -110,7 +110,7 @@ One method links modules, mutates parse status, matches rules, handles exhaustio
 
 The input validator creates normalized path newtypes, but collection admission and resolution normalize the same strings again and rebuild ownership; validation also creates a cloned set where map membership is sufficient. Let the typed admitted path be the phase currency and keep raw-string normalization at the public boundary.
 
-### READ-014 — Authored requests are projected and copied through multiple layers
+### READ-014 — Authored requests are projected and copied through multiple layers  ✅
 
 - **Severity:** Medium
 - **Category:** Duplication
@@ -118,7 +118,7 @@ The input validator creates normalized path newtypes, but collection admission a
 
 `ModuleInterface` and `ProjectModule` independently convert authored requests, and artifact recording then clones request keys and values into an index while retaining the original vector. Give request projection one owner and pass stable IDs or shared records through local analysis, resolution, and linking.
 
-### READ-015 — Pending project sources are cloned to cross an internal borrow boundary
+### READ-015 — Pending project sources are cloned to cross an internal borrow boundary  ✅
 
 - **Severity:** Medium
 - **Category:** Architecture
@@ -158,7 +158,7 @@ Collection first traverses all facts to initialize function slots and then trave
 
 Normal calls versus `.call`/`.apply` argument interpretation is repeated in the fact stream, flow effects, and call-fact construction. Centralize it in a canonical borrowed `CallView` so every downstream phase sees the same callee and effective arguments.
 
-### READ-020 — `NamePath` and `SymbolPath` duplicate the same path algebra
+### READ-020 — `NamePath` and `SymbolPath` duplicate the same path algebra  ✅
 
 - **Severity:** Medium
 - **Category:** Duplication
@@ -230,7 +230,7 @@ Effective-config construction reads and parses the file, after which reference d
 
 The diagnostic shape always exposes a `cycle_target`, and malformed fields or patterns populate it with the config's own path; discovery then sorts every diagnostic as though it described a cycle edge. Use explicit variants or an error code plus optional related path so callers cannot misinterpret diagnostic meaning.
 
-### READ-029 — Deadline enforcement is scattered and misses recursive config work
+### READ-029 — Deadline enforcement is scattered and misses recursive config work  ✅
 
 - **Severity:** Medium
 - **Category:** Architecture
@@ -238,7 +238,7 @@ The diagnostic shape always exposes a `cycle_target`, and malformed fields or pa
 
 Walkers and loader loops each perform their own deadline checks, but recursive `extends` processing has no deadline context and reference traversal has no uniform phase budget. Pass one deadline/budget object through discovery, config construction, reading, and resolution so boundedness is both comprehensive and visible.
 
-### READ-030 — Loader frontier expansion interleaves several nominal phases
+### READ-030 — Loader frontier expansion interleaves several nominal phases  ✅
 
 - **Severity:** Medium
 - **Category:** Architecture
@@ -318,7 +318,7 @@ Ordinary and optional member reads emit the same fact through separate branches,
 
 Member-call and member-read cases perform the same returned-value filtering against different indexes. Select the relevant event iterator once and apply one shared predicate.
 
-### READ-040 — Analysis-limit invariants are repeated for every field  ✅
+### READ-040 — Analysis-limit invariants are repeated for every field  ✅  ✅
 
 - **Severity:** Low
 - **Category:** Newtype
@@ -374,7 +374,7 @@ Many unit tests repeat parsing, resolver creation, builder creation, visiting, a
 
 Outside-project and excluded-path branches separately derive the same internal-versus-external request classification. Compute that classification once and retain only the path-specific outcome construction in each branch.
 
-### READ-047 — Effective-tsconfig implementation fields are exposed and suppressed as dead  ✅
+### READ-047 — Effective-tsconfig implementation fields are exposed and suppressed as dead  ✅  ✅
 
 - **Severity:** Low
 - **Category:** Encapsulation

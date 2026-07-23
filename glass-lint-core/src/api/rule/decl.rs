@@ -11,12 +11,9 @@ use crate::{
     analysis::SymbolPath,
     api::{
         classification::MatchKind,
-        compiler::{
-            object_flow::CompiledObjectFlow,
-            rule::{
-                EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength,
-                QueryClause, QueryConstraint, SubjectConstraint,
-            },
+        compiler::rule::{
+            EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength,
+            QueryClause, QueryConstraint, SubjectConstraint,
         },
         rule::{
             ArgumentConstraint, ArgumentMatcher, MatcherBuildError, ModuleSpecifierPattern,
@@ -35,8 +32,8 @@ pub struct MatcherDecl {
     pub(crate) constraints: Vec<QueryConstraint>,
     pub(crate) evidence_kind: MatchKind,
     pub(crate) evidence_symbol: String,
-    /// Compiled object flow when this is a flow lifecycle matcher.
-    pub(crate) object_flow: Option<CompiledObjectFlow>,
+    /// Raw object flow matcher; compiled at the catalog boundary.
+    pub(crate) object_flow: Option<ObjectFlowMatcher>,
 }
 
 impl MatcherDecl {
@@ -54,12 +51,6 @@ impl MatcherDecl {
         }
     }
 
-    /// Return a compiled object flow when this declaration carries flow info.
-    /// Returns `None` for direct matchers; flow lifecycle declarations return
-    /// the compiled flow.
-    pub(crate) fn to_object_flow(&self) -> Option<CompiledObjectFlow> {
-        self.object_flow.clone()
-    }
 }
 
 impl MatcherDecl {
@@ -695,7 +686,8 @@ impl MatcherDeclBuilder {
 }
 
 impl MatcherDecl {
-    /// Create a declaration from an old-style ObjectFlowMatcher.
+    /// Create a declaration from an ObjectFlowMatcher.
+    /// Compilation to [`CompiledObjectFlow`] is deferred to the catalog boundary.
     pub fn from_object_flow(flow: &ObjectFlowMatcher) -> Self {
         let sym: String = flow.symbol().to_owned();
         Self {
@@ -708,7 +700,7 @@ impl MatcherDecl {
             constraints: Vec::new(),
             evidence_kind: MatchKind::Call,
             evidence_symbol: sym,
-            object_flow: Some(CompiledObjectFlow::from_matcher(flow)),
+            object_flow: Some(flow.clone()),
         }
     }
 }

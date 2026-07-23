@@ -254,8 +254,8 @@ impl QueryPlan {
         for decl in decls {
             let clause = decl.to_query_clause();
             clauses.push(clause);
-            if let Some(flow) = decl.to_object_flow() {
-                flows.push(flow);
+            if let Some(matcher) = &decl.object_flow {
+                flows.push(CompiledObjectFlow::from_matcher(matcher));
             }
         }
         clauses.sort();
@@ -285,8 +285,8 @@ impl CompiledMatcherPlan {
         let mut flows: Vec<CompiledObjectFlow> = Vec::new();
         for decl in decls {
             clauses.push(decl.to_query_clause());
-            if let Some(flow) = decl.to_object_flow() {
-                flows.push(flow);
+            if let Some(matcher) = &decl.object_flow {
+                flows.push(CompiledObjectFlow::from_matcher(matcher));
             }
         }
         clauses.sort();

@@ -30,6 +30,26 @@ impl fmt::Display for AnalysisLimitError {
 
 impl std::error::Error for AnalysisLimitError {}
 
+/// A validated non-zero `usize`.
+///
+/// Construction via [`PositiveLimit::new`] guarantees the value is positive.
+#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+struct PositiveLimit(usize);
+
+impl PositiveLimit {
+    fn new(value: usize) -> Result<Self, ()> {
+        if value == 0 {
+            Err(())
+        } else {
+            Ok(Self(value))
+        }
+    }
+
+    fn get(self) -> usize {
+        self.0
+    }
+}
+
 /// Validated limits for parser and semantic-analysis bounds.
 ///
 /// Every field is guaranteed positive. The only way to obtain a value is
@@ -37,12 +57,12 @@ impl std::error::Error for AnalysisLimitError {}
 /// reject zero.
 #[derive(Clone, Debug, Serialize, Eq, PartialEq)]
 pub struct AnalysisLimits {
-    syntax_depth: usize,
-    semantic_operations: usize,
-    effect_operations: usize,
-    evidence_items: usize,
-    link_operations: usize,
-    flow_operations: usize,
+    syntax_depth: PositiveLimit,
+    semantic_operations: PositiveLimit,
+    effect_operations: PositiveLimit,
+    evidence_items: PositiveLimit,
+    link_operations: PositiveLimit,
+    flow_operations: PositiveLimit,
 }
 
 const fn default_syntax_depth() -> usize {
@@ -67,21 +87,17 @@ const fn default_flow_operations() -> usize {
 impl Default for AnalysisLimits {
     fn default() -> Self {
         Self {
-            syntax_depth: default_syntax_depth(),
-            semantic_operations: default_semantic_operations(),
-            effect_operations: default_effect_operations(),
-            evidence_items: default_evidence_items(),
-            link_operations: default_link_operations(),
-            flow_operations: default_flow_operations(),
+            syntax_depth: PositiveLimit::new(default_syntax_depth()).unwrap(),
+            semantic_operations: PositiveLimit::new(default_semantic_operations()).unwrap(),
+            effect_operations: PositiveLimit::new(default_effect_operations()).unwrap(),
+            evidence_items: PositiveLimit::new(default_evidence_items()).unwrap(),
+            link_operations: PositiveLimit::new(default_link_operations()).unwrap(),
+            flow_operations: PositiveLimit::new(default_flow_operations()).unwrap(),
         }
     }
 }
 
 impl AnalysisLimits {
-    fn check_positive(value: usize, error: AnalysisLimitError) -> Result<(), AnalysisLimitError> {
-        if value == 0 { Err(error) } else { Ok(()) }
-    }
-
     /// Validate every field and return a trusted instance.
     pub fn new(
         syntax_depth: usize,
@@ -91,136 +107,118 @@ impl AnalysisLimits {
         link_operations: usize,
         flow_operations: usize,
     ) -> Result<Self, AnalysisLimitError> {
-        Self::check_positive(syntax_depth, AnalysisLimitError::SyntaxDepth)?;
-        Self::check_positive(semantic_operations, AnalysisLimitError::SemanticOperations)?;
-        Self::check_positive(effect_operations, AnalysisLimitError::EffectOperations)?;
-        Self::check_positive(evidence_items, AnalysisLimitError::EvidenceItems)?;
-        Self::check_positive(link_operations, AnalysisLimitError::LinkOperations)?;
-        Self::check_positive(flow_operations, AnalysisLimitError::FlowOperations)?;
         Ok(Self {
-            syntax_depth,
-            semantic_operations,
-            effect_operations,
-            evidence_items,
-            link_operations,
-            flow_operations,
+            syntax_depth: PositiveLimit::new(syntax_depth)
+                .map_err(|()| AnalysisLimitError::SyntaxDepth)?,
+            semantic_operations: PositiveLimit::new(semantic_operations)
+                .map_err(|()| AnalysisLimitError::SemanticOperations)?,
+            effect_operations: PositiveLimit::new(effect_operations)
+                .map_err(|()| AnalysisLimitError::EffectOperations)?,
+            evidence_items: PositiveLimit::new(evidence_items)
+                .map_err(|()| AnalysisLimitError::EvidenceItems)?,
+            link_operations: PositiveLimit::new(link_operations)
+                .map_err(|()| AnalysisLimitError::LinkOperations)?,
+            flow_operations: PositiveLimit::new(flow_operations)
+                .map_err(|()| AnalysisLimitError::FlowOperations)?,
         })
     }
 
     pub fn syntax_depth(&self) -> usize {
-        self.syntax_depth
+        self.syntax_depth.get()
     }
 
     pub fn semantic_operations(&self) -> usize {
-        self.semantic_operations
+        self.semantic_operations.get()
     }
 
     pub fn effect_operations(&self) -> usize {
-        self.effect_operations
+        self.effect_operations.get()
     }
 
     pub fn evidence_items(&self) -> usize {
-        self.evidence_items
+        self.evidence_items.get()
     }
 
     pub fn link_operations(&self) -> usize {
-        self.link_operations
+        self.link_operations.get()
     }
 
     pub fn flow_operations(&self) -> usize {
-        self.flow_operations
+        self.flow_operations.get()
     }
 
     /// Builder-style override, validated (may return an error for zero).
     pub fn with_syntax_depth(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        Self::check_positive(value, AnalysisLimitError::SyntaxDepth)?;
-        self.syntax_depth = value;
+        self.syntax_depth =
+            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::SyntaxDepth)?;
         Ok(self)
     }
 
     pub fn with_semantic_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        Self::check_positive(value, AnalysisLimitError::SemanticOperations)?;
-        self.semantic_operations = value;
+        self.semantic_operations =
+            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::SemanticOperations)?;
         Ok(self)
     }
 
     pub fn with_effect_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        Self::check_positive(value, AnalysisLimitError::EffectOperations)?;
-        self.effect_operations = value;
+        self.effect_operations =
+            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::EffectOperations)?;
         Ok(self)
     }
 
     pub fn with_evidence_items(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        Self::check_positive(value, AnalysisLimitError::EvidenceItems)?;
-        self.evidence_items = value;
+        self.evidence_items =
+            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::EvidenceItems)?;
         Ok(self)
     }
 
     pub fn with_link_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        Self::check_positive(value, AnalysisLimitError::LinkOperations)?;
-        self.link_operations = value;
+        self.link_operations =
+            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::LinkOperations)?;
         Ok(self)
     }
 
     pub fn with_flow_operations(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
-        Self::check_positive(value, AnalysisLimitError::FlowOperations)?;
-        self.flow_operations = value;
+        self.flow_operations =
+            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::FlowOperations)?;
         Ok(self)
     }
 
     /// Test-only: set a field directly (caller must ensure positivity).
     #[cfg(test)]
     pub fn set_syntax_depth(&mut self, value: usize) {
-        assert!(
-            Self::check_positive(value, AnalysisLimitError::SyntaxDepth).is_ok(),
-            "test setter requires positive value"
-        );
-        self.syntax_depth = value;
+        self.syntax_depth = PositiveLimit::new(value)
+            .expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_semantic_operations(&mut self, value: usize) {
-        assert!(
-            Self::check_positive(value, AnalysisLimitError::SemanticOperations).is_ok(),
-            "test setter requires positive value"
-        );
-        self.semantic_operations = value;
+        self.semantic_operations = PositiveLimit::new(value)
+            .expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_effect_operations(&mut self, value: usize) {
-        assert!(
-            Self::check_positive(value, AnalysisLimitError::EffectOperations).is_ok(),
-            "test setter requires positive value"
-        );
-        self.effect_operations = value;
+        self.effect_operations = PositiveLimit::new(value)
+            .expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_evidence_items(&mut self, value: usize) {
-        assert!(
-            Self::check_positive(value, AnalysisLimitError::EvidenceItems).is_ok(),
-            "test setter requires positive value"
-        );
-        self.evidence_items = value;
+        self.evidence_items = PositiveLimit::new(value)
+            .expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_link_operations(&mut self, value: usize) {
-        assert!(
-            Self::check_positive(value, AnalysisLimitError::LinkOperations).is_ok(),
-            "test setter requires positive value"
-        );
-        self.link_operations = value;
+        self.link_operations = PositiveLimit::new(value)
+            .expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_flow_operations(&mut self, value: usize) {
-        assert!(
-            Self::check_positive(value, AnalysisLimitError::FlowOperations).is_ok(),
-            "test setter requires positive value"
-        );
-        self.flow_operations = value;
+        self.flow_operations = PositiveLimit::new(value)
+            .expect("test setter requires positive value");
     }
 }
 

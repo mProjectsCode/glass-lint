@@ -324,17 +324,35 @@ impl ModuleInterface {
         importer: &str,
         lines: &crate::SourceLineIndex,
     ) -> Vec<ResolutionRequest> {
+        let importer = ProjectRelativePath::from_normalized(importer.to_string());
+        self.requests_with_ids(&importer, lines)
+            .into_iter()
+            .map(|(_, request)| request)
+            .collect()
+    }
+
+    /// Canonical projection from authored requests into (id, ResolutionRequest)
+    /// pairs. Both `authored_requests` and downstream `ProjectModule` methods
+    /// delegate here so the conversion logic has one owner.
+    pub(in crate::analysis) fn requests_with_ids(
+        &self,
+        importer: &ProjectRelativePath,
+        lines: &crate::SourceLineIndex,
+    ) -> Vec<(ModuleRequestId, ResolutionRequest)> {
         self.requests
             .iter()
             .filter_map(|request| {
-                Some(ResolutionRequest {
-                    key: ResolutionRequestKey {
-                        importer: ProjectRelativePath::from_normalized(importer.to_string()),
-                        kind: request.kind(),
-                        range: lines.try_range(request.span()).ok()?,
+                Some((
+                    request.id(),
+                    ResolutionRequest {
+                        key: ResolutionRequestKey {
+                            importer: importer.clone(),
+                            kind: request.kind(),
+                            range: lines.try_range(request.span()).ok()?,
+                        },
+                        request: request.specifier().to_string(),
                     },
-                    request: request.specifier().to_string(),
-                })
+                ))
             })
             .collect()
     }

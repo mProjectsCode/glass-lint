@@ -621,25 +621,32 @@ impl<'a> ProjectCollection<'a> {
         observer: &dyn ExecutionObserver,
     ) -> Result<Vec<ResolutionRequest>, ProjectInputError> {
         let worker_count = normalize_worker_limit(worker_count);
-        let pending = self
+        let pending: Vec<_> = self
             .sources
             .iter()
             .filter(|(path, _)| {
                 !self.artifacts.analyzed.contains_key(*path)
                     && !self.artifacts.parse_diagnostics.contains_key(*path)
             })
-            .map(|(path, source)| (path.to_owned(), source.clone()))
-            .collect::<Vec<_>>();
+            .map(|(path, _)| path.to_owned())
+            .collect();
         let mut requests = Vec::new();
         let mut uncached = Vec::new();
-        for (path, source) in pending {
-            let path = ProjectRelativePath::new(path)?;
-            match self.check_cache(&source, observer) {
+        for pending_path in pending {
+            let path = ProjectRelativePath::new(&pending_path)?;
+            let Some(source) = self.sources.get(&pending_path) else {
+                continue;
+            };
+            match self.check_cache(source, observer) {
                 CacheLookup::Hit(lowered) => {
                     requests.extend(self.record_lowered(&path, lowered));
                 }
                 CacheLookup::Miss(key) => {
-                    uncached.push(LocalJob { path, source, key });
+                    uncached.push(LocalJob {
+                        path,
+                        source: source.clone(),
+                        key,
+                    });
                 }
             }
         }

@@ -428,21 +428,7 @@ impl ProjectModule {
     )> {
         self.local()
             .interface()
-            .requests()
-            .filter_map(|request| {
-                Some((
-                    request.id(),
-                    crate::ResolutionRequest {
-                        key: crate::ResolutionRequestKey {
-                            importer: self.path().clone(),
-                            kind: request.kind(),
-                            range: self.source_context().range(request.span()).ok()?,
-                        },
-                        request: request.specifier().to_string(),
-                    },
-                ))
-            })
-            .collect()
+            .requests_with_ids(self.path(), &self.source_context().lines)
     }
 }
 

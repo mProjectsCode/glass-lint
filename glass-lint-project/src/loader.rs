@@ -253,13 +253,14 @@ impl ProjectLoader {
             deadline,
         )?;
         build.add_initial_paths(paths.initial_paths);
-        match build.load_all(metrics) {
-            Ok(()) => Ok(ProjectLoadOutcome::complete(build.finish(metrics)?)),
+        let (expansion_result, closed) = build.close_frontier(metrics);
+        match expansion_result {
+            Ok(()) => Ok(ProjectLoadOutcome::complete(closed.finish(metrics)?)),
             Err(ProjectLoadError::Timeout) => Err(ProjectLoadError::Timeout),
             Err(error) => {
-                let report = build.finish_partial(metrics)?;
+                let report = closed.finish_partial(metrics)?;
                 Ok(ProjectLoadOutcome::partial(report, error))
-            }
+            },
         }
     }
 }
@@ -437,12 +438,34 @@ impl<'a> ProjectLoadState<'a> {
         self.queue.extend(paths);
     }
 
-    fn load_all(&mut self, metrics: &mut ProjectLoadMetrics) -> Result<(), ProjectLoadError> {
-        while let Some(path) = self.queue.pop_front() {
-            self.check_timeout()?;
-            self.load_path(&path, metrics)?;
-        }
-        Ok(())
+    /// Drain the work queue and close the frontier, returning a typed
+    /// [`ClosedFrontier`] that can only be used for linking and matching.
+    /// Frontier expansion and report generation are now visibly separate
+    /// phases. The result signals whether the frontier was fully drained or
+    /// stopped by a recoverable error; the `ClosedFrontier` is always
+    /// produced so callers can still assemble a partial report.
+    fn close_frontier(
+        mut self,
+        metrics: &mut ProjectLoadMetrics,
+    ) -> (Result<(), ProjectLoadError>, ClosedFrontier<'a>) {
+        let result = loop {
+            let Some(path) = self.queue.pop_front() else {
+                break Ok(());
+            };
+            if let Err(e) = self.check_timeout() {
+                break Err(e);
+            }
+            if let Err(e) = self.load_path(&path, metrics) {
+                break Err(e);
+            }
+        };
+        let frontier = ClosedFrontier {
+            session: self.session,
+            resolved: self.resolved,
+            diagnostics: self.diagnostics,
+            deadline: self.deadline,
+        };
+        (result, frontier)
     }
 
     fn load_path(
@@ -523,6 +546,24 @@ impl<'a> ProjectLoadState<'a> {
                 self.queue.push(admitted);
             }
         }
+    }
+}
+
+/// The closed project frontier after the work queue has been fully drained.
+/// Frontier expansion (file reading, local analysis, resolution) is complete;
+/// the only remaining transition is linking and matching.
+struct ClosedFrontier<'a> {
+    session: glass_lint_core::ProjectCollection<'a>,
+    resolved: ResolutionCache,
+    diagnostics: Vec<crate::tsconfig::TsconfigDiagnostic>,
+    deadline: Instant,
+}
+
+impl ClosedFrontier<'_> {
+    fn check_timeout(&self) -> Result<(), ProjectLoadError> {
+        (Instant::now() <= self.deadline)
+            .then_some(())
+            .ok_or(ProjectLoadError::Timeout)
     }
 
     fn finish(self, metrics: &mut ProjectLoadMetrics) -> Result<AnalysisReport, ProjectLoadError> {

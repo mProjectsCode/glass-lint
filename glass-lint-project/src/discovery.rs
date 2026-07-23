@@ -185,7 +185,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
 
         // Phase 1-3: Build effective config (typed parse, extends resolution, merge)
         let (effective, references) =
-            tsconfig::build_effective_config(&canonical, &base, cycle_diagnostics)?;
+            tsconfig::build_effective_config(&canonical, &base, self.deadline, cycle_diagnostics)?;
 
         // Phase 4: Select sources using the typed effective config
         self.select_sources(&effective, &base, selected)?;

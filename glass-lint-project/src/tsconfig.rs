@@ -6,6 +6,7 @@ use std::{
     fmt,
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
+    time::Instant,
 };
 
 use serde_json::Value;
@@ -36,7 +37,6 @@ pub fn compile_count() -> usize {
 pub enum ParsedField<T> {
     Absent,
     Null,
-    #[allow(dead_code)]
     WrongType(String),
     Present(T),
 }
@@ -245,9 +245,6 @@ impl<T> FieldState for ParsedField<T> {
 pub struct Tsconfig {
     /// Canonical config path.
     config_path: PathBuf,
-    /// Config base directory (for resolving relative paths).
-    #[allow(dead_code)]
-    base: PathBuf,
     /// Explicit files list (None = use include/exclude).
     pub files: Option<Vec<String>>,
     /// Include patterns (defaults to `**/*` when files is None).
@@ -262,7 +259,7 @@ pub struct Tsconfig {
 }
 
 impl Tsconfig {
-    fn new(config_path: PathBuf, base: PathBuf, dto: TsconfigDto, parent: Option<&Self>) -> Self {
+    fn new(config_path: PathBuf, dto: TsconfigDto, parent: Option<&Self>) -> Self {
         // Merge: child wins over parent for all fields except compilerOptions
         // (which deep-merges).
         let files = dto
@@ -317,7 +314,6 @@ impl Tsconfig {
 
         Self {
             config_path,
-            base,
             files,
             include,
             exclude,
@@ -476,18 +472,25 @@ fn resolve_extends(config_path: &Path, extends: &str) -> Option<PathBuf> {
 pub fn build_effective_config(
     config_path: &Path,
     fallback_base: &Path,
+    deadline: Option<Instant>,
     diagnostics: &mut Vec<TsconfigDiagnostic>,
 ) -> Result<(Tsconfig, Vec<ReferenceEntry>), ProjectLoadError> {
     let mut extends_chain: Vec<PathBuf> = Vec::new();
-    build_effective_config_inner(config_path, fallback_base, &mut extends_chain, diagnostics)
+    build_effective_config_inner(config_path, fallback_base, &mut extends_chain, deadline, diagnostics)
 }
 
 fn build_effective_config_inner(
     config_path: &Path,
     fallback_base: &Path,
     extends_chain: &mut Vec<PathBuf>,
+    deadline: Option<Instant>,
     diagnostics: &mut Vec<TsconfigDiagnostic>,
 ) -> Result<(Tsconfig, Vec<ReferenceEntry>), ProjectLoadError> {
+    if let Some(deadline) = deadline
+        && Instant::now() >= deadline
+    {
+        return Err(ProjectLoadError::Timeout);
+    }
     let canonical = realpath(config_path)?;
     extends_chain.push(canonical.clone());
 
@@ -528,6 +531,7 @@ fn build_effective_config_inner(
                         &parent_path,
                         &base,
                         extends_chain,
+                        deadline,
                         diagnostics,
                     );
                     Some(result.map(|(config, _)| config))
@@ -539,7 +543,7 @@ fn build_effective_config_inner(
 
     extends_chain.pop();
 
-    let effective = Tsconfig::new(canonical, base, dto, parent_tsconfig.as_ref());
+    let effective = Tsconfig::new(canonical, dto, parent_tsconfig.as_ref());
     diagnostics.extend(
         effective
             .pattern_diagnostics
@@ -673,14 +677,12 @@ mod tests {
 
         let parent = Tsconfig::new(
             PathBuf::from("/root/tsconfig.json"),
-            PathBuf::from("/root"),
             parent_dto,
             None,
         );
 
         let child = Tsconfig::new(
             PathBuf::from("/root/tsconfig.json"),
-            PathBuf::from("/root"),
             child_dto,
             Some(&parent),
         );
@@ -698,7 +700,6 @@ mod tests {
         let dto = TsconfigDto::parse("{}").unwrap();
         let config = Tsconfig::new(
             PathBuf::from("/root/tsconfig.json"),
-            PathBuf::from("/root"),
             dto,
             None,
         );
@@ -710,7 +711,6 @@ mod tests {
         let dto = TsconfigDto::parse(r#"{"files":["src/main.ts","src/util.ts"]}"#).unwrap();
         let config = Tsconfig::new(
             PathBuf::from("/root/tsconfig.json"),
-            PathBuf::from("/root"),
             dto,
             None,
         );
@@ -731,7 +731,7 @@ mod tests {
 
         let mut diagnostics = Vec::new();
         let config_path = project.root().join("tsconfig.json");
-        let result = build_effective_config(&config_path, project.root(), &mut diagnostics);
+        let result = build_effective_config(&config_path, project.root(), None, &mut diagnostics);
 
         assert!(
             result.is_ok(),
@@ -759,13 +759,14 @@ mod tests {
         let (config, _) = build_effective_config(
             &project.root().join("tsconfig.json"),
             project.root(),
+            None,
             &mut Vec::new(),
         )
         .unwrap();
 
-        // Matching should reuse the compiled set (no additional compilation)
-        config.pattern_set.is_included("src/main.ts");
-        config.pattern_set.is_included("src/test.ts");
+    // Matching should reuse the compiled set (no additional compilation)
+    config.pattern_set.is_included("src/main.ts");
+    config.pattern_set.is_included("src/test.ts");
     }
 
     #[test]
@@ -784,6 +785,7 @@ mod tests {
         let result = build_effective_config(
             &project.root().join("a.json"),
             project.root(),
+            None,
             &mut diagnostics,
         );
 
@@ -823,6 +825,7 @@ mod tests {
         let (config, _) = build_effective_config(
             &project.root().join("tsconfig.json"),
             project.root(),
+            None,
             &mut diagnostics,
         )
         .unwrap();
@@ -847,6 +850,7 @@ mod tests {
         let (config, _) = build_effective_config(
             &project.root().join("tsconfig.json"),
             project.root(),
+            None,
             &mut diagnostics,
         )
         .unwrap();

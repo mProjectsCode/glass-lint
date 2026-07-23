@@ -11,6 +11,32 @@ use smol_str::SmolStr;
 
 use crate::analysis::name::{NameId, NameTable};
 
+// ---------------------------------------------------------------------------
+// Shared path-algebra helpers for NamePath and SymbolPath.
+// Both types delegate slice-manipulation operations here so the logic has
+// one implementation.
+// ---------------------------------------------------------------------------
+
+/// Return a new vector containing all but the last element.
+fn path_without_last<T: Clone>(slice: &[T]) -> Option<Vec<T>> {
+    if slice.is_empty() { None } else { Some(slice[..slice.len() - 1].to_vec()) }
+}
+
+/// Return a new vector containing all but the first element.
+fn path_without_first<T: Clone>(slice: &[T]) -> Option<Vec<T>> {
+    if slice.is_empty() { None } else { Some(slice[1..].to_vec()) }
+}
+
+/// Whether the path has at most one segment.
+fn path_is_root<T>(slice: &[T]) -> bool {
+    slice.len() <= 1
+}
+
+/// Whether `slice` starts with `prefix` at the segment level.
+fn path_is_equal_or_descendant_of<T: PartialEq>(slice: &[T], root: &[T]) -> bool {
+    slice.len() >= root.len() && slice[..root.len()] == root[..]
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Canonical ID for an abstract value in one analysis arena.
 pub(in crate::analysis) struct ValueId(pub(in crate::analysis) u32);
@@ -60,18 +86,11 @@ impl NamePath {
     }
 
     pub(in crate::analysis) fn without_last_segment(&self) -> Option<Self> {
-        self.0.last().is_some().then(|| {
-            Self(
-                self.0[..self.0.len().saturating_sub(1)]
-                    .iter()
-                    .copied()
-                    .collect(),
-            )
-        })
+        path_without_last(&self.0).map(|v| Self(SmallVec::from_vec(v)))
     }
 
     pub(in crate::analysis) fn without_first_segment(&self) -> Option<Self> {
-        (!self.0.is_empty()).then(|| Self(self.0[1..].iter().copied().collect()))
+        path_without_first(&self.0).map(|v| Self(SmallVec::from_vec(v)))
     }
 
     pub(in crate::analysis) fn append_path(&self, suffix: &Self) -> Self {
@@ -81,7 +100,7 @@ impl NamePath {
     }
 
     pub(in crate::analysis) fn is_root(&self) -> bool {
-        self.0.len() <= 1
+        path_is_root(&self.0)
     }
 
     pub(in crate::analysis) fn without_segment(&self, name: &str, table: &NameTable) -> Self {
@@ -113,7 +132,7 @@ impl NamePath {
     }
 
     pub(in crate::analysis) fn is_equal_or_descendant_of(&self, root: &Self) -> bool {
-        self.0.starts_with(&root.0)
+        path_is_equal_or_descendant_of(&self.0, &root.0)
     }
 
     pub(in crate::analysis) fn to_symbol_path(&self, table: &NameTable) -> Option<SymbolPath> {
@@ -200,14 +219,11 @@ impl SymbolPath {
     }
 
     pub(in crate::analysis) fn without_last_segment(&self) -> Option<Self> {
-        self.0
-            .last()
-            .is_some()
-            .then(|| Self(self.0[..self.0.len().saturating_sub(1)].to_vec()))
+        path_without_last(&self.0).map(Self)
     }
 
     pub(in crate::analysis) fn without_first_segment(&self) -> Option<Self> {
-        (!self.0.is_empty()).then(|| Self(self.0[1..].to_vec()))
+        path_without_first(&self.0).map(Self)
     }
 
     pub(in crate::analysis) fn segments(&self) -> &[SmolStr] {
@@ -243,7 +259,7 @@ impl SymbolPath {
 
     /// Whether this path has at most one segment.
     pub(in crate::analysis) fn is_root(&self) -> bool {
-        self.0.len() <= 1
+        path_is_root(&self.0)
     }
 
     /// Remove a terminal `.bind` segment when present.
@@ -290,7 +306,7 @@ impl SymbolPath {
 
     /// Return whether this path is equal to or below another path.
     pub(crate) fn is_equal_or_descendant_of(&self, root: &Self) -> bool {
-        self.0.starts_with(&root.0)
+        path_is_equal_or_descendant_of(&self.0, &root.0)
     }
 }
 
