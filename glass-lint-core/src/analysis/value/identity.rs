@@ -19,12 +19,20 @@ use crate::analysis::name::{NameId, NameTable};
 
 /// Return a new vector containing all but the last element.
 fn path_without_last<T: Clone>(slice: &[T]) -> Option<Vec<T>> {
-    if slice.is_empty() { None } else { Some(slice[..slice.len() - 1].to_vec()) }
+    if slice.is_empty() {
+        None
+    } else {
+        Some(slice[..slice.len() - 1].to_vec())
+    }
 }
 
 /// Return a new vector containing all but the first element.
 fn path_without_first<T: Clone>(slice: &[T]) -> Option<Vec<T>> {
-    if slice.is_empty() { None } else { Some(slice[1..].to_vec()) }
+    if slice.is_empty() {
+        None
+    } else {
+        Some(slice[1..].to_vec())
+    }
 }
 
 /// Whether the path has at most one segment.

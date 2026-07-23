@@ -1,31 +1,81 @@
-//! Module-interface recording performed during the canonical fact walk.
+//! Focused module-interface builder extracted from the general fact walk.
 //!
-//! The interface is matcher-independent: it records authored requests and
-//! exports for later project linking. Only static, structurally supported
-//! shapes are linked; dynamic or conflicting shapes are marked unknown so
-//! cross-file analysis fails closed.
+//! [`ModuleInterfaceBuilder`] is the single owner of module-interface policy:
+//! it records authored requests and exports for later project linking using
+//! a raw resolver query but no fact-stream, traversal, or call-result state.
+//! Only static, structurally supported shapes are linked; dynamic or
+//! conflicting shapes are marked unknown so cross-file analysis fails closed.
 
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
-    CallExpr, Callee, DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr,
-    ExportSpecifier, Expr, ImportDecl, NamedExport,
+    DefaultDecl, ExportAll, ExportDefaultDecl, ExportDefaultExpr, ExportSpecifier, Expr, ImportDecl,
+    NamedExport,
 };
-use swc_ecma_visit::VisitWith;
 
 use crate::{
+    ByteRange,
     analysis::{
-        facts::build::FactBuilder,
         module::{
-            COMMONJS_EXPORTS, COMMONJS_MODULE, COMMONJS_REQUIRE, DEFAULT_EXPORT, ModuleExport,
+            COMMONJS_EXPORTS, COMMONJS_MODULE, DEFAULT_EXPORT, ModuleExport, ModuleRequestId,
             ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,
         },
+        resolution::Resolver,
         syntax::{collect_pat_bindings, module_export_name, property_name},
     },
     project::ResolutionRequestKind,
 };
 
-impl FactBuilder<'_> {
+/// Focused owner of module-interface policy during the canonical fact walk.
+///
+/// Keeps the export/request recording separate from fact-stream allocation,
+/// traversal state, and call-result tracking so interface logic has one
+/// cohesive home.
+pub(super) struct ModuleInterfaceBuilder {
+    interface: crate::analysis::module::ModuleInterface,
+}
+
+impl ModuleInterfaceBuilder {
+    pub(super) fn new() -> Self {
+        Self {
+            interface: crate::analysis::module::ModuleInterface::default(),
+        }
+    }
+
+    pub(super) fn finish(self) -> crate::analysis::module::ModuleInterface {
+        self.interface
+    }
+
+    // -- Delegated accessors used by FactBuilder --
+
+    pub(super) fn record_local(&mut self, name: impl Into<SmolStr>) {
+        self.interface.add_local(name);
+    }
+
+    pub(super) fn record_pattern_locals(&mut self, pattern: &swc_ecma_ast::Pat) {
+        let mut names = std::collections::BTreeSet::new();
+        collect_pat_bindings(pattern, &mut names);
+        for name in names {
+            self.interface.add_local(name);
+        }
+    }
+
+    pub(super) fn add_request(
+        &mut self,
+        span: ByteRange,
+        kind: ResolutionRequestKind,
+        specifier: impl Into<SmolStr>,
+        role: ModuleRequestRole,
+    ) -> ModuleRequestId {
+        self.interface.add_request(span, kind, specifier, role)
+    }
+
+    pub(super) fn mark_unknown_exports(&mut self) {
+        self.interface.mark_unknown_exports();
+    }
+
+    // -- Interface policy methods --
+
     /// Record runtime import bindings as local names for interface linking.
     pub(super) fn record_local_imports(&mut self, import: &ImportDecl) {
         for specifier in &import.specifiers {
@@ -36,7 +86,11 @@ impl FactBuilder<'_> {
     }
 
     /// Record the export identities exposed by a declaration.
-    pub(super) fn record_export_decl(&mut self, declaration: &swc_ecma_ast::Decl) {
+    pub(super) fn record_export_decl(
+        &mut self,
+        declaration: &swc_ecma_ast::Decl,
+        resolver: &mut Resolver,
+    ) {
         match declaration {
             swc_ecma_ast::Decl::Class(class) => {
                 self.record_local(class.ident.sym.to_string());
@@ -49,9 +103,7 @@ impl FactBuilder<'_> {
             }
             swc_ecma_ast::Decl::Fn(function) => {
                 self.record_local(function.ident.sym.to_string());
-                if let Some(id) = self
-                    .resolver
-                    .function_id_for_expr(&Expr::Ident(function.ident.clone()))
+                if let Some(id) = resolver.function_id_for_expr(&Expr::Ident(function.ident.clone()))
                 {
                     self.interface
                         .add_function_export(function.ident.sym.to_string(), id);
@@ -70,17 +122,16 @@ impl FactBuilder<'_> {
                     collect_pat_bindings(&declarator.name, &mut names);
                     for name in names {
                         if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name
-                            && let Some(id) = self
-                                .resolver
-                                .function_id_for_expr(&Expr::Ident(binding.id.clone()))
+                            && let Some(id) =
+                                resolver.function_id_for_expr(&Expr::Ident(binding.id.clone()))
                         {
                             self.interface.add_function_export(name.clone(), id);
                         }
                         self.interface
                             .add_export(name.clone(), ModuleExport::Local { name });
                         if let swc_ecma_ast::Pat::Ident(binding) = &declarator.name {
-                            let value_id = self.resolver.resolve_ident_id(&binding.id);
-                            if let Some(value) = self.resolver.static_string_value(value_id) {
+                            let value_id = resolver.resolve_ident_id(&binding.id);
+                            if let Some(value) = resolver.static_string_value(value_id) {
                                 self.interface
                                     .add_static_string(binding.id.sym.to_string(), value);
                             }
@@ -92,73 +143,58 @@ impl FactBuilder<'_> {
         }
     }
 
-    /// Add a resolution request for a literal dynamic import or CommonJS
-    /// `require` call; dynamic specifiers remain intentionally unlinked.
-    pub(super) fn record_module_call_request(&mut self, call: &CallExpr) {
-        // Only literal specifiers become resolution requests. Dynamic module
-        // names cannot be linked safely and therefore remain local unknowns.
-        match &call.callee {
-            Callee::Import(_) => {
-                let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
-                    call.args.first().map(|argument| &*argument.expr)
-                else {
-                    return;
-                };
-                let Some(span) = self.byte_range(specifier.span) else {
-                    return;
-                };
-                self.interface.add_request(
-                    span,
-                    crate::project::ResolutionRequestKind::DynamicImport,
-                    specifier.value.to_string_lossy(),
-                    crate::analysis::module::ModuleRequestRole::DynamicImport,
-                );
-            }
-            Callee::Expr(callee) => {
-                let Expr::Ident(ident) = &**callee else {
-                    return;
-                };
-                if !self
-                    .resolver
-                    .is_unshadowed_commonjs_name(ident, COMMONJS_REQUIRE)
-                {
-                    return;
-                }
-                if call.args.len() != 1 {
-                    return;
-                }
-                let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
-                    call.args.first().map(|argument| &*argument.expr)
-                else {
-                    return;
-                };
-                let Some(span) = self.byte_range(specifier.span) else {
-                    return;
-                };
-                self.interface.add_request(
-                    span,
-                    crate::project::ResolutionRequestKind::Require,
-                    specifier.value.to_string_lossy(),
-                    crate::analysis::module::ModuleRequestRole::Require,
-                );
-            }
-            Callee::Super(_) => {}
-        }
+    /// Record a dynamic-import request at a resolved byte range.
+    pub(super) fn record_import_request(
+        &mut self,
+        span: ByteRange,
+        specifier: &swc_ecma_ast::Str,
+    ) {
+        self.interface.add_request(
+            span,
+            ResolutionRequestKind::DynamicImport,
+            specifier.value.to_string_lossy(),
+            ModuleRequestRole::DynamicImport,
+        );
     }
 
-    /// Record local exports and re-exports while ignoring type-only exports.
-    pub(super) fn record_named_export(&mut self, export: &NamedExport) {
-        if export.type_only {
-            return;
-        }
-        if let Some(source) = export.src.as_ref() {
-            self.record_reexports(export, source);
-        } else {
-            self.record_local_named_exports(&export.specifiers);
-        }
+    /// Record a CommonJS require request at a resolved byte range.
+    pub(super) fn record_require_request(
+        &mut self,
+        span: ByteRange,
+        specifier: &swc_ecma_ast::Str,
+    ) {
+        self.interface.add_request(
+            span,
+            ResolutionRequestKind::Require,
+            specifier.value.to_string_lossy(),
+            ModuleRequestRole::Require,
+        );
     }
 
-    fn record_local_named_exports(&mut self, specifiers: &[ExportSpecifier]) {
+    /// Record local named exports without a re-export source.
+    pub(super) fn record_local_named_exports_only(
+        &mut self,
+        specifiers: &[ExportSpecifier],
+        resolver: &Resolver,
+    ) {
+        self.record_local_named_exports(specifiers, resolver);
+    }
+
+    /// Record re-exports from a source module at a resolved byte range.
+    pub(super) fn record_reexports_from_source(
+        &mut self,
+        export: &NamedExport,
+        source: &swc_ecma_ast::Str,
+        source_span: ByteRange,
+    ) {
+        self.record_reexports(export, source, source_span);
+    }
+
+    fn record_local_named_exports(
+        &mut self,
+        specifiers: &[ExportSpecifier],
+        resolver: &Resolver,
+    ) {
         for specifier in specifiers {
             if let ExportSpecifier::Named(named) = specifier
                 && !named.is_type_only
@@ -169,9 +205,7 @@ impl FactBuilder<'_> {
                     .as_ref()
                     .map_or_else(|| original.clone(), module_export_name);
                 if let swc_ecma_ast::ModuleExportName::Ident(ident) = &named.orig
-                    && let Some(id) = self
-                        .resolver
-                        .function_id_for_expr(&Expr::Ident(ident.clone()))
+                    && let Some(id) = resolver.function_id_for_expr(&Expr::Ident(ident.clone()))
                 {
                     self.interface.add_function_export(exported.clone(), id);
                 }
@@ -181,7 +215,12 @@ impl FactBuilder<'_> {
         }
     }
 
-    fn record_reexports(&mut self, export: &NamedExport, source: &swc_ecma_ast::Str) {
+    fn record_reexports(
+        &mut self,
+        export: &NamedExport,
+        source: &swc_ecma_ast::Str,
+        source_span: ByteRange,
+    ) {
         let specifiers = export
             .specifiers
             .iter()
@@ -192,9 +231,7 @@ impl FactBuilder<'_> {
         if specifiers.is_empty() {
             return;
         }
-        let Some(span) = self.byte_range(source.span) else {
-            return;
-        };
+        let span = source_span;
         let request = self.interface.add_request(
             span,
             ResolutionRequestKind::StaticImport,
@@ -257,13 +294,15 @@ impl FactBuilder<'_> {
     }
 
     /// Record a star export as a deferred request for the project linker.
-    pub(super) fn record_export_all(&mut self, export: &ExportAll) {
+    pub(super) fn record_export_all(
+        &mut self,
+        export: &ExportAll,
+        source_span: ByteRange,
+    ) {
         if export.type_only {
             return;
         }
-        let Some(span) = self.byte_range(export.src.span) else {
-            return;
-        };
+        let span = source_span;
         let request = self.interface.add_request(
             span,
             ResolutionRequestKind::StaticImport,
@@ -274,12 +313,15 @@ impl FactBuilder<'_> {
     }
 
     /// Record the default export's supported function, local, or value shape.
-    pub(super) fn record_default_expr(&mut self, export: &ExportDefaultExpr) {
+    /// Returns true when a named local was recorded so the caller may visit
+    /// the expression subtree if needed.
+    pub(super) fn record_default_expr(
+        &mut self,
+        export: &ExportDefaultExpr,
+        resolver: &Resolver,
+    ) {
         if let Expr::Ident(ident) = &*export.expr {
-            if let Some(id) = self
-                .resolver
-                .function_id_for_expr(&Expr::Ident(ident.clone()))
-            {
+            if let Some(id) = resolver.function_id_for_expr(&Expr::Ident(ident.clone())) {
                 self.interface.add_function_export("default", id);
             }
             self.interface.add_export(
@@ -289,24 +331,26 @@ impl FactBuilder<'_> {
                 },
             );
         } else {
-            if let Some(id) = self.resolver.function_id_for_span(export.expr.span()) {
+            if let Some(id) = resolver.function_id_for_span(export.expr.span()) {
                 self.interface.add_function_export("default", id);
             }
             self.interface.add_export("default", ModuleExport::Value);
         }
-        export.expr.visit_with(self);
     }
 
     /// Record a default declaration without claiming an anonymous value is a
     /// named local when no stable identity exists.
-    pub(super) fn record_default_decl(&mut self, export: &ExportDefaultDecl) {
+    pub(super) fn record_default_decl(
+        &mut self,
+        export: &ExportDefaultDecl,
+        resolver: &Resolver,
+    ) {
         match &export.decl {
             DefaultDecl::Fn(function) => {
                 if let Some(ident) = &function.ident {
                     self.record_local(ident.sym.to_string());
-                    if let Some(id) = self
-                        .resolver
-                        .function_id_for_expr(&Expr::Ident(ident.clone()))
+                    if let Some(id) =
+                        resolver.function_id_for_expr(&Expr::Ident(ident.clone()))
                     {
                         self.interface.add_function_export("default", id);
                     }
@@ -317,7 +361,7 @@ impl FactBuilder<'_> {
                         },
                     );
                 } else {
-                    if let Some(id) = self.resolver.function_id_for_span(function.function.span()) {
+                    if let Some(id) = resolver.function_id_for_span(function.function.span()) {
                         self.interface.add_function_export("default", id);
                     }
                     self.interface.add_export("default", ModuleExport::Value);
@@ -340,12 +384,17 @@ impl FactBuilder<'_> {
                 self.interface.add_export("default", ModuleExport::Unknown);
             }
         }
-        export.decl.visit_with(self);
     }
 
     /// Translate supported CommonJS assignment shapes into interface entries.
-    pub(super) fn record_commonjs_export(&mut self, assignment: &swc_ecma_ast::AssignExpr) {
-        if assignment.op != swc_ecma_ast::AssignOp::Assign {
+    pub(super) fn record_commonjs_export(
+        &mut self,
+        assignment: &swc_ecma_ast::AssignExpr,
+        resolver: &Resolver,
+    ) {
+        use swc_ecma_ast::AssignOp;
+
+        if assignment.op != AssignOp::Assign {
             return;
         }
         let swc_ecma_ast::AssignTarget::Simple(swc_ecma_ast::SimpleAssignTarget::Member(member)) =
@@ -353,38 +402,38 @@ impl FactBuilder<'_> {
         else {
             return;
         };
-        let property = crate::analysis::syntax::member_property_name(&member.prop);
-        if self.is_commonjs_name(&member.obj, COMMONJS_MODULE)
-            && property.as_deref() == Some(COMMONJS_EXPORTS)
+        let prop = crate::analysis::syntax::member_property_name(&member.prop);
+        if is_commonjs_name(&member.obj, COMMONJS_MODULE, resolver)
+            && prop.as_deref() == Some(COMMONJS_EXPORTS)
         {
-            self.record_module_exports_assignment(assignment);
+            self.record_module_exports_assignment(assignment, resolver);
             return;
         }
-        if self.is_commonjs_name(&member.obj, COMMONJS_EXPORTS) {
-            self.record_commonjs_property_export(assignment, property);
+        if is_commonjs_name(&member.obj, COMMONJS_EXPORTS, resolver) {
+            self.record_commonjs_property_export(assignment, prop, resolver);
             return;
         }
         let Expr::Member(parent) = &*member.obj else {
             return;
         };
-        if !self.is_commonjs_name(&parent.obj, COMMONJS_MODULE)
+        if !is_commonjs_name(&parent.obj, COMMONJS_MODULE, resolver)
             || crate::analysis::syntax::member_property_name(&parent.prop).as_deref()
                 != Some(COMMONJS_EXPORTS)
         {
             return;
         }
-        let Some(property) = property else {
+        let Some(property) = prop else {
             self.interface.mark_unknown_exports();
             return;
         };
-        self.record_commonjs_property_export(assignment, Some(property));
+        self.record_commonjs_property_export(assignment, Some(property), resolver);
     }
 
-    fn is_commonjs_name(&self, expr: &swc_ecma_ast::Expr, name: &str) -> bool {
-        matches!(expr, Expr::Ident(ident) if self.resolver.is_unshadowed_commonjs_name(ident, name))
-    }
-
-    fn record_module_exports_assignment(&mut self, assignment: &swc_ecma_ast::AssignExpr) {
+    fn record_module_exports_assignment(
+        &mut self,
+        assignment: &swc_ecma_ast::AssignExpr,
+        resolver: &Resolver,
+    ) {
         if self.interface.has_exports() {
             self.interface.mark_unknown_exports();
             return;
@@ -404,15 +453,20 @@ impl FactBuilder<'_> {
                         let Some(name) = property_name(&value.key) else {
                             continue;
                         };
-                        self.add_function_export_if_expr(&name, &value.value);
-                        if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = &*value.value {
+                        add_function_export_if_expr(&mut self.interface, &name, &value.value, resolver);
+                        if let Expr::Lit(swc_ecma_ast::Lit::Str(val)) = &*value.value {
                             self.interface
-                                .add_static_string(name, value.value.to_string_lossy());
+                                .add_static_string(name, val.value.to_string_lossy());
                         }
                     }
                     swc_ecma_ast::Prop::Method(method) => {
                         if let Some(name) = property_name(&method.key) {
-                            self.add_function_export_if_span(&name, method.function.span());
+                                add_function_export_if_span(
+                                    &mut self.interface,
+                                    &name,
+                                    method.function.span(),
+                                resolver,
+                            );
                         }
                     }
                     _ => {}
@@ -420,15 +474,21 @@ impl FactBuilder<'_> {
             }
             for (name, local) in entries {
                 if let Some(local) = &local {
-                    self.add_function_export_if_name(&name, local, assignment.span());
+                    add_function_export_if_name(
+                        &mut self.interface,
+                        &name,
+                        local,
+                        assignment.span(),
+                        resolver,
+                    );
                 }
                 self.interface.add_export(
                     name,
-                    local.map_or(ModuleExport::Value, |name| ModuleExport::Local { name }),
+                    local.map_or(ModuleExport::Value, |n| ModuleExport::Local { name: n }),
                 );
             }
         } else {
-            if let Some(id) = self.resolver.function_id_for_span(assignment.right.span()) {
+            if let Some(id) = resolver.function_id_for_span(assignment.right.span()) {
                 self.interface.add_function_export("default", id);
             }
             self.interface.add_export("default", ModuleExport::Value);
@@ -439,6 +499,7 @@ impl FactBuilder<'_> {
         &mut self,
         assignment: &swc_ecma_ast::AssignExpr,
         property: Option<SmolStr>,
+        resolver: &Resolver,
     ) {
         let Some(property) = property else {
             self.interface.mark_unknown_exports();
@@ -446,13 +507,19 @@ impl FactBuilder<'_> {
         };
         let export = match &*assignment.right {
             Expr::Ident(ident) => {
-                self.add_function_export_if_name(&property, ident.sym.as_ref(), assignment.span());
+                add_function_export_if_name(
+                    &mut self.interface,
+                    &property,
+                    ident.sym.as_ref(),
+                    assignment.span(),
+                    resolver,
+                );
                 ModuleExport::Local {
                     name: ident.sym.to_smolstr(),
                 }
             }
             expr => {
-                self.add_function_export_if_expr(&property, expr);
+                add_function_export_if_expr(&mut self.interface, &property, expr, resolver);
                 if let Expr::Lit(swc_ecma_ast::Lit::Str(value)) = expr {
                     self.interface
                         .add_static_string(property.clone(), value.value.to_string_lossy());
@@ -461,22 +528,6 @@ impl FactBuilder<'_> {
             }
         };
         self.interface.add_export(property, export);
-    }
-
-    fn add_function_export_if_name(&mut self, export: &str, local: &str, span: Span) {
-        if let Some(id) = self.resolver.function_id_for_name(local, span) {
-            self.interface.add_function_export(export, id);
-        }
-    }
-
-    fn add_function_export_if_expr(&mut self, export: &str, expr: &Expr) {
-        self.add_function_export_if_span(export, expr.span());
-    }
-
-    fn add_function_export_if_span(&mut self, export: &str, span: Span) {
-        if let Some(id) = self.resolver.function_id_for_span(span) {
-            self.interface.add_function_export(export, id);
-        }
     }
 
     fn commonjs_object_export_entries(
@@ -498,9 +549,15 @@ impl FactBuilder<'_> {
                         assign.key.sym.to_smolstr(),
                         Some(assign.key.sym.to_smolstr()),
                     )),
-                    swc_ecma_ast::Prop::Getter(getter) => Some((property_name(&getter.key)?, None)),
-                    swc_ecma_ast::Prop::Setter(setter) => Some((property_name(&setter.key)?, None)),
-                    swc_ecma_ast::Prop::Method(method) => Some((property_name(&method.key)?, None)),
+                    swc_ecma_ast::Prop::Getter(getter) => {
+                        Some((property_name(&getter.key)?, None))
+                    }
+                    swc_ecma_ast::Prop::Setter(setter) => {
+                        Some((property_name(&setter.key)?, None))
+                    }
+                    swc_ecma_ast::Prop::Method(method) => {
+                        Some((property_name(&method.key)?, None))
+                    }
                     swc_ecma_ast::Prop::Shorthand(ident) => {
                         Some((ident.sym.to_smolstr(), Some(ident.sym.to_smolstr())))
                     }
@@ -508,5 +565,45 @@ impl FactBuilder<'_> {
                 swc_ecma_ast::PropOrSpread::Spread(_) => None,
             })
             .collect()
+    }
+}
+
+fn is_commonjs_name(
+    expr: &swc_ecma_ast::Expr,
+    name: &str,
+    resolver: &Resolver,
+) -> bool {
+    matches!(expr, Expr::Ident(ident) if resolver.is_unshadowed_commonjs_name(ident, name))
+}
+
+fn add_function_export_if_name(
+    interface: &mut crate::analysis::module::ModuleInterface,
+    export: &str,
+    local: &str,
+    span: Span,
+    resolver: &Resolver,
+) {
+    if let Some(id) = resolver.function_id_for_name(local, span) {
+        interface.add_function_export(export, id);
+    }
+}
+
+fn add_function_export_if_expr(
+    interface: &mut crate::analysis::module::ModuleInterface,
+    export: &str,
+    expr: &Expr,
+    resolver: &Resolver,
+) {
+    add_function_export_if_span(interface, export, expr.span(), resolver);
+}
+
+fn add_function_export_if_span(
+    interface: &mut crate::analysis::module::ModuleInterface,
+    export: &str,
+    span: Span,
+    resolver: &Resolver,
+) {
+    if let Some(id) = resolver.function_id_for_span(span) {
+        interface.add_function_export(export, id);
     }
 }

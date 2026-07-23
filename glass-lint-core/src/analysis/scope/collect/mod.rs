@@ -281,6 +281,69 @@ impl ScopeCollector {
         }
     }
 
+    /// Build a scope-start-order index from the scope vector.
+    fn sorted_scope_starts(scopes: &[LexicalScope]) -> Vec<ScopeId> {
+        let mut scopes_by_start: Vec<_> = (0..scopes.len()).map(ScopeId::from).collect();
+        scopes_by_start.sort_by_key(|index| {
+            let scope = &scopes[index.index()];
+            (scope.span.lo, scope.depth)
+        });
+        scopes_by_start
+    }
+
+    /// Group flat assignment events by scope and name, sorted by source
+    /// position within each binding.
+    fn collect_and_sort_assignments(
+        assignments: &mut Vec<AliasAssignment>,
+    ) -> BTreeMap<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>> {
+        let mut result = BTreeMap::<ScopeId, BTreeMap<NameId, Vec<AliasAssignment>>>::new();
+        let collected = std::mem::take(assignments);
+        for assignment in collected {
+            result
+                .entry(assignment.scope)
+                .or_default()
+                .entry(assignment.name)
+                .or_default()
+                .push(assignment);
+        }
+        for scope_assignments in result.values_mut() {
+            for binding_assignments in scope_assignments.values_mut() {
+                binding_assignments.sort_by_key(|a| a.span.lo);
+            }
+        }
+        result
+    }
+
+    /// Assign stable binding and function IDs across all scopes.
+    fn allocate_ids(
+        scopes: &[LexicalScope],
+    ) -> (
+        BTreeMap<ScopedName, BindingId>,
+        BTreeMap<ScopeId, FunctionId>,
+    ) {
+        let mut binding_ids = BTreeMap::new();
+        let mut next_binding = 0u32;
+        for (scope, lexical_scope) in scopes.iter().enumerate() {
+            let scope = ScopeId::from(scope);
+            for name in lexical_scope.bindings.keys() {
+                binding_ids.insert(ScopedName::new(scope, *name), BindingId(next_binding));
+                next_binding = next_binding.saturating_add(1);
+            }
+        }
+
+        let mut function_ids = BTreeMap::new();
+        let mut next_function = 0u32;
+        for (scope, lexical_scope) in scopes.iter().enumerate() {
+            let scope = ScopeId::from(scope);
+            if matches!(lexical_scope.kind, ScopeKind::Program | ScopeKind::Function) {
+                function_ids.insert(scope, FunctionId(next_function));
+                next_function = next_function.saturating_add(1);
+            }
+        }
+
+        (binding_ids, function_ids)
+    }
+
     /// Freeze collected facts into the immutable query graph.
     ///
     /// ID allocation, normalization, and post-collection property indexing
@@ -291,55 +354,12 @@ impl ScopeCollector {
             self.scope_issues
                 .push(ScopeCollectionIssue::UnconsumedShape);
         }
-        let issues = self.scope_issues.clone();
-        let scope_shape_valid = issues.is_empty();
+        let scope_shape_valid = self.scope_issues.is_empty();
+        let issues = std::mem::take(&mut self.scope_issues);
         let parameter_aliases_by_scope = self.parameter_aliases();
-        let mut scopes_by_start = (0..self.scopes.len())
-            .map(ScopeId::from)
-            .collect::<Vec<_>>();
-        scopes_by_start.sort_by_key(|index| {
-            let scope = &self.scopes[index.index()];
-            (scope.span.lo, scope.depth)
-        });
-
-        let mut assignments = BTreeMap::<
-            ScopeId,
-            BTreeMap<crate::analysis::name::NameId, Vec<AliasAssignment>>,
-        >::new();
-        let collected_assignments = std::mem::take(&mut self.assignments);
-        for assignment in collected_assignments {
-            assignments
-                .entry(assignment.scope)
-                .or_default()
-                .entry(assignment.name)
-                .or_default()
-                .push(assignment);
-        }
-        for scope_assignments in assignments.values_mut() {
-            for binding_assignments in scope_assignments.values_mut() {
-                binding_assignments.sort_by_key(|assignment| assignment.span.lo);
-            }
-        }
-
-        let mut binding_ids = BTreeMap::new();
-        let mut next_binding_id = 0u32;
-        for (scope, lexical_scope) in self.scopes.iter().enumerate() {
-            let scope = ScopeId::from(scope);
-            for name in lexical_scope.bindings.keys() {
-                binding_ids.insert(ScopedName::new(scope, *name), BindingId(next_binding_id));
-                next_binding_id = next_binding_id.saturating_add(1);
-            }
-        }
-
-        let mut function_ids = BTreeMap::new();
-        let mut next_function_id = 0u32;
-        for (scope, lexical_scope) in self.scopes.iter().enumerate() {
-            let scope = ScopeId::from(scope);
-            if matches!(lexical_scope.kind, ScopeKind::Program | ScopeKind::Function) {
-                function_ids.insert(scope, FunctionId(next_function_id));
-                next_function_id = next_function_id.saturating_add(1);
-            }
-        }
+        let scopes_by_start = Self::sorted_scope_starts(&self.scopes);
+        let assignments = Self::collect_and_sort_assignments(&mut self.assignments);
+        let (binding_ids, function_ids) = Self::allocate_ids(&self.scopes);
 
         let function_bindings = self
             .function_scopes

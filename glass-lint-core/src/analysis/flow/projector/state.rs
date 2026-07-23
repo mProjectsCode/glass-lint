@@ -368,44 +368,44 @@ impl FlowStateTable {
 
     pub(super) fn join_environments(&mut self, environments: &[FlowEnvironment]) -> bool {
         let origin = self.log.checkpoint();
-        let mut snapshots = Vec::new();
-        for environment in environments
-            .iter()
-            .filter(|environment| environment.reachable)
-        {
+        let mut reachable = environments.iter().filter(|e| e.reachable);
+
+        let Some(first) = reachable.next() else {
+            self.clear();
+            return false;
+        };
+
+        if !self.restore(*first) {
+            return false;
+        }
+        let mut aliases = self.aliases.clone();
+        let mut states = self.states.clone();
+
+        for environment in reachable {
             if !self.restore(*environment) {
                 return false;
             }
-            snapshots.push((self.aliases.clone(), self.states.clone()));
+            aliases.retain(|(value, object)| {
+                self.aliases
+                    .binary_search_by_key(value, |(k, _)| *k)
+                    .is_ok_and(|pos| self.aliases[pos].1 == *object)
+            });
+            states.retain_mut(|(key, state)| {
+                let Ok(pos) = self.states.binary_search_by_key(key, |(k, _)| *k) else {
+                    return false;
+                };
+                state.retain_requirement_keys(&self.states[pos].1);
+                true
+            });
         }
+
         if !self.restore(FlowEnvironment {
             checkpoint: origin,
             reachable: true,
         }) {
             return false;
         }
-        let mut snapshot_iter = snapshots.into_iter();
-        let Some((mut aliases, mut states)) = snapshot_iter.next() else {
-            self.clear();
-            return false;
-        };
-        for (other_aliases, other_states) in snapshot_iter {
-            aliases.retain(|(value, object)| {
-                other_aliases
-                    .binary_search_by_key(value, |(key, _)| *key)
-                    .is_ok_and(|pos| other_aliases[pos].1 == *object)
-            });
-            states.retain_mut(|(key, state)| {
-                let Some(pos) = other_states
-                    .binary_search_by_key(key, |(entry, _)| *entry)
-                    .ok()
-                else {
-                    return false;
-                };
-                state.retain_requirement_keys(&other_states[pos].1);
-                true
-            });
-        }
+
         self.clear();
         for alias in aliases {
             self.bind(alias.0, alias.1);

@@ -330,12 +330,10 @@ impl OccurrenceIndexes {
                 identities
                     .get(&ModuleExportKey::wildcard(key.module().clone()))
                     .map(|identity| match identity {
-                        ExportResolution::External { module, .. } => {
-                            ExportResolution::External {
-                                module: module.clone(),
-                                export: key.export().to_owned(),
-                            }
-                        }
+                        ExportResolution::External { module, .. } => ExportResolution::External {
+                            module: module.clone(),
+                            export: key.export().to_owned(),
+                        },
                         other => other.clone(),
                     })
             })

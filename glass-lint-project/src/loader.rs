@@ -260,7 +260,7 @@ impl ProjectLoader {
             Err(error) => {
                 let report = closed.finish_partial(metrics)?;
                 Ok(ProjectLoadOutcome::partial(report, error))
-            },
+            }
         }
     }
 }

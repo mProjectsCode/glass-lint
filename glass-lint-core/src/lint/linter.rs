@@ -306,7 +306,11 @@ impl Linter {
             "stage finished"
         );
 
-        Ok(ProjectAnalysis { report, linking, matching })
+        Ok(ProjectAnalysis {
+            report,
+            linking,
+            matching,
+        })
     }
 
     fn populate_project_files(

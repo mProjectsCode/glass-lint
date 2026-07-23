@@ -20,9 +20,10 @@ use smol_str::SmolStr;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
     ArrowExpr, AssignExpr, BinExpr, BinaryOp, CallExpr, Callee, ClassDecl, ClassExpr, CondExpr,
-    DoWhileStmt, ExportDecl, Expr, ExprOrSpread, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function,
-    Ident, IfStmt, ImportDecl, MemberExpr, NewExpr, OptChainBase, OptChainExpr, Pat, Str,
-    SwitchStmt, Tpl, TryStmt, UnaryExpr, UnaryOp, UpdateExpr, VarDeclarator, WhileStmt,
+    DoWhileStmt, ExportAll, ExportDecl, ExportDefaultDecl, ExportDefaultExpr, Expr, ExprOrSpread,
+    FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, Ident, IfStmt, ImportDecl, MemberExpr,
+    NamedExport, NewExpr, OptChainBase, OptChainExpr, Pat, Str, SwitchStmt, Tpl, TryStmt,
+    UnaryExpr, UnaryOp, UpdateExpr, VarDeclarator, WhileStmt,
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
@@ -34,7 +35,6 @@ use crate::{
             CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactKind, FactPayload,
             FactStream, FunctionBoundary, ParameterBinding,
         },
-        module::ModuleInterface,
         resolution::Resolver,
         scope::{BoundArgument, ScopeId},
         syntax::{
@@ -94,8 +94,8 @@ pub struct FactBuilder<'a> {
     /// Proven callable members extracted from the current module instance.
     instance_callables: BTreeMap<ValueId, InstanceCallable>,
     /// Module requests and export slots collected during the same canonical
-    /// walk as the semantic facts.
-    interface: ModuleInterface,
+    /// walk as the semantic facts, owned by a focused interface builder.
+    interface: interface::ModuleInterfaceBuilder,
 }
 
 impl<'a> FactBuilder<'a> {
@@ -126,7 +126,7 @@ impl<'a> FactBuilder<'a> {
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
             instance_callables: BTreeMap::new(),
-            interface: ModuleInterface::default(),
+            interface: interface::ModuleInterfaceBuilder::new(),
         }
     }
 
@@ -210,26 +210,107 @@ impl<'a> FactBuilder<'a> {
     pub(in crate::analysis) fn into_built_facts(self) -> crate::analysis::facts::BuiltFacts {
         crate::analysis::facts::BuiltFacts {
             stream: self.stream,
-            interface: self.interface,
+            interface: self.interface.finish(),
         }
     }
 
     #[cfg(test)]
-    pub fn into_parts(self) -> (FactStream, ModuleInterface) {
+    pub fn into_parts(self) -> (FactStream, crate::analysis::module::ModuleInterface) {
         let built = self.into_built_facts();
         (built.stream, built.interface)
     }
 
     pub(super) fn record_local(&mut self, name: impl Into<SmolStr>) {
-        self.interface.add_local(name);
+        self.interface.record_local(name);
     }
 
     pub(super) fn record_pattern_locals(&mut self, pattern: &Pat) {
-        let mut names = std::collections::BTreeSet::new();
-        crate::analysis::syntax::collect_pat_bindings(pattern, &mut names);
-        for name in names {
-            self.interface.add_local(name);
+        self.interface.record_pattern_locals(pattern);
+    }
+
+    // -- Module interface delegation --
+
+    pub(super) fn record_local_imports(&mut self, import: &ImportDecl) {
+        self.interface.record_local_imports(import);
+    }
+
+    pub(super) fn record_export_decl(&mut self, declaration: &swc_ecma_ast::Decl) {
+        self.interface.record_export_decl(declaration, self.resolver);
+    }
+
+    pub(super) fn record_module_call_request(&mut self, call: &CallExpr) {
+        use swc_ecma_ast::Callee;
+        match &call.callee {
+            Callee::Import(_) => {
+                let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
+                    call.args.first().map(|a| &*a.expr)
+                else {
+                    return;
+                };
+                let Some(span) = self.byte_range(specifier.span) else {
+                    return;
+                };
+                self.interface.record_import_request(span, specifier);
+            }
+            Callee::Expr(callee) => {
+                let Expr::Ident(ident) = &**callee else {
+                    return;
+                };
+                if !self
+                    .resolver
+                    .is_unshadowed_commonjs_name(ident, crate::analysis::module::COMMONJS_REQUIRE)
+                {
+                    return;
+                }
+                if call.args.len() != 1 {
+                    return;
+                }
+                let Some(Expr::Lit(swc_ecma_ast::Lit::Str(specifier))) =
+                    call.args.first().map(|a| &*a.expr)
+                else {
+                    return;
+                };
+                let Some(span) = self.byte_range(specifier.span) else {
+                    return;
+                };
+                self.interface.record_require_request(span, specifier);
+            }
+            Callee::Super(_) => {}
         }
+    }
+
+    pub(super) fn record_named_export(&mut self, export: &NamedExport) {
+        if export.type_only {
+            return;
+        }
+        if let Some(source) = export.src.as_ref() {
+            let Some(span) = self.byte_range(source.span) else {
+                return;
+            };
+            self.interface.record_reexports_from_source(export, source, span);
+        } else {
+            self.interface
+                .record_local_named_exports_only(&export.specifiers, self.resolver);
+        }
+    }
+
+    pub(super) fn record_export_all(&mut self, export: &ExportAll) {
+        let Some(span) = self.byte_range(export.src.span) else {
+            return;
+        };
+        self.interface.record_export_all(export, span);
+    }
+
+    pub(super) fn record_default_expr(&mut self, export: &ExportDefaultExpr) {
+        self.interface.record_default_expr(export, self.resolver);
+    }
+
+    pub(super) fn record_default_decl(&mut self, export: &ExportDefaultDecl) {
+        self.interface.record_default_decl(export, self.resolver);
+    }
+
+    pub(super) fn record_commonjs_export(&mut self, assignment: &swc_ecma_ast::AssignExpr) {
+        self.interface.record_commonjs_export(assignment, self.resolver);
     }
 }
 

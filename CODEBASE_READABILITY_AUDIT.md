@@ -46,7 +46,7 @@ Include and exclude fields are collapsed with `ok().unwrap_or_default()` before 
 
 `ContextWorklist` removes a context from `seen` when it is popped, making the set a queued-only deduplicator rather than a record of processed states. `CallContext` contains every input used by projection and accumulated evidence does not feed back into it, so replaying an identical context cannot refine the result and can re-enqueue call cycles until exhaustion; retain a permanent processed set, as the neighboring source-propagation worklist does.
 
-### READ-006 — Branch checkpoints clone complete flow state at every join
+### READ-006 — Branch checkpoints clone complete flow state at every join  ✅
 
 - **Severity:** High
 - **Category:** Architecture
@@ -174,7 +174,7 @@ Both types independently implement root, first/last, append, removal, binding, a
 
 Latest assignment, binding version, and reassignment-range queries repeat nested lookups and `partition_point` logic against raw maps and vectors. Encapsulate that storage in an `AssignmentHistory` domain collection with named `latest_at`, `version_at`, and `changed_between` operations.
 
-### READ-022 — Scope freezing combines too many representation transitions
+### READ-022 — Scope freezing combines too many representation transitions  ✅
 
 - **Severity:** Medium
 - **Category:** Complexity
@@ -182,7 +182,7 @@ Latest assignment, binding version, and reassignment-range queries repeat nested
 
 `freeze` validates structural state, clones issues, allocates two ID spaces, remaps function aliases, builds multiple indexes, constructs the graph, and post-processes properties in one method. Move those steps into cohesive owned builders and move, rather than clone, collector state to make the mutable-collection-to-immutable-graph boundary reviewable.
 
-### READ-023 — Module-interface extraction is a second policy-heavy subsystem inside fact building
+### READ-023 — Module-interface extraction is a second policy-heavy subsystem inside fact building  ✅
 
 - **Severity:** Medium
 - **Category:** Architecture

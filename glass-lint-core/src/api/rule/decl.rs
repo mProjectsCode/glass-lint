@@ -12,8 +12,8 @@ use crate::{
     api::{
         classification::MatchKind,
         compiler::rule::{
-            EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength,
-            QueryClause, QueryConstraint, SubjectConstraint,
+            EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength, QueryClause,
+            QueryConstraint, SubjectConstraint,
         },
         rule::{
             ArgumentConstraint, ArgumentMatcher, MatcherBuildError, ModuleSpecifierPattern,
@@ -50,7 +50,6 @@ impl MatcherDecl {
             },
         }
     }
-
 }
 
 impl MatcherDecl {
@@ -687,7 +686,8 @@ impl MatcherDeclBuilder {
 
 impl MatcherDecl {
     /// Create a declaration from an ObjectFlowMatcher.
-    /// Compilation to [`CompiledObjectFlow`] is deferred to the catalog boundary.
+    /// Compilation to [`CompiledObjectFlow`] is deferred to the catalog
+    /// boundary.
     pub fn from_object_flow(flow: &ObjectFlowMatcher) -> Self {
         let sym: String = flow.symbol().to_owned();
         Self {

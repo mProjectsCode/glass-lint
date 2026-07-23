@@ -38,11 +38,7 @@ struct PositiveLimit(usize);
 
 impl PositiveLimit {
     fn new(value: usize) -> Result<Self, ()> {
-        if value == 0 {
-            Err(())
-        } else {
-            Ok(Self(value))
-        }
+        if value == 0 { Err(()) } else { Ok(Self(value)) }
     }
 
     fn get(self) -> usize {
@@ -187,38 +183,37 @@ impl AnalysisLimits {
     /// Test-only: set a field directly (caller must ensure positivity).
     #[cfg(test)]
     pub fn set_syntax_depth(&mut self, value: usize) {
-        self.syntax_depth = PositiveLimit::new(value)
-            .expect("test setter requires positive value");
+        self.syntax_depth = PositiveLimit::new(value).expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_semantic_operations(&mut self, value: usize) {
-        self.semantic_operations = PositiveLimit::new(value)
-            .expect("test setter requires positive value");
+        self.semantic_operations =
+            PositiveLimit::new(value).expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_effect_operations(&mut self, value: usize) {
-        self.effect_operations = PositiveLimit::new(value)
-            .expect("test setter requires positive value");
+        self.effect_operations =
+            PositiveLimit::new(value).expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_evidence_items(&mut self, value: usize) {
-        self.evidence_items = PositiveLimit::new(value)
-            .expect("test setter requires positive value");
+        self.evidence_items =
+            PositiveLimit::new(value).expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_link_operations(&mut self, value: usize) {
-        self.link_operations = PositiveLimit::new(value)
-            .expect("test setter requires positive value");
+        self.link_operations =
+            PositiveLimit::new(value).expect("test setter requires positive value");
     }
 
     #[cfg(test)]
     pub fn set_flow_operations(&mut self, value: usize) {
-        self.flow_operations = PositiveLimit::new(value)
-            .expect("test setter requires positive value");
+        self.flow_operations =
+            PositiveLimit::new(value).expect("test setter requires positive value");
     }
 }
 

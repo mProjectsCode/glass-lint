@@ -523,5 +523,3 @@ impl ProjectSemanticModel {
             .cloned()
     }
 }
-
-

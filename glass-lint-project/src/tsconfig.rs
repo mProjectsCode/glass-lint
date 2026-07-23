@@ -275,10 +275,9 @@ impl Tsconfig {
             // with an absent field.
             let include = match dto.include {
                 ParsedField::Present(v) => v,
-                _ => parent.map_or_else(
-                    || vec!["**/*".to_string()],
-                    |parent| parent.include.clone(),
-                ),
+                _ => {
+                    parent.map_or_else(|| vec!["**/*".to_string()], |parent| parent.include.clone())
+                }
             };
 
             let mut exclude = match dto.exclude {
@@ -476,7 +475,13 @@ pub fn build_effective_config(
     diagnostics: &mut Vec<TsconfigDiagnostic>,
 ) -> Result<(Tsconfig, Vec<ReferenceEntry>), ProjectLoadError> {
     let mut extends_chain: Vec<PathBuf> = Vec::new();
-    build_effective_config_inner(config_path, fallback_base, &mut extends_chain, deadline, diagnostics)
+    build_effective_config_inner(
+        config_path,
+        fallback_base,
+        &mut extends_chain,
+        deadline,
+        diagnostics,
+    )
 }
 
 fn build_effective_config_inner(
@@ -675,11 +680,7 @@ mod tests {
             TsconfigDto::parse(r#"{"include":["src/**/*"],"exclude":["**/*.test.ts"]}"#).unwrap();
         let child_dto = TsconfigDto::parse(r#"{"include":["lib/**/*"]}"#).unwrap();
 
-        let parent = Tsconfig::new(
-            PathBuf::from("/root/tsconfig.json"),
-            parent_dto,
-            None,
-        );
+        let parent = Tsconfig::new(PathBuf::from("/root/tsconfig.json"), parent_dto, None);
 
         let child = Tsconfig::new(
             PathBuf::from("/root/tsconfig.json"),
@@ -698,22 +699,14 @@ mod tests {
     #[test]
     fn effective_config_default_include() {
         let dto = TsconfigDto::parse("{}").unwrap();
-        let config = Tsconfig::new(
-            PathBuf::from("/root/tsconfig.json"),
-            dto,
-            None,
-        );
+        let config = Tsconfig::new(PathBuf::from("/root/tsconfig.json"), dto, None);
         assert_eq!(config.include, vec!["**/*"]);
     }
 
     #[test]
     fn effective_config_explicit_files() {
         let dto = TsconfigDto::parse(r#"{"files":["src/main.ts","src/util.ts"]}"#).unwrap();
-        let config = Tsconfig::new(
-            PathBuf::from("/root/tsconfig.json"),
-            dto,
-            None,
-        );
+        let config = Tsconfig::new(PathBuf::from("/root/tsconfig.json"), dto, None);
         assert_eq!(
             config.files,
             Some(vec!["src/main.ts".to_string(), "src/util.ts".to_string()])
@@ -764,9 +757,9 @@ mod tests {
         )
         .unwrap();
 
-    // Matching should reuse the compiled set (no additional compilation)
-    config.pattern_set.is_included("src/main.ts");
-    config.pattern_set.is_included("src/test.ts");
+        // Matching should reuse the compiled set (no additional compilation)
+        config.pattern_set.is_included("src/main.ts");
+        config.pattern_set.is_included("src/test.ts");
     }
 
     #[test]

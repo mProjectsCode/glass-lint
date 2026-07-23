@@ -115,10 +115,8 @@ impl ProjectSemanticModel {
                         if let Some(resolved) =
                             self.lookup_export(target, &export, &mut BTreeSet::new())
                         {
-                            identities.insert(
-                                ModuleExportKey::new(prefix.clone(), export),
-                                resolved,
-                            );
+                            identities
+                                .insert(ModuleExportKey::new(prefix.clone(), export), resolved);
                         }
                     }
                 }

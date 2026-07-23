@@ -8,8 +8,9 @@ use std::collections::BTreeMap;
 
 use crate::{
     analysis::{
-        ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow,
+        ModuleId, ProjectModule, ProjectSemanticModel, evidence,
         facts::ProjectionPlan,
+        flow,
         matching::{LinkedOccurrenceView, OccurrenceIndexes},
         status::{AnalysisComponent, IncompleteReason, StatusScope},
     },

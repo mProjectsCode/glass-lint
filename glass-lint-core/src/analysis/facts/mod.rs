@@ -11,20 +11,14 @@ use std::collections::BTreeMap;
 use crate::{
     analysis::{
         flow::{effect::FunctionEffects, projector as object_flow},
-        matching::{
-            self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes,
-        },
+        matching::{self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes},
         module::ModuleInterface,
         project::model::ExportResolution,
         value::{ValueId, ValueTable},
     },
     api::{
-        compiler::{
-            CompiledRuleSelection,
-            object_flow::CompiledObjectFlow,
-            rule::QueryClause,
-        },
         classification::RuleIndex,
+        compiler::{CompiledRuleSelection, object_flow::CompiledObjectFlow, rule::QueryClause},
     },
 };
 

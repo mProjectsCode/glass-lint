@@ -784,9 +784,7 @@ impl ResolvedProject<'_> {
         self.finish_with_timings().map(|result| result.report)
     }
 
-    pub fn finish_with_timings(
-        self,
-    ) -> Result<crate::lint::ProjectAnalysis, ProjectInputError> {
+    pub fn finish_with_timings(self) -> Result<crate::lint::ProjectAnalysis, ProjectInputError> {
         self.linter.finish_analyzed_project(
             self.input,
             self.artifacts.analyzed,
