@@ -296,11 +296,11 @@ pub(in crate::analysis) enum FactPayload {
         unwrap: Option<Box<CallUnwrap>>,
     },
     /// A function declaration/expression and its parameter value identities.
+    /// Parameter bindings are stored in the canonical fact stream table and
+    /// looked up by [`FunctionId`]; only the boundary marker lives inline.
     Function {
         /// Function identity of the body being entered or exited.
         id: FunctionId,
-        /// Path-aware bindings extracted from the parameters.
-        parameters: Vec<ParameterBinding>,
         /// Whether this fact marks entry or exit.
         boundary: FunctionBoundary,
     },

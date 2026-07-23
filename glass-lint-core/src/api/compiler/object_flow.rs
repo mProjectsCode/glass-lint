@@ -26,17 +26,6 @@ impl CompiledObjectFlow {
         self.symbol.clone()
     }
 
-    pub fn sink_matches(&self, chain: Option<&SymbolPath>, _rooted: bool, argument: usize) -> bool {
-        self.sinks.iter().any(|sink| {
-            sink.member_calls.iter().any(|member| chain == Some(member))
-                && sink.is_rooted
-                && match &sink.args {
-                    CompiledObjectSinkArguments::Any => true,
-                    CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument),
-                }
-        })
-    }
-
     pub fn requirements_ready(&self, completed: usize) -> bool {
         if self.all_requirements_required {
             completed == self.requirements.len()

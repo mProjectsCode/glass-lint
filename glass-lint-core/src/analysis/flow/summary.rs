@@ -19,7 +19,8 @@ use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, ParameterBinding},
     flow::{
         effect::{EffectCall, FunctionEffects},
-        index::{FlowId, FlowIndex},
+        index::FlowId,
+        plan::BoundFlowPlan,
         table::FunctionTable,
     },
     value::{
@@ -279,7 +280,6 @@ pub(super) struct FunctionSinkSummary {
 #[derive(Debug, Clone)]
 pub(super) struct FunctionSummary {
     id: FunctionId,
-    parameters: Vec<ParameterBinding>,
     parameter_count: usize,
     has_rest: bool,
     calls: Vec<FactId>,
@@ -342,6 +342,7 @@ impl FunctionSinkSummary {
 
 #[derive(Debug)]
 pub(super) struct FunctionSummaries<'a> {
+    stream: &'a FactStream,
     by_id: FunctionTable<FunctionSummary>,
     paths: SummaryPathStore<'a>,
 }
@@ -362,14 +363,15 @@ impl<'a> FunctionSummaries<'a> {
     pub(super) fn collect(
         stream: &'a FactStream,
         effects: &FunctionEffects,
-        flow_index: &FlowIndex<'_>,
+        plan: &BoundFlowPlan<'_>,
     ) -> Self {
         let mut summaries = Self {
+            stream,
             by_id: FunctionTable::default(),
             paths: SummaryPathStore::new(stream.paths()),
         };
         summaries.collect_facts(effects);
-        summaries.collect_direct_sinks(stream, flow_index);
+        summaries.collect_direct_sinks(stream, plan);
         summaries.propagate_sinks(stream);
         for (_, summary) in summaries.by_id.iter_mut() {
             summary.sinks.sort_and_dedup();
@@ -380,19 +382,18 @@ impl<'a> FunctionSummaries<'a> {
     fn collect_facts(&mut self, effects: &FunctionEffects) {
         for effect in effects.iter_effects() {
             if self.get(effect.id()).is_none() {
-                for param in effect.parameters() {
+                let params = effect.parameters(self.stream);
+                for param in params {
                     self.paths.intern_frozen(param.path);
                 }
                 self.insert(FunctionSummary {
                     id: effect.id(),
-                    parameters: effect.parameters().to_vec(),
-                    parameter_count: effect
-                        .parameters()
+                    parameter_count: params
                         .iter()
                         .map(|parameter| parameter.parameter_index)
                         .max()
                         .map_or(0, |index| index.saturating_add(1)),
-                    has_rest: effect.parameters().iter().any(|parameter| parameter.rest),
+                    has_rest: params.iter().any(|parameter| parameter.rest),
                     calls: effect.calls().iter().map(EffectCall::event).collect(),
                     sinks: SinkSet::default(),
                     sinks_offset: 0,
@@ -401,7 +402,7 @@ impl<'a> FunctionSummaries<'a> {
         }
     }
 
-    fn collect_direct_sinks(&mut self, stream: &FactStream, flow_index: &FlowIndex<'_>) {
+    fn collect_direct_sinks(&mut self, stream: &FactStream, plan: &BoundFlowPlan<'_>) {
         let entries: Vec<(FunctionId, usize)> = self
             .by_id
             .iter()
@@ -413,7 +414,7 @@ impl<'a> FunctionSummaries<'a> {
             };
             for idx in 0..count {
                 if let Some(call_id) = summary.calls.get(idx).copied() {
-                    summary.collect_sinks_for_call(stream, flow_index, &mut self.paths, call_id);
+                    summary.collect_sinks_for_call(stream, plan, &mut self.paths, call_id);
                 }
             }
         }
@@ -476,8 +477,8 @@ impl<'a> FunctionSummaries<'a> {
             return false;
         };
         let projections: Vec<FunctionSinkSummary> = {
-            let target_params = &target_summary.parameters;
-            let caller_params = &caller_summary.parameters;
+            let target_params = stream.function_parameters(target);
+            let caller_params = stream.function_parameters(caller);
             let sink_count = target_summary.sinks.0.len();
             let mut projections = Vec::new();
             for sink_idx in target_sinks_offset..sink_count {
@@ -544,8 +545,8 @@ fn try_project_sink(
 }
 
 impl FunctionSummary {
-    pub(super) fn parameters(&self) -> &[ParameterBinding] {
-        &self.parameters
+    pub(super) fn parameter_bindings<'s>(&self, stream: &'s FactStream) -> &'s [ParameterBinding] {
+        stream.function_parameters(self.id)
     }
 
     pub(super) fn sinks(&self) -> &SinkSet {
@@ -579,7 +580,7 @@ impl FunctionSummary {
                 return false;
             }
         }
-        for parameter in &self.parameters {
+        for parameter in self.parameter_bindings(stream) {
             if parameter.rest || parameter.parameter_index >= args.len() {
                 if parameter.parameter_index >= args.len()
                     && parameter.default.is_none()
@@ -606,7 +607,7 @@ impl FunctionSummary {
     fn collect_sinks_for_call(
         &mut self,
         stream: &FactStream,
-        flow_index: &FlowIndex<'_>,
+        plan: &BoundFlowPlan<'_>,
         paths: &mut SummaryPathStore<'_>,
         call_id: FactId,
     ) {
@@ -622,27 +623,28 @@ impl FunctionSummary {
         let Some(chain) = rooted_chain.as_ref().or(syntactic_path.as_ref()) else {
             return;
         };
-        for flow_id in flow_index.sink_ids(chain).into_iter().flatten() {
-            let Some(flow) = flow_index.get(*flow_id) else {
+        for flow_id in plan.sink_ids(chain).into_iter().flatten() {
+            let Some(flow) = plan.get(*flow_id) else {
                 continue;
             };
-            for sink in &flow.sinks {
-                if !sink.member_calls.iter().any(|member| {
-                    stream.names().is_some_and(|names| {
-                        crate::analysis::value::NamePath::from_symbol_path(member, names)
-                            .is_some_and(|member| member == *chain)
-                    })
-                }) {
+            let sink_members = plan.sink_member_calls(*flow_id);
+            for (i, sink) in flow.sinks.iter().enumerate() {
+                if !sink_members
+                    .get(i)
+                    .is_some_and(|members| members.iter().any(|member| member == chain))
+                {
                     continue;
                 }
                 for argument_index in sink.args.present_indices(args.len()) {
                     let Some(argument) = args.get(argument_index) else {
                         continue;
                     };
-                    let Some(parameter) = self.parameters.iter().find(|parameter| {
-                        parameter.value != ValueId::UNKNOWN
-                            && parameter.value == argument.base_value
-                    }) else {
+                    let Some(parameter) =
+                        self.parameter_bindings(stream).iter().find(|parameter| {
+                            parameter.value != ValueId::UNKNOWN
+                                && parameter.value == argument.base_value
+                        })
+                    else {
                         continue;
                     };
                     let Some(prefix_id) = paths.intern_frozen(parameter.path) else {
@@ -781,18 +783,15 @@ mod tests {
         let mut resolver = Resolver::collect(&parsed.program);
         let stream = facts::build::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
-        let summaries = FunctionSummaries::collect(
-            &stream,
-            &effects,
-            &FlowIndex::new(&[], stream.names().expect("test stream names")),
-        );
+        let plan = BoundFlowPlan::new(&[], stream.names().expect("test stream names"));
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
         assert!(summaries.by_id.len() >= 2);
         assert_eq!(
             summaries
                 .by_id
                 .iter()
                 .map(|(_, summary)| summary)
-                .filter(|summary| summary.parameters.len() == 1)
+                .filter(|summary| summary.parameter_count == 1)
                 .count(),
             2
         );

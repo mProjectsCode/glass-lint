@@ -23,7 +23,8 @@ use crate::{
         facts::{CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary},
         flow::{
             effect::{CallEffectRef, FunctionEffects},
-            index::{FlowIndex, FlowLimits},
+            index::FlowLimits,
+            plan::BoundFlowPlan,
             state::FlowState,
             summary::FunctionSummaries,
         },
@@ -65,10 +66,9 @@ pub(in crate::analysis) fn collect_into(
     let Some(names) = stream.names() else {
         return LocalFlowProjectionOutcome::default();
     };
-    let flow_index = FlowIndex::new(rules, names);
-    let helpers = FunctionSummaries::collect(stream, effects, &flow_index);
-    let mut projector =
-        ObjectFlowProjector::new(stream, names, flow_index, helpers, evidence, limits);
+    let plan = BoundFlowPlan::new(rules, names);
+    let helpers = FunctionSummaries::collect(stream, effects, &plan);
+    let mut projector = ObjectFlowProjector::new(stream, names, plan, helpers, evidence, limits);
     for fact in stream.facts() {
         projector.transfer(fact);
     }
@@ -94,7 +94,7 @@ struct ObjectFlowProjector<'rules, 'stream> {
     /// must never inspect the AST or reconstruct resolution decisions.
     stream: &'stream FactStream,
     names: &'stream NameTable,
-    flow_index: FlowIndex<'rules>,
+    plan: BoundFlowPlan<'rules>,
     helpers: FunctionSummaries<'stream>,
     /// Call results are indexed once so later assignments can start a flow
     /// without rescanning the fact stream.
@@ -119,7 +119,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
     fn new(
         stream: &'stream FactStream,
         names: &'stream NameTable,
-        flow_index: FlowIndex<'rules>,
+        plan: BoundFlowPlan<'rules>,
         helpers: FunctionSummaries<'stream>,
         evidence: &'stream mut [Vec<ClassificationEvidence>],
         limits: FlowLimits,
@@ -135,7 +135,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         Self {
             stream,
             names,
-            flow_index,
+            plan,
             helpers,
             calls_by_result,
             flow_evidence: FlowEvidence::new(evidence),
@@ -269,7 +269,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             .map(|(key, _)| key)
             .collect::<Vec<_>>();
         for key in keys {
-            let Some(flow) = self.flow_index.get(key.flow) else {
+            let Some(flow) = self.plan.get(key.flow) else {
                 continue;
             };
             let Some(mut state) = self.flow_state.state_mut(key.object, key.flow) else {
@@ -292,7 +292,7 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
             evidence::emit_if_ready(
                 &mut self.flow_evidence,
                 &self.flow_state,
-                &self.flow_index,
+                &self.plan,
                 &self.limits,
                 self.stream,
                 key.flow,

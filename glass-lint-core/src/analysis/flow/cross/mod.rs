@@ -136,7 +136,10 @@ impl ContextWorklist {
         let Some(effect) = project.effect(module, function) else {
             return;
         };
-        for parameter in effect.parameters().iter().filter(|parameter| {
+        let Some(fact_stream) = project.module_fact_stream(module) else {
+            return;
+        };
+        for parameter in effect.parameters(fact_stream).iter().filter(|parameter| {
             parameter.parameter_index == argument_index && parameter.path.is_empty()
         }) {
             self.push(CallContext {
@@ -335,6 +338,28 @@ impl FlowSources {
     }
 }
 
+/// Build a per-module source index mapping NamePath to matching flow IDs.
+fn build_source_index(
+    flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
+    names: &crate::analysis::name::NameTable,
+) -> BTreeMap<crate::analysis::value::NamePath, Vec<FlowId>> {
+    let mut index: BTreeMap<crate::analysis::value::NamePath, Vec<FlowId>> = BTreeMap::new();
+    for (id, flow) in flows {
+        for source in &flow.sources {
+            if let Some(member) =
+                crate::analysis::value::NamePath::from_symbol_path(&source.member_call, names)
+            {
+                index.entry(member).or_default().push(*id);
+            }
+        }
+    }
+    for ids in index.values_mut() {
+        ids.sort_unstable();
+        ids.dedup();
+    }
+    index
+}
+
 pub(in crate::analysis) fn collect(
     project: &ProjectSemanticModel,
     matchers: &CompiledRuleSelection<'_>,
@@ -442,10 +467,23 @@ impl FlowSources {
                 continue;
             };
             let stream = module.local().facts().stream();
+            // Build a per-module source index so that candidate discovery
+            // looks up flows by chain instead of scanning every flow for
+            // every call.
+            let source_index = build_source_index(flows, names);
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
                     let cref = call.as_ref(stream);
-                    for (flow_id, flow) in flows {
+                    let Some(chain) = cref.chain() else {
+                        continue;
+                    };
+                    let Some(candidates) = source_index.get(chain) else {
+                        continue;
+                    };
+                    for flow_id in candidates {
+                        let Some(flow) = flows.get(flow_id) else {
+                            continue;
+                        };
                         if cref.matches_source(flow, names) {
                             self.add(
                                 SourceKey::new(module.id(), effect.id(), cref.result()),
@@ -565,17 +603,6 @@ pub(super) fn usage_matches_context(
                     }))
             }),
     }
-}
-
-pub(super) fn chain_matches(
-    chain: Option<&crate::analysis::value::NamePath>,
-    member: &crate::analysis::SymbolPath,
-    names: &crate::analysis::name::NameTable,
-) -> bool {
-    let Some(member) = crate::analysis::value::NamePath::from_symbol_path(member, names) else {
-        return false;
-    };
-    chain.is_some_and(|chain| chain == &member || chain.last_segment() == member.last_segment())
 }
 
 pub(super) fn emit(

@@ -236,7 +236,6 @@ mod tests {
                 },
                 FactKind::Function => FactPayload::Function {
                     id: FunctionId(0),
-                    parameters: Vec::new(),
                     boundary: FunctionBoundary::Enter,
                 },
                 FactKind::Control => FactPayload::Control {

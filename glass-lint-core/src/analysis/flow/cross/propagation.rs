@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use smol_str::SmolStr;
 
 use super::{
-    CallContext, ContextWorklist, CrossFlowState, QualifiedEvent, chain_matches, effect_use_event,
-    emit, usage_matches_context,
+    CallContext, ContextWorklist, CrossFlowState, QualifiedEvent, effect_use_event, emit,
+    usage_matches_context,
 };
 use crate::{
     analysis::{
@@ -12,8 +12,12 @@ use crate::{
         facts::FactId,
         flow::effect::{CallEffectRef, EffectUse, FunctionEffect},
         name::NameTable,
+        value::NamePath,
     },
-    api::{classification::ClassificationEvidence, compiler::CompiledObjectFlow},
+    api::{
+        classification::ClassificationEvidence,
+        compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments},
+    },
     project::ModuleId,
 };
 
@@ -105,11 +109,24 @@ impl UsageProjector<'_> {
 
         let chain = cref.chain();
         let values = stream.values();
+        // Pre-resolve requirement member paths once per call context.
+        let req_members: Vec<Option<NamePath>> = self
+            .flow
+            .requirements
+            .iter()
+            .map(|req| match req {
+                CompiledObjectRequirement::MemberCall { member, .. } => {
+                    NamePath::from_symbol_path(member, self.names)
+                }
+                CompiledObjectRequirement::PropertyWrite { .. } => None,
+            })
+            .collect();
         let mut next = self.state.clone();
-        for (index, requirement) in self.flow.requirements.iter().enumerate() {
-            if let crate::api::compiler::CompiledObjectRequirement::MemberCall { member, arguments } =
-                requirement
-                && chain_matches(chain, member, self.names)
+        for (index, member) in req_members.iter().enumerate() {
+            if let Some(member) = member
+                && chain.is_some_and(|c| c == member || c.last_segment() == member.last_segment())
+                && let CompiledObjectRequirement::MemberCall { arguments, .. } =
+                    &self.flow.requirements[index]
                 && arguments.iter().all(|matcher| {
                     call_args
                         .get(matcher.index())
@@ -139,13 +156,30 @@ impl UsageProjector<'_> {
         let cref = CallEffectRef { stream, event };
         let chain = cref.chain();
         let rooted = cref.rooted();
-        if self.flow.sink_matches(
-            chain
-                .and_then(|chain| chain.to_symbol_path(self.names))
-                .as_ref(),
-            rooted,
-            argument,
-        ) && self.flow.requirements_ready(self.state.requirements.len())
+        // Pre-resolve sink member-call paths once per call context.
+        let sink_members: Vec<Vec<NamePath>> = self
+            .flow
+            .sinks
+            .iter()
+            .map(|sink| {
+                sink.member_calls
+                    .iter()
+                    .filter_map(|mc| NamePath::from_symbol_path(mc, self.names))
+                    .collect()
+            })
+            .collect();
+        let sink_matches = self.flow.sinks.iter().enumerate().any(|(i, sink)| {
+            sink_members
+                .get(i)
+                .is_some_and(|members| members.iter().any(|member| chain == Some(member)))
+                && sink.is_rooted == rooted
+                && match &sink.args {
+                    CompiledObjectSinkArguments::Any => true,
+                    CompiledObjectSinkArguments::Indices(indices) => indices.contains(&argument),
+                }
+        });
+        if sink_matches
+            && self.flow.requirements_ready(self.state.requirements.len())
             && self.context.crossed
         {
             emit(

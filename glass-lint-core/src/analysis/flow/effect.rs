@@ -105,10 +105,9 @@ pub(in crate::analysis) enum EffectUse {
 pub struct FunctionEffect {
     /// This summary is rule-independent; matcher policy is applied only when
     /// it is projected into local or qualified flow states.
-    /// Lexical function identity owning this summary.
+    /// Lexical function identity owning this summary. Parameter bindings are
+    /// looked up from the canonical fact stream via `parameters(stream)`.
     id: FunctionId,
-    /// Parameter bindings at function entry.
-    parameters: Vec<ParameterBinding>,
     /// Calls made by this function in source order.
     calls: Vec<EffectCall>,
     /// Observable parameter/source uses in source order.
@@ -387,7 +386,6 @@ impl FunctionEffects {
                 FunctionId(0),
                 FunctionEffect {
                     id: FunctionId(0),
-                    parameters: Vec::new(),
                     calls: Vec::new(),
                     uses: Vec::new(),
                     returns: Vec::new(),
@@ -402,7 +400,6 @@ impl FunctionEffects {
             // precedes the events owned by that function.
             if let FactPayload::Function {
                 id,
-                parameters,
                 boundary: FunctionBoundary::Enter,
                 ..
             } = &fact.payload
@@ -410,16 +407,16 @@ impl FunctionEffects {
                 if !effects.by_id.contains(*id) && !budget.try_push() {
                     continue;
                 }
+                let params = stream.function_parameters(*id);
                 effects.by_id.insert(
                     *id,
                     FunctionEffect {
                         id: *id,
-                        parameters: parameters.clone(),
                         calls: Vec::new(),
                         uses: Vec::new(),
                         returns: Vec::new(),
                         invalid: false,
-                        value_roots: parameters
+                        value_roots: params
                             .iter()
                             .map(|parameter| (parameter.value, parameter.value))
                             .collect(),
@@ -453,14 +450,17 @@ impl FunctionEffects {
                     fact.id,
                     *receiver,
                     property.and_then(|id| stream.resolve_name(id)),
+                    stream,
                     &mut budget,
                 ),
-                FactPayload::Call { .. } => effect.record_call(fact, &mut budget),
+                FactPayload::Call { .. } => effect.record_call(fact, stream, &mut budget),
                 FactPayload::Control {
                     kind: ControlKind::Return,
                     return_value,
                     ..
-                } => effect.record_return(*return_value, &value_provenance, &mut budget),
+                } => {
+                    effect.record_return(*return_value, &value_provenance, stream, &mut budget);
+                }
                 _ => {}
             }
             effect.mark_unsupported_control(&fact.payload);
@@ -477,6 +477,7 @@ impl FunctionEffect {
         event: FactId,
         receiver: ValueId,
         property: Option<&str>,
+        stream: &FactStream,
         budget: &mut Budget,
     ) {
         if !budget.try_push() {
@@ -485,7 +486,7 @@ impl FunctionEffect {
         }
         self.uses.push(EffectUse::PropertyWrite {
             event,
-            receiver: self.parameter_for(receiver),
+            receiver: self.parameter_for(receiver, stream),
             receiver_value: receiver,
             property: property.map(SmolStr::new),
         });
@@ -508,9 +509,14 @@ impl FunctionEffect {
         &self.uses
     }
 
-    /// Parameter bindings captured at function entry.
-    pub(in crate::analysis) fn parameters(&self) -> &[ParameterBinding] {
-        &self.parameters
+    /// Parameter bindings captured at function entry, looked up from the
+    /// canonical fact stream. Returns an empty slice for the program-level
+    /// slot or when the stream is inaccessible.
+    pub(in crate::analysis) fn parameters<'s>(
+        &self,
+        stream: &'s FactStream,
+    ) -> &'s [ParameterBinding] {
+        stream.function_parameters(self.id)
     }
 
     /// Return projections captured by the summary.
@@ -557,7 +563,7 @@ impl FunctionEffect {
         }
     }
 
-    fn record_call(&mut self, fact: &SemanticFact, budget: &mut Budget) {
+    fn record_call(&mut self, fact: &SemanticFact, stream: &FactStream, budget: &mut Budget) {
         let FactPayload::Call {
             args,
             result,
@@ -572,7 +578,7 @@ impl FunctionEffect {
         let effective_args = unwrap
             .as_deref()
             .map_or(args.as_slice(), |u| u.effective_args.as_slice());
-        let arguments = self.build_effect_arguments(effective_args);
+        let arguments = self.build_effect_arguments(effective_args, stream);
         let call_id = EffectCallId(self.calls.len());
         for argument in &arguments {
             if !budget.try_push() {
@@ -594,7 +600,7 @@ impl FunctionEffect {
         } else {
             self.invalid = true;
         }
-        if let Some(receiver) = receiver.and_then(|value| self.parameter_for(value)) {
+        if let Some(receiver) = receiver.and_then(|value| self.parameter_for(value, stream)) {
             if budget.try_push() {
                 self.uses.push(EffectUse::CallReceiver {
                     event: fact.id,
@@ -607,7 +613,11 @@ impl FunctionEffect {
         self.value_roots.entry(*result).or_insert(*result);
     }
 
-    fn build_effect_arguments(&self, call_args: &[CallArgInfo]) -> Vec<EffectArgument> {
+    fn build_effect_arguments(
+        &self,
+        call_args: &[CallArgInfo],
+        stream: &FactStream,
+    ) -> Vec<EffectArgument> {
         call_args
             .iter()
             .enumerate()
@@ -615,16 +625,13 @@ impl FunctionEffect {
                 index,
                 value: argument.base_value,
                 path: argument.base_path,
-                parameter: self.parameter_for(argument.base_value),
+                parameter: self.parameter_for(argument.base_value, stream),
             })
             .collect()
     }
 
     fn record_copy(&mut self, target: ValueId, source: ValueId) {
         self.copy_root(target, source);
-        if self.parameter_for(source).is_some() {
-            self.value_roots.insert(target, source);
-        }
     }
 
     fn copy_root(&mut self, target: ValueId, source: ValueId) {
@@ -639,9 +646,10 @@ impl FunctionEffect {
         }
     }
 
-    fn parameter_for(&self, value: ValueId) -> Option<ParameterRef> {
+    fn parameter_for(&self, value: ValueId, stream: &FactStream) -> Option<ParameterRef> {
         let root = self.value_roots.get(&value).copied().unwrap_or(value);
-        self.parameters
+        stream
+            .function_parameters(self.id)
             .iter()
             .find(|parameter| parameter.value == root && root != ValueId::UNKNOWN)
             .map(|parameter| ParameterRef {
@@ -666,9 +674,10 @@ impl FunctionEffect {
         &mut self,
         value: ValueId,
         value_provenance: &BTreeMap<ValueId, SymbolCallProvenance>,
+        stream: &FactStream,
         budget: &mut Budget,
     ) {
-        let parameter = self.parameter_for(value);
+        let parameter = self.parameter_for(value, stream);
         if parameter.is_none()
             && (value == ValueId::UNKNOWN || !self.value_roots.contains_key(&value))
         {

@@ -5,9 +5,9 @@
 //! during ordinary mutable construction, not through interior mutation.
 
 use crate::analysis::{
-    facts::{FactId, FactKind, FactPayload, MAX_FACTS, SemanticFact},
+    facts::{FactId, FactKind, FactPayload, MAX_FACTS, ParameterBinding, SemanticFact},
     name::NameTable,
-    value::{PathId, PathInterner, PathSegment, PathSegmentInput},
+    value::{FunctionId, PathId, PathInterner, PathSegment, PathSegmentInput},
 };
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -39,6 +39,10 @@ pub(in crate::analysis) struct FactStream {
     /// the resolver is dropped. Consumers borrow immutable value shapes through
     /// the stream instead of copying projections.
     values: Option<crate::analysis::value::ValueTable>,
+    /// Canonical function parameter bindings indexed by FunctionId. Populated
+    /// during building; effects and summaries look up bindings here instead of
+    /// cloning from inline fact payloads.
+    function_parameters: Vec<Vec<ParameterBinding>>,
     /// False after any ID, budget, or append invariant is violated.
     valid: bool,
     /// Typed construction outcomes that make the retained stream incomplete.
@@ -60,6 +64,7 @@ impl FactStream {
             paths: PathInterner::new(),
             names: None,
             values: None,
+            function_parameters: Vec::new(),
             valid: true,
             issues: std::collections::BTreeSet::new(),
         }
@@ -193,6 +198,32 @@ impl FactStream {
     /// Borrow the canonical path table for read-only projection queries.
     pub(in crate::analysis) fn paths(&self) -> &PathInterner {
         &self.paths
+    }
+
+    /// Register parameter bindings for a function identity. Called during
+    /// building; panics if the slot is already occupied.
+    pub(super) fn register_function_parameters(
+        &mut self,
+        id: FunctionId,
+        parameters: Vec<ParameterBinding>,
+    ) {
+        let index = usize::try_from(id.0).expect("FunctionId fits in usize");
+        if self.function_parameters.len() <= index {
+            self.function_parameters.resize_with(index + 1, Vec::new);
+        }
+        self.function_parameters[index] = parameters;
+    }
+
+    /// Look up the canonical parameter bindings for a function. Returns an
+    /// empty slice when the function has no registered parameters (e.g. the
+    /// program-level slot or an exit fact).
+    pub(in crate::analysis) fn function_parameters(&self, id: FunctionId) -> &[ParameterBinding] {
+        let Ok(index) = usize::try_from(id.0) else {
+            return &[];
+        };
+        self.function_parameters
+            .get(index)
+            .map_or(&[], |params| params.as_slice())
     }
 
     pub(super) fn intern_path_input(

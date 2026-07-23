@@ -6,7 +6,7 @@ Scope: the entirety of `glass-lint-core` and `glass-lint-project`, with emphasis
 
 ## Summary
 
-This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 6 open findings remain (6 medium). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
+This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 4 open findings remain (4 medium). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
 
 The broad architectural opportunity is to make each pipeline transition consume one phase-owned type and produce the next. Today, several boundaries retain raw and compiled forms together, erase semantic newtypes and reconstruct them later, or build parallel maps that describe one logical record. Those choices obscure the intended pipeline and cause avoidable clones, repeated validation, repeated indexing, and transient collections.
 
@@ -89,25 +89,21 @@ Build an `AuthoredRequestTable` once per module, containing the local request ID
 
 ### Core: Facts, Flow, Matching, and Linking
 
-#### READ-010 — Function and call metadata is copied across facts, effects, and summaries
+#### READ-010 — Function and call metadata is copied across facts, effects, and summaries - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/facts/model.rs:192-305`, `glass-lint-core/src/analysis/flow/effect.rs:342-469`, `glass-lint-core/src/analysis/flow/summary.rs:279-400`
 
-Parameter bindings and call relationships originate in semantic facts, are cloned into function effects, and are copied again into function summaries. These representations coexist within one analysis lifetime, so the extra ownership obscures which structure is canonical and increases memory churn for call-heavy files.
+`FactStream` now owns a canonical `function_parameters: Vec<Vec<ParameterBinding>>` table indexed by `FunctionId`. `FactPayload::Function` no longer carries inline parameters; the builder registers them on the stream via `register_function_parameters`. `FunctionEffect` stores only `id` and provides `parameters(stream)` that borrows from the stream. `FunctionSummary` stores `parameter_count` and `has_rest` (the genuinely derived state) and looks up bindings through `parameter_bindings(stream)`. The three-way clone (`facts → effects → summaries`) is eliminated: parameter data is written once and borrowed everywhere else within the same analysis lifetime.
 
-Keep canonical function and call tables addressed by typed IDs. Let effects and summaries store IDs plus only genuinely derived state, borrowing immutable metadata during projection. If summaries must outlive facts, make that ownership transition explicit and consuming rather than cloning at every intermediate phase.
-
-#### READ-011 — Flow symbols are rebound repeatedly instead of once per module
+#### READ-011 — Flow symbols are rebound repeatedly instead of once per module - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/flow/index.rs:85-113`, `glass-lint-core/src/analysis/flow/projector/evidence.rs:25-139`, `glass-lint-core/src/analysis/flow/summary.rs:605-660`, `glass-lint-core/src/analysis/flow/cross/mod.rs:338-460`
 
-Sources are converted to module-local name paths for indexing, but requirements and sinks are converted again inside event/state loops, and cross-module propagation reconstructs owned symbol paths. Cross-flow candidate discovery also scans every flow for each effect/call instead of sharing the source index used by local projection.
-
-Add a `BoundFlowPlan` phase between catalog compilation and flow execution. Bind sources, requirements, sinks, and present-argument indexes to module-local identities once, then share those indexes between local and cross projection. Return iterators for small index sets and keep owned `SymbolPath` values only in the provider-neutral catalog.
+A `BoundFlowPlan` phase was added between catalog compilation and flow execution (`plan.rs`). Sources, requirements, and sinks are pre-resolved from `SymbolPath` to `NamePath` once during plan construction, eliminating repeated `NamePath::from_symbol_path` calls inside event/state loops in evidence emission and summary collection. The local projector, summary collector, and cross-module propagator all use the pre-bound data. Cross-flow candidate discovery now builds a per-module source index (`build_source_index` in cross/mod.rs) and looks up flows by chain instead of scanning every flow for every call. The now-unused `FlowIndex` struct, `chain_matches` helper, and `sink_matches` method were removed.
 
 #### READ-012 — Flow-state edits clone full states and log unchanged mutations
 - **Severity:** Medium

@@ -9,6 +9,7 @@ use crate::{
         facts::FactStream,
         flow::{
             index::{FlowId, FlowLimits},
+            plan::BoundFlowPlan,
             projector::{
                 CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowState,
                 MatchKind, ObjectFlowProjector, ObjectId, ValueId,
@@ -42,20 +43,20 @@ impl ObjectFlowProjector<'_, '_> {
                 .map(|(key, _)| key)
                 .collect();
             for key in keys {
-                let Some(flow) = self.flow_index.get(key.flow) else {
+                let Some(flow) = self.plan.get(key.flow) else {
                     continue;
                 };
                 let Some(mut state) = self.flow_state.state_mut(key.object, key.flow) else {
                     continue;
                 };
-                for (index, requirement) in flow.requirements.iter().enumerate() {
-                    if let CompiledObjectRequirement::MemberCall {
-                        member,
-                        arguments: matchers,
-                    } = requirement
-                        && NamePath::from_symbol_path(member, self.names).is_some_and(|member| {
-                            member == *chain || chain.last_segment() == member.last_segment()
-                        })
+                let req_members = self.plan.requirement_members(key.flow);
+                for (index, member) in req_members.iter().enumerate() {
+                    if let Some(member) = member
+                        && (member == chain || chain.last_segment() == member.last_segment())
+                        && let CompiledObjectRequirement::MemberCall {
+                            arguments: matchers,
+                            ..
+                        } = &flow.requirements[index]
                         && matchers.iter().all(|matcher| {
                             args.get(matcher.index()).is_some_and(|arg| {
                                 match self.stream.values() {
@@ -74,7 +75,7 @@ impl ObjectFlowProjector<'_, '_> {
                 emit_if_ready(
                     &mut self.flow_evidence,
                     &self.flow_state,
-                    &self.flow_index,
+                    &self.plan,
                     &self.limits,
                     self.stream,
                     key.flow,
@@ -93,7 +94,7 @@ impl ObjectFlowProjector<'_, '_> {
         sink_fact: FactId,
         rooted: bool,
     ) {
-        let Some(flow_ids) = self.flow_index.sink_ids(chain) else {
+        let Some(flow_ids) = self.plan.sink_ids(chain) else {
             return;
         };
         for (argument_index, argument) in args.iter().enumerate() {
@@ -107,14 +108,15 @@ impl ObjectFlowProjector<'_, '_> {
                 .map(|(key, _)| (key, key.flow))
                 .collect();
             for (key, flow_id) in pairs {
-                let Some(flow) = self.flow_index.get(flow_id) else {
+                let Some(flow) = self.plan.get(flow_id) else {
                     continue;
                 };
-                let matches = flow.sinks.iter().any(|sink| {
-                    sink.member_calls.iter().any(|member| {
-                        NamePath::from_symbol_path(member, self.names)
-                            .is_some_and(|member| member == *chain)
-                    }) && sink.is_rooted == rooted
+                let sink_members = self.plan.sink_member_calls(flow_id);
+                let matches = flow.sinks.iter().enumerate().any(|(i, sink)| {
+                    sink_members
+                        .get(i)
+                        .is_some_and(|members| members.iter().any(|member| member == chain))
+                        && sink.is_rooted == rooted
                         && match &sink.args {
                             CompiledObjectSinkArguments::Any => true,
                             CompiledObjectSinkArguments::Indices(indices) => {
@@ -157,16 +159,20 @@ impl ObjectFlowProjector<'_, '_> {
             .sinks()
             .into_iter()
             .filter_map(|sink| {
-                let parameter = summary.parameters().iter().find(|parameter| {
-                    parameter.parameter_index == sink.parameter_index()
-                        && (SummaryPathStore::matches_frozen(sink.path(), parameter.path)
-                            || (parameter.rest
-                                && paths.starts_with_frozen(sink.path(), parameter.path)))
-                })?;
+                let parameter =
+                    summary
+                        .parameter_bindings(self.stream)
+                        .iter()
+                        .find(|parameter| {
+                            parameter.parameter_index == sink.parameter_index()
+                                && (SummaryPathStore::matches_frozen(sink.path(), parameter.path)
+                                    || (parameter.rest
+                                        && paths.starts_with_frozen(sink.path(), parameter.path)))
+                        })?;
                 let value = parameter.project_argument_at(self.stream, args, paths, sink.path())?;
                 let object = self.flow_state.object_for(value)?;
                 let state = self.flow_state.state(object, sink.flow())?;
-                let flow = self.flow_index.get(sink.flow())?;
+                let flow = self.plan.get(sink.flow())?;
                 if state.is_ready(flow) {
                     Some((object, sink.flow()))
                 } else {
@@ -178,7 +184,7 @@ impl ObjectFlowProjector<'_, '_> {
             let Some(state) = self.flow_state.state(object, flow_id) else {
                 continue;
             };
-            let Some(flow) = self.flow_index.get(flow_id) else {
+            let Some(flow) = self.plan.get(flow_id) else {
                 continue;
             };
             emit_state(
@@ -198,7 +204,7 @@ impl ObjectFlowProjector<'_, '_> {
 pub(super) fn emit_if_ready(
     evidence: &mut FlowEvidence,
     flow_state: &super::state::FlowStateTable,
-    flow_index: &crate::analysis::flow::index::FlowIndex<'_>,
+    plan: &BoundFlowPlan<'_>,
     limits: &FlowLimits,
     stream: &FactStream,
     flow: FlowId,
@@ -208,7 +214,7 @@ pub(super) fn emit_if_ready(
     let Some(state) = flow_state.state(object, flow) else {
         return;
     };
-    let Some(matcher) = flow_index.get(flow) else {
+    let Some(matcher) = plan.get(flow) else {
         return;
     };
     if matcher.emit_on_requirements {

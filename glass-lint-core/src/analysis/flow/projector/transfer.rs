@@ -59,12 +59,12 @@ impl ObjectFlowProjector<'_, '_> {
         source_fact: FactId,
         rooted: bool,
     ) -> Option<(ObjectId, Vec<FlowState>)> {
-        let ids = self.flow_index.source_ids(chain)?;
+        let ids = self.plan.source_ids(chain)?;
         let matching = ids
             .iter()
             .copied()
             .filter(|id| {
-                self.flow_index.get(*id).is_some_and(|flow| {
+                self.plan.get(*id).is_some_and(|flow| {
                     flow.sources.iter().any(|source| {
                         NamePath::from_symbol_path(&source.member_call, self.names)
                             .is_some_and(|member| member == *chain)

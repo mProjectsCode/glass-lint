@@ -35,31 +35,24 @@ impl FactBuilder<'_> {
     ) {
         let scope = self.scope_at(span);
         let id = self.resolver.function_scope_at(scope);
-        let parameter_bindings = match boundary {
-            FunctionBoundary::Enter => {
-                let mut bindings = Vec::new();
-                for (parameter_index, parameter) in parameters {
-                    self.parameter_bindings(
-                        &parameter,
-                        parameter_index,
-                        PathId::EMPTY,
-                        None,
-                        false,
-                        &mut bindings,
-                    );
-                }
-                bindings
+        if boundary == FunctionBoundary::Enter {
+            let mut bindings = Vec::new();
+            for (parameter_index, parameter) in parameters {
+                self.parameter_bindings(
+                    &parameter,
+                    parameter_index,
+                    PathId::EMPTY,
+                    None,
+                    false,
+                    &mut bindings,
+                );
             }
-            FunctionBoundary::Exit => Vec::new(),
-        };
+            self.stream.register_function_parameters(id, bindings);
+        }
         self.emit(
             FactKind::Function,
             span,
-            FactPayload::Function {
-                id,
-                parameters: parameter_bindings,
-                boundary,
-            },
+            FactPayload::Function { id, boundary },
         );
     }
 
