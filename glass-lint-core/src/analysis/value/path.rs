@@ -11,9 +11,23 @@ pub(in crate::analysis) struct PathId(pub(in crate::analysis) u32);
 impl PathId {
     /// Sentinel representing no path segments.
     pub(in crate::analysis) const EMPTY: Self = Self(0);
+    /// Tag bit reserved for summary overlay IDs. Tagged IDs are valid only
+    /// within the summary overlay that produced them.
+    pub(in crate::analysis) const LINK_TAG: u32 = 1 << 31;
 
     pub(in crate::analysis) fn is_empty(self) -> bool {
         self == Self::EMPTY
+    }
+
+    /// Whether this ID belongs to a summary overlay (tagged).
+    #[allow(dead_code)]
+    pub(in crate::analysis) fn is_linked(self) -> bool {
+        self.0 & Self::LINK_TAG != 0
+    }
+
+    /// Strip the overlay tag, returning a canonical node index.
+    pub(in crate::analysis) fn untag(self) -> Self {
+        Self(self.0 & !Self::LINK_TAG)
     }
 }
 
@@ -106,7 +120,7 @@ impl ParentPathStore {
         if let Some(path) = self.by_edge.get(&(parent, segment.clone())) {
             return Some(*path);
         }
-        let id = u32::try_from(self.nodes.len()).ok()? | (1 << 31);
+        let id = u32::try_from(self.nodes.len()).ok()? | PathId::LINK_TAG;
         self.nodes.push(PathNode {
             parent,
             depth,
@@ -117,11 +131,13 @@ impl ParentPathStore {
     }
 
     pub(in crate::analysis) fn depth(&self, id: u32) -> Option<u32> {
-        self.nodes.get(id as usize).map(|node| node.depth)
+        let id = PathId(id).untag().0 as usize;
+        self.nodes.get(id).map(|node| node.depth)
     }
 
     pub(in crate::analysis) fn parent(&self, id: u32) -> Option<u32> {
-        self.nodes.get(id as usize).map(|node| node.parent)
+        let id = PathId(id).untag().0 as usize;
+        self.nodes.get(id).map(|node| node.parent)
     }
 
     pub(in crate::analysis) fn starts_with(&self, path: u32, prefix: u32) -> bool {
@@ -134,7 +150,7 @@ impl ParentPathStore {
         if prefix_depth > path_depth {
             return false;
         }
-        let mut current = path;
+        let mut current = PathId(path).untag().0;
         for _ in 0..(path_depth - prefix_depth) {
             let index = current as usize;
             let Some(node) = self.nodes.get(index) else {
@@ -146,14 +162,15 @@ impl ParentPathStore {
     }
 
     pub(in crate::analysis) fn segment(&self, id: u32) -> Option<&PathSegment> {
+        let id = PathId(id).untag().0 as usize;
         if id == 0 {
             return None;
         }
-        self.nodes.get(id as usize)?.segment.as_ref()
+        self.nodes.get(id)?.segment.as_ref()
     }
 
     pub(in crate::analysis) fn first_segment_of(&self, id: u32) -> Option<&PathSegment> {
-        let mut current = id;
+        let mut current = PathId(id).untag().0;
         let mut last = None;
         while current != 0 {
             let node = self.nodes.get(current as usize)?;

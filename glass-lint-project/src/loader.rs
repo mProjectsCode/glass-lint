@@ -481,11 +481,11 @@ impl<'a> ProjectLoadState<'a> {
         let read_start = Instant::now();
         let source = self.admission.load_admitted_source_file(admitted)?;
         metrics.timings.record_reads(read_start.elapsed());
-        let source_bytes = u64::try_from(source.source.len()).unwrap_or(u64::MAX);
-        self.progress.record_source_bytes(
-            source_bytes,
-            self.admission.options().max_project_source_bytes(),
-        )?;
+        let source_limit = self.admission.options().max_project_source_bytes();
+        let source_bytes =
+            u64::try_from(source.source.len()).unwrap_or_else(|_| source_limit.saturating_add(1));
+        self.progress
+            .record_source_bytes(source_bytes, source_limit)?;
 
         let parse_start = Instant::now();
         let requests = self.session.analyze_source(source)?.requests();
@@ -578,13 +578,9 @@ impl ClosedFrontier<'_> {
         self,
         metrics: &mut ProjectLoadMetrics,
     ) -> Result<AnalysisReport, ProjectLoadError> {
-        let deadline = self.deadline;
         let local = self.session.finish_local();
         let resolved = local.resolve(self.resolved.into_iter())?;
         let result = resolved.finish_with_timings()?;
-        if Instant::now() > deadline {
-            return Err(ProjectLoadError::Timeout);
-        }
         metrics.timings.record_linking(result.linking);
         metrics.timings.record_matching(result.matching);
         let mut report = result.report;

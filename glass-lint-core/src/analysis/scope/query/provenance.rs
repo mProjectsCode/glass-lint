@@ -473,7 +473,7 @@ impl ScopeGraph {
             .binding_key_for_expr(&member.obj)
             .or_else(|| self.global_key_for_expr(&member.obj))
             .and_then(|mut key| {
-                key.append_segment(self.intern_name(self.member_property_name(member)?.as_str())?);
+                key.append_segment(self.name_id(self.member_property_name(member)?.as_str())?);
                 Some(key)
             });
         MemberValueSeed {

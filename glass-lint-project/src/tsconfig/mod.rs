@@ -612,19 +612,7 @@ fn build_effective_config_inner(
                             Some(result.map(|(merged, _)| merged))
                         }
                     }
-                    Err(e) => {
-                        // Canonicalization failure is a configuration error.
-                        diagnostics.push(TsconfigDiagnostic {
-                            config_path: canonical.clone(),
-                            cycle_target: None,
-                            message: format!(
-                                "failed to resolve extends path {}: {}",
-                                parent_path.display(),
-                                e,
-                            ),
-                        });
-                        None
-                    }
+                    Err(e) => Some(Err(e)),
                 }
             })
         })

@@ -126,7 +126,10 @@ impl SourceCorpus {
 
     /// Read one supported source file after enforcing the byte budget.
     pub fn load(&self, path: &Path) -> Result<CorpusFile, ProjectLoadError> {
-        let root = path.parent().unwrap_or_else(|| Path::new("."));
+        let root = self
+            .options
+            .root()
+            .unwrap_or_else(|| path.parent().unwrap_or_else(|| Path::new(".")));
         let admission = SourceAdmission::new(root, &self.options)?;
         match admission.classify(path)? {
             PathAdmission::Admitted(admitted) => {

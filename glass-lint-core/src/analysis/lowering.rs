@@ -269,7 +269,7 @@ impl LocalLowering<'_> {
             status.record(
                 StatusScope::Project,
                 IncompleteReason::ScopeShapeMismatch {
-                    detail: format!("{} scope collection issue(s)", issues.len()),
+                    count: issues.len(),
                 },
             );
         }

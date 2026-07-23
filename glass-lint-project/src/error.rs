@@ -51,6 +51,7 @@ pub enum ProjectOptionError {
     ProjectBytesBelowFileBytes,
     InvalidExtensions,
     InvalidExtensionAliases,
+    TimeoutOutOfRange { maximum: u64 },
 }
 
 impl fmt::Display for ProjectOptionError {
@@ -66,6 +67,9 @@ impl fmt::Display for ProjectOptionError {
             Self::InvalidExtensions => f.write_str("extensions must be non-empty file suffixes"),
             Self::InvalidExtensionAliases => {
                 f.write_str("extension aliases must map file suffixes to non-empty suffix lists")
+            }
+            Self::TimeoutOutOfRange { maximum } => {
+                write!(f, "max_timeout_ms must not exceed {maximum}")
             }
         }
     }

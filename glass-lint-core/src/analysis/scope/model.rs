@@ -148,10 +148,6 @@ impl ScopeGraph {
         self.names.lookup(name)
     }
 
-    pub(in crate::analysis) fn intern_name(&self, name: &str) -> Option<NameId> {
-        self.names.lookup(name)
-    }
-
     pub(in crate::analysis) fn intern_name_mut(&mut self, name: &str) -> Option<NameId> {
         self.names.intern(name).ok()
     }

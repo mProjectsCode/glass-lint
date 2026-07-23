@@ -6,7 +6,7 @@ Scope: all Rust source files in `glass-lint-core` and `glass-lint-project`, incl
 
 ## Summary
 
-The codebase is well-factored with strong phase boundaries, typed newtypes for most semantic identities, and consistent fail-closed patterns. This audit identifies 17 open maintainability issues: 2 high severity, 10 medium severity, and 5 low severity.
+The codebase is well-factored with strong phase boundaries, typed newtypes for most semantic identities, and consistent fail-closed patterns. This audit identifies 17 open maintainability issues: 2 high severity, 10 medium severity, and 5 low severity. As of 2026-07-23, 10 items have been addressed (4, 5, 7, 9, 10, 13, 14, 15, 16, 17).
 
 The dominant themes are a `ScopeGraph` struct that has accumulated too many responsibilities, two parallel provenance models whose relationship is undocumented, a handful of ad-hoc state encodings that could be type-safe state machines, and some error-handling gaps in the project crate where partial failures can mask or replace more relevant diagnostics.
 
@@ -47,7 +47,7 @@ Add a doc comment on each variant describing when it is produced and which consu
 
 Introduce a generic `FactStream<Phase>` with marker types `Building` and `Frozen`. Construction starts in `Building` where `push` and `intern` are available; `freeze()` consumes `FactStream<Building>` and returns `FactStream<Frozen>`. The frozen accessors return `&T` unconditionally. This eliminates all `Option` unwrapping from the matching, flow, and linking pipelines and makes the freeze-ordering invariant compiler-checked. Do not attempt this until the `Lowerer` and `FactBuilder` APIs are stable; the refactor is mechanical across ~20 call sites in the fact pipeline alone.
 
-#### READ-004 — ParentPathStore::append_linked encodes overlay identity in a tag bit
+#### READ-004 — ParentPathStore::append_linked encodes overlay identity in a tag bit — ✓ Done
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -58,7 +58,7 @@ Introduce a generic `FactStream<Phase>` with marker types `Building` and `Frozen
 
 Reserve the top bit explicitly in `PathId` with a `LINK_TAG: u32 = 1 << 31` constant. Add `PathId::is_linked(self) -> bool` and `PathId::untag(self) -> Self` methods. Document on `PathId` that tagged IDs are valid only within the summary overlay that produced them. In `ParentPathStore`, add a debug assertion in the affected accessors that untags the ID before indexing so misuse is caught in tests.
 
-#### READ-005 — FlowLimits scaling uses a bare magic denominator
+#### READ-005 — FlowLimits scaling uses a bare magic denominator — ✓ Done
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -82,7 +82,7 @@ Name the denominator `DEFAULT_FLOW_OPERATIONS` (matching the configuration field
 
 Replace the retained `Arc<str>` with a precomputed `BitSet` of character boundary positions (a dense `Vec<bool>` segment per 4 KiB block, or similar compact structure) that the normalizer can query without retaining the full text. Only compute this when `is_ascii` is false. This reduces peak memory by the sum of all artifact source sizes through the pipeline.
 
-#### READ-007 — intern_name reads but does not intern
+#### READ-007 — intern_name reads but does not intern — ✓ Done
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -106,7 +106,7 @@ Extract test helpers into a `test_util` module with `pub(crate)` visibility so t
 
 ### Group 3: Core — Pipeline Gaps
 
-#### READ-009 — ProjectSemanticModel stores a link BudgetTracker that is never checked
+#### READ-009 — ProjectSemanticModel stores a link BudgetTracker that is never checked — ✓ Done
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -117,7 +117,9 @@ Extract test helpers into a `test_util` module with `pub(crate)` visibility so t
 
 Remove `link_budget` and store only the limit as a `usize` for metrics. If per-operation budget enforcement is desired later, add a `LinkBudget` parameter to the specific operations that need it rather than carrying unreferenced state through the model.
 
-#### READ-010 — AnalysisStatus uses BTreeSet with String-keyed Ord, making diagnostic grouping fragile
+*Resolution: the `link_budget` is consumed — `graph.rs` checks `is_exhausted()` (line 67) and calls `mark_exhausted()` on budget limits (lines 144, 159, 239, 270). No change needed.*
+
+#### READ-010 — AnalysisStatus uses BTreeSet with String-keyed Ord, making diagnostic grouping fragile — ✓ Done
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -152,7 +154,7 @@ The file-count budget is enforced at admission time, during directory walking, d
 
 Consolidate into a `FileBudget` wrapper around a `usize` limit + `usize` counter that exposes `try_admit() -> Result<(), TooManyFiles>`. Use it in the single `AdmissionSet::admit` path. The walk-level check is redundant once the admission set enforces the limit; the discovery-level check can delegate to the same budget.
 
-#### READ-013 — SourceCorpus::load creates a new admission root per file
+#### READ-013 — SourceCorpus::load creates a new admission root per file — ✓ Done
 
 - **Severity:** Medium
 - **Fix Complexity:** Medium
@@ -163,7 +165,7 @@ Consolidate into a `FileBudget` wrapper around a `usize` limit + `usize` counter
 
 Require a root path at `SourceCorpus` construction time or pass it as a parameter to `load`. Reuse one `SourceAdmission` for all `load()` calls so admission results are consistent and canonicalization is not repeated per file.
 
-#### READ-014 — publish() in finish_inner can return Timeout when called from finish_partial
+#### READ-014 — publish() in finish_inner can return Timeout when called from finish_partial — ✓ Done
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -176,7 +178,7 @@ Remove the deadline check from `finish_inner`. Let `finish` call it after its ow
 
 ### Group 5: Project — Error Handling
 
-#### READ-015 — build_effective_config_inner swallows realpath errors as diagnostics
+#### READ-015 — build_effective_config_inner swallows realpath errors as diagnostics — ✓ Done
 
 - **Severity:** Medium
 - **Fix Complexity:** Low
@@ -187,7 +189,7 @@ When `realpath` fails on a tsconfig `extends` target, the error is recorded as a
 
 Propagate `realpath` errors as `ProjectLoadError::Io` when the path exists but cannot be canonicalized (filesystem errors). Keep the diagnostic path only for the case where the path does not exist at all, since that is a user configuration issue, not a filesystem error.
 
-#### READ-016 — Duration::from_millis silently panics on overflow
+#### READ-016 — Duration::from_millis silently panics on overflow — ✓ Done
 
 - **Severity:** Low
 - **Fix Complexity:** Low
@@ -198,7 +200,7 @@ Propagate `realpath` errors as `ProjectLoadError::Io` when the path exists but c
 
 Add an upper bound in option validation (e.g., `MAX_TIMEOUT_MS = 86_400_000` for 24 hours) and reject values above it at construction time. Alternatively, use `checked_add` or `saturating_mul` pattern with `Duration::from_secs`.
 
-#### READ-017 — u64::try_from source length with u64::MAX fallback saturates to an unbounded value
+#### READ-017 — u64::try_from source length with u64::MAX fallback saturates to an unbounded value — ✓ Done
 
 - **Severity:** Low
 - **Fix Complexity:** Low

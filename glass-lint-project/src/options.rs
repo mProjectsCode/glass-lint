@@ -11,6 +11,7 @@ const DEFAULT_MAX_SOURCE_BYTES: u64 = 8 * 1024 * 1024;
 const DEFAULT_MAX_PROJECT_SOURCE_BYTES: u64 = 512 * 1024 * 1024;
 const DEFAULT_MAX_VISITED_ENTRIES: usize = 250_000;
 const DEFAULT_MAX_TIMEOUT_MS: u64 = 5 * 60 * 1000;
+const MAX_TIMEOUT_MS: u64 = 86_400_000;
 const DEFAULT_EXTENSIONS: &[&str] = &[".js", ".cjs", ".mjs", ".ts", ".cts", ".mts"];
 
 /// How a filesystem project is selected.
@@ -273,6 +274,13 @@ impl ProjectLoadOptions {
         if self.max_timeout_ms == 0 {
             return Err(ProjectLoadError::InvalidOptions(
                 ProjectOptionError::ZeroBudget("max_timeout_ms"),
+            ));
+        }
+        if self.max_timeout_ms > MAX_TIMEOUT_MS {
+            return Err(ProjectLoadError::InvalidOptions(
+                ProjectOptionError::TimeoutOutOfRange {
+                    maximum: MAX_TIMEOUT_MS,
+                },
             ));
         }
         if self.extensions.is_empty()

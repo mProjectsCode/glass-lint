@@ -7,6 +7,8 @@ const DEFAULT_OBJECTS: u64 = 65_536;
 const DEFAULT_STATES: u64 = 262_144;
 const DEFAULT_EMISSIONS: u64 = 65_536;
 const DEFAULT_MUTATIONS: u64 = 4096;
+/// Flow-operations denominator used to scale each dimension proportionally.
+const DEFAULT_FLOW_OPERATIONS: u64 = 262_144;
 
 /// Floor values that guarantee even the simplest local flow can complete.
 /// These are separate from the cross‑module `flow_operations` budget.
@@ -36,12 +38,14 @@ impl FlowLimits {
     pub(in crate::analysis) fn from_flow_operations(flow_operations: usize) -> Self {
         let flow = flow_operations as u64;
         Self {
-            objects: u32::try_from(DEFAULT_OBJECTS * flow / 262_144)
+            objects: u32::try_from(DEFAULT_OBJECTS * flow / DEFAULT_FLOW_OPERATIONS)
                 .unwrap_or(u32::MAX)
                 .max(MIN_OBJECTS),
-            states: ((DEFAULT_STATES * flow / 262_144) as usize).max(MIN_STATES),
-            emissions: ((DEFAULT_EMISSIONS * flow / 262_144) as usize).max(MIN_EMISSIONS),
-            mutation: ((DEFAULT_MUTATIONS * flow / 262_144) as usize).max(MIN_MUTATIONS),
+            states: ((DEFAULT_STATES * flow / DEFAULT_FLOW_OPERATIONS) as usize).max(MIN_STATES),
+            emissions: ((DEFAULT_EMISSIONS * flow / DEFAULT_FLOW_OPERATIONS) as usize)
+                .max(MIN_EMISSIONS),
+            mutation: ((DEFAULT_MUTATIONS * flow / DEFAULT_FLOW_OPERATIONS) as usize)
+                .max(MIN_MUTATIONS),
         }
     }
 

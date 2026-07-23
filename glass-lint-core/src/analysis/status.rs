@@ -59,7 +59,7 @@ pub(in crate::analysis) enum IncompleteReason {
         request: String,
     },
     ScopeShapeMismatch {
-        detail: String,
+        count: usize,
     },
 }
 
@@ -212,9 +212,9 @@ impl IncompleteReason {
                 DiagnosticKind::AmbiguousStarExport,
                 format!("module interface for `{request}` is ambiguous"),
             ),
-            Self::ScopeShapeMismatch { detail } => (
+            Self::ScopeShapeMismatch { count } => (
                 DiagnosticKind::ScopeShapeMismatch,
-                format!("scope collection encountered a structural issue: {detail}"),
+                format!("scope collection encountered {count} structural issue(s)"),
             ),
         };
         let location = match scope {
