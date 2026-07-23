@@ -14,7 +14,6 @@ use history::AssignmentHistory;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{BytePos, Span};
 use swc_ecma_ast::{ArrowExpr, Expr, Function, ImportDecl, ObjectPatProp, Pat, VarDeclKind};
-use swc_ecma_visit::VisitWith;
 
 use crate::{
     Environment,
@@ -41,6 +40,7 @@ mod history;
 pub(super) mod plan;
 mod projection;
 mod provenance;
+pub(super) mod traversal;
 pub(super) mod visitor;
 
 use plan::ScopePlan;
@@ -75,6 +75,10 @@ pub(super) struct ScopeCollector {
     inline_parameters: BTreeMap<BytePos, BTreeMap<SmolStr, BindingProvenance>>,
     /// `var`-bound objects whose mutation prevents constant projection.
     pub(super) mutable_static_objects: BTreeSet<ScopedName>,
+    /// Function expression names stashed by `visit_var_decl` and consumed
+    /// by `after_function` / `after_arrow` hooks so `function_scopes` is
+    /// recorded only for var/let/const declared function expressions.
+    pending_function_names: BTreeMap<BytePos, (ScopeId, NameId)>,
     names: NameTable,
     pub(super) name_exhausted: bool,
     /// Per (scope, name) counter to avoid rescanniing all assignments.
@@ -271,6 +275,7 @@ impl ScopeCollector {
             calls: Vec::new(),
             inline_parameters: BTreeMap::new(),
             mutable_static_objects: BTreeSet::new(),
+            pending_function_names: BTreeMap::new(),
             names: plan.names,
             name_exhausted: plan.name_exhausted,
             version_counters: BTreeMap::new(),
@@ -660,47 +665,6 @@ impl ScopeCollector {
 
     fn arrow_parameters(arrow: &ArrowExpr) -> Vec<CompactPat> {
         arrow.params.iter().map(compact_pat).collect()
-    }
-
-    fn register_function_expression(&mut self, name: Option<NameId>, expr: &Expr) -> bool {
-        let Some(name) = name else {
-            return false;
-        };
-        let declaration_scope = self.current_scope();
-        match expr {
-            Expr::Arrow(arrow) => {
-                let parameters = Self::arrow_parameters(arrow);
-                self.push_scope(arrow.span, ScopeKind::Function);
-                let scope = self.current_scope();
-                for param in &arrow.params {
-                    self.insert_pat_locals(scope, param);
-                }
-                self.function_scopes
-                    .insert((declaration_scope, name), (scope, parameters));
-                arrow.body.visit_with(self);
-                self.pop_scope();
-                true
-            }
-            Expr::Fn(function_expr) => {
-                let parameters = Self::function_parameters(&function_expr.function);
-                self.push_scope(function_expr.function.span, ScopeKind::Function);
-                let scope = self.current_scope();
-                if let Some(ident) = &function_expr.ident {
-                    self.insert_local(scope, ident.sym.to_string());
-                }
-                for param in &function_expr.function.params {
-                    self.insert_pat_locals(scope, &param.pat);
-                }
-                self.function_scopes
-                    .insert((declaration_scope, name), (scope, parameters));
-                function_expr.function.decorators.visit_with(self);
-                function_expr.function.body.visit_with(self);
-                self.pop_scope();
-                true
-            }
-            Expr::Paren(paren) => self.register_function_expression(Some(name), &paren.expr),
-            _ => false,
-        }
     }
 }
 

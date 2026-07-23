@@ -4,14 +4,12 @@
 //! use-position facts that survive lexical shadowing, reassignment, and
 //! unsupported dynamic forms.
 
-use swc_common::Spanned;
 use swc_ecma_ast::{
-    ArrowExpr, AssignExpr, AssignTarget, BlockStmt, CallExpr, Callee, CatchClause, ClassDecl, Expr,
-    FnDecl, ForInStmt, ForOfStmt, ForStmt, Function, ImportDecl, ObjectPatProp, Pat,
-    SimpleAssignTarget, SwitchStmt, VarDecl, VarDeclKind, VarDeclarator, WithStmt,
+    ArrowExpr, AssignExpr, AssignTarget, CallExpr, Callee, ClassDecl, Expr, FnDecl, Function,
+    ImportDecl, ObjectPatProp, Pat, SimpleAssignTarget, VarDecl, VarDeclKind,
 };
-use swc_ecma_visit::{Visit, VisitWith};
 
+use super::traversal::ScopePass;
 use crate::analysis::{
     scope::{
         ScopeCollector,
@@ -28,7 +26,19 @@ use crate::analysis::{
     },
 };
 
-impl Visit for ScopeCollector {
+impl ScopePass for ScopeCollector {
+    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
+        self.push_scope(span, kind);
+    }
+
+    fn pop_scope(&mut self) {
+        self.pop_scope();
+    }
+
+    fn current_scope(&self) -> ScopeId {
+        self.current_scope()
+    }
+
     fn visit_import_decl(&mut self, import: &ImportDecl) {
         self.insert_import(self.current_scope(), import);
     }
@@ -37,17 +47,26 @@ impl Visit for ScopeCollector {
         let scope = self.binding_scope(var_decl.kind);
         for declarator in &var_decl.decls {
             let init = declarator.init.as_deref();
-            // Compute the shared initializer subresults up front: both the
-            // mutability probe and the declaration classification need them
-            // and the visitor performs mutable bookkeeping between the two.
             let facts = init.map(|init| DeclarationFacts::compute(self, init));
             let mutable_object = facts
                 .as_ref()
                 .is_some_and(|facts| facts.is_mutable_static_object(var_decl.kind));
             record_mutable_static_object(self, scope, mutable_object, declarator);
-            if register_declared_function(self, scope, declarator) {
-                continue;
+
+            // Stash pending function expression names so after_arrow /
+            // after_function hooks can record function_scopes metadata.
+            if let (Pat::Ident(ident), Some(init)) = (&declarator.name, init)
+                && let Ok(name_id) = self.names.intern(ident.id.sym.as_ref())
+            {
+                if let Expr::Arrow(arrow) = init {
+                    self.pending_function_names
+                        .insert(arrow.span.lo, (scope, name_id));
+                } else if let Expr::Fn(func_expr) = init {
+                    self.pending_function_names
+                        .insert(func_expr.function.span.lo, (scope, name_id));
+                }
             }
+
             if let (Pat::Ident(alias), Some(Expr::Ident(target))) = (&declarator.name, init)
                 && let Some(function_scope) = self.function_scope_for_name(target.sym.as_ref())
                 && let Some(key) = self.scoped_name(scope, alias.id.sym.as_ref())
@@ -72,7 +91,6 @@ impl Visit for ScopeCollector {
                     DeclarationClassification::None => {}
                 }
             }
-            visit_initializer(self, init);
         }
     }
 
@@ -130,7 +148,6 @@ impl Visit for ScopeCollector {
             }
             AssignTarget::Simple(_) => {}
         }
-        assignment.visit_children_with(self);
     }
 
     fn visit_call_expr(&mut self, call: &CallExpr) {
@@ -155,117 +172,66 @@ impl Visit for ScopeCollector {
                 ));
             }
         }
-        call.visit_children_with(self);
-    }
-
-    fn visit_fn_decl(&mut self, fn_decl: &FnDecl) {
-        let parent = self.current_scope();
-        self.insert_local(parent, fn_decl.ident.sym.to_string());
-        self.push_scope(fn_decl.function.span, ScopeKind::Function);
-        let scope = self.current_scope();
-        let parameters = Self::function_parameters(&fn_decl.function);
-        if let Ok(name_id) = self.names.intern(fn_decl.ident.sym.as_ref()) {
-            self.function_scopes
-                .insert((parent, name_id), (scope, parameters));
-        }
-        for parameter in &fn_decl.function.params {
-            self.insert_pat_locals(scope, &parameter.pat);
-        }
-        fn_decl.function.decorators.visit_with(self);
-        fn_decl.function.body.visit_with(self);
-        self.pop_scope();
     }
 
     fn visit_class_decl(&mut self, class_decl: &ClassDecl) {
-        let scope = self.current_scope();
-        self.insert_local(scope, class_decl.ident.sym.to_string());
-        class_decl.class.visit_children_with(self);
+        self.insert_local(self.current_scope(), class_decl.ident.sym.to_string());
     }
 
-    fn visit_function(&mut self, function: &Function) {
-        self.push_scope(function.span, ScopeKind::Function);
-        let scope = self.current_scope();
+    fn visit_catch_param(&mut self, pat: &Pat) {
+        self.insert_pat_locals(self.current_scope(), pat);
+    }
+
+    fn before_fn_decl(&mut self, fn_decl: &FnDecl, parent: ScopeId) {
+        self.insert_local(parent, fn_decl.ident.sym.to_string());
+    }
+
+    fn after_fn_decl(&mut self, fn_decl: &FnDecl, scope: ScopeId) {
+        let parameters = Self::function_parameters(&fn_decl.function);
+        if let Ok(name_id) = self.names.intern(fn_decl.ident.sym.as_ref()) {
+            let parent = self
+                .scopes
+                .get(scope.index())
+                .and_then(|s| s.parent)
+                .unwrap_or_else(|| ScopeId::from(0));
+            self.function_scopes
+                .insert((parent, name_id), (scope, parameters));
+        }
+        for param in &fn_decl.function.params {
+            self.insert_pat_locals(scope, &param.pat);
+        }
+    }
+
+    fn after_function(&mut self, function: &Function, scope: ScopeId) {
         for param in &function.params {
             self.insert_pat_locals(scope, &param.pat);
+        }
+        if let Some((decl_scope, name_id)) = self.pending_function_names.remove(&function.span.lo) {
+            let parameters = Self::function_parameters(function);
+            self.function_scopes
+                .insert((decl_scope, name_id), (scope, parameters));
         }
         if let Some(bindings) = self.inline_parameters.get(&function.span.lo).cloned() {
             for (name, provenance) in bindings {
                 self.record_assignment(function.span, scope, name.as_str(), provenance);
             }
         }
-        function.decorators.visit_with(self);
-        function.body.visit_with(self);
-        self.pop_scope();
     }
 
-    fn visit_arrow_expr(&mut self, arrow: &ArrowExpr) {
-        self.push_scope(arrow.span, ScopeKind::Function);
-        let scope = self.current_scope();
+    fn after_arrow(&mut self, arrow: &ArrowExpr, scope: ScopeId) {
         for param in &arrow.params {
             self.insert_pat_locals(scope, param);
+        }
+        if let Some((decl_scope, name_id)) = self.pending_function_names.remove(&arrow.span.lo) {
+            let parameters = Self::arrow_parameters(arrow);
+            self.function_scopes
+                .insert((decl_scope, name_id), (scope, parameters));
         }
         if let Some(bindings) = self.inline_parameters.get(&arrow.span.lo).cloned() {
             for (name, provenance) in bindings {
                 self.record_assignment(arrow.span, scope, name.as_str(), provenance);
             }
         }
-        arrow.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_block_stmt(&mut self, block: &BlockStmt) {
-        self.push_scope(block.span, ScopeKind::Block);
-        block.stmts.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_for_stmt(&mut self, for_stmt: &ForStmt) {
-        self.push_scope(for_stmt.span, ScopeKind::Block);
-        for_stmt.init.visit_with(self);
-        for_stmt.test.visit_with(self);
-        for_stmt.update.visit_with(self);
-        for_stmt.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_for_in_stmt(&mut self, for_stmt: &ForInStmt) {
-        self.push_scope(for_stmt.span, ScopeKind::Block);
-        for_stmt.left.visit_with(self);
-        for_stmt.right.visit_with(self);
-        for_stmt.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_for_of_stmt(&mut self, for_stmt: &ForOfStmt) {
-        self.push_scope(for_stmt.span, ScopeKind::Block);
-        for_stmt.left.visit_with(self);
-        for_stmt.right.visit_with(self);
-        for_stmt.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_switch_stmt(&mut self, switch: &SwitchStmt) {
-        switch.discriminant.visit_with(self);
-        self.push_scope(switch.span, ScopeKind::Block);
-        switch.cases.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_with_stmt(&mut self, with: &WithStmt) {
-        with.obj.visit_with(self);
-        self.push_scope(with.body.span(), ScopeKind::Dynamic);
-        with.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_catch_clause(&mut self, catch: &CatchClause) {
-        self.push_scope(catch.span, ScopeKind::Block);
-        let scope = self.current_scope();
-        if let Some(param) = &catch.param {
-            self.insert_pat_locals(scope, param);
-        }
-        catch.body.stmts.visit_with(self);
-        self.pop_scope();
     }
 }
 
@@ -292,40 +258,16 @@ fn collect_derived_function_pattern(
     true
 }
 
-fn register_declared_function(
-    collector: &mut ScopeCollector,
-    scope: ScopeId,
-    declarator: &VarDeclarator,
-) -> bool {
-    let (Pat::Ident(ident), Some(init)) = (&declarator.name, declarator.init.as_deref()) else {
-        return false;
-    };
-    let Ok(name_id) = collector.names.intern(ident.id.sym.as_ref()) else {
-        return false;
-    };
-    if !collector.register_function_expression(Some(name_id), init) {
-        return false;
-    }
-    collector.insert_local(scope, ident.id.sym.to_string());
-    true
-}
-
 fn record_mutable_static_object(
     collector: &mut ScopeCollector,
     scope: ScopeId,
     mutable_object: bool,
-    declarator: &VarDeclarator,
+    declarator: &swc_ecma_ast::VarDeclarator,
 ) {
     if mutable_object
         && let Pat::Ident(ident) = &declarator.name
         && let Some(name) = collector.scoped_name(scope, ident.id.sym.as_ref())
     {
         collector.mutable_static_objects.insert(name);
-    }
-}
-
-fn visit_initializer(collector: &mut ScopeCollector, init: Option<&Expr>) {
-    if let Some(init) = init {
-        init.visit_with(collector);
     }
 }

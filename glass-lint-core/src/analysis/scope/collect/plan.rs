@@ -7,14 +7,12 @@
 use std::collections::BTreeMap;
 
 use smol_str::{SmolStr, ToSmolStr};
-use swc_common::Spanned;
 use swc_ecma_ast::{
-    ArrowExpr, BlockStmt, CatchClause, ClassDecl, FnDecl, ForInStmt, ForOfStmt, ForStmt, Function,
-    Ident, ImportDecl, Lit, MemberExpr, Pat, PropName, SwitchStmt, VarDecl, WithStmt,
+    ArrowExpr, ClassDecl, FnDecl, Function, Ident, ImportDecl, Lit, MemberExpr, Pat, PropName,
+    VarDecl,
 };
-use swc_ecma_visit::{Visit, VisitWith};
 
-use super::{ScopeShape, ScopeShapeTable};
+use super::{ScopeShape, ScopeShapeTable, traversal::ScopePass};
 use crate::analysis::{
     name::NameTable,
     scope::{BindingProvenance, LexicalScope, ScopeId, ScopeKind},
@@ -186,7 +184,19 @@ impl ScopePlanner {
     }
 }
 
-impl Visit for ScopePlanner {
+impl ScopePass for ScopePlanner {
+    fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
+        self.push_scope(span, kind);
+    }
+
+    fn pop_scope(&mut self) {
+        self.pop_scope();
+    }
+
+    fn current_scope(&self) -> ScopeId {
+        self.current_scope()
+    }
+
     fn visit_ident(&mut self, ident: &Ident) {
         if self.names.intern(ident.sym.as_ref()).is_err() {
             self.name_exhausted = true;
@@ -206,7 +216,6 @@ impl Visit for ScopePlanner {
                 }
             }
         }
-        member.visit_children_with(self);
     }
 
     fn visit_prop_name(&mut self, property: &PropName) {
@@ -215,7 +224,6 @@ impl Visit for ScopePlanner {
         {
             self.name_exhausted = true;
         }
-        property.visit_children_with(self);
     }
 
     fn visit_lit(&mut self, literal: &Lit) {
@@ -237,106 +245,32 @@ impl Visit for ScopePlanner {
         let scope = self.binding_scope(declaration.kind);
         for declarator in &declaration.decls {
             self.insert_pat_locals(scope, &declarator.name);
-            declarator.name.visit_with(self);
-            declarator.init.visit_with(self);
         }
-    }
-
-    fn visit_fn_decl(&mut self, declaration: &FnDecl) {
-        let parent = self.current_scope();
-        self.insert_local(parent, declaration.ident.sym.to_string());
-        self.push_scope(declaration.function.span, ScopeKind::Function);
-        let scope = self.current_scope();
-        for parameter in &declaration.function.params {
-            self.insert_pat_locals(scope, &parameter.pat);
-            parameter.pat.visit_with(self);
-        }
-        declaration.function.decorators.visit_with(self);
-        declaration.function.body.visit_with(self);
-        self.pop_scope();
     }
 
     fn visit_class_decl(&mut self, declaration: &ClassDecl) {
         self.insert_local(self.current_scope(), declaration.ident.sym.to_string());
-        declaration.class.visit_children_with(self);
     }
 
-    fn visit_function(&mut self, function: &Function) {
-        self.push_scope(function.span, ScopeKind::Function);
-        let scope = self.current_scope();
+    fn before_fn_decl(&mut self, declaration: &FnDecl, parent: ScopeId) {
+        self.insert_local(parent, declaration.ident.sym.to_string());
+    }
+
+    fn after_fn_decl(&mut self, declaration: &FnDecl, scope: ScopeId) {
+        for parameter in &declaration.function.params {
+            self.insert_pat_locals(scope, &parameter.pat);
+        }
+    }
+
+    fn after_function(&mut self, function: &Function, scope: ScopeId) {
         for parameter in &function.params {
             self.insert_pat_locals(scope, &parameter.pat);
-            parameter.pat.visit_with(self);
         }
-        function.decorators.visit_with(self);
-        function.body.visit_with(self);
-        self.pop_scope();
     }
 
-    fn visit_arrow_expr(&mut self, arrow: &ArrowExpr) {
-        self.push_scope(arrow.span, ScopeKind::Function);
-        let scope = self.current_scope();
+    fn after_arrow(&mut self, arrow: &ArrowExpr, scope: ScopeId) {
         for parameter in &arrow.params {
             self.insert_pat_locals(scope, parameter);
-            parameter.visit_with(self);
         }
-        arrow.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_block_stmt(&mut self, block: &BlockStmt) {
-        self.push_scope(block.span, ScopeKind::Block);
-        block.stmts.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_for_stmt(&mut self, statement: &ForStmt) {
-        self.push_scope(statement.span, ScopeKind::Block);
-        statement.init.visit_with(self);
-        statement.test.visit_with(self);
-        statement.update.visit_with(self);
-        statement.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_for_in_stmt(&mut self, statement: &ForInStmt) {
-        self.push_scope(statement.span, ScopeKind::Block);
-        statement.left.visit_with(self);
-        statement.right.visit_with(self);
-        statement.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_for_of_stmt(&mut self, statement: &ForOfStmt) {
-        self.push_scope(statement.span, ScopeKind::Block);
-        statement.left.visit_with(self);
-        statement.right.visit_with(self);
-        statement.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_switch_stmt(&mut self, statement: &SwitchStmt) {
-        statement.discriminant.visit_with(self);
-        self.push_scope(statement.span, ScopeKind::Block);
-        statement.cases.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_with_stmt(&mut self, statement: &WithStmt) {
-        statement.obj.visit_with(self);
-        self.push_scope(statement.body.span(), ScopeKind::Dynamic);
-        statement.body.visit_with(self);
-        self.pop_scope();
-    }
-
-    fn visit_catch_clause(&mut self, clause: &CatchClause) {
-        self.push_scope(clause.span, ScopeKind::Block);
-        let scope = self.current_scope();
-        if let Some(parameter) = &clause.param {
-            self.insert_pat_locals(scope, parameter);
-            parameter.visit_with(self);
-        }
-        clause.body.stmts.visit_with(self);
-        self.pop_scope();
     }
 }

@@ -16,7 +16,7 @@
 //! Binding IDs and assignment versions make position-sensitive queries
 //! possible without rebuilding the AST for each lookup.
 
-use collect::{ScopeCollector, plan::ScopePlanner};
+use collect::{ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal};
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
@@ -48,12 +48,15 @@ impl ScopeGraph {
         environment: &crate::Environment,
         names: NameTable,
     ) -> collect::ScopedProgram {
-        let mut planner = ScopePlanner::new(program.span(), names);
-        program.visit_children_with(&mut planner);
-        let plan = planner.finish();
-        let mut collector = ScopeCollector::from_plan(plan);
-        program.visit_children_with(&mut collector);
-        collector.freeze(environment)
+        let planner = ScopePlanner::new(program.span(), names);
+        let mut plan_traversal = ScopeTraversal::new(planner);
+        program.visit_children_with(&mut plan_traversal);
+        let plan = plan_traversal.into_pass().finish();
+
+        let collector = ScopeCollector::from_plan(plan);
+        let mut collect_traversal = ScopeTraversal::new(collector);
+        program.visit_children_with(&mut collect_traversal);
+        collect_traversal.into_pass().freeze(environment)
     }
 }
 

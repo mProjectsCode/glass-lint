@@ -205,18 +205,22 @@ mod tests {
     use swc_ecma_visit::VisitWith;
 
     use super::*;
-    use crate::analysis::scope::collect::{ScopeCollector, plan::ScopePlanner};
+    use crate::analysis::scope::collect::{
+        ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal,
+    };
 
     /// Parse, predeclare, and visit a program; expose the final collector.
     fn run(source: &str) -> ScopeCollector {
         let parsed = crate::parse(source, "facts.js").expect("source should parse");
         let names = crate::analysis::name::NameTable::default();
-        let mut planner = ScopePlanner::new(parsed.program.span(), names);
-        parsed.program.visit_children_with(&mut planner);
-        let plan = planner.finish();
-        let mut collector = ScopeCollector::from_plan(plan);
-        parsed.program.visit_children_with(&mut collector);
-        collector
+        let planner = ScopePlanner::new(parsed.program.span(), names);
+        let mut plan_traversal = ScopeTraversal::new(planner);
+        parsed.program.visit_children_with(&mut plan_traversal);
+        let plan = plan_traversal.into_pass().finish();
+        let collector = ScopeCollector::from_plan(plan);
+        let mut collect_traversal = ScopeTraversal::new(collector);
+        parsed.program.visit_children_with(&mut collect_traversal);
+        collect_traversal.into_pass()
     }
 
     /// Walk the parsed program until a `var`/`let`/`const` initializer is

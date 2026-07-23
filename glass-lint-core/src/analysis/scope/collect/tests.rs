@@ -1,17 +1,20 @@
 use swc_common::Spanned;
 use swc_ecma_visit::VisitWith;
 
-use super::*;
+use super::{traversal::ScopeTraversal, *};
 
 fn collect(source: &str) -> ScopeCollector {
     let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");
     let names = crate::analysis::name::NameTable::default();
-    let mut planner = plan::ScopePlanner::new(parsed.program.span(), names);
-    parsed.program.visit_children_with(&mut planner);
-    let plan = planner.finish();
+    let planner = plan::ScopePlanner::new(parsed.program.span(), names);
+    let mut plan_traversal = ScopeTraversal::new(planner);
+    parsed.program.visit_children_with(&mut plan_traversal);
+    let plan = plan_traversal.into_pass().finish();
     let predeclared = plan.scope_shapes.shapes_len();
-    let mut collector = ScopeCollector::from_plan(plan);
-    parsed.program.visit_children_with(&mut collector);
+    let collector = ScopeCollector::from_plan(plan);
+    let mut collect_traversal = ScopeTraversal::new(collector);
+    parsed.program.visit_children_with(&mut collect_traversal);
+    let collector = collect_traversal.into_pass();
     assert!(
         collector.scope_issues.is_empty(),
         "main visitor did not diverge from predeclared scopes"

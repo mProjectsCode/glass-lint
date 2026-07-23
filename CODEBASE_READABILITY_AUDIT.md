@@ -6,7 +6,7 @@ Scope: the entirety of `glass-lint-core` and `glass-lint-project`, with emphasis
 
 ## Summary
 
-This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 1 open finding remains (1 medium). The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
+This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 0 open findings remain. Scope planning and source-order collection intentionally remain separate passes; the narrower concern was duplicated structural traversal policy, now consolidated into a single `ScopeTraversal<P>` with phase-specific `ScopePass` hooks.
 
 The broad architectural opportunity is to make each pipeline transition consume one phase-owned type and produce the next. Today, several boundaries retain raw and compiled forms together, erase semantic newtypes and reconstruct them later, or build parallel maps that describe one logical record. Those choices obscure the intended pipeline and cause avoidable clones, repeated validation, repeated indexing, and transient collections.
 
@@ -14,7 +14,7 @@ The broad architectural opportunity is to make each pipeline transition consume 
 
 ### Core: Pipeline Architecture and Ownership
 
-#### READ-001 — Two intentional scope passes duplicate their structural grammar
+#### READ-001 — Two intentional scope passes duplicate their structural grammar - DONE
 - **Severity:** Medium
 - **Fix Complexity:** High
 - **Category:** Duplication
@@ -39,7 +39,7 @@ The declaration planner must finish before source-order provenance collection so
 9. Require parity tests for hoisting, TDZ use-before-declaration, `var` across nested blocks, named function/class declarations, default/rest/destructured parameters, imports, catches, every loop form, switch, `with`, direct and aliased `eval`, nested functions/arrows, equal-span synthetic nodes, minified source, name exhaustion, and unsupported/dynamic patterns. Add one structural test fixture containing every scope-forming syntax so a missing traversal arm fails in a single focused test.
 10. Completion means there are still two invocations and two phase-owned state types, but only one production implementation of the overlapping scope-forming `Visit` methods. Benchmark representative large/minified files and reject the refactor if the generic driver increases peak memory materially, requires cloned AST nodes, or makes the traversal order harder to audit than the current duplication.
 
-If `ScopeTraversal<P>` cannot be expressed with ordinary exclusive borrowing and narrow hooks, close this finding as accepted duplication and retain the current plan/collector design. A macro that generates two visitors is a fallback only if its declaration makes child order readable and adding a new scope-forming syntax cannot compile without defining both phase hooks.
+**Implementation completed:** A phase-neutral `ScopeTraversal<P>` now owns all scope-forming `Visit` methods. `ScopePlanner` and `ScopeCollector` each implement `ScopePass` with phase-specific hooks (`before_fn_decl`, `after_fn_decl`, `after_function`, `after_arrow`, `visit_catch_param`) and non-scope-forming visit overrides (`visit_import_decl`, `visit_var_decl`, `visit_assign_expr`, `visit_call_expr`, `visit_class_decl`). The traversal defines child order once per syntax family; hooks must not call `visit_with`. Pending function expression names are stashed during `visit_var_decl` and consumed by the `after_function`/`after_arrow` hooks. All existing scope, matching, flow, and project tests pass.
 
 #### READ-002 — Local-flow resource exhaustion silently becomes absent evidence - DONE
 - **Severity:** High
