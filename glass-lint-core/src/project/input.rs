@@ -1,7 +1,7 @@
 //! Normalization and validation of the public project input contract.
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     path::{Path, PathBuf},
 };
 
@@ -59,23 +59,23 @@ impl ProjectInput {
         let mut sources = BTreeMap::new();
         for mut source in self.sources {
             source.path = normalize_relative(&source.path)?;
-            let path = source.path.clone();
-            if sources.insert(path.clone(), source).is_some() {
-                return Err(ProjectInputError::DuplicateSource(path.to_string()));
+            if sources.contains_key(&source.path) {
+                return Err(ProjectInputError::DuplicateSource(source.path.to_string()));
             }
+            sources.insert(source.path.clone(), source);
         }
 
-        let source_paths: BTreeSet<_> = sources.keys().cloned().collect();
         let mut resolutions = BTreeMap::new();
         for (mut key, mut result) in self.resolutions {
             normalize_resolution_key(&mut key)?;
-            if !source_paths.contains(&key.importer) {
+            if !sources.contains_key(&key.importer) {
                 return Err(ProjectInputError::UnknownImporter(key.importer.to_string()));
             }
             normalize_result(&mut result)?;
-            if resolutions.insert(key.clone(), result).is_some() {
+            if resolutions.contains_key(&key) {
                 return Err(ProjectInputError::DuplicateResolution(key));
             }
+            resolutions.insert(key, result);
         }
 
         let module_ids = compute_module_ids(&sources);

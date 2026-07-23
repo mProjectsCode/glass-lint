@@ -273,23 +273,21 @@ impl Tsconfig {
         let (include, exclude) = if files.is_some() {
             (Vec::new(), Vec::new())
         } else {
-            let mut include = dto.include.ok().unwrap_or_default();
-            if include.is_empty() {
-                if let Some(parent) = parent {
-                    include.clone_from(&parent.include);
-                }
-                if include.is_empty() {
-                    include = vec!["**/*".to_string()];
-                }
-            }
+            // Distinguish Absent (inherit or default) from Present (use as-is
+            // even when empty) so an explicit empty array is not collapsed
+            // with an absent field.
+            let include = match dto.include {
+                ParsedField::Present(v) => v,
+                _ => parent.map_or_else(
+                    || vec!["**/*".to_string()],
+                    |parent| parent.include.clone(),
+                ),
+            };
 
-            let mut exclude = dto.exclude.ok().unwrap_or_default();
-            // Inherit parent excludes if child doesn't set exclude
-            if exclude.is_empty()
-                && let Some(parent) = parent
-            {
-                exclude.clone_from(&parent.exclude);
-            }
+            let mut exclude = match dto.exclude {
+                ParsedField::Present(v) => v,
+                _ => parent.map_or_else(Vec::new, |parent| parent.exclude.clone()),
+            };
             // Always add default runtime exclusions
             for default in &["**/node_modules", "**/bower_components"] {
                 if !exclude.iter().any(|e| e == default) {
@@ -491,35 +489,6 @@ fn build_effective_config_inner(
     diagnostics: &mut Vec<TsconfigDiagnostic>,
 ) -> Result<(Tsconfig, Vec<ReferenceEntry>), ProjectLoadError> {
     let canonical = realpath(config_path)?;
-
-    // Cycle detection in the extends chain
-    if extends_chain.contains(&canonical) {
-        diagnostics.push(TsconfigDiagnostic {
-            config_path: config_path.to_path_buf(),
-            cycle_target: Some(canonical),
-            message: format!(
-                "cycle detected: {} is already in the inheritance chain",
-                config_path.display()
-            ),
-        });
-        // Return a sentinel marker so the caller skips this extends.
-        // We signal this by returning a special config; the caller checks
-        // for `files: Some(Vec::new())` to detect that the extends chain
-        // should be treated as absent.
-        return Ok((
-            Tsconfig {
-                config_path: config_path.to_path_buf(),
-                base: fallback_base.to_path_buf(),
-                files: Some(Vec::new()),
-                include: Vec::new(),
-                exclude: vec!["**/*".to_string()],
-                pattern_set: TsconfigPatternSet::new(&[], &["**/*".to_string()]),
-                pattern_diagnostics: Vec::new(),
-            },
-            Vec::new(),
-        ));
-    }
-
     extends_chain.push(canonical.clone());
 
     let dto = read_and_parse(config_path)?;
@@ -532,22 +501,41 @@ fn build_effective_config_inner(
     }
     let base = config_path.parent().unwrap_or(fallback_base).to_path_buf();
 
-    // Resolve extends — clone the extends field to avoid partial move.
-    // A parent with `files: Some(Vec::new())` is a cycle sentinel that must
-    // be treated as absent so the cyclic branch does not propagate empty
-    // files upward through the merge chain.
+    // Resolve extends — detect cycles at the extends-resolution site rather
+    // than returning a sentinel config that callers must recognise.
     let references = dto.references.clone();
-    let parent_tsconfig = match dto.extends.clone().ok() {
-        Some(extends_str) => resolve_extends(config_path, &extends_str)
-            .filter(|parent_path| parent_path.exists())
-            .map(|parent_path| {
-                build_effective_config_inner(&parent_path, &base, extends_chain, diagnostics)
-                    .map(|(config, _)| config)
-            })
-            .transpose()?
-            .filter(|parent| !matches!(&parent.files, Some(v) if v.is_empty())),
-        None => None,
-    };
+    let parent_tsconfig = dto
+        .extends
+        .clone()
+        .ok()
+        .and_then(|extends_str| {
+            let parent_path = resolve_extends(config_path, &extends_str)
+                .filter(|parent_path| parent_path.exists());
+            match parent_path {
+                Some(parent_path) if extends_chain.contains(&parent_path) => {
+                    diagnostics.push(TsconfigDiagnostic {
+                        config_path: config_path.to_path_buf(),
+                        cycle_target: Some(parent_path),
+                        message: format!(
+                            "cycle detected: {} is already in the inheritance chain",
+                            config_path.display()
+                        ),
+                    });
+                    None
+                }
+                Some(parent_path) => {
+                    let result = build_effective_config_inner(
+                        &parent_path,
+                        &base,
+                        extends_chain,
+                        diagnostics,
+                    );
+                    Some(result.map(|(config, _)| config))
+                }
+                None => None,
+            }
+        })
+        .transpose()?;
 
     extends_chain.pop();
 

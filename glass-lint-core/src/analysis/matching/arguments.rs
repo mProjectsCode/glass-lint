@@ -21,10 +21,11 @@ use crate::{
         SymbolPath,
         facts::{ArgumentView, CallUnwrap, SemanticFact},
         matching::{
-            CallArgInfo, ClassificationEvidence, FactPayload, FactStream, LinkedModuleIdentity,
+            CallArgInfo, ClassificationEvidence, FactPayload, FactStream,
             LinkedOccurrenceView, ModuleIdentityMap, Occurrence, OccurrenceIndexes,
             SymbolCallProvenance, push_owned_evidence,
         },
+        project::model::ExportResolution,
         name::NameTable,
         syntax::SymbolMemberProvenance,
         value::{NamePath, ValueId, ValueTable},
@@ -38,7 +39,7 @@ struct MatcherEvaluator<'a> {
     names: &'a NameTable,
     values: Option<&'a ValueTable>,
     identities: Option<&'a ModuleIdentityMap>,
-    result_identities: Option<&'a BTreeMap<ValueId, LinkedModuleIdentity>>,
+    result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
 }
 
 impl<'a> MatcherEvaluator<'a> {
@@ -46,7 +47,7 @@ impl<'a> MatcherEvaluator<'a> {
         names: &'a NameTable,
         values: Option<&'a ValueTable>,
         identities: Option<&'a ModuleIdentityMap>,
-        result_identities: Option<&'a BTreeMap<ValueId, LinkedModuleIdentity>>,
+        result_identities: Option<&'a BTreeMap<ValueId, ExportResolution>>,
     ) -> Self {
         Self {
             names,
@@ -59,7 +60,7 @@ impl<'a> MatcherEvaluator<'a> {
     /// Look up the resolved identity for a module-export provenance.
     ///
     /// Look up module provenance without constructing a temporary owned key.
-    fn lookup_identity(&self, provenance: &SymbolCallProvenance) -> Option<&LinkedModuleIdentity> {
+    fn lookup_identity(&self, provenance: &SymbolCallProvenance) -> Option<&ExportResolution> {
         let (module, export) = provenance.module_export_parts()?;
         self.identities?.get_parts(module, export)
     }
@@ -69,7 +70,7 @@ impl<'a> MatcherEvaluator<'a> {
         if let Some(result_identities) = self.result_identities
             && let Some(value) = result_identities
                 .get(&argument.value)
-                .and_then(LinkedModuleIdentity::static_string_value)
+                .and_then(ExportResolution::static_string_value)
         {
             view = view.with_static_string(value);
         }
@@ -203,7 +204,7 @@ pub(in crate::analysis) fn compute_constrained_evidence_from_stream_with_overlay
     evidence: &mut [Vec<ClassificationEvidence>],
     overlay: Option<&LinkedOccurrenceView<'_>>,
     identities: Option<&ModuleIdentityMap>,
-    result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
+    result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
 ) {
     let Some(names) = stream.names() else {
         return;
@@ -452,7 +453,7 @@ mod tests {
         analysis::{
             facts::{CallArgInfo, FactStream, build::build_test_stream},
             lowering::SpanNormalizer,
-            matching::{LinkedModuleIdentity, ModuleExportKey, OccurrenceIndexes},
+            matching::{ExportResolution, ModuleExportKey, OccurrenceIndexes},
             resolution::Resolver,
             syntax::SymbolCallProvenance,
             value::{PathId, ValueId},
@@ -657,7 +658,7 @@ mod tests {
         let mut identities = ModuleIdentityMap::new();
         identities.insert(
             ModuleExportKey::new("api", "request"),
-            LinkedModuleIdentity::StaticString {
+            ExportResolution::StaticString {
                 value: "https://example.test".into(),
             },
         );

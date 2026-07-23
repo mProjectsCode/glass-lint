@@ -14,6 +14,15 @@ use crate::{
 
 type AnalyzedModules = BTreeMap<crate::ProjectRelativePath, LocalArtifact>;
 
+/// Outcome of linking and matching a resolved project, with phase timings
+/// so `glass-lint-project` can observe pipeline boundaries without parsing
+/// a positional tuple.
+pub struct ProjectAnalysis {
+    pub report: AnalysisReport,
+    pub linking: std::time::Duration,
+    pub matching: std::time::Duration,
+}
+
 /// Caller-supplied input to linter construction. Validation occurs in
 /// [`Linter::new`].
 #[derive(Clone, Debug)]
@@ -245,7 +254,7 @@ impl Linter {
         input: ValidatedProjectInput,
         analyzed: AnalyzedModules,
         parse_diagnostics: BTreeMap<crate::ProjectRelativePath, crate::ParseDiagnostic>,
-    ) -> Result<(AnalysisReport, std::time::Duration, std::time::Duration), ProjectInputError> {
+    ) -> Result<ProjectAnalysis, ProjectInputError> {
         let (mut files, parse_failure_codes) =
             Self::initialize_project_files(&input, parse_diagnostics);
 
@@ -261,14 +270,14 @@ impl Linter {
             project.record_parse_failure(path, &code);
         }
 
-        let linking_elapsed = linking_start.elapsed();
+        let linking = linking_start.elapsed();
         let link_counts = project.operation_counts(0);
         tracing::info!(
             target: "glass_lint::project::link",
             files = link_counts.files,
             requests = link_counts.requests,
             edges = link_counts.edges,
-            elapsed = ?linking_elapsed,
+            elapsed = ?linking,
             "stage finished"
         );
         let matching_start = std::time::Instant::now();
@@ -279,7 +288,7 @@ impl Linter {
             self.limits.evidence_items(),
         );
         project.record_flow_exhaustion(&projection_outcome);
-        let matching_elapsed = matching_start.elapsed();
+        let matching = matching_start.elapsed();
         self.populate_project_files(&project, &classifications, &mut files);
 
         let diagnostics = Self::attach_project_diagnostics(&project, &mut files);
@@ -293,11 +302,11 @@ impl Linter {
             findings = summary.findings,
             evidence = report.operations.evidence,
             diagnostics = report.diagnostics.len() + summary.parse_diagnostics,
-            elapsed = ?matching_elapsed,
+            elapsed = ?matching,
             "stage finished"
         );
 
-        Ok((report, linking_elapsed, matching_elapsed))
+        Ok(ProjectAnalysis { report, linking, matching })
     }
 
     fn populate_project_files(

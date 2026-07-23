@@ -402,19 +402,19 @@ impl<'a> FunctionSummaries<'a> {
     }
 
     fn collect_direct_sinks(&mut self, stream: &FactStream, flow_index: &FlowIndex<'_>) {
-        let ids: Vec<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
-        for id in ids {
-            let call_ids: Vec<FactId> = {
-                let Some(summary) = self.by_id.get(id) else {
-                    continue;
-                };
-                summary.calls.clone()
-            };
+        let entries: Vec<(FunctionId, usize)> = self
+            .by_id
+            .iter()
+            .map(|(id, summary)| (id, summary.calls.len()))
+            .collect();
+        for (id, count) in entries {
             let Some(summary) = self.by_id.get_mut(id) else {
                 continue;
             };
-            for call_id in call_ids {
-                summary.collect_sinks_for_call(stream, flow_index, &mut self.paths, call_id);
+            for idx in 0..count {
+                if let Some(call_id) = summary.calls.get(idx).copied() {
+                    summary.collect_sinks_for_call(stream, flow_index, &mut self.paths, call_id);
+                }
             }
         }
     }

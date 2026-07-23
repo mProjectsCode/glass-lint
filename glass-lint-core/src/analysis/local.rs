@@ -5,7 +5,7 @@
 //! this model later without revisiting the AST.
 
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, VecDeque},
     sync::{Arc, Mutex},
 };
 
@@ -209,21 +209,12 @@ struct CacheEntry {
     artifact: SharedSemanticArtifact,
 }
 
-/// Bounded FIFO artifact cache indexed by a deterministic fingerprint.
-///
-/// Lookups compute the fingerprint before taking the lock; under the lock
-/// only the matching bucket is inspected. Each bucket holds entries whose
-/// fingerprints collide; an exact hit requires the full key to match.
-///
-/// The FIFO eviction policy is explicit: a `VecDeque` tracks insertion-order
-/// fingerprints so that eviction pops the oldest entry without shifting a
-/// vector or scanning unrelated buckets.
+/// Bounded FIFO artifact cache. Entries are stored in insertion order in a
+/// single `VecDeque`, keeping the structure small enough for linear scan
+/// (max 64 entries). No internal index synchronization is required.
 #[derive(Default)]
 pub struct ArtifactCache {
-    buckets: HashMap<ArtifactFingerprint, Vec<usize>>,
-    entries: HashMap<usize, CacheEntry>,
-    fifo: VecDeque<usize>,
-    next_id: usize,
+    entries: VecDeque<CacheEntry>,
 }
 
 /// Synchronized runtime-owned cache. A poisoned mutex is recovered so an
@@ -261,16 +252,18 @@ impl ArtifactCacheHandle {
 impl ArtifactCache {
     const MAX_ENTRIES: usize = 64;
 
-    /// Look up by fingerprint then verify full key.
+    /// Look up by fingerprint then verify full key. Scans the deque linearly;
+    /// at the fixed capacity of 64 entries this is faster than maintaining
+    /// separate index structures.
     fn get(
         &self,
         fp: ArtifactFingerprint,
         key: &ArtifactCacheKey,
     ) -> Option<SharedSemanticArtifact> {
-        self.buckets.get(&fp)?.iter().find_map(|id| {
-            let entry = self.entries.get(id)?;
-            (entry.key == *key).then(|| entry.artifact.clone())
-        })
+        self.entries
+            .iter()
+            .find(|entry| entry.fingerprint == fp && entry.key == *key)
+            .map(|entry| entry.artifact.clone())
     }
 
     /// Insert or replace an artifact. Returns whether the FIFO policy evicted
@@ -283,45 +276,24 @@ impl ArtifactCache {
         artifact: SharedSemanticArtifact,
     ) -> bool {
         // Try to replace an exact existing key first.
-        if let Some(bucket) = self.buckets.get_mut(&fp)
-            && let Some(id) = bucket
-                .iter()
-                .copied()
-                .find(|id| self.entries.get(id).is_some_and(|entry| entry.key == key))
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|entry| entry.fingerprint == fp && entry.key == key)
         {
-            self.entries
-                .get_mut(&id)
-                .expect("bucket entry exists")
-                .artifact = artifact;
+            entry.artifact = artifact;
             return false;
         }
         // New entry: enforce FIFO capacity before inserting.
-        let evicted = if self.fifo.len() >= Self::MAX_ENTRIES {
-            if let Some(oldest_id) = self.fifo.pop_front()
-                && let Some(entry) = self.entries.remove(&oldest_id)
-                && let Some(bucket) = self.buckets.get_mut(&entry.fingerprint)
-            {
-                bucket.retain(|id| *id != oldest_id);
-                if bucket.is_empty() {
-                    self.buckets.remove(&entry.fingerprint);
-                }
-            }
-            true
-        } else {
-            false
-        };
-        let id = self.next_id;
-        self.next_id = self.next_id.wrapping_add(1);
-        self.fifo.push_back(id);
-        self.buckets.entry(fp).or_default().push(id);
-        self.entries.insert(
-            id,
-            CacheEntry {
-                fingerprint: fp,
-                key,
-                artifact,
-            },
-        );
+        let evicted = self.entries.len() >= Self::MAX_ENTRIES;
+        if evicted {
+            self.entries.pop_front();
+        }
+        self.entries.push_back(CacheEntry {
+            fingerprint: fp,
+            key,
+            artifact,
+        });
         evicted
     }
 }

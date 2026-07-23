@@ -216,22 +216,6 @@ impl FactStream {
             .collect()
     }
 
-    /// Borrow the effective call arguments for a call event from the stream.
-    pub(in crate::analysis) fn call_args_for_event(
-        &self,
-        event: crate::analysis::facts::FactId,
-    ) -> Option<&[crate::analysis::facts::CallArgInfo]> {
-        let fact = self.fact(event)?;
-        match &fact.payload {
-            crate::analysis::facts::FactPayload::Call { args, unwrap, .. } => Some(
-                unwrap
-                    .as_deref()
-                    .map_or(args.as_slice(), |u| u.effective_args.as_slice()),
-            ),
-            _ => None,
-        }
-    }
-
     /// Borrow the assigned value identity from a property-write event.
     pub(in crate::analysis) fn property_write_value(
         &self,

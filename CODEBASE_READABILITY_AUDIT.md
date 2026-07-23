@@ -22,7 +22,7 @@ Lowering ignores every `ScopeCollectionIssue`, even though `ScopedProgram` expli
 
 `ValidatedProjectInput` is consumed only for the constructor to re-enumerate authored requests, rebuild IDs, count exports, and recheck resolution coverage already checked by `LocallyAnalyzedProject::resolve`. Carry a typed request table and validated module metadata across the local-to-resolved boundary so linking consumes the exact state produced by resolution instead of recreating it.
 
-### READ-003 — A legal tsconfig value doubles as the extends-cycle sentinel
+### READ-003 — A legal tsconfig value doubles as the extends-cycle sentinel  ✅
 
 - **Severity:** High
 - **Category:** Architecture
@@ -30,7 +30,7 @@ Lowering ignores every `ScopeCollectionIssue`, even though `ScopedProgram` expli
 
 Recursive config construction represents a cycle by returning a synthetic config containing `files: []`, and its caller recognizes that value as the cycle marker. A legitimate parent config with an explicitly empty `files` list is therefore indistinguishable from failure; return a dedicated `Built`, `Cycle`, or error outcome instead.
 
-### READ-004 — Tsconfig inheritance loses absent-versus-empty state
+### READ-004 — Tsconfig inheritance loses absent-versus-empty state  ✅
 
 - **Severity:** High
 - **Category:** Architecture
@@ -70,7 +70,7 @@ The collection's `len`, indexing, and iteration cover shared and local evidence,
 
 Fingerprinting concatenates source text and all inputs into a temporary byte vector before hashing, and environment fingerprinting follows the same buffer-building pattern. Feed fields into a deterministic streaming hash sink so cache-key computation does not temporarily duplicate large source files.
 
-### READ-009 — Matcher projection plans are rebuilt for every module
+### READ-009 — Matcher projection plans are rebuilt for every module  ✅
 
 - **Severity:** Medium
 - **Category:** Architecture
@@ -78,7 +78,7 @@ Fingerprinting concatenates source text and all inputs into a temporary byte vec
 
 Each module independently flattens selected rules into new constrained-clause and flow-matcher vectors even though the selection is constant for the whole match run. Compile one borrowed `ProjectionPlan` before the module loop and reuse it, making rule selection a visible phase and avoiding repeated allocation.
 
-### READ-010 — Module identity has two isomorphic representations
+### READ-010 — Module identity has two isomorphic representations  ✅
 
 - **Severity:** Medium
 - **Category:** Duplication
@@ -94,7 +94,7 @@ Each module independently flattens selected rules into new constrained-clause an
 
 Module documentation, tests, and catalog construction establish the catalog as the intentional matcher validation-and-compilation boundary, but `MatcherDecl` and its builder are documented as validated while performing only partial checks and storing compiler IR plus a precompiled object flow. Treat declarations consistently as unvalidated source data and compile flows only at the catalog boundary, so names and types match the established lifecycle.
 
-### READ-012 — Final analysis coordination is hidden in a positional timing tuple
+### READ-012 — Final analysis coordination is hidden in a positional timing tuple  ✅
 
 - **Severity:** Medium
 - **Category:** Architecture
@@ -102,7 +102,7 @@ Module documentation, tests, and catalog construction establish the catalog as t
 
 One method links modules, mutates parse status, matches rules, handles exhaustion, assembles reports, measures phases, and returns two durations positionally beside the report. Split report assembly from phase execution and return a named result/timing type so the link, match, and report boundaries remain visible to `glass-lint-project`.
 
-### READ-013 — Validated project paths are repeatedly normalized and allocated
+### READ-013 — Validated project paths are repeatedly normalized and allocated  ✅
 
 - **Severity:** Medium
 - **Category:** Newtype
@@ -134,7 +134,7 @@ Local analysis snapshots every pending `SourceFile` and path into a new vector b
 
 The resolver can only yield its value table, so lowering clones `NameTable` before consuming the resolver. Add an owned `into_parts`/freeze operation that moves both tables into the semantic artifact and encodes the end of resolution as a single transition.
 
-### READ-017 — Function-effect extraction scans the entire fact stream twice
+### READ-017 — Function-effect extraction scans the entire fact stream twice  ✅
 
 - **Severity:** Medium
 - **Category:** Complexity
@@ -142,7 +142,7 @@ The resolver can only yield its value table, so lowering clones `NameTable` befo
 
 Collection first traverses all facts to initialize function slots and then traverses them again to record effects, although function-enter facts precede their owned events. Create function/program builders while performing one ordered pass, which also makes ownership of each effect more apparent.
 
-### READ-018 — Flow-summary mutation uses unsafe borrowing and compensating clones
+### READ-018 — Flow-summary mutation uses unsafe borrowing and compensating clones  ✅
 
 - **Severity:** Medium
 - **Category:** Encapsulation
@@ -150,7 +150,7 @@ Collection first traverses all facts to initialize function slots and then trave
 
 `FunctionTable` uses raw pointers to obtain disjoint mutable entries, while summary construction clones function IDs and each summary's call list to work around adjacent borrowing constraints. A safe disjoint-access API plus narrower field-level methods would remove the unsafe block and allow callers to borrow paths, summaries, and indexes without staging clones.
 
-### READ-019 — Effective-call-argument semantics are implemented in several places
+### READ-019 — Effective-call-argument semantics are implemented in several places  ✅
 
 - **Severity:** Medium
 - **Category:** Duplication
@@ -190,7 +190,7 @@ Latest assignment, binding version, and reassignment-range queries repeat nested
 
 The visitor contains repeated branches for dynamic import versus `require`, default declarations versus expressions, and function versus value exports while also participating in the general fact traversal. Normalize syntax events through a focused `ModuleInterfaceBuilder` during the single AST walk so interface policy has one cohesive owner without adding another traversal.
 
-### READ-024 — The artifact cache maintains three synchronized collections
+### READ-024 — The artifact cache maintains three synchronized collections  ✅
 
 - **Severity:** Medium
 - **Category:** Encapsulation

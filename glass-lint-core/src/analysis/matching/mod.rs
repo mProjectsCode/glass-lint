@@ -17,11 +17,11 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         facts::{CallArgInfo, FactPayload, FactStream},
+        project::model::ExportResolution,
         syntax::{SymbolCallProvenance, SymbolMemberProvenance},
         value::NamePath,
     },
     api::classification::{ClassificationEvidence, MatchKind},
-    project::ModuleId,
 };
 
 mod occurrence;
@@ -198,52 +198,6 @@ impl LiteralIndexes {
     }
 }
 
-/// The only identities a linked module overlay exposes to matcher indexes.
-/// Qualified local values and ambiguous or unknown values are intentionally
-/// not queryable by the external-module matcher vocabulary.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::analysis) enum LinkedModuleIdentity {
-    /// Identity resolved to an external module export.
-    External { module: SmolStr, export: SmolStr },
-    /// Identity resolved to a configured global callable.
-    Global { name: SmolStr },
-    /// Qualified internal identity not exposed to external matcher queries.
-    Qualified { module: ModuleId, export: SmolStr },
-    /// Static string value available to argument predicates.
-    StaticString { value: String },
-    /// Multiple distinct linked paths proved incompatible.
-    Ambiguous,
-    /// Resolution was unsupported or could not be established.
-    Unknown,
-}
-
-impl LinkedModuleIdentity {
-    /// Convert to a call provenance when this identity maps to an external
-    /// module export or a known global. Returns `None` for qualified,
-    /// static-string, and unknown identities.
-    pub(in crate::analysis) fn to_call_provenance(&self) -> Option<SymbolCallProvenance> {
-        match self {
-            Self::External { module, export } => Some(SymbolCallProvenance::ModuleExport {
-                module: module.clone(),
-                export: export.clone(),
-            }),
-            Self::Global { name } => Some(SymbolCallProvenance::Global { name: name.clone() }),
-            Self::Qualified { .. }
-            | Self::StaticString { .. }
-            | Self::Ambiguous
-            | Self::Unknown => None,
-        }
-    }
-
-    /// Return the static string value when this identity is a `StaticString`.
-    pub(in crate::analysis) fn static_string_value(&self) -> Option<&str> {
-        match self {
-            Self::StaticString { value } => Some(value.as_str()),
-            _ => None,
-        }
-    }
-}
-
 /// Imported identities indexed by borrowed module/export parts.
 ///
 /// Occurrence indexes retain [`ModuleExportKey`] beside each event. This
@@ -251,7 +205,7 @@ impl LinkedModuleIdentity {
 /// once and accepts borrowed lookups thereafter.
 #[derive(Clone, Debug, Default)]
 pub(in crate::analysis) struct ModuleIdentityMap {
-    modules: BTreeMap<SmolStr, BTreeMap<SmolStr, LinkedModuleIdentity>>,
+    modules: BTreeMap<SmolStr, BTreeMap<SmolStr, ExportResolution>>,
 }
 
 impl ModuleIdentityMap {
@@ -259,7 +213,7 @@ impl ModuleIdentityMap {
         Self::default()
     }
 
-    pub(in crate::analysis) fn get(&self, key: &ModuleExportKey) -> Option<&LinkedModuleIdentity> {
+    pub(in crate::analysis) fn get(&self, key: &ModuleExportKey) -> Option<&ExportResolution> {
         self.get_parts(key.module(), key.export())
     }
 
@@ -267,15 +221,15 @@ impl ModuleIdentityMap {
         &self,
         module: &str,
         export: &str,
-    ) -> Option<&LinkedModuleIdentity> {
+    ) -> Option<&ExportResolution> {
         self.modules.get(module)?.get(export)
     }
 
     pub(in crate::analysis) fn insert(
         &mut self,
         key: ModuleExportKey,
-        value: LinkedModuleIdentity,
-    ) -> Option<LinkedModuleIdentity> {
+        value: ExportResolution,
+    ) -> Option<ExportResolution> {
         let (module, export) = key.into_parts();
         self.modules
             .entry(module)
@@ -376,8 +330,8 @@ impl OccurrenceIndexes {
                 identities
                     .get(&ModuleExportKey::wildcard(key.module().clone()))
                     .map(|identity| match identity {
-                        LinkedModuleIdentity::External { module, .. } => {
-                            LinkedModuleIdentity::External {
+                        ExportResolution::External { module, .. } => {
+                            ExportResolution::External {
                                 module: module.clone(),
                                 export: key.export().to_owned(),
                             }
@@ -397,21 +351,21 @@ impl OccurrenceIndexes {
                     };
                     overlay.masked.insert(key.clone());
                     match identity {
-                        LinkedModuleIdentity::External { module, export } => {
+                        ExportResolution::External { module, export } => {
                             target
                                 .entry(ModuleExportKey::new(module, export))
                                 .or_default()
                                 .push(occurrences);
                         }
-                        LinkedModuleIdentity::Global { name } => {
+                        ExportResolution::Global { name } => {
                             if let Some(global_target) = global_target.as_deref_mut() {
                                 global_target.entry(name).or_default().push(occurrences);
                             }
                         }
-                        LinkedModuleIdentity::Qualified { .. }
-                        | LinkedModuleIdentity::StaticString { .. }
-                        | LinkedModuleIdentity::Ambiguous
-                        | LinkedModuleIdentity::Unknown => {}
+                        ExportResolution::Qualified { .. }
+                        | ExportResolution::StaticString { .. }
+                        | ExportResolution::Ambiguous
+                        | ExportResolution::Unknown => {}
                     }
                 }
             };

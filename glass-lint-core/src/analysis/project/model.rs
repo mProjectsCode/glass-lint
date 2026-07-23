@@ -16,7 +16,6 @@ use crate::{
         facts::{FactId, FactStream, SemanticFact},
         flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
-        matching,
         module::ModuleRequestId,
         name::NameTable,
         status::{
@@ -69,6 +68,33 @@ pub(in crate::analysis) enum ExportResolution {
     Unknown,
     /// Multiple linked paths proved incompatible identities.
     Ambiguous,
+}
+
+impl ExportResolution {
+    /// Convert to a call provenance when this identity maps to an external
+    /// module export or a known global. Returns `None` for qualified,
+    /// static-string, and unknown identities.
+    pub(in crate::analysis) fn to_call_provenance(&self) -> Option<SymbolCallProvenance> {
+        match self {
+            Self::External { module, export } => Some(SymbolCallProvenance::ModuleExport {
+                module: module.clone(),
+                export: export.clone(),
+            }),
+            Self::Global { name } => Some(SymbolCallProvenance::Global { name: name.clone() }),
+            Self::Qualified { .. }
+            | Self::StaticString { .. }
+            | Self::Ambiguous
+            | Self::Unknown => None,
+        }
+    }
+
+    /// Return the static string value when this identity is a `StaticString`.
+    pub(in crate::analysis) fn static_string_value(&self) -> Option<&str> {
+        match self {
+            Self::StaticString { value } => Some(value.as_str()),
+            _ => None,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -498,15 +524,4 @@ impl ProjectSemanticModel {
     }
 }
 
-impl From<ExportResolution> for matching::LinkedModuleIdentity {
-    fn from(resolution: ExportResolution) -> Self {
-        match resolution {
-            ExportResolution::External { module, export } => Self::External { module, export },
-            ExportResolution::Global { name } => Self::Global { name },
-            ExportResolution::StaticString { value } => Self::StaticString { value },
-            ExportResolution::Qualified { module, export } => Self::Qualified { module, export },
-            ExportResolution::Ambiguous => Self::Ambiguous,
-            ExportResolution::Unknown => Self::Unknown,
-        }
-    }
-}
+

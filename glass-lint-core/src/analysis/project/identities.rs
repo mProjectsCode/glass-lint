@@ -10,7 +10,7 @@ use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
     ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel,
-    matching::{LinkedModuleIdentity, ModuleExportKey, ModuleIdentityMap},
+    matching::{ModuleExportKey, ModuleIdentityMap},
     module::{ImportedBinding, ModuleRequest, ModuleRequestRole},
     project::model::MAX_EXPORT_DEPTH,
     syntax::SymbolCallProvenance,
@@ -22,7 +22,7 @@ impl ProjectSemanticModel {
     pub(super) fn call_result_identities(
         &self,
         importer: ModuleId,
-    ) -> BTreeMap<crate::analysis::value::ValueId, LinkedModuleIdentity> {
+    ) -> BTreeMap<crate::analysis::value::ValueId, ExportResolution> {
         let mut identities = BTreeMap::new();
         let Some(module) = self.modules.get(&importer) else {
             return identities;
@@ -71,7 +71,7 @@ impl ProjectSemanticModel {
                         }),
                     SymbolCallProvenance::Unknown(_) => ExportResolution::Unknown,
                 };
-                identities.insert(cref.result(), resolution.into());
+                identities.insert(cref.result(), resolution);
             }
         }
         identities
@@ -97,7 +97,7 @@ impl ProjectSemanticModel {
                             self.resolve_imported_identity(module, request.specifier(), export);
                         identities.insert(
                             ModuleExportKey::new(request.specifier().clone(), export.clone()),
-                            identity.into(),
+                            identity,
                         );
                     }
                     bindings.iter().any(ImportedBinding::is_namespace)
@@ -117,13 +117,13 @@ impl ProjectSemanticModel {
                         {
                             identities.insert(
                                 ModuleExportKey::new(prefix.clone(), export),
-                                resolved.into(),
+                                resolved,
                             );
                         }
                     }
                 }
                 other => {
-                    identities.insert(ModuleExportKey::wildcard(prefix), other.into());
+                    identities.insert(ModuleExportKey::wildcard(prefix), other);
                 }
             }
         }

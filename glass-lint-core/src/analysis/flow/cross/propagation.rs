@@ -98,10 +98,11 @@ impl UsageProjector<'_> {
         let Some(stream) = self.project.module_fact_stream(self.context.module) else {
             return;
         };
-        let Some(call_args) = stream.call_args_for_event(event) else {
+        let cref = CallEffectRef { stream, event };
+        let Some(call_args) = cref.effective_args() else {
             return;
         };
-        let cref = CallEffectRef { stream, event };
+
         let chain = cref.chain();
         let values = stream.values();
         let mut next = self.state.clone();

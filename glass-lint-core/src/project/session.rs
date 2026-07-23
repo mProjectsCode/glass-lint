@@ -774,12 +774,12 @@ impl ResolvedProject<'_> {
     /// Link, match, and assemble the report. This consuming method cannot be
     /// called twice because the resolved project is moved into the pipeline.
     pub fn finish(self) -> Result<AnalysisReport, ProjectInputError> {
-        self.finish_with_timings().map(|(report, _, _)| report)
+        self.finish_with_timings().map(|result| result.report)
     }
 
     pub fn finish_with_timings(
         self,
-    ) -> Result<(AnalysisReport, std::time::Duration, std::time::Duration), ProjectInputError> {
+    ) -> Result<crate::lint::ProjectAnalysis, ProjectInputError> {
         self.linter.finish_analyzed_project(
             self.input,
             self.artifacts.analyzed,

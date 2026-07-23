@@ -23,7 +23,7 @@ impl ObjectFlowProjector<'_, '_> {
                 stream: self.stream,
                 event: fact_id,
             };
-            if let Some(args) = self.stream.call_args_for_event(fact_id)
+            if let Some(args) = cref.effective_args()
                 && let Some(chain) = cref.chain_owned(self.names)
                 && let Some((object, states)) =
                     self.match_source(&chain, args, fact_id, cref.rooted())

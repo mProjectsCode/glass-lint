@@ -12,12 +12,20 @@ use crate::{
     analysis::{
         flow::{effect::FunctionEffects, projector as object_flow},
         matching::{
-            self, LinkedModuleIdentity, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes,
+            self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes,
         },
         module::ModuleInterface,
+        project::model::ExportResolution,
         value::{ValueId, ValueTable},
     },
-    api::compiler::CompiledRuleSelection,
+    api::{
+        compiler::{
+            CompiledRuleSelection,
+            object_flow::CompiledObjectFlow,
+            rule::QueryClause,
+        },
+        classification::RuleIndex,
+    },
 };
 
 pub mod build;
@@ -32,6 +40,49 @@ pub(in crate::analysis) use stream::FactStream;
 pub(in crate::analysis) struct BuiltFacts {
     pub(in crate::analysis) stream: FactStream,
     pub(in crate::analysis) interface: ModuleInterface,
+}
+
+/// Pre-built flattening of [`CompiledRuleSelection`] that is constant for
+/// the entire match run. Built once before the module loop to avoid
+/// reconstructing it for every module.
+pub(in crate::analysis) struct ProjectionPlan<'a> {
+    constrained_clauses: Vec<(usize, &'a QueryClause)>,
+    flow_matchers: Vec<(RuleIndex, usize, &'a CompiledObjectFlow)>,
+    rule_count: usize,
+}
+
+impl<'a> ProjectionPlan<'a> {
+    pub(in crate::analysis) fn from_selection(selection: &'a CompiledRuleSelection<'a>) -> Self {
+        let constrained_clauses = selection
+            .selected_matchers()
+            .flat_map(|(rule_index, matcher)| {
+                matcher
+                    .query()
+                    .clauses()
+                    .iter()
+                    .filter(|clause| !clause.constraints.is_empty())
+                    .map(move |clause| (rule_index, clause))
+            })
+            .map(|(rule, clause)| (rule.get(), clause))
+            .collect::<Vec<_>>();
+        let flow_matchers = selection
+            .selected_matchers()
+            .flat_map(|(rule_index, matcher)| {
+                matcher
+                    .query()
+                    .flows()
+                    .iter()
+                    .enumerate()
+                    .map(move |(flow_index, matcher)| (rule_index, flow_index, matcher))
+            })
+            .collect::<Vec<_>>();
+        let rule_count = selection.len();
+        Self {
+            constrained_clauses,
+            flow_matchers,
+            rule_count,
+        }
+    }
 }
 
 // ── SemanticFacts ───────────────────────────────────────────────────────
@@ -100,36 +151,12 @@ impl SemanticFacts {
     pub(in crate::analysis) fn project(
         &self,
         effects: &FunctionEffects,
-        matchers: &CompiledRuleSelection<'_>,
+        plan: &ProjectionPlan<'_>,
         identities: Option<&ModuleIdentityMap>,
-        result_identities: Option<&BTreeMap<ValueId, LinkedModuleIdentity>>,
+        result_identities: Option<&BTreeMap<ValueId, ExportResolution>>,
         overlay: Option<&LinkedOccurrenceView<'_>>,
     ) -> Vec<Vec<crate::api::classification::ClassificationEvidence>> {
-        let constrained_clauses = matchers
-            .selected_matchers()
-            .flat_map(|(rule_index, matcher)| {
-                matcher
-                    .query()
-                    .clauses()
-                    .iter()
-                    .filter(|clause| !clause.constraints.is_empty())
-                    .map(move |clause| (rule_index, clause))
-            })
-            .map(|(rule, clause)| (rule.get(), clause))
-            .collect::<Vec<_>>();
-        let flow_matchers = matchers
-            .selected_matchers()
-            .flat_map(|(rule_index, matcher)| {
-                matcher
-                    .query()
-                    .flows()
-                    .iter()
-                    .enumerate()
-                    .map(move |(flow_index, matcher)| (rule_index, flow_index, matcher))
-            })
-            .collect::<Vec<_>>();
-
-        let mut projected_evidence = vec![Vec::new(); matchers.len()];
+        let mut projected_evidence = vec![Vec::new(); plan.rule_count];
         if !self.stream.is_valid()
             || self
                 .values()
@@ -141,14 +168,14 @@ impl SemanticFacts {
         matching::compute_constrained_evidence_from_stream_with_overlay(
             &self.stream,
             &self.index,
-            &constrained_clauses,
+            &plan.constrained_clauses,
             &mut projected_evidence,
             overlay,
             identities,
             result_identities,
         );
         for (rule_index, evidence) in
-            object_flow::collect(&self.stream, effects, &flow_matchers, matchers.len())
+            object_flow::collect(&self.stream, effects, &plan.flow_matchers, plan.rule_count)
                 .into_iter()
                 .enumerate()
         {

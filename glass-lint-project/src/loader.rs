@@ -544,12 +544,13 @@ impl<'a> ProjectLoadState<'a> {
         let deadline = self.deadline;
         let local = self.session.finish_local();
         let resolved = local.resolve(self.resolved.into_iter())?;
-        let (mut report, linking, matching) = resolved.finish_with_timings()?;
+        let result = resolved.finish_with_timings()?;
         if Instant::now() > deadline {
             return Err(ProjectLoadError::Timeout);
         }
-        metrics.timings.record_linking(linking);
-        metrics.timings.record_matching(matching);
+        metrics.timings.record_linking(result.linking);
+        metrics.timings.record_matching(result.matching);
+        let mut report = result.report;
         let code = glass_lint_core::DiagnosticCode::new("tsconfig")
             .expect("tsconfig is a valid diagnostic code");
         report

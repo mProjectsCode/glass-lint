@@ -28,8 +28,8 @@ pub use diagnostic::{
 pub use environment::{Environment, EnvironmentError};
 pub use limits::{AnalysisLimitError, AnalysisLimits};
 pub use lint::{
-    LintConfigError, Linter, LinterConfig, ProviderCatalogError, RuleBaseline, RuleCatalog,
-    RuleOverride, RuleSelection, RuleState,
+    LintConfigError, Linter, LinterConfig, ProjectAnalysis, ProviderCatalogError, RuleBaseline,
+    RuleCatalog, RuleOverride, RuleSelection, RuleState,
 };
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use project::{

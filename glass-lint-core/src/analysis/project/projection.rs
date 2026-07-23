@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use crate::{
     analysis::{
         ModuleId, ProjectModule, ProjectSemanticModel, evidence, flow,
+        facts::ProjectionPlan,
         matching::{LinkedOccurrenceView, OccurrenceIndexes},
         status::{AnalysisComponent, IncompleteReason, StatusScope},
     },
@@ -55,6 +56,7 @@ impl ProjectSemanticModel {
         &'project self,
         matchers: CompiledRuleSelection<'matchers>,
     ) -> (ProjectMatcherModel<'project, 'matchers>, ProjectionOutcome) {
+        let plan = ProjectionPlan::from_selection(&matchers);
         let projections: BTreeMap<ModuleId, ProjectModuleProjection<'project>> = self
             .modules
             .values()
@@ -65,7 +67,7 @@ impl ProjectSemanticModel {
                 let overlay = index.module_overlay(&identities);
                 let projected = module.local().facts().project(
                     module.local().effects(),
-                    &matchers,
+                    &plan,
                     Some(&identities),
                     Some(&result_identities),
                     Some(&overlay),

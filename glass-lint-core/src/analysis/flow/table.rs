@@ -52,26 +52,20 @@ impl<T> FunctionTable<T> {
         if read == write {
             return None;
         }
-        let max = usize::try_from(read.0.max(write.0)).unwrap_or(usize::MAX);
-        if self.values.len() <= max {
+        let ri = usize::try_from(read.0).ok()?;
+        let wi = usize::try_from(write.0).ok()?;
+        if self.values.len() <= ri.max(wi) {
             return Some((None, None));
         }
-        let ri = usize::try_from(read.0).unwrap_or(usize::MAX);
-        let wi = usize::try_from(write.0).unwrap_or(usize::MAX);
-        let ptr = self.values.as_mut_ptr();
-        // SAFETY: ri != wi, so the returned references point to different
-        // entries and do not alias.
-        unsafe {
-            let read_ref = if ri < self.values.len() {
-                (*ptr.add(ri)).as_ref()
-            } else {
-                None
-            };
-            let write_ref = if wi < self.values.len() {
-                (*ptr.add(wi)).as_mut()
-            } else {
-                None
-            };
+        if ri < wi {
+            let (left, right) = self.values.split_at_mut(wi);
+            let read_ref = left[ri].as_ref();
+            let write_ref = right[0].as_mut();
+            Some((read_ref, write_ref))
+        } else {
+            let (left, right) = self.values.split_at_mut(ri);
+            let write_ref = left[wi].as_mut();
+            let read_ref = right[0].as_ref();
             Some((read_ref, write_ref))
         }
     }

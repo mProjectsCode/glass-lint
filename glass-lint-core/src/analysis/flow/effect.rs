@@ -15,8 +15,8 @@ use smol_str::SmolStr;
 use crate::{
     analysis::{
         facts::{
-            CallArgInfo, ControlKind, FactId, FactPayload, FactStream, ParameterBinding,
-            SemanticFact,
+            CallArgInfo, ControlKind, FactId, FactPayload, FactStream, FunctionBoundary,
+            ParameterBinding, SemanticFact,
         },
         flow::table::FunctionTable,
         name::NameTable,
@@ -301,7 +301,7 @@ impl CallEffectRef<'_> {
         flow: &crate::api::compiler::CompiledObjectFlow,
         names: &crate::analysis::name::NameTable,
     ) -> bool {
-        let Some(args) = self.stream.call_args_for_event(self.event) else {
+        let Some(args) = self.effective_args() else {
             return false;
         };
         let values = self.stream.values();
@@ -369,20 +369,66 @@ impl FunctionEffects {
         self.operation_count
     }
 
-    /// Extract matcher-independent effects from the canonical fact stream.
+    /// Extract matcher-independent effects from the canonical fact stream in
+    /// a single ordered pass: function-enter facts create effect slots before
+    /// the events they own are processed.
     pub(in crate::analysis) fn collect(stream: &FactStream, limit: usize) -> Self {
         let mut effects = Self::default();
-        if !stream.is_valid() {
-            return effects;
-        }
-        if stream.names().is_none() {
+        if !stream.is_valid() || stream.names().is_none() {
             return effects;
         }
         let mut budget = Budget::new(limit);
         let mut value_provenance = BTreeMap::new();
-        effects.initialize(stream, &mut budget);
+
+        // Pre-create the program-level function slot so top-level facts
+        // have an effect to record into.
+        if budget.try_push() {
+            effects.by_id.insert(
+                FunctionId(0),
+                FunctionEffect {
+                    id: FunctionId(0),
+                    parameters: Vec::new(),
+                    calls: Vec::new(),
+                    uses: Vec::new(),
+                    returns: Vec::new(),
+                    invalid: false,
+                    value_roots: BTreeMap::new(),
+                },
+            );
+        }
 
         for fact in stream.facts() {
+            // Create function slot on first Function::Enter, which always
+            // precedes the events owned by that function.
+            if let FactPayload::Function {
+                id,
+                parameters,
+                boundary: FunctionBoundary::Enter,
+                ..
+            } = &fact.payload
+            {
+                if !effects.by_id.contains(*id) && !budget.try_push() {
+                    continue;
+                }
+                effects.by_id.insert(
+                    *id,
+                    FunctionEffect {
+                        id: *id,
+                        parameters: parameters.clone(),
+                        calls: Vec::new(),
+                        uses: Vec::new(),
+                        returns: Vec::new(),
+                        invalid: false,
+                        value_roots: parameters
+                            .iter()
+                            .map(|parameter| (parameter.value, parameter.value))
+                            .collect(),
+                    },
+                );
+                // Function::Enter has no effect on the owning scope.
+                continue;
+            }
+
             let Some(effect) = effects.by_id.get_mut(fact.function) else {
                 continue;
             };
@@ -422,55 +468,6 @@ impl FunctionEffects {
         effects.budget_exhausted = budget.exhausted();
         effects.operation_count = budget.used();
         effects
-    }
-
-    fn initialize(&mut self, stream: &FactStream, budget: &mut Budget) {
-        if stream.names().is_none() {
-            return;
-        }
-        for fact in stream.facts() {
-            let FactPayload::Function {
-                id,
-                parameters,
-                boundary: crate::analysis::facts::FunctionBoundary::Enter,
-                ..
-            } = &fact.payload
-            else {
-                continue;
-            };
-            if !self.by_id.contains(*id) && !budget.try_push() {
-                continue;
-            }
-            self.by_id.insert(
-                *id,
-                FunctionEffect {
-                    id: *id,
-                    parameters: parameters.clone(),
-                    calls: Vec::new(),
-                    uses: Vec::new(),
-                    returns: Vec::new(),
-                    invalid: false,
-                    value_roots: parameters
-                        .iter()
-                        .map(|parameter| (parameter.value, parameter.value))
-                        .collect(),
-                },
-            );
-        }
-        if budget.try_push() {
-            self.by_id.insert(
-                FunctionId(0),
-                FunctionEffect {
-                    id: FunctionId(0),
-                    parameters: Vec::new(),
-                    calls: Vec::new(),
-                    uses: Vec::new(),
-                    returns: Vec::new(),
-                    invalid: false,
-                    value_roots: BTreeMap::new(),
-                },
-            );
-        }
     }
 }
 
