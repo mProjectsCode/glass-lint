@@ -443,9 +443,11 @@ impl Visit for FactBuilder<'_> {
 
     fn visit_export_default_expr(&mut self, export: &ExportDefaultExpr) {
         self.record_default_expr(export);
+        export.expr.visit_with(self);
     }
 
     fn visit_export_default_decl(&mut self, export: &swc_ecma_ast::ExportDefaultDecl) {
         self.record_default_decl(export);
+        export.decl.visit_with(self);
     }
 }
