@@ -6,7 +6,7 @@ Scope: the entirety of `glass-lint-core` and `glass-lint-project`, with emphasis
 
 ## Summary
 
-This audit found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
+This audit originally found 34 actionable readability and maintainability issues: 3 high severity, 25 medium severity, and 6 low severity. After resolution, 11 open findings remain (2 high, 7 medium, 2 low) plus 1 partially addressed finding. The highest-risk findings are local-flow budget exhaustion that is silently converted into missing evidence, non-canonical `tsconfig` cycle detection, and project resolver errors that are collapsed into ordinary missing-module outcomes. Scope planning and source-order collection intentionally remain separate passes; the narrower concern is duplicated structural traversal policy, not the existence of two traversals.
 
 The broad architectural opportunity is to make each pipeline transition consume one phase-owned type and produce the next. Today, several boundaries retain raw and compiled forms together, erase semantic newtypes and reconstruct them later, or build parallel maps that describe one logical record. Those choices obscure the intended pipeline and cause avoidable clones, repeated validation, repeated indexing, and transient collections.
 
@@ -91,37 +91,6 @@ Local artifacts store a `BTreeMap` whose value repeats the complete request even
 
 Build an `AuthoredRequestTable` once per module, containing the local request ID and the public request record. Keep a key-to-ID index for validation and qualify it once after module IDs are assigned. Expose borrowed iteration internally and reserve owned request conversion for the API boundary.
 
-#### READ-007 — Normalized path and resolution newtypes are repeatedly erased and revalidated
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Newtype
-- **Status:** Done
-- **Location:** `glass-lint-core/src/project/types/mod.rs:29-67`, `glass-lint-core/src/project/input.rs:59-79`, `glass-lint-core/src/project/session.rs:649-684`
-
-`SourceTable::get` now accepts `&ProjectRelativePath` and `SourceTable::iter` returns `(&ProjectRelativePath, &SourceFile)`. `session.rs` no longer re-validates paths through `ProjectRelativePath::new` when iterating pending sources. `lint/report.rs` carries `&ProjectRelativePath` through `findings_for_capability` instead of `&str`, using `path.clone()` (an `Arc`-clone) instead of rebuilding via `Arc::from(path)` and `from_normalized`.
-
-#### READ-008 — Parallel lowering discards and reconstructs source location data
-- **Severity:** Medium
-- **Fix Complexity:** Low
-- **Category:** Architecture
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/lowering.rs:139-155`, `glass-lint-core/src/project/session.rs:181-219`, `glass-lint-core/src/project/session.rs:686-699`
-
-Lowering constructs a `SourceLineIndex`, but the parallel worker projects the result down to semantic data and later reconstructs the line index from the source. Consuming a lowered source also clones its source context into the local artifact instead of moving the complete phase result.
-
-Carry `LoweredSource` through the worker result and move its source context into the next phase. If workers intentionally produce semantics only, split semantic lowering from source-location attachment so the first index is never constructed. Make the worker output type name the actual phase boundary.
-
-#### READ-009 — The local artifact cache is invalidated by non-local budgets
-- **Severity:** Medium
-- **Fix Complexity:** Low
-- **Category:** Architecture
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/local.rs:30-75`, `glass-lint-core/src/analysis/local.rs:102-168`, `glass-lint-core/src/project/tests/cache_and_session.rs:181-265`
-
-The cache fingerprint includes the full `AnalysisLimits`, including evidence, linking, and flow budgets that do not affect matcher-independent parsing and semantic facts. Tests currently encode cache misses for these unrelated changes, coupling the local artifact phase to downstream execution policy.
-
-Define a `LocalLoweringConfig` or fingerprint containing only syntax, semantic, and fact-building inputs. Apply projection and link budgets after the cached boundary. Update cache tests to require hits when only downstream limits change and misses only when local semantics can differ.
-
 ### Core: Facts, Flow, Matching, and Linking
 
 #### READ-010 — Function and call metadata is copied across facts, effects, and summaries
@@ -154,28 +123,6 @@ State mutation clones the prior state, then clones the new state on guard drop e
 
 Make the edit guard compare old and new values and skip no-op log entries. Use ordered-range removal or draining for one object's states, and merge into scratch storage rather than repeatedly clearing and reinserting. Consider shared or persistent state values only after measuring; the first guardrail is to stop unconditional full-state snapshots.
 
-#### READ-013 — Evidence is allocated per occurrence and immediately regrouped
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Architecture
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/matching/arguments.rs:200-246`, `glass-lint-core/src/analysis/matching/mod.rs:391-416`, `glass-lint-core/src/analysis/evidence.rs:30-112`
-
-Matching creates an owned evidence value, including a cloned symbol, for each occurrence. The evidence accumulator then drains these values and groups them again by kind and symbol, causing repeated ownership transitions for data that is naturally produced as a group.
-
-`compute_constrained_evidence_from_stream_with_overlay` now collects all matching occurrences per clause before pushing evidence, and the fallback path accumulates per clause in a separate buffer before batching evidence allocation. The symbol string is cloned once per clause instead of once per occurrence.
-
-#### READ-014 — Semantic-fact projection builds two full evidence matrices
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Architecture
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/facts/mod.rs:145-178`
-
-Projection allocates one per-rule evidence matrix, calls object-flow collection to allocate another matrix of the same shape, and then extends the first from the second. Peak memory therefore includes both complete allocations even though they share a final destination.
-
-`FlowEvidence` now borrows an externally-owned `&mut [Vec<ClassificationEvidence>]` and writes evidence directly into the caller's per-rule vecs. `collect_into` replaces the old allocate-merge cycle in `SemanticFacts::project`, so flow projection never allocates a second evidence matrix alongside the caller's.
-
 #### READ-015 — Export storage clones flat keys and namespace resolution retraverses exports
 - **Severity:** Medium
 - **Fix Complexity:** High
@@ -186,128 +133,7 @@ The export table uses `(ModuleId, SmolStr)` flat keys, requiring owned name cons
 
 Store exports as `ModuleId -> ModuleExports` so module lookup and borrowed name lookup are distinct operations. Expose a deterministic iterator over the resolved export table and use it for namespace projection. Cache only at a phase boundary with a clear invalidation rule; do not add another parallel export model.
 
-#### READ-016 — Matched capabilities clone catalog metadata for every module
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Architecture
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/project/model.rs:454-489`, `glass-lint-core/src/lint/report.rs:145-258`
-
-`MatchedCapability` no longer carries `id`, `category`, or `confidence`. Report assembly already looked up `rule_id` from the catalog via `rule_index` and never read the removed fields. The `CompiledRuleRecord` fields `id` and `category` were also dead after this change and have been removed from the struct and constructor. Internal matches now keep only `rule_index`, `label`, `severity`, and `evidence`.
-
-#### READ-017 — `Linter::clone` is documented as cheap but deep-clones its execution plan
-- **Severity:** Medium
-- **Fix Complexity:** Low
-- **Category:** API
-- **Status:** Done
-- **Location:** `glass-lint-core/src/lint/linter.rs:55-81`
-
-Cloning a linter previously duplicated the catalog records, compiled plans, and enabled-rule vector; only the cache handle was naturally cheap. The immutable catalog, compiled execution plan, enabled set, environment, and limits are now stored in one `Arc`-backed `LinterSharedConfig` object, while the already shared artifact-cache handle remains separate. The `Clone` impl clones only the `Arc` pointer and the cache handle, making cheap cloning match the documented public contract.
-
-#### READ-018 — Query-plan compilation has separate production and test implementations
-- **Severity:** Medium
-- **Fix Complexity:** Low
-- **Category:** Duplication
-- **Status:** Done
-- **Location:** `glass-lint-core/src/api/compiler/rule.rs:241-336`
-
-The test-only `QueryPlan::from_declarations` and production `CompiledMatcherPlan::compile_decls` both collected clauses and flows, sorted/deduplicated them, and validated the result. A shared free function `collect_clauses_and_flows` now handles the common building, sorting, deduplication, and clause validation. `from_declarations` and `compile_decls` both call this shared function, with `compile_decls` applying the additional package-pattern and flow-field validation on top. Convenience fixture construction remains outside the query-plan type so validation cannot be bypassed accidentally.
-
-#### READ-019 — CommonJS object-export properties are traversed and decoded twice
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Duplication
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/facts/build/interface.rs:411-480`, `glass-lint-core/src/analysis/facts/build/interface.rs:517-546`
-
-CommonJS object export handling first validates and materializes export entries, then loops over the object properties again for function/static metadata before committing the entries. The two passes duplicate property interpretation and make atomic fail-closed behavior harder to see.
-
-A `CommonJsExportEntry` struct now captures the export name, local identity, expression span (for function-identity lookup), and static string value from one property traversal. `collect_commonjs_export_entries` extracts these entries once, and `record_module_exports_assignment` commits all metadata in a single pass.
-
-#### READ-020 — Frozen assignment history loses its owning abstraction
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Encapsulation
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/scope/model.rs:73-75`, `glass-lint-core/src/analysis/scope/model.rs:264-284`, `glass-lint-core/src/analysis/scope/model.rs:343-367`
-
-`FrozenAssignmentIndex` now wraps the nested assignment map, providing `latest_at`, `version_at`, and `changed_between` operations. All range queries use a single `partition_point` primitive (the old `reassigned_between` used a linear scan). The `collect_and_sort_assignments` free function was replaced by `FrozenAssignmentIndex::from_assignments`. The `assignments_for` helper was removed since callers go through the newtype.
-
-#### READ-021 — Overlay matching allocates a bucket vector for each query
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Encapsulation
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/matching/query.rs:32-76`, `glass-lint-core/src/analysis/matching/occurrence.rs:1-90`
-
-`BorrowedOccurrenceIter` now borrows an optional `base` slice and an `overlay` slice-of-slices instead of owning a combined `Vec<&[Occurrence]>`. The `merged_or_indexed` and `module_occurrences` helpers no longer allocate bucket vectors; they pass `(Some(base), overlay.as_slice())` or `(None, slices.as_slice())` directly. The deterministic k-way merge order is preserved.
-
-#### READ-022 — Event-index construction repeats a sparse ten-field record
-- **Severity:** Low
-- **Fix Complexity:** Medium
-- **Category:** Complexity
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/matching/query.rs:83-95`, `glass-lint-core/src/analysis/matching/query.rs:388-485`
-
-`EventIndexView::base` now provides a defaulted view (`environment` set, all index fields `None`). Each match arm in `build_event_view` uses struct-update syntax (`..EventIndexView::base(env)`) and specifies only the non-default fields, making the active indexes for each event family explicit and removing the repeated `None` boilerplate. The `environment` binding is extracted once so it is not repeated in every arm.
-
-#### READ-023 — Session execution, caching, and phase state share one oversized module
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Architecture
-- **Status:** Done
-- **Location:** `glass-lint-core/src/project/session/mod.rs:1-498`
-
-The single `session.rs` module has been split into `session/mod.rs` (phase-state types), `session/execution.rs` (job executors, observer hooks, bounded concurrency), and `session/artifacts.rs` (artifact map, cache helpers, `SourceAnalysis`). The public API surface is preserved: `ProjectCollection`, `LocallyAnalyzedProject`, `ResolvedProject`, `SourceAnalysis`, and `SessionState` remain re-exported from `project::*`. Test-only items (`ControlledReleaseOrder`, `ControlledLocalJobExecutor`, `CountingExecutionObserver`, `InvocationCounts`) are re-exported where needed.
-
-#### READ-024 — Consuming `EvidenceList` clones locally owned evidence
-- **Severity:** Low
-- **Fix Complexity:** Low
-- **Category:** Encapsulation
-- **Status:** Done
-- **Location:** `glass-lint-core/src/project/tables.rs:159-167`
-
-`IntoIterator for EvidenceList` previously delegated to borrowed iteration and cloned every item into a temporary collection even for locally owned entries. A custom `EvidenceIntoIter` now moves local entries out of the owned vector and clones only entries backed by shared `Arc<[Evidence]>` storage. The `EvidenceIntoIter` type preserves the same deterministic order (local first, then shared).
-
-#### READ-025 — Deterministic FNV hashing is duplicated
-- **Severity:** Low
-- **Fix Complexity:** Low
-- **Category:** Duplication
-- **Status:** Done
-- **Location:** `glass-lint-core/src/fingerprint.rs`, `glass-lint-core/src/analysis/local.rs:30-37`, `glass-lint-core/src/environment.rs:301-325`
-
-The same byte loop and FNV prime have been extracted into a shared `crate::fingerprint` module with `fnv_init()` and `fnv_write()` functions. Both local-analysis fingerprinting and environment fingerprint helpers now delegate to the shared implementation. The module is private to core (`pub(crate)`).
-
-#### READ-026 — Module export metadata is split across parallel maps
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Encapsulation
-- **Status:** Done
-- **Location:** `glass-lint-core/src/analysis/module.rs:158-171`, `glass-lint-core/src/analysis/module.rs:212-263`
-
-`ModuleInterface` now stores all export metadata in one `BTreeMap<SmolStr, ExportEntry>` instead of three parallel maps. `ExportEntry` contains `resolution: Option<ModuleExport>`, `function_id: Option<FunctionId>`, and `static_value: Option<String>`. Conflict and unknown-export degradation atomically clear all metadata on the entry, and `exports()` filters to entries that have a resolution set. `add_function_export` and `add_static_string` can precede `add_export` (creating entries without a resolution), matching the existing caller order in `interface.rs`.
-
 ### Project: Discovery, Resolution, and Configuration
-
-#### READ-027 — Validated extension normalization is bypassed during admission
-- **Severity:** Medium
-- **Fix Complexity:** Low
-- **Category:** Duplication
-- **Status:** Done
-- **Location:** `glass-lint-project/src/options.rs:188-218`, `glass-lint-project/src/options.rs:291-338`
-
-`SourceExtensionSet` now has its own `supports()` method that uses the already-normalized lowercased extensions. `ValidatedProjectLoadOptions::supports` delegates to `self.extensions.supports()` instead of the raw `ProjectLoadOptions::supports` which re-lowercases on every call.
-
-#### READ-028 — `tsconfig` cycle detection compares canonical and unresolved paths
-- **Severity:** High
-- **Fix Complexity:** Medium
-- **Category:** Architecture
-- **Status:** Done
-- **Location:** `glass-lint-project/src/tsconfig.rs:487-551`
-
-The current configuration is canonicalized before it is added to the extends chain, but the prospective parent path is checked for membership before parent canonicalization. Equivalent paths containing `..`, alternate lexical spellings, or symlink aliases can therefore evade cycle detection and recurse until another resource limit intervenes.
-
-`build_effective_config_inner` now canonicalizes the parent path via `realpath` before checking `extends_chain.contains()` and before recursing. Canonicalization failure is treated as an explicit configuration error and recorded as a diagnostic rather than silently skipped. The chain continues to use canonical paths for deterministic cycle detection.
 
 #### READ-029 — `tsconfig` parsing, inheritance, and selection remain one clone-heavy representation
 - **Severity:** Medium
@@ -318,41 +144,6 @@ The current configuration is canonicalized before it is added to the extends cha
 Parent configs are owned by the recursive loader but passed by reference into construction, which clones inherited file/include/exclude data. DTO `extends` and references are also cloned, and the resulting config retains raw include/exclude strings beside compiled pattern sets even though production selection uses the compiled form.
 
 Separate `ParsedTsconfig`, consuming inheritance, and `CompiledTsconfigSelection` phases. Move owned parent and DTO fields when constructing the child, compile effective patterns once, and discard raw selection text unless diagnostics require it. If tests need the parsed form, test that intermediate type rather than retaining duplicate production state.
-#### READ-030 — Resolver and loader collapse filesystem errors into missing modules
-- **Severity:** High
-- **Fix Complexity:** Medium
-- **Category:** Architecture
-- **Status:** Done
-- **Location:** `glass-lint-project/src/resolver.rs:67-93`, `glass-lint-project/src/loader.rs:533-548`
-
-`ProjectResolver::classify` now propagates `ProjectLoadError` from `SourceAdmission::classify` instead of silently converting I/O errors to `ResolverOutcome::Missing`. `ProjectResolver::resolve` returns `Result<ResolverOutcome, ProjectLoadError>`, and `ResolutionCache::resolve_or_get`, `record_requests`, and `enqueue_internal_target` all propagate the error upward. The top-level loader already converts recoverable errors into a partial `ProjectLoadOutcome`. `ResolveError::Builtin`, unresolved externals, and genuinely absent candidates still produce their previous `ResolverOutcome` variants.
-
-#### READ-031 — Admitted paths do not carry their root-relative identity
-- **Severity:** Medium
-- **Fix Complexity:** Medium
-- **Category:** Newtype
-- **Status:** Done
-- **Location:** `glass-lint-project/src/admission.rs:31-175`, `glass-lint-project/src/discovery.rs:65-115`, `glass-lint-project/src/discovery.rs:206-236`
-
-`AdmittedSourcePath` now stores both a `CanonicalProjectPath` and a `ProjectRelativePath`. `SourceAdmission::classify` computes the root-relative path once during admission via `make_relative`. `load_admitted_source_file` uses `admitted.relative()` instead of re-calling `self.relative_path`. `resolver.rs::classify` uses `admitted.relative().clone()` instead of re-stripping the root. The `SourceAdmission::relative_path` method was removed since all callers now use the stored relative path. The `discovery.rs` `select_sources` fallback `unwrap_or(path)` was replaced with an `expect` since the path is guaranteed to be inside its base directory.
-
-#### READ-032 — Phase timing names do not match the measured work
-- **Severity:** Low
-- **Fix Complexity:** Medium
-- **Category:** Naming
-- **Status:** Done
-- **Location:** `glass-lint-project/src/loader.rs:50-159`, `glass-lint-project/src/loader.rs:485-503`
-
-The unused `local_analysis()` accessor was removed (all callers used `parse_and_local_analysis()`). `Phase::LocalAnalysis` was renamed to `Phase::AnalyzeSource` and `record_local_analysis` to `record_analyze_source` to reflect that the timer covers cache lookup, parse/lower, local analysis, and request projection. The stale "eight duration fields" doc comment was corrected.
-
-#### READ-033 — Documented `tsconfig` cycle behavior contradicts implementation
-- **Severity:** Low
-- **Fix Complexity:** Low
-- **Category:** Other
-- **Status:** Done
-- **Location:** `glass-lint-project/src/tsconfig.rs:464-470`, `glass-lint-project/src/discovery.rs:142-144`
-
-Comments previously described a fail-closed sentinel configuration. The doc comment on `build_effective_config` now accurately states: the cyclic edge is discarded, local settings and acyclic ancestors are retained, and the child config continues building without the cyclic parent.
 
 ### Cross-Cutting Organization and Tests
 
@@ -360,12 +151,14 @@ Comments previously described a fail-closed sentinel configuration. The doc comm
 - **Severity:** Low
 - **Fix Complexity:** Low
 - **Category:** Testing
-- **Status:** Done
+- **Status:** Partial
 - **Location:** `glass-lint-core/src/analysis/scope/collect/mod.rs:754-1254`, `glass-lint-core/src/project/report.rs:105-481`, `glass-lint-project/src/tsconfig.rs:566-864`
 
 Several already-large production modules include hundreds of lines of inline tests, with similar concentrations in fact building, resolution, and flow projection. Private access is convenient, but the resulting files make the production state transitions and ownership boundaries harder to scan.
 
 Move substantial test bodies into sibling `tests.rs` modules while retaining private access through the parent module. Keep very small invariant tests inline when proximity materially helps. Organize the extracted tests by behavior and adversarial case, not by source function name.
+
+**Partial completion:** Only `glass-lint-core/src/analysis/scope/collect/tests.rs` was extracted. `glass-lint-core/src/project/report.rs` and `glass-lint-project/src/tsconfig.rs` still contain inline tests (at lines 104 and 584 respectively).
 
 ## Systemic Themes
 
