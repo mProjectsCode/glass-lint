@@ -96,6 +96,8 @@ Replace the ad hoc quote/comment loop with a bounded lexer state machine that un
 
 Make construction fallible and propagate the canonicalization error whenever a root was configured. Reserve fallback-root derivation exclusively for options that genuinely contain no root, and encode those states with separate constructors or an enum. Add a regression proving that an invalid configured root never falls back to a discovery or file parent.
 
+- **Status:** Done (SourceCorpus::from_validated now returns Result; invalid configured root propagates I/O error instead of falling back)
+
 #### READ-009 — Shared path and dense-table extraction is unfinished
 - **Severity:** High
 - **Fix Complexity:** High

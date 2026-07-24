@@ -29,7 +29,7 @@ pub fn run(config: &Config, command: Command) -> Result<bool> {
             }
             crate::output::write_mode(config, "single file", &path)?;
             let options = config.project_load_options()?;
-            let corpus = SourceCorpus::from_validated(&options);
+            let corpus = SourceCorpus::from_validated(&options)?;
             let paths = corpus
                 .discover(std::slice::from_ref(&path))
                 .map_err(|error| anyhow::anyhow!(error))?;
@@ -81,7 +81,7 @@ fn project_selection(path: &std::path::Path) -> ProjectSelection {
 
 fn lint_files(config: &Config, linter: &Linter, paths: Vec<PathBuf>) -> Result<bool> {
     let options = config.project_load_options()?;
-    let corpus = SourceCorpus::from_validated(&options);
+    let corpus = SourceCorpus::from_validated(&options)?;
     let mut files = Vec::with_capacity(paths.len());
     let mut failed = false;
 
@@ -144,24 +144,25 @@ mod tests {
     }
 
     #[test]
-    fn discovers_sorted_runtime_javascript_and_typescript_files() {
+    fn discovers_sorted_runtime_javascript_and_typescript_files()
+    -> Result<(), Box<dyn std::error::Error>> {
         let root =
             std::env::temp_dir().join(format!("glass-lint-cli-discovery-{}", std::process::id()));
-        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&root)?;
         for filename in ["z.ts", "a.mjs", "c.d.ts", "b.cts", "ignored.txt"] {
-            fs::write(root.join(filename), "").unwrap();
+            fs::write(root.join(filename), "")?;
         }
 
         let options = ValidatedProjectLoadOptions::default();
-        let paths = SourceCorpus::from_validated(&options)
-            .discover(std::slice::from_ref(&root))
-            .unwrap();
+        let paths =
+            SourceCorpus::from_validated(&options)?.discover(std::slice::from_ref(&root))?;
         let names: Vec<_> = paths
             .iter()
             .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
             .collect();
         assert_eq!(names, ["a.mjs", "b.cts", "z.ts"]);
 
-        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(root)?;
+        Ok(())
     }
 }

@@ -92,12 +92,15 @@ impl SourceCorpus {
     /// stored as the single project boundary for this corpus. Without a
     /// configured root, the boundary is derived from each caller-supplied
     /// discovery root.
-    pub fn from_validated(options: &ValidatedProjectLoadOptions) -> Self {
-        let canonical_root = options.root().and_then(|root| realpath(root).ok());
-        Self {
+    pub fn from_validated(options: &ValidatedProjectLoadOptions) -> Result<Self, ProjectLoadError> {
+        let canonical_root = match options.root() {
+            Some(root) => Some(realpath(root)?),
+            None => None,
+        };
+        Ok(Self {
             options: options.clone(),
             canonical_root,
-        }
+        })
     }
 
     /// Create a corpus with an explicit canonical project root.
