@@ -15,7 +15,8 @@ use crate::{
             projector::{
                 CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowState,
                 MatchKind, ObjectFlowProjector, ObjectId, ValueId,
-                state::{FlowEvidence, ReportEvidenceKey},
+                history::ReportEvidenceKey,
+                state::FlowEvidence,
             },
             state::FlowStateKey,
             summary::SummaryPathStore,
