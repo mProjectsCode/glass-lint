@@ -9,7 +9,7 @@ use std::{fs, path::Path, time::Instant};
 
 use walkdir::WalkDir;
 
-use crate::{admission::SourceAdmission, error::ProjectLoadError};
+use crate::{admission::SourceAdmission, budget::ProjectResourceBudget, error::ProjectLoadError};
 
 /// Resolve root metadata respecting the symlink-follow policy.
 ///
@@ -55,8 +55,8 @@ pub fn collect_files(
     deadline: Option<Instant>,
     include: &mut dyn FnMut(&Path) -> bool,
     admitted_set: &mut crate::admission::AdmissionSet,
+    budget: &mut ProjectResourceBudget,
 ) -> Result<(), ProjectLoadError> {
-    let mut visited = 0usize;
     let walker = WalkDir::new(root)
         .follow_links(admission.options().follow_symlinks())
         .sort_by_file_name()
@@ -68,12 +68,7 @@ pub fn collect_files(
         {
             return Err(ProjectLoadError::Timeout);
         }
-        visited = visited.saturating_add(1);
-        if visited > admission.options().max_visited_entries() {
-            return Err(ProjectLoadError::TooManyEntries(
-                admission.options().max_visited_entries(),
-            ));
-        }
+        budget.record_visited()?;
         let entry = entry.map_err(|error| {
             let path = error.path().unwrap_or(root).to_path_buf();
             let message = error.to_string();

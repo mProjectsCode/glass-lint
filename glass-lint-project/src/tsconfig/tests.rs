@@ -1,8 +1,18 @@
+use std::time::{Duration, Instant};
+
 use super::*;
 use crate::tests::TempProject;
 
 fn default_budget() -> ConfigTraversalBudget {
     ConfigTraversalBudget::default()
+}
+
+fn default_resource_budget() -> ProjectResourceBudget {
+    ProjectResourceBudget::new(
+        250_000,
+        512 * 1024 * 1024,
+        Instant::now() + Duration::from_secs(3600),
+    )
 }
 
 #[test]
@@ -149,6 +159,7 @@ fn cycle_detection_records_diagnostic_and_skips_cyclic_extends() {
 
     let mut diagnostics = Vec::new();
     let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
     let config_path = project.root().join("tsconfig.json");
     let result = build_effective_config(
         &config_path,
@@ -157,6 +168,7 @@ fn cycle_detection_records_diagnostic_and_skips_cyclic_extends() {
         &mut diagnostics,
         default_budget(),
         &mut config_count,
+        &mut resource_budget,
     );
 
     assert!(
@@ -186,6 +198,7 @@ fn cycle_fails_closed_does_not_broaden_admission() {
 
     let mut diagnostics = Vec::new();
     let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
 
     // Build effective config for A
     let result = build_effective_config(
@@ -195,6 +208,7 @@ fn cycle_fails_closed_does_not_broaden_admission() {
         &mut diagnostics,
         default_budget(),
         &mut config_count,
+        &mut resource_budget,
     );
 
     assert!(result.is_ok());
@@ -234,6 +248,7 @@ fn extends_nonexistent_path_is_skipped_silently() {
 
     let mut diagnostics = Vec::new();
     let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
     let (config, _) = build_effective_config(
         &project.root().join("tsconfig.json"),
         project.root(),
@@ -241,6 +256,7 @@ fn extends_nonexistent_path_is_skipped_silently() {
         &mut diagnostics,
         default_budget(),
         &mut config_count,
+        &mut resource_budget,
     )
     .unwrap();
 
@@ -262,6 +278,7 @@ fn single_level_extends_merges_correctly() {
 
     let mut diagnostics = Vec::new();
     let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
     let (config, _) = build_effective_config(
         &project.root().join("tsconfig.json"),
         project.root(),
@@ -269,6 +286,7 @@ fn single_level_extends_merges_correctly() {
         &mut diagnostics,
         default_budget(),
         &mut config_count,
+        &mut resource_budget,
     )
     .unwrap();
 
@@ -305,6 +323,7 @@ fn extends_within_budget_succeeds() {
 
     let mut diagnostics = Vec::new();
     let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
     let budget = ConfigTraversalBudget::new(10, 5);
     let result = build_effective_config(
         &project.root().join("tsconfig.json"),
@@ -313,6 +332,7 @@ fn extends_within_budget_succeeds() {
         &mut diagnostics,
         budget,
         &mut config_count,
+        &mut resource_budget,
     );
 
     assert!(result.is_ok(), "within-budget extends should succeed");
@@ -328,6 +348,7 @@ fn extends_exceeding_max_depth_fails() {
 
     let mut diagnostics = Vec::new();
     let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
     // max_depth=2 allows root + one extends but not root + two extends
     let budget = ConfigTraversalBudget::new(10, 2);
     let err = build_effective_config(
@@ -337,6 +358,7 @@ fn extends_exceeding_max_depth_fails() {
         &mut diagnostics,
         budget,
         &mut config_count,
+        &mut resource_budget,
     )
     .unwrap_err();
 
@@ -362,6 +384,7 @@ fn extends_exceeding_max_config_count_fails() {
 
     let mut diagnostics = Vec::new();
     let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
     let budget = ConfigTraversalBudget::new(2, 10);
     let err = build_effective_config(
         &project.root().join("a.json"),
@@ -370,6 +393,7 @@ fn extends_exceeding_max_config_count_fails() {
         &mut diagnostics,
         budget,
         &mut config_count,
+        &mut resource_budget,
     )
     .unwrap_err();
 
@@ -394,6 +418,7 @@ fn extends_at_max_config_count_succeeds() {
 
     let mut diagnostics = Vec::new();
     let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
     let budget = ConfigTraversalBudget::new(2, 10);
     let result = build_effective_config(
         &project.root().join("a.json"),
@@ -402,6 +427,7 @@ fn extends_at_max_config_count_succeeds() {
         &mut diagnostics,
         budget,
         &mut config_count,
+        &mut resource_budget,
     );
 
     assert!(result.is_ok(), "at-limit extends should succeed");
@@ -416,6 +442,7 @@ fn extends_at_max_depth_succeeds() {
 
     let mut diagnostics = Vec::new();
     let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
     let budget = ConfigTraversalBudget::new(10, 2);
     let result = build_effective_config(
         &project.root().join("a.json"),
@@ -424,6 +451,7 @@ fn extends_at_max_depth_succeeds() {
         &mut diagnostics,
         budget,
         &mut config_count,
+        &mut resource_budget,
     );
 
     assert!(result.is_ok(), "at-limit depth extends should succeed");

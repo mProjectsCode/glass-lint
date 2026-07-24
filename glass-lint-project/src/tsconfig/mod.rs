@@ -12,13 +12,14 @@
 
 use std::{
     fmt,
+    io::Read,
     path::{Path, PathBuf},
     time::Instant,
 };
 
 use serde_json::Value;
 
-use crate::{admission::realpath, error::ProjectLoadError};
+use crate::{admission::realpath, budget::ProjectResourceBudget, error::ProjectLoadError};
 
 /// Budget for tsconfig traversal (extends and project references).
 #[derive(Clone, Copy, Debug)]
@@ -489,12 +490,34 @@ pub struct TsconfigDiagnostic {
 // Phase functions
 // ---------------------------------------------------------------------------
 
-/// Phase 1: Read and parse one tsconfig file (JSONC-aware).
-pub fn read_and_parse(config_path: &Path) -> Result<ParsedTsconfig, ProjectLoadError> {
-    let mut text = std::fs::read_to_string(config_path).map_err(|source| ProjectLoadError::Io {
+/// Phase 1: Read and parse one tsconfig file (JSONC-aware), bounded by the
+/// project resource budget's config byte limit.
+pub fn read_and_parse(
+    config_path: &Path,
+    budget: &mut ProjectResourceBudget,
+) -> Result<ParsedTsconfig, ProjectLoadError> {
+    let file = std::fs::File::open(config_path).map_err(|source| ProjectLoadError::Io {
         path: config_path.to_path_buf(),
         source,
     })?;
+    let metadata = file.metadata().map_err(|source| ProjectLoadError::Io {
+        path: config_path.to_path_buf(),
+        source,
+    })?;
+    budget.record_config_bytes(metadata.len())?;
+    let mut text = String::new();
+    file.take(budget.max_config_bytes().saturating_add(1))
+        .read_to_string(&mut text)
+        .map_err(|source| ProjectLoadError::Io {
+            path: config_path.to_path_buf(),
+            source,
+        })?;
+    if text.len() as u64 > budget.max_config_bytes() {
+        return Err(ProjectLoadError::ProjectSourceTooLarge {
+            bytes: text.len() as u64,
+            limit: budget.max_config_bytes(),
+        });
+    }
     json_strip_comments::strip(&mut text).map_err(|error| parse_error(config_path, error))?;
     ParsedTsconfig::parse(&text).map_err(|error| parse_error(config_path, error))
 }
@@ -533,6 +556,7 @@ fn resolve_extends(config_path: &Path, extends: &str) -> Option<PathBuf> {
 /// plus any already-resolved acyclic ancestors are retained. The child config
 /// continues building normally without the cyclic parent. Independent
 /// non-cyclic branches continue unaffected.
+#[allow(clippy::too_many_arguments)]
 pub fn build_effective_config(
     config_path: &Path,
     fallback_base: &Path,
@@ -540,6 +564,7 @@ pub fn build_effective_config(
     diagnostics: &mut Vec<TsconfigDiagnostic>,
     budget: ConfigTraversalBudget,
     config_count: &mut usize,
+    resource_budget: &mut ProjectResourceBudget,
 ) -> Result<(CompiledTsconfigSelection, Vec<ReferenceEntry>), ProjectLoadError> {
     let mut extends_chain: Vec<PathBuf> = Vec::new();
     let (merged, references) = build_effective_config_inner(
@@ -550,6 +575,7 @@ pub fn build_effective_config(
         diagnostics,
         budget,
         config_count,
+        resource_budget,
     )?;
     let canonical = realpath(config_path)?;
     let compiled = CompiledTsconfigSelection::compile(canonical, merged);
@@ -566,6 +592,7 @@ pub fn build_effective_config(
     Ok((compiled, references))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_effective_config_inner(
     config_path: &Path,
     fallback_base: &Path,
@@ -574,6 +601,7 @@ fn build_effective_config_inner(
     diagnostics: &mut Vec<TsconfigDiagnostic>,
     budget: ConfigTraversalBudget,
     config_count: &mut usize,
+    resource_budget: &mut ProjectResourceBudget,
 ) -> Result<(MergedSelection, Vec<ReferenceEntry>), ProjectLoadError> {
     if let Some(deadline) = deadline
         && Instant::now() >= deadline
@@ -600,7 +628,7 @@ fn build_effective_config_inner(
         });
     }
 
-    let dto = read_and_parse(config_path)?;
+    let dto = read_and_parse(config_path, resource_budget)?;
     for message in &dto.diagnostics {
         diagnostics.push(TsconfigDiagnostic {
             config_path: canonical.clone(),
@@ -644,6 +672,7 @@ fn build_effective_config_inner(
                                 diagnostics,
                                 budget,
                                 config_count,
+                                resource_budget,
                             );
                             Some(result.map(|(merged, _)| merged))
                         }

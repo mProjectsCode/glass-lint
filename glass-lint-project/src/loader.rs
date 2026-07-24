@@ -17,6 +17,7 @@ use glass_lint_core::{
 
 use crate::{
     admission::{AdmissionSet, AdmittedSourcePath, SourceAdmission, absolute_path},
+    budget::ProjectResourceBudget,
     discovery::{DiscoveryResult, ProjectDiscovery},
     error::ProjectLoadError,
     options::{ProjectSelection, ValidatedProjectLoadOptions},
@@ -239,7 +240,12 @@ impl ProjectLoader {
     ) -> Result<ProjectLoadOutcome, ProjectLoadError> {
         let discovery_start = Instant::now();
         let deadline = Instant::now() + Duration::from_millis(self.options.max_timeout_ms());
-        let paths = ProjectPaths::from_selection(&self.options, selection, deadline)?;
+        let mut budget = ProjectResourceBudget::new(
+            self.options.max_visited_entries(),
+            self.options.max_project_source_bytes(),
+            deadline,
+        );
+        let paths = ProjectPaths::from_selection(&self.options, selection, deadline, &mut budget)?;
         metrics.timings.record_discovery(discovery_start.elapsed());
 
         let mut build = ProjectLoadState::new(
@@ -274,6 +280,7 @@ impl<'a> ProjectPaths<'a> {
         options: &'a ValidatedProjectLoadOptions,
         selection: &ProjectSelection,
         deadline: Instant,
+        budget: &mut ProjectResourceBudget,
     ) -> Result<Self, ProjectLoadError> {
         let selection_path = absolute_path(selection.path())?;
         if !selection_path.exists() {
@@ -296,6 +303,7 @@ impl<'a> ProjectPaths<'a> {
                 options.max_config_count(),
                 options.max_config_depth(),
             ),
+            budget,
         );
         let DiscoveryResult { paths, diagnostics } =
             discover.initial_paths(selection, canonical_selection.as_ref())?;

@@ -10,6 +10,7 @@
 //! keeping filesystem policy out of the provider-neutral core engine.
 
 mod admission;
+mod budget;
 mod corpus;
 mod discovery;
 mod error;
@@ -19,6 +20,7 @@ mod resolver;
 mod tsconfig;
 mod walk;
 
+pub use budget::ProjectResourceBudget;
 pub use corpus::{CorpusFile, SourceCorpus};
 pub use error::{ProjectLoadError, ProjectOptionError};
 pub use loader::{ProjectLoadMetrics, ProjectLoadOutcome, ProjectLoader, ProjectPhaseTimings};

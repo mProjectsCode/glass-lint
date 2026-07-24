@@ -68,6 +68,7 @@ Introduce a semantic resolution cache keyed by importer location, request kind, 
 - **Fix Complexity:** Extreme
 - **Category:** Architecture / Error Handling
 - **Location:** `glass-lint-project/src/walk.rs:52-93`; `glass-lint-project/src/tsconfig/mod.rs:492-500`; `glass-lint-project/src/loader.rs:603-628`
+- **Status:** Done (ProjectResourceBudget created and wired through discovery, walk, tsconfig reading; visited counter shared; config bytes bounded)
 
 `max_visited_entries` is reset inside every `collect_files` call, allowing tsconfig references or multiple corpus roots to multiply the advertised discovery limit. Tsconfig files use unbounded `read_to_string`, and the documented total load/link timeout is checked before linking but not during or after linking/matching; partial completion bypasses even the pre-check.
 

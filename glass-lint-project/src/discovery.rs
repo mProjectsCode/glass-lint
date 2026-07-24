@@ -8,6 +8,7 @@ use std::{
 
 use crate::{
     admission::{AdmissionSet, AdmittedSourcePath, CanonicalProjectPath, SourceAdmission},
+    budget::ProjectResourceBudget,
     error::ProjectLoadError,
     options::ProjectSelection,
     tsconfig::{self, TsconfigDiagnostic},
@@ -20,11 +21,12 @@ use crate::{
 /// that the file-count budget is enforced across roots, tsconfig references,
 /// and directory walks. Duplicate or overlapping entries do not consume the
 /// budget twice.
-pub struct ProjectDiscovery<'adm, 'opt> {
+pub struct ProjectDiscovery<'adm, 'opt, 'budget> {
     admission: &'adm SourceAdmission<'opt>,
     deadline: Option<Instant>,
     admitted: AdmissionSet,
     config_budget: tsconfig::ConfigTraversalBudget,
+    project_budget: &'budget mut ProjectResourceBudget,
 }
 
 pub struct DiscoveryResult {
@@ -44,19 +46,21 @@ enum RefStackItem {
     Exit,
 }
 
-impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
+impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
     /// Create a discovery view over a validated admission boundary.
     pub fn with_deadline(
         admission: &'adm SourceAdmission<'opt>,
         deadline: Instant,
         max_files: usize,
         config_budget: tsconfig::ConfigTraversalBudget,
+        project_budget: &'budget mut ProjectResourceBudget,
     ) -> Self {
         Self {
             admission,
             deadline: Some(deadline),
             admitted: AdmissionSet::new(max_files),
             config_budget,
+            project_budget,
         }
     }
 
@@ -129,6 +133,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
             self.deadline,
             &mut |_| true,
             &mut self.admitted,
+            self.project_budget,
         )
     }
 
@@ -216,6 +221,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                         cycle_diagnostics,
                         self.config_budget,
                         &mut config_count,
+                        self.project_budget,
                     )?;
 
                     // Phase 4: Select sources
@@ -282,6 +288,7 @@ impl<'adm, 'opt> ProjectDiscovery<'adm, 'opt> {
                 self.deadline,
                 &mut include,
                 &mut self.admitted,
+                self.project_budget,
             )?;
         }
         Ok(())

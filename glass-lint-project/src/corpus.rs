@@ -4,10 +4,12 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
+    time::{Duration, Instant},
 };
 
 use crate::{
     admission::{AdmissionSet, PathAdmission, SourceAdmission, realpath},
+    budget::ProjectResourceBudget,
     error::ProjectLoadError,
     options::ValidatedProjectLoadOptions,
     walk,
@@ -168,7 +170,19 @@ impl SourceCorpus {
             if !metadata.is_dir() {
                 return Err(ProjectLoadError::CorpusRootNotFileOrDir(root.clone()));
             }
-            walk::collect_files(&admission, root, None, &mut include, &mut admitted)?;
+            let mut budget = ProjectResourceBudget::new(
+                self.options.max_visited_entries(),
+                self.options.max_project_source_bytes(),
+                Instant::now() + Duration::from_secs(3600),
+            );
+            walk::collect_files(
+                &admission,
+                root,
+                None,
+                &mut include,
+                &mut admitted,
+                &mut budget,
+            )?;
         }
         if admitted.len() > self.options.max_files() {
             return Err(ProjectLoadError::TooManyFiles(self.options.max_files()));
