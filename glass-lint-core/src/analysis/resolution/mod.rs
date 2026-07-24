@@ -13,10 +13,8 @@ mod call;
 mod constant;
 mod expression;
 
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use hashbrown::{HashMap, HashSet};
+use std::sync::Arc;
 
 use glass_lint_datastructures::{
     ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,

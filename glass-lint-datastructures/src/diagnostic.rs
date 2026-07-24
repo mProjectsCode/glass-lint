@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn byte_range_hash_and_ord() {
-        use std::collections::HashSet;
+        use hashbrown::HashSet;
         let a = ByteRange::new(1, 3).unwrap();
         let b = ByteRange::new(1, 3).unwrap();
         let c = ByteRange::new(1, 4).unwrap();

@@ -1,6 +1,7 @@
 //! Whitelisted inline callback binding and parameter projection.
 
-use std::collections::{BTreeMap, HashMap};
+use hashbrown::HashMap;
+use std::collections::BTreeMap;
 
 use glass_lint_datastructures::{NameId, NameTable};
 use smol_str::SmolStr;

@@ -4,9 +4,10 @@
 //! module. Assignment versions and source spans remain part of the query
 //! contract so aliases cannot cross a reassignment or lexical boundary.
 
+use hashbrown::{HashMap, HashSet};
 use std::{
     cell::Cell,
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::BTreeMap,
 };
 
 use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};

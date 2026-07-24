@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+hashbrown.workspace = true
 indexmap.workspace = true
 serde = { workspace = true, optional = true }
 smol_str.workspace = true

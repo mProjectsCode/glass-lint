@@ -1,4 +1,5 @@
-use std::collections::{BTreeSet, HashMap};
+use hashbrown::HashMap;
+use std::collections::BTreeSet;
 
 use glass_lint_datastructures::NameTable;
 use smol_str::SmolStr;

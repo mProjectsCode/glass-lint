@@ -6,7 +6,8 @@
 
 mod propagation;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use hashbrown::HashMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use glass_lint_datastructures::{Budget, NamePath, NameTable};
 

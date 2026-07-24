@@ -8,7 +8,8 @@
 //! source order. It deliberately models only callback forms whose argument-to-
 //! parameter mapping is unambiguous; uncertain calls leave parameters local.
 
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use hashbrown::{HashMap, HashSet};
+use std::collections::{BTreeMap, VecDeque};
 
 use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
 use history::AssignmentHistory;
