@@ -15,7 +15,7 @@
 //! or an overlay node created during a join.  The overlay is bounded by
 //! [`MAX_OVERLAY_NODES`]; exhaustion fails closed.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use glass_lint_datastructures::{ParentPathStore, PathId, PathInterner, PathSegment};
 
@@ -272,7 +272,7 @@ impl<'a> SummaryPathStore<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(super) struct FunctionSinkSummary {
     flow: FlowId,
     parameter_index: usize,
@@ -290,25 +290,39 @@ pub(super) struct FunctionSummary {
 }
 
 #[derive(Debug, Clone, Default)]
-pub(super) struct SinkSet(Vec<FunctionSinkSummary>);
+pub(super) struct SinkSet {
+    items: Vec<FunctionSinkSummary>,
+    set: HashSet<FunctionSinkSummary>,
+}
 impl SinkSet {
-    fn contains(&self, sink: &FunctionSinkSummary) -> bool {
-        self.0.iter().any(|existing| existing == sink)
-    }
-
-    fn push(&mut self, sink: FunctionSinkSummary) {
-        self.0.push(sink);
+    fn push_unique(&mut self, sink: FunctionSinkSummary) -> bool {
+        if self.set.insert(sink.clone()) {
+            self.items.push(sink);
+            true
+        } else {
+            false
+        }
     }
 
     fn sort_and_dedup(&mut self) {
-        self.0.sort_by(|left, right| {
+        self.items.sort_by(|left, right| {
             (left.flow(), left.parameter_index(), left.path()).cmp(&(
                 right.flow(),
                 right.parameter_index(),
                 right.path(),
             ))
         });
-        self.0.dedup();
+        self.items.dedup();
+    }
+
+    #[allow(dead_code)]
+    fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    #[allow(dead_code)]
+    fn iter(&self) -> std::slice::Iter<'_, FunctionSinkSummary> {
+        self.items.iter()
     }
 }
 impl<'a> IntoIterator for &'a SinkSet {
@@ -316,7 +330,7 @@ impl<'a> IntoIterator for &'a SinkSet {
     type Item = &'a FunctionSinkSummary;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.iter()
+        self.items.iter()
     }
 }
 impl IntoIterator for SinkSet {
@@ -324,7 +338,7 @@ impl IntoIterator for SinkSet {
     type Item = FunctionSinkSummary;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        self.items.into_iter()
     }
 }
 
@@ -450,38 +464,40 @@ impl<'a> FunctionSummaries<'a> {
             let current_round: Vec<FunctionId> = worklist.iter().copied().collect();
             worklist.clear();
 
-            let mut any_changed = false;
-            for caller in &current_round {
+            let mut changed: BTreeSet<FunctionId> = BTreeSet::new();
+
+            for &caller in &current_round {
                 let call_count = self
                     .by_id
-                    .get(*caller)
+                    .get(caller)
                     .map_or(0, |summary| summary.calls.len());
                 for index in 0..call_count {
                     let Some(call_id) = self
                         .by_id
-                        .get(*caller)
+                        .get(caller)
                         .and_then(|summary| summary.calls.get(index))
                         .copied()
                     else {
                         continue;
                     };
-                    if self.propagate_call_sinks(call_id, *caller, stream) {
-                        any_changed = true;
+                    if self.propagate_call_sinks(call_id, caller, stream) {
+                        changed.insert(caller);
                     }
                 }
             }
 
-            for (_, summary) in self.by_id.iter_mut() {
-                summary.sinks_offset = summary.sinks.0.len();
+            // Update sinks_offset ONLY for changed functions (not all)
+            for &changed_id in &changed {
+                if let Some(summary) = self.by_id.get_mut(changed_id) {
+                    summary.sinks_offset = summary.sinks.items.len();
+                }
             }
 
-            // Schedule callers of any function whose sinks grew this round.
-            if any_changed {
-                for caller in &current_round {
-                    if let Some(callers_of_changed) = reverse_calls.get(caller) {
-                        for c in callers_of_changed {
-                            worklist.insert(*c);
-                        }
+            // Schedule callers of changed functions only
+            for &changed_id in &changed {
+                if let Some(callers) = reverse_calls.get(&changed_id) {
+                    for &c in callers {
+                        worklist.insert(c);
                     }
                 }
             }
@@ -517,10 +533,10 @@ impl<'a> FunctionSummaries<'a> {
         let projections: Vec<FunctionSinkSummary> = {
             let target_params = stream.function_parameters(target);
             let caller_params = stream.function_parameters(caller);
-            let sink_count = target_summary.sinks.0.len();
+            let sink_count = target_summary.sinks.items.len();
             let mut projections = Vec::new();
             for sink_idx in target_sinks_offset..sink_count {
-                let sink = &target_summary.sinks.0[sink_idx];
+                let sink = &target_summary.sinks.items[sink_idx];
                 if let Some(proj) = try_project_sink(
                     target_params,
                     caller_params,
@@ -595,11 +611,7 @@ impl FunctionSummary {
     }
 
     fn add_sink(&mut self, sink: FunctionSinkSummary) -> bool {
-        if self.sinks.contains(&sink) {
-            return false;
-        }
-        self.sinks.push(sink);
-        true
+        self.sinks.push_unique(sink)
     }
 }
 

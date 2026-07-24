@@ -46,6 +46,7 @@ Put current `ScopeId` and `FunctionId` on the traversal stack and pass the owner
 - **Fix Complexity:** High
 - **Category:** Performance
 - **Location:** `glass-lint-core/src/analysis/flow/summary.rs:275-312`; `glass-lint-core/src/analysis/flow/summary.rs:425-541`
+- **Status:** Done (SinkSet uses HashSet for O(1) dedup; propagate_sinks tracks changed() set exactly and schedules only affected callers)
 
 `propagate_sinks` records only a round-wide `any_changed` flag, then schedules reverse callers of every function in the round even when only one function grew. During those repeated rounds, `SinkSet::contains` linearly scans an unsorted vector, so high-fan-out call graphs can combine over-scheduling with quadratic deduplication and repeated projection allocations.
 
