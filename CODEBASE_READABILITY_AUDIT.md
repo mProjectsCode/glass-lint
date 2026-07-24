@@ -123,6 +123,7 @@ Use the `IndexSet` entry/`insert_full` facility to return the existing or insert
 - **Fix Complexity:** High
 - **Category:** Performance / Data Structures
 - **Location:** `glass-lint-core/src/analysis/scope/model.rs:197-224`; `glass-lint-core/src/analysis/scope/collect/mod.rs:80-88`; `glass-lint-core/src/analysis/resolution/mod.rs:88-110`
+- **Status:** Done (Replaced `BTreeMap<ScopeId, FunctionId>` with `Vec<Option<FunctionId>>` in `BindingIndex.function_ids`; replaced `BTreeMap`/`BTreeSet` with `HashMap`/`HashSet` for the scope collector, `BindingIndex`, `MutationIndex.mutable_static_objects`, `ScopeGraphParts`, and `ResolverCache` point-query caches; added `Hash` to `ParserSpanKey` and `ResolutionKey`; removed `Ord` from `ResolutionKey`)
 
 Scope bindings, version counters, function ownership, and resolver caches use `BTreeMap`/`BTreeSet` on nearly every identifier/member resolution. Several keys are dense `ScopeId`, `FunctionId`, or `(ScopeId, NameId)` values, and these internal collections are never exposed in their tree order.
 

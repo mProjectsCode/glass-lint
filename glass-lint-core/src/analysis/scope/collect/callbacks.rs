@@ -1,6 +1,6 @@
 //! Whitelisted inline callback binding and parameter projection.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use glass_lint_datastructures::{NameId, NameTable};
 use smol_str::SmolStr;
@@ -18,7 +18,7 @@ impl ScopeCollector<'_> {
     /// a helper. Conflicting call sites are discarded rather than merged:
     /// retaining an ambiguous alias would leak one caller's provenance into
     /// another.
-    pub fn parameter_aliases(&self) -> BTreeMap<ScopedName, BindingProvenance> {
+    pub fn parameter_aliases(&self) -> HashMap<ScopedName, BindingProvenance> {
         let mut aliases = BTreeMap::<ScopedName, Option<BindingProvenance>>::new();
         for (caller_scope, callee_name, arguments) in &self.calls {
             let Some((scope, parameters)) = self.function_for_call(*caller_scope, *callee_name)
@@ -26,7 +26,7 @@ impl ScopeCollector<'_> {
                 continue;
             };
             for (index, parameter) in parameters.iter().enumerate() {
-                let mut projected = BTreeMap::new();
+                let mut projected = HashMap::new();
                 if *caller_scope != *scope
                     && let Some(Some(target)) = arguments.get(index)
                 {
@@ -77,7 +77,7 @@ impl ScopeCollector<'_> {
         names: &NameTable,
         pattern: &CompactPat,
         value: &BindingProvenance,
-        output: &mut BTreeMap<SmolStr, BindingProvenance>,
+        output: &mut HashMap<SmolStr, BindingProvenance>,
     ) {
         match pattern {
             CompactPat::Ident(name) => {
@@ -139,7 +139,7 @@ impl ScopeCollector<'_> {
         // Inline callbacks are visited after their call expression is seen.
         // Stash the proven argument facts by span so they can be installed when
         // the callback's lexical scope is entered.
-        let mut bindings = BTreeMap::new();
+        let mut bindings = HashMap::new();
         for (parameter, argument) in parameters.into_iter().zip(arguments) {
             if let Some(argument) = argument {
                 let compact = compact_pat(parameter);

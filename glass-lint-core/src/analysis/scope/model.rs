@@ -6,7 +6,7 @@
 
 use std::{
     cell::Cell,
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, HashMap, HashSet},
 };
 
 use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
@@ -197,22 +197,22 @@ impl LexicalScopeIndex {
 #[derive(Debug)]
 pub(super) struct BindingIndex {
     pub(super) assignments: FrozenAssignmentIndex,
-    pub(super) binding_ids: BTreeMap<ScopedName, BindingId>,
-    pub(super) function_ids: BTreeMap<ScopeId, FunctionId>,
-    pub(super) function_bindings: BTreeMap<ScopedName, FunctionId>,
-    pub(super) function_aliases: BTreeMap<ScopedName, FunctionId>,
-    pub(super) parameter_aliases: BTreeMap<(FunctionId, NameId), BindingProvenance>,
+    pub(super) binding_ids: HashMap<ScopedName, BindingId>,
+    pub(super) function_ids: Vec<Option<FunctionId>>,
+    pub(super) function_bindings: HashMap<ScopedName, FunctionId>,
+    pub(super) function_aliases: HashMap<ScopedName, FunctionId>,
+    pub(super) parameter_aliases: HashMap<(FunctionId, NameId), BindingProvenance>,
 }
 
 impl BindingIndex {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         assignments: FrozenAssignmentIndex,
-        binding_ids: BTreeMap<ScopedName, BindingId>,
-        function_ids: BTreeMap<ScopeId, FunctionId>,
-        function_bindings: BTreeMap<ScopedName, FunctionId>,
-        function_aliases: BTreeMap<ScopedName, FunctionId>,
-        parameter_aliases: BTreeMap<(FunctionId, NameId), BindingProvenance>,
+        binding_ids: HashMap<ScopedName, BindingId>,
+        function_ids: Vec<Option<FunctionId>>,
+        function_bindings: HashMap<ScopedName, FunctionId>,
+        function_aliases: HashMap<ScopedName, FunctionId>,
+        parameter_aliases: HashMap<(FunctionId, NameId), BindingProvenance>,
     ) -> Self {
         Self {
             assignments,
@@ -265,7 +265,7 @@ impl BindingIndex {
     }
 
     pub(super) fn function_for_scope(&self, scope: ScopeId) -> Option<FunctionId> {
-        self.function_ids.get(&scope).copied()
+        self.function_ids.get(scope.0).copied().flatten()
     }
 
     pub(super) fn function_spans<'a>(
@@ -274,8 +274,9 @@ impl BindingIndex {
     ) -> impl Iterator<Item = (FunctionId, Span)> + 'a {
         self.function_ids
             .iter()
-            .filter_map(move |(scope, function)| {
-                scopes.scope_span(*scope).map(|span| (*function, span))
+            .enumerate()
+            .filter_map(move |(idx, function)| {
+                function.and_then(|f| scopes.scope_span(ScopeId(idx)).map(|span| (f, span)))
             })
     }
 
@@ -298,11 +299,11 @@ pub(super) struct MutationIndex {
         BTreeMap<BindingKey, BTreeMap<NamePath, Vec<PropertyAliasFact>>>,
     pub(super) rooted_property_mutations: BTreeMap<NamePath, Vec<RootedPropertyMutationFact>>,
     pub(super) dynamic_evals_by_scope: BTreeMap<ScopeId, Vec<ScopeEffect>>,
-    pub(super) mutable_static_objects: BTreeSet<ScopedName>,
+    pub(super) mutable_static_objects: HashSet<ScopedName>,
 }
 
 impl MutationIndex {
-    pub(super) fn new(mutable_static_objects: BTreeSet<ScopedName>) -> Self {
+    pub(super) fn new(mutable_static_objects: HashSet<ScopedName>) -> Self {
         Self {
             property_assignments: BTreeMap::new(),
             rooted_property_mutations: BTreeMap::new(),
@@ -376,13 +377,13 @@ impl ScopeGraph {
             scopes: LexicalScopeIndex::new(Vec::new(), Vec::new()),
             bindings: BindingIndex::new(
                 FrozenAssignmentIndex::from_assignments(Vec::new()),
-                BTreeMap::new(),
-                BTreeMap::new(),
-                BTreeMap::new(),
-                BTreeMap::new(),
-                BTreeMap::new(),
+                HashMap::new(),
+                Vec::new(),
+                HashMap::new(),
+                HashMap::new(),
+                HashMap::new(),
             ),
-            mutations: MutationIndex::new(BTreeSet::new()),
+            mutations: MutationIndex::new(HashSet::new()),
             scope_shape_valid: true,
         }
     }
@@ -606,12 +607,12 @@ pub(super) struct ScopeGraphParts {
     pub(super) scopes: Vec<LexicalScope>,
     pub(super) scopes_by_start: Vec<ScopeId>,
     pub(super) assignments: FrozenAssignmentIndex,
-    pub(super) binding_ids: BTreeMap<ScopedName, BindingId>,
-    pub(super) function_ids: BTreeMap<ScopeId, FunctionId>,
-    pub(super) function_bindings: BTreeMap<ScopedName, FunctionId>,
-    pub(super) function_aliases: BTreeMap<ScopedName, FunctionId>,
-    pub(super) parameter_aliases: BTreeMap<(FunctionId, NameId), BindingProvenance>,
-    pub(super) mutable_static_objects: BTreeSet<ScopedName>,
+    pub(super) binding_ids: HashMap<ScopedName, BindingId>,
+    pub(super) function_ids: Vec<Option<FunctionId>>,
+    pub(super) function_bindings: HashMap<ScopedName, FunctionId>,
+    pub(super) function_aliases: HashMap<ScopedName, FunctionId>,
+    pub(super) parameter_aliases: HashMap<(FunctionId, NameId), BindingProvenance>,
+    pub(super) mutable_static_objects: HashSet<ScopedName>,
     pub(super) scope_shape_valid: bool,
 }
 

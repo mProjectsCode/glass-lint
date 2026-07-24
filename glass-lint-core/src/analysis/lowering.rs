@@ -28,7 +28,7 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::analysis) struct InvalidParserSpan;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(in crate::analysis) struct ParserSpanKey {
     lo: u32,
     hi: u32,

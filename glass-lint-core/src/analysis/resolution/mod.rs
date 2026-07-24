@@ -14,7 +14,7 @@ mod constant;
 mod expression;
 
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{HashMap, HashSet},
     sync::Arc,
 };
 
@@ -86,7 +86,7 @@ impl ResolvedValue {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum ResolutionKey {
     /// Identifier lookup keyed by a checked source range and spelling.
     Ident {
@@ -102,12 +102,12 @@ enum ResolutionKey {
 struct ResolverCache {
     /// Fresh object values cached by checked source range to avoid
     /// allocating duplicate identities for the same syntactic object.
-    fresh_values: BTreeMap<ParserSpanKey, ValueId>,
+    fresh_values: HashMap<ParserSpanKey, ValueId>,
     /// Cached expression resolutions keyed by source position. Resolution
     /// is position-sensitive and idempotent.
-    resolved_values: BTreeMap<ResolutionKey, Arc<ResolvedValue>>,
+    resolved_values: HashMap<ResolutionKey, Arc<ResolvedValue>>,
     /// Active lookups used to break recursive resolution cycles.
-    resolving: BTreeSet<ResolutionKey>,
+    resolving: HashSet<ResolutionKey>,
 }
 
 #[derive(Debug)]
@@ -308,6 +308,8 @@ impl Resolver<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use glass_lint_datastructures::{NameId, NameTable};
 
     use super::*;

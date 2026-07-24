@@ -8,7 +8,7 @@
 //! source order. It deliberately models only callback forms whose argument-to-
 //! parameter mapping is unambiguous; uncertain calls leave parameters local.
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 
 use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
 use history::AssignmentHistory;
@@ -67,23 +67,23 @@ pub(super) struct ScopeCollector<'a> {
     /// Dynamic `eval` sites that make local provenance conservative.
     pub(super) dynamic_evals: Vec<(ScopeId, ScopeEffect)>,
     /// Function scopes and their parameter patterns by visible NameId.
-    pub(super) function_scopes: BTreeMap<(ScopeId, NameId), (ScopeId, Vec<CompactPat>)>,
+    pub(super) function_scopes: HashMap<(ScopeId, NameId), (ScopeId, Vec<CompactPat>)>,
     /// Aliases that point to a locally declared helper function.
-    pub(super) function_aliases: BTreeMap<ScopedName, ScopeId>,
+    pub(super) function_aliases: HashMap<ScopedName, ScopeId>,
     /// Calls retained for the later, scope-aware helper parameter pass.
     calls: Vec<(ScopeId, NameId, Vec<Option<BindingProvenance>>)>,
     /// Proven callback arguments installed when an inline function is entered.
-    inline_parameters: BTreeMap<BytePos, BTreeMap<SmolStr, BindingProvenance>>,
+    inline_parameters: HashMap<BytePos, HashMap<SmolStr, BindingProvenance>>,
     /// `var`-bound objects whose mutation prevents constant projection.
-    pub(super) mutable_static_objects: BTreeSet<ScopedName>,
+    pub(super) mutable_static_objects: HashSet<ScopedName>,
     /// Function expression names stashed by `visit_var_decl` and consumed
     /// by `after_function` / `after_arrow` hooks so `function_scopes` is
     /// recorded only for var/let/const declared function expressions.
-    pending_function_names: BTreeMap<BytePos, (ScopeId, NameId)>,
+    pending_function_names: HashMap<BytePos, (ScopeId, NameId)>,
     names: NameTable,
     pub(super) name_exhausted: bool,
     /// Per (scope, name) counter to avoid rescanniing all assignments.
-    version_counters: BTreeMap<(ScopeId, NameId), u32>,
+    version_counters: HashMap<(ScopeId, NameId), u32>,
     /// Structural scope shape table produced by the planner and consumed by
     /// the source-order visitor.
     scope_shapes: ScopeShapeTable,
@@ -278,15 +278,15 @@ impl ScopeCollector<'_> {
             property_assignments: Vec::new(),
             rooted_property_mutations: Vec::new(),
             dynamic_evals: Vec::new(),
-            function_scopes: BTreeMap::new(),
-            function_aliases: BTreeMap::new(),
+            function_scopes: HashMap::new(),
+            function_aliases: HashMap::new(),
             calls: Vec::new(),
-            inline_parameters: BTreeMap::new(),
-            mutable_static_objects: BTreeSet::new(),
-            pending_function_names: BTreeMap::new(),
+            inline_parameters: HashMap::new(),
+            mutable_static_objects: HashSet::new(),
+            pending_function_names: HashMap::new(),
             names: plan.names,
             name_exhausted: plan.name_exhausted,
-            version_counters: BTreeMap::new(),
+            version_counters: HashMap::new(),
             scope_shapes: plan.scope_shapes,
             scope_issues: Vec::new(),
             budget,
@@ -308,11 +308,8 @@ impl ScopeCollector<'_> {
     /// Assign stable binding and function IDs across all scopes.
     fn allocate_ids(
         scopes: &[LexicalScope],
-    ) -> (
-        BTreeMap<ScopedName, BindingId>,
-        BTreeMap<ScopeId, FunctionId>,
-    ) {
-        let mut binding_ids = BTreeMap::new();
+    ) -> (HashMap<ScopedName, BindingId>, Vec<Option<FunctionId>>) {
+        let mut binding_ids = HashMap::new();
         let mut next_binding = 0u32;
         for (scope, lexical_scope) in scopes.iter().enumerate() {
             let scope = ScopeId::from(scope);
@@ -322,12 +319,11 @@ impl ScopeCollector<'_> {
             }
         }
 
-        let mut function_ids = BTreeMap::new();
+        let mut function_ids = vec![None; scopes.len()];
         let mut next_function = 0u32;
         for (scope, lexical_scope) in scopes.iter().enumerate() {
-            let scope = ScopeId::from(scope);
             if matches!(lexical_scope.kind, ScopeKind::Program | ScopeKind::Function) {
-                function_ids.insert(scope, FunctionId(next_function));
+                function_ids[scope] = Some(FunctionId(next_function));
                 next_function = next_function.saturating_add(1);
             }
         }
@@ -358,8 +354,8 @@ impl ScopeCollector<'_> {
             .iter()
             .filter_map(|((scope, name), (function_scope, _))| {
                 function_ids
-                    .get(function_scope)
-                    .copied()
+                    .get(function_scope.index())
+                    .and_then(|&opt| opt)
                     .map(|function| (Self::scoped_name_by_id(*scope, *name), function))
             })
             .collect();
@@ -368,8 +364,8 @@ impl ScopeCollector<'_> {
             .into_iter()
             .filter_map(|(key, function_scope)| {
                 function_ids
-                    .get(&function_scope)
-                    .copied()
+                    .get(function_scope.index())
+                    .and_then(|&opt| opt)
                     .map(|function| (key, function))
             })
             .collect();
@@ -377,8 +373,8 @@ impl ScopeCollector<'_> {
             .into_iter()
             .filter_map(|(key, provenance)| {
                 function_ids
-                    .get(&key.scope())
-                    .copied()
+                    .get(key.scope().index())
+                    .and_then(|&opt| opt)
                     .map(|function| ((function, key.name()), provenance))
             })
             .collect();
