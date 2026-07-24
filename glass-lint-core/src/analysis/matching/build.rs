@@ -16,10 +16,10 @@ use crate::analysis::{
 };
 
 impl OccurrenceIndexes {
-    /// Sort and deduplicate every occurrence index after fact collection.
-    /// Queries rely on this normalization for deterministic output and binary
-    /// search; keeping it as one operation prevents a newly added index from
-    /// being accidentally left in insertion order.
+    /// Deduplicate every occurrence index after fact collection.
+    /// Entries are already in monotonically increasing `(event, span)` order
+    /// because `build_from_stream` iterates facts in FactId order.
+    /// Queries rely on this normalization for deterministic output.
     pub(in crate::analysis) fn normalize_occurrences(&mut self) {
         self.call_indexes.normalize();
         self.members.normalize();

@@ -436,11 +436,13 @@ mod tests {
     }
 
     #[test]
-    fn typed_occurrence_index_is_sorted_and_deduplicated() {
+    fn typed_occurrence_index_is_deduplicated() {
         let mut index = OccurrenceIndex::<SmolStr>::default();
+        // Entries are pushed in monotonically increasing FactId order, matching
+        // the invariant that build_from_stream iterates facts in FactId order.
+        index.push("fetch".into(), FactId(1), span(5, 11));
+        index.push("fetch".into(), FactId(1), span(5, 11));
         index.push("fetch".into(), FactId(2), span(20, 26));
-        index.push("fetch".into(), FactId(1), span(5, 11));
-        index.push("fetch".into(), FactId(1), span(5, 11));
         index.normalize();
         assert_eq!(
             index

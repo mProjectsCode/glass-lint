@@ -168,6 +168,7 @@ Make raw fields private and move conversions behind checked crate-level construc
 - **Fix Complexity:** High
 - **Category:** Performance / Organization
 - **Location:** `glass-lint-core/src/analysis/lowering.rs:366-370`; `glass-lint-core/src/analysis/facts/mod.rs:101-113`; `glass-lint-core/src/analysis/matching/occurrence.rs:324-345`; `glass-lint-core/src/analysis/flow/effect.rs:375-446`
+- **Status:** Done (`occurrence.rs:normalize()` changed from `sort_by_key+dedup` to `dedup_by_key` only, with comment documenting the monotonic invariant. Occurrence buckets are already in `(event, span)` order because facts are iterated in FactId order. Unit test updated to push in monotonic FactId order. Effect collection scope noted as a larger architectural change and left for follow-up.)
 
 After freezing, occurrence indexing scans the complete fact tape, sorts every bucket even though facts are appended in increasing `FactId` order, and then effect extraction scans the tape again. This is paid on every cache miss regardless of whether the catalog contains flow rules.
 
