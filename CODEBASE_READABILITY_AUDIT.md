@@ -112,6 +112,7 @@ Make construction fallible and propagate the canonicalization error whenever a r
 - **Fix Complexity:** Medium
 - **Category:** Performance
 - **Location:** `glass-lint-datastructures/src/name.rs:33-61`; `glass-lint-core/src/analysis/value/arena.rs:103-119`
+- **Status:** Done (NameTable::intern and ValueTable::intern use IndexSet::insert_full for single-lookup name/value interning)
 
 Both `NameTable::intern` and `ValueTable::intern` call `get_index_of` and then `insert`, repeating hashing and equality work for every novel entry. Name interning is exercised throughout both scope passes and fact construction, while value interning is on most resolver paths.
 

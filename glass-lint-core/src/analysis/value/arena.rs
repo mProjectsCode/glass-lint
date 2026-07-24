@@ -103,19 +103,23 @@ impl Default for ValueTable {
 impl ValueTable {
     /// Intern a value, returning unknown when the arena is exhausted.
     pub(in crate::analysis) fn intern(&mut self, value: Value) -> ValueId {
-        if let Some(index) = self.values.get_index_of(&value) {
-            return ValueId(u32::try_from(index).unwrap_or(ValueId::UNKNOWN.0));
+        let (idx, inserted) = self.values.insert_full(value);
+        let Ok(index) = u32::try_from(idx) else {
+            if inserted {
+                self.values.pop();
+            }
+            self.exhausted = true;
+            return ValueId::UNKNOWN;
+        };
+        if !inserted {
+            return ValueId(index);
         }
-        if self.values.len() >= MAX_VALUES {
+        if idx >= MAX_VALUES {
+            self.values.pop();
             self.exhausted = true;
             return ValueId::UNKNOWN;
         }
-        let Ok(index) = u32::try_from(self.values.len()) else {
-            return ValueId::UNKNOWN;
-        };
-        let id = ValueId(index);
-        self.values.insert(value);
-        id
+        ValueId(index)
     }
 
     /// Intern a value and, when present, preserve the binding identity that
