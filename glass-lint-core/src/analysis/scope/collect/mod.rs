@@ -8,7 +8,7 @@
 //! source order. It deliberately models only callback forms whose argument-to-
 //! parameter mapping is unambiguous; uncertain calls leave parameters local.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
 use history::AssignmentHistory;
@@ -26,8 +26,8 @@ use crate::{
             query::rooted::{RootedExprContext, rooted_expr_chain_with},
         },
         syntax::{
-            collect_pat_bindings, function_prototype_builtin, is_function_constructor_member,
-            member_property_name, member_root_identifier, module_export_name, property_name,
+            function_prototype_builtin, is_function_constructor_member, member_property_name,
+            member_root_identifier, property_name,
         },
         value::{BindingId, BindingVersion, FunctionId},
     },
@@ -35,6 +35,7 @@ use crate::{
 
 pub(super) mod aliases;
 mod analysis;
+mod bindings;
 mod callbacks;
 mod constants;
 mod history;
@@ -44,6 +45,7 @@ mod provenance;
 pub(super) mod traversal;
 pub(super) mod visitor;
 
+use bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope};
 use plan::ScopePlan;
 
 /// Mutable state shared by declaration prepass and source-order collection.
@@ -428,19 +430,7 @@ impl ScopeCollector<'_> {
         if kind != VarDeclKind::Var {
             return self.current_scope();
         }
-        // `var` is function-scoped, unlike `let` and `const`, so skip nested
-        // blocks until the enclosing function or program scope is reached.
-        self.stack
-            .iter()
-            .rev()
-            .copied()
-            .find(|index| {
-                matches!(
-                    self.scopes[*index].kind,
-                    ScopeKind::Program | ScopeKind::Function
-                )
-            })
-            .map_or_else(|| ScopeId::from(0), ScopeId::from)
+        var_binding_scope(&self.stack, &self.scopes)
     }
 
     /// Insert a declaration's initial provenance into a lexical scope.
@@ -485,40 +475,9 @@ impl ScopeCollector<'_> {
     /// Import handling remains centralized so declaration and source-order
     /// logic use the same provenance construction.
     pub(super) fn insert_import(&mut self, scope: ScopeId, import: &ImportDecl) {
-        let import_module = import.src.value.to_string_lossy().to_smolstr();
-        for specifier in &import.specifiers {
-            match specifier {
-                swc_ecma_ast::ImportSpecifier::Named(named) => {
-                    let local = named.local.sym.to_smolstr();
-                    let export = named
-                        .imported
-                        .as_ref()
-                        .map_or_else(|| local.clone(), module_export_name);
-                    self.insert(
-                        scope,
-                        local,
-                        BindingProvenance::ModuleExport {
-                            module: import_module.clone(),
-                            export,
-                        },
-                    );
-                }
-                swc_ecma_ast::ImportSpecifier::Namespace(namespace) => self.insert(
-                    scope,
-                    namespace.local.sym.to_smolstr(),
-                    BindingProvenance::ModuleNamespace {
-                        module: import_module.clone(),
-                    },
-                ),
-                swc_ecma_ast::ImportSpecifier::Default(default) => self.insert(
-                    scope,
-                    default.local.sym.to_smolstr(),
-                    BindingProvenance::ModuleNamespace {
-                        module: import_module.clone(),
-                    },
-                ),
-            }
-        }
+        for_each_import_binding(import, |name, provenance| {
+            self.insert(scope, name, provenance);
+        });
     }
 
     fn name_id(&self, name: &str) -> Option<glass_lint_datastructures::NameId> {
@@ -610,11 +569,7 @@ impl ScopeCollector<'_> {
 
     /// Register every binding introduced by a declaration pattern as local.
     fn insert_pat_locals(&mut self, scope: ScopeId, pat: &Pat) {
-        let mut bindings = BTreeSet::new();
-        collect_pat_bindings(pat, &mut bindings);
-        for binding in bindings {
-            self.insert_local(scope, binding);
-        }
+        for_each_pat_binding(pat, |binding| self.insert_local(scope, binding));
     }
 
     fn visible_binding(&self, name: &str) -> Option<&BindingProvenance> {

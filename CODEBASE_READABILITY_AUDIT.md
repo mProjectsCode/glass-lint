@@ -194,6 +194,8 @@ The two scope passes independently implement function-scoped `var` selection, pa
 
 Extract a declarative stream of binding events or shared pure helpers that both passes consume while leaving source-order mutations in the collector. Make the planner own visibility/shape and the collector enrich predeclared bindings rather than recreating declaration meaning. Add equivalence tests that compare the planner's declared identities with the collector's consumed identities for imports and destructuring.
 
+- **Status:** Done (Three shared pure helpers extracted into `bindings.rs`: `for_each_import_binding` replaces the duplicated import-specifier provenance construction, `var_binding_scope` replaces the duplicated function-scope search, and `for_each_pat_binding` replaces the duplicated pattern-binding collection loop. Both `ScopePlanner` and `ScopeCollector` call these helpers, eliminating the declaration-policy drift surface.)
+
 #### READ-018 — Filesystem discovery allocates and normalizes whole paths per entry
 - **Severity:** Medium
 - **Fix Complexity:** Medium

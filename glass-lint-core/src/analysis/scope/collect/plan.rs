@@ -7,16 +7,19 @@
 use std::collections::BTreeMap;
 
 use glass_lint_datastructures::NameTable;
-use smol_str::{SmolStr, ToSmolStr};
+use smol_str::SmolStr;
 use swc_ecma_ast::{
     ArrowExpr, ClassDecl, FnDecl, Function, Ident, ImportDecl, MemberExpr, Pat, PropName, VarDecl,
 };
 
-use super::{ScopeShape, ScopeShapeTable, traversal::ScopePass};
+use super::{
+    ScopeShape, ScopeShapeTable,
+    bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
+    traversal::ScopePass,
+};
 use crate::analysis::{
     SemanticBudget,
     scope::{BindingProvenance, LexicalScope, ScopeId, ScopeKind},
-    syntax::{collect_pat_bindings, module_export_name},
 };
 
 /// Immutable declaration result consumed by [`super::ScopeCollector`].
@@ -116,65 +119,20 @@ impl ScopePlanner<'_> {
     }
 
     fn insert_import(&mut self, scope: ScopeId, import: &ImportDecl) {
-        let module = import.src.value.to_string_lossy().to_smolstr();
-        for specifier in &import.specifiers {
-            match specifier {
-                swc_ecma_ast::ImportSpecifier::Named(named) => {
-                    let local = named.local.sym.to_smolstr();
-                    let export = named
-                        .imported
-                        .as_ref()
-                        .map_or_else(|| local.clone(), module_export_name);
-                    self.insert(
-                        scope,
-                        local,
-                        BindingProvenance::ModuleExport {
-                            module: module.clone(),
-                            export,
-                        },
-                    );
-                }
-                swc_ecma_ast::ImportSpecifier::Namespace(namespace) => self.insert(
-                    scope,
-                    namespace.local.sym.to_smolstr(),
-                    BindingProvenance::ModuleNamespace {
-                        module: module.clone(),
-                    },
-                ),
-                swc_ecma_ast::ImportSpecifier::Default(default) => self.insert(
-                    scope,
-                    default.local.sym.to_smolstr(),
-                    BindingProvenance::ModuleNamespace {
-                        module: module.clone(),
-                    },
-                ),
-            }
-        }
+        for_each_import_binding(import, |name, provenance| {
+            self.insert(scope, name, provenance);
+        });
     }
 
     fn insert_pat_locals(&mut self, scope: ScopeId, pat: &Pat) {
-        let mut bindings = std::collections::BTreeSet::new();
-        collect_pat_bindings(pat, &mut bindings);
-        for binding in bindings {
-            self.insert_local(scope, binding);
-        }
+        for_each_pat_binding(pat, |binding| self.insert_local(scope, binding));
     }
 
     fn binding_scope(&self, kind: swc_ecma_ast::VarDeclKind) -> ScopeId {
         if kind != swc_ecma_ast::VarDeclKind::Var {
             return self.current_scope();
         }
-        self.stack
-            .iter()
-            .rev()
-            .copied()
-            .find(|index| {
-                matches!(
-                    self.scopes[*index].kind,
-                    ScopeKind::Program | ScopeKind::Function
-                )
-            })
-            .map_or_else(|| ScopeId::from(0), ScopeId::from)
+        var_binding_scope(&self.stack, &self.scopes)
     }
 
     pub(super) fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {

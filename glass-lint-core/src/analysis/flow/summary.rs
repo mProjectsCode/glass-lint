@@ -845,11 +845,7 @@ mod tests {
     #[test]
     fn same_name_siblings_are_keyed_by_function_id() {
         let source = "function first(x) { document.body.appendChild(x); } function second(x) { console.log(x); }";
-        let parsed = crate::parse(
-            source,
-            "summary-siblings.js",
-        )
-        .expect("source should parse");
+        let parsed = crate::parse(source, "summary-siblings.js").expect("source should parse");
         let mut resolver = Resolver::collect(&parsed.program, source);
         let stream = facts::build::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
