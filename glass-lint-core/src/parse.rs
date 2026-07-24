@@ -214,6 +214,12 @@ pub fn parse_with_language_and_depth(
 /// Count delimiter and member-chain nesting while ignoring comments and
 /// quoted strings. It is a conservative lexical guard; parser validity is
 /// still decided by SWC.
+///
+/// Template literals use a state machine: 0 = outside template, 1 = inside
+/// template content (skipped), >= 2 = inside `${...}` expression (nesting
+/// tracked). The `?` character is excluded from member-depth reset so that
+/// optional chains like `a?.b?.c?.d` contribute their full member count.
+#[allow(clippy::too_many_lines)]
 fn syntax_depth(source: &str) -> usize {
     let bytes = source.as_bytes();
     let mut depth = 0usize;
@@ -221,8 +227,25 @@ fn syntax_depth(source: &str) -> usize {
     let mut member_depth = 0usize;
     let mut index = 0usize;
     let mut quote = None;
+    let mut template_expr_depth = 0usize;
     while index < bytes.len() {
         let byte = bytes[index];
+        if template_expr_depth == 1 {
+            if byte == b'$' && bytes.get(index + 1) == Some(&b'{') {
+                template_expr_depth = 2;
+                depth = depth.saturating_add(1);
+                maximum = maximum.max(depth);
+                index += 2;
+                continue;
+            }
+            if byte == b'`' {
+                template_expr_depth = 0;
+                index += 1;
+                continue;
+            }
+            index += 1;
+            continue;
+        }
         if let Some(delimiter) = quote {
             if byte == b'\\' {
                 index = index.saturating_add(2);
@@ -234,7 +257,27 @@ fn syntax_depth(source: &str) -> usize {
             index += 1;
             continue;
         }
-        if matches!(byte, b'\'' | b'"' | b'`') {
+        if template_expr_depth >= 2 {
+            if byte == b'$' && bytes.get(index + 1) == Some(&b'{') {
+                template_expr_depth += 1;
+                depth = depth.saturating_add(1);
+                maximum = maximum.max(depth);
+                index += 2;
+                continue;
+            }
+            if byte == b'}' {
+                template_expr_depth -= 1;
+                depth = depth.saturating_sub(1);
+                index += 1;
+                continue;
+            }
+        }
+        if byte == b'`' {
+            template_expr_depth = 1;
+            index += 1;
+            continue;
+        }
+        if matches!(byte, b'\'' | b'"') {
             quote = Some(byte);
             index += 1;
             continue;
@@ -265,7 +308,6 @@ fn syntax_depth(source: &str) -> usize {
                 | b'*'
                 | b'/'
                 | b':'
-                | b'?'
                 | b'!'
                 | b'&'
                 | b'|'
@@ -304,5 +346,41 @@ mod tests {
     fn ignores_delimiters_in_strings_and_comments() {
         let source = "const value = '( [ { ) ] }'; // ( [ {\nvalue;";
         assert!(parse(source, "quoted.js").is_ok());
+    }
+
+    #[test]
+    fn template_expressions_contribute_to_depth() {
+        let source = "`${a[${b}]}`";
+        let depth = syntax_depth(source);
+        assert!(
+            depth >= 2,
+            "template expression nesting should count, got {depth}"
+        );
+    }
+
+    #[test]
+    fn nested_template_expressions_count_depth() {
+        let source = "`${a[${b[${c}]}]}`";
+        let depth = syntax_depth(source);
+        assert!(
+            depth >= 3,
+            "nested template expression should count, got {depth}"
+        );
+    }
+
+    #[test]
+    fn optional_chain_tracking() {
+        let source = "a?.b?.c?.d";
+        let depth = syntax_depth(source);
+        assert!(
+            depth >= 3,
+            "optional chain member depth should be tracked, got {depth}"
+        );
+    }
+
+    #[test]
+    fn regex_not_mistaken_for_comment() {
+        let source = "const re = /abc/; use(re);";
+        assert!(parse(source, "regex.js").is_ok());
     }
 }

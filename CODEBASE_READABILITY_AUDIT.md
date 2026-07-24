@@ -84,6 +84,8 @@ The lexical depth scanner treats an entire template literal as quoted text, so a
 
 Replace the ad hoc quote/comment loop with a bounded lexer state machine that understands template-expression transitions, escapes, regex literals, and optional chaining, or use a proven tokenizer that does not construct the AST. Keep the check pre-parser and allocation-bounded. Add adversarial tests for nested template expressions, nested templates, regex/comment ambiguity, and long optional chains.
 
+- **Status:** Done (template expressions tracked via state machine counting ${...} nesting; optional chain member depth no longer reset by ?)
+
 #### READ-008 — Invalid configured corpus roots silently lose their authority
 - **Severity:** High
 - **Fix Complexity:** Low
