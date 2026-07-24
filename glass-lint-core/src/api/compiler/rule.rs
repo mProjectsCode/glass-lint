@@ -4,10 +4,11 @@
 //! Selection only filters catalog indexes; it never changes the semantic facts
 //! constructed for a source file.
 
+use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
 use crate::{
-    analysis::SymbolPath,
+    analysis::matches_global_object_alias,
     api::{
         classification::{MatchKind, RuleIndex},
         compiler::object_flow::CompiledObjectFlow,
@@ -106,7 +107,7 @@ impl IdentityConstraint {
         source: &SymbolPath,
         environment: &crate::Environment,
     ) -> bool {
-        matches!(self, Self::Rooted { path } if path.matches_global_object_alias(source, environment)
+        matches!(self, Self::Rooted { path } if matches_global_object_alias(path, source, environment)
             || source.is_equal_or_descendant_of(path))
     }
 
@@ -395,13 +396,12 @@ impl CompiledRuleRecord {
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::SymbolPath;
+
     use super::*;
-    use crate::{
-        analysis::SymbolPath,
-        api::{
-            classification::MatchKind,
-            rule::{MatcherDecl, ValueMatcher},
-        },
+    use crate::api::{
+        classification::MatchKind,
+        rule::{MatcherDecl, ValueMatcher},
     };
 
     #[test]

@@ -10,6 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
 use history::AssignmentHistory;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{BytePos, Span};
@@ -18,7 +19,6 @@ use swc_ecma_ast::{ArrowExpr, Expr, Function, ImportDecl, ObjectPatProp, Pat, Va
 use crate::{
     Environment,
     analysis::{
-        name::{NameId, NameTable},
         scope::{
             AliasAssignment, BindingProvenance, FrozenAssignmentIndex, FrozenScopeGraph,
             LexicalScope, ScopeEffect, ScopeGraph, ScopeGraphParts, ScopeId, ScopeKind, ScopedName,
@@ -28,7 +28,7 @@ use crate::{
             collect_pat_bindings, function_prototype_builtin, is_function_constructor_member,
             member_property_name, member_root_identifier, module_export_name, property_name,
         },
-        value::{BindingId, BindingVersion, FunctionId, NamePath, SymbolPath},
+        value::{BindingId, BindingVersion, FunctionId},
     },
 };
 
@@ -513,11 +513,11 @@ impl ScopeCollector {
         }
     }
 
-    fn name_id(&self, name: &str) -> Option<crate::analysis::name::NameId> {
+    fn name_id(&self, name: &str) -> Option<glass_lint_datastructures::NameId> {
         self.names.lookup(name)
     }
 
-    pub(super) fn interned_name(&self, name: &str) -> Option<crate::analysis::name::NameId> {
+    pub(super) fn interned_name(&self, name: &str) -> Option<glass_lint_datastructures::NameId> {
         self.names.lookup(name)
     }
 

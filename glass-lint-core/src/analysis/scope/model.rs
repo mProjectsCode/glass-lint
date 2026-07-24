@@ -9,18 +9,16 @@ use std::{
     collections::{BTreeMap, BTreeSet},
 };
 
+use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 use swc_common::{BytePos, Span};
 
 use crate::{
     Environment,
     analysis::{
-        name::{NameId, NameTable},
         scope::collect::{PropertyAliasAssignment, RootedPropertyMutation, aliases::contains},
         syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
-        value::{
-            BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, NamePath, SymbolPath,
-        },
+        value::{BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId},
     },
 };
 
@@ -104,7 +102,7 @@ impl NameEnvironment {
         &mut self.names
     }
 
-    pub(super) fn name_exhaustion(&self) -> Option<crate::analysis::name::NameExhausted> {
+    pub(super) fn name_exhaustion(&self) -> Option<glass_lint_datastructures::NameExhausted> {
         self.names.exhaustion()
     }
 
@@ -874,7 +872,7 @@ impl FrozenScopeGraph {
 
     pub(in crate::analysis) fn name_exhaustion(
         &self,
-    ) -> Option<crate::analysis::name::NameExhausted> {
+    ) -> Option<glass_lint_datastructures::NameExhausted> {
         self.names.name_exhaustion()
     }
 

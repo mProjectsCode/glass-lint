@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use glass_lint_datastructures::NameTable;
 use smol_str::SmolStr;
 
 use super::{
@@ -11,7 +12,6 @@ use crate::{
         ProjectSemanticModel,
         facts::FactId,
         flow::effect::{CallEffectRef, EffectUse, FunctionEffect},
-        name::NameTable,
     },
     api::compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments},
     project::ModuleId,

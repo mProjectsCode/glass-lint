@@ -10,15 +10,19 @@ use std::{
 };
 
 use facts::SemanticFacts;
+use glass_lint_datastructures::{
+    ByteRange, InvalidSourceBoundary, SourceRange, fingerprint::fnv_write,
+};
 use smol_str::SmolStr;
 use syntax::SymbolCallProvenance;
 
 use crate::{
+    AnalysisLimits, Environment, SourceLanguage, SourceLineIndex,
     analysis::{
         facts, flow::effect::FunctionEffects, module::ModuleInterface, status::AnalysisStatus,
         syntax,
     },
-    project::ModuleId,
+    project::{ModuleId, ProjectRelativePath, SourceFile, SourceText},
 };
 
 /// Inputs from `AnalysisLimits` that affect local semantic lowering.
@@ -31,8 +35,8 @@ pub(super) struct LocalLoweringConfig {
     effect_operations: usize,
 }
 
-impl From<&crate::AnalysisLimits> for LocalLoweringConfig {
-    fn from(limits: &crate::AnalysisLimits) -> Self {
+impl From<&AnalysisLimits> for LocalLoweringConfig {
+    fn from(limits: &AnalysisLimits) -> Self {
         Self {
             syntax_depth: limits.syntax_depth(),
             semantic_operations: limits.semantic_operations(),
@@ -56,52 +60,49 @@ impl ArtifactFingerprint {
     /// Versioned deterministic hash of all artifact-affecting inputs.
     /// Rule selection is intentionally excluded.
     fn compute(
-        source: &crate::project::SourceText,
-        language: crate::SourceLanguage,
+        source: &SourceText,
+        language: SourceLanguage,
         normalization_mode: &str,
-        environment: &crate::Environment,
+        environment: &Environment,
         limits: &LocalLoweringConfig,
         engine_version: &str,
     ) -> Self {
-        let mut h = crate::fingerprint::fnv_init();
-        crate::fingerprint::fnv_write(&mut h, &FINGERPRINT_VERSION.to_le_bytes());
-        crate::fingerprint::fnv_write(&mut h, source.as_bytes());
-        crate::fingerprint::fnv_write(
+        let mut h = glass_lint_datastructures::fingerprint::fnv_init();
+        fnv_write(&mut h, &FINGERPRINT_VERSION.to_le_bytes());
+        fnv_write(&mut h, source.as_bytes());
+        fnv_write(
             &mut h,
             &[match language {
-                crate::SourceLanguage::JavaScript => 0u8,
-                crate::SourceLanguage::TypeScript => 1u8,
+                SourceLanguage::JavaScript => 0u8,
+                SourceLanguage::TypeScript => 1u8,
             }],
         );
-        crate::fingerprint::fnv_write(&mut h, normalization_mode.as_bytes());
-        crate::fingerprint::fnv_write(&mut h, &[0u8]); // separator
+        fnv_write(&mut h, normalization_mode.as_bytes());
+        fnv_write(&mut h, &[0u8]); // separator
         environment.write_fingerprint_bytes(&mut h);
-        crate::fingerprint::fnv_write(&mut h, &limits.syntax_depth.to_le_bytes());
-        crate::fingerprint::fnv_write(&mut h, &limits.semantic_operations.to_le_bytes());
-        crate::fingerprint::fnv_write(&mut h, &limits.effect_operations.to_le_bytes());
-        crate::fingerprint::fnv_write(&mut h, engine_version.as_bytes());
+        fnv_write(&mut h, &limits.syntax_depth.to_le_bytes());
+        fnv_write(&mut h, &limits.semantic_operations.to_le_bytes());
+        fnv_write(&mut h, &limits.effect_operations.to_le_bytes());
+        fnv_write(&mut h, engine_version.as_bytes());
         Self(h)
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct LocatedSourceContext {
-    pub(crate) path: crate::project::ProjectRelativePath,
-    pub(crate) lines: Arc<crate::SourceLineIndex>,
+    pub(crate) path: ProjectRelativePath,
+    pub(crate) lines: Arc<SourceLineIndex>,
 }
 
 impl LocatedSourceContext {
-    pub(crate) fn new(source: &crate::project::SourceFile) -> Self {
+    pub(crate) fn new(source: &SourceFile) -> Self {
         Self {
             path: source.path().clone(),
-            lines: Arc::new(crate::SourceLineIndex::from_text(source.source().clone())),
+            lines: Arc::new(SourceLineIndex::from_text(source.source().clone())),
         }
     }
 
-    pub(crate) fn range(
-        &self,
-        span: crate::ByteRange,
-    ) -> Result<crate::SourceRange, crate::InvalidSourceBoundary> {
+    pub(crate) fn range(&self, span: ByteRange) -> Result<SourceRange, InvalidSourceBoundary> {
         self.lines.try_range(span)
     }
 }
@@ -112,33 +113,29 @@ impl LocatedSourceContext {
 /// stored; evidence, link, and flow budgets have no impact on lowering.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactCacheKey {
-    source: crate::project::SourceText,
-    language: crate::SourceLanguage,
+    source: SourceText,
+    language: SourceLanguage,
     normalization_mode: &'static str,
-    environment: crate::Environment,
+    environment: Environment,
     limits: LocalLoweringConfig,
     engine_version: &'static str,
     fingerprint: ArtifactFingerprint,
 }
 
 impl ArtifactCacheKey {
-    pub fn new(
-        source: &crate::project::SourceFile,
-        environment: &crate::Environment,
-        limits: &crate::AnalysisLimits,
-    ) -> Self {
+    pub fn new(source: &SourceFile, environment: &Environment, limits: &AnalysisLimits) -> Self {
         Self::with_engine_version(source, environment, limits, env!("CARGO_PKG_VERSION"))
     }
 
     fn with_engine_version(
-        source: &crate::project::SourceFile,
-        environment: &crate::Environment,
-        limits: &crate::AnalysisLimits,
+        source: &SourceFile,
+        environment: &Environment,
+        limits: &AnalysisLimits,
         engine_version: &'static str,
     ) -> Self {
         let normalization_mode = match source.language() {
-            crate::SourceLanguage::JavaScript => "swc-js-normalization-v1",
-            crate::SourceLanguage::TypeScript => "swc-ts-strip-normalization-v1",
+            SourceLanguage::JavaScript => "swc-js-normalization-v1",
+            SourceLanguage::TypeScript => "swc-ts-strip-normalization-v1",
         };
         Self::from_inputs(
             source,
@@ -150,9 +147,9 @@ impl ArtifactCacheKey {
     }
 
     fn from_inputs(
-        source: &crate::project::SourceFile,
-        environment: &crate::Environment,
-        limits: &crate::AnalysisLimits,
+        source: &SourceFile,
+        environment: &Environment,
+        limits: &AnalysisLimits,
         normalization_mode: &'static str,
         engine_version: &'static str,
     ) -> Self {
@@ -183,9 +180,9 @@ impl ArtifactCacheKey {
 
     #[cfg(test)]
     pub(crate) fn for_engine_version(
-        source: &crate::project::SourceFile,
-        environment: &crate::Environment,
-        limits: &crate::AnalysisLimits,
+        source: &SourceFile,
+        environment: &Environment,
+        limits: &AnalysisLimits,
         engine_version: &'static str,
     ) -> Self {
         Self::with_engine_version(source, environment, limits, engine_version)
@@ -193,9 +190,9 @@ impl ArtifactCacheKey {
 
     #[cfg(test)]
     pub(crate) fn for_test_inputs(
-        source: &crate::project::SourceFile,
-        environment: &crate::Environment,
-        limits: &crate::AnalysisLimits,
+        source: &SourceFile,
+        environment: &Environment,
+        limits: &AnalysisLimits,
         normalization_mode: &'static str,
         engine_version: &'static str,
     ) -> Self {
@@ -419,7 +416,7 @@ impl ProjectModule {
     }
 
     /// Return the canonical report/resolution path.
-    pub(crate) fn path(&self) -> &crate::project::ProjectRelativePath {
+    pub(crate) fn path(&self) -> &ProjectRelativePath {
         &self.local.source_context().path
     }
 

@@ -15,8 +15,11 @@ pub mod path_trie;
 pub mod table;
 
 pub use budget::{Budget, BudgetTracker};
-pub use diagnostic::{ByteRange, InvalidPosition, InvalidSourceBoundary, Position, SourceRange};
-pub use fingerprint::Fingerprint;
+pub use diagnostic::{
+    ByteRange, InvalidPosition, InvalidSourceBoundary, Position, ReversedByteRange,
+    ReversedSourcePositionRange, SourceRange,
+};
+pub use fingerprint::{Fingerprint, fnv_init, fnv_write};
 pub use name::{NameExhausted, NameId, NameTable};
 pub use path::{NamePath, Path, PathView, SymbolPath};
 pub use path_trie::{ParentPathStore, PathId, PathInterner, PathNode, PathSegment, PathSegments};

@@ -6,15 +6,15 @@
 
 #![allow(clippy::match_same_arms)]
 
+use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
     scope::query::{
         BindingKey, BindingProvenance, Expr, FrozenScopeGraph, Ident, IdentValueSeed, MemberExpr,
-        MemberValueSeed, Span, SymbolCallProvenance, SymbolMemberProvenance, SymbolPath, constant,
-        contains, member_root_identifier,
+        MemberValueSeed, Span, SymbolCallProvenance, SymbolMemberProvenance, constant, contains,
     },
-    syntax::{constant::Lookup, expression_name},
+    syntax::{constant::Lookup, expression_name, member_root_identifier},
     value::BindingRoot,
 };
 
@@ -72,7 +72,9 @@ impl FrozenScopeGraph {
         }
 
         let Some(root) = member_root_identifier(member) else {
-            return (syntactic_chain.first_segment() == Some("this"))
+            return syntactic_chain
+                .first_segment()
+                .is_some_and(|s| s == "this")
                 .then(|| syntactic_chain.clone());
         };
 
@@ -221,9 +223,9 @@ impl FrozenScopeGraph {
     }
 
     /// Whether a path starts at an allowed stable root.
-    fn rooted_path_available(&self, path: &crate::analysis::value::NamePath) -> bool {
+    fn rooted_path_available(&self, path: &glass_lint_datastructures::NamePath) -> bool {
         self.symbol_path(path).is_some_and(|path| {
-            path.first_segment() == Some("this")
+            path.first_segment().is_some_and(|s| s == "this")
                 || path
                     .first_segment()
                     .is_some_and(|root| self.is_global(root))
@@ -234,7 +236,7 @@ impl FrozenScopeGraph {
     fn property_was_written_at(
         &self,
         receiver: &BindingKey,
-        path: &crate::analysis::value::NamePath,
+        path: &glass_lint_datastructures::NamePath,
         span: Span,
     ) -> bool {
         self.property_aliases(receiver, path.segments())
@@ -264,8 +266,8 @@ impl FrozenScopeGraph {
 
     fn rooted_property_ids_were_mutated_at(
         &self,
-        root: &[crate::analysis::name::NameId],
-        property: Option<crate::analysis::name::NameId>,
+        root: &[glass_lint_datastructures::NameId],
+        property: Option<glass_lint_datastructures::NameId>,
         span: Span,
     ) -> bool {
         self.rooted_mutations(root).is_some_and(|mutations| {
@@ -448,7 +450,7 @@ impl FrozenScopeGraph {
             return Some(SymbolMemberProvenance::ModuleNamespace { module, member });
         }
         let root = member_root_identifier(member)?;
-        if chain.first_segment() != Some(root.sym.as_ref()) {
+        if chain.first_segment().is_none_or(|s| s != root.sym.as_ref()) {
             return None;
         }
         let member = chain.segments().get(1..)?.join(".");
@@ -596,8 +598,8 @@ impl FrozenScopeGraph {
         &self,
         member: &MemberExpr,
     ) -> Option<(
-        crate::analysis::value::NamePath,
-        crate::analysis::value::NamePath,
+        glass_lint_datastructures::NamePath,
+        glass_lint_datastructures::NamePath,
     )> {
         let source = self.returned_object_source(&member.obj)?;
         let property = self.member_property_name(member)?;

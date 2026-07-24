@@ -16,16 +16,18 @@ mod identity;
 mod path;
 
 pub(in crate::analysis) use arena::{CallableValue, MAX_VALUES, ObjectId, Value, ValueTable};
-pub use identity::SymbolPath;
 pub(in crate::analysis) use identity::{
-    BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, NamePath, ValueId,
+    BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, ValueId,
 };
+pub use identity::{matches_global_object_alias, matches_global_object_alias_with};
 pub(in crate::analysis) use path::{
     ParentPathStore, PathId, PathInterner, PathSegment, PathSegmentInput,
 };
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::SymbolPath;
+
     use super::*;
 
     #[test]
@@ -42,7 +44,7 @@ mod tests {
             binding: BindingId(2),
             version: BindingVersion(0),
         });
-        let mut names = crate::analysis::name::NameTable::default();
+        let mut names = glass_lint_datastructures::NameTable::default();
         let value = names.intern("value").unwrap();
         first.append_segment(value);
         let mut second = BindingKey::new(BindingRoot::Binding {

@@ -1,6 +1,8 @@
 use indexmap::IndexSet;
 use smol_str::{SmolStr, ToSmolStr};
 
+use crate::path::{NamePath, SymbolPath};
+
 /// The default maximum number of names in a [`NameTable`].
 pub const DEFAULT_MAX_NAMES: usize = 1 << 20;
 
@@ -72,6 +74,29 @@ impl NameTable {
             .get_index_of(name)
             .and_then(|index| u32::try_from(index).ok())
             .map(NameId)
+    }
+
+    /// Converts a [`SymbolPath`] to a [`NamePath`] by looking up each segment.
+    ///
+    /// Returns `None` if any segment is not yet interned.
+    pub fn lookup_path(&self, path: &SymbolPath) -> Option<NamePath> {
+        path.segments()
+            .iter()
+            .try_fold(NamePath::new(), |mut path, segment| {
+                path.append(self.lookup(segment)?);
+                Some(path)
+            })
+    }
+
+    /// Converts a [`NamePath`] to a [`SymbolPath`] by resolving each ID.
+    ///
+    /// Returns `None` if any ID is out of range.
+    pub fn resolve_path(&self, path: &NamePath) -> Option<SymbolPath> {
+        path.segments()
+            .iter()
+            .map(|id| self.resolve(*id).map(SmolStr::new))
+            .collect::<Option<Vec<_>>>()
+            .map(SymbolPath::from_segments)
     }
 
     /// Returns `true` if the table has been exhausted.

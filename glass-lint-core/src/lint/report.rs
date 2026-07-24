@@ -1,7 +1,9 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use glass_lint_datastructures::{Position, SourceRange};
+
 use crate::{
-    AnalysisLimits, ParseDiagnostic, Position, REPORT_VERSION, SourceRange,
+    AnalysisLimits, ParseDiagnostic, REPORT_VERSION,
     analysis::{ProjectSemanticModel, ResolvedLinkInput, project::projection::ProjectionOutcome},
     api::classification::{ClassificationResult, MatchedCapability, RuleIndex},
     diagnostic::SourceLineIndex,

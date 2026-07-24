@@ -6,12 +6,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use glass_lint_datastructures::{ByteRange, NameId, NamePath, SymbolPath};
 use smol_str::SmolStr;
 
-use crate::{
-    ByteRange,
-    analysis::{SymbolPath, facts::FactId, name::NameId, value::NamePath},
-};
+use crate::analysis::facts::FactId;
 
 /// A borrowed, merged, or owned collection of candidate occurrences.
 ///

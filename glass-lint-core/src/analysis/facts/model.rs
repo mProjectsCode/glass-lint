@@ -1,14 +1,11 @@
 //! Rule-independent semantic fact identities and payloads.
 
+use glass_lint_datastructures::{ByteRange, NameId, NamePath};
 use smol_str::SmolStr;
 
-use crate::{
-    ByteRange,
-    analysis::{
-        name::NameId,
-        syntax::{SymbolCallProvenance, SymbolMemberProvenance},
-        value::{FunctionId, NamePath, PathId, ValueId},
-    },
+use crate::analysis::{
+    syntax::{SymbolCallProvenance, SymbolMemberProvenance},
+    value::{FunctionId, PathId, ValueId},
 };
 
 // ── Fact stream types ───────────────────────────────────────────────────

@@ -11,10 +11,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use glass_lint_datastructures::ByteRange;
 use smol_str::SmolStr;
 
 use crate::{
-    ByteRange,
     analysis::value::FunctionId,
     project::{
         ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, ResolutionRequestKind,

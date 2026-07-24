@@ -6,15 +6,13 @@
 
 use std::collections::BTreeSet;
 
+use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{
     Expr, Ident, Lit, MemberExpr, MemberProp, ModuleExportName, ObjectPatProp, OptChainBase, Pat,
 };
 
-use crate::analysis::{
-    SymbolPath,
-    syntax::constant::{NoLookup, evaluate},
-};
+use crate::analysis::syntax::constant::{NoLookup, evaluate};
 
 /// Find the lexical root identifier of a member/optional-chain expression.
 pub fn member_root_identifier(member: &MemberExpr) -> Option<&Ident> {

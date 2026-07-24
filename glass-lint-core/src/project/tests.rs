@@ -1,8 +1,9 @@
 //! Project-session integration tests for normalization, linking, flow, and
 //! report ownership across multiple authored source files.
 
+use glass_lint_datastructures::{Position, SourceRange};
+
 use crate::{
-    Position, SourceRange,
     api::rule::{
         Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
         ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,

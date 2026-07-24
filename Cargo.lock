@@ -525,6 +525,7 @@ name = "glass-lint-core"
 version = "0.1.0"
 dependencies = [
  "console",
+ "glass-lint-datastructures",
  "indexmap",
  "serde",
  "serde_json",
@@ -545,6 +546,7 @@ name = "glass-lint-datastructures"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "serde",
  "serde_json",
  "smallvec",
  "smol_str",
@@ -556,6 +558,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "glass-lint-core",
+ "glass-lint-datastructures",
  "glass-lint-js",
  "glass-lint-obsidian",
  "glass-lint-project",
@@ -603,6 +606,7 @@ name = "glass-lint-project"
 version = "0.1.0"
 dependencies = [
  "glass-lint-core",
+ "glass-lint-datastructures",
  "glob",
  "json-strip-comments",
  "oxc_resolver",

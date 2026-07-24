@@ -5,20 +5,18 @@
 //! with one (identity, event, subject, constraints, evidence) model. The
 //! builder rejects invalid combinations before compilation.
 
+use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
-use crate::{
-    analysis::SymbolPath,
-    api::{
-        classification::MatchKind,
-        compiler::rule::{
-            EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength, QueryClause,
-            QueryConstraint, SubjectConstraint,
-        },
-        rule::{
-            ArgumentConstraint, ArgumentMatcher, MatcherBuildError, ModuleSpecifierPattern,
-            ValueMatcher, matcher::ObjectFlowMatcher,
-        },
+use crate::api::{
+    classification::MatchKind,
+    compiler::rule::{
+        EventPredicate, EvidenceDescriptor, IdentityConstraint, IdentityStrength, QueryClause,
+        QueryConstraint, SubjectConstraint,
+    },
+    rule::{
+        ArgumentConstraint, ArgumentMatcher, MatcherBuildError, ModuleSpecifierPattern,
+        ValueMatcher, matcher::ObjectFlowMatcher,
     },
 };
 

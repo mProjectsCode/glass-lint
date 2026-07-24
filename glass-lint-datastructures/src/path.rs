@@ -1,4 +1,4 @@
-use std::{fmt, ops::Deref};
+use std::{borrow::Borrow, fmt, ops::Deref};
 
 use smallvec::SmallVec;
 use smol_str::SmolStr;
@@ -111,6 +111,15 @@ where
     }
 }
 
+impl<T, S> Borrow<[T]> for Path<S>
+where
+    S: Deref<Target = [T]>,
+{
+    fn borrow(&self) -> &[T] {
+        &self.0
+    }
+}
+
 impl<T, S> Path<S>
 where
     S: Deref<Target = [T]>,
@@ -168,6 +177,52 @@ impl Path<Vec<SmolStr>> {
                 .map(SmolStr::new)
                 .collect(),
         )
+    }
+
+    /// Creates a path from a vector of segments.
+    pub fn from_segments(segments: Vec<SmolStr>) -> Self {
+        Self(segments)
+    }
+
+    /// Returns `true` if this path's segments match the dot-separated `chain`.
+    pub fn eq_chain(&self, chain: &str) -> bool {
+        self.0.iter().map(SmolStr::as_str).eq(chain.split('.'))
+    }
+
+    /// Returns a new path with `suffix` appended as dot-separated segments.
+    ///
+    /// A leading dot in `suffix` is optional and stripped if present.
+    #[must_use]
+    pub fn append_chain(&self, suffix: &str) -> Self {
+        let mut path = self.0.clone();
+        path.extend(
+            suffix
+                .strip_prefix('.')
+                .unwrap_or(suffix)
+                .split('.')
+                .filter(|segment| !segment.is_empty())
+                .map(SmolStr::new),
+        );
+        Self(path)
+    }
+
+    /// Removes the leading `"this"` segment if present.
+    #[must_use]
+    pub fn without_this_prefix(&self) -> Self {
+        if self.0.first().is_some_and(|segment| segment == "this") {
+            Self(self.0[1..].to_vec())
+        } else {
+            self.clone()
+        }
+    }
+
+    /// Removes the trailing `"bind"` segment if present.
+    pub fn without_bind_suffix(&self) -> Option<Self> {
+        self.0
+            .last()
+            .is_some_and(|segment| segment == "bind")
+            .then(|| self.without_last_segment())
+            .flatten()
     }
 }
 

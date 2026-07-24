@@ -35,7 +35,7 @@ pub use local::{
 pub use lowering::{LoweredSource, Lowerer};
 pub(in crate::analysis) use project::model::ExportResolution;
 pub use project::model::{ProjectSemanticModel, QualifiedRequestId, ResolvedLinkInput};
-pub use value::SymbolPath;
+pub use value::matches_global_object_alias;
 
 #[cfg(test)]
 mod tests {

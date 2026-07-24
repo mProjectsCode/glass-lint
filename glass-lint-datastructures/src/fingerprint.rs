@@ -4,7 +4,7 @@ const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x100_0000_01b3;
 
 /// Absorbs `bytes` into the running FNV-1a hash held in `h`.
-pub(crate) fn fnv_write(h: &mut u64, bytes: &[u8]) {
+pub fn fnv_write(h: &mut u64, bytes: &[u8]) {
     for &b in bytes {
         *h ^= u64::from(b);
         *h = h.wrapping_mul(FNV_PRIME);
@@ -12,8 +12,7 @@ pub(crate) fn fnv_write(h: &mut u64, bytes: &[u8]) {
 }
 
 /// Returns the FNV-1a offset basis.
-#[allow(dead_code)]
-pub(crate) fn fnv_init() -> u64 {
+pub fn fnv_init() -> u64 {
     FNV_OFFSET
 }
 

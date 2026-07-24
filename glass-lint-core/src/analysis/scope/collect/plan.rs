@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::NameTable;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{
     ArrowExpr, ClassDecl, FnDecl, Function, Ident, ImportDecl, MemberExpr, Pat, PropName, VarDecl,
@@ -13,7 +14,6 @@ use swc_ecma_ast::{
 
 use super::{ScopeShape, ScopeShapeTable, traversal::ScopePass};
 use crate::analysis::{
-    name::NameTable,
     scope::{BindingProvenance, LexicalScope, ScopeId, ScopeKind},
     syntax::{collect_pat_bindings, module_export_name},
 };

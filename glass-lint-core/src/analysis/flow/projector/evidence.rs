@@ -4,6 +4,8 @@
 //! aliases. Emissions are anchored at the event that completed the flow and
 //! deduplicated by flow/object/event before the bounded result is returned.
 
+use glass_lint_datastructures::NamePath;
+
 use crate::{
     analysis::{
         facts::{FactStream, Frozen},
@@ -18,7 +20,6 @@ use crate::{
             state::FlowStateKey,
             summary::SummaryPathStore,
         },
-        value::NamePath,
     },
     api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments},
 };
@@ -251,7 +252,9 @@ fn emit_state(
                     crate::api::classification::ClassificationEvidenceOccurrence {
                         span: stream
                             .fact(anchor)
-                            .map_or(crate::ByteRange::empty(), |fact| fact.span),
+                            .map_or(glass_lint_datastructures::ByteRange::empty(), |fact| {
+                                fact.span
+                            }),
                         fact: Some(anchor.0),
                     },
                 ],

@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+glass-lint-datastructures = { path = "../glass-lint-datastructures" }
 console.workspace = true
 serde = { workspace = true, optional = true }
 tracing.workspace = true
@@ -20,7 +21,7 @@ smol_str.workspace = true
 
 [features]
 default = []
-serde = ["dep:serde", "smol_str/serde"]
+serde = ["dep:serde", "smol_str/serde", "glass-lint-datastructures/serde"]
 telemetry = ["dep:tracing-subscriber"]
 
 [dependencies.tracing-subscriber]

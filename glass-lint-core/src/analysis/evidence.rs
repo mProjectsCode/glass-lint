@@ -114,8 +114,9 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::ByteRange;
+
     use super::*;
-    use crate::ByteRange;
 
     fn evidence(symbol: &str, spans: &[u32]) -> ClassificationEvidence {
         ClassificationEvidence {

@@ -6,10 +6,9 @@
 
 use std::collections::BTreeMap;
 
-use crate::analysis::{
-    name::{NameId, NameTable},
-    scope::{BindingProvenance, ScopeId},
-};
+use glass_lint_datastructures::{NameId, NameTable};
+
+use crate::analysis::scope::{BindingProvenance, ScopeId};
 
 #[derive(Debug)]
 /// Most recent assignment provenance for each scope-local binding.

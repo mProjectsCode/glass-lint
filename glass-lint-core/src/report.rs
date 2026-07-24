@@ -11,8 +11,9 @@ use std::{
 };
 
 use console::{Style, measure_text_width};
+use glass_lint_datastructures::SourceRange;
 
-use crate::{SourceRange, project::FileReport};
+use crate::project::FileReport;
 
 #[derive(Clone, Copy, Debug)]
 /// Display controls for pretty report rendering.

@@ -1,5 +1,7 @@
+use glass_lint_datastructures::SourceRange;
+
 use crate::{
-    RuleId, Severity, SourceRange,
+    RuleId, Severity,
     project::{EvidenceList, types::ProjectRelativePath},
 };
 

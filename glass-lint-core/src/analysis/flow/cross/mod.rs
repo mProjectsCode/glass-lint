@@ -8,6 +8,8 @@ mod propagation;
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use glass_lint_datastructures::{Budget, NamePath, NameTable};
+
 use crate::{
     analysis::{
         ProjectSemanticModel,
@@ -17,14 +19,12 @@ use crate::{
             index::FlowId,
             requirements::RequirementSet,
         },
-        name::NameTable,
-        value::{FunctionId, NamePath, ValueId},
+        value::{FunctionId, ValueId},
     },
     api::{
         classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},
         compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledRuleSelection},
     },
-    budget::Budget,
     project::ModuleId,
 };
 
@@ -80,9 +80,7 @@ impl FlowPathPlan {
             .requirements
             .iter()
             .map(|req| match req {
-                CompiledObjectRequirement::MemberCall { member, .. } => {
-                    NamePath::from_symbol_path(member, names)
-                }
+                CompiledObjectRequirement::MemberCall { member, .. } => names.lookup_path(member),
                 CompiledObjectRequirement::PropertyWrite { .. } => None,
             })
             .collect();
@@ -92,7 +90,7 @@ impl FlowPathPlan {
             .map(|sink| {
                 sink.member_calls
                     .iter()
-                    .filter_map(|mc| NamePath::from_symbol_path(mc, names))
+                    .filter_map(|mc| names.lookup_path(mc))
                     .collect()
             })
             .collect();
@@ -453,14 +451,12 @@ impl FlowSources {
 /// Build a per-module source index mapping NamePath to matching flow IDs.
 fn build_source_index(
     flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
-    names: &crate::analysis::name::NameTable,
-) -> BTreeMap<crate::analysis::value::NamePath, Vec<FlowId>> {
-    let mut index: BTreeMap<crate::analysis::value::NamePath, Vec<FlowId>> = BTreeMap::new();
+    names: &glass_lint_datastructures::NameTable,
+) -> BTreeMap<glass_lint_datastructures::NamePath, Vec<FlowId>> {
+    let mut index: BTreeMap<glass_lint_datastructures::NamePath, Vec<FlowId>> = BTreeMap::new();
     for (id, flow) in flows {
         for source in &flow.sources {
-            if let Some(member) =
-                crate::analysis::value::NamePath::from_symbol_path(&source.member_call, names)
-            {
+            if let Some(member) = names.lookup_path(&source.member_call) {
                 index.entry(member).or_default().push(*id);
             }
         }
@@ -784,7 +780,9 @@ pub(super) fn emit(
     }
     let span = project
         .fact(module, event)
-        .map_or_else(crate::ByteRange::empty, |fact| fact.span);
+        .map_or_else(glass_lint_datastructures::ByteRange::empty, |fact| {
+            fact.span
+        });
     values.evidence[rule_idx].push(ClassificationEvidence {
         kind: MatchKind::CallArgument,
         symbol: flow.evidence_symbol(),

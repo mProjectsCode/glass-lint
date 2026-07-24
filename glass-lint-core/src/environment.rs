@@ -5,6 +5,7 @@ use std::{
     sync::Arc,
 };
 
+use glass_lint_datastructures::fnv_write;
 use smol_str::SmolStr;
 
 /// The globals and current- or foreign-realm global objects available to
@@ -302,7 +303,6 @@ impl Environment {
     /// directly into the FNV-1a state. Iteration order follows
     /// BTreeSet/BTreeMap keys, which is stable.
     pub(crate) fn write_fingerprint_bytes(&self, h: &mut u64) {
-        use crate::fingerprint::fnv_write;
         let inner = self.inner();
         // Global bindings (sorted).
         fnv_write(h, &(inner.global_bindings.len() as u64).to_le_bytes());

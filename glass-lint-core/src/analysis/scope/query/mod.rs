@@ -15,9 +15,8 @@ use crate::analysis::{
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance,
         constant::{self, ConstValue, EvalState, Lookup},
-        member_root_identifier,
     },
-    value::{BindingKey, BindingRoot, BindingVersion, FunctionId, SymbolPath},
+    value::{BindingKey, BindingRoot, BindingVersion, FunctionId},
 };
 
 mod bindings;

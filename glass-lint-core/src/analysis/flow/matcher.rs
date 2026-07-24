@@ -1,9 +1,10 @@
 //! Shared value predicates for fact-driven flow analysis.
 
+use glass_lint_datastructures::NameTable;
+
 use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo},
-        name::NameTable,
         value::{Value, ValueTable},
     },
     api::rule::{
@@ -77,7 +78,7 @@ impl ArgumentMatcher {
             }
             ArgumentMatcherKind::RootedExpressions(expected) => {
                 argument.rooted_chain(values).is_some_and(|chain| {
-                    let Some(chain) = chain.to_symbol_path(names) else {
+                    let Some(chain) = names.resolve_path(chain) else {
                         return false;
                     };
                     expected.iter().any(|candidate| chain.eq_chain(candidate))
@@ -112,14 +113,14 @@ pub(in crate::analysis) trait ArgumentData {
         values: &'v ValueTable,
     ) -> Option<
         &'v [(
-            crate::analysis::name::NameId,
+            glass_lint_datastructures::NameId,
             crate::analysis::value::ValueId,
         )],
     >;
     fn rooted_chain<'v>(
         &self,
         values: &'v ValueTable,
-    ) -> Option<&'v crate::analysis::value::NamePath>;
+    ) -> Option<&'v glass_lint_datastructures::NamePath>;
 }
 
 impl ArgumentData for CallArgInfo {
@@ -132,7 +133,7 @@ impl ArgumentData for CallArgInfo {
         values: &'v ValueTable,
     ) -> Option<
         &'v [(
-            crate::analysis::name::NameId,
+            glass_lint_datastructures::NameId,
             crate::analysis::value::ValueId,
         )],
     > {
@@ -145,7 +146,7 @@ impl ArgumentData for CallArgInfo {
     fn rooted_chain<'v>(
         &self,
         values: &'v ValueTable,
-    ) -> Option<&'v crate::analysis::value::NamePath> {
+    ) -> Option<&'v glass_lint_datastructures::NamePath> {
         match values.resolve(self.value)? {
             Value::RootedMember { path } => Some(path),
             _ => None,
@@ -167,7 +168,7 @@ impl ArgumentData for ArgumentView<'_> {
         values: &'v ValueTable,
     ) -> Option<
         &'v [(
-            crate::analysis::name::NameId,
+            glass_lint_datastructures::NameId,
             crate::analysis::value::ValueId,
         )],
     > {
@@ -177,7 +178,7 @@ impl ArgumentData for ArgumentView<'_> {
     fn rooted_chain<'v>(
         &self,
         values: &'v ValueTable,
-    ) -> Option<&'v crate::analysis::value::NamePath> {
+    ) -> Option<&'v glass_lint_datastructures::NamePath> {
         self.argument.rooted_chain(values)
     }
 }

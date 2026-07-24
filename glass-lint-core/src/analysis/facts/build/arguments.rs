@@ -1,7 +1,8 @@
 //! Argument projections used by call facts and interprocedural flow.
 
+use glass_lint_datastructures::SymbolPath;
+
 use crate::analysis::{
-    SymbolPath,
     facts::build::{
         BoundArgument, CallArgInfo, Expr, ExprOrSpread, FactBuilder, PathId, PathSegmentInput,
         ValueId, member_property_name,

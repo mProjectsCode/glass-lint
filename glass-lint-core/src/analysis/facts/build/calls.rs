@@ -6,17 +6,17 @@
 //! A call result is interned by source span so all roles for the same call
 //! —the call fact, an assignment, and a later flow query—share one identity.
 
+use glass_lint_datastructures::{NamePath, SymbolPath};
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
-    SymbolPath,
     facts::build::{
         BoundArgument, CallArgInfo, CallExpr, CallUnwrap, Callee, Expr, ExprOrSpread, FactBuilder,
         FactKind, FactPayload, InstanceCallable, MemberExpr, OptChainBase, ParameterBinding, Pat,
         PathId, PathSegmentInput, Span, Spanned, SymbolCallProvenance, SymbolMemberProvenance,
         ValueId, VisitWith, effective_callee_expr, member_property_name,
     },
-    value::{FunctionId, NamePath},
+    value::FunctionId,
 };
 
 impl FactBuilder<'_> {
@@ -628,7 +628,7 @@ impl FactBuilder<'_> {
 pub(super) struct ResolvedCallee {
     value: ValueId,
     receiver: Option<ValueId>,
-    callee_span: crate::ByteRange,
+    callee_span: glass_lint_datastructures::ByteRange,
     callee_name: Option<SmolStr>,
     call_provenance: SymbolCallProvenance,
     syntactic_path: Option<NamePath>,
@@ -643,7 +643,7 @@ pub(super) struct ResolvedCallee {
 impl ResolvedCallee {
     fn from_resolved(
         resolved: &std::sync::Arc<crate::analysis::resolution::ResolvedValue>,
-        callee_span: crate::ByteRange,
+        callee_span: glass_lint_datastructures::ByteRange,
         target_function: Option<FunctionId>,
     ) -> Self {
         Self {

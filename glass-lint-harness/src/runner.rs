@@ -191,9 +191,9 @@ mod tests {
             Severity::Warning,
             glass_lint_core::project::SourceLocation::new(
                 glass_lint_core::project::ProjectRelativePath::new("main.js").unwrap(),
-                glass_lint_core::SourceRange::new(
-                    glass_lint_core::Position::new(2, 3).unwrap(),
-                    glass_lint_core::Position::new(2, 4).unwrap(),
+                glass_lint_datastructures::SourceRange::new(
+                    glass_lint_datastructures::Position::new(2, 3).unwrap(),
+                    glass_lint_datastructures::Position::new(2, 4).unwrap(),
                 )
                 .unwrap(),
             ),

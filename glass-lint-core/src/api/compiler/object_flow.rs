@@ -1,14 +1,10 @@
+use glass_lint_datastructures::SymbolPath;
 use smol_str::SmolStr;
 
-use crate::{
-    analysis::SymbolPath,
-    api::rule::{
-        ArgumentConstraint, FlowSinkMatcher, ObjectEventMatcher, ObjectFlowMatcher,
-        ObjectSourceMatcher, ValueMatcher,
-        matcher::{
-            FlowCompletionKind, FlowConditionKind, FlowSinkMatcherKind, ObjectEventMatcherKind,
-        },
-    },
+use crate::api::rule::{
+    ArgumentConstraint, FlowSinkMatcher, ObjectEventMatcher, ObjectFlowMatcher,
+    ObjectSourceMatcher, ValueMatcher,
+    matcher::{FlowCompletionKind, FlowConditionKind, FlowSinkMatcherKind, ObjectEventMatcherKind},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

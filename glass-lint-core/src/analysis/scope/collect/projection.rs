@@ -16,10 +16,11 @@
 //! | `Pat::Rest` | unsupported | unsupported |
 //! | Dynamic computed key | unsupported | unsupported |
 
+use glass_lint_datastructures::NamePath;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_ecma_ast::{ObjectPatProp, Pat};
 
-use crate::analysis::{syntax::property_name, value::NamePath};
+use crate::analysis::syntax::property_name;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::analysis::scope) enum ProjectionError {

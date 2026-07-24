@@ -4,12 +4,10 @@
 //! object. Calls are transparent only through the supported expression
 //! shapes; arbitrary computed or dynamic access returns no chain.
 
+use glass_lint_datastructures::SymbolPath;
 use swc_ecma_ast::{Expr, Ident, MemberExpr, OptChainBase};
 
-use crate::analysis::{
-    SymbolPath,
-    scope::{BindingProvenance, FrozenScopeGraph},
-};
+use crate::analysis::scope::{BindingProvenance, FrozenScopeGraph};
 
 pub(in crate::analysis) trait RootedExprContext {
     /// Resolve an identifier to a rooted chain at its use position.

@@ -4,6 +4,7 @@
 //! static provenance. Rest elements and dynamic property forms intentionally
 //! stop the projection rather than guessing about the remaining value.
 
+use glass_lint_datastructures::NamePath;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::Span;
 use swc_ecma_ast::{ObjectPatProp, Pat};
@@ -14,7 +15,6 @@ use crate::analysis::{
         collect::projection::{ProjectionError, project_destructuring},
     },
     syntax::property_name,
-    value::NamePath,
 };
 
 impl ScopeCollector {

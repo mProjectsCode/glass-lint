@@ -6,11 +6,11 @@
 //! carried explicitly through [`DeclarationFactState`] so a failed
 //! sub-analysis cannot be mistaken for a lower-priority negative result.
 
+use glass_lint_datastructures::NamePath;
 use smol_str::SmolStr;
 use swc_ecma_ast::{Expr, Pat, VarDeclKind};
 
 use super::{BindingProvenance, ScopeCollector};
-use crate::analysis::value::NamePath;
 
 pub(super) enum DeclarationClassification {
     Binding {
@@ -212,7 +212,7 @@ mod tests {
     /// Parse, predeclare, and visit a program; expose the final collector.
     fn run(source: &str) -> ScopeCollector {
         let parsed = crate::parse(source, "facts.js").expect("source should parse");
-        let names = crate::analysis::name::NameTable::default();
+        let names = glass_lint_datastructures::NameTable::default();
         let planner = ScopePlanner::new(parsed.program.span(), names);
         let mut plan_traversal = ScopeTraversal::new(planner);
         parsed.program.visit_children_with(&mut plan_traversal);

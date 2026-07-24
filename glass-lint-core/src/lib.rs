@@ -6,11 +6,9 @@
 
 mod analysis;
 mod api;
-mod budget;
 mod config;
 mod diagnostic;
 mod environment;
-mod fingerprint;
 mod limits;
 mod lint;
 mod parse;
@@ -22,10 +20,7 @@ pub mod telemetry;
 
 pub use api::rule::{Rule, RuleBuildError};
 pub use config::CoreConfig;
-pub use diagnostic::{
-    ByteRange, InvalidPosition, InvalidSourceBoundary, Position, ReversedSourcePositionRange,
-    RuleMetadata, Severity, SourceLineIndex, SourceRange,
-};
+pub use diagnostic::{RuleMetadata, Severity, SourceLineIndex};
 pub use environment::{Environment, EnvironmentError};
 pub use limits::{AnalysisLimitError, AnalysisLimits};
 pub use lint::{
@@ -35,11 +30,6 @@ pub use lint::{
 pub use parse::{ParseDiagnostic, SourceLanguage};
 pub use report::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports, visible_text};
 pub use rule_id::RuleId;
-
-pub const REPORT_VERSION: u32 = 5;
-pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;
-
-/// Declarative rule-building API for provider crates and custom catalogs.
 pub mod rules {
     pub use crate::api::rule::{
         ArgumentMatcher, Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher,
@@ -47,5 +37,9 @@ pub mod rules {
         RuleBuildError, RuleBuilder as Builder, Severity, ValueMatcher,
     };
 }
+
 #[cfg(test)]
 pub(crate) use parse::parse;
+
+pub const REPORT_VERSION: u32 = 5;
+pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;

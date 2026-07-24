@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::NameId;
 use smol_str::SmolStr;
 
-use crate::analysis::{name::NameId, scope::BindingProvenance, syntax::constant::ConstValue};
+use crate::analysis::{scope::BindingProvenance, syntax::constant::ConstValue};
 
 pub(in crate::analysis) fn provenance_to_const_value(
     provenance: &BindingProvenance,

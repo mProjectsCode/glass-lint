@@ -1,8 +1,10 @@
 use glass_lint_core::{
-    AnalysisLimits, ByteRange, Environment, InvalidPosition, Linter, Position,
-    ReversedSourcePositionRange, Rule, RuleCatalog, Severity, SourceRange,
+    AnalysisLimits, Environment, Linter, Rule, RuleCatalog, Severity,
     project::{DiagnosticCode, SourceFile},
     rules::{Category, Confidence, MatcherDecl},
+};
+use glass_lint_datastructures::{
+    ByteRange, InvalidPosition, Position, ReversedSourcePositionRange, SourceRange,
 };
 
 #[test]

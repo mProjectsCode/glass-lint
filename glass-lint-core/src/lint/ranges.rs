@@ -1,6 +1,6 @@
 //! Deterministic containment reduction for finding source ranges.
 
-use crate::diagnostic::SourceRange;
+use glass_lint_datastructures::SourceRange;
 
 /// Remove ranges that are fully enclosed by an earlier, wider range in
 /// source order. When ranges are equal, only the first survives.

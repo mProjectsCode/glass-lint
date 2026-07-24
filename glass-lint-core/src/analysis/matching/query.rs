@@ -2,12 +2,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 
 use crate::{
     Environment,
     analysis::{
-        SymbolPath,
         matching::{
             CandidateOccurrences, ClassificationEvidence, LinkedOccurrenceView, Occurrence,
             OccurrenceIndexes,
@@ -18,8 +18,7 @@ use crate::{
             },
             push_owned_evidence,
         },
-        name::NameTable,
-        value::NamePath,
+        value::matches_global_object_alias_with,
     },
     api::{
         compiler::rule::{
@@ -158,7 +157,7 @@ impl<'a> EventIndexView<'a> {
             Some(path_index),
             EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member },
         ) = (self.path_any, event)
-            && let Some(path) = NamePath::from_symbol_path(member, names)
+            && let Some(path) = names.lookup_path(member)
             && let Some(result) = path_index.get(&path)
         {
             return Some(CandidateOccurrences::Indexed(result));
@@ -253,9 +252,10 @@ impl<'a> EventIndexView<'a> {
         else {
             return None;
         };
-        let expected = NamePath::from_symbol_path(path, names)?;
-        self.rooted?
-            .matching(|key| expected.matches_global_object_alias_with(key, names, self.environment))
+        let expected = names.lookup_path(path)?;
+        self.rooted?.matching(|key| {
+            matches_global_object_alias_with(key, &expected, names, self.environment)
+        })
     }
 
     fn resolve_literal(
@@ -298,7 +298,7 @@ impl OccurrenceIndexes {
         &'a self,
         plan: &QueryPlan,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-        names: &crate::analysis::name::NameTable,
+        names: &glass_lint_datastructures::NameTable,
     ) -> Vec<ClassificationEvidence> {
         let mut evidence = Vec::new();
         for clause in plan.clauses() {
@@ -329,7 +329,7 @@ impl OccurrenceIndexes {
         &'a self,
         clause: &'a QueryClause,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-        names: &crate::analysis::name::NameTable,
+        names: &glass_lint_datastructures::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         if !matches!(clause.subject, SubjectConstraint::Direct) {
             return self.occurrences_for_subject(clause, overlay, names);
@@ -341,7 +341,7 @@ impl OccurrenceIndexes {
         &'a self,
         clause: &'a QueryClause,
         _overlay: Option<&'a LinkedOccurrenceView<'a>>,
-        names: &crate::analysis::name::NameTable,
+        names: &glass_lint_datastructures::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         match (&clause.event, &clause.subject) {
             (
@@ -349,11 +349,12 @@ impl OccurrenceIndexes {
                 SubjectConstraint::ReturnedFrom { .. },
             ) => {
                 let predicate = |key: &ReturnedMemberKey| {
-                    key.source().to_symbol_path(names).is_some_and(|source| {
+                    names.resolve_path(key.source()).is_some_and(|source| {
                         clause
                             .identity
                             .root_or_descendant_matches(&source, &self.environment)
-                    }) && NamePath::from_symbol_path(member, names)
+                    }) && names
+                        .lookup_path(member)
                         .is_some_and(|m| m == *key.member())
                 };
                 match &clause.event {
@@ -393,7 +394,7 @@ impl OccurrenceIndexes {
         &'a self,
         clause: &'a QueryClause,
         overlay: Option<&'a LinkedOccurrenceView<'a>>,
-        names: &crate::analysis::name::NameTable,
+        names: &glass_lint_datastructures::NameTable,
     ) -> Option<CandidateOccurrences<'a>> {
         let view = self.build_event_view(&clause.event, overlay);
         view.resolve(&clause.identity, &clause.event, names)
@@ -463,7 +464,7 @@ impl OccurrenceIndexes {
         &mut self,
         kind: crate::api::classification::MatchKind,
         symbol: impl Into<SmolStr>,
-        span: crate::ByteRange,
+        span: glass_lint_datastructures::ByteRange,
     ) {
         use crate::analysis::facts::FactId;
         let symbol = symbol.into();
@@ -478,7 +479,7 @@ impl OccurrenceIndexes {
                     .map(|segment| self.test_name(segment))
                     .collect::<Vec<_>>();
                 self.members.calls.push(
-                    crate::analysis::value::NamePath::from_ids(key),
+                    glass_lint_datastructures::NamePath::from_ids(key),
                     FactId(u32::MAX),
                     span,
                 );
@@ -489,7 +490,7 @@ impl OccurrenceIndexes {
                     .map(|segment| self.test_name(segment))
                     .collect::<Vec<_>>();
                 self.members.reads.push(
-                    crate::analysis::value::NamePath::from_ids(key),
+                    glass_lint_datastructures::NamePath::from_ids(key),
                     FactId(u32::MAX),
                     span,
                 );

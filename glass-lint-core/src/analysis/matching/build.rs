@@ -4,6 +4,7 @@
 //! occurrence without consulting selected rules; query selection happens only
 //! after normalization so catalog order cannot affect the shared model.
 
+use glass_lint_datastructures::{NamePath, NameTable};
 use smol_str::SmolStr;
 
 use crate::analysis::{
@@ -12,8 +13,6 @@ use crate::analysis::{
         FactPayload, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
         occurrence::{InstanceMemberKey, ModuleExportKey, ReturnedMemberKey},
     },
-    name::NameTable,
-    value::NamePath,
 };
 
 impl OccurrenceIndexes {
@@ -182,6 +181,7 @@ impl OccurrenceIndexes {
             && let Some(member_name) = syntactic_path
                 .as_ref()
                 .and_then(NamePath::last_segment)
+                .copied()
                 .and_then(|id| names.resolve(id))
         {
             self.members.instance_calls.push(

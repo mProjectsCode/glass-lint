@@ -2,13 +2,13 @@
 
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::{NameId, NameTable};
 use smol_str::SmolStr;
 use swc_common::Span;
 use swc_ecma_ast::{CallExpr, Callee, Expr, MemberExpr, Pat};
 
 use super::{CompactPat, compact_pat};
 use crate::analysis::{
-    name::{NameId, NameTable},
     scope::{BindingProvenance, ScopeId, ScopedName, collect::ScopeCollector},
     syntax::member_property_name,
 };

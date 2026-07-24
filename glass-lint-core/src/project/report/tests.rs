@@ -1,6 +1,8 @@
+use glass_lint_datastructures::{Position, SourceRange};
+
 use super::*;
 use crate::{
-    Position, RuleCatalog, RuleId, Severity, SourceRange,
+    RuleCatalog, RuleId, Severity,
     api::rule::{Category, Confidence, MatcherDecl, Rule, Severity as RuleSeverity},
     project::{
         AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, Evidence, FileReport, Finding,

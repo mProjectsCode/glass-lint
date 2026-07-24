@@ -371,7 +371,7 @@ pub struct AdapterResolution {
     /// Literal resolver request.
     pub request: String,
     /// Exact request source range.
-    pub range: glass_lint_core::SourceRange,
+    pub range: glass_lint_datastructures::SourceRange,
     /// Typed resolver outcome.
     pub result: AdapterResolutionResult,
 }
@@ -468,7 +468,7 @@ impl<'de> serde::Deserialize<'de> for AdapterResponse {
         #[derive(Deserialize)]
         struct AdapterSourceLocation {
             path: String,
-            range: glass_lint_core::SourceRange,
+            range: glass_lint_datastructures::SourceRange,
         }
         #[derive(Deserialize)]
         struct Outer {
@@ -582,9 +582,9 @@ mod tests {
             importer: "main.js".into(),
             kind,
             request: "request".into(),
-            range: glass_lint_core::SourceRange::new(
-                glass_lint_core::Position::new(1, 2).unwrap(),
-                glass_lint_core::Position::new(1, 8).unwrap(),
+            range: glass_lint_datastructures::SourceRange::new(
+                glass_lint_datastructures::Position::new(1, 2).unwrap(),
+                glass_lint_datastructures::Position::new(1, 8).unwrap(),
             )
             .unwrap(),
             result,

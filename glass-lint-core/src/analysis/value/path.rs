@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::analysis::name::NameId;
+use glass_lint_datastructures::NameId;
 
 const MAX_PATH_NODES: usize = 1 << 20;
 
@@ -287,8 +287,9 @@ impl PathInterner {
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::NameTable;
+
     use super::*;
-    use crate::analysis::name::NameTable;
 
     trait PathInternerTestExt {
         fn last(&self, path: PathId) -> Option<&PathSegment>;

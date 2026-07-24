@@ -12,6 +12,7 @@
 
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::NamePath;
 use smol_str::SmolStr;
 
 use crate::{
@@ -19,7 +20,6 @@ use crate::{
         facts::{CallArgInfo, FactPayload, FactStream},
         project::model::ExportResolution,
         syntax::{SymbolCallProvenance, SymbolMemberProvenance},
-        value::NamePath,
     },
     api::classification::{ClassificationEvidence, MatchKind},
 };
@@ -55,7 +55,7 @@ pub struct OccurrenceIndexes {
     constructions: ConstructionIndexes,
     literals: LiteralIndexes,
     #[cfg(test)]
-    test_names: crate::analysis::name::NameTable,
+    test_names: glass_lint_datastructures::NameTable,
 }
 
 type BorrowedModuleBuckets<'a> = BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>>;
@@ -255,7 +255,7 @@ impl OccurrenceIndexes {
     }
 
     #[cfg(test)]
-    fn test_name(&mut self, name: &str) -> crate::analysis::name::NameId {
+    fn test_name(&mut self, name: &str) -> glass_lint_datastructures::NameId {
         self.test_names.intern(name).expect("test name bound")
     }
 
@@ -418,11 +418,12 @@ pub(super) fn push_owned_evidence(
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::{ByteRange, SymbolPath};
+
     use super::*;
     use crate::{
-        ByteRange, Environment,
+        Environment,
         analysis::{
-            SymbolPath,
             facts::{FactId, build::build_test_stream},
             resolution::Resolver,
         },
@@ -471,8 +472,9 @@ mod tests {
             .calls
             .iter()
             .filter(|(symbol, _)| {
-                symbol
-                    .to_symbol_path(&facts.test_names)
+                facts
+                    .test_names
+                    .resolve_path(symbol)
                     .is_some_and(|symbol| symbol == SymbolPath::from_chain("client.request"))
             })
             .flat_map(|(_, occurrences)| occurrences.iter().map(Occurrence::span))

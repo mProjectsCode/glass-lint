@@ -4,6 +4,7 @@
 
 use std::{cell::RefCell, collections::BTreeMap};
 
+use glass_lint_datastructures::NameTable;
 use smol_str::SmolStr;
 
 use super::{
@@ -17,7 +18,6 @@ use crate::{
         flow::effect::FunctionEffect,
         local::{LocalArtifact, ProjectModule},
         module::ModuleRequestId,
-        name::NameTable,
         status::{AnalysisStatus, IncompleteReason, ParseFailureKind, StatusScope},
         syntax::SymbolCallProvenance,
         value::{FunctionId, ValueId},

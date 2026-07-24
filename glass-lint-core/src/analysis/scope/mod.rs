@@ -17,11 +17,10 @@
 //! possible without rebuilding the AST for each lookup.
 
 use collect::{ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal};
+use glass_lint_datastructures::NameTable;
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
-
-use crate::analysis::name::NameTable;
 
 mod collect;
 mod provenance_const;

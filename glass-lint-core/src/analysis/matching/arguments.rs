@@ -14,21 +14,20 @@
 
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 
 use crate::{
     analysis::{
-        SymbolPath,
         facts::{ArgumentView, CallUnwrap, Frozen, SemanticFact},
         matching::{
             CallArgInfo, ClassificationEvidence, FactPayload, FactStream, LinkedOccurrenceView,
             ModuleIdentityMap, Occurrence, OccurrenceIndexes, SymbolCallProvenance,
             push_owned_evidence,
         },
-        name::NameTable,
         project::model::ExportResolution,
         syntax::SymbolMemberProvenance,
-        value::{NamePath, ValueId, ValueTable},
+        value::{ValueId, ValueTable},
     },
     api::compiler::rule::{
         EventPredicate, IdentityConstraint, QueryClause, QueryConstraint, SubjectConstraint,
@@ -47,17 +46,17 @@ impl PreparedClausePaths {
     fn new(clause: &QueryClause, names: &NameTable) -> Self {
         let member = match &clause.event {
             EventPredicate::MemberCall { member } | EventPredicate::MemberRead { member } => {
-                NamePath::from_symbol_path(member, names)
+                names.lookup_path(member)
             }
             _ => None,
         };
         let rooted = match &clause.identity {
-            IdentityConstraint::Rooted { path } => NamePath::from_symbol_path(path, names),
+            IdentityConstraint::Rooted { path } => names.lookup_path(path),
             _ => None,
         };
         let any_name = match &clause.identity {
             IdentityConstraint::Any { name, .. } => {
-                NamePath::from_symbol_path(&SymbolPath::from(name.as_str()), names)
+                names.lookup_path(&SymbolPath::from(name.as_str()))
             }
             _ => None,
         };
@@ -322,8 +321,8 @@ fn member_subject_matches(
         SubjectConstraint::ReturnedFrom { producer } => {
             returned_member.is_some_and(|(source, found)| {
                 found == member
-                    && source
-                        .to_symbol_path(names)
+                    && names
+                        .resolve_path(source)
                         .is_some_and(|source| producer.exact_root_matches(&source))
             })
         }
@@ -441,10 +440,11 @@ fn namespace_member_matches(
         Some(SymbolMemberProvenance::ModuleNamespace {
             module: found_module, member: found_member
         }) if module_matches(found_module)
-            && member
-                .first_segment()
-                .and_then(|id| names.resolve(id))
-                .is_some_and(|resolved| resolved == found_member.as_str())
+                && member
+                    .first_segment()
+                    .copied()
+                    .and_then(|id| names.resolve(id))
+                    .is_some_and(|resolved| resolved == found_member.as_str())
     )
 }
 
@@ -707,7 +707,7 @@ mod tests {
         };
         assert_eq!(
             MatcherEvaluator::new(
-                &crate::analysis::name::NameTable::default(),
+                &glass_lint_datastructures::NameTable::default(),
                 &crate::analysis::value::ValueTable::default(),
                 Some(&identities),
                 None

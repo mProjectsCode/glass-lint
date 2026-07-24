@@ -11,6 +11,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
 };
 
+use glass_lint_datastructures::{Budget, BudgetTracker};
 use smol_str::{SmolStr, ToSmolStr};
 
 use super::{
@@ -26,7 +27,6 @@ use crate::{
         },
         syntax::SymbolCallProvenance,
     },
-    budget::{Budget, BudgetTracker},
     project::{
         AnalysisDiagnostic, ProjectRelativePath, is_internal_module_request as is_internal_request,
     },

@@ -16,6 +16,7 @@ mod transfer;
 
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::NameTable;
 use state::{AbruptExit, ControlFrame, FlowEnvironment, FlowEvidence, FlowStateTable};
 
 use crate::{
@@ -30,7 +31,6 @@ use crate::{
             state::FlowState,
             summary::FunctionSummaries,
         },
-        name::NameTable,
         value::{ObjectId, ValueId},
     },
     api::{
@@ -586,8 +586,9 @@ mod tests {
                 FactPayload::Call {
                     syntactic_path: Some(chain),
                     ..
-                } if chain
-                    .to_symbol_path(stream.names())
+                } if stream
+                    .names()
+                    .resolve_path(chain)
                     .is_some_and(|s| s.eq_chain("document.head.appendChild")) =>
                 {
                     Some(fact.span)

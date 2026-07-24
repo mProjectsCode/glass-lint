@@ -6,6 +6,7 @@
 //! Only static, structurally supported shapes are linked; dynamic or
 //! conflicting shapes are marked unknown so cross-file analysis fails closed.
 
+use glass_lint_datastructures::ByteRange;
 use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
@@ -14,7 +15,6 @@ use swc_ecma_ast::{
 };
 
 use crate::{
-    ByteRange,
     analysis::{
         module::{
             COMMONJS_EXPORTS, COMMONJS_MODULE, DEFAULT_EXPORT, ModuleExport, ModuleRequestId,

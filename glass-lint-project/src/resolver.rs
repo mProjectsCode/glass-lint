@@ -138,10 +138,8 @@ fn package_name(request: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use glass_lint_core::{
-        Position, SourceRange,
-        project::{ProjectRelativePath, ResolutionRequestKey},
-    };
+    use glass_lint_core::project::{ProjectRelativePath, ResolutionRequestKey};
+    use glass_lint_datastructures::{Position, SourceRange};
 
     use super::*;
     use crate::options::ProjectLoadOptions;

@@ -4,12 +4,11 @@
 //! flow result or live alias. Unknown and invalidated values are unbound so
 //! later sinks cannot inherit stale state.
 
-use crate::analysis::{
-    flow::{
-        effect::CallEffectRef,
-        projector::{CallArgInfo, FactId, FlowState, ObjectFlowProjector, ObjectId, ValueId},
-    },
-    value::NamePath,
+use glass_lint_datastructures::NamePath;
+
+use crate::analysis::flow::{
+    effect::CallEffectRef,
+    projector::{CallArgInfo, FactId, FlowState, ObjectFlowProjector, ObjectId, ValueId},
 };
 
 impl ObjectFlowProjector<'_, '_> {
@@ -66,7 +65,8 @@ impl ObjectFlowProjector<'_, '_> {
             .filter(|id| {
                 self.plan.get(*id).is_some_and(|flow| {
                     flow.sources.iter().any(|source| {
-                        NamePath::from_symbol_path(&source.member_call, self.names)
+                        self.names
+                            .lookup_path(&source.member_call)
                             .is_some_and(|member| member == *chain)
                             && source.is_rooted == rooted
                             && source.arguments.iter().all(|matcher| {

@@ -210,9 +210,11 @@ impl Linter {
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::{Position, SourceRange};
+
     use crate::{
-        Environment, LintConfigError, Linter, LinterConfig, Position, RuleBaseline, RuleCatalog,
-        RuleOverride, RuleSelection, RuleState, SourceRange,
+        Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog,
+        RuleOverride, RuleSelection, RuleState,
         lint::ranges::remove_contained_ranges,
         rules::{Category, Confidence, MatcherDecl, Rule, Severity},
     };

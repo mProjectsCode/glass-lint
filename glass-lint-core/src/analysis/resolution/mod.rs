@@ -18,6 +18,9 @@ use std::{
     sync::Arc,
 };
 
+use glass_lint_datastructures::{
+    ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,
+};
 use smol_str::SmolStr;
 #[cfg(test)]
 use swc_ecma_ast::Program;
@@ -27,18 +30,14 @@ use swc_ecma_ast::{CallExpr, Callee, Expr, Ident, Lit, MemberExpr};
 use crate::Environment;
 #[cfg(test)]
 use crate::analysis::scope::ScopeGraph;
-use crate::{
-    ByteRange,
-    analysis::{
-        lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
-        name::{NameExhausted, NameId, NameTable},
-        scope::{BoundArgument, FrozenScopeGraph},
-        syntax::{
-            SymbolCallProvenance, SymbolMemberProvenance,
-            constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
-        },
-        value::{BindingKey, NamePath, SymbolPath, Value, ValueId, ValueTable},
+use crate::analysis::{
+    lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
+    scope::{BoundArgument, FrozenScopeGraph},
+    syntax::{
+        SymbolCallProvenance, SymbolMemberProvenance,
+        constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
     },
+    value::{BindingKey, Value, ValueId, ValueTable},
 };
 
 #[derive(Debug, Clone)]
@@ -283,10 +282,11 @@ impl Resolver {
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::{NameId, NameTable};
+
     use super::*;
     use crate::analysis::{
         lowering::SpanNormalizer,
-        name::{NameId, NameTable},
         scope::ScopeGraph,
         syntax::{BudgetComponent, UnknownReason},
         value::{MAX_VALUES, Value},

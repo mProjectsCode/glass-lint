@@ -16,6 +16,7 @@ mod visitor;
 
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::{ByteRange, NamePath, SymbolPath};
 use smol_str::SmolStr;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
@@ -27,22 +28,17 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use crate::{
-    ByteRange,
-    analysis::{
-        SymbolPath,
-        facts::{
-            Building, CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactKind, FactPayload,
-            FactStream, FunctionBoundary, ParameterBinding,
-        },
-        resolution::Resolver,
-        scope::{BoundArgument, ScopeId},
-        syntax::{
-            SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr,
-            member_property_name,
-        },
-        value::{NamePath, PathId, PathSegmentInput, ValueId},
+use crate::analysis::{
+    facts::{
+        Building, CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactKind, FactPayload,
+        FactStream, FunctionBoundary, ParameterBinding,
     },
+    resolution::Resolver,
+    scope::{BoundArgument, ScopeId},
+    syntax::{
+        SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_property_name,
+    },
+    value::{PathId, PathSegmentInput, ValueId},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -152,7 +148,7 @@ impl<'a> FactBuilder<'a> {
             })
     }
 
-    fn intern_name(&mut self, name: Option<&str>) -> Option<crate::analysis::name::NameId> {
+    fn intern_name(&mut self, name: Option<&str>) -> Option<glass_lint_datastructures::NameId> {
         name.and_then(|name| {
             if let Ok(id) = self.resolver.intern_name(name) {
                 Some(id)

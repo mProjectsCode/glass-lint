@@ -269,7 +269,7 @@ pub enum ResolutionRequestKind {
 pub struct ResolutionRequestKey {
     pub importer: ProjectRelativePath,
     pub kind: ResolutionRequestKind,
-    pub range: crate::SourceRange,
+    pub range: glass_lint_datastructures::SourceRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -10,20 +10,17 @@
 
 use std::{borrow::Cow, collections::BTreeMap};
 
+use glass_lint_datastructures::{Budget, NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 
-use crate::{
-    analysis::{
-        facts::{
-            CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
-            ParameterBinding, SemanticFact,
-        },
-        flow::table::FunctionTable,
-        name::NameTable,
-        syntax::SymbolCallProvenance,
-        value::{FunctionId, NamePath, PathId, SymbolPath, ValueId},
+use crate::analysis::{
+    facts::{
+        CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, FunctionBoundary,
+        ParameterBinding, SemanticFact,
     },
-    budget::Budget,
+    flow::table::FunctionTable,
+    syntax::SymbolCallProvenance,
+    value::{FunctionId, PathId, ValueId},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -244,7 +241,7 @@ impl CallEffectRef<'_> {
                 .or_else(|| {
                     callee_name
                         .and_then(|id| self.stream.resolve_name(id))
-                        .and_then(|name| NamePath::from_symbol_path(&SymbolPath::from(name), names))
+                        .and_then(|name| names.lookup_path(&SymbolPath::from(name)))
                         .map(Cow::Owned)
                 }),
             _ => None,
@@ -304,7 +301,7 @@ impl CallEffectRef<'_> {
     pub(in crate::analysis) fn matches_source(
         &self,
         flow: &crate::api::compiler::CompiledObjectFlow,
-        names: &crate::analysis::name::NameTable,
+        names: &glass_lint_datastructures::NameTable,
     ) -> bool {
         let Some(args) = self.effective_args() else {
             return false;
@@ -314,7 +311,8 @@ impl CallEffectRef<'_> {
             return false;
         };
         flow.sources.iter().any(|source| {
-            NamePath::from_symbol_path(&source.member_call, names)
+            names
+                .lookup_path(&source.member_call)
                 .is_some_and(|member| member == *chain)
                 && source.is_rooted == self.rooted()
                 && source.arguments.iter().all(|matcher| {
@@ -748,12 +746,12 @@ mod tests {
             .expect("direct call should have a chain");
         let chain: &NamePath = &chain;
         assert!(
-            chain
-                .to_symbol_path(names)
+            names
+                .resolve_path(chain)
                 .is_some_and(|s| s.eq_chain("document.createElement")),
             "chain should be document.createElement, got {}",
-            chain
-                .to_symbol_path(names)
+            names
+                .resolve_path(chain)
                 .map_or_else(|| "(unresolvable)".to_string(), |s| s.to_string())
         );
         assert!(cref.chain().is_some(), "borrowed chain should exist");
@@ -782,11 +780,11 @@ mod tests {
             .expect("alias call should have a chain via callee_name fallback");
         let chain: &NamePath = &chain;
         assert!(
-            chain
-                .to_symbol_path(names)
+            names
+                .resolve_path(chain)
                 .is_some_and(|s| s.eq_chain("alias")),
             "alias call chain should resolve to the callee name 'alias', got {:?}",
-            chain.to_symbol_path(names)
+            names.resolve_path(chain)
         );
     }
 

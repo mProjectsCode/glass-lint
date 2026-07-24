@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 glass-lint-core = { path = "../glass-lint-core" }
+glass-lint-datastructures = { path = "../glass-lint-datastructures" }
 glob.workspace = true
 json-strip-comments.workspace = true
 oxc_resolver.workspace = true

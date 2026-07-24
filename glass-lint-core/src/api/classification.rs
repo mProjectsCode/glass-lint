@@ -4,7 +4,9 @@
 //! separate. `rule_index` and event IDs are internal correlation keys and are
 //! intentionally omitted from serialized reports.
 
-use crate::{ByteRange, api::rule::Severity};
+use glass_lint_datastructures::ByteRange;
+
+use crate::api::rule::Severity;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable position of a rule within a validated catalog.

@@ -9,13 +9,12 @@
 
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::{NamePath, NameTable};
+
 use super::index::FlowId;
-use crate::{
-    analysis::{name::NameTable, value::NamePath},
-    api::{
-        classification::RuleIndex,
-        compiler::{CompiledObjectFlow, CompiledObjectRequirement},
-    },
+use crate::api::{
+    classification::RuleIndex,
+    compiler::{CompiledObjectFlow, CompiledObjectRequirement},
 };
 
 #[derive(Debug, Clone)]
@@ -50,14 +49,14 @@ impl<'rules> BoundFlowPlan<'rules> {
             flows.insert(id, *flow);
 
             for source in &flow.sources {
-                if let Some(member) = NamePath::from_symbol_path(&source.member_call, names) {
+                if let Some(member) = names.lookup_path(&source.member_call) {
                     sources.entry(member).or_default().push(id);
                 }
             }
 
             for sink in &flow.sinks {
                 for member in &sink.member_calls {
-                    if let Some(member) = NamePath::from_symbol_path(member, names) {
+                    if let Some(member) = names.lookup_path(member) {
                         sinks.entry(member).or_default().push(id);
                     }
                 }
@@ -68,7 +67,7 @@ impl<'rules> BoundFlowPlan<'rules> {
                 .iter()
                 .map(|req| match req {
                     CompiledObjectRequirement::MemberCall { member, .. } => {
-                        NamePath::from_symbol_path(member, names)
+                        names.lookup_path(member)
                     }
                     CompiledObjectRequirement::PropertyWrite { .. } => None,
                 })
@@ -81,7 +80,7 @@ impl<'rules> BoundFlowPlan<'rules> {
                 .map(|sink| {
                     sink.member_calls
                         .iter()
-                        .filter_map(|mc| NamePath::from_symbol_path(mc, names))
+                        .filter_map(|mc| names.lookup_path(mc))
                         .collect()
                 })
                 .collect();

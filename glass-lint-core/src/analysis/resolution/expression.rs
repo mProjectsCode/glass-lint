@@ -2,10 +2,10 @@
 
 use std::sync::Arc;
 
+use glass_lint_datastructures::SymbolPath;
 use smol_str::{SmolStr, ToSmolStr};
 
 use crate::analysis::{
-    SymbolPath,
     resolution::{
         Callee, ConstValue, Expr, Ident, Lit, MemberExpr, ResolutionKey, ResolvedValue, Resolver,
         SymbolCallProvenance, SymbolMemberProvenance, Value, ValueId, syntax_constant,

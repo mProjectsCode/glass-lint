@@ -8,6 +8,8 @@
 
 use std::collections::BTreeMap;
 
+use glass_lint_datastructures::NameTable;
+
 use crate::{
     analysis::{
         flow::{
@@ -17,7 +19,6 @@ use crate::{
         },
         matching::{self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes},
         module::ModuleInterface,
-        name::NameTable,
         project::model::ExportResolution,
         value::{ValueId, ValueTable},
     },
@@ -182,9 +183,10 @@ impl SemanticFacts {
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::ByteRange;
+
     use super::*;
     use crate::{
-        ByteRange,
         analysis::{
             facts::build::FactBuilder, resolution::Resolver, syntax::SymbolCallProvenance,
             value::FunctionId,

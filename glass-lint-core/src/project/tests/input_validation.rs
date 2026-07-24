@@ -1,8 +1,7 @@
-use crate::{
-    Position, SourceRange,
-    project::{
-        ProjectInputError, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, tests::*,
-    },
+use glass_lint_datastructures::{Position, SourceRange};
+
+use crate::project::{
+    ProjectInputError, ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, tests::*,
 };
 
 #[test]

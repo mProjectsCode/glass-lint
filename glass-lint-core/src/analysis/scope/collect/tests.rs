@@ -5,7 +5,7 @@ use super::{traversal::ScopeTraversal, *};
 
 fn collect(source: &str) -> ScopeCollector {
     let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");
-    let names = crate::analysis::name::NameTable::default();
+    let names = glass_lint_datastructures::NameTable::default();
     let planner = plan::ScopePlanner::new(parsed.program.span(), names);
     let mut plan_traversal = ScopeTraversal::new(planner);
     parsed.program.visit_children_with(&mut plan_traversal);
@@ -45,7 +45,7 @@ fn scope_fingerprint(collector: &ScopeCollector) -> Vec<String> {
 }
 
 fn planned_scopes(span: Span, kinds: &[ScopeKind]) -> ScopeCollector {
-    let names = crate::analysis::name::NameTable::default();
+    let names = glass_lint_datastructures::NameTable::default();
     let mut planner = plan::ScopePlanner::new(span, names);
     for &kind in kinds {
         planner.push_scope(span, kind);

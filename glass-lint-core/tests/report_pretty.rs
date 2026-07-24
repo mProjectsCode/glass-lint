@@ -4,10 +4,10 @@
 //! width bounds, missing-source resilience, and optional terminal coloring.
 
 use glass_lint_core::{
-    Position, PrettyFile, PrettyOptions, PrettyReport, PrettyReports, RuleId, Severity,
-    SourceRange,
+    PrettyFile, PrettyOptions, PrettyReport, PrettyReports, RuleId, Severity,
     project::{Evidence, FileReport, Finding, ProjectRelativePath, SourceLocation},
 };
+use glass_lint_datastructures::{Position, SourceRange};
 
 fn path(path: &str) -> ProjectRelativePath {
     ProjectRelativePath::new(path).unwrap()

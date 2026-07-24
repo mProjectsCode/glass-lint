@@ -5,6 +5,7 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
+use glass_lint_datastructures::NameTable;
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
@@ -16,7 +17,7 @@ use crate::{
         facts::{self, SemanticFacts},
         flow::effect::FunctionEffects,
         module,
-        name::{MAX_NAMES, NameTable},
+        name::MAX_NAMES,
         resolution,
         scope::ScopeGraph,
         status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
@@ -143,7 +144,7 @@ impl SpanNormalizer {
     pub(in crate::analysis) fn normalize(
         &self,
         span: swc_common::Span,
-    ) -> Result<crate::ByteRange, InvalidParserSpan> {
+    ) -> Result<glass_lint_datastructures::ByteRange, InvalidParserSpan> {
         let offset = span.lo.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
         let end = span.hi.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
         if end > self.len {
@@ -162,7 +163,7 @@ impl SpanNormalizer {
                 return Err(InvalidParserSpan);
             }
         }
-        crate::ByteRange::new(offset, end).map_err(|_| InvalidParserSpan)
+        glass_lint_datastructures::ByteRange::new(offset, end).map_err(|_| InvalidParserSpan)
     }
 }
 
@@ -386,7 +387,7 @@ mod tests {
         let normalizer = SpanNormalizer::new(BytePos(40), "aé\r\n");
         assert_eq!(
             normalizer.normalize(Span::new(BytePos(40), BytePos(43))),
-            Ok(crate::ByteRange::new(0, 3).unwrap())
+            Ok(glass_lint_datastructures::ByteRange::new(0, 3).unwrap())
         );
         assert!(
             normalizer

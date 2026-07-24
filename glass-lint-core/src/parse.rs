@@ -1,16 +1,13 @@
 //! Bounded JavaScript/TypeScript parsing and source-position conversion.
 
+use glass_lint_datastructures::{Position, SourceRange};
 use swc_common::{FileName, GLOBALS, Globals, Mark, SourceMap, Spanned, sync::Lrc};
 use swc_ecma_ast::{EsVersion, Program};
 use swc_ecma_parser::{EsSyntax, Parser, StringInput, Syntax, TsSyntax, lexer::Lexer};
 use swc_ecma_transforms_base::resolver;
 use swc_ecma_transforms_typescript::strip;
 
-use crate::{
-    MAX_SOURCE_BYTES,
-    diagnostic::{Position, SourceRange},
-    project::DiagnosticCode,
-};
+use crate::{MAX_SOURCE_BYTES, project::DiagnosticCode};
 
 /// Maximum syntactic nesting accepted before invoking recursive parser and
 /// visitor machinery. This is deliberately checked on source text so a

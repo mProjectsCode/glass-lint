@@ -11,9 +11,10 @@
 
 use std::marker::PhantomData;
 
+use glass_lint_datastructures::NameTable;
+
 use crate::analysis::{
     facts::{FactId, FactKind, FactPayload, MAX_FACTS, ParameterBinding, SemanticFact},
-    name::NameTable,
     value::{FunctionId, PathId, PathInterner, PathSegment, PathSegmentInput, ValueTable},
 };
 
@@ -181,7 +182,7 @@ impl FactStream<Building> {
 
     pub(super) fn try_push(
         &mut self,
-        span: crate::ByteRange,
+        span: glass_lint_datastructures::ByteRange,
         function: FunctionId,
         kind: FactKind,
         payload: FactPayload,
@@ -301,7 +302,7 @@ impl FactStream<Frozen> {
     /// Resolve a `NameId` to a `&str` via the frozen name table.
     pub(in crate::analysis) fn resolve_name(
         &self,
-        id: crate::analysis::name::NameId,
+        id: glass_lint_datastructures::NameId,
     ) -> Option<&str> {
         self.names().resolve(id)
     }

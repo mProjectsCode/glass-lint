@@ -5,13 +5,11 @@
 //! The table never evicts entries, so IDs remain stable for the lifetime of a
 //! file analysis.
 
+use glass_lint_datastructures::{NameId, NamePath, NameTable};
 use indexmap::IndexSet;
 use smol_str::SmolStr;
 
-use crate::analysis::{
-    name::{NameId, NameTable},
-    value::{BindingKey, NamePath, ValueId},
-};
+use crate::analysis::value::{BindingKey, ValueId};
 
 pub(in crate::analysis) const MAX_VALUES: usize = 65_536;
 const MAX_OBJECTS: u32 = 65_536;

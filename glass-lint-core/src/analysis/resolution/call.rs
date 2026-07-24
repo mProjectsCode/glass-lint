@@ -19,7 +19,7 @@ impl Resolver {
     pub(super) fn call_provenance_at(
         &self,
         id: ValueId,
-        rooted: Option<&crate::analysis::SymbolPath>,
+        rooted: Option<&glass_lint_datastructures::SymbolPath>,
         span: swc_common::Span,
     ) -> SymbolCallProvenance {
         let provenance = self.call_provenance_for_value(id);
@@ -125,7 +125,7 @@ impl Resolver {
     pub(in crate::analysis) fn intern_call_value(
         &mut self,
         call: &SymbolCallProvenance,
-        rooted: Option<&crate::analysis::SymbolPath>,
+        rooted: Option<&glass_lint_datastructures::SymbolPath>,
         binding: Option<crate::analysis::value::BindingKey>,
     ) -> ValueId {
         let value = match call {
@@ -183,7 +183,7 @@ impl Resolver {
                     };
                 }
                 Value::RootedMember { path } if path.is_root() => {
-                    let Some(root) = path.first_segment() else {
+                    let Some(root) = path.first_segment().copied() else {
                         return SymbolCallProvenance::Unknown(UnknownReason::Unresolved);
                     };
                     let Some(name) = self.scopes.resolve_name_id(root) else {
