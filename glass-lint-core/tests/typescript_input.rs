@@ -6,14 +6,14 @@
 
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog, SourceLanguage,
-    rules::{Confidence, MatcherDecl, Rule, Severity},
+    rules::{Category, Confidence, MatcherDecl, Rule, Severity},
 };
 
 /// Build the minimal TypeScript-capable linter used by every fixture.
 fn linter() -> Linter {
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -41,11 +41,22 @@ fn typed_runtime_calls_match_at_original_locations() {
             "input.ts",
         )
         .unwrap();
-    assert!(!report.files[0].has_parse_diagnostics());
-    assert_eq!(report.files[0].findings.len(), 1);
-    assert_eq!(report.files[0].findings[0].location.range.start().line(), 1);
+    assert!(!report.files()[0].has_parse_diagnostics());
+    assert_eq!(report.files()[0].findings().len(), 1);
     assert_eq!(
-        report.files[0].findings[0].location.range.start().column(),
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .start()
+            .line(),
+        1
+    );
+    assert_eq!(
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .start()
+            .column(),
         37
     );
 }
@@ -58,11 +69,22 @@ fn assertions_and_type_annotations_do_not_move_runtime_locations() {
             "input.ts",
         )
         .unwrap();
-    assert!(!report.files[0].has_parse_diagnostics());
-    assert_eq!(report.files[0].findings.len(), 1);
-    assert_eq!(report.files[0].findings[0].location.range.start().line(), 1);
+    assert!(!report.files()[0].has_parse_diagnostics());
+    assert_eq!(report.files()[0].findings().len(), 1);
     assert_eq!(
-        report.files[0].findings[0].location.range.start().column(),
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .start()
+            .line(),
+        1
+    );
+    assert_eq!(
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .start()
+            .column(),
         24
     );
 }
@@ -73,8 +95,8 @@ fn type_only_api_lookalikes_do_not_create_findings() {
         "interface Fetch { call(): void }\ntype Alias = typeof fetch;\nimport type { fetch as imported } from 'api';\ndeclare function fetch(url: string): void;",
         "input.ts",
     ).unwrap();
-    assert!(!report.files[0].has_parse_diagnostics());
-    assert!(report.files[0].findings.is_empty());
+    assert!(!report.files()[0].has_parse_diagnostics());
+    assert!(report.files()[0].findings().is_empty());
 }
 
 #[test]
@@ -83,11 +105,22 @@ fn runtime_enum_calls_are_detected_without_matching_enum_lookalikes() {
         "enum Local { fetch }\nenum Values { Remote = fetch('/remote') }\nnamespace window { export const fetch = 1 }",
         "runtime.ts",
     ).unwrap();
-    assert!(!report.files[0].has_parse_diagnostics());
-    assert_eq!(report.files[0].findings.len(), 1);
-    assert_eq!(report.files[0].findings[0].location.range.start().line(), 2);
+    assert!(!report.files()[0].has_parse_diagnostics());
+    assert_eq!(report.files()[0].findings().len(), 1);
     assert_eq!(
-        report.files[0].findings[0].location.range.start().column(),
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .start()
+            .line(),
+        2
+    );
+    assert_eq!(
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .start()
+            .column(),
         24
     );
 }
@@ -98,8 +131,8 @@ fn parameter_properties_and_namespace_names_do_not_create_global_provenance() {
         "class Local { constructor(public fetch: unknown) {}\n  run() { this.fetch; }\n}\nnamespace fetch { export const value = 1 }",
         "lookalikes.ts",
     ).unwrap();
-    assert!(!report.files[0].has_parse_diagnostics());
-    assert!(report.files[0].findings.is_empty());
+    assert!(!report.files()[0].has_parse_diagnostics());
+    assert!(report.files()[0].findings().is_empty());
 }
 
 #[test]
@@ -115,9 +148,9 @@ fn js_ts_unicode_crlf_locations_preserve_expected_ranges() {
         ),
     ] {
         let report = linter().lint_snippet(source, filename).unwrap();
-        assert!(!report.files[0].has_parse_diagnostics(), "{filename}");
-        assert_eq!(report.files[0].findings.len(), 1, "{filename}");
-        let range = &report.files[0].findings[0].location.range;
+        assert!(!report.files()[0].has_parse_diagnostics(), "{filename}");
+        assert_eq!(report.files()[0].findings().len(), 1, "{filename}");
+        let range = &report.files()[0].findings()[0].location().range();
         assert_eq!(
             (range.start().line(), range.start().column()),
             (2, 1),
@@ -166,13 +199,13 @@ fn module_specific_extensions_select_the_expected_parser() {
         let report = linter()
             .lint_snippet("const value: string = fetch('/data');", filename)
             .unwrap();
-        assert!(!report.files[0].has_parse_diagnostics(), "{filename}");
-        assert_eq!(report.files[0].findings.len(), 1, "{filename}");
+        assert!(!report.files()[0].has_parse_diagnostics(), "{filename}");
+        assert_eq!(report.files()[0].findings().len(), 1, "{filename}");
     }
     for filename in ["input.cjs", "input.mjs"] {
         let report = linter().lint_snippet("fetch('/data');", filename).unwrap();
-        assert!(!report.files[0].has_parse_diagnostics(), "{filename}");
-        assert_eq!(report.files[0].findings.len(), 1, "{filename}");
+        assert!(!report.files()[0].has_parse_diagnostics(), "{filename}");
+        assert_eq!(report.files()[0].findings().len(), 1, "{filename}");
     }
 }
 
@@ -181,16 +214,16 @@ fn malformed_typescript_reports_original_location() {
     let report = linter()
         .lint_snippet("const value: = 1;", "broken.ts")
         .unwrap();
-    assert_eq!(report.files[0].parse_diagnostic_count(), 1);
+    assert_eq!(report.files()[0].parse_diagnostic_count(), 1);
     assert_eq!(
-        report.files[0].diagnostics[0]
+        report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
             .filename,
         "broken.ts"
     );
     assert_eq!(
-        report.files[0].diagnostics[0]
+        report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
             .range

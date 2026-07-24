@@ -229,16 +229,20 @@ impl MatcherDeclBuilder {
 
     pub fn call_package(mut self, module: impl Into<String>, export: impl Into<String>) -> Self {
         let export: SmolStr = export.into().into();
-        let module = ModuleSpecifierPattern::package(module);
-        let sym = module.to_string();
-        self.set_identity_event(
-            IdentityConstraint::PackageModuleExport {
-                module,
-                export: export.clone(),
-            },
-            EventPredicate::Call,
-            format!("{sym}.{export}"),
-        );
+        match ModuleSpecifierPattern::package(module) {
+            Ok(module) => {
+                let sym = module.to_string();
+                self.set_identity_event(
+                    IdentityConstraint::PackageModuleExport {
+                        module,
+                        export: export.clone(),
+                    },
+                    EventPredicate::Call,
+                    format!("{sym}.{export}"),
+                );
+            }
+            Err(e) => self.validation_error = Some(e),
+        }
         self
     }
 
@@ -323,13 +327,17 @@ impl MatcherDeclBuilder {
     ) -> Self {
         let member_str: String = member.into();
         let path = SymbolPath::from(member_str.as_str());
-        let module = ModuleSpecifierPattern::package(module);
-        let sym = module.to_string();
-        self.set_identity_event(
-            IdentityConstraint::PackageModuleNamespace { module },
-            EventPredicate::MemberCall { member: path },
-            format!("{sym}.{member_str}"),
-        );
+        match ModuleSpecifierPattern::package(module) {
+            Ok(module) => {
+                let sym = module.to_string();
+                self.set_identity_event(
+                    IdentityConstraint::PackageModuleNamespace { module },
+                    EventPredicate::MemberCall { member: path },
+                    format!("{sym}.{member_str}"),
+                );
+            }
+            Err(e) => self.validation_error = Some(e),
+        }
         self
     }
 
@@ -419,13 +427,17 @@ impl MatcherDeclBuilder {
     ) -> Self {
         let member_str: String = member.into();
         let path = SymbolPath::from(member_str.as_str());
-        let module = ModuleSpecifierPattern::package(module);
-        let sym = module.to_string();
-        self.set_identity_event(
-            IdentityConstraint::PackageModuleNamespace { module },
-            EventPredicate::MemberRead { member: path },
-            format!("{sym}.{member_str}"),
-        );
+        match ModuleSpecifierPattern::package(module) {
+            Ok(module) => {
+                let sym = module.to_string();
+                self.set_identity_event(
+                    IdentityConstraint::PackageModuleNamespace { module },
+                    EventPredicate::MemberRead { member: path },
+                    format!("{sym}.{member_str}"),
+                );
+            }
+            Err(e) => self.validation_error = Some(e),
+        }
         self
     }
 
@@ -444,12 +456,16 @@ impl MatcherDeclBuilder {
 
     /// Import package pattern.
     pub fn import_package(mut self, module: impl Into<String>) -> Self {
-        let pattern = ModuleSpecifierPattern::package(module);
-        let sym = pattern.to_string();
-        self.identity = Some(IdentityConstraint::PackageSpecifier { pattern });
-        self.event = Some(EventPredicate::Import);
-        self.evidence_kind = Some(MatchKind::Import);
-        self.evidence_symbol = Some(sym);
+        match ModuleSpecifierPattern::package(module) {
+            Ok(pattern) => {
+                let sym = pattern.to_string();
+                self.identity = Some(IdentityConstraint::PackageSpecifier { pattern });
+                self.event = Some(EventPredicate::Import);
+                self.evidence_kind = Some(MatchKind::Import);
+                self.evidence_symbol = Some(sym);
+            }
+            Err(e) => self.validation_error = Some(e),
+        }
         self
     }
 

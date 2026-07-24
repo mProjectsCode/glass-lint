@@ -1,6 +1,6 @@
 //! Project finding assembly and deterministic evidence ownership.
 
-use crate::project::{AnalysisReport, Evidence, Finding, ProjectRelativePath, ReportCompletion};
+use crate::project::{AnalysisReport, ProjectRelativePath, ReportCompletion};
 
 /// Why independently produced reports could not be combined losslessly.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -44,37 +44,44 @@ impl AnalysisReport {
     /// let first = linter.lint_snippet("", "first.js").unwrap();
     /// let second = linter.lint_snippet("", "second.js").unwrap();
     /// let combined = AnalysisReport::combine([first, second]).unwrap();
-    /// assert_eq!(combined.files.len(), 2);
+    /// assert_eq!(combined.files().len(), 2);
     /// ```
     pub fn combine(reports: impl IntoIterator<Item = Self>) -> Result<Self, ReportCombineError> {
         let mut reports = reports.into_iter();
-        let Some(mut combined) = reports.next() else {
+        let Some(first) = reports.next() else {
             return Err(ReportCombineError::Empty);
         };
-        for mut report in reports {
-            if report.schema_version != combined.schema_version {
+        let (
+            schema_version,
+            tool_version,
+            mut files,
+            mut diagnostics,
+            mut operations,
+            mut completion,
+        ) = first.into_parts();
+        for report in reports {
+            let (r_schema, r_tool, r_files, r_diags, r_ops, r_comp) = report.into_parts();
+            if r_schema != schema_version {
                 return Err(ReportCombineError::SchemaMismatch {
-                    expected: combined.schema_version,
-                    actual: report.schema_version,
+                    expected: schema_version,
+                    actual: r_schema,
                 });
             }
-            if report.tool_version != combined.tool_version {
+            if r_tool != tool_version {
                 return Err(ReportCombineError::ToolVersionMismatch {
-                    expected: combined.tool_version,
-                    actual: report.tool_version,
+                    expected: tool_version,
+                    actual: r_tool,
                 });
             }
-            combined.files.append(&mut report.files);
-            combined.diagnostics.append(&mut report.diagnostics);
-            combined.operations += report.operations;
-            if report.completion == ReportCompletion::Partial {
-                combined.completion = ReportCompletion::Partial;
+            files.extend(r_files);
+            diagnostics.extend(r_diags);
+            operations += r_ops;
+            if r_comp == ReportCompletion::Partial {
+                completion = ReportCompletion::Partial;
             }
         }
-        combined
-            .files
-            .sort_by(|left, right| left.path.cmp(&right.path));
-        combined.diagnostics.sort_by(|left, right| {
+        files.sort_by(|left, right| left.path().cmp(right.path()));
+        diagnostics.sort_by(|left, right| {
             (
                 left.path().map(ProjectRelativePath::as_str),
                 left.code(),
@@ -86,15 +93,14 @@ impl AnalysisReport {
                     right.message(),
                 ))
         });
-        Ok(combined)
-    }
-}
-
-impl Finding {
-    /// Attach a shared evidence slice. Any previously set shared slice is
-    /// replaced. Local evidence is preserved.
-    pub fn set_shared_evidence(&mut self, shared: std::sync::Arc<[Evidence]>) {
-        self.evidence.set_shared(shared);
+        Ok(Self::new(
+            schema_version,
+            tool_version,
+            files,
+            diagnostics,
+            operations,
+            completion,
+        ))
     }
 }
 

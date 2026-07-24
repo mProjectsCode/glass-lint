@@ -6,8 +6,9 @@
 
 use crate::{AnalysisLimitError, RuleId, lint::catalog::RuleCatalog};
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Default, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 pub enum RuleBaseline {
     #[default]
     All,
@@ -15,17 +16,19 @@ pub enum RuleBaseline {
     MinimumConfidence(crate::api::rule::Confidence),
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum RuleState {
     Disabled,
     Enabled,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct RuleOverride {
-    #[serde(deserialize_with = "deserialize_selector")]
+    #[cfg_attr(feature = "serde", serde(deserialize_with = "deserialize_selector"))]
     selector: RuleSelector,
     enabled: bool,
 }
@@ -53,6 +56,7 @@ pub struct RuleSelector {
     ends_with_wildcard: bool,
 }
 
+#[cfg(feature = "serde")]
 fn deserialize_selector<'de, D>(deserializer: D) -> Result<RuleSelector, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -61,6 +65,7 @@ where
     RuleSelector::parse(value).map_err(serde::de::Error::custom)
 }
 
+#[cfg(feature = "serde")]
 impl serde::Serialize for RuleSelector {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.raw)
@@ -163,8 +168,9 @@ impl RuleOverride {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Eq, PartialEq)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(deny_unknown_fields))]
 pub struct RuleSelection {
     baseline: RuleBaseline,
     overrides: Vec<RuleOverride>,

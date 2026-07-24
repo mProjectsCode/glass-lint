@@ -170,12 +170,12 @@ impl RuleCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::rule::{Confidence, MatcherDecl, Rule, Severity};
+    use crate::api::rule::{Category, Confidence, MatcherDecl, Rule, Severity};
 
     fn make_catalog(provider: &str) -> RuleCatalog {
         let rule = Rule::builder("request")
             .description("Request")
-            .category("network")
+            .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
             .declaration(

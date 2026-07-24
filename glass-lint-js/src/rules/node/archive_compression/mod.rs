@@ -1,6 +1,6 @@
 //! Node archive and compression rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects direct ESM or unshadowed CommonJS imports of the listed archive and
 /// compression packages. This rule reports the module load itself; it does not
@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("archive.compression")
         .description("Uses archive or compression libraries")
-        .category("node/archive")
+        .category(Category::new("node/archive").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(

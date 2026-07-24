@@ -3,9 +3,9 @@ use crate::{
     project::{EvidenceList, types::ProjectRelativePath},
 };
 
-/// Stable machine-readable identity for a project diagnostic.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize)]
-#[serde(transparent)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 pub struct DiagnosticCode(String);
 
 const MAX_DIAGNOSTIC_CODE_LEN: usize = 64;
@@ -74,16 +74,6 @@ impl DiagnosticCode {
     }
 }
 
-impl<'de> serde::Deserialize<'de> for DiagnosticCode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let raw = String::deserialize(deserializer)?;
-        Self::new(raw).map_err(serde::de::Error::custom)
-    }
-}
-
 impl TryFrom<String> for DiagnosticCode {
     type Error = String;
 
@@ -112,74 +102,229 @@ impl std::fmt::Display for DiagnosticCode {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct SourceLocation {
-    pub path: ProjectRelativePath,
-    pub range: SourceRange,
+    path: ProjectRelativePath,
+    range: SourceRange,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+impl SourceLocation {
+    pub fn new(path: ProjectRelativePath, range: SourceRange) -> Self {
+        Self { path, range }
+    }
+
+    pub fn path(&self) -> &ProjectRelativePath {
+        &self.path
+    }
+
+    pub fn range(&self) -> SourceRange {
+        self.range.clone()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Evidence {
-    pub message: String,
-    #[serde(default)]
-    pub count: u32,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub evidence_truncated: bool,
-    pub location: Option<SourceLocation>,
+    message: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    count: u32,
+    #[cfg_attr(feature = "serde", serde(default))]
+    #[cfg_attr(feature = "serde", serde(skip_serializing_if = "std::ops::Not::not"))]
+    truncated: bool,
+    location: Option<SourceLocation>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+impl Evidence {
+    pub fn new(
+        message: String,
+        count: u32,
+        truncated: bool,
+        location: Option<SourceLocation>,
+    ) -> Self {
+        Self {
+            message,
+            count,
+            truncated,
+            location,
+        }
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn count(&self) -> u32 {
+        self.count
+    }
+
+    pub fn truncated(&self) -> bool {
+        self.truncated
+    }
+
+    pub fn location(&self) -> Option<&SourceLocation> {
+        self.location.as_ref()
+    }
+
+    pub(crate) fn set_message(&mut self, message: String) {
+        self.message = message;
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Finding {
-    pub rule_id: RuleId,
-    pub message: String,
-    pub severity: Severity,
-    pub location: SourceLocation,
-    pub evidence: EvidenceList,
+    rule_id: RuleId,
+    message: String,
+    severity: Severity,
+    location: SourceLocation,
+    evidence: EvidenceList,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+impl Finding {
+    pub fn new(
+        rule_id: RuleId,
+        message: String,
+        severity: Severity,
+        location: SourceLocation,
+        evidence: EvidenceList,
+    ) -> Self {
+        Self {
+            rule_id,
+            message,
+            severity,
+            location,
+            evidence,
+        }
+    }
+
+    pub fn rule_id(&self) -> &RuleId {
+        &self.rule_id
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn severity(&self) -> Severity {
+        self.severity
+    }
+
+    pub fn location(&self) -> &SourceLocation {
+        &self.location
+    }
+
+    pub fn evidence(&self) -> &EvidenceList {
+        &self.evidence
+    }
+
+    pub fn set_shared_evidence(&mut self, shared: std::sync::Arc<[Evidence]>) {
+        self.evidence.set_shared(shared);
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct FileReport {
-    pub path: ProjectRelativePath,
-    pub findings: Vec<Finding>,
-    pub diagnostics: Vec<Diagnostic>,
+    path: ProjectRelativePath,
+    findings: Vec<Finding>,
+    diagnostics: Vec<Diagnostic>,
 }
 
 impl FileReport {
+    pub fn new(
+        path: ProjectRelativePath,
+        findings: Vec<Finding>,
+        diagnostics: Vec<Diagnostic>,
+    ) -> Self {
+        Self {
+            path,
+            findings,
+            diagnostics,
+        }
+    }
+
+    pub fn path(&self) -> &ProjectRelativePath {
+        &self.path
+    }
+
+    pub fn findings(&self) -> &[Finding] {
+        &self.findings
+    }
+
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    pub(crate) fn diagnostics_mut(&mut self) -> &mut Vec<Diagnostic> {
+        &mut self.diagnostics
+    }
+
+    pub fn into_parts(self) -> (ProjectRelativePath, Vec<Finding>, Vec<Diagnostic>) {
+        (self.path, self.findings, self.diagnostics)
+    }
+
     #[must_use]
     pub fn has_parse_diagnostics(&self) -> bool {
         self.diagnostics
             .iter()
-            .any(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
+            .any(|d| matches!(d, Diagnostic::Parse { .. }))
     }
 
     #[must_use]
     pub fn parse_diagnostic_count(&self) -> usize {
         self.diagnostics
             .iter()
-            .filter(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
+            .filter(|d| matches!(d, Diagnostic::Parse { .. }))
             .count()
     }
 }
 
-/// Whether the project was analyzed to completion.
-#[derive(
-    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
-)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 pub enum ReportCompletion {
     Complete,
     Partial,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct AnalysisDiagnostic {
-    pub code: DiagnosticCode,
-    pub message: String,
-    pub location: Option<SourceLocation>,
+    code: DiagnosticCode,
+    message: String,
+    location: Option<SourceLocation>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "snake_case", tag = "kind")]
+impl AnalysisDiagnostic {
+    pub fn new(code: DiagnosticCode, message: String, location: Option<SourceLocation>) -> Self {
+        Self {
+            code,
+            message,
+            location,
+        }
+    }
+
+    pub fn code(&self) -> &DiagnosticCode {
+        &self.code
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+
+    pub fn location(&self) -> Option<&SourceLocation> {
+        self.location.as_ref()
+    }
+
+    pub(crate) fn set_location(&mut self, location: Option<SourceLocation>) {
+        self.location = location;
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case", tag = "kind"))]
 pub enum Diagnostic {
     Parse {
         path: ProjectRelativePath,
@@ -212,11 +357,11 @@ impl Diagnostic {
                 Some(path),
                 diagnostic.range.as_ref(),
             ),
-            Self::Project(diagnostic) => (
-                diagnostic.code.as_str(),
-                &diagnostic.message,
-                diagnostic.location.as_ref().map(|loc| &loc.path),
-                diagnostic.location.as_ref().map(|loc| &loc.range),
+            Self::Project(d) => (
+                d.code.as_str(),
+                &d.message,
+                d.location.as_ref().map(|l| &l.path),
+                d.location.as_ref().map(|l| &l.range),
             ),
         }
     }
@@ -250,60 +395,214 @@ impl Diagnostic {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct AnalysisReport {
-    pub schema_version: u32,
-    pub tool_version: String,
-    pub files: Vec<FileReport>,
-    pub diagnostics: Vec<Diagnostic>,
-    pub operations: AnalysisOperationCounts,
-    pub completion: ReportCompletion,
+    schema_version: u32,
+    tool_version: String,
+    files: Vec<FileReport>,
+    diagnostics: Vec<Diagnostic>,
+    operations: AnalysisOperationCounts,
+    completion: ReportCompletion,
+}
+
+impl AnalysisReport {
+    pub fn new(
+        schema_version: u32,
+        tool_version: String,
+        files: Vec<FileReport>,
+        diagnostics: Vec<Diagnostic>,
+        operations: AnalysisOperationCounts,
+        completion: ReportCompletion,
+    ) -> Self {
+        Self {
+            schema_version,
+            tool_version,
+            files,
+            diagnostics,
+            operations,
+            completion,
+        }
+    }
+
+    pub fn schema_version(&self) -> u32 {
+        self.schema_version
+    }
+
+    pub fn tool_version(&self) -> &str {
+        &self.tool_version
+    }
+
+    pub fn files(&self) -> &[FileReport] {
+        &self.files
+    }
+
+    pub fn diagnostics(&self) -> &[Diagnostic] {
+        &self.diagnostics
+    }
+
+    pub fn operations(&self) -> AnalysisOperationCounts {
+        self.operations
+    }
+
+    pub fn completion(&self) -> ReportCompletion {
+        self.completion
+    }
+
+    pub fn into_parts(
+        self,
+    ) -> (
+        u32,
+        String,
+        Vec<FileReport>,
+        Vec<Diagnostic>,
+        AnalysisOperationCounts,
+        ReportCompletion,
+    ) {
+        (
+            self.schema_version,
+            self.tool_version,
+            self.files,
+            self.diagnostics,
+            self.operations,
+            self.completion,
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct AnalysisReportSummary {
-    pub files: usize,
-    pub findings: usize,
-    pub parse_diagnostics: usize,
-    pub file_diagnostics: usize,
-    pub report_diagnostics: usize,
+    files: usize,
+    findings: usize,
+    parse_diagnostics: usize,
+    file_diagnostics: usize,
+    report_diagnostics: usize,
+}
+
+impl AnalysisReportSummary {
+    pub fn files(&self) -> usize {
+        self.files
+    }
+
+    pub fn findings(&self) -> usize {
+        self.findings
+    }
+
+    pub fn parse_diagnostics(&self) -> usize {
+        self.parse_diagnostics
+    }
+
+    pub fn file_diagnostics(&self) -> usize {
+        self.file_diagnostics
+    }
+
+    pub fn report_diagnostics(&self) -> usize {
+        self.report_diagnostics
+    }
 }
 
 impl AnalysisReport {
     pub fn summary(&self) -> AnalysisReportSummary {
         AnalysisReportSummary {
             files: self.files.len(),
-            findings: self.files.iter().map(|file| file.findings.len()).sum(),
+            findings: self.files.iter().map(|f| f.findings.len()).sum(),
             parse_diagnostics: self
                 .files
                 .iter()
-                .flat_map(|file| file.diagnostics.iter())
-                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Parse { .. }))
+                .flat_map(|f| f.diagnostics.iter())
+                .filter(|d| matches!(d, Diagnostic::Parse { .. }))
                 .count(),
             file_diagnostics: self
                 .files
                 .iter()
-                .flat_map(|file| file.diagnostics.iter())
-                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
+                .flat_map(|f| f.diagnostics.iter())
+                .filter(|d| matches!(d, Diagnostic::Project(_)))
                 .count(),
             report_diagnostics: self
                 .diagnostics
                 .iter()
-                .filter(|diagnostic| matches!(diagnostic, Diagnostic::Project(_)))
+                .filter(|d| matches!(d, Diagnostic::Project(_)))
                 .count(),
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct AnalysisOperationCounts {
-    pub files: usize,
-    pub requests: usize,
-    pub edges: usize,
-    pub exports: usize,
-    pub scc_rounds: usize,
-    pub effect_projections: usize,
-    pub evidence: usize,
+    files: usize,
+    requests: usize,
+    edges: usize,
+    exports: usize,
+    scc_rounds: usize,
+    effect_projections: usize,
+    evidence: usize,
+}
+
+impl AnalysisOperationCounts {
+    pub fn new(
+        files: usize,
+        requests: usize,
+        edges: usize,
+        exports: usize,
+        scc_rounds: usize,
+        effect_projections: usize,
+        evidence: usize,
+    ) -> Self {
+        Self {
+            files,
+            requests,
+            edges,
+            exports,
+            scc_rounds,
+            effect_projections,
+            evidence,
+        }
+    }
+
+    pub fn files(&self) -> usize {
+        self.files
+    }
+
+    pub fn requests(&self) -> usize {
+        self.requests
+    }
+
+    pub fn edges(&self) -> usize {
+        self.edges
+    }
+
+    pub fn exports(&self) -> usize {
+        self.exports
+    }
+
+    pub fn scc_rounds(&self) -> usize {
+        self.scc_rounds
+    }
+
+    pub fn effect_projections(&self) -> usize {
+        self.effect_projections
+    }
+
+    pub fn evidence(&self) -> usize {
+        self.evidence
+    }
+
+    pub(crate) fn set_effect_projections(&mut self, value: usize) {
+        self.effect_projections = value;
+    }
+
+    pub fn into_parts(self) -> (usize, usize, usize, usize, usize, usize, usize) {
+        (
+            self.files,
+            self.requests,
+            self.edges,
+            self.exports,
+            self.scc_rounds,
+            self.effect_projections,
+            self.evidence,
+        )
+    }
 }
 
 impl std::ops::AddAssign for AnalysisOperationCounts {
@@ -323,7 +622,6 @@ impl std::ops::AddAssign for AnalysisOperationCounts {
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn diagnostic_kind_table_contains_only_canonical_codes() {
         let kinds = [
@@ -344,7 +642,6 @@ mod tests {
             DiagnosticKind::UnsupportedCommonjsExports,
             DiagnosticKind::UnsupportedProjectTarget,
         ];
-
         for kind in kinds {
             let owned: DiagnosticCode = kind.into();
             assert_eq!(DiagnosticCode::try_from(kind.as_str()), Ok(owned));

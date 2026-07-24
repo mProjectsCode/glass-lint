@@ -1,6 +1,6 @@
 //! CodeMirror extension module rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects static ESM imports and unshadowed CommonJS loads of the exact
 /// CodeMirror packages used by the provider. The finding is attached to the
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("codemirror.extension")
         .description("Uses CodeMirror extension primitives")
-        .category("codemirror")
+        .category(Category::new("codemirror").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(

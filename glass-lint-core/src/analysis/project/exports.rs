@@ -11,99 +11,13 @@ use crate::{
     analysis::{
         BTreeSet, ExportResolution, LinkedModuleTarget, ModuleId, ProjectSemanticModel,
         QualifiedRequestId, module,
-        module::{DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
+        module::{DEFAULT_EXPORT, ModuleRequestRole},
         project::model::MAX_EXPORT_DEPTH,
-        syntax::SymbolCallProvenance,
     },
     project::is_internal_module_request as is_internal_request,
 };
 
 impl ProjectSemanticModel {
-    /// Resolve one local export into external, qualified, or conservative
-    /// unknown identity without merging the exporting module's local scope.
-    pub(in crate::analysis) fn resolve_export(
-        &self,
-        module: ModuleId,
-        export_name: &SmolStr,
-        export: &module::ModuleExport,
-    ) -> ExportResolution {
-        match export {
-            module::ModuleExport::Local { name } => {
-                let Some(project_module) = self.modules.get(&module) else {
-                    return ExportResolution::Unknown;
-                };
-                if !project_module.local().interface().is_local(name)
-                    && project_module.local().export_origin(name).is_none()
-                {
-                    return ExportResolution::Unknown;
-                }
-                match project_module.local().export_origin(name) {
-                    Some(SymbolCallProvenance::ModuleExport {
-                        module: authored_module,
-                        export: authored_export,
-                    }) => self.resolve_imported_identity(module, authored_module, authored_export),
-                    Some(SymbolCallProvenance::Global { name }) => {
-                        ExportResolution::Global { name: name.clone() }
-                    }
-                    Some(SymbolCallProvenance::Local | SymbolCallProvenance::Unknown(_)) | None => {
-                        project_module
-                            .local()
-                            .interface()
-                            .static_string(name)
-                            .map_or_else(
-                                || ExportResolution::Qualified {
-                                    module,
-                                    export: name.to_smolstr(),
-                                },
-                                |value| ExportResolution::StaticString {
-                                    value: value.clone(),
-                                },
-                            )
-                    }
-                }
-            }
-            module::ModuleExport::Value => {
-                self.static_export_string(module, export_name).map_or_else(
-                    || ExportResolution::Qualified {
-                        module,
-                        export: export_name.to_smolstr(),
-                    },
-                    |value| ExportResolution::StaticString { value },
-                )
-            }
-            module::ModuleExport::Unknown => ExportResolution::Unknown,
-            module::ModuleExport::ReExport { request, imported } => {
-                self.resolve_request_export(module, *request, imported)
-            }
-            module::ModuleExport::Namespace { request } => {
-                let Some(request) = self
-                    .modules
-                    .get(&module)
-                    .and_then(|m| m.local().interface().request(*request))
-                else {
-                    return ExportResolution::Unknown;
-                };
-                let Some(key) = self.request_id(module, request) else {
-                    return ExportResolution::Unknown;
-                };
-                match self.resolutions.get(&key) {
-                    Some(LinkedModuleTarget::Internal { id, .. }) => ExportResolution::Qualified {
-                        module: *id,
-                        export: NAMESPACE_EXPORT.into(),
-                    },
-                    Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                        module: package.to_smolstr(),
-                        export: NAMESPACE_EXPORT.into(),
-                    },
-                    Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                        module: name.to_smolstr(),
-                        export: NAMESPACE_EXPORT.into(),
-                    },
-                    _ => ExportResolution::Unknown,
-                }
-            }
-        }
-    }
 
     /// Resolve an authored module/export pair across all matching requests.
     /// Conflicting request answers are rejected as ambiguous.
@@ -120,32 +34,22 @@ impl ProjectSemanticModel {
         else {
             return ExportResolution::Unknown;
         };
-        let requests = interface
-            .request_ids_for_specifier(authored_module)
-            .filter_map(|request| interface.request(request))
-            .filter(|request| {
-                matches!(
-                    request.role(),
-                    ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
-                )
-            })
-            .collect::<Vec<_>>();
-        if requests.is_empty() {
-            // A bare package with no resolver answer is intentionally opaque
-            // external provenance. This preserves isolated-file behavior.
-            return ExportResolution::External {
-                module: authored_module.clone(),
-                export: authored_export.clone(),
-            };
-        }
-
         // The semantic provenance format predates qualified request spans and
         // keys imports by authored module/export. If a virtual caller supplies
         // conflicting answers for repeated requests with the same specifier,
         // preserve precision by treating the identity as ambiguous instead of
         // selecting the first source-order request.
         let mut resolved = None;
-        for request in requests {
+        for request_id in interface.request_ids_for_specifier(authored_module) {
+            let Some(request) = interface.request(request_id) else {
+                continue;
+            };
+            if !matches!(
+                request.role(),
+                ModuleRequestRole::Import { .. } | ModuleRequestRole::Require
+            ) {
+                continue;
+            }
             let Some(key) = self.request_id(importer, request) else {
                 return ExportResolution::Unknown;
             };
@@ -180,7 +84,12 @@ impl ProjectSemanticModel {
                 resolved = Some(candidate);
             }
         }
-        resolved.unwrap_or(ExportResolution::Unknown)
+        // No matching requests: bare package with no resolver answer is
+        // intentionally opaque external provenance.
+        resolved.unwrap_or_else(|| ExportResolution::External {
+            module: authored_module.clone(),
+            export: authored_export.clone(),
+        })
     }
 
     /// Return the stable internal identity for one local request.
@@ -205,13 +114,20 @@ impl ProjectSemanticModel {
     ) -> Option<ExportResolution> {
         let visit_key = (module, name.clone());
 
+        // Export table is the authoritative source. Check it first so that
+        // cache entries never go stale during cycle fixed-point resolution.
+        if let Some(resolved) = self.exports.resolve(module, name) {
+            return Some(resolved.clone());
+        }
+
+        // Memoization cache avoids redundant star-export walks for repeated
+        // lookups that were not in the export table at resolution time.
+        if let Some(cached) = self.lookup_cache.borrow().get(module, name) {
+            return cached.clone();
+        }
+
         if visiting.len() >= MAX_EXPORT_DEPTH || !visiting.insert(visit_key.clone()) {
             return None;
-        }
-        if let Some(resolved) = self.exports.resolve(module, name) {
-            let resolved = resolved.clone();
-            visiting.remove(&visit_key);
-            return Some(resolved);
         }
         // ECMAScript `export *` intentionally does not forward `default`.
         if name == DEFAULT_EXPORT {
@@ -238,13 +154,18 @@ impl ProjectSemanticModel {
                 Some(LinkedModuleTarget::Internal { id, .. }) => {
                     self.lookup_export(*id, name, visiting)
                 }
-                Some(
-                    LinkedModuleTarget::External { package }
-                    | LinkedModuleTarget::Builtin { name: package },
-                ) => Some(ExportResolution::External {
-                    module: package.to_smolstr(),
-                    export: name.clone(),
-                }),
+                Some(LinkedModuleTarget::External { package }) => {
+                    Some(ExportResolution::External {
+                        module: package.to_smolstr(),
+                        export: name.clone(),
+                    })
+                }
+                Some(LinkedModuleTarget::Builtin { name: builtin }) => {
+                    Some(ExportResolution::External {
+                        module: builtin.to_smolstr(),
+                        export: name.clone(),
+                    })
+                }
                 _ => None,
             };
             match candidate_export {
@@ -260,39 +181,21 @@ impl ProjectSemanticModel {
             }
         }
         visiting.remove(&visit_key);
-        if saw_unknown { None } else { candidate }
+
+        // Re-check export table: the star-export walk may have triggered
+        // resolution via fixed-point iteration during linking.
+        if let Some(resolved) = self.exports.resolve(module, name) {
+            return Some(resolved.clone());
+        }
+
+        let result = if saw_unknown { None } else { candidate };
+
+        // Populate cache so subsequent lookups for the same key are O(1).
+        self.lookup_cache
+            .borrow_mut()
+            .insert(module, name.clone(), result.clone());
+
+        result
     }
 
-    /// Resolve a named re-export through its authored request.
-    fn resolve_request_export(
-        &self,
-        module: ModuleId,
-        request_index: module::ModuleRequestId,
-        imported: &SmolStr,
-    ) -> ExportResolution {
-        let Some(request) = self
-            .modules
-            .get(&module)
-            .and_then(|m| m.local().interface().request(request_index))
-        else {
-            return ExportResolution::Unknown;
-        };
-        let Some(key) = self.request_id(module, request) else {
-            return ExportResolution::Unknown;
-        };
-        match self.resolutions.get(&key) {
-            Some(LinkedModuleTarget::Internal { id, .. }) => self
-                .lookup_export(*id, imported, &mut std::collections::BTreeSet::new())
-                .unwrap_or(ExportResolution::Unknown),
-            Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                module: package.to_smolstr(),
-                export: imported.to_smolstr(),
-            },
-            Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                module: name.to_smolstr(),
-                export: imported.to_smolstr(),
-            },
-            _ => ExportResolution::Unknown,
-        }
-    }
 }

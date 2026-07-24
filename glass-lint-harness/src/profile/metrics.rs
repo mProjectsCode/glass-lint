@@ -15,9 +15,9 @@ pub(super) fn accumulate_report(
     evidence_digests: &mut Vec<String>,
 ) {
     *findings += report
-        .files
+        .files()
         .iter()
-        .map(|file| file.findings.len())
+        .map(|file| file.findings().len())
         .sum::<usize>();
     *diagnostics += all_diagnostic_count(report);
     *operation_counts += report_operation_counts(report);
@@ -25,20 +25,20 @@ pub(super) fn accumulate_report(
 }
 
 pub(super) fn all_diagnostic_count(report: &AnalysisReport) -> usize {
-    report.diagnostics.len()
+    report.diagnostics().len()
         + report
-            .files
+            .files()
             .iter()
-            .map(|file| file.diagnostics.len())
+            .map(|file| file.diagnostics().len())
             .sum::<usize>()
 }
 
 pub(super) fn report_operation_counts(report: &AnalysisReport) -> ProfileOperationCounts {
-    report.operations
+    report.operations()
 }
 
 pub(super) fn evidence_order_digest(report: &AnalysisReport) -> String {
-    let encoded = serde_json::to_vec(&report.files).expect("report DTOs serialize");
+    let encoded = serde_json::to_vec(report.files()).expect("report DTOs serialize");
     format!("{:?}", Sha256::digest(encoded))
 }
 

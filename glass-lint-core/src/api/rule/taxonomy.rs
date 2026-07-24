@@ -1,14 +1,23 @@
 //! Validated rule taxonomy and report severity types.
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 /// Provider-defined hierarchical category name.
 pub struct Category(String);
 
 impl Category {
-    /// Trim and store a candidate category name.
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into().trim().to_string())
+    /// Trim, validate, and store a candidate category name.
+    pub fn new(value: impl Into<String>) -> Result<Self, crate::api::rule::RuleBuildError> {
+        let trimmed = value.into().trim().to_string();
+        let category = Self(trimmed);
+        if category.is_valid() {
+            Ok(category)
+        } else {
+            Err(crate::api::rule::RuleBuildError::InvalidCategory(
+                category.0,
+            ))
+        }
     }
 
     #[must_use]
@@ -36,20 +45,11 @@ impl Category {
     }
 }
 
-impl From<&str> for Category {
-    fn from(value: &str) -> Self {
-        Self::new(value)
-    }
-}
 
-impl From<String> for Category {
-    fn from(value: String) -> Self {
-        Self::new(value)
-    }
-}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "snake_case"))]
 /// Confidence assigned to the semantic evidence.
 pub enum Confidence {
     /// Strongly proven identity/flow.

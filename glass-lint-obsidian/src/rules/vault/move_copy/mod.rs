@@ -1,6 +1,6 @@
 //! Obsidian vault move/copy rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted vault `rename` and `copy` calls plus
 /// `app.fileManager.renameFile`. Rooted provenance follows `this.app`, direct
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("vault.move-copy")
         .description("Moves or copies vault files")
-        .category("vault")
+        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

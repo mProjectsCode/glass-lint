@@ -25,8 +25,8 @@ fn assert_count(source: &str, rule: Rule, expected: usize) {
         .unwrap()
         .lint_snippet(source, "scope-precision.js")
         .unwrap();
-    assert!(!report.files[0].has_parse_diagnostics(), "{source}");
-    assert_eq!(report.files[0].findings.len(), expected, "{source}");
+    assert!(!report.files()[0].has_parse_diagnostics(), "{source}");
+    assert_eq!(report.files()[0].findings().len(), expected, "{source}");
 }
 
 /// Create the rooted alias rule shared by lexical-scope cases.

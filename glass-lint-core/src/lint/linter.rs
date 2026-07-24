@@ -191,7 +191,7 @@ impl Linter {
     /// ))
     /// .unwrap();
     /// let report = linter.lint_snippet("", "snippet.js").unwrap();
-    /// assert_eq!(report.files[0].path.as_str(), "snippet.js");
+    /// assert_eq!(report.files()[0].path().as_str(), "snippet.js");
     /// ```
     pub fn lint_snippet(
         &self,
@@ -214,7 +214,7 @@ mod tests {
         Environment, LintConfigError, Linter, LinterConfig, Position, RuleBaseline, RuleCatalog,
         RuleOverride, RuleSelection, RuleState, SourceRange,
         lint::ranges::remove_contained_ranges,
-        rules::{Confidence, MatcherDecl, Rule, Severity},
+        rules::{Category, Confidence, MatcherDecl, Rule, Severity},
     };
 
     #[test]
@@ -240,7 +240,7 @@ mod tests {
     fn findings_are_sorted_without_cloning_rule_ids() {
         let rule = Rule::builder("network.request")
             .description("Uses fetch")
-            .category("network")
+            .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
             .declaration(
@@ -263,14 +263,29 @@ mod tests {
             .lint_snippet("fetch('/b'); fetch('/a');", "sort.js")
             .unwrap();
         // Findings should be sorted by line, then column, then rule ID.
-        assert_eq!(report.files[0].findings.len(), 2);
-        assert_eq!(report.files[0].findings[0].location.range.start().line(), 1);
+        assert_eq!(report.files()[0].findings().len(), 2);
         assert_eq!(
-            report.files[0].findings[0].location.range.start().column(),
+            report.files()[0].findings()[0]
+                .location()
+                .range()
+                .start()
+                .line(),
             1
         );
         assert_eq!(
-            report.files[0].findings[1].location.range.start().column(),
+            report.files()[0].findings()[0]
+                .location()
+                .range()
+                .start()
+                .column(),
+            1
+        );
+        assert_eq!(
+            report.files()[0].findings()[1]
+                .location()
+                .range()
+                .start()
+                .column(),
             14
         );
     }
@@ -279,7 +294,7 @@ mod tests {
     fn classify_with_evidence_limit_binds_record_once() {
         let rule = Rule::builder("network.request")
             .description("Uses fetch")
-            .category("network")
+            .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
             .declaration(
@@ -301,9 +316,9 @@ mod tests {
         let report = linter
             .lint_snippet("fetch('/a'); fetch('/b');", "classify.js")
             .unwrap();
-        assert_eq!(report.files[0].findings.len(), 2);
+        assert_eq!(report.files()[0].findings().len(), 2);
         assert_eq!(
-            report.files[0].findings[0].rule_id.as_str(),
+            report.files()[0].findings()[0].rule_id().as_str(),
             "test:network.request"
         );
     }

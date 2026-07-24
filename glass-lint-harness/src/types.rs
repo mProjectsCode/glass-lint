@@ -4,7 +4,10 @@ use std::collections::BTreeMap;
 
 use glass_lint_core::{
     RuleId, Severity,
-    project::{Finding, ProjectRelativePath, ResolutionRequestKind, ResolverOutcome},
+    project::{
+        BuiltinModuleName, Finding, NormalizedOutsidePath, PackageSpecifier, ProjectRelativePath,
+        ResolutionRequestKind, ResolverOutcome,
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -418,15 +421,17 @@ impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolverOutcome) {
                 path: ProjectRelativePath::new(path).map_err(|error| error.to_string())?,
             },
             AdapterResolutionResult::External { package } => ResolverOutcome::External {
-                package: package.clone(),
+                package: PackageSpecifier::new(package.clone())
+                    .map_err(|e| e.to_string())?,
             },
-            AdapterResolutionResult::Builtin { name } => {
-                ResolverOutcome::Builtin { name: name.clone() }
-            }
+            AdapterResolutionResult::Builtin { name } => ResolverOutcome::Builtin {
+                name: BuiltinModuleName::new(name.clone()).map_err(|e| e.to_string())?,
+            },
             AdapterResolutionResult::Missing => ResolverOutcome::Missing,
-            AdapterResolutionResult::OutsideProject { path } => {
-                ResolverOutcome::OutsideProject { path: path.clone() }
-            }
+            AdapterResolutionResult::OutsideProject { path } => ResolverOutcome::OutsideProject {
+                path: NormalizedOutsidePath::new(path.clone())
+                    .map_err(|e| e.to_string())?,
+            },
             AdapterResolutionResult::Unsupported { reason } => ResolverOutcome::Unsupported {
                 reason: reason.clone(),
             },
@@ -435,7 +440,7 @@ impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolverOutcome) {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct AdapterResponse {
     /// Protocol version echoed by the adapter.
     pub protocol_version: u32,
@@ -445,6 +450,57 @@ pub struct AdapterResponse {
     pub tool_version: String,
     /// Normalized findings.
     pub findings: Vec<Finding>,
+}
+
+/// Manual deserialize for adapter responses. Uses `AnalysisReport::files`
+/// entries as the finding schema so adapters produce findings in the same
+/// shape.
+impl<'de> serde::Deserialize<'de> for AdapterResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct FindingProxy {
+            rule_id: String,
+            message: String,
+            severity: Severity,
+            location: AdapterSourceLocation,
+        }
+        #[derive(Deserialize)]
+        struct AdapterSourceLocation {
+            path: String,
+            range: glass_lint_core::SourceRange,
+        }
+        #[derive(Deserialize)]
+        struct Outer {
+            protocol_version: u32,
+            tool: String,
+            tool_version: String,
+            findings: Vec<FindingProxy>,
+        }
+        let outer = Outer::deserialize(deserializer)?;
+        let mut findings = Vec::with_capacity(outer.findings.len());
+        for fp in outer.findings {
+            let path = glass_lint_core::project::ProjectRelativePath::new(fp.location.path)
+                .map_err(serde::de::Error::custom)?;
+            let rule_id =
+                glass_lint_core::RuleId::parse(&fp.rule_id).map_err(serde::de::Error::custom)?;
+            findings.push(Finding::new(
+                rule_id,
+                fp.message,
+                fp.severity,
+                glass_lint_core::project::SourceLocation::new(path, fp.location.range),
+                std::iter::empty().collect(),
+            ));
+        }
+        Ok(Self {
+            protocol_version: outer.protocol_version,
+            tool: outer.tool,
+            tool_version: outer.tool_version,
+            findings,
+        })
+    }
 }
 
 #[derive(Clone, Debug)]

@@ -9,7 +9,7 @@
 //! one module into another.
 
 // Re-exports for child modules that access these via `crate::analysis::*`.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::project::{LinkedModuleTarget, ModuleId};
 

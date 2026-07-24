@@ -129,13 +129,13 @@ fn print_aggregate_summary(report: &ProfileSummary) {
             repetition.completion,
             repetition.run_completions,
             repetition.evidence_order_digest,
-            repetition.operation_counts.files,
-            repetition.operation_counts.requests,
-            repetition.operation_counts.edges,
-            repetition.operation_counts.exports,
-            repetition.operation_counts.scc_rounds,
-            repetition.operation_counts.effect_projections,
-            repetition.operation_counts.evidence,
+            repetition.operation_counts.files(),
+            repetition.operation_counts.requests(),
+            repetition.operation_counts.edges(),
+            repetition.operation_counts.exports(),
+            repetition.operation_counts.scc_rounds(),
+            repetition.operation_counts.effect_projections(),
+            repetition.operation_counts.evidence(),
         );
     }
 }
@@ -151,13 +151,13 @@ fn print_phase_timings(report: &ProfileSummary) {
     );
     println!(
         "Operations: {} file(s), {} request(s), {} edge(s), {} export(s), {} SCC round(s), {} effect projection(s), {} evidence item(s)",
-        report.operation_counts.files,
-        report.operation_counts.requests,
-        report.operation_counts.edges,
-        report.operation_counts.exports,
-        report.operation_counts.scc_rounds,
-        report.operation_counts.effect_projections,
-        report.operation_counts.evidence,
+        report.operation_counts.files(),
+        report.operation_counts.requests(),
+        report.operation_counts.edges(),
+        report.operation_counts.exports(),
+        report.operation_counts.scc_rounds(),
+        report.operation_counts.effect_projections(),
+        report.operation_counts.evidence(),
     );
 }
 

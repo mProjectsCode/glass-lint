@@ -62,12 +62,12 @@ pub fn obsidian_config() -> LinterConfig {
 /// Collect disclosure categories for findings in the `obsidian:` namespace.
 pub fn disclosures_for_report(report: &AnalysisReport) -> BTreeSet<&'static str> {
     report
-        .files
+        .files()
         .iter()
-        .flat_map(|file| file.findings.iter())
+        .flat_map(|file| file.findings().iter())
         .flat_map(|finding| {
             finding
-                .rule_id
+                .rule_id()
                 .as_str()
                 .strip_prefix("obsidian:")
                 .into_iter()
@@ -111,11 +111,11 @@ mod tests {
 
     #[test]
     fn active_window_is_a_configured_global_object() {
-        use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+        use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
         let rule = Rule::builder("test.eval")
             .description("eval")
-            .category("test")
+            .category(Category::new("test").unwrap())
             .severity(Severity::Info)
             .confidence(Confidence::High)
             .declaration(
@@ -133,16 +133,16 @@ mod tests {
         .unwrap()
         .lint_snippet("activeWindow.eval('x')", "main.js")
         .unwrap();
-        assert_eq!(report.files[0].findings.len(), 1);
+        assert_eq!(report.files()[0].findings().len(), 1);
     }
 
     #[test]
     fn active_window_shares_the_configured_environment() {
-        use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+        use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
         let rule = Rule::builder("test.request")
             .description("request")
-            .category("test")
+            .category(Category::new("test").unwrap())
             .severity(Severity::Info)
             .confidence(Confidence::High)
             .declaration(
@@ -163,7 +163,7 @@ mod tests {
             "main.js",
         )
         .unwrap();
-        assert_eq!(report.files[0].findings.len(), 3);
+        assert_eq!(report.files()[0].findings().len(), 3);
     }
 
     #[test]
@@ -184,14 +184,14 @@ mod tests {
             "main.js",
         )
         .unwrap();
-        let findings: Vec<_> = report.files[0]
-            .findings
+        let findings: Vec<_> = report.files()[0]
+            .findings()
             .iter()
-            .filter(|finding| finding.rule_id.as_str() == "obsidian:network.request")
+            .filter(|finding| finding.rule_id().as_str() == "obsidian:network.request")
             .collect();
         assert_eq!(findings.len(), 2);
-        assert_eq!(findings[0].location.range.start().line(), 2);
-        assert_eq!(findings[1].location.range.start().line(), 3);
+        assert_eq!(findings[0].location().range().start().line(), 2);
+        assert_eq!(findings[1].location().range().start().line(), 3);
     }
 
     #[test]

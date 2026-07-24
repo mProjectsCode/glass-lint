@@ -1,6 +1,6 @@
 //! Obsidian vault read rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to vault `read`, `cachedRead`, and `readBinary`.
 /// Provenance follows `this.app`, direct receiver aliases, static computed
@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("vault.read")
         .description("Reads vault files")
-        .category("vault")
+        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

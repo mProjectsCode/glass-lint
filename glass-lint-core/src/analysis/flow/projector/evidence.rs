@@ -246,7 +246,7 @@ fn emit_state(
                 kind: MatchKind::CallArgument,
                 symbol: flow.evidence_symbol(),
                 count: 1,
-                evidence_truncated: false,
+                truncated: false,
                 occurrences: vec![
                     crate::api::classification::ClassificationEvidenceOccurrence {
                         span: stream

@@ -1,6 +1,6 @@
 //! Node subprocess-module rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects static ESM or unshadowed CommonJS loads of Node's exact
 /// `child_process` module names and configured subprocess packages. It reports
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("node.subprocess")
         .description("Starts Node subprocesses")
-        .category("node/process")
+        .category(Category::new("node/process").unwrap())
         .confidence(Confidence::High)
         .severity(Severity::Warning)
         .declaration(

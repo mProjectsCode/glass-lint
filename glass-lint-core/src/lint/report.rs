@@ -12,15 +12,12 @@ use crate::{
     },
 };
 
-/// Outcome of linking and matching a resolved project, with phase timings.
 pub struct ProjectAnalysis {
     pub report: AnalysisReport,
     pub linking: std::time::Duration,
     pub matching: std::time::Duration,
 }
 
-/// Report construction stage. Converts a linked and classified project into
-/// an `AnalysisReport` with findings, evidence, and diagnostics.
 pub struct ReportAssembly<'a> {
     catalog: &'a RuleCatalog,
     enabled: &'a [RuleIndex],
@@ -36,7 +33,6 @@ impl<'a> ReportAssembly<'a> {
         }
     }
 
-    /// Link, classify, and assemble the report.
     #[allow(clippy::unnecessary_wraps)]
     pub fn finish(
         &self,
@@ -48,30 +44,19 @@ impl<'a> ReportAssembly<'a> {
         let (mut files, parse_failure_codes) =
             Self::initialize_project_files(source_map, parse_diagnostics);
 
-        tracing::debug!(
-            target: "glass_lint::project::link",
-            modules = link_input.modules.len(),
-            resolutions = link_input.resolutions.len(),
-            "stage started"
-        );
         let linking_start = std::time::Instant::now();
         let mut project = ProjectSemanticModel::link_with_limits(link_input, limits);
         for (path, code) in parse_failure_codes {
             project.record_parse_failure(path, &code);
         }
-
         let linking = linking_start.elapsed();
         let link_counts = project.operation_counts(0);
         tracing::info!(
             target: "glass_lint::project::link",
-            files = link_counts.files,
-            requests = link_counts.requests,
-            edges = link_counts.edges,
-            elapsed = ?linking,
-            "stage finished"
+            files = link_counts.files(), requests = link_counts.requests(),
+            edges = link_counts.edges(), elapsed = ?linking, "stage finished"
         );
         let matching_start = std::time::Instant::now();
-        tracing::debug!(target: "glass_lint::project::matching", rules = self.enabled.len(), "stage started");
         let (classifications, projection_outcome) = project.classify_with_evidence_limit(
             self.catalog.compiled(),
             self.enabled,
@@ -80,22 +65,17 @@ impl<'a> ReportAssembly<'a> {
         project.record_flow_exhaustion(&projection_outcome);
         let matching = matching_start.elapsed();
         self.populate_project_files(&project, &classifications, &mut files);
-
         let diagnostics = Self::attach_project_diagnostics(&project, &mut files);
         let report =
             Self::assemble_project_report(&project, files, diagnostics, &projection_outcome);
-
         let summary = report.summary();
         tracing::info!(
             target: "glass_lint::project::matching",
-            files = report.operations.files,
-            findings = summary.findings,
-            evidence = report.operations.evidence,
-            diagnostics = report.diagnostics.len() + summary.parse_diagnostics,
-            elapsed = ?matching,
-            "stage finished"
+            files = report.operations().files(), findings = summary.findings(),
+            evidence = report.operations().evidence(),
+            diagnostics = report.diagnostics().len() + summary.parse_diagnostics(),
+            elapsed = ?matching, "stage finished"
         );
-
         Ok(ProjectAnalysis {
             report,
             linking,
@@ -115,28 +95,24 @@ impl<'a> ReportAssembly<'a> {
             };
             let mut findings = self.project_findings_for_module(project, module, classification);
             findings.sort_by(|a, b| {
-                a.location
-                    .range
+                a.location()
+                    .range()
                     .start()
                     .line()
-                    .cmp(&b.location.range.start().line())
+                    .cmp(&b.location().range().start().line())
                     .then_with(|| {
-                        a.location
-                            .range
+                        a.location()
+                            .range()
                             .start()
                             .column()
-                            .cmp(&b.location.range.start().column())
+                            .cmp(&b.location().range().start().column())
                     })
-                    .then_with(|| a.rule_id.as_str().cmp(b.rule_id.as_str()))
+                    .then_with(|| a.rule_id().as_str().cmp(b.rule_id().as_str()))
             });
             findings.dedup();
             files.insert(
                 module.path().clone(),
-                FileReport {
-                    path: module.path().clone(),
-                    findings,
-                    diagnostics: Vec::new(),
-                },
+                FileReport::new(module.path().clone(), findings, Vec::new()),
             );
         }
     }
@@ -149,10 +125,8 @@ impl<'a> ReportAssembly<'a> {
     ) -> Vec<Finding> {
         let lines = &module.source_context().lines;
         let path = module.path();
-
         let mut by_rule: BTreeMap<RuleIndex, (Vec<Finding>, Vec<crate::project::Evidence>)> =
             BTreeMap::new();
-
         for capability in classification.capabilities() {
             let related: Vec<_> = capability
                 .evidence()
@@ -161,18 +135,16 @@ impl<'a> ReportAssembly<'a> {
                 .filter_map(|related| {
                     let mut evidence =
                         project.fact_location(ModuleId::new(related.module), related.event)?;
-                    evidence.message.clone_from(&related.symbol);
+                    evidence.set_message(related.symbol.clone());
                     Some(evidence)
                 })
                 .collect();
             let cap_findings = self.findings_for_capability(capability, lines, path);
-
             let (rule_findings, rule_related) = by_rule.entry(capability.rule_index).or_default();
             rule_findings.extend(cap_findings);
             rule_related.extend(related);
         }
-
-        let mut result: Vec<Finding> = Vec::new();
+        let mut result = Vec::new();
         for (_, (mut rule_findings, related)) in by_rule {
             if !related.is_empty() {
                 let shared: Arc<[crate::project::Evidence]> = related.into();
@@ -194,12 +166,10 @@ impl<'a> ReportAssembly<'a> {
         let Some(rule_id) = self.catalog.rule_id(capability.rule_index).cloned() else {
             return Vec::new();
         };
-
         let evidence_items = capability.evidence();
         if evidence_items.is_empty() {
             return Vec::new();
         }
-
         let mut by_range: BTreeMap<SourceRange, usize> = BTreeMap::new();
         for (ev_idx, evidence) in evidence_items.iter().enumerate() {
             for occurrence in &evidence.occurrences {
@@ -213,23 +183,17 @@ impl<'a> ReportAssembly<'a> {
                 by_range.entry(range).or_insert(ev_idx);
             }
         }
-
         let entries: Vec<(SourceRange, usize)> = by_range.into_iter().collect();
-
         let mut ranges: Vec<SourceRange> = entries.iter().map(|(r, _)| r.clone()).collect();
         crate::lint::ranges::remove_contained_ranges(&mut ranges);
-
         let label: Arc<str> = Arc::from(capability.label());
         let severity = capability.severity();
-
         let mut groups: Vec<Vec<(usize, &SourceRange)>> = vec![Vec::new(); ranges.len()];
         let mut entry_cursor = 0usize;
-
         for (retained_idx, retained) in ranges.iter().enumerate() {
             while entry_cursor < entries.len() && entries[entry_cursor].0.end() < retained.start() {
                 entry_cursor += 1;
             }
-
             let mut scan = entry_cursor;
             while scan < entries.len() && entries[scan].0.start() <= retained.end() {
                 if retained.contains(&entries[scan].0) {
@@ -238,7 +202,6 @@ impl<'a> ReportAssembly<'a> {
                 scan += 1;
             }
         }
-
         ranges
             .into_iter()
             .enumerate()
@@ -247,27 +210,21 @@ impl<'a> ReportAssembly<'a> {
                     .iter()
                     .map(|(ev_idx, item_range)| {
                         let ev = &evidence_items[*ev_idx];
-                        crate::project::Evidence {
-                            message: format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
-                            count: ev.count,
-                            evidence_truncated: ev.evidence_truncated,
-                            location: Some(SourceLocation {
-                                path: path.clone(),
-                                range: (*item_range).clone(),
-                            }),
-                        }
+                        crate::project::Evidence::new(
+                            format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
+                            ev.count,
+                            ev.truncated,
+                            Some(SourceLocation::new(path.clone(), (*item_range).clone())),
+                        )
                     })
                     .collect();
-                Finding {
-                    rule_id: rule_id.clone(),
-                    message: label.to_string(),
+                Finding::new(
+                    rule_id.clone(),
+                    label.to_string(),
                     severity,
-                    location: SourceLocation {
-                        path: path.clone(),
-                        range,
-                    },
-                    evidence: local_evidence,
-                }
+                    SourceLocation::new(path.clone(), range),
+                    local_evidence,
+                )
             })
             .collect()
     }
@@ -288,21 +245,17 @@ impl<'a> ReportAssembly<'a> {
                     parse_failure_codes.insert(path.clone(), diagnostic.code.as_str().to_owned());
                     files.insert(
                         path,
-                        FileReport {
-                            path: source.path().clone(),
-                            findings: Vec::new(),
-                            diagnostics: vec![Diagnostic::parse(source.path().clone(), diagnostic)],
-                        },
+                        FileReport::new(
+                            source.path().clone(),
+                            Vec::new(),
+                            vec![Diagnostic::parse(source.path().clone(), diagnostic)],
+                        ),
                     );
                 }
                 None => {
                     files.insert(
                         path,
-                        FileReport {
-                            path: source.path().clone(),
-                            findings: Vec::new(),
-                            diagnostics: Vec::new(),
-                        },
+                        FileReport::new(source.path().clone(), Vec::new(), Vec::new()),
                     );
                 }
             }
@@ -319,28 +272,23 @@ impl<'a> ReportAssembly<'a> {
     ) -> Vec<Diagnostic> {
         let (status_files, status_project) = project.status_diagnostics();
         for (path, mut diagnostic) in status_files {
-            diagnostic.location = Some(SourceLocation {
-                path: path.clone(),
-                range: SourceRange::new(
+            diagnostic.set_location(Some(SourceLocation::new(
+                path.clone(),
+                SourceRange::new(
                     Position::new(1, 1).expect("one-based position"),
                     Position::new(1, 1).expect("one-based position"),
                 )
                 .expect("ordered source range"),
-            });
+            )));
             if let Some(file) = files.get_mut(&path) {
-                file.diagnostics.push(Diagnostic::project(diagnostic));
+                file.diagnostics_mut().push(Diagnostic::project(diagnostic));
             }
         }
-
         let mut diagnostics = Vec::new();
         for diagnostic in project.diagnostics().iter().cloned() {
-            if let Some(path) = diagnostic
-                .location
-                .as_ref()
-                .map(|location| location.path.clone())
-            {
+            if let Some(path) = diagnostic.location().map(|l| l.path().clone()) {
                 if let Some(file) = files.get_mut(&path) {
-                    file.diagnostics.push(Diagnostic::project(diagnostic));
+                    file.diagnostics_mut().push(Diagnostic::project(diagnostic));
                 }
             } else {
                 diagnostics.push(Diagnostic::project(diagnostic));
@@ -359,27 +307,27 @@ impl<'a> ReportAssembly<'a> {
     ) -> AnalysisReport {
         let evidence = files
             .values()
-            .map(|file| {
-                file.findings
+            .map(|f| {
+                f.findings()
                     .iter()
-                    .map(|finding| finding.evidence.len())
+                    .map(|finding| finding.evidence().len())
                     .sum::<usize>()
             })
             .sum();
         let is_partial = !project.is_complete();
         let mut operations = project.operation_counts(evidence);
-        operations.effect_projections = outcome.effect_projections;
-        AnalysisReport {
-            schema_version: REPORT_VERSION,
-            tool_version: env!("CARGO_PKG_VERSION").into(),
-            files: files.into_values().collect(),
+        operations.set_effect_projections(outcome.effect_projections);
+        AnalysisReport::new(
+            REPORT_VERSION,
+            env!("CARGO_PKG_VERSION").into(),
+            files.into_values().collect(),
             diagnostics,
             operations,
-            completion: if is_partial {
+            if is_partial {
                 crate::project::ReportCompletion::Partial
             } else {
                 crate::project::ReportCompletion::Complete
             },
-        }
+        )
     }
 }

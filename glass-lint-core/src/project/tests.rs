@@ -4,7 +4,7 @@
 use crate::{
     Position, SourceRange,
     api::rule::{
-        Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
+        Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
         ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
     },
     project::{
@@ -36,7 +36,7 @@ fn admitted_sources_have_identical_reports_across_worker_counts() {
             .unwrap()
             .finish()
             .unwrap();
-        reports.push(serde_json::to_value(report).unwrap());
+        reports.push(report);
     }
     assert!(reports.windows(2).all(|pair| pair[0] == pair[1]));
 }
@@ -58,7 +58,7 @@ fn consuming_project_phases_validate_requests_at_the_boundary() {
         .resolve([(key, crate::project::ResolverOutcome::Missing)])
         .unwrap();
     let report = resolved.finish().unwrap();
-    assert_eq!(report.files.len(), 1);
+    assert_eq!(report.files().len(), 1);
 }
 
 #[test]
@@ -103,6 +103,7 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
     ));
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn controlled_release_orders_produce_identical_full_report() {
     let limits = crate::AnalysisLimits::default()
@@ -184,6 +185,7 @@ fn active_and_outstanding_use_the_production_bound() {
     );
 }
 
+#[cfg(feature = "serde")]
 #[test]
 fn project_relative_paths_validate_construction_and_deserialization() {
     for invalid in [
@@ -228,22 +230,24 @@ fn session_uses_project_analysis_and_preserves_single_file_findings() {
         .finish()
         .unwrap();
 
-    assert_eq!(project.files.len(), 1);
-    assert_eq!(project.files[0].path, "a.js");
+    assert_eq!(project.files().len(), 1);
+    assert_eq!(project.files()[0].path().as_str(), "a.js");
     assert_eq!(
-        project.files[0].findings.len(),
-        direct.files[0].findings.len()
+        project.files()[0].findings().len(),
+        direct.files()[0].findings().len()
     );
     assert_eq!(
-        project.files[0].findings[0].location.range,
-        direct.files[0].findings[0].location.range
+        project.files()[0].findings()[0].location().range(),
+        direct.files()[0].findings()[0].location().range()
     );
-    assert_eq!(project.files[0].findings[0].location.path, "a.js");
     assert_eq!(
-        project.files[0].findings[0].evidence[0]
-            .location
-            .as_ref()
-            .map(|location| location.path.as_str()),
+        project.files()[0].findings()[0].location().path().as_str(),
+        "a.js"
+    );
+    assert_eq!(
+        project.files()[0].findings()[0].evidence()[0]
+            .location()
+            .map(|location| location.path().as_str()),
         Some("a.js")
     );
 }

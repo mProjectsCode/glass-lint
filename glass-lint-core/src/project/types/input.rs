@@ -1,4 +1,6 @@
-use std::{ops::Deref, sync::Arc};
+use std::{borrow::Borrow, ops::Deref, sync::Arc};
+
+use smol_str::SmolStr;
 
 use crate::{SourceLanguage, project::types::ProjectRelativePath};
 
@@ -6,7 +8,7 @@ use crate::{SourceLanguage, project::types::ProjectRelativePath};
 ///
 /// The public project DTO still serializes as a string, but every internal
 /// consumer clones only this cheap handle instead of copying the source.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct SourceText(Arc<str>);
 
 impl SourceText {
@@ -39,7 +41,173 @@ impl From<&str> for SourceText {
     }
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
+/// A validated package specifier (e.g., "lodash", "@angular/core").
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PackageSpecifier(SmolStr);
+
+impl PackageSpecifier {
+    pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
+        let inner = s.into();
+        if inner.trim().is_empty() {
+            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+        }
+        Ok(Self(inner))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for PackageSpecifier {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl AsRef<str> for PackageSpecifier {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Borrow<str> for PackageSpecifier {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for PackageSpecifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl PartialEq<&str> for PackageSpecifier {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+
+
+/// A validated builtin module name (e.g., "node:fs", "node:path", "node:buffer").
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct BuiltinModuleName(SmolStr);
+
+impl BuiltinModuleName {
+    pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
+        let inner = s.into();
+        if inner.trim().is_empty() {
+            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+        }
+        Ok(Self(inner))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for BuiltinModuleName {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl AsRef<str> for BuiltinModuleName {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Borrow<str> for BuiltinModuleName {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for BuiltinModuleName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl PartialEq<&str> for BuiltinModuleName {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+
+
+/// A normalized outside-project path.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct NormalizedOutsidePath(SmolStr);
+
+impl NormalizedOutsidePath {
+    pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
+        let inner = s.into();
+        if inner.trim().is_empty() {
+            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+        }
+        Ok(Self(inner))
+    }
+
+    pub(crate) fn from_validated(inner: impl Into<SmolStr>) -> Self {
+        Self(inner.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for NormalizedOutsidePath {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+}
+
+impl AsRef<str> for NormalizedOutsidePath {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+impl Borrow<str> for NormalizedOutsidePath {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl PartialEq<&str> for NormalizedOutsidePath {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl std::fmt::Display for NormalizedOutsidePath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl AsRef<std::path::Path> for NormalizedOutsidePath {
+    fn as_ref(&self) -> &std::path::Path {
+        std::path::Path::new(&self.0)
+    }
+}
+
+
+
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct SourceFile {
     path: ProjectRelativePath,
     language: SourceLanguage,
@@ -95,40 +263,38 @@ impl SourceFile {
     }
 }
 
-#[derive(
-    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
-)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum ResolutionRequestKind {
     StaticImport,
     DynamicImport,
     Require,
 }
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct ResolutionRequestKey {
     pub importer: ProjectRelativePath,
     pub kind: ResolutionRequestKind,
     pub range: crate::SourceRange,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResolutionRequest {
     pub key: ResolutionRequestKey,
-    pub request: String,
+    pub request: SmolStr,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ResolverOutcome {
     Internal { path: ProjectRelativePath },
-    External { package: String },
-    Builtin { name: String },
+    External { package: PackageSpecifier },
+    Builtin { name: BuiltinModuleName },
     Missing,
-    OutsideProject { path: String },
+    OutsideProject { path: NormalizedOutsidePath },
     Unsupported { reason: String },
 }
 
 /// Stable opaque identity assigned from normalized project path order.
-#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ModuleId(u32);
 
 impl ModuleId {
@@ -141,21 +307,21 @@ impl ModuleId {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LinkedModuleTarget {
     Internal {
         id: ModuleId,
         path: ProjectRelativePath,
     },
     External {
-        package: String,
+        package: PackageSpecifier,
     },
     Builtin {
-        name: String,
+        name: BuiltinModuleName,
     },
     Missing,
     OutsideProject {
-        path: String,
+        path: NormalizedOutsidePath,
     },
     Unsupported {
         reason: String,

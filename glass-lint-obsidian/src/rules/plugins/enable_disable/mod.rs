@@ -1,13 +1,13 @@
 //! Obsidian plugin enable/disable rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted plugin-manager calls that change another plugin's enabled
 /// state.
 pub fn rule() -> Rule {
     Rule::builder("plugins.enable-disable")
         .description("Enables or disables other plugins")
-        .category("plugins")
+        .category(Category::new("plugins").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(

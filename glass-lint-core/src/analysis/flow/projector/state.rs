@@ -6,8 +6,7 @@
 //! leaking after a control-flow merge.
 
 use std::{
-    cmp::Ordering,
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     ops::{Deref, DerefMut},
 };
 
@@ -102,8 +101,9 @@ impl MutationLog {
     fn transition(
         &mut self,
         checkpoint: Checkpoint,
-        aliases: &mut Vec<(ValueId, ObjectId)>,
-        states: &mut Vec<(FlowStateKey, FlowState)>,
+        aliases: &mut BTreeMap<ValueId, ObjectId>,
+        object_refs: &mut BTreeMap<ObjectId, usize>,
+        states: &mut BTreeMap<FlowStateKey, FlowState>,
     ) -> bool {
         if checkpoint.0 > self.nodes.len() || self.budget_exhausted {
             return false;
@@ -123,7 +123,7 @@ impl MutationLog {
         let lca = current;
         let mut node = self.cursor;
         while node != lca {
-            apply_inverse(&self.nodes[node - 1].delta, aliases, states);
+            apply_inverse(&self.nodes[node - 1].delta, aliases, object_refs, states);
             node = self.nodes[node - 1].parent;
         }
         let mut forward = Vec::new();
@@ -133,7 +133,7 @@ impl MutationLog {
             node = self.nodes[node - 1].parent;
         }
         for node in forward.into_iter().rev() {
-            apply_forward(&self.nodes[node - 1].delta, aliases, states);
+            apply_forward(&self.nodes[node - 1].delta, aliases, object_refs, states);
         }
         self.cursor = checkpoint.0;
         true
@@ -149,56 +149,81 @@ impl MutationLog {
     }
 }
 
+fn increment_ref(refs: &mut BTreeMap<ObjectId, usize>, object: ObjectId) {
+    *refs.entry(object).or_insert(0) += 1;
+}
+
+fn decrement_ref(refs: &mut BTreeMap<ObjectId, usize>, object: ObjectId) {
+    if let Some(count) = refs.get_mut(&object) {
+        *count -= 1;
+        if *count == 0 {
+            refs.remove(&object);
+        }
+    }
+}
+
 fn apply_inverse(
     delta: &InverseDelta,
-    aliases: &mut Vec<(ValueId, ObjectId)>,
-    states: &mut Vec<(FlowStateKey, FlowState)>,
+    aliases: &mut BTreeMap<ValueId, ObjectId>,
+    object_refs: &mut BTreeMap<ObjectId, usize>,
+    states: &mut BTreeMap<FlowStateKey, FlowState>,
 ) {
     match delta {
         InverseDelta::AliasInsert(value, _) => {
-            let _ = remove_sorted(aliases, value);
+            if let Some(object) = aliases.remove(value) {
+                decrement_ref(object_refs, object);
+            }
         }
         InverseDelta::AliasUpdate(value, old, _) => {
-            if let Ok(pos) = aliases.binary_search_by_key(value, |(key, _)| *key) {
-                aliases[pos].1 = *old;
+            if let Some(prev) = aliases.insert(*value, *old) {
+                decrement_ref(object_refs, prev);
+                increment_ref(object_refs, *old);
             }
         }
-        InverseDelta::AliasRemove(value, object) => insert_sorted(aliases, (*value, *object)),
+        InverseDelta::AliasRemove(value, object) => {
+            aliases.insert(*value, *object);
+            increment_ref(object_refs, *object);
+        }
         InverseDelta::StateInsert(key, _) => {
-            let _ = remove_sorted(states, key);
+            states.remove(key);
         }
         InverseDelta::StateUpdate(key, old, _) => {
-            if let Ok(pos) = states.binary_search_by_key(key, |(entry, _)| *entry) {
-                states[pos].1 = old.clone();
-            }
+            states.insert(*key, old.clone());
         }
-        InverseDelta::StateRemove(key, state) => insert_sorted(states, (*key, state.clone())),
+        InverseDelta::StateRemove(key, state) => {
+            states.insert(*key, state.clone());
+        }
     }
 }
 
 fn apply_forward(
     delta: &InverseDelta,
-    aliases: &mut Vec<(ValueId, ObjectId)>,
-    states: &mut Vec<(FlowStateKey, FlowState)>,
+    aliases: &mut BTreeMap<ValueId, ObjectId>,
+    object_refs: &mut BTreeMap<ObjectId, usize>,
+    states: &mut BTreeMap<FlowStateKey, FlowState>,
 ) {
     match delta {
-        InverseDelta::AliasInsert(value, object) => insert_sorted(aliases, (*value, *object)),
-        InverseDelta::AliasUpdate(value, _, new) => {
-            if let Ok(pos) = aliases.binary_search_by_key(value, |(key, _)| *key) {
-                aliases[pos].1 = *new;
-            }
+        InverseDelta::AliasInsert(value, object) => {
+            aliases.insert(*value, *object);
+            increment_ref(object_refs, *object);
         }
-        InverseDelta::AliasRemove(value, _) => {
-            let _ = remove_sorted(aliases, value);
+        InverseDelta::AliasUpdate(value, old, new) => {
+            aliases.insert(*value, *new);
+            decrement_ref(object_refs, *old);
+            increment_ref(object_refs, *new);
         }
-        InverseDelta::StateInsert(key, state) => insert_sorted(states, (*key, state.clone())),
+        InverseDelta::AliasRemove(value, object) => {
+            aliases.remove(value);
+            decrement_ref(object_refs, *object);
+        }
+        InverseDelta::StateInsert(key, state) => {
+            states.insert(*key, state.clone());
+        }
         InverseDelta::StateUpdate(key, _, new) => {
-            if let Ok(pos) = states.binary_search_by_key(key, |(entry, _)| *entry) {
-                states[pos].1 = new.clone();
-            }
+            states.insert(*key, new.clone());
         }
         InverseDelta::StateRemove(key, _) => {
-            let _ = remove_sorted(states, key);
+            states.remove(key);
         }
     }
 }
@@ -234,9 +259,11 @@ pub(super) struct FlowEnvironment {
 /// Mutable live alias and object-state tables for one projector pass.
 pub(super) struct FlowStateTable {
     /// Current value aliases, keyed by semantic value identity.
-    aliases: Vec<(ValueId, ObjectId)>,
+    aliases: BTreeMap<ValueId, ObjectId>,
+    /// Reverse index: how many ValueIds alias each ObjectId.
+    object_refs: BTreeMap<ObjectId, usize>,
     /// Current lifecycle state for each object and flow matcher.
-    states: Vec<(FlowStateKey, FlowState)>,
+    states: BTreeMap<FlowStateKey, FlowState>,
     /// Mutation log for checkpoint/rollback.
     log: MutationLog,
     /// Maximum number of state entries allowed.
@@ -246,8 +273,9 @@ pub(super) struct FlowStateTable {
 impl FlowStateTable {
     pub(super) fn new(state_limit: usize, mutation_limit: usize) -> Self {
         Self {
-            aliases: Vec::new(),
-            states: Vec::new(),
+            aliases: BTreeMap::new(),
+            object_refs: BTreeMap::new(),
+            states: BTreeMap::new(),
             log: MutationLog::new(mutation_limit),
             state_limit,
         }
@@ -258,6 +286,7 @@ impl FlowStateTable {
         for (value, object) in aliases {
             self.log.record(InverseDelta::AliasRemove(value, object));
         }
+        self.object_refs.clear();
         let states = std::mem::take(&mut self.states);
         for (key, state) in states {
             self.log.record(InverseDelta::StateRemove(key, state));
@@ -265,54 +294,42 @@ impl FlowStateTable {
     }
 
     pub(super) fn object_for(&self, value: ValueId) -> Option<ObjectId> {
-        let pos = self
-            .aliases
-            .binary_search_by_key(&value, |(k, _)| *k)
-            .ok()?;
-        Some(self.aliases[pos].1)
+        self.aliases.get(&value).copied()
     }
 
     pub(super) fn objects(&self) -> impl Iterator<Item = ObjectId> + '_ {
-        self.aliases.iter().map(|(_, object)| *object)
+        self.aliases.values().copied()
     }
 
     pub(super) fn bind(&mut self, value: ValueId, object: ObjectId) {
-        if let Some(&old) = self
-            .aliases
-            .binary_search_by_key(&value, |(k, _)| *k)
-            .ok()
-            .map(|pos| &self.aliases[pos].1)
-        {
+        if let Some(&old) = self.aliases.get(&value) {
             self.log
                 .record(InverseDelta::AliasUpdate(value, old, object));
-            if let Ok(pos) = self.aliases.binary_search_by_key(&value, |(k, _)| *k) {
-                self.aliases[pos].1 = object;
-            }
+            self.aliases.insert(value, object);
+            decrement_ref(&mut self.object_refs, old);
         } else {
             self.log.record(InverseDelta::AliasInsert(value, object));
-            insert_sorted(&mut self.aliases, (value, object));
+            self.aliases.insert(value, object);
         }
+        increment_ref(&mut self.object_refs, object);
     }
 
     pub(super) fn unbind(&mut self, value: ValueId) -> Option<ObjectId> {
-        let pos = self
-            .aliases
-            .binary_search_by_key(&value, |(k, _)| *k)
-            .ok()?;
-        let (_, old_object) = self.aliases[pos];
+        let old_object = self.aliases.remove(&value)?;
         self.log
             .record(InverseDelta::AliasRemove(value, old_object));
-        Some(self.aliases.remove(pos).1)
+        decrement_ref(&mut self.object_refs, old_object);
+        Some(old_object)
     }
 
     pub(super) fn has_alias_for(&self, object: ObjectId) -> bool {
-        self.aliases.iter().any(|(_, alias)| *alias == object)
+        self.object_refs.contains_key(&object)
     }
 
     pub(super) fn states_for(
         &self,
         object: ObjectId,
-    ) -> impl Iterator<Item = (FlowStateKey, &FlowState)> {
+    ) -> impl Iterator<Item = (FlowStateKey, &FlowState)> + '_ {
         self.states
             .iter()
             .filter(move |(key, _)| key.object == object)
@@ -321,18 +338,17 @@ impl FlowStateTable {
 
     pub(super) fn state(&self, object: ObjectId, flow: FlowId) -> Option<&FlowState> {
         let key = FlowStateKey { object, flow };
-        let pos = self.states.binary_search_by_key(&key, |(k, _)| *k).ok()?;
-        Some(&self.states[pos].1)
+        self.states.get(&key)
     }
 
     pub(super) fn state_mut(&mut self, object: ObjectId, flow: FlowId) -> Option<StateEdit<'_>> {
         let key = FlowStateKey { object, flow };
-        let pos = self.states.binary_search_by_key(&key, |(k, _)| *k).ok()?;
-        let old = self.states[pos].1.clone();
+        let old = self.states.get(&key)?.clone();
+        let state_ptr = std::ptr::from_mut(self.states.get_mut(&key).unwrap());
         Some(StateEdit {
             table: self,
             key,
-            pos,
+            state_ptr,
             old,
         })
     }
@@ -341,20 +357,15 @@ impl FlowStateTable {
     /// reached and the insertion was rejected.
     pub(super) fn insert_state(&mut self, state: FlowState) -> bool {
         let key = state.key();
-        match self.states.binary_search_by_key(&key, |(k, _)| *k) {
-            Ok(index) => {
-                let old = std::mem::replace(&mut self.states[index].1, state.clone());
-                self.log.record(InverseDelta::StateUpdate(key, old, state));
-                true
-            }
-            Err(index) => {
-                if self.states.len() >= self.state_limit {
-                    return false;
-                }
-                self.states.insert(index, (key, state.clone()));
-                self.log.record(InverseDelta::StateInsert(key, state));
-                true
-            }
+        if let Some(old) = self.states.insert(key, state.clone()) {
+            self.log.record(InverseDelta::StateUpdate(key, old, state));
+            true
+        } else if self.states.len() > self.state_limit {
+            self.states.remove(&key);
+            false
+        } else {
+            self.log.record(InverseDelta::StateInsert(key, state));
+            true
         }
     }
 
@@ -371,10 +382,16 @@ impl FlowStateTable {
     }
 
     pub(super) fn remove_states_for(&mut self, object: ObjectId) {
-        let start = self.states.partition_point(|(k, _)| k.object < object);
-        let end = start + self.states[start..].partition_point(|(k, _)| k.object == object);
-        for (key, state) in self.states.drain(start..end) {
-            self.log.record(InverseDelta::StateRemove(key, state));
+        let keys: Vec<FlowStateKey> = self
+            .states
+            .iter()
+            .filter(|(k, _)| k.object == object)
+            .map(|(k, _)| *k)
+            .collect();
+        for key in keys {
+            if let Some(state) = self.states.remove(&key) {
+                self.log.record(InverseDelta::StateRemove(key, state));
+            }
         }
     }
 
@@ -389,10 +406,12 @@ impl FlowStateTable {
     /// Restore a previously captured environment by rolling back the mutation
     /// log to the checkpoint that corresponds to the environment.
     pub(super) fn restore(&mut self, environment: FlowEnvironment) -> bool {
-        if self
-            .log
-            .transition(environment.checkpoint, &mut self.aliases, &mut self.states)
-        {
+        if self.log.transition(
+            environment.checkpoint,
+            &mut self.aliases,
+            &mut self.object_refs,
+            &mut self.states,
+        ) {
             environment.reachable
         } else {
             false
@@ -413,7 +432,7 @@ impl FlowStateTable {
         }
 
         // Compute the intersection of all reachable environments in scratch
-        // storage, preserving sorted order.
+        // storage.
         let mut joined_aliases = self.aliases.clone();
         let mut joined_states = self.states.clone();
 
@@ -421,17 +440,12 @@ impl FlowStateTable {
             if !self.restore(*environment) {
                 return false;
             }
-            joined_aliases.retain(|(value, object)| {
-                self.aliases
-                    .binary_search_by_key(value, |(k, _)| *k)
-                    .is_ok_and(|pos| self.aliases[pos].1 == *object)
-            });
-            joined_states.retain_mut(|(key, state)| {
-                let Ok(pos) = self.states.binary_search_by_key(key, |(k, _)| *k) else {
-                    return false;
-                };
-                state.retain_requirement_keys(&self.states[pos].1);
-                true
+            joined_aliases.retain(|value, object| self.aliases.get(value) == Some(object));
+            joined_states.retain(|key, state| {
+                self.states.get(key).is_some_and(|other| {
+                    state.retain_requirement_keys(other);
+                    true
+                })
             });
         }
 
@@ -458,6 +472,12 @@ impl FlowStateTable {
         );
         merge_state_delta(&old_states, &joined_states, &mut self.log, &mut self.states);
 
+        // Rebuild reference counts from the merged alias table.
+        self.object_refs.clear();
+        for object in self.aliases.values() {
+            *self.object_refs.entry(*object).or_insert(0) += 1;
+        }
+
         true
     }
 }
@@ -465,7 +485,7 @@ impl FlowStateTable {
 pub(super) struct StateEdit<'a> {
     table: &'a mut FlowStateTable,
     key: FlowStateKey,
-    pos: usize,
+    state_ptr: *mut FlowState,
     old: FlowState,
 }
 
@@ -473,19 +493,19 @@ impl Deref for StateEdit<'_> {
     type Target = FlowState;
 
     fn deref(&self) -> &Self::Target {
-        &self.table.states[self.pos].1
+        unsafe { &*self.state_ptr }
     }
 }
 
 impl DerefMut for StateEdit<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.table.states[self.pos].1
+        unsafe { &mut *self.state_ptr }
     }
 }
 
 impl Drop for StateEdit<'_> {
     fn drop(&mut self) {
-        let new = &self.table.states[self.pos].1;
+        let new = unsafe { &*self.state_ptr };
         if *new != self.old {
             self.table.log.record(InverseDelta::StateUpdate(
                 self.key,
@@ -496,100 +516,58 @@ impl Drop for StateEdit<'_> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers for sorted-vector mutation
-// ---------------------------------------------------------------------------
-
-fn insert_sorted<K: Ord, V>(vec: &mut Vec<(K, V)>, entry: (K, V)) {
-    match vec.binary_search_by(|(k, _)| k.cmp(&entry.0)) {
-        Ok(_) => {}
-        Err(index) => vec.insert(index, entry),
-    }
-}
-
-fn remove_sorted<K: Ord, V>(vec: &mut Vec<(K, V)>, key: &K) -> Option<V> {
-    let pos = vec.binary_search_by(|(k, _)| k.cmp(key)).ok()?;
-    Some(vec.remove(pos).1)
-}
-
-/// Compute the net delta between sorted `old` and `new` alias vectors,
-/// writing only the entries that actually changed into the mutation log,
-/// and setting `out` to `new`.
+/// Compute the net delta between `old` and `new` alias maps, writing only
+/// the entries that actually changed into the mutation log, and setting `out`
+/// to `new`.
 fn merge_delta(
-    old: &[(ValueId, ObjectId)],
-    new: &[(ValueId, ObjectId)],
+    old: &BTreeMap<ValueId, ObjectId>,
+    new: &BTreeMap<ValueId, ObjectId>,
     log: &mut MutationLog,
-    out: &mut Vec<(ValueId, ObjectId)>,
+    out: &mut BTreeMap<ValueId, ObjectId>,
 ) {
-    let mut oi = 0;
-    let mut ni = 0;
-    while oi < old.len() && ni < new.len() {
-        match old[oi].0.cmp(&new[ni].0) {
-            Ordering::Less => {
-                log.record(InverseDelta::AliasRemove(old[oi].0, old[oi].1));
-                oi += 1;
+    for (value, object) in old {
+        match new.get(value) {
+            None => log.record(InverseDelta::AliasRemove(*value, *object)),
+            Some(new_obj) if new_obj != object => {
+                log.record(InverseDelta::AliasUpdate(*value, *object, *new_obj));
             }
-            Ordering::Greater => {
-                log.record(InverseDelta::AliasInsert(new[ni].0, new[ni].1));
-                ni += 1;
-            }
-            Ordering::Equal => {
-                if old[oi].1 != new[ni].1 {
-                    log.record(InverseDelta::AliasUpdate(new[ni].0, old[oi].1, new[ni].1));
-                }
-                oi += 1;
-                ni += 1;
-            }
+            Some(_) => {}
         }
     }
-    for (value, object) in &old[oi..] {
-        log.record(InverseDelta::AliasRemove(*value, *object));
+    for (value, object) in new {
+        if !old.contains_key(value) {
+            log.record(InverseDelta::AliasInsert(*value, *object));
+        }
     }
-    for (value, object) in &new[ni..] {
-        log.record(InverseDelta::AliasInsert(*value, *object));
-    }
-    *out = new.to_vec();
+    *out = new.clone();
 }
 
-/// Compute the net delta between sorted `old` and `new` state vectors.
+/// Compute the net delta between `old` and `new` state maps.
 fn merge_state_delta(
-    old: &[(FlowStateKey, FlowState)],
-    new: &[(FlowStateKey, FlowState)],
+    old: &BTreeMap<FlowStateKey, FlowState>,
+    new: &BTreeMap<FlowStateKey, FlowState>,
     log: &mut MutationLog,
-    out: &mut Vec<(FlowStateKey, FlowState)>,
+    out: &mut BTreeMap<FlowStateKey, FlowState>,
 ) {
-    let mut oi = 0;
-    let mut ni = 0;
-    while oi < old.len() && ni < new.len() {
-        match old[oi].0.cmp(&new[ni].0) {
-            Ordering::Less => {
-                log.record(InverseDelta::StateRemove(old[oi].0, old[oi].1.clone()));
-                oi += 1;
+    for (key, state) in old {
+        match new.get(key) {
+            None => log.record(InverseDelta::StateRemove(*key, state.clone())),
+            Some(new_state) if new_state != state => {
+                log.record(InverseDelta::StateUpdate(
+                    *key,
+                    state.clone(),
+                    new_state.clone(),
+                ));
             }
-            Ordering::Greater => {
-                log.record(InverseDelta::StateInsert(new[ni].0, new[ni].1.clone()));
-                ni += 1;
-            }
-            Ordering::Equal => {
-                if old[oi].1 != new[ni].1 {
-                    log.record(InverseDelta::StateUpdate(
-                        new[ni].0,
-                        old[oi].1.clone(),
-                        new[ni].1.clone(),
-                    ));
-                }
-                oi += 1;
-                ni += 1;
-            }
+            Some(_) => {}
         }
     }
-    for (key, state) in &old[oi..] {
-        log.record(InverseDelta::StateRemove(*key, state.clone()));
+    for (key, state) in new {
+        if !old.contains_key(key) {
+            log.record(InverseDelta::StateInsert(*key, state.clone()));
+        }
     }
-    for (key, state) in &new[ni..] {
-        log.record(InverseDelta::StateInsert(*key, state.clone()));
-    }
-    *out = new.to_vec();
+    *out = new.clone();
 }
 
 #[derive(Debug)]

@@ -15,6 +15,8 @@
 //! or an overlay node created during a join.  The overlay is bounded by
 //! [`MAX_OVERLAY_NODES`]; exhaustion fails closed.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
     flow::{
@@ -421,10 +423,36 @@ impl<'a> FunctionSummaries<'a> {
     }
 
     fn propagate_sinks(&mut self, stream: &FactStream<Frozen>) {
-        let ids: Vec<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
+        // Build reverse call graph: callee -> its callers
+        let mut reverse_calls: BTreeMap<FunctionId, Vec<FunctionId>> = BTreeMap::new();
+        for (caller_id, summary) in self.by_id.iter() {
+            for call_id in &summary.calls {
+                if let Some((target, _)) = resolve_call_target(*call_id, stream)
+                    && target != caller_id
+                {
+                    reverse_calls.entry(target).or_default().push(caller_id);
+                }
+            }
+        }
+        for callers in reverse_calls.values_mut() {
+            callers.sort_unstable();
+            callers.dedup();
+        }
+
+        // Seed worklist with all functions; first round processes every caller.
+        let mut worklist: BTreeSet<FunctionId> =
+            self.by_id.iter().map(|(id, _)| id).collect();
+
         for _ in 0..MAX_SUMMARY_ROUNDS {
-            let mut changed = false;
-            for caller in &ids {
+            if worklist.is_empty() {
+                break;
+            }
+
+            let current_round: Vec<FunctionId> = worklist.iter().copied().collect();
+            worklist.clear();
+
+            let mut any_changed = false;
+            for caller in &current_round {
                 let call_count = self
                     .by_id
                     .get(*caller)
@@ -438,14 +466,25 @@ impl<'a> FunctionSummaries<'a> {
                     else {
                         continue;
                     };
-                    changed |= self.propagate_call_sinks(call_id, *caller, stream);
+                    if self.propagate_call_sinks(call_id, *caller, stream) {
+                        any_changed = true;
+                    }
                 }
             }
+
             for (_, summary) in self.by_id.iter_mut() {
                 summary.sinks_offset = summary.sinks.0.len();
             }
-            if !changed {
-                break;
+
+            // Schedule callers of any function whose sinks grew this round.
+            if any_changed {
+                for caller in &current_round {
+                    if let Some(callers_of_changed) = reverse_calls.get(caller) {
+                        for c in callers_of_changed {
+                            worklist.insert(*c);
+                        }
+                    }
+                }
             }
         }
     }

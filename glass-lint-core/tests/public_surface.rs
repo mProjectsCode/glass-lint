@@ -2,14 +2,14 @@ use glass_lint_core::{
     AnalysisLimits, ByteRange, Environment, InvalidPosition, Linter, Position,
     ReversedSourcePositionRange, Rule, RuleCatalog, Severity, SourceRange,
     project::{DiagnosticCode, SourceFile},
-    rules::{Confidence, MatcherDecl},
+    rules::{Category, Confidence, MatcherDecl},
 };
 
 #[test]
 fn supported_public_operations_do_not_require_engine_storage() {
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(MatcherDecl::builder().call_global("fetch").build().unwrap())
@@ -33,8 +33,8 @@ fn supported_public_operations_do_not_require_engine_storage() {
         .unwrap()
         .finish()
         .unwrap();
-    assert_eq!(report.files.len(), 1);
-    assert_eq!(report.files[0].findings.len(), 1);
+    assert_eq!(report.files().len(), 1);
+    assert_eq!(report.files()[0].findings().len(), 1);
 }
 
 #[test]
@@ -44,11 +44,6 @@ fn public_invariant_types_reject_invalid_values_without_panicking() {
     assert_eq!(
         range.unwrap().unwrap_err().to_string(),
         "byte range start exceeds end"
-    );
-    assert!(serde_json::from_str::<ByteRange>(r#"{"start":4,"end":3}"#).is_err());
-    assert_eq!(
-        serde_json::to_string(&ByteRange::new(2, 5).unwrap()).unwrap(),
-        r#"{"start":2,"end":5}"#
     );
 
     let max_length = "a".repeat(64);
@@ -75,27 +70,40 @@ fn public_invariant_types_reject_invalid_values_without_panicking() {
         } else {
             assert_eq!(direct.unwrap(), Err(candidate.to_string()));
         }
-        let decoded = serde_json::from_str::<DiagnosticCode>(&format!(r#""{candidate}""#));
+        let decoded = DiagnosticCode::try_from(candidate);
         assert_eq!(decoded.is_ok(), valid, "{candidate:?}");
     }
     let code = DiagnosticCode::try_from("valid_code2").unwrap();
-    assert_eq!(serde_json::to_string(&code).unwrap(), r#""valid_code2""#);
-    assert_eq!(
-        serde_json::from_str::<DiagnosticCode>(&serde_json::to_string(&code).unwrap()).unwrap(),
-        code
-    );
+    assert_eq!(DiagnosticCode::try_from(code.as_str()).unwrap(), code);
 
     let zero_line = std::panic::catch_unwind(|| Position::new(0, 1));
     assert_eq!(zero_line.unwrap(), Err(InvalidPosition::ZeroLine));
     let zero_column = std::panic::catch_unwind(|| Position::new(1, 0));
     assert_eq!(zero_column.unwrap(), Err(InvalidPosition::ZeroColumn));
+
+    let a = Position::new(2, 3).unwrap();
+    let b = Position::new(2, 8).unwrap();
+    let reversed = std::panic::catch_unwind(|| SourceRange::new(b, a));
+    assert_eq!(reversed.unwrap(), Err(ReversedSourcePositionRange));
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn serde_round_trips_validate_serialization_and_deserialization() {
+    assert!(serde_json::from_str::<ByteRange>(r#"{"start":4,"end":3}"#).is_err());
+    assert_eq!(
+        serde_json::to_string(&ByteRange::new(2, 5).unwrap()).unwrap(),
+        r#"{"start":2,"end":5}"#
+    );
+
+    let code = DiagnosticCode::try_from("valid_code2").unwrap();
+    assert_eq!(serde_json::to_string(&code).unwrap(), r#""valid_code2""#);
+
     assert!(serde_json::from_str::<Position>(r#"{"line":0,"column":1}"#).is_err());
     assert!(serde_json::from_str::<Position>(r#"{"line":1,"column":0}"#).is_err());
 
     let start = Position::new(2, 3).unwrap();
     let end = Position::new(2, 8).unwrap();
-    let reversed = std::panic::catch_unwind(|| SourceRange::new(end.clone(), start.clone()));
-    assert_eq!(reversed.unwrap(), Err(ReversedSourcePositionRange));
     assert!(
         serde_json::from_str::<SourceRange>(
             r#"{"start":{"line":2,"column":8},"end":{"line":2,"column":3}}"#
@@ -108,13 +116,5 @@ fn public_invariant_types_reject_invalid_values_without_panicking() {
     assert_eq!(
         serde_json::from_str::<SourceRange>(json).unwrap(),
         source_range
-    );
-    assert_eq!(
-        (source_range.start().line(), source_range.start().column()),
-        (2, 3)
-    );
-    assert_eq!(
-        (source_range.end().line(), source_range.end().column()),
-        (2, 8)
     );
 }

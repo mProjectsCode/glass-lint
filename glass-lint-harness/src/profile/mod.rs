@@ -119,15 +119,9 @@ mod tests {
         assert_eq!(phases.parse_and_local_analysis(), Duration::from_secs(2));
         assert_eq!(phases.linking_and_matching(), Duration::from_secs(7));
 
-        let mut counts = ProfileOperationCounts {
-            files: usize::MAX,
-            ..ProfileOperationCounts::default()
-        };
-        counts += ProfileOperationCounts {
-            files: 1,
-            ..ProfileOperationCounts::default()
-        };
-        assert_eq!(counts.files, usize::MAX);
+        let mut counts = ProfileOperationCounts::new(usize::MAX, 0, 0, 0, 0, 0, 0);
+        counts += ProfileOperationCounts::new(1, 0, 0, 0, 0, 0, 0);
+        assert_eq!(counts.files(), usize::MAX);
 
         let first_bytes = 7_u64;
         let second_bytes = 11_u64;
@@ -223,16 +217,16 @@ mod tests {
             result.operation_counts,
             result.repetitions[0].operation_counts
         );
-        assert_eq!(result.operation_counts.files, 2);
-        assert!(result.operation_counts.requests > 0);
-        assert!(result.operation_counts.exports > 0);
+        assert_eq!(result.operation_counts.files(), 2);
+        assert!(result.operation_counts.requests() > 0);
+        assert!(result.operation_counts.exports() > 0);
         assert_eq!(
-            result.operation_counts.effect_projections,
-            result.repetitions[0].operation_counts.effect_projections
+            result.operation_counts.effect_projections(),
+            result.repetitions[0].operation_counts.effect_projections()
         );
         assert_eq!(
-            result.operation_counts.scc_rounds,
-            result.repetitions[0].operation_counts.scc_rounds
+            result.operation_counts.scc_rounds(),
+            result.repetitions[0].operation_counts.scc_rounds()
         );
     }
 

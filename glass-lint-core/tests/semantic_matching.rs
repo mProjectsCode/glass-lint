@@ -19,16 +19,15 @@ fn findings(source: &str, decl: MatcherDecl) -> usize {
         .unwrap();
     let environment = support::test_environment();
     let catalog = glass_lint_core::RuleCatalog::new("test", vec![rule]).unwrap();
-    glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
+    let (_, _, files, _, _, _) = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
         vec![catalog],
         environment,
     ))
     .unwrap()
     .lint_snippet(source, "semantic-matching.js")
     .unwrap()
-    .files[0]
-        .findings
-        .len()
+    .into_parts();
+    files[0].findings().len()
 }
 
 /// Assert the exact match count for a provenance or value-flow scenario.

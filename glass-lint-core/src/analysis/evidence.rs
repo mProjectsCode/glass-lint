@@ -75,7 +75,7 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
             kind: key.0,
             symbol: key.1,
             count: u32::try_from(accum.total_count).unwrap_or(u32::MAX),
-            evidence_truncated: accum.occurrences_truncated,
+            truncated: accum.occurrences_truncated,
             occurrences: accum.occurrences,
             related: accum.related,
         })
@@ -105,7 +105,7 @@ pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, lim
     };
     if global_truncated {
         for item in &mut sorted {
-            item.evidence_truncated = true;
+            item.truncated = true;
         }
     }
 
@@ -122,7 +122,7 @@ mod tests {
             kind: MatchKind::Call,
             symbol: symbol.into(),
             count: u32::try_from(spans.len()).unwrap_or(u32::MAX),
-            evidence_truncated: false,
+            truncated: false,
             occurrences: spans
                 .iter()
                 .map(
@@ -162,6 +162,6 @@ mod tests {
         normalize_evidence(&mut evidence, Rule::EVIDENCE_LIMIT);
         assert_eq!(evidence[0].count as usize, Rule::EVIDENCE_LIMIT + 4);
         assert_eq!(evidence[0].occurrences.len(), Rule::EVIDENCE_LIMIT);
-        assert!(evidence[0].evidence_truncated);
+        assert!(evidence[0].truncated);
     }
 }

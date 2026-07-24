@@ -1,6 +1,6 @@
 //! Header-marker indicator rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects string literals containing the configured `Authorization` and
 /// `User-Agent` marker substrings. This is an opt-in heuristic indicator: it
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("network.header-indicator")
         .description("References authorization or user-agent headers")
-        .category("browser/network")
+        .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         // Sink-associated coverage proves header names in request option

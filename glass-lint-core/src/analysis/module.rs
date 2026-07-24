@@ -399,7 +399,7 @@ impl ModuleInterface {
                             kind: request.kind(),
                             range: lines.try_range(request.span()).ok()?,
                         },
-                        request: request.specifier().to_string(),
+                        request: request.specifier().clone(),
                     },
                 ))
             })

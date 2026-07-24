@@ -8,13 +8,13 @@ use glass_lint_core::{
     Environment, LintConfigError, Linter, LinterConfig, RuleBaseline, RuleCatalog, RuleId,
     RuleOverride, RuleSelection, RuleState,
     project::types::DiagnosticKind,
-    rules::{Confidence, MatcherDecl, Rule, Severity},
+    rules::{Category, Confidence, MatcherDecl, Rule, Severity},
 };
 
 fn catalog() -> RuleCatalog {
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -53,28 +53,40 @@ fn emits_one_located_finding_per_match() {
         "fetch('/a');\nfetch('/b');",
         "input.js",
     );
-    assert_eq!(report.files[0].findings.len(), 2);
-    assert_eq!(report.files[0].findings[0].location.range.start().line(), 1);
-    assert_eq!(report.files[0].findings[1].location.range.start().line(), 2);
-    assert_eq!(report.files[0].findings[0].evidence.len(), 1);
-    assert_eq!(report.files[0].findings[1].evidence.len(), 1);
+    assert_eq!(report.files()[0].findings().len(), 2);
     assert_eq!(
-        report.files[0].findings[0].evidence[0].message,
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .start()
+            .line(),
+        1
+    );
+    assert_eq!(
+        report.files()[0].findings()[1]
+            .location()
+            .range()
+            .start()
+            .line(),
+        2
+    );
+    assert_eq!(report.files()[0].findings()[0].evidence().len(), 1);
+    assert_eq!(report.files()[0].findings()[1].evidence().len(), 1);
+    assert_eq!(
+        report.files()[0].findings()[0].evidence()[0].message(),
         "call of \"fetch\""
     );
     assert_eq!(
-        report.files[0].findings[0].evidence[0]
-            .location
-            .as_ref()
-            .map(|location| &location.range),
-        Some(&report.files[0].findings[0].location.range)
+        report.files()[0].findings()[0].evidence()[0]
+            .location()
+            .map(glass_lint_core::project::SourceLocation::range),
+        Some(report.files()[0].findings()[0].location().range())
     );
     assert_eq!(
-        report.files[0].findings[1].evidence[0]
-            .location
-            .as_ref()
-            .map(|location| &location.range),
-        Some(&report.files[0].findings[1].location.range)
+        report.files()[0].findings()[1].evidence()[0]
+            .location()
+            .map(glass_lint_core::project::SourceLocation::range),
+        Some(report.files()[0].findings()[1].location().range())
     );
 }
 
@@ -82,7 +94,7 @@ fn emits_one_located_finding_per_match() {
 fn findings_only_carry_evidence_for_their_own_location() {
     let rule = Rule::builder("vault.write")
         .description("Writes vault files")
-        .category("vault")
+        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(
@@ -108,15 +120,15 @@ fn findings_only_carry_evidence_for_their_own_location() {
         "input.js",
     );
 
-    assert_eq!(report.files[0].findings.len(), 2);
-    assert_eq!(report.files[0].findings[0].evidence.len(), 1);
+    assert_eq!(report.files()[0].findings().len(), 2);
+    assert_eq!(report.files()[0].findings()[0].evidence().len(), 1);
     assert_eq!(
-        report.files[0].findings[0].evidence[0].message,
+        report.files()[0].findings()[0].evidence()[0].message(),
         "member_call of \"app.vault.create\""
     );
-    assert_eq!(report.files[0].findings[1].evidence.len(), 1);
+    assert_eq!(report.files()[0].findings()[1].evidence().len(), 1);
     assert_eq!(
-        report.files[0].findings[1].evidence[0].message,
+        report.files()[0].findings()[1].evidence()[0].message(),
         "member_call of \"app.vault.createFolder\""
     );
 }
@@ -128,14 +140,14 @@ fn rejects_shadowed_global_lookalikes() {
         "function demo(fetch) { fetch('/local'); } fetch('/global');",
         "input.js",
     );
-    assert_eq!(report.files[0].findings.len(), 1);
+    assert_eq!(report.files()[0].findings().len(), 1);
 }
 
 #[test]
 fn collapses_contained_ranges_for_same_rule() {
     let rule = Rule::builder("metadata.read")
         .description("Reads metadata")
-        .category("metadata")
+        .category(Category::new("metadata").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -159,24 +171,37 @@ fn collapses_contained_ranges_for_same_rule() {
         "input.js",
     );
 
-    assert_eq!(report.files[0].findings.len(), 1);
+    assert_eq!(report.files()[0].findings().len(), 1);
     assert_eq!(
-        report.files[0].findings[0].location.range.start().column(),
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .start()
+            .column(),
         1
     );
     assert_eq!(
-        report.files[0].findings[0].location.range.end().column(),
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .end()
+            .column(),
         36
     );
-    assert_eq!(report.files[0].findings[0].evidence.len(), 2);
-    assert!(report.files[0].findings[0].evidence.iter().all(|evidence| {
-        evidence.location.as_ref().is_some_and(|location| {
-            report.files[0].findings[0]
-                .location
-                .range
-                .contains(&location.range)
-        })
-    }));
+    assert_eq!(report.files()[0].findings()[0].evidence().len(), 2);
+    assert!(
+        report.files()[0].findings()[0]
+            .evidence()
+            .iter()
+            .all(|evidence| {
+                evidence.location().is_some_and(|location| {
+                    report.files()[0].findings()[0]
+                        .location()
+                        .range()
+                        .contains(&location.range())
+                })
+            })
+    );
 }
 
 #[test]
@@ -198,7 +223,7 @@ fn validates_custom_rule_selection() {
 fn ordered_rule_overrides_select_stable_catalog_indexes() {
     let first = Rule::builder("network.first")
         .description("First")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -211,7 +236,7 @@ fn ordered_rule_overrides_select_stable_catalog_indexes() {
         .unwrap();
     let second = Rule::builder("network.second")
         .description("Second")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -253,24 +278,24 @@ fn reports_structured_diagnostic_for_oversized_source() {
         &"x".repeat(glass_lint_core::MAX_SOURCE_BYTES + 1),
         "large.js",
     );
-    assert!(report.files[0].findings.is_empty());
-    assert_eq!(report.files[0].parse_diagnostic_count(), 1);
+    assert!(report.files()[0].findings().is_empty());
+    assert_eq!(report.files()[0].parse_diagnostic_count(), 1);
     assert_eq!(
-        report.files[0].diagnostics[0]
+        report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
             .code,
         DiagnosticKind::SourceTooLarge.into()
     );
     assert_eq!(
-        report.files[0].diagnostics[0]
+        report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
             .filename,
         "large.js"
     );
     assert!(
-        report.files[0].diagnostics[0]
+        report.files()[0].diagnostics()[0]
             .parse_diagnostic()
             .unwrap()
             .range
@@ -281,8 +306,10 @@ fn reports_structured_diagnostic_for_oversized_source() {
 #[test]
 fn parse_diagnostics_carry_stable_location_context() {
     let report = snippet(&catalog_linter(catalog()), "fetch(", "broken.js");
-    assert!(report.files[0].findings.is_empty());
-    let diagnostic = &report.files[0].diagnostics[0].parse_diagnostic().unwrap();
+    assert!(report.files()[0].findings().is_empty());
+    let diagnostic = &report.files()[0].diagnostics()[0]
+        .parse_diagnostic()
+        .unwrap();
     assert_eq!(diagnostic.code, DiagnosticKind::SyntaxError.into());
     assert_eq!(diagnostic.filename, "broken.js");
     assert!(diagnostic.message.starts_with("JavaScript parse error:"));
@@ -296,17 +323,39 @@ fn source_locations_handle_crlf_and_eof_without_byte_columns() {
         "fetch('/a');\r\nfetch('/é');",
         "crlf.js",
     );
-    assert_eq!(report.files[0].findings.len(), 2);
-    assert_eq!(report.files[0].findings[0].location.range.start().line(), 1);
-    assert_eq!(report.files[0].findings[1].location.range.start().line(), 2);
+    assert_eq!(report.files()[0].findings().len(), 2);
+    assert_eq!(
+        report.files()[0].findings()[0]
+            .location()
+            .range()
+            .start()
+            .line(),
+        1
+    );
+    assert_eq!(
+        report.files()[0].findings()[1]
+            .location()
+            .range()
+            .start()
+            .line(),
+        2
+    );
     assert!(
-        report.files[0].findings[1].location.range.end().column()
-            > report.files[0].findings[1].location.range.start().column()
+        report.files()[0].findings()[1]
+            .location()
+            .range()
+            .end()
+            .column()
+            > report.files()[0].findings()[1]
+                .location()
+                .range()
+                .start()
+                .column()
     );
 
     let empty = snippet(&catalog_linter(catalog()), "", "empty.js");
-    assert!(empty.files[0].findings.is_empty());
-    assert!(!empty.files[0].has_parse_diagnostics());
+    assert!(empty.files()[0].findings().is_empty());
+    assert!(!empty.files()[0].has_parse_diagnostics());
 }
 
 #[test]
@@ -316,12 +365,11 @@ fn evidence_ranges_and_snippets_are_populated_for_unicode_source() {
         "// é\nfetch('/x');",
         "unicode.js",
     );
-    let evidence = &report.files[0].findings[0].evidence[0];
+    let evidence = &report.files()[0].findings()[0].evidence()[0];
     assert_eq!(
         evidence
-            .location
-            .as_ref()
-            .map(|location| location.range.start().line()),
+            .location()
+            .map(|location| location.range().start().line()),
         Some(2)
     );
 }
@@ -330,25 +378,25 @@ fn evidence_ranges_and_snippets_are_populated_for_unicode_source() {
 fn evidence_limit_is_source_ordered_and_applied_once() {
     let source = (0..20).map(|_| "fetch();\n").collect::<String>();
     let report = snippet(&catalog_linter(catalog()), &source, "many.js");
-    assert_eq!(report.files[0].findings.len(), 20);
+    assert_eq!(report.files()[0].findings().len(), 20);
     assert_eq!(
-        report.files[0]
-            .findings
+        report.files()[0]
+            .findings()
             .first()
             .unwrap()
-            .location
-            .range
+            .location()
+            .range()
             .start()
             .line(),
         1
     );
     assert_eq!(
-        report.files[0]
-            .findings
+        report.files()[0]
+            .findings()
             .last()
             .unwrap()
-            .location
-            .range
+            .location()
+            .range()
             .start()
             .line(),
         20
@@ -359,7 +407,7 @@ fn evidence_limit_is_source_ordered_and_applied_once() {
 fn enabled_rule_order_does_not_affect_findings() {
     let rule_a = Rule::builder("alpha.first")
         .description("First")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -372,7 +420,7 @@ fn enabled_rule_order_does_not_affect_findings() {
         .unwrap();
     let rule_b = Rule::builder("beta.second")
         .description("Second")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -411,17 +459,17 @@ fn enabled_rule_order_does_not_affect_findings() {
     );
 
     assert_eq!(
-        report_asc.files[0].findings.len(),
-        report_desc.files[0].findings.len()
+        report_asc.files()[0].findings().len(),
+        report_desc.files()[0].findings().len()
     );
-    for (a, b) in report_asc.files[0]
-        .findings
+    for (a, b) in report_asc.files()[0]
+        .findings()
         .iter()
-        .zip(report_desc.files[0].findings.iter())
+        .zip(report_desc.files()[0].findings().iter())
     {
-        assert_eq!(a.rule_id, b.rule_id);
-        assert_eq!(a.location.range, b.location.range);
-        assert_eq!(a.message, b.message);
+        assert_eq!(a.rule_id(), b.rule_id());
+        assert_eq!(a.location().range(), b.location().range());
+        assert_eq!(a.message(), b.message());
     }
 }
 
@@ -429,7 +477,7 @@ fn enabled_rule_order_does_not_affect_findings() {
 fn disabled_catalog_rules_do_not_produce_findings() {
     let rule_a = Rule::builder("alpha.first")
         .description("First")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -442,7 +490,7 @@ fn disabled_catalog_rules_do_not_produce_findings() {
         .unwrap();
     let rule_b = Rule::builder("beta.second")
         .description("Second")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -465,9 +513,9 @@ fn disabled_catalog_rules_do_not_produce_findings() {
         "fetch(); XMLHttpRequest();",
         "subset.js",
     );
-    assert_eq!(report.files[0].findings.len(), 1);
+    assert_eq!(report.files()[0].findings().len(), 1);
     assert_eq!(
-        report.files[0].findings[0].rule_id.as_str(),
+        report.files()[0].findings()[0].rule_id().as_str(),
         "test:beta.second"
     );
 }
@@ -476,7 +524,7 @@ fn disabled_catalog_rules_do_not_produce_findings() {
 fn combines_provider_rules_with_overlapping_local_ids() {
     let first = Rule::builder("network.request")
         .description("First provider request")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -489,7 +537,7 @@ fn combines_provider_rules_with_overlapping_local_ids() {
         .unwrap();
     let second = Rule::builder("network.request")
         .description("Second provider request")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -512,13 +560,13 @@ fn combines_provider_rules_with_overlapping_local_ids() {
     .unwrap();
 
     let report = snippet(&linter, "fetch('/a'); requestUrl('/b');", "combined.js");
-    assert_eq!(report.files[0].findings.len(), 2);
+    assert_eq!(report.files()[0].findings().len(), 2);
     assert_eq!(
-        report.files[0].findings[0].rule_id.as_str(),
+        report.files()[0].findings()[0].rule_id().as_str(),
         "first:network.request"
     );
     assert_eq!(
-        report.files[0].findings[1].rule_id.as_str(),
+        report.files()[0].findings()[1].rule_id().as_str(),
         "second:network.request"
     );
 }
@@ -527,7 +575,7 @@ fn combines_provider_rules_with_overlapping_local_ids() {
 fn combined_linter_preserves_each_input_rule_selection() {
     let enabled_rule = Rule::builder("enabled")
         .description("Enabled")
-        .category("test")
+        .category(Category::new("test").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -540,7 +588,7 @@ fn combined_linter_preserves_each_input_rule_selection() {
         .unwrap();
     let disabled_rule = Rule::builder("disabled")
         .description("Disabled")
-        .category("test")
+        .category(Category::new("test").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -571,9 +619,9 @@ fn combined_linter_preserves_each_input_rule_selection() {
         "selection.js",
     );
 
-    assert_eq!(report.files[0].findings.len(), 1);
+    assert_eq!(report.files()[0].findings().len(), 1);
     assert_eq!(
-        report.files[0].findings[0].rule_id.as_str(),
+        report.files()[0].findings()[0].rule_id().as_str(),
         "first:enabled"
     );
 }

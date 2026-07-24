@@ -1,6 +1,6 @@
 //! Node and Web Crypto operation rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects imports of the Node crypto modules and configured cryptographic
 /// libraries, plus rooted Web Crypto operation calls. Import reports are
@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("crypto.operation")
         .description("Uses cryptographic operations")
-        .category("language/crypto")
+        .category(Category::new("language/crypto").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(

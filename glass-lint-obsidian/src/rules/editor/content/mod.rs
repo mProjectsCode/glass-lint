@@ -1,6 +1,6 @@
 //! Obsidian editor-content access rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects content reads and mutations on proven Obsidian `Editor` instances.
 /// Static computed method names are accepted; local lookalikes, dynamic
@@ -8,7 +8,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("editor.content")
         .description("Reads or changes Obsidian editor content")
-        .category("editor")
+        .category(Category::new("editor").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

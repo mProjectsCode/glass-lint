@@ -1,6 +1,6 @@
 //! Private-network address indicator rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects string literals containing the configured localhost, loopback,
 /// wildcard, and HTTP(S) `10.*`/`192.168.*` address markers. It is a
@@ -11,7 +11,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     let mut builder = Rule::builder("network.private-address")
         .description("References private-network addresses")
-        .category("browser/network")
+        .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(

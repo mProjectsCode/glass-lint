@@ -10,8 +10,9 @@ mod input;
 mod report;
 
 pub use input::{
-    LinkedModuleTarget, LocalExecutionError, ModuleId, ProjectInputError, ResolutionRequest,
-    ResolutionRequestKey, ResolutionRequestKind, ResolverOutcome, SourceFile, SourceText,
+    BuiltinModuleName, LinkedModuleTarget, LocalExecutionError, ModuleId, NormalizedOutsidePath,
+    PackageSpecifier, ProjectInputError, ResolutionRequest, ResolutionRequestKey,
+    ResolutionRequestKind, ResolverOutcome, SourceFile, SourceText,
 };
 pub use report::{
     AnalysisDiagnostic, AnalysisOperationCounts, AnalysisReport, AnalysisReportSummary, Diagnostic,
@@ -34,12 +35,14 @@ pub fn is_internal_module_request(request: &str) -> bool {
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Hash)]
 pub struct ProjectRelativePath(Arc<str>);
 
+#[cfg(feature = "serde")]
 impl serde::Serialize for ProjectRelativePath {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.0)
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for ProjectRelativePath {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

@@ -86,17 +86,18 @@ impl<'a> PrettyReports<'a> {
         self.write_parse_diagnostics(wrote_group, f)
     }
 
+    #[allow(clippy::too_many_lines)]
     fn write_rule_groups(&self, f: &mut fmt::Formatter<'_>) -> Result<bool, fmt::Error> {
         let mut groups = BTreeMap::new();
         for file in self.files {
-            for finding in &file.report.findings {
-                let entries = groups.entry(&finding.rule_id).or_insert_with(Vec::new);
-                if finding.evidence.is_empty() {
+            for finding in file.report.findings() {
+                let entries = groups.entry(finding.rule_id()).or_insert_with(Vec::new);
+                if finding.evidence().is_empty() {
                     entries.push((file, finding, None));
                 } else {
                     entries.extend(
                         finding
-                            .evidence
+                            .evidence()
                             .iter()
                             .map(|evidence| (file, finding, Some(evidence))),
                     );
@@ -107,14 +108,17 @@ impl<'a> PrettyReports<'a> {
         let mut wrote_group = false;
         for entries in groups.values_mut() {
             entries.sort_by(|left, right| {
-                let left_range = left
-                    .2
-                    .and_then(|evidence| evidence.location.as_ref())
-                    .map_or(&left.1.location.range, |location| &location.range);
+                let left_range = left.2.and_then(|evidence| evidence.location()).map_or_else(
+                    || left.1.location().range(),
+                    crate::project::SourceLocation::range,
+                );
                 let right_range = right
                     .2
-                    .and_then(|evidence| evidence.location.as_ref())
-                    .map_or(&right.1.location.range, |location| &location.range);
+                    .and_then(|evidence| evidence.location())
+                    .map_or_else(
+                        || right.1.location().range(),
+                        crate::project::SourceLocation::range,
+                    );
                 (
                     left.0.filename,
                     left_range.start().line(),
@@ -140,25 +144,26 @@ impl<'a> PrettyReports<'a> {
                 "{}[{}] {}",
                 PrettyReport::style(
                     self.options.color,
-                    match finding.severity {
+                    match finding.severity() {
                         crate::Severity::Info => Style::new().green(),
                         crate::Severity::Warning => Style::new().yellow(),
                         crate::Severity::Error => Style::new().red(),
                     },
-                    finding.severity.to_string(),
+                    finding.severity().to_string(),
                 ),
                 PrettyReport::style(
                     self.options.color,
                     Style::new().cyan(),
-                    finding.rule_id.to_string(),
+                    finding.rule_id().to_string(),
                 ),
-                visible_text(&finding.message)
+                visible_text(finding.message())
             )?;
 
             for (file, finding, evidence) in entries {
-                let range = evidence
-                    .and_then(|evidence| evidence.location.as_ref())
-                    .map_or(&finding.location.range, |location| &location.range);
+                let range = evidence.and_then(|e| e.location()).map_or_else(
+                    || finding.location().range(),
+                    crate::project::SourceLocation::range,
+                );
 
                 let message = format!(
                     "  {}:{}:{} - {}",
@@ -167,7 +172,7 @@ impl<'a> PrettyReports<'a> {
                     range.start().column(),
                     evidence.map_or_else(
                         || "match".to_string(),
-                        |evidence| format!("evidence: {}", visible_text(&evidence.message)),
+                        |e| format!("evidence: {}", visible_text(e.message())),
                     ),
                 );
 
@@ -185,7 +190,7 @@ impl<'a> PrettyReports<'a> {
                         &file.line_starts,
                         &file.line_cache,
                     )
-                    .excerpt(range, 4, f)?;
+                    .excerpt(&range, 4, f)?;
                 }
             }
         }
@@ -203,7 +208,7 @@ impl<'a> PrettyReports<'a> {
             .iter()
             .flat_map(|file| {
                 file.report
-                    .diagnostics
+                    .diagnostics()
                     .iter()
                     .filter_map(move |diagnostic| {
                         let crate::project::Diagnostic::Parse { diagnostic, .. } = diagnostic

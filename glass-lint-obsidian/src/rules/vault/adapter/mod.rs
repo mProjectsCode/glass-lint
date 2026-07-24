@@ -1,6 +1,6 @@
 //! Obsidian vault-adapter access rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects reads of rooted `app.vault.adapter`, including `this.app`, direct
 /// receiver aliases, and static computed properties. Source-ordered root
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("vault.adapter")
         .description("Uses adapter-level vault filesystem APIs")
-        .category("vault")
+        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

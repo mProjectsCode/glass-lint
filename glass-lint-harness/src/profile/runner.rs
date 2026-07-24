@@ -411,10 +411,10 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
                     &mut repetition_counts,
                     &mut evidence_digests,
                 );
-                if report.completion == ReportCompletion::Partial {
+                if report.completion() == ReportCompletion::Partial {
                     repetition_completion = ReportCompletion::Partial;
                 }
-                run_completions.push(report.completion);
+                run_completions.push(report.completion());
             }
             Ok(ProfileRepetitionSummary {
                 duration: Duration::ZERO,
@@ -619,10 +619,10 @@ fn profile_file(
                     &mut operation_counts,
                     &mut evidence_digests,
                 );
-                if report.completion == ReportCompletion::Partial {
+                if report.completion() == ReportCompletion::Partial {
                     completion = ReportCompletion::Partial;
                 }
-                run_completions.push(report.completion);
+                run_completions.push(report.completion());
             }
         }
     }

@@ -68,7 +68,7 @@ impl Adapter for GlassLintAdapter {
             return Ok(run_project(project, expectation)?.findings);
         }
         Ok(project_report_to_run(
-            configured_linter(expectation)?.lint_snippet(&case.source, &case.filename)?,
+            &configured_linter(expectation)?.lint_snippet(&case.source, &case.filename)?,
         )?
         .findings)
     }
@@ -159,20 +159,20 @@ fn run_project(project: &ProjectCase, expectation: &ToolExpectation) -> Result<A
         }
         session.finish_local().resolve(outcomes)?.finish()?
     };
-    project_report_to_run(report)
+    project_report_to_run(&report)
 }
 
-fn project_report_to_run(report: glass_lint_core::project::AnalysisReport) -> Result<AdapterRun> {
+fn project_report_to_run(report: &glass_lint_core::project::AnalysisReport) -> Result<AdapterRun> {
     // Keep diagnostics fatal for harness execution: a partial project report
     // cannot be compared reliably against finding expectations.
     let diagnostics = report
-        .files
+        .files()
         .iter()
-        .flat_map(|file| file.diagnostics.iter())
+        .flat_map(|file| file.diagnostics().iter())
         .map(|diagnostic| diagnostic.message().to_owned())
         .chain(
             report
-                .diagnostics
+                .diagnostics()
                 .iter()
                 .map(|diagnostic| format!("[{}] {}", diagnostic.code(), diagnostic.message())),
         )
@@ -181,10 +181,8 @@ fn project_report_to_run(report: glass_lint_core::project::AnalysisReport) -> Re
         bail!("{}", diagnostics.join("; "));
     }
     let mut findings = Vec::new();
-    for file in report.files {
-        for finding in file.findings {
-            findings.push(finding);
-        }
+    for file in report.files() {
+        findings.extend(file.findings().iter().cloned());
     }
     Ok(AdapterRun { findings })
 }

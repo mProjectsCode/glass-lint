@@ -1,4 +1,4 @@
-use glass_lint_core::rules::{
+use glass_lint_core::rules::{Category, 
     Confidence, FlowCompletion, FlowCondition, MatcherDecl, ObjectEventMatcher, ObjectFlowMatcher,
     ObjectSourceMatcher, Rule, Severity, ValueMatcher,
 };
@@ -11,7 +11,7 @@ use glass_lint_core::rules::{
 pub fn rule() -> Rule {
     Rule::builder("browser.file-dialog")
         .description("Uses browser file input dialogs")
-        .category("browser/file-dialog")
+        .category(Category::new("browser/file-dialog").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(MatcherDecl::from_object_flow(

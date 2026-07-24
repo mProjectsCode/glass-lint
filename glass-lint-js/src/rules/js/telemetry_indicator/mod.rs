@@ -1,6 +1,6 @@
 //! Telemetry SDK and endpoint indicator rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects static ESM or unshadowed CommonJS loads of the listed telemetry
 /// SDKs and string literals containing configured telemetry endpoint markers.
@@ -11,7 +11,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("network.telemetry-indicator")
         .description("References telemetry SDKs or endpoints")
-        .category("browser/network")
+        .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(

@@ -2,13 +2,15 @@
 //! identities remain owned by their module; the overlay stores qualified
 //! resolution results rather than merging lexical arenas.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
 use super::{
+    linker::ProjectLinker,
     projection::ProjectionOutcome,
-    state::{ExportTable, ModuleGraph, SccPartition},
+    state::{ExportLookupCache, ExportTable},
 };
 use crate::{
     analysis::{
@@ -18,7 +20,7 @@ use crate::{
         module::ModuleRequestId,
         name::NameTable,
         status::{
-            AnalysisStatus, IncompleteReason, ModuleInterfaceKind, ParseFailureKind, StatusScope,
+            AnalysisStatus, IncompleteReason, ParseFailureKind, StatusScope,
         },
         syntax::SymbolCallProvenance,
         value::{FunctionId, ValueId},
@@ -27,7 +29,6 @@ use crate::{
         classification::{ClassificationResult, MatchedCapability, RuleIndex},
         compiler::{CompiledRuleRecord, CompiledRuleSelection},
     },
-    budget::BudgetTracker,
     project::{
         AnalysisDiagnostic, LinkedModuleTarget, ModuleId, ProjectInputError, ProjectRelativePath,
         ResolutionRequestKey, ResolverOutcome, SourceFile,
@@ -198,18 +199,15 @@ pub struct ProjectSemanticModel {
     pub(super) resolutions: BTreeMap<QualifiedRequestId, LinkedModuleTarget>,
     /// Fixed-point export identities for linked modules.
     pub(super) exports: ExportTable,
-    /// Internal module graph.
-    pub(super) graph: ModuleGraph,
-    /// SCC partition with DAG and topological order.
-    pub(super) scc_partition: SccPartition,
+    /// Memoized star-export lookups (including negative results).
+    pub(super) lookup_cache: RefCell<ExportLookupCache>,
+    /// Number of unique internal edges between modules.
+    edge_count: usize,
     /// Sum of cycle-local fixed-point rounds (0 for acyclic graphs).
     pub(super) link_cycle_rounds: usize,
     /// Project diagnostics accumulated during linking and budgets.
     pub(super) diagnostics: Vec<AnalysisDiagnostic>,
     pub(super) status: AnalysisStatus,
-    /// Budget used by export identity linking.
-    pub(super) link_budget: BudgetTracker,
-    pub(super) link_limit: usize,
     pub(super) flow_limit: usize,
 }
 
@@ -240,21 +238,11 @@ impl ProjectSemanticModel {
             .collect(),
             resolutions: BTreeMap::new(),
             exports: ExportTable::default(),
-            graph: {
-                let mut graph = ModuleGraph::default();
-                graph.ensure_node(ModuleId::new(0));
-                graph
-            },
-            scc_partition: SccPartition {
-                components: vec![vec![ModuleId::new(0)]],
-                dag: BTreeMap::new(),
-                order: vec![0],
-            },
+            lookup_cache: RefCell::new(ExportLookupCache::new(limits.link_operations())),
+            edge_count: 0,
             link_cycle_rounds: 0,
             diagnostics: Vec::new(),
             status,
-            link_budget: BudgetTracker::default(),
-            link_limit: limits.link_operations(),
             flow_limit: limits.flow_operations(),
         }
     }
@@ -267,50 +255,24 @@ impl ProjectSemanticModel {
         link_input: ResolvedLinkInput,
         limits: &crate::AnalysisLimits,
     ) -> Self {
-        let mut project = Self {
-            modules: link_input.modules,
-            resolutions: link_input.resolutions,
-            exports: ExportTable::default(),
-            graph: ModuleGraph::default(),
-            scc_partition: SccPartition {
-                components: Vec::new(),
-                dag: BTreeMap::new(),
-                order: Vec::new(),
-            },
-            link_cycle_rounds: 0,
-            diagnostics: Vec::new(),
-            status: AnalysisStatus::default(),
-            link_budget: BudgetTracker::default(),
-            link_limit: limits.link_operations(),
+        let mut linker = ProjectLinker::new(
+            link_input.modules,
+            link_input.resolutions,
+            limits.link_operations(),
+        );
+        linker.propagate_local_status();
+        linker.build_graph_and_exports();
+        let outcome = linker.finish();
+        Self {
+            modules: outcome.modules,
+            resolutions: outcome.resolutions,
+            exports: outcome.exports,
+            lookup_cache: RefCell::new(ExportLookupCache::new(limits.link_operations())),
+            edge_count: outcome.edge_count,
+            link_cycle_rounds: outcome.link_cycle_rounds,
+            diagnostics: outcome.diagnostics,
+            status: outcome.status,
             flow_limit: limits.flow_operations(),
-        };
-        project.propagate_local_status();
-        project.build_graph_and_exports();
-        project
-    }
-
-    fn propagate_local_status(&mut self) {
-        let ids: Vec<ModuleId> = self.modules.keys().copied().collect();
-        for id in ids {
-            let (file_status, path, unknown) = {
-                let Some(module) = self.modules.get(&id) else {
-                    continue;
-                };
-                (
-                    module.local().status().for_file(module.path()),
-                    module.path().clone(),
-                    module.local().interface().is_unknown(),
-                )
-            };
-            self.status.extend(&file_status);
-            if unknown {
-                self.status.record(
-                    StatusScope::File(path),
-                    IncompleteReason::UnsupportedModuleInterface {
-                        kind: ModuleInterfaceKind::CommonJsExports,
-                    },
-                );
-            }
         }
     }
 
@@ -371,15 +333,15 @@ impl ProjectSemanticModel {
         let module = self.modules.get(&module)?;
         let fact = module.local().facts().stream().fact(FactId(fact))?;
         let range = module.source_context().range(fact.span).ok()?;
-        Some(crate::project::Evidence {
-            message: "related semantic path event".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: Some(crate::project::SourceLocation {
-                path: module.path().clone(),
+        Some(crate::project::Evidence::new(
+            "related semantic path event".into(),
+            1,
+            false,
+            Some(crate::project::SourceLocation::new(
+                module.path().clone(),
                 range,
-            }),
-        })
+            )),
+        ))
     }
 
     /// Resolve a callable target across local or qualified module identities.
@@ -440,29 +402,24 @@ impl ProjectSemanticModel {
         );
     }
 
-    pub(in crate::analysis) fn link_limit(&self) -> usize {
-        self.link_limit
-    }
-
     pub(in crate::analysis) fn flow_limit(&self) -> usize {
         self.flow_limit
     }
 
     /// Return deterministic phase and evidence operation counts.
     pub fn operation_counts(&self, evidence: usize) -> crate::project::AnalysisOperationCounts {
-        crate::project::AnalysisOperationCounts {
-            files: self.modules.len(),
-            requests: self
-                .modules
+        crate::project::AnalysisOperationCounts::new(
+            self.modules.len(),
+            self.modules
                 .values()
                 .map(|module| module.local().interface().requests().count())
                 .sum(),
-            edges: self.graph.edge_count(),
-            exports: self.exports.len(),
-            scc_rounds: self.link_cycle_rounds,
-            effect_projections: 0,
+            self.edge_count,
+            self.exports.len(),
+            self.link_cycle_rounds,
+            0,
             evidence,
-        }
+        )
     }
 
     pub fn classify_with_evidence_limit(
@@ -500,14 +457,4 @@ impl ProjectSemanticModel {
         (results, outcome)
     }
 
-    pub(in crate::analysis) fn static_export_string(
-        &self,
-        module: ModuleId,
-        export: &str,
-    ) -> Option<String> {
-        self.modules
-            .get(&module)
-            .and_then(|module| module.local().interface().static_string(export))
-            .cloned()
-    }
 }

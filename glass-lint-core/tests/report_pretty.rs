@@ -20,10 +20,7 @@ fn line_starts(source: &str) -> Vec<usize> {
 }
 
 fn location(range: SourceRange) -> SourceLocation {
-    SourceLocation {
-        path: path("main.js"),
-        range,
-    }
+    SourceLocation::new(path("main.js"), range)
 }
 
 fn range(line: u32, start: u32, end: u32) -> SourceRange {
@@ -35,29 +32,27 @@ fn range(line: u32, start: u32, end: u32) -> SourceRange {
 }
 
 fn file(findings: Vec<Finding>) -> FileReport {
-    FileReport {
-        path: path("main.js"),
-        findings,
-        diagnostics: Vec::new(),
-    }
+    FileReport::new(path("main.js"), findings, Vec::new())
 }
 
 #[test]
 fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
     let range = |line| range(line, 1, 6);
-    let finding = |line| Finding {
-        rule_id: RuleId::parse("test:fetch").unwrap(),
-        message: "Uses fetch".into(),
-        severity: Severity::Warning,
-        location: location(range(line)),
-        evidence: vec![Evidence {
-            message: "call of \"fetch\"".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: Some(location(range(line))),
-        }]
-        .into_iter()
-        .collect(),
+    let finding = |line| {
+        Finding::new(
+            RuleId::parse("test:fetch").unwrap(),
+            "Uses fetch".into(),
+            Severity::Warning,
+            location(range(line)),
+            vec![Evidence::new(
+                "call of \"fetch\"".into(),
+                1,
+                false,
+                Some(location(range(line))),
+            )]
+            .into_iter()
+            .collect(),
+        )
     };
     let report_a = file(vec![finding(2), finding(1)]);
     let report_b = file(vec![finding(1)]);
@@ -94,24 +89,24 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
 #[test]
 fn can_hide_source_excerpts_for_evidence_rows() {
     let range = range(1, 1, 6);
-    let report = FileReport {
-        path: path("main.js"),
-        findings: vec![Finding {
-            rule_id: RuleId::parse("test:fetch").unwrap(),
-            message: "Uses fetch".into(),
-            severity: Severity::Warning,
-            location: location(range.clone()),
-            evidence: vec![Evidence {
-                message: "call of fetch".into(),
-                count: 1,
-                evidence_truncated: false,
-                location: Some(location(range)),
-            }]
+    let report = FileReport::new(
+        path("main.js"),
+        vec![Finding::new(
+            RuleId::parse("test:fetch").unwrap(),
+            "Uses fetch".into(),
+            Severity::Warning,
+            location(range.clone()),
+            vec![Evidence::new(
+                "call of fetch".into(),
+                1,
+                false,
+                Some(location(range)),
+            )]
             .into_iter()
             .collect(),
-        }],
-        diagnostics: vec![],
-    };
+        )],
+        vec![],
+    );
 
     let line_starts = line_starts("fetch('x');");
     let rendered = PrettyReport::new(
@@ -134,11 +129,7 @@ fn can_hide_source_excerpts_for_evidence_rows() {
 
 #[test]
 fn renders_empty_reports_without_extra_output() {
-    let report = FileReport {
-        path: path("main.js"),
-        findings: vec![],
-        diagnostics: vec![],
-    };
+    let report = FileReport::new(path("main.js"), vec![], vec![]);
     let line_starts = line_starts("");
     assert_eq!(
         PrettyReport::new(
@@ -159,17 +150,17 @@ fn renders_empty_reports_without_extra_output() {
 
 #[test]
 fn renders_terminal_controls_visibly() {
-    let report = FileReport {
-        path: path("main.js"),
-        findings: vec![Finding {
-            rule_id: RuleId::parse("test:fetch").unwrap(),
-            message: "message\u{1b}[31m".into(),
-            severity: Severity::Warning,
-            location: location(range(1, 1, 2)),
-            evidence: Vec::new().into_iter().collect(),
-        }],
-        diagnostics: vec![],
-    };
+    let report = FileReport::new(
+        path("main.js"),
+        vec![Finding::new(
+            RuleId::parse("test:fetch").unwrap(),
+            "message\u{1b}[31m".into(),
+            Severity::Warning,
+            location(range(1, 1, 2)),
+            Vec::new().into_iter().collect(),
+        )],
+        vec![],
+    );
     let line_starts = line_starts("x");
     let output = PrettyReport::new(
         &report,
@@ -185,17 +176,17 @@ fn renders_terminal_controls_visibly() {
 
 #[test]
 fn bounds_long_excerpt() {
-    let report = FileReport {
-        path: path("main.js"),
-        findings: vec![Finding {
-            rule_id: RuleId::parse("test:long-line").unwrap(),
-            message: "long line".into(),
-            severity: Severity::Warning,
-            location: location(range(1, 201, 206)),
-            evidence: Vec::new().into_iter().collect(),
-        }],
-        diagnostics: vec![],
-    };
+    let report = FileReport::new(
+        path("main.js"),
+        vec![Finding::new(
+            RuleId::parse("test:long-line").unwrap(),
+            "long line".into(),
+            Severity::Warning,
+            location(range(1, 201, 206)),
+            Vec::new().into_iter().collect(),
+        )],
+        vec![],
+    );
     let source = format!("{}fetch('x')", "x".repeat(200));
     let line_starts = line_starts(&source);
     let rendered = PrettyReport::new(
@@ -219,17 +210,17 @@ fn bounds_long_excerpt() {
 
 #[test]
 fn renders_tabs_and_wide_unicode_within_the_display_budget() {
-    let report = FileReport {
-        path: path("main.js"),
-        findings: vec![Finding {
-            rule_id: RuleId::parse("test:unicode").unwrap(),
-            message: "unicode".into(),
-            severity: Severity::Info,
-            location: location(range(1, 9, 12)),
-            evidence: Vec::new().into_iter().collect(),
-        }],
-        diagnostics: vec![],
-    };
+    let report = FileReport::new(
+        path("main.js"),
+        vec![Finding::new(
+            RuleId::parse("test:unicode").unwrap(),
+            "unicode".into(),
+            Severity::Info,
+            location(range(1, 9, 12)),
+            Vec::new().into_iter().collect(),
+        )],
+        vec![],
+    );
     let line_starts = line_starts("\t\tconst 😀 = true;\n");
     let rendered = PrettyReport::new(
         &report,
@@ -253,17 +244,17 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
 
 #[test]
 fn renders_missing_source_lines_without_panicking() {
-    let report = FileReport {
-        path: path("main.js"),
-        findings: vec![Finding {
-            rule_id: RuleId::parse("test:missing").unwrap(),
-            message: "missing".into(),
-            severity: Severity::Error,
-            location: location(range(99, 1, 2)),
-            evidence: Vec::new().into_iter().collect(),
-        }],
-        diagnostics: vec![],
-    };
+    let report = FileReport::new(
+        path("main.js"),
+        vec![Finding::new(
+            RuleId::parse("test:missing").unwrap(),
+            "missing".into(),
+            Severity::Error,
+            location(range(99, 1, 2)),
+            Vec::new().into_iter().collect(),
+        )],
+        vec![],
+    );
     let line_starts = line_starts("");
     let rendered = PrettyReport::new(
         &report,
@@ -279,17 +270,17 @@ fn renders_missing_source_lines_without_panicking() {
 
 #[test]
 fn renders_colored_findings_when_enabled() {
-    let report = FileReport {
-        path: path("main.js"),
-        findings: vec![Finding {
-            rule_id: RuleId::parse("test:color").unwrap(),
-            message: "colored".into(),
-            severity: Severity::Error,
-            location: location(range(1, 1, 2)),
-            evidence: Vec::new().into_iter().collect(),
-        }],
-        diagnostics: vec![],
-    };
+    let report = FileReport::new(
+        path("main.js"),
+        vec![Finding::new(
+            RuleId::parse("test:color").unwrap(),
+            "colored".into(),
+            Severity::Error,
+            location(range(1, 1, 2)),
+            Vec::new().into_iter().collect(),
+        )],
+        vec![],
+    );
     let line_starts = line_starts("x();");
     let rendered = PrettyReport::new(
         &report,

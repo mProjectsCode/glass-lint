@@ -287,14 +287,14 @@ impl Config {
 
     /// Apply the CLI completion, diagnostic, and finding policy to one report.
     pub fn report_fails(&self, report: &glass_lint_core::project::AnalysisReport) -> bool {
-        report.completion == glass_lint_core::project::ReportCompletion::Partial
-            || !report.diagnostics.is_empty()
-            || report.files.iter().any(|file| {
+        report.completion() == glass_lint_core::project::ReportCompletion::Partial
+            || !report.diagnostics().is_empty()
+            || report.files().iter().any(|file| {
                 file.has_parse_diagnostics()
                     || file
-                        .findings
+                        .findings()
                         .iter()
-                        .any(|finding| self.cli.fail_on.fails(finding.severity))
+                        .any(|finding| self.cli.fail_on.fails(finding.severity()))
             })
     }
 }
@@ -410,16 +410,18 @@ mod tests {
             )
             .unwrap();
         let evals = report
-            .files
+            .files()
             .iter()
-            .flat_map(|file| file.findings.iter())
-            .filter(|finding| finding.rule_id.as_str() == "js:dynamic-code.eval")
+            .flat_map(|file| file.findings().iter())
+            .filter(|finding| finding.rule_id().as_str() == "js:dynamic-code.eval")
             .count();
         let processors = report
-            .files
+            .files()
             .iter()
-            .flat_map(|file| file.findings.iter())
-            .filter(|finding| finding.rule_id.as_str() == "obsidian:markdown.code-block-processor")
+            .flat_map(|file| file.findings().iter())
+            .filter(|finding| {
+                finding.rule_id().as_str() == "obsidian:markdown.code-block-processor"
+            })
             .count();
 
         assert_eq!(evals, 2);

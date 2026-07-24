@@ -1,6 +1,6 @@
 //! Browser environment-property rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects direct reads of a small set of browser environment properties.
 /// Rooted matchers preserve identity for configured browser globals, while
@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("browser.environment")
         .description("Reads browser environment data")
-        .category("browser/environment")
+        .category(Category::new("browser/environment").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(

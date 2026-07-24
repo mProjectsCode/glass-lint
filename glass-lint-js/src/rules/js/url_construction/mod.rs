@@ -1,6 +1,6 @@
 //! URL-constructor rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects construction through the unshadowed global `URL` and
 /// `URLSearchParams` constructors, selected static URL methods, and static
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("network.url-construction")
         .description("Constructs or references URLs")
-        .category("language/network")
+        .category(Category::new("language/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(

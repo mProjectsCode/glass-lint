@@ -81,11 +81,11 @@ const PROVIDER_PREFIXES: [&str; 4] = ["js:", "browser:", "node:", "electron:"];
 #[must_use]
 pub fn disclosures_for_report(report: &AnalysisReport) -> BTreeSet<&'static str> {
     report
-        .files
+        .files()
         .iter()
-        .flat_map(|file| file.findings.iter())
+        .flat_map(|file| file.findings().iter())
         .flat_map(|finding| {
-            let id = finding.rule_id.as_str();
+            let id = finding.rule_id().as_str();
             PROVIDER_PREFIXES
                 .iter()
                 .find_map(|prefix| id.strip_prefix(prefix))
@@ -239,10 +239,10 @@ mod tests {
             .lint_snippet("activeWindow.fetch('/x')", "main.js")
             .unwrap();
         assert!(
-            report.files[0]
-                .findings
+            report.files()[0]
+                .findings()
                 .iter()
-                .any(|finding| finding.rule_id.as_str() == "browser:network.request")
+                .any(|finding| finding.rule_id().as_str() == "browser:network.request")
         );
     }
 
@@ -253,10 +253,10 @@ mod tests {
             .lint_snippet("crypto.subtle.digest('SHA-256', bytes)", "main.js")
             .unwrap();
         assert!(
-            report.files[0]
-                .findings
+            report.files()[0]
+                .findings()
                 .iter()
-                .any(|finding| finding.rule_id.as_str() == "node:crypto.operation")
+                .any(|finding| finding.rule_id().as_str() == "node:crypto.operation")
         );
     }
 
@@ -270,10 +270,10 @@ mod tests {
             )
             .unwrap();
         assert!(
-            report.files[0]
-                .findings
+            report.files()[0]
+                .findings()
                 .iter()
-                .any(|finding| { finding.rule_id.as_str() == "node:crypto.operation" })
+                .any(|finding| { finding.rule_id().as_str() == "node:crypto.operation" })
         );
     }
 
@@ -282,10 +282,10 @@ mod tests {
         let linter = glass_lint_core::Linter::new(node_config()).unwrap();
         let source = include_str!("rules/node/crypto_operation/positive.js");
         let report = linter.lint_snippet(source, "positive.js").unwrap();
-        let count = report.files[0]
-            .findings
+        let count = report.files()[0]
+            .findings()
             .iter()
-            .filter(|finding| finding.rule_id.as_str() == "node:crypto.operation")
+            .filter(|finding| finding.rule_id().as_str() == "node:crypto.operation")
             .count();
         assert!(count >= 29, "expected rooted calls in fixture, got {count}");
     }

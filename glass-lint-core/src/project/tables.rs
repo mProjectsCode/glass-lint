@@ -37,6 +37,7 @@ impl PartialEq for EvidenceList {
 
 impl Eq for EvidenceList {}
 
+#[cfg(feature = "serde")]
 impl serde::Serialize for EvidenceList {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeSeq;
@@ -45,19 +46,6 @@ impl serde::Serialize for EvidenceList {
             seq.serialize_element(item)?;
         }
         seq.end()
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for EvidenceList {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let items = Vec::<Evidence>::deserialize(deserializer)?;
-        Ok(Self {
-            local: items,
-            shared: None,
-        })
     }
 }
 
@@ -74,10 +62,9 @@ impl EvidenceList {
     /// deduplication semantics used during report assembly. A linear scan of
     /// existing items avoids cloning identity fields into a separate store.
     pub fn push_unique(&mut self, item: Evidence) {
-        if !self
-            .iter()
-            .any(|existing| existing.message == item.message && existing.location == item.location)
-        {
+        if !self.iter().any(|existing| {
+            existing.message() == item.message() && existing.location() == item.location()
+        }) {
             self.local.push(item);
         }
     }
@@ -267,18 +254,8 @@ mod tests {
 
     #[test]
     fn evidence_list_deduplicates_by_typed_identity_and_preserves_order() {
-        let first = Evidence {
-            message: "path".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        };
-        let second = Evidence {
-            message: "other path".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        };
+        let first = Evidence::new("path".into(), 1, false, None);
+        let second = Evidence::new("other path".into(), 1, false, None);
         let duplicate = first.clone();
         let list = [first, second, duplicate]
             .into_iter()
@@ -288,48 +265,21 @@ mod tests {
 
     #[test]
     fn shared_evidence_is_iterated_after_local() {
-        let local: Vec<Evidence> = vec![Evidence {
-            message: "local".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }];
-        let shared: Arc<[Evidence]> = vec![Evidence {
-            message: "shared".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }]
-        .into();
+        let local: Vec<Evidence> = vec![Evidence::new("local".into(), 1, false, None)];
+        let shared: Arc<[Evidence]> = vec![Evidence::new("shared".into(), 1, false, None)].into();
         let mut list: EvidenceList = local.into_iter().collect();
         list.set_shared(Arc::clone(&shared));
 
         assert_eq!(list.len(), 2);
-        assert_eq!(list[0].message, "local");
-        assert_eq!(list[1].message, "shared");
+        assert_eq!(list[0].message(), "local");
+        assert_eq!(list[1].message(), "shared");
     }
 
     #[test]
     fn shared_evidence_has_same_owner_across_findings() {
-        let shared: Arc<[Evidence]> = vec![Evidence {
-            message: "related".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }]
-        .into();
-        let local_a: Vec<Evidence> = vec![Evidence {
-            message: "a".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }];
-        let local_b: Vec<Evidence> = vec![Evidence {
-            message: "b".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }];
+        let shared: Arc<[Evidence]> = vec![Evidence::new("related".into(), 1, false, None)].into();
+        let local_a: Vec<Evidence> = vec![Evidence::new("a".into(), 1, false, None)];
+        let local_b: Vec<Evidence> = vec![Evidence::new("b".into(), 1, false, None)];
 
         let mut list_a: EvidenceList = local_a.into_iter().collect();
         list_a.set_shared(Arc::clone(&shared));
@@ -338,27 +288,17 @@ mod tests {
 
         assert_eq!(list_a.len(), 2);
         assert_eq!(list_b.len(), 2);
-        assert_eq!(list_a[1].message, "related");
-        assert_eq!(list_b[1].message, "related");
+        assert_eq!(list_a[1].message(), "related");
+        assert_eq!(list_b[1].message(), "related");
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn shared_evidence_serializes_combined_with_local() {
-        let shared: Arc<[Evidence]> = vec![Evidence {
-            message: "shared".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }]
-        .into();
-        let mut list: EvidenceList = vec![Evidence {
-            message: "local".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }]
-        .into_iter()
-        .collect();
+        let shared: Arc<[Evidence]> = vec![Evidence::new("shared".into(), 1, false, None)].into();
+        let mut list: EvidenceList = vec![Evidence::new("local".into(), 1, false, None)]
+            .into_iter()
+            .collect();
         list.set_shared(shared);
 
         let json = serde_json::to_value(&list).unwrap();
@@ -368,84 +308,28 @@ mod tests {
     }
 
     #[test]
-    fn shared_evidence_round_trips_through_json() {
-        let mut list: EvidenceList = vec![Evidence {
-            message: "local".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }]
-        .into_iter()
-        .collect();
-        list.set_shared(
-            vec![Evidence {
-                message: "shared".into(),
-                count: 1,
-                evidence_truncated: false,
-                location: None,
-            }]
-            .into(),
-        );
-
-        let json = serde_json::to_string(&list).unwrap();
-        let restored: EvidenceList = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.len(), 2);
-        assert_eq!(restored[0].message, "local");
-        assert_eq!(restored[1].message, "shared");
-    }
-
-    #[test]
     fn evidence_list_is_empty_only_when_both_sources_empty() {
         let mut list = EvidenceList::default();
         assert!(list.is_empty());
 
-        list.set_shared(
-            vec![Evidence {
-                message: "rel".into(),
-                count: 1,
-                evidence_truncated: false,
-                location: None,
-            }]
-            .into(),
-        );
+        list.set_shared(vec![Evidence::new("rel".into(), 1, false, None)].into());
         assert!(!list.is_empty());
     }
 
     #[test]
     fn push_unique_scans_both_local_and_shared() {
-        let shared: Arc<[Evidence]> = vec![Evidence {
-            message: "shared".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }]
-        .into();
-        let mut list: EvidenceList = vec![Evidence {
-            message: "local".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        }]
-        .into_iter()
-        .collect();
+        let shared: Arc<[Evidence]> = vec![Evidence::new("shared".into(), 1, false, None)].into();
+        let mut list: EvidenceList = vec![Evidence::new("local".into(), 1, false, None)]
+            .into_iter()
+            .collect();
         list.set_shared(shared);
 
         // Duplicate of shared should not be added
-        list.push_unique(Evidence {
-            message: "shared".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        });
+        list.push_unique(Evidence::new("shared".into(), 1, false, None));
         assert_eq!(list.len(), 2);
 
         // Novel item should be added to local
-        list.push_unique(Evidence {
-            message: "new".into(),
-            count: 1,
-            evidence_truncated: false,
-            location: None,
-        });
+        list.push_unique(Evidence::new("new".into(), 1, false, None));
         assert_eq!(list.len(), 3);
     }
 }

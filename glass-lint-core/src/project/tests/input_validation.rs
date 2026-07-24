@@ -14,9 +14,9 @@ fn staged_session_normalizes_and_sorts_sources() {
         .unwrap();
     collection.analyze_source(source_file("a.js", "")).unwrap();
     let report = finish_collection(collection);
-    assert_eq!(report.files.len(), 2);
-    assert_eq!(report.files[0].path, "a.js");
-    assert_eq!(report.files[1].path, "z.js");
+    assert_eq!(report.files().len(), 2);
+    assert_eq!(report.files()[0].path().as_str(), "a.js");
+    assert_eq!(report.files()[1].path().as_str(), "z.js");
 }
 
 #[test]

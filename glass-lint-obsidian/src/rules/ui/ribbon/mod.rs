@@ -1,6 +1,6 @@
 //! Obsidian ribbon-registration rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects the syntactic `this.addRibbonIcon()` registration call, including
 /// statically computed property names. The instance matcher requires a proven
@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("ui.ribbon")
         .description("Registers ribbon icons")
-        .category("ui")
+        .category(Category::new("ui").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

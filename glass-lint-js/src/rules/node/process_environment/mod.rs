@@ -1,6 +1,6 @@
 //! Node process-environment rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted reads of Node's `process.env` and `process.platform`,
 /// including direct member access and aliases that retain the rooted
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("node.process-environment")
         .description("Reads Node process environment or platform metadata")
-        .category("node/process")
+        .category(Category::new("node/process").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

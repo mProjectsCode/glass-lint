@@ -1,6 +1,6 @@
 //! Node filesystem and path module rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 const PATH_MODULES: &[&str] = &["path", "node:path"];
 const PATH_METHODS: &[&str] = &[
@@ -26,7 +26,7 @@ const PATH_METHODS: &[&str] = &[
 pub fn rule() -> Rule {
     let mut builder = Rule::builder("node.filesystem")
         .description("Uses Node filesystem and path APIs")
-        .category("node/filesystem")
+        .category(Category::new("node/filesystem").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

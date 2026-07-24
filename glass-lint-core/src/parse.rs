@@ -18,7 +18,8 @@ use crate::{
 #[cfg(test)]
 const MAX_SYNTAX_DEPTH: usize = 512;
 
-#[derive(Clone, Debug, serde::Deserialize, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 /// Structured parser failure with an optional source range.
 pub struct ParseDiagnostic {
     /// Stable diagnostic code.
@@ -27,14 +28,11 @@ pub struct ParseDiagnostic {
     pub message: String,
     /// Authored filename.
     pub filename: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub range: Option<SourceRange>,
 }
 
 /// Source languages accepted by the core parser.
-#[derive(
-    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize,
-)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum SourceLanguage {
     /// JavaScript/JSX syntax family.
     JavaScript,

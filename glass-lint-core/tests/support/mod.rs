@@ -10,14 +10,14 @@
 use glass_lint_core::{
     Environment, Linter, LinterConfig, RuleCatalog,
     project::FileReport,
-    rules::{Builder, Confidence, Rule, Severity},
+    rules::{Builder, Category, Confidence, Rule, Severity},
 };
 
 /// Build a standard test rule with the given id.
 pub fn rule(id: &str) -> Builder {
     Rule::builder(id)
         .description(id)
-        .category("test")
+        .category(Category::new("test").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
 }
@@ -35,21 +35,19 @@ pub fn test_linter_for(rule: Rule) -> Linter {
 
 /// Lint a snippet with a single rule and return the file report.
 pub fn lint_snippet(source: &str, rule: Rule) -> FileReport {
-    test_linter_for(rule)
+    let (_, _, mut files, _, _, _) = test_linter_for(rule)
         .lint_snippet(source, "test.js")
         .unwrap()
-        .files
-        .into_iter()
-        .next()
-        .unwrap()
+        .into_parts();
+    files.remove(0)
 }
 
 /// Return finding messages from a file report.
 pub fn finding_messages(report: &FileReport) -> Vec<&str> {
     report
-        .findings
+        .findings()
         .iter()
-        .map(|finding| finding.message.as_str())
+        .map(glass_lint_core::project::Finding::message)
         .collect()
 }
 
@@ -87,8 +85,8 @@ pub fn assert_count_with_env(source: &str, rule: Rule, expected: usize, environm
         .unwrap()
         .lint_snippet(source, "test.js")
         .unwrap()
-        .files[0]
-        .findings
+        .files()[0]
+        .findings()
         .len();
     assert_eq!(count, expected, "{source}");
 }
@@ -102,11 +100,11 @@ pub fn classify(source: &str, rules: &[Rule]) -> (usize, Vec<String>) {
         .unwrap()
         .lint_snippet(source, "test.js")
         .unwrap();
-    let count = report.files[0].findings.len();
-    let ids = report.files[0]
-        .findings
+    let count = report.files()[0].findings().len();
+    let ids = report.files()[0]
+        .findings()
         .iter()
-        .map(|finding| finding.rule_id.as_str().to_owned())
+        .map(|finding| finding.rule_id().as_str().to_owned())
         .collect();
     (count, ids)
 }

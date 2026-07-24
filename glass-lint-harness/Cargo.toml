@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-glass-lint-core = { path = "../glass-lint-core" }
+glass-lint-core = { path = "../glass-lint-core", features = ["serde"] }
 glass-lint-project = { path = "../glass-lint-project" }
 glass-lint-obsidian = { path = "../glass-lint-obsidian" }
 glass-lint-js = { path = "../glass-lint-js" }

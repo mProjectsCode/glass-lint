@@ -17,11 +17,12 @@ use crate::{
             index::FlowId,
             requirements::RequirementSet,
         },
-        value::{FunctionId, ValueId},
+        name::NameTable,
+        value::{FunctionId, NamePath, ValueId},
     },
     api::{
         classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},
-        compiler::{CompiledObjectFlow, CompiledRuleSelection},
+        compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledRuleSelection},
     },
     budget::Budget,
     project::ModuleId,
@@ -31,6 +32,76 @@ const MAX_CONTEXTS: usize = 65_536;
 const MAX_SOURCE_REFINEMENT_ROUNDS: usize = 64;
 const MAX_PENDING: usize = 65_536;
 const MAX_RELATED_EVIDENCE: usize = 8;
+
+/// Pre-computed qualified call targets keyed by (caller_module, call_event_fact).
+/// Populated once and reused across all cross-flow phases.
+pub(super) struct QualifiedCallGraph {
+    targets: BTreeMap<(ModuleId, FactId), (ModuleId, FunctionId)>,
+}
+
+impl QualifiedCallGraph {
+    fn build(project: &ProjectSemanticModel) -> Self {
+        let mut targets = BTreeMap::new();
+        for module in project.modules() {
+            let module_id = module.id();
+            let stream = module.local().facts().stream();
+            for effect in module.local().effects().iter_effects() {
+                for call in effect.calls() {
+                    let cref = call.as_ref(stream);
+                    let Some(provenance) = cref.provenance() else {
+                        continue;
+                    };
+                    if let Some(target) =
+                        project.qualified_function_target(module_id, cref.target(), provenance)
+                    {
+                        targets.insert((module_id, call.event()), target);
+                    }
+                }
+            }
+        }
+        Self { targets }
+    }
+
+    pub(super) fn get(&self, module: ModuleId, event: FactId) -> Option<(ModuleId, FunctionId)> {
+        self.targets.get(&(module, event)).copied()
+    }
+}
+
+/// Pre-resolved requirement and sink member paths for one (flow, names) pair.
+/// Built once and reused across all contexts for the same flow and module.
+pub(super) struct FlowPathPlan {
+    pub(super) req_members: Vec<Option<NamePath>>,
+    pub(super) sink_members: Vec<Vec<NamePath>>,
+}
+
+impl FlowPathPlan {
+    pub(super) fn build(flow: &CompiledObjectFlow, names: &NameTable) -> Self {
+        let req_members = flow
+            .requirements
+            .iter()
+            .map(|req| match req {
+                CompiledObjectRequirement::MemberCall { member, .. } => {
+                    NamePath::from_symbol_path(member, names)
+                }
+                CompiledObjectRequirement::PropertyWrite { .. } => None,
+            })
+            .collect();
+        let sink_members = flow
+            .sinks
+            .iter()
+            .map(|sink| {
+                sink.member_calls
+                    .iter()
+                    .filter_map(|mc| NamePath::from_symbol_path(mc, names))
+                    .collect()
+            })
+            .collect();
+        Self {
+            req_members,
+            sink_members,
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(super) enum EvidenceRole {
@@ -187,10 +258,14 @@ impl ContextWorklist {
         }
     }
 
-    fn seed(project: &ProjectSemanticModel, sources: &FlowSources) -> Self {
+    fn seed(
+        project: &ProjectSemanticModel,
+        sources: &FlowSources,
+        call_graph: &QualifiedCallGraph,
+    ) -> Self {
         let mut worklist = Self::new(MAX_CONTEXTS);
         worklist.seed_from_sources(project, sources);
-        worklist.seed_from_calls(project, sources);
+        worklist.seed_from_calls(project, sources, call_graph);
         worklist
     }
 
@@ -219,20 +294,20 @@ impl ContextWorklist {
         }
     }
 
-    fn seed_from_calls(&mut self, project: &ProjectSemanticModel, sources: &FlowSources) {
+    fn seed_from_calls(
+        &mut self,
+        project: &ProjectSemanticModel,
+        sources: &FlowSources,
+        call_graph: &QualifiedCallGraph,
+    ) {
         for module in project.modules() {
             if self.is_exhausted() {
                 return;
             }
-            let stream = module.local().facts().stream();
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
-                    let cref = call.as_ref(stream);
-                    let Some(provenance) = cref.provenance() else {
-                        continue;
-                    };
                     let Some((target_module, target_function)) =
-                        project.qualified_function_target(module.id(), cref.target(), provenance)
+                        call_graph.get(module.id(), call.event())
                     else {
                         continue;
                     };
@@ -328,17 +403,18 @@ impl FlowSources {
     /// Build the adjacency index in one pass over all modules, effects, and
     /// calls.  Each edge records that the destination key should receive
     /// candidates from the source key when the source key changes.
-    fn build_adjacency(&mut self, project: &ProjectSemanticModel) {
+    fn build_adjacency(
+        &mut self,
+        project: &ProjectSemanticModel,
+        call_graph: &QualifiedCallGraph,
+    ) {
         for module in project.modules() {
             let stream = module.local().facts().stream();
             for effect in module.local().effects().iter_effects() {
                 for call in effect.calls() {
                     let cref = call.as_ref(stream);
-                    let Some(provenance) = cref.provenance() else {
-                        continue;
-                    };
                     let Some((target_module, target_function)) =
-                        project.qualified_function_target(module.id(), cref.target(), provenance)
+                        call_graph.get(module.id(), call.event())
                     else {
                         continue;
                     };
@@ -427,8 +503,19 @@ pub(in crate::analysis) fn collect(
         return (empty, false, 0);
     }
 
-    let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows);
-    let mut worklist = ContextWorklist::seed(project, &sources);
+    let call_graph = QualifiedCallGraph::build(project);
+    let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows, &call_graph);
+    let mut worklist = ContextWorklist::seed(project, &sources, &call_graph);
+
+    let mut flow_plans: BTreeMap<(FlowId, ModuleId), FlowPathPlan> = BTreeMap::new();
+    for (flow_id, flow) in &flows {
+        for module in project.modules() {
+            let Some(names) = project.module_names(module.id()) else {
+                continue;
+            };
+            flow_plans.insert((*flow_id, module.id()), FlowPathPlan::build(flow, names));
+        }
+    }
 
     let mut step_budget = Budget::new(project.flow_limit());
     let mut projections = 0usize;
@@ -446,6 +533,9 @@ pub(in crate::analysis) fn collect(
         let Some(flow) = flows.get(&context.state.flow).copied() else {
             continue;
         };
+        let Some(flow_plan) = flow_plans.get(&(context.state.flow, context.module)) else {
+            continue;
+        };
         let mut current_state = context.state.clone();
         let mut propagated_calls = BTreeSet::new();
         let names = project
@@ -457,6 +547,8 @@ pub(in crate::analysis) fn collect(
             context: &context,
             effect,
             flow,
+            flow_plan,
+            call_graph: &call_graph,
             state: &mut current_state,
             propagated: &mut propagated_calls,
             worklist: &mut worklist,
@@ -472,6 +564,7 @@ pub(in crate::analysis) fn collect(
             through: None,
             state: &current_state,
             worklist: &mut worklist,
+            call_graph: &call_graph,
         }
         .propagate();
         if worklist.len() >= MAX_CONTEXTS {
@@ -498,10 +591,11 @@ impl FlowSources {
     fn collect(
         project: &ProjectSemanticModel,
         flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
+        call_graph: &QualifiedCallGraph,
     ) -> (Self, bool) {
         let mut sources = Self::default();
         sources.collect_candidates(project, flows);
-        sources.build_adjacency(project);
+        sources.build_adjacency(project, call_graph);
         let budget_exhausted = sources.propagate();
         (sources, budget_exhausted)
     }
@@ -699,7 +793,7 @@ pub(super) fn emit(
         kind: MatchKind::CallArgument,
         symbol: flow.evidence_symbol(),
         count: 1,
-        evidence_truncated: false,
+        truncated: false,
         occurrences: vec![
             crate::api::classification::ClassificationEvidenceOccurrence {
                 span,

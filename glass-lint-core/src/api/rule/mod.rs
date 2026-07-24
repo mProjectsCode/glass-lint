@@ -127,11 +127,11 @@ impl RuleBuilder {
 
     #[must_use]
     /// Set the provider category.
-    pub fn category(mut self, category: impl Into<Category>) -> Self {
+    pub fn category(mut self, category: Category) -> Self {
         if self.category.is_some() {
             self.duplicate_field = Some("category");
         }
-        self.category = Some(category.into());
+        self.category = Some(category);
         self
     }
 
@@ -172,12 +172,6 @@ impl RuleBuilder {
         if !crate::RuleId::valid_name(&id) {
             return Err(RuleBuildError::InvalidId(id));
         }
-        if !category.is_valid() {
-            return Err(RuleBuildError::InvalidCategory(
-                category.as_str().to_string(),
-            ));
-        }
-
         Ok(Rule {
             id,
             description,
@@ -215,9 +209,12 @@ mod tests {
     use super::*;
 
     fn build(id: &str, category: &str) -> Result<Rule, RuleBuildError> {
+        let cat = Category::new(category).map_err(|_| {
+            RuleBuildError::InvalidCategory(category.trim().to_string())
+        })?;
         Rule::builder(id)
             .description("rule")
-            .category(category)
+            .category(cat)
             .severity(Severity::Info)
             .confidence(Confidence::High)
             .declaration(
@@ -268,8 +265,8 @@ mod tests {
             (
                 "category",
                 Rule::builder("network.fetch")
-                    .category("one")
-                    .category("two"),
+                    .category(Category::new("one").unwrap())
+                    .category(Category::new("two").unwrap()),
             ),
             (
                 "severity",
@@ -296,7 +293,7 @@ mod tests {
     fn rejects_empty_and_incomplete_matchers() {
         let rule = Rule::builder("network.fetch")
             .description("rule")
-            .category("network")
+            .category(Category::new("network").unwrap())
             .severity(Severity::Info)
             .confidence(Confidence::High)
             .declaration(
@@ -318,7 +315,7 @@ mod tests {
 
         let rule = Rule::builder("class.invalid-global")
             .description("rule")
-            .category("classes")
+            .category(Category::new("classes").unwrap())
             .severity(Severity::Info)
             .confidence(Confidence::High)
             .declaration(
@@ -331,19 +328,9 @@ mod tests {
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
 
-        let rule = Rule::builder("package.invalid")
-            .description("rule")
-            .category("packages")
-            .severity(Severity::Info)
-            .confidence(Confidence::High)
-            .declaration(
-                MatcherDecl::builder()
-                    .import_package("pkg/subpath")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
-            .build()
-            .unwrap();
-        assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
+        let decl = MatcherDecl::builder()
+            .import_package("pkg/subpath")
+            .build();
+        assert!(decl.is_err());
     }
 }

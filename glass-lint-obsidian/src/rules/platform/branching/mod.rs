@@ -1,6 +1,6 @@
 //! Obsidian platform-branching rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects reads of the configured `obsidian.Platform` flags and resource path
 /// prefix. Module namespace aliases, optional chains, and static computed
@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("platform.branching")
         .description("Checks Obsidian platform flags")
-        .category("platform")
+        .category(Category::new("platform").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

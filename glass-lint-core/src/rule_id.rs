@@ -2,10 +2,12 @@
 
 use std::{error::Error, fmt};
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(transparent)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "serde", serde(transparent))]
 /// Canonical `provider:name` rule identifier.
 pub struct RuleId(String);
 
@@ -69,6 +71,7 @@ impl fmt::Display for RuleId {
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for RuleId {
     fn deserialize<D>(d: D) -> Result<Self, D::Error>
     where

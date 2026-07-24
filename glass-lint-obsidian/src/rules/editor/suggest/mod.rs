@@ -1,6 +1,6 @@
 //! Obsidian editor-suggestion registration rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects the syntactic member chain `this.registerEditorSuggest`.
 /// The instance matcher requires a proven Obsidian `Plugin` receiver and
@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("editor.suggest")
         .description("Registers editor suggestions")
-        .category("editor")
+        .category(Category::new("editor").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

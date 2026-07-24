@@ -410,7 +410,7 @@ pub(super) fn push_owned_evidence(
         kind,
         symbol,
         count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
-        evidence_truncated: false,
+        truncated: false,
         occurrences,
         related: Vec::new(),
     });

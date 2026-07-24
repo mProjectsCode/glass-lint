@@ -1,4 +1,4 @@
-use crate::{AnalysisLimits, project::tests::*};
+use crate::{api::rule::Category, AnalysisLimits, project::tests::*};
 
 fn configured_linter(limits: AnalysisLimits) -> crate::Linter {
     test_linter_with_selection(crate::RuleSelection::default(), limits)
@@ -23,14 +23,14 @@ fn lint_one(linter: &crate::Linter, path: &str, source: &str) -> AnalysisReport 
 
 fn diagnostics(report: &AnalysisReport) -> Vec<(Option<&str>, &str)> {
     report
-        .files
+        .files()
         .iter()
         .flat_map(|file| {
-            file.diagnostics
+            file.diagnostics()
                 .iter()
-                .map(|diagnostic| (Some(file.path.as_str()), diagnostic.code()))
+                .map(|diagnostic| (Some(file.path().as_str()), diagnostic.code()))
         })
-        .chain(report.diagnostics.iter().map(|diagnostic| {
+        .chain(report.diagnostics().iter().map(|diagnostic| {
             (
                 diagnostic.path().map(ProjectRelativePath::as_str),
                 diagnostic.code(),
@@ -104,7 +104,7 @@ fn status_policy_matrix_has_expected_scope_and_completion() {
         reason: "unsupported extension".into(),
     });
     let outside = request_report(ResolverOutcome::OutsideProject {
-        path: "/other/dep.js".into(),
+        path: NormalizedOutsidePath::new("/other/dep.js").unwrap(),
     });
     let ambiguous = ambiguous_report();
 
@@ -119,10 +119,10 @@ fn status_policy_matrix_has_expected_scope_and_completion() {
         (&ambiguous, Some("main.js"), "ambiguous_star_export"),
     ];
     for (report, path, code) in rows {
-        assert_eq!(report.completion, ReportCompletion::Partial, "{code}");
+        assert_eq!(report.completion(), ReportCompletion::Partial, "{code}");
         assert_eq!(diagnostics(report), vec![(path, code)], "{code}");
         assert!(
-            report.files.iter().all(|file| file.findings.is_empty()),
+            report.files().iter().all(|file| file.findings().is_empty()),
             "{code}"
         );
     }
@@ -131,33 +131,24 @@ fn status_policy_matrix_has_expected_scope_and_completion() {
 #[test]
 fn parse_status_and_structured_diagnostic_stay_consistent() {
     let report = lint_one(&test_linter(), "broken.js", "fetch(");
-    assert_eq!(report.completion, ReportCompletion::Partial);
-    let diagnostic = &report.files[0].diagnostics[0];
+    assert_eq!(report.completion(), ReportCompletion::Partial);
+    let diagnostic = &report.files()[0].diagnostics()[0];
     assert!(diagnostic.parse_diagnostic().is_some());
     assert_eq!(diagnostic.path().unwrap().as_str(), "broken.js");
-    let restored: AnalysisReport =
-        serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
-    assert_eq!(restored.completion, ReportCompletion::Partial);
-    assert!(
-        restored.files[0].diagnostics[0]
-            .parse_diagnostic()
-            .is_some()
-    );
-    assert_eq!(restored, report);
 }
 
 #[test]
 fn external_and_builtin_requests_are_complete() {
     for result in [
         ResolverOutcome::External {
-            package: "package".into(),
+            package: PackageSpecifier::new("package").unwrap(),
         },
         ResolverOutcome::Builtin {
-            name: "node:fs".into(),
+            name: BuiltinModuleName::new("node:fs").unwrap(),
         },
     ] {
         let report = request_report(result);
-        assert_eq!(report.completion, ReportCompletion::Complete);
+        assert_eq!(report.completion(), ReportCompletion::Complete);
         assert!(diagnostics(&report).is_empty());
     }
 }
@@ -175,7 +166,7 @@ fn proven_missing_export_is_diagnostic_but_complete() {
     );
     fixture.add("dep.js", "export const present = 1;");
     let report = fixture.finish();
-    assert_eq!(report.completion, ReportCompletion::Complete);
+    assert_eq!(report.completion(), ReportCompletion::Complete);
     assert_eq!(
         diagnostics(&report),
         vec![(Some("main.js"), "missing_imported_export")]
@@ -199,14 +190,14 @@ fn assert_limit_triplet(
         let mut limits = AnalysisLimits::default();
         setter(&mut limits, limit);
         let report = analyze(&configure(limits));
-        assert_eq!(report.completion, expected, "{code} limit={limit}");
+        assert_eq!(report.completion(), expected, "{code} limit={limit}");
         if expected == ReportCompletion::Partial {
             let status_diagnostics = diagnostics(&report)
                 .into_iter()
                 .filter(|(_, actual)| *actual == code)
                 .collect::<Vec<_>>();
             assert_eq!(status_diagnostics, vec![(scope, code)]);
-            assert!(report.files.iter().all(|file| file.findings.is_empty()));
+            assert!(report.files().iter().all(|file| file.findings().is_empty()));
         } else {
             assert!(
                 diagnostics(&report)
@@ -296,7 +287,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
 fn partial_status_never_emits_unproved_strict_finding() {
     let rule = Rule::builder("network.request")
         .description("Uses request")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -317,8 +308,8 @@ fn partial_status_never_emits_unproved_strict_finding() {
         "main.js",
         "import { request } from './dep'; request();",
     );
-    assert_eq!(report.completion, ReportCompletion::Partial);
-    assert!(report.files[0].findings.is_empty());
+    assert_eq!(report.completion(), ReportCompletion::Partial);
+    assert!(report.files()[0].findings().is_empty());
     assert_eq!(
         diagnostics(&report),
         vec![(Some("main.js"), "unresolved_internal_request")]

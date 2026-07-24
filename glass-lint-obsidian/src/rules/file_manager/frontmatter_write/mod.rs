@@ -1,6 +1,6 @@
 //! Obsidian frontmatter-write rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects calls to the rooted Obsidian API
 /// `app.fileManager.processFrontMatter`, including proven aliases and static
@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("file-manager.frontmatter-write")
         .description("Updates frontmatter through Obsidian APIs")
-        .category("file-manager")
+        .category(Category::new("file-manager").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

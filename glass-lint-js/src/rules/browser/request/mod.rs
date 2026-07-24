@@ -1,4 +1,4 @@
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects calls proven to target global `fetch`, rooted
 /// `navigator.sendBeacon`, and the global `XMLHttpRequest`, `WebSocket`, and
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("network.request")
         .description("Uses browser network request APIs")
-        .category("browser/network")
+        .category(Category::new("browser/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

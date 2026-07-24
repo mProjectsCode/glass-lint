@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use smol_str::SmolStr;
 
 use super::{
-    CallContext, ContextWorklist, CrossFlowState, QualifiedEvent, effect_use_event, emit,
-    usage_matches_context,
+    CallContext, ContextWorklist, CrossFlowState, FlowPathPlan, QualifiedCallGraph, QualifiedEvent,
+    effect_use_event, emit, usage_matches_context,
 };
 use crate::{
     analysis::{
@@ -12,7 +12,6 @@ use crate::{
         facts::FactId,
         flow::effect::{CallEffectRef, EffectUse, FunctionEffect},
         name::NameTable,
-        value::NamePath,
     },
     api::compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments},
     project::ModuleId,
@@ -24,6 +23,8 @@ pub(super) struct UsageProjector<'a> {
     pub(super) context: &'a CallContext,
     pub(super) effect: &'a FunctionEffect,
     pub(super) flow: &'a CompiledObjectFlow,
+    pub(super) flow_plan: &'a FlowPathPlan,
+    pub(super) call_graph: &'a QualifiedCallGraph,
     pub(super) state: &'a mut CrossFlowState,
     pub(super) propagated: &'a mut BTreeSet<FactId>,
     pub(super) worklist: &'a mut ContextWorklist,
@@ -45,6 +46,7 @@ impl UsageProjector<'_> {
                 through: Some(effect_use_event(usage)),
                 state: self.state,
                 worklist: self.worklist,
+                call_graph: self.call_graph,
             }
             .propagate();
             match usage {
@@ -106,20 +108,8 @@ impl UsageProjector<'_> {
 
         let chain = cref.chain();
         let values = stream.values();
-        // Pre-resolve requirement member paths once per call context.
-        let req_members: Vec<Option<NamePath>> = self
-            .flow
-            .requirements
-            .iter()
-            .map(|req| match req {
-                CompiledObjectRequirement::MemberCall { member, .. } => {
-                    NamePath::from_symbol_path(member, self.names)
-                }
-                CompiledObjectRequirement::PropertyWrite { .. } => None,
-            })
-            .collect();
         let mut next = self.state.clone();
-        for (index, member) in req_members.iter().enumerate() {
+        for (index, member) in self.flow_plan.req_members.iter().enumerate() {
             if let Some(member) = member
                 && chain.is_some_and(|c| c == member || c.last_segment() == member.last_segment())
                 && let CompiledObjectRequirement::MemberCall { arguments, .. } =
@@ -150,20 +140,9 @@ impl UsageProjector<'_> {
         let cref = CallEffectRef { stream, event };
         let chain = cref.chain();
         let rooted = cref.rooted();
-        // Pre-resolve sink member-call paths once per call context.
-        let sink_members: Vec<Vec<NamePath>> = self
-            .flow
-            .sinks
-            .iter()
-            .map(|sink| {
-                sink.member_calls
-                    .iter()
-                    .filter_map(|mc| NamePath::from_symbol_path(mc, self.names))
-                    .collect()
-            })
-            .collect();
         let sink_matches = self.flow.sinks.iter().enumerate().any(|(i, sink)| {
-            sink_members
+            self.flow_plan
+                .sink_members
                 .get(i)
                 .is_some_and(|members| members.iter().any(|member| chain == Some(member)))
                 && sink.is_rooted == rooted
@@ -215,26 +194,19 @@ pub(super) struct CallPropagation<'a> {
     pub(super) through: Option<FactId>,
     pub(super) state: &'a CrossFlowState,
     pub(super) worklist: &'a mut ContextWorklist,
+    pub(super) call_graph: &'a QualifiedCallGraph,
 }
 
 impl CallPropagation<'_> {
     pub(super) fn propagate(&mut self) {
-        let Some(stream) = self.project.module_fact_stream(self.module) else {
-            return;
-        };
         for call in self.effect.calls() {
             if self.through.is_some_and(|event| call.event() > event)
                 || !self.propagated.insert(call.event())
             {
                 continue;
             }
-            let cref = call.as_ref(stream);
-            let Some(provenance) = cref.provenance() else {
-                continue;
-            };
             let Some((target_module, target_function)) =
-                self.project
-                    .qualified_function_target(self.module, cref.target(), provenance)
+                self.call_graph.get(self.module, call.event())
             else {
                 continue;
             };

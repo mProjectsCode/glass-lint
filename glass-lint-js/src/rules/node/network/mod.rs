@@ -1,6 +1,6 @@
 //! Node HTTP-module rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects static ESM or unshadowed CommonJS loads of the configured Node
 /// network modules and exact client packages. It reports the module load
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("node.network")
         .description("Uses Node HTTP modules")
-        .category("node/network")
+        .category(Category::new("node/network").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

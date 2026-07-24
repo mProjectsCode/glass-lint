@@ -1,6 +1,6 @@
 //! Electron IPC rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 const RECEIVERS: &[(&str, &[&str])] = &[
     (
@@ -70,7 +70,7 @@ const RECEIVERS: &[(&str, &[&str])] = &[
 pub fn rule() -> Rule {
     let mut builder = Rule::builder("electron.ipc")
         .description("Uses Electron IPC APIs")
-        .category("electron/ipc")
+        .category(Category::new("electron/ipc").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High);
     for &(receiver, methods) in RECEIVERS {

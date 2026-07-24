@@ -13,7 +13,7 @@
 pub(super) mod model;
 
 mod exports;
-mod graph;
+pub(super) mod linker;
 pub(super) mod identities;
 pub mod projection;
 pub(super) mod state;

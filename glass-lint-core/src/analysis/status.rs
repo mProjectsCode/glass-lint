@@ -220,11 +220,7 @@ impl IncompleteReason {
         let location = match scope {
             StatusScope::File(_) | StatusScope::Project => None,
         };
-        AnalysisDiagnostic {
-            code: code.into(),
-            message,
-            location,
-        }
+        AnalysisDiagnostic::new(code.into(), message, location)
     }
 }
 
@@ -249,8 +245,8 @@ mod tests {
         let (files, project) = status.diagnostics();
         assert_eq!(files.len(), 1);
         assert!(project.is_empty());
-        assert_eq!(files[0].1.code.as_str(), "semantic_budget_exhausted");
-        assert!(files[0].1.message.contains("limit=2"));
+        assert_eq!(files[0].1.code().as_str(), "semantic_budget_exhausted");
+        assert!(files[0].1.message().contains("limit=2"));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Browser global-input listener rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 const INPUT_EVENTS: [&str; 16] = [
     "keydown",
@@ -30,7 +30,7 @@ const INPUT_EVENTS: [&str; 16] = [
 pub fn rule() -> Rule {
     Rule::builder("browser.global-input-hook")
         .description("Registers global input handlers")
-        .category("browser/input")
+        .category(Category::new("browser/input").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(

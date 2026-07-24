@@ -104,24 +104,24 @@ pub fn run_suite(
 
 impl FindingExpectation {
     fn matches(&self, finding: &Finding) -> bool {
-        finding.rule_id == self.rule_id
+        *finding.rule_id() == self.rule_id
             && self
                 .severity
-                .is_none_or(|severity| finding.severity == severity)
+                .is_none_or(|severity| finding.severity() == severity)
             && self
                 .line
-                .is_none_or(|line| finding.location.range.start().line() == line)
+                .is_none_or(|line| finding.location().range().start().line() == line)
             && self
                 .column
-                .is_none_or(|column| finding.location.range.start().column() == column)
+                .is_none_or(|column| finding.location().range().start().column() == column)
             && self
                 .message
                 .as_ref()
-                .is_none_or(|message| &finding.message == message)
+                .is_none_or(|message| finding.message() == message.as_str())
             && self
                 .path
                 .as_ref()
-                .is_none_or(|path| finding.location.path == *path)
+                .is_none_or(|path| finding.location().path() == path)
     }
 }
 
@@ -169,7 +169,8 @@ fn compare(findings: &[Finding], expectation: &ToolExpectation) -> Vec<String> {
         if !is_required && !is_forbidden {
             errors.push(format!(
                 "unexpected {} at {:?}",
-                finding.rule_id, finding.location.range
+                finding.rule_id(),
+                finding.location().range()
             ));
         }
     }
@@ -184,20 +185,20 @@ mod tests {
     use crate::types::ToolSelector;
 
     fn finding() -> Finding {
-        Finding {
-            rule_id: glass_lint_core::RuleId::parse("test:a.b").unwrap(),
-            message: "text".into(),
-            severity: Severity::Warning,
-            location: glass_lint_core::project::SourceLocation {
-                path: glass_lint_core::project::ProjectRelativePath::new("main.js").unwrap(),
-                range: glass_lint_core::SourceRange::new(
+        Finding::new(
+            glass_lint_core::RuleId::parse("test:a.b").unwrap(),
+            "text".into(),
+            Severity::Warning,
+            glass_lint_core::project::SourceLocation::new(
+                glass_lint_core::project::ProjectRelativePath::new("main.js").unwrap(),
+                glass_lint_core::SourceRange::new(
                     glass_lint_core::Position::new(2, 3).unwrap(),
                     glass_lint_core::Position::new(2, 4).unwrap(),
                 )
                 .unwrap(),
-            },
-            evidence: Vec::new().into_iter().collect(),
-        }
+            ),
+            Vec::new().into_iter().collect(),
+        )
     }
 
     #[test]

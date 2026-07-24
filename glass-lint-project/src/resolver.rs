@@ -3,7 +3,8 @@
 use std::path::Path;
 
 use glass_lint_core::project::{
-    ResolutionRequest, ResolutionRequestKind, ResolverOutcome, is_internal_module_request,
+    BuiltinModuleName, NormalizedOutsidePath, PackageSpecifier, ResolutionRequest,
+    ResolutionRequestKind, ResolverOutcome, is_internal_module_request,
 };
 use oxc_resolver::{ResolveError, ResolveOptions, Resolver};
 
@@ -79,12 +80,12 @@ impl<'a> ProjectResolver<'a> {
         };
         match resolver.resolve(directory, &request.request) {
             Ok(resolution) => self.classify(&request.request, resolution.path()),
-            Err(ResolveError::Builtin { resolved, .. }) => {
-                Ok(ResolverOutcome::Builtin { name: resolved })
-            }
+            Err(ResolveError::Builtin { resolved, .. }) => Ok(ResolverOutcome::Builtin {
+                name: BuiltinModuleName::new(resolved)?,
+            }),
             Err(_) if is_internal_module_request(&request.request) => Ok(ResolverOutcome::Missing),
             Err(_) => Ok(ResolverOutcome::External {
-                package: package_name(&request.request),
+                package: PackageSpecifier::new(package_name(&request.request))?,
             }),
         }
     }
@@ -96,11 +97,13 @@ impl<'a> ProjectResolver<'a> {
             PathAdmission::Outside(path) => {
                 if internal {
                     ResolverOutcome::OutsideProject {
-                        path: path.as_ref().to_string_lossy().into_owned(),
+                        path: NormalizedOutsidePath::new(
+                            path.as_ref().to_string_lossy().into_owned(),
+                        )?,
                     }
                 } else {
                     ResolverOutcome::External {
-                        package: package_name(request),
+                        package: PackageSpecifier::new(package_name(request))?,
                     }
                 }
             }
@@ -111,7 +114,7 @@ impl<'a> ProjectResolver<'a> {
                     }
                 } else {
                     ResolverOutcome::External {
-                        package: package_name(request),
+                        package: PackageSpecifier::new(package_name(request))?,
                     }
                 }
             }
@@ -173,7 +176,7 @@ mod tests {
             assert_eq!(
                 resolver.resolve(&request(specifier)).unwrap(),
                 ResolverOutcome::Builtin {
-                    name: expected.into()
+                    name: BuiltinModuleName::new(expected).unwrap(),
                 },
                 "specifier: {specifier}"
             );
@@ -192,7 +195,7 @@ mod tests {
         assert_eq!(
             resolver.resolve(&request("not-a-node-builtin")).unwrap(),
             ResolverOutcome::External {
-                package: "not-a-node-builtin".into()
+                package: PackageSpecifier::new("not-a-node-builtin").unwrap(),
             }
         );
     }

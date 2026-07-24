@@ -25,9 +25,9 @@ fn cache_hit_attaches_only_current_path() {
     let report = finish_collection(session);
     assert_eq!(
         report
-            .files
+            .files()
             .iter()
-            .map(|file| file.findings[0].location.path.as_str())
+            .map(|file| file.findings()[0].location().path().as_str())
             .collect::<Vec<_>>(),
         vec!["a.js", "b.js"]
     );
@@ -58,7 +58,7 @@ fn identical_successful_source_lowers_once_then_hits() {
             evictions: 0,
         }
     );
-    assert_eq!(finish_collection(session).files[0].findings.len(), 1);
+    assert_eq!(finish_collection(session).files()[0].findings().len(), 1);
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn separate_sessions_on_one_linter_reuse_the_artifact_cache() {
     assert_eq!(second_observer.invocations().hits, 1);
     assert_eq!(second_observer.invocations().lowers, 0);
     assert_eq!(
-        report.files[0].findings[0].location.path.as_str(),
+        report.files()[0].findings()[0].location().path().as_str(),
         "second.js"
     );
 }
@@ -112,9 +112,9 @@ fn session_retry_does_not_cache_parse_failure() {
     assert_eq!(observer.invocations().misses, 2);
     assert_eq!(observer.invocations().inserts, 0);
     let report = finish_collection(session);
-    assert_eq!(report.files[0].diagnostics.len(), 1);
+    assert_eq!(report.files()[0].diagnostics().len(), 1);
     assert!(matches!(
-        report.files[0].diagnostics[0],
+        report.files()[0].diagnostics()[0],
         Diagnostic::Parse { .. }
     ));
 }
@@ -139,10 +139,10 @@ fn session_reuses_exhausted_artifact_with_partial_status() {
     assert_eq!(observer.invocations().lowers, 1);
     assert_eq!(observer.invocations().hits, 1);
     let report = finish_collection(session);
-    assert_eq!(report.completion, ReportCompletion::Partial);
+    assert_eq!(report.completion(), ReportCompletion::Partial);
     assert!(
-        report.files[0]
-            .diagnostics
+        report.files()[0]
+            .diagnostics()
             .iter()
             .any(|diagnostic| diagnostic.code() == "semantic_budget_exhausted")
     );
@@ -160,7 +160,7 @@ fn rule_selection_changes_projection_without_relowering() {
         .analyze_source_counted("enabled.js", &first_observer)
         .unwrap();
     let cache = std::mem::take(&mut first.artifact_cache);
-    assert_eq!(finish_collection(first).files[0].findings.len(), 1);
+    assert_eq!(finish_collection(first).files()[0].findings().len(), 1);
 
     let disabled = test_linter_with_selection(
         RuleSelection::new(RuleBaseline::None),
@@ -177,7 +177,7 @@ fn rule_selection_changes_projection_without_relowering() {
         .unwrap();
     assert_eq!(second_observer.invocations().hits, 1);
     assert_eq!(second_observer.invocations().lowers, 0);
-    assert!(finish_collection(second).files[0].findings.is_empty());
+    assert!(finish_collection(second).files()[0].findings().is_empty());
 }
 
 fn setup_baseline_and_base_cache() -> (crate::Linter, crate::analysis::ArtifactCacheHandle) {

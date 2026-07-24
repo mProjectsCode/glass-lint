@@ -116,3 +116,35 @@ impl ExportTable {
         self.exports.get(&module)
     }
 }
+
+#[derive(Debug)]
+pub(in crate::analysis) struct ExportLookupCache {
+    entries: BTreeMap<(ModuleId, SmolStr), Option<ExportResolution>>,
+}
+
+impl ExportLookupCache {
+    pub fn new(_capacity: usize) -> Self {
+        Self {
+            entries: BTreeMap::new(),
+        }
+    }
+
+    pub fn get(
+        &self,
+        module: ModuleId,
+        name: &SmolStr,
+    ) -> Option<&Option<ExportResolution>> {
+        // Construct a key for lookup without cloning name (BTreeMap::get needs owned key).
+        // A SmolStr clone is cheap (small-string optimization).
+        self.entries.get(&(module, name.clone()))
+    }
+
+    pub fn insert(
+        &mut self,
+        module: ModuleId,
+        name: SmolStr,
+        value: Option<ExportResolution>,
+    ) {
+        self.entries.insert((module, name), value);
+    }
+}

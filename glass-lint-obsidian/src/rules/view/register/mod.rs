@@ -1,6 +1,6 @@
 //! Obsidian view-registration rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects the syntactic `this.registerView()` call, including a statically
 /// computed property name. The instance matcher requires a proven Obsidian
@@ -9,7 +9,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("view.register")
         .description("Registers Obsidian views")
-        .category("view")
+        .category(Category::new("view").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

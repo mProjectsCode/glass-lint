@@ -39,7 +39,7 @@ pub fn test_linter() -> crate::Linter {
 pub fn test_linter_with_environment(environment: crate::Environment) -> crate::Linter {
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -62,7 +62,7 @@ pub fn test_linter_with_limits(limits: crate::AnalysisLimits) -> crate::Linter {
     environment.add_global("fetch").unwrap();
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -91,7 +91,7 @@ pub fn test_linter_with_selection(
     environment.add_global("fetch").unwrap();
     let rule = Rule::builder("network.fetch")
         .description("Uses fetch")
-        .category("network")
+        .category(Category::new("network").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(
@@ -116,7 +116,7 @@ pub fn test_linter_with_selection(
 pub fn flow_linter() -> crate::Linter {
     let rule = Rule::builder("flow.append")
         .description("Appends a configured script")
-        .category("flow")
+        .category(Category::new("flow").unwrap())
         .severity(Severity::Warning)
         .confidence(Confidence::High)
         .declaration(MatcherDecl::from_object_flow(

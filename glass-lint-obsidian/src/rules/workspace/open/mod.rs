@@ -1,6 +1,6 @@
 //! Obsidian workspace-open rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to `app.workspace.openLinkText` and
 /// `app.workspace.getLeaf.openFile`. Provenance follows `this.app`, workspace
@@ -11,7 +11,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("workspace.open")
         .description("Opens files through the workspace")
-        .category("workspace")
+        .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

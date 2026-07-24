@@ -1,6 +1,6 @@
 //! Obsidian notice rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects the exact global `Notice` constructor plus constructors and
 /// subclasses proven to come from the `obsidian` module. Local/shadowed and
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("ui.notice")
         .description("Uses Obsidian notices")
-        .category("ui")
+        .category(Category::new("ui").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(

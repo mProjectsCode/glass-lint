@@ -1,10 +1,12 @@
 //! Provider-neutral diagnostic and serialized report data types.
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::RuleId;
 
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 /// A checked half-open byte range within one source artifact.
 pub struct ByteRange {
     /// Zero-based byte offset of the first byte.
@@ -39,6 +41,7 @@ impl std::fmt::Display for InvalidSourceBoundary {
 
 impl std::error::Error for InvalidSourceBoundary {}
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for ByteRange {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -92,8 +95,9 @@ impl ByteRange {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
 /// Severity exposed by the provider-neutral report schema.
 pub enum Severity {
     /// Informational diagnostic.
@@ -164,7 +168,8 @@ impl std::error::Error for ReversedSourcePositionRange {}
 /// use glass_lint_core::Position;
 /// let invalid = Position { line: 0, column: 1 };
 /// ```
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Position {
     /// One-based source line.
     line: u32,
@@ -195,6 +200,7 @@ impl Position {
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for Position {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -339,7 +345,8 @@ impl SourceLineIndex {
 /// let position = Position::new(1, 1).unwrap();
 /// let forged = SourceRange { start: position.clone(), end: position };
 /// ```
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct SourceRange {
     /// Inclusive start position.
     start: Position,
@@ -373,6 +380,7 @@ impl SourceRange {
     }
 }
 
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for SourceRange {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -388,7 +396,8 @@ impl<'de> Deserialize<'de> for SourceRange {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 /// Provider rule metadata exposed to front ends and integrations.
 pub struct RuleMetadata {
     /// Stable namespaced rule identifier.

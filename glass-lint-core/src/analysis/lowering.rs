@@ -419,11 +419,11 @@ mod tests {
         let (_, project_diagnostics) = artifact.status().diagnostics();
         assert_eq!(project_diagnostics.len(), 1);
         assert_eq!(
-            project_diagnostics[0].code.as_str(),
+            project_diagnostics[0].code().as_str(),
             "semantic_name_budget_exhausted"
         );
-        assert!(project_diagnostics[0].message.contains("limit=2"));
-        assert!(project_diagnostics[0].message.contains("attempted=3"));
+        assert!(project_diagnostics[0].message().contains("limit=2"));
+        assert!(project_diagnostics[0].message().contains("attempted=3"));
 
         let repeated = lower_program_with_name_limit(
             &parsed.program,
@@ -455,7 +455,7 @@ mod tests {
         let (files, project) = artifact.status().diagnostics();
         assert!(files.is_empty());
         assert_eq!(project.len(), 1);
-        assert_eq!(project[0].code.as_str(), "invalid_parser_span");
-        assert!(project[0].location.is_none());
+        assert_eq!(project[0].code().as_str(), "invalid_parser_span");
+        assert!(project[0].location().is_none());
     }
 }

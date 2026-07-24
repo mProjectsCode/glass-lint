@@ -20,11 +20,10 @@ impl RuleIndex {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// One classified capability emitted by a compiled matcher.
 pub struct MatchedCapability {
     /// Internal catalog position used to correlate rule selections.
-    #[serde(skip)]
     pub rule_index: RuleIndex,
     /// Human-readable capability label.
     pub label: String,
@@ -34,7 +33,7 @@ pub struct MatchedCapability {
     pub evidence: Vec<ClassificationEvidence>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// Evidence for one matched API occurrence and its related events.
 pub struct ClassificationEvidence {
     /// Semantic occurrence kind.
@@ -44,10 +43,8 @@ pub struct ClassificationEvidence {
     /// Number of source events represented by this evidence item.
     pub count: u32,
     /// Whether the serialized occurrence list omits additional matches.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub evidence_truncated: bool,
+    pub truncated: bool,
     /// Primary occurrences with their optional canonical fact identity.
-    #[serde(skip)]
     pub occurrences: Vec<ClassificationEvidenceOccurrence>,
     /// Related evidence from linked modules or flow projections.
     pub related: Vec<RelatedClassificationEvidence>,
@@ -60,7 +57,7 @@ pub struct ClassificationEvidenceOccurrence {
     pub fact: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 /// Cross-module evidence related to a primary occurrence.
 pub struct RelatedClassificationEvidence {
     /// Stable project module ID containing the related event.
@@ -73,8 +70,7 @@ pub struct RelatedClassificationEvidence {
     pub symbol: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 /// Semantic kind of API occurrence represented in a report.
 pub enum MatchKind {
     /// A callable symbol invocation.
@@ -95,7 +91,7 @@ pub enum MatchKind {
     CallArgument,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 /// Top-level classification result containing capabilities in catalog order.
 pub struct ClassificationResult {
     /// Classified capabilities selected for this run.

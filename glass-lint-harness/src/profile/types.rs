@@ -195,7 +195,7 @@ pub(super) fn project_run_outcome(
         bytes: metrics.bytes,
         phases: metrics.phase_timings(),
         counts: report_operation_counts(report),
-        completion: report.completion,
+        completion: report.completion(),
         evidence_order_digest: evidence_order_digest(report),
     }
 }

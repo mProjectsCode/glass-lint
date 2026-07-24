@@ -81,9 +81,9 @@ fn directory_discovery_is_sorted_and_excludes_runtime_directories() {
     assert_eq!(
         report
             .report
-            .files
+            .files()
             .iter()
-            .map(|file| file.path.as_str())
+            .map(|file| file.path().as_str())
             .collect::<Vec<_>>(),
         ["src/a.js", "src/z.ts"]
     );
@@ -136,14 +136,14 @@ fn deterministic_loader_budget_returns_partial_report_and_error() {
         Some(ProjectLoadError::ProjectSourceTooLarge { .. })
     ));
     assert_eq!(
-        outcome.report.completion,
+        outcome.report.completion(),
         glass_lint_core::project::ReportCompletion::Partial
     );
-    assert_eq!(outcome.report.files.len(), 1);
+    assert_eq!(outcome.report.files().len(), 1);
     assert!(
         outcome
             .report
-            .diagnostics
+            .diagnostics()
             .iter()
             .any(|diagnostic| diagnostic.code() == "incomplete_project")
     );
@@ -161,7 +161,7 @@ fn extensionless_internal_import_is_followed() {
             &ProjectSelection::entry(project.root().join("main.js")),
         )
         .unwrap();
-    assert_eq!(report.report.files.len(), 2);
+    assert_eq!(report.report.files().len(), 2);
 }
 
 #[test]
@@ -181,7 +181,7 @@ fn file_budget_deduplicates_shared_imports() {
             &ProjectSelection::entry(project.root().join("main.js")),
         )
         .unwrap();
-    assert_eq!(outcome.report.files.len(), 4);
+    assert_eq!(outcome.report.files().len(), 4);
     assert_eq!(outcome.metrics.files, 4);
 }
 
@@ -212,7 +212,7 @@ fn reports_project_phase_metrics_and_operation_counts() {
             &ProjectSelection::entry(project.root().join("main.js")),
         )
         .unwrap();
-    assert_eq!(outcome.report.files.len(), 2);
+    assert_eq!(outcome.report.files().len(), 2);
     assert_eq!(outcome.metrics.files, 2);
     assert_eq!(outcome.metrics.requests, 1);
     assert_eq!(outcome.metrics.edges, 1);
@@ -239,9 +239,9 @@ fn tsconfig_membership_accepts_jsonc_and_excludes_files() {
     assert_eq!(
         report
             .report
-            .files
+            .files()
             .iter()
-            .map(|file| file.path.as_str())
+            .map(|file| file.path().as_str())
             .collect::<Vec<_>>(),
         ["src/main.ts"]
     );
@@ -279,9 +279,9 @@ fn tsconfig_membership_inherits_extends_and_collects_references() {
     assert_eq!(
         report
             .report
-            .files
+            .files()
             .iter()
-            .map(|file| file.path.as_str())
+            .map(|file| file.path().as_str())
             .collect::<Vec<_>>(),
         ["packages/child/src/value.ts", "src/main.ts"]
     );

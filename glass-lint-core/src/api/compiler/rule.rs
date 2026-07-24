@@ -290,18 +290,6 @@ impl CompiledMatcherPlan {
     /// Compile declarations into clauses and extract flows.
     pub(crate) fn compile_decls(decls: &[MatcherDecl]) -> Result<Self, MatcherBuildError> {
         let (clauses, flows) = collect_clauses_and_flows(decls)?;
-        for clause in &clauses {
-            if let IdentityConstraint::PackageSpecifier { pattern }
-            | IdentityConstraint::PackageModuleExport {
-                module: pattern, ..
-            }
-            | IdentityConstraint::PackageModuleNamespace { module: pattern } = &clause.identity
-            {
-                pattern.validate().map_err(|e| {
-                    MatcherBuildError::Generic(format!("invalid package specifier: {e}"))
-                })?;
-            }
-        }
         for flow in &flows {
             if flow.symbol.trim().is_empty() {
                 return Err(MatcherBuildError::Generic(

@@ -1,6 +1,6 @@
 //! Obsidian workspace-layout rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to `getLayout`, `changeLayout`, and
 /// `requestSaveLayout` on `app.workspace`. Provenance follows `this.app`,
@@ -10,7 +10,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("workspace.layout")
         .description("Reads or writes workspace layout")
-        .category("workspace")
+        .category(Category::new("workspace").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::Medium)
         .declaration(

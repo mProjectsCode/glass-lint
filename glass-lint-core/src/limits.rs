@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 /// Error returned when a validated analysis-limit field is zero.
@@ -33,7 +34,8 @@ impl std::error::Error for AnalysisLimitError {}
 /// A validated non-zero `usize`.
 ///
 /// Construction via [`PositiveLimit::new`] guarantees the value is positive.
-#[derive(Clone, Copy, Debug, Serialize, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 struct PositiveLimit(usize);
 
 impl PositiveLimit {
@@ -51,7 +53,8 @@ impl PositiveLimit {
 /// Every field is guaranteed positive. The only way to obtain a value is
 /// through [`Self::new`], [`Default`], or deserialization — all of which
 /// reject zero.
-#[derive(Clone, Debug, Serialize, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct AnalysisLimits {
     syntax_depth: PositiveLimit,
     semantic_operations: PositiveLimit,
@@ -218,6 +221,7 @@ impl AnalysisLimits {
 }
 
 /// Manual deserializer that validates every field, rejecting zero.
+#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for AnalysisLimits {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -331,6 +335,7 @@ mod tests {
         assert_eq!(limits.flow_operations(), 60);
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn deserialization_rejects_zero() {
         let json = r#"{"syntax_depth":0}"#;
@@ -338,6 +343,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[cfg(feature = "serde")]
     #[test]
     fn deserialization_accepts_partial_with_defaults() {
         let json = r#"{"syntax_depth":256}"#;

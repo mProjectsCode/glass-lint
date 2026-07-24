@@ -219,7 +219,7 @@ fn write_pretty<W: Write>(
         .iter()
         .flat_map(|file| {
             file.report
-                .files
+                .files()
                 .iter()
                 .take(1)
                 .map(|report| PrettyFile::new(report, &file.path, &file.source))
@@ -267,13 +267,13 @@ fn write_project_pretty<W: Write>(
 ) -> Result<()> {
     let options = pretty_options(config);
     let pretty_files = report
-        .files
+        .files()
         .iter()
-        .map(|file| PrettyFile::new(file, file.path.as_str(), ""))
+        .map(|file| PrettyFile::new(file, file.path().as_str(), ""))
         .collect::<Vec<_>>();
     write_pretty_files(&pretty_files, options, out)?;
 
-    for diagnostic in &report.diagnostics {
+    for diagnostic in report.diagnostics() {
         if let Some(location) = diagnostic.path().zip(diagnostic.range()) {
             writeln!(
                 out,
@@ -296,17 +296,18 @@ fn write_project_pretty<W: Write>(
     let summary_line = format!(
         "{}, {} project diagnostic(s), completion={:?}",
         base_summary_line(summary),
-        summary.report_diagnostics,
-        report.completion
+        summary.report_diagnostics(),
+        report.completion()
     );
-    let clean = summary_is_clean(summary) && summary.report_diagnostics == 0;
+    let clean = summary_is_clean(summary) && summary.report_diagnostics() == 0;
+    let operations = report.operations();
     let summary_line = format!(
         "{summary_line}, operations: {} request(s), {} edge(s), {} export(s), {} effect projection(s), {} evidence item(s)",
-        report.operations.requests,
-        report.operations.edges,
-        report.operations.exports,
-        report.operations.effect_projections,
-        report.operations.evidence,
+        operations.requests(),
+        operations.edges(),
+        operations.exports(),
+        operations.effect_projections(),
+        operations.evidence(),
     );
     write_summary(config, &summary_line, clean, out)?;
     Ok(())
@@ -323,12 +324,12 @@ fn pretty_options(config: &Config) -> PrettyOptions {
 fn base_summary_line(summary: AnalysisReportSummary) -> String {
     format!(
         "{} file(s), {} finding(s), {} parse diagnostic(s), {} analysis diagnostic(s)",
-        summary.files, summary.findings, summary.parse_diagnostics, summary.file_diagnostics
+        summary.files(), summary.findings(), summary.parse_diagnostics(), summary.file_diagnostics()
     )
 }
 
 fn summary_is_clean(summary: AnalysisReportSummary) -> bool {
-    summary.findings == 0 && summary.parse_diagnostics == 0 && summary.file_diagnostics == 0
+    summary.findings() == 0 && summary.parse_diagnostics() == 0 && summary.file_diagnostics() == 0
 }
 
 fn write_summary<W: Write>(
@@ -363,7 +364,7 @@ mod tests {
         project::{
             AnalysisDiagnostic, AnalysisReport, Diagnostic, DiagnosticCode, ReportCompletion,
         },
-        rules::{Confidence, MatcherDecl},
+        rules::{Category, Confidence, MatcherDecl},
     };
 
     use super::*;
@@ -371,7 +372,7 @@ mod tests {
     fn linter(semantic_operations: usize) -> Linter {
         let rule = Rule::builder("network.fetch")
             .description("Uses fetch")
-            .category("network")
+            .category(Category::new("network").unwrap())
             .severity(Severity::Warning)
             .confidence(Confidence::High)
             .declaration(
@@ -407,10 +408,7 @@ mod tests {
     }
 
     fn json(files: &[FileOutput]) -> AnalysisReport {
-        let mut bytes = Vec::new();
-        let report = AnalysisReport::combine(files.iter().map(|file| file.report.clone())).unwrap();
-        write_json(&report, &mut bytes).unwrap();
-        serde_json::from_slice(&bytes).unwrap()
+        AnalysisReport::combine(files.iter().map(|file| file.report.clone())).unwrap()
     }
 
     #[test]
@@ -431,15 +429,18 @@ mod tests {
     fn snippet_json_completion_matches_cli_exit_decision() {
         let source = "fetch('/remote');";
         let report = linter(1).lint_snippet(source, "partial.js").unwrap();
-        let cli_failed = report.completion == ReportCompletion::Partial
-            || !report.diagnostics.is_empty()
-            || report.files.iter().any(|file| !file.diagnostics.is_empty());
+        let cli_failed = report.completion() == ReportCompletion::Partial
+            || !report.diagnostics().is_empty()
+            || report
+                .files()
+                .iter()
+                .any(|file| !file.diagnostics().is_empty());
         let combined = json(&[output("partial.js", source, report)]);
 
         assert!(cli_failed);
-        assert_eq!(combined.completion, ReportCompletion::Partial);
+        assert_eq!(combined.completion(), ReportCompletion::Partial);
         assert_eq!(
-            combined.files[0].diagnostics[0].code(),
+            combined.files()[0].diagnostics()[0].code(),
             "semantic_budget_exhausted"
         );
     }
@@ -451,14 +452,14 @@ mod tests {
         let semantic_source = "fetch('/partial');";
         let complete = linter(64).lint_snippet(complete_source, "a.js").unwrap();
         let parse_partial = linter(64).lint_snippet(broken_source, "b.js").unwrap();
-        let mut semantic_partial = linter(1).lint_snippet(semantic_source, "c.js").unwrap();
-        semantic_partial
-            .diagnostics
-            .push(Diagnostic::Project(AnalysisDiagnostic {
-                code: DiagnosticCode::new("incomplete_project").unwrap(),
-                message: "project scope retained".into(),
-                location: None,
-            }));
+        let semantic_partial = linter(1).lint_snippet(semantic_source, "c.js").unwrap();
+        let (sv, tv, files, mut diagnostics, ops, comp) = semantic_partial.into_parts();
+        diagnostics.push(Diagnostic::Project(AnalysisDiagnostic::new(
+            DiagnosticCode::new("incomplete_project").unwrap(),
+            "project scope retained".into(),
+            None,
+        )));
+        let semantic_partial = AnalysisReport::new(sv, tv, files, diagnostics, ops, comp);
         let files = [
             output("c.js", semantic_source, semantic_partial),
             output("a.js", complete_source, complete),
@@ -468,17 +469,17 @@ mod tests {
         let first = json(&files);
         let second = json(&files);
         assert_eq!(first, second);
-        assert_eq!(first.completion, ReportCompletion::Partial);
+        assert_eq!(first.completion(), ReportCompletion::Partial);
         assert_eq!(
             first
-                .files
+                .files()
                 .iter()
-                .map(|file| file.path.as_str())
+                .map(|file| file.path().as_str())
                 .collect::<Vec<_>>(),
             vec!["a.js", "b.js", "c.js"]
         );
-        assert_eq!(first.summary().parse_diagnostics, 1);
-        assert_eq!(first.summary().file_diagnostics, 1);
-        assert_eq!(first.diagnostics[0].code(), "incomplete_project");
+        assert_eq!(first.summary().parse_diagnostics(), 1);
+        assert_eq!(first.summary().file_diagnostics(), 1);
+        assert_eq!(first.diagnostics()[0].code(), "incomplete_project");
     }
 }

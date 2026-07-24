@@ -13,15 +13,15 @@ fn project_keeps_sorted_parse_failures_separate_from_valid_modules() {
     let report = finish_collection(session);
     assert_eq!(
         report
-            .files
+            .files()
             .iter()
-            .map(|file| file.path.as_str())
+            .map(|file| file.path().as_str())
             .collect::<Vec<_>>(),
         ["a.js", "z.js"]
     );
-    assert_eq!(report.files[0].findings.len(), 1);
-    assert_eq!(report.files[1].findings.len(), 0);
-    assert_eq!(report.files[1].parse_diagnostic_count(), 1);
+    assert_eq!(report.files()[0].findings().len(), 1);
+    assert_eq!(report.files()[1].findings().len(), 0);
+    assert_eq!(report.files()[1].parse_diagnostic_count(), 1);
 }
 
 #[test]
@@ -78,7 +78,7 @@ fn rejected_duplicate_source_does_not_replace_the_original() {
     let error = session.analyze_source(source_file("./main.js", ""));
     assert!(matches!(error, Err(ProjectInputError::DuplicateSource(_))));
     let report = finish_collection(session);
-    assert_eq!(report.files[0].findings.len(), 1);
+    assert_eq!(report.files()[0].findings().len(), 1);
 }
 
 #[test]
@@ -116,9 +116,9 @@ fn linker_accepts_named_reexports_and_reports_missing_exports() {
     );
     let report = project.finish();
     assert!(
-        report.diagnostics.is_empty(),
+        report.diagnostics().is_empty(),
         "unexpected diagnostics: {:?}",
-        report.diagnostics
+        report.diagnostics()
     );
 
     let mut missing = ProjectFixture::new(&linter);
@@ -131,8 +131,8 @@ fn linker_accepts_named_reexports_and_reports_missing_exports() {
     );
     missing.add("dep.js", "export const value = 1;");
     let report = missing.finish();
-    assert!(report.files.iter().any(|file| {
-        file.diagnostics
+    assert!(report.files().iter().any(|file| {
+        file.diagnostics()
             .iter()
             .any(|diagnostic| diagnostic.code() == "missing_imported_export")
     }));
@@ -166,9 +166,9 @@ fn linker_reports_ambiguous_multiple_star_exports() {
     let report = project.finish();
     assert!(
         report
-            .files
+            .files()
             .iter()
-            .flat_map(|file| &file.diagnostics)
+            .flat_map(crate::project::FileReport::diagnostics)
             .any(|diagnostic| diagnostic.code() == "ambiguous_star_export")
     );
 }
@@ -181,12 +181,12 @@ fn outside_project_targets_accept_normalized_absolute_paths() {
         "main.js",
         "import value from './outside';",
         [ResolverOutcome::OutsideProject {
-            path: "/other/./dependency.js".into(),
+            path: NormalizedOutsidePath::new("/other/./dependency.js").unwrap(),
         }],
     );
     let report = project.finish();
     assert_eq!(
-        report.files[0].diagnostics[0].code(),
+        report.files()[0].diagnostics()[0].code(),
         "outside_project_target"
     );
 }
@@ -206,9 +206,9 @@ fn dynamic_commonjs_export_shapes_are_reported_and_fail_closed() {
     let report = project.finish();
     assert!(
         report
-            .files
+            .files()
             .iter()
-            .flat_map(|file| &file.diagnostics)
+            .flat_map(crate::project::FileReport::diagnostics)
             .any(|diagnostic| diagnostic.code() == "unsupported_commonjs_exports")
     );
 }

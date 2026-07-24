@@ -1,6 +1,6 @@
 //! Obsidian vault resource-URL rule definition.
 
-use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{Category, Confidence, MatcherDecl, Rule, Severity};
 
 /// Detects rooted calls to vault and adapter `getResourcePath`, plus literal
 /// or static-template fragments containing `obsidian://`. Rooted provenance
@@ -11,7 +11,7 @@ use glass_lint_core::rules::{Confidence, MatcherDecl, Rule, Severity};
 pub fn rule() -> Rule {
     Rule::builder("vault.resource-url")
         .description("Accesses attachment resource paths")
-        .category("vault")
+        .category(Category::new("vault").unwrap())
         .severity(Severity::Info)
         .confidence(Confidence::High)
         .declaration(
