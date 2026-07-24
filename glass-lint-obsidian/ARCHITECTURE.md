@@ -9,13 +9,11 @@ environment.
 Obsidian rule factories + renderer environment
   -> namespaced RuleCatalog (`obsidian:`)
   -> caller-selected core Linter configuration
-  -> Obsidian disclosure mapping
 ```
 
 `src/rules` contains rule factories and colocated fixtures. `src/catalog`
-collects those rules and maps findings to disclosure identifiers.
-`environment` models configured Obsidian renderer globals and
-global-object aliases, including `activeWindow`.
+provides the cached rule collection. `environment` models configured Obsidian
+renderer globals and global-object aliases, including `activeWindow`.
 
 Callers choose the catalog and apply rule-selection policy through core. No
 numeric precision claim is made without a representative manually labeled

@@ -15,7 +15,6 @@ let report = linter.lint_snippet(source, "bundle.js")?;
   `electron_catalog()` return isolated catalogs.
 - The matching `*_environment()` functions return complete host environments.
 - `rule_catalog()` returns metadata for every JavaScript-provider rule.
-- `disclosures_for_report()` derives sorted JavaScript disclosure identifiers.
 
 Extend a complete host environment for additional bindings:
 

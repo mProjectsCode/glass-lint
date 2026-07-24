@@ -1,12 +1,10 @@
 //! Obsidian rule definitions and ready-to-use core linters.
 //!
-//! The provider owns Obsidian globals, rule profiles, and disclosure mapping;
-//! matching and report primitives remain in the provider-neutral core crate.
-
-use std::collections::BTreeSet;
+//! The provider owns Obsidian globals and rule profiles; matching and report
+//! primitives remain in the provider-neutral core crate.
 
 use glass_lint_core::{
-    Environment, LinterConfig, RuleCatalog, RuleMetadata, project::AnalysisReport,
+    Environment, LinterConfig, RuleCatalog, RuleMetadata,
 };
 
 mod catalog;
@@ -56,24 +54,6 @@ pub fn obsidian_config() -> LinterConfig {
         ],
         obsidian_environment(),
     )
-}
-
-#[must_use]
-/// Collect disclosure categories for findings in the `obsidian:` namespace.
-pub fn disclosures_for_report(report: &AnalysisReport) -> BTreeSet<&'static str> {
-    report
-        .files()
-        .iter()
-        .flat_map(|file| file.findings().iter())
-        .flat_map(|finding| {
-            finding
-                .rule_id()
-                .as_str()
-                .strip_prefix("obsidian:")
-                .into_iter()
-                .flat_map(|id| catalog::disclosures_for_rule(id).iter().copied())
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -194,30 +174,4 @@ mod tests {
         assert_eq!(findings[1].location().range().start().line(), 3);
     }
 
-    #[test]
-    fn disclosure_policy_is_applied_by_the_obsidian_adapter() {
-        let report = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
-            vec![
-                glass_lint_js::js_catalog(),
-                glass_lint_js::browser_catalog(),
-                glass_lint_js::node_catalog(),
-                glass_lint_js::electron_catalog(),
-                obsidian_catalog(),
-            ],
-            obsidian_environment(),
-        ))
-        .unwrap()
-        .lint_snippet(
-            "import { request } from 'obsidian'; request('/network');",
-            "main.js",
-        )
-        .unwrap();
-        assert_eq!(
-            disclosures_for_report(&report),
-            BTreeSet::from([
-                "disclosure.network_access",
-                "disclosure.cors_free_network_access"
-            ])
-        );
-    }
 }

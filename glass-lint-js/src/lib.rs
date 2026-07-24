@@ -4,13 +4,10 @@
 //! the recommended/heuristic catalog profiles while delegating matching to
 //! core.
 
-use std::collections::BTreeSet;
-
 use glass_lint_core::{
-    Environment, LinterConfig, RuleCatalog, RuleMetadata, project::AnalysisReport,
+    Environment, LinterConfig, RuleCatalog, RuleMetadata,
 };
 
-mod disclosures;
 mod rules;
 
 #[must_use]
@@ -74,25 +71,6 @@ pub fn electron_config() -> LinterConfig {
         ],
         electron_environment(),
     )
-}
-
-const PROVIDER_PREFIXES: [&str; 4] = ["js:", "browser:", "node:", "electron:"];
-
-#[must_use]
-pub fn disclosures_for_report(report: &AnalysisReport) -> BTreeSet<&'static str> {
-    report
-        .files()
-        .iter()
-        .flat_map(|file| file.findings().iter())
-        .flat_map(|finding| {
-            let id = finding.rule_id().as_str();
-            PROVIDER_PREFIXES
-                .iter()
-                .find_map(|prefix| id.strip_prefix(prefix))
-                .into_iter()
-                .flat_map(|unprefixed| disclosures::for_rule(unprefixed).iter().copied())
-        })
-        .collect()
 }
 
 #[must_use]

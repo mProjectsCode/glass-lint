@@ -16,13 +16,12 @@
 - `glass-lint-project`: discovery, source loading, project boundaries,
   `tsconfig`, and module resolution
 - `glass-lint-js`: JavaScript, browser, Node.js, and Electron policy
-- `glass-lint-obsidian`: Obsidian rules, profiles, and disclosures
+- `glass-lint-obsidian`: Obsidian rules and profiles
 - `glass-lint-harness`: cases, adapters, verification, reports, and profiling
 - CLI crates: arguments, output, exit behavior, and executable wiring only
 
-Core must not contain provider names, APIs, categories, manifests,
-disclosures, profiles, or rule policy. Rule IDs are `provider:name`, such as
-`js:network.request`.
+Core must not contain provider names, APIs, categories, manifests, profiles,
+or rule policy. Rule IDs are `provider:name`, such as `js:network.request`.
 
 ## Implementation rules
 

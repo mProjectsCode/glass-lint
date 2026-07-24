@@ -1,7 +1,7 @@
 # glass-lint-obsidian
 
-`glass-lint-obsidian` provides the `obsidian:` rule catalog, renderer host
-assumptions, and disclosure mapping.
+`glass-lint-obsidian` provides the `obsidian:` rule catalog and renderer host
+assumptions.
 
 ```rust
 let linter = glass_lint_core::Linter::new(glass_lint_core::LinterConfig::new(
@@ -13,7 +13,6 @@ let report = linter.lint_snippet(source, "main.js")?;
 - `catalog()` returns the isolated Obsidian catalog.
 - `environment()` returns the complete Obsidian renderer environment.
 - `rule_catalog()` returns metadata for every Obsidian rule.
-- `disclosures_for_report()` derives sorted Obsidian disclosure identifiers.
 
 This crate does not include the `js:` catalog. The command-line front end
 combines both catalogs when its provider is `obsidian`.

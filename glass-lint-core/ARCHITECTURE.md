@@ -69,8 +69,8 @@ primary event.
 
 ## Invariants
 
-- Core contains no provider names, APIs, profiles, categories, manifests, or
-  disclosure policy.
+- Core contains no provider names, APIs, profiles, categories, or
+  manifests.
 - Strict matches require proven identity, provenance, static values, or
   connected flow at the use position.
 - Shadowing, reassignment, ambiguity, unsupported semantics, and exhausted
