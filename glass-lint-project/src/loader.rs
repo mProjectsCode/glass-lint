@@ -1,7 +1,7 @@
 //! Public project loading API and the bounded construction loop.
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     num::NonZeroUsize,
     path::{Path, PathBuf},
     time::{Duration, Instant},
@@ -9,7 +9,10 @@ use std::{
 
 use glass_lint_core::{
     Linter,
-    project::{AnalysisReport, ResolutionRequest, ResolverOutcome},
+    project::{
+        AnalysisReport, ProjectRelativePath, ResolutionRequest, ResolutionRequestKey,
+        ResolutionRequestKind, ResolverOutcome,
+    },
 };
 
 use crate::{
@@ -305,23 +308,36 @@ impl<'a> ProjectPaths<'a> {
 }
 
 #[derive(Default)]
-struct PathWorkQueue(VecDeque<AdmittedSourcePath>);
+struct PathWorkQueue {
+    queue: VecDeque<AdmittedSourcePath>,
+    seen: BTreeSet<AdmittedSourcePath>,
+}
 impl PathWorkQueue {
     fn extend(&mut self, paths: impl IntoIterator<Item = AdmittedSourcePath>) {
-        self.0.extend(paths);
+        for path in paths {
+            self.push(path);
+        }
     }
 
     fn pop_front(&mut self) -> Option<AdmittedSourcePath> {
-        self.0.pop_front()
+        self.queue.pop_front()
     }
 
     fn push(&mut self, path: AdmittedSourcePath) {
-        self.0.push_back(path);
+        if self.seen.insert(path.clone()) {
+            self.queue.push_back(path);
+        }
     }
 }
 
 #[derive(Debug, Default)]
-struct ResolutionCache(BTreeMap<glass_lint_core::project::ResolutionRequestKey, ResolverOutcome>);
+struct ResolutionCache {
+    /// Occurrence-keyed cache required by core (includes range).
+    by_key: BTreeMap<ResolutionRequestKey, ResolverOutcome>,
+    /// Semantic cache keyed by (importer, kind, specifier) — catches
+    /// repeated imports of the same specifier at different ranges.
+    by_specifier: BTreeMap<(ProjectRelativePath, ResolutionRequestKind, String), ResolverOutcome>,
+}
 impl ResolutionCache {
     /// Resolve a request if not already cached and return the stored outcome.
     /// The returned `bool` is `true` when a real resolution was performed.
@@ -331,23 +347,29 @@ impl ResolutionCache {
         resolver: &ProjectResolver,
     ) -> Result<(&ResolverOutcome, bool), ProjectLoadError> {
         let cache_key = request.key.clone();
-        match self.0.entry(cache_key) {
-            std::collections::btree_map::Entry::Occupied(e) => Ok((e.into_mut(), false)),
-            std::collections::btree_map::Entry::Vacant(e) => {
-                Ok((e.insert(resolver.resolve(request)?), true))
+        let mut did_resolve = false;
+
+        if !self.by_key.contains_key(&cache_key) {
+            let specifier_key = (
+                request.key.importer.clone(),
+                request.key.kind,
+                request.request.to_string(),
+            );
+            if let Some(outcome) = self.by_specifier.get(&specifier_key) {
+                self.by_key.insert(cache_key.clone(), outcome.clone());
+            } else {
+                let outcome = resolver.resolve(request)?;
+                self.by_specifier.insert(specifier_key, outcome.clone());
+                self.by_key.insert(cache_key.clone(), outcome);
+                did_resolve = true;
             }
         }
+
+        Ok((self.by_key.get(&cache_key).unwrap(), did_resolve))
     }
 
-    fn into_iter(
-        self,
-    ) -> impl Iterator<
-        Item = (
-            glass_lint_core::project::ResolutionRequestKey,
-            ResolverOutcome,
-        ),
-    > {
-        self.0.into_iter()
+    fn into_iter(self) -> impl Iterator<Item = (ResolutionRequestKey, ResolverOutcome)> {
+        self.by_key.into_iter()
     }
 }
 

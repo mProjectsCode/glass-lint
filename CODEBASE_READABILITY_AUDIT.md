@@ -57,6 +57,7 @@ Track the exact changed function IDs and enqueue only their reverse callers, usi
 - **Fix Complexity:** High
 - **Category:** Performance / Architecture
 - **Location:** `glass-lint-project/src/loader.rs:307-352`; `glass-lint-project/src/loader.rs:546-589`; `glass-lint-project/src/resolver.rs:67-127`
+- **Status:** Done (semantic resolution cache keyed by importer+kind+specifier avoids repeated Oxc resolution; PathWorkQueue deduplicates at enqueue time via seen set)
 
 The resolution cache is keyed by authored occurrence, so repeated identical specifiers at different ranges repeat Oxc resolution. A successful internal resolution discards its `AdmittedSourcePath`, reconstructs an absolute path, calls `exists`, canonicalizes and classifies it again, and queues duplicates until the next wave's `AdmissionSet` rejects them.
 
