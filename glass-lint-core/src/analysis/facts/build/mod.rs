@@ -115,10 +115,7 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
         Self::with_limit(resolver, crate::analysis::facts::MAX_FACTS)
     }
 
-    pub fn with_limit(
-        resolver: &'builder mut Resolver<'resolver>,
-        max_facts: usize,
-    ) -> Self {
+    pub fn with_limit(resolver: &'builder mut Resolver<'resolver>, max_facts: usize) -> Self {
         Self {
             resolver,
             stream: FactStream::with_limit(max_facts),

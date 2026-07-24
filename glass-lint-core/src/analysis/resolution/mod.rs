@@ -31,6 +31,7 @@ use crate::Environment;
 #[cfg(test)]
 use crate::analysis::scope::ScopeGraph;
 use crate::analysis::{
+    SemanticBudget,
     lowering::{InvalidParserSpan, ParserSpanKey, SpanNormalizer},
     scope::{BoundArgument, FrozenScopeGraph},
     syntax::{
@@ -38,7 +39,6 @@ use crate::analysis::{
         constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
     },
     value::{BindingKey, Value, ValueId, ValueTable},
-    SemanticBudget,
 };
 
 #[derive(Debug, Clone)]
@@ -209,7 +209,11 @@ impl Resolver<'_> {
         let scopes = ScopeGraph::collect_scoped_program(program, environment, names, &budget)
             .into_parts()
             .0;
-        Self::new(scopes, coordinates, Box::leak(Box::new(SemanticBudget::default())))
+        Self::new(
+            scopes,
+            coordinates,
+            Box::leak(Box::new(SemanticBudget::default())),
+        )
     }
 
     /// Build a resolver with an externally-owned name table.
@@ -294,7 +298,11 @@ impl Resolver<'_> {
         scopes: FrozenScopeGraph,
         coordinates: SpanNormalizer,
     ) -> Resolver<'static> {
-        Self::new(scopes, coordinates, Box::leak(Box::new(SemanticBudget::default())))
+        Self::new(
+            scopes,
+            coordinates,
+            Box::leak(Box::new(SemanticBudget::default())),
+        )
     }
 }
 
@@ -302,14 +310,14 @@ impl Resolver<'_> {
 mod tests {
     use glass_lint_datastructures::{NameId, NameTable};
 
-use super::*;
-use crate::analysis::{
-    lowering::SpanNormalizer,
-    scope::ScopeGraph,
-    syntax::{BudgetComponent, UnknownReason},
-    value::{MAX_VALUES, Value},
-    SemanticBudget,
-};
+    use super::*;
+    use crate::analysis::{
+        SemanticBudget,
+        lowering::SpanNormalizer,
+        scope::ScopeGraph,
+        syntax::{BudgetComponent, UnknownReason},
+        value::{MAX_VALUES, Value},
+    };
 
     #[test]
     fn unknown_value_keeps_unsupported_and_exhausted_distinct() {

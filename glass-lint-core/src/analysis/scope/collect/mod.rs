@@ -19,6 +19,7 @@ use swc_ecma_ast::{ArrowExpr, Expr, Function, ImportDecl, ObjectPatProp, Pat, Va
 use crate::{
     Environment,
     analysis::{
+        SemanticBudget,
         scope::{
             AliasAssignment, BindingProvenance, FrozenAssignmentIndex, FrozenScopeGraph,
             LexicalScope, ScopeEffect, ScopeGraph, ScopeGraphParts, ScopeId, ScopeKind, ScopedName,
@@ -29,7 +30,6 @@ use crate::{
             member_property_name, member_root_identifier, module_export_name, property_name,
         },
         value::{BindingId, BindingVersion, FunctionId},
-        SemanticBudget,
     },
 };
 

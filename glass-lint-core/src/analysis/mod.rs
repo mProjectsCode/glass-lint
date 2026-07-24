@@ -30,7 +30,6 @@ mod syntax;
 mod value;
 
 pub(in crate::analysis) use budget::SemanticBudget;
-
 pub use local::{
     ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, ProjectModule,
     SemanticArtifact, SharedSemanticArtifact,

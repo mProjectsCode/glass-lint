@@ -14,9 +14,9 @@ use swc_ecma_ast::{
 
 use super::{ScopeShape, ScopeShapeTable, traversal::ScopePass};
 use crate::analysis::{
+    SemanticBudget,
     scope::{BindingProvenance, LexicalScope, ScopeId, ScopeKind},
     syntax::{collect_pat_bindings, module_export_name},
-    SemanticBudget,
 };
 
 /// Immutable declaration result consumed by [`super::ScopeCollector`].
