@@ -15,9 +15,10 @@
 //! or an overlay node created during a join.  The overlay is bounded by
 //! [`MAX_OVERLAY_NODES`]; exhaustion fails closed.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use glass_lint_datastructures::{ParentPathStore, PathId, PathInterner, PathSegment};
+use indexmap::IndexSet;
 
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
@@ -291,54 +292,50 @@ pub(super) struct FunctionSummary {
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct SinkSet {
-    items: Vec<FunctionSinkSummary>,
-    set: HashSet<FunctionSinkSummary>,
+    set: IndexSet<FunctionSinkSummary>,
 }
+
 impl SinkSet {
     fn push_unique(&mut self, sink: FunctionSinkSummary) -> bool {
-        if self.set.insert(sink.clone()) {
-            self.items.push(sink);
-            true
-        } else {
-            false
-        }
+        self.set.insert(sink)
     }
 
     fn sort_and_dedup(&mut self) {
-        self.items.sort_by(|left, right| {
+        self.set.sort_by(|left, right| {
             (left.flow(), left.parameter_index(), left.path()).cmp(&(
                 right.flow(),
                 right.parameter_index(),
                 right.path(),
             ))
         });
-        self.items.dedup();
     }
 
     #[allow(dead_code)]
     fn len(&self) -> usize {
-        self.items.len()
+        self.set.len()
     }
 
     #[allow(dead_code)]
-    fn iter(&self) -> std::slice::Iter<'_, FunctionSinkSummary> {
-        self.items.iter()
+    fn iter(&self) -> indexmap::set::Iter<'_, FunctionSinkSummary> {
+        self.set.iter()
     }
 }
+
 impl<'a> IntoIterator for &'a SinkSet {
-    type IntoIter = std::slice::Iter<'a, FunctionSinkSummary>;
+    type IntoIter = indexmap::set::Iter<'a, FunctionSinkSummary>;
     type Item = &'a FunctionSinkSummary;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.items.iter()
+        self.set.iter()
     }
 }
+
 impl IntoIterator for SinkSet {
-    type IntoIter = std::vec::IntoIter<FunctionSinkSummary>;
+    type IntoIter = indexmap::set::IntoIter<FunctionSinkSummary>;
     type Item = FunctionSinkSummary;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.items.into_iter()
+        self.set.into_iter()
     }
 }
 
@@ -361,6 +358,9 @@ pub(super) struct FunctionSummaries<'a> {
     stream: &'a FactStream<Frozen>,
     by_id: FunctionTable<FunctionSummary>,
     paths: SummaryPathStore<'a>,
+    /// Scratch buffer reused across propagate_call_sinks calls to avoid
+    /// repeated per-call allocation.
+    scratch_projections: Vec<FunctionSinkSummary>,
 }
 
 impl<'a> FunctionSummaries<'a> {
@@ -385,6 +385,7 @@ impl<'a> FunctionSummaries<'a> {
             stream,
             by_id: FunctionTable::default(),
             paths: SummaryPathStore::new(stream.paths()),
+            scratch_projections: Vec::new(),
         };
         summaries.collect_facts(effects);
         summaries.collect_direct_sinks(stream, plan);
@@ -489,7 +490,7 @@ impl<'a> FunctionSummaries<'a> {
             // Update sinks_offset ONLY for changed functions (not all)
             for &changed_id in &changed {
                 if let Some(summary) = self.by_id.get_mut(changed_id) {
-                    summary.sinks_offset = summary.sinks.items.len();
+                    summary.sinks_offset = summary.sinks.set.len();
                 }
             }
 
@@ -530,13 +531,13 @@ impl<'a> FunctionSummaries<'a> {
         let Some(caller_summary) = caller_summary else {
             return false;
         };
-        let projections: Vec<FunctionSinkSummary> = {
+        self.scratch_projections.clear();
+        {
             let target_params = stream.function_parameters(target);
             let caller_params = stream.function_parameters(caller);
-            let sink_count = target_summary.sinks.items.len();
-            let mut projections = Vec::new();
+            let sink_count = target_summary.sinks.set.len();
             for sink_idx in target_sinks_offset..sink_count {
-                let sink = &target_summary.sinks.items[sink_idx];
+                let sink = &target_summary.sinks.set[sink_idx];
                 if let Some(proj) = try_project_sink(
                     target_params,
                     caller_params,
@@ -545,13 +546,12 @@ impl<'a> FunctionSummaries<'a> {
                     args,
                     &self.paths,
                 ) {
-                    projections.push(proj);
+                    self.scratch_projections.push(proj);
                 }
             }
-            projections
-        };
+        }
         let mut changed = false;
-        for proj in projections {
+        for proj in self.scratch_projections.drain(..) {
             changed |= caller_summary.add_sink(proj);
         }
         changed

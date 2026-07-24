@@ -228,6 +228,7 @@ fn syntax_depth(source: &str) -> usize {
     let mut index = 0usize;
     let mut quote = None;
     let mut template_expr_depth = 0usize;
+    let mut template_depth_stack: Vec<usize> = Vec::new();
     while index < bytes.len() {
         let byte = bytes[index];
         if template_expr_depth == 1 {
@@ -239,7 +240,7 @@ fn syntax_depth(source: &str) -> usize {
                 continue;
             }
             if byte == b'`' {
-                template_expr_depth = 0;
+                template_expr_depth = template_depth_stack.pop().unwrap_or(0);
                 index += 1;
                 continue;
             }
@@ -271,8 +272,14 @@ fn syntax_depth(source: &str) -> usize {
                 index += 1;
                 continue;
             }
+            if byte == b'`' {
+                template_depth_stack.push(template_expr_depth);
+                template_expr_depth = 1;
+                index += 1;
+                continue;
+            }
         }
-        if byte == b'`' {
+        if template_expr_depth == 0 && byte == b'`' {
             template_expr_depth = 1;
             index += 1;
             continue;
@@ -365,6 +372,16 @@ mod tests {
         assert!(
             depth >= 3,
             "nested template expression should count, got {depth}"
+        );
+    }
+
+    #[test]
+    fn nested_template_inside_expression_tracks_depth() {
+        let source = "`outer${`inner`}end`";
+        let depth = syntax_depth(source);
+        assert!(
+            depth >= 1,
+            "nested template inside expression should be counted, got {depth}"
         );
     }
 

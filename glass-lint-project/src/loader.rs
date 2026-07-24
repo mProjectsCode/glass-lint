@@ -438,6 +438,10 @@ struct ProjectLoadState<'a> {
     admitted: AdmissionSet,
     resolved: ResolutionCache,
     progress: LoadProgress,
+    /// Cache mapping already-admitted internal target paths to their
+    /// AdmittedSourcePath, avoiding redundant exists/classify calls when
+    /// multiple importers reference the same target.
+    admitted_target_cache: BTreeMap<ProjectRelativePath, AdmittedSourcePath>,
     deadline: Instant,
 }
 
@@ -461,6 +465,7 @@ impl<'a> ProjectLoadState<'a> {
             admitted: AdmissionSet::new(max_files),
             resolved: ResolutionCache::default(),
             progress: LoadProgress::default(),
+            admitted_target_cache: BTreeMap::new(),
             deadline,
         })
     }
@@ -608,11 +613,16 @@ impl<'a> ProjectLoadState<'a> {
         if let Some(path) = path {
             self.progress.record_edge();
             self.progress.publish(metrics);
-            let target = self.admission.canonical_root().join(path);
+            if let Some(admitted) = self.admitted_target_cache.get(&path) {
+                self.queue.push(admitted.clone());
+                return Ok(());
+            }
+            let target = self.admission.canonical_root().join(&path);
             if target.exists()
                 && let crate::admission::PathAdmission::Admitted(admitted) =
                     self.admission.classify(&target)?
             {
+                self.admitted_target_cache.insert(path, admitted.clone());
                 self.queue.push(admitted);
             }
         }

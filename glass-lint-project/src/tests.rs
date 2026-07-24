@@ -9,7 +9,10 @@ use std::{
 
 use glass_lint_core::{Environment, Linter, LinterConfig, RuleCatalog};
 
-use crate::{ProjectLoadError, ProjectLoader, ProjectSelection, options::ProjectLoadOptions};
+use crate::{
+    ProjectLoadError, ProjectLoader, ProjectSelection, SourceCorpus,
+    options::{ProjectLoadOptions, ValidatedProjectLoadOptions},
+};
 
 /// RAII temporary project directory that is created on construction and cleaned
 /// up on drop (including on panic).  Shared across tests to avoid repeating the
@@ -284,5 +287,19 @@ fn tsconfig_membership_inherits_extends_and_collects_references() {
             .map(|file| file.path().as_str())
             .collect::<Vec<_>>(),
         ["packages/child/src/value.ts", "src/main.ts"]
+    );
+}
+
+#[test]
+fn invalid_configured_root_returns_error_not_fallback() {
+    let result = SourceCorpus::from_validated(
+        &ValidatedProjectLoadOptions::builder()
+            .root("/glass-lint-test-nonexistent-root-does-not-exist")
+            .build()
+            .unwrap(),
+    );
+    assert!(
+        result.is_err(),
+        "a non-existent configured root must return an Err, not a fallback"
     );
 }

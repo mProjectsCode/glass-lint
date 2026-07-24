@@ -92,9 +92,4 @@ impl TraversalState {
     pub(super) fn set_function(&mut self, function: FunctionId) {
         self.current_function = function;
     }
-
-    #[allow(dead_code)]
-    pub(super) fn clear_function(&mut self) {
-        self.current_function = FunctionId(0);
-    }
 }
