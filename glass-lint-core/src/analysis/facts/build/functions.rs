@@ -35,6 +35,7 @@ impl FactBuilder<'_, '_> {
     ) {
         let scope = self.scope_at(span);
         let id = self.resolver.function_scope_at(scope);
+        self.traversal.set_function(id);
         if boundary == FunctionBoundary::Enter {
             let mut bindings = Vec::new();
             for (parameter_index, parameter) in parameters {
@@ -64,6 +65,7 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(super) fn record_function(&mut self, function: &Function) {
+        let enclosing = self.traversal.current_function();
         self.emit_function_fact(
             function.span(),
             function
@@ -85,9 +87,11 @@ impl FactBuilder<'_, '_> {
                 .map(|(index, parameter)| (index, parameter.pat.clone())),
             FunctionBoundary::Exit,
         );
+        self.traversal.set_function(enclosing);
     }
 
     pub(super) fn record_arrow(&mut self, arrow: &ArrowExpr) {
+        let enclosing = self.traversal.current_function();
         self.emit_function_fact(
             arrow.span(),
             arrow.params.iter().cloned().enumerate(),
@@ -99,9 +103,11 @@ impl FactBuilder<'_, '_> {
             arrow.params.iter().cloned().enumerate(),
             FunctionBoundary::Exit,
         );
+        self.traversal.set_function(enclosing);
     }
 
     pub(super) fn record_class_method(&mut self, method: &ClassMethod) {
+        let enclosing = self.traversal.current_function();
         let parameters = || {
             method
                 .function
@@ -125,6 +131,7 @@ impl FactBuilder<'_, '_> {
         if method.is_static {
             self.traversal.leave_static_method();
         }
+        self.traversal.set_function(enclosing);
     }
 
     pub(super) fn record_class_decl(&mut self, class_decl: &ClassDecl) {

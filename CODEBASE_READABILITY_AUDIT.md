@@ -35,6 +35,7 @@ Replace the eager result bag with a syntax-directed `ExpressionClassification` t
 - **Fix Complexity:** High
 - **Category:** Performance / Architecture
 - **Location:** `glass-lint-core/src/analysis/facts/build/mod.rs:129-181`; `glass-lint-core/src/analysis/scope/model.rs:131-194`; `glass-lint-core/src/analysis/scope/model.rs:590-599`
+- **Status:** Done (FunctionId cached on TraversalState during function entry/exit, emit reuses cached value instead of scope-climbing lookup)
 
 Every emitted fact performs a binary search over scope starts, may climb parents to find a containing scope, and then climbs parents again through a tree map to find its function. The fact visitor already controls balanced scope/function traversal; function-boundary emission additionally performs these lookups before calling `emit`, which repeats them.
 

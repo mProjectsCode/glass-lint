@@ -38,7 +38,7 @@ use crate::analysis::{
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_property_name,
     },
-    value::ValueId,
+    value::{FunctionId, ValueId},
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -184,9 +184,12 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             return;
         };
         self.resolver.budget.try_charge();
-        let _ = self
-            .stream
-            .try_push(span, self.resolver.function_scope_at(scope), kind, payload);
+        let function = if self.traversal.current_function() == FunctionId(0) {
+            self.resolver.function_scope_at(scope)
+        } else {
+            self.traversal.current_function()
+        };
+        let _ = self.stream.try_push(span, function, kind, payload);
     }
 
     fn byte_range(&mut self, span: Span) -> Option<ByteRange> {
