@@ -213,6 +213,7 @@ Check extensions from `file_name`/`extension` with ASCII-insensitive comparisons
 - **Fix Complexity:** Medium
 - **Category:** API Design
 - **Location:** `glass-lint-project/src/loader.rs:43-72`; `glass-lint-project/src/loader.rs:622-655`
+- **Status:** Done (Added `with_project_diagnostics` and `into_partial` methods to `AnalysisReport` in `glass-lint-core/src/project/types/report.rs`; updated both call sites in `loader.rs` to use them.)
 
 Both partial-outcome handling and tsconfig-diagnostic attachment consume `AnalysisReport`, unpack every field, mutate diagnostics, and reconstruct the report. This leaks report schema assembly into the filesystem crate and makes new report fields easy to omit at each call site.
 

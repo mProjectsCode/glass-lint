@@ -54,22 +54,8 @@ impl ProjectLoadOutcome {
     }
 
     fn partial(report: AnalysisReport, reason: ProjectLoadError) -> Self {
-        let code = glass_lint_core::project::DiagnosticCode::new("incomplete_project")
-            .expect("incomplete_project is a valid diagnostic code");
-        let (schema_version, tool_version, files, mut diagnostics, operations, _completion) =
-            report.into_parts();
-        diagnostics.push(glass_lint_core::project::Diagnostic::Project(
-            glass_lint_core::project::AnalysisDiagnostic::new(code, reason.to_string(), None),
-        ));
         Self {
-            report: glass_lint_core::project::AnalysisReport::new(
-                schema_version,
-                tool_version,
-                files,
-                diagnostics,
-                operations,
-                glass_lint_core::project::ReportCompletion::Partial,
-            ),
+            report: report.into_partial(&reason),
             partial_reason: Some(reason),
             metrics: ProjectLoadMetrics::default(),
         }
@@ -670,29 +656,19 @@ impl ClosedFrontier<'_> {
         metrics.timings.record_matching(result.matching);
         let code = glass_lint_core::project::DiagnosticCode::new("tsconfig")
             .expect("tsconfig is a valid diagnostic code");
-        let (schema_version, tool_version, files, mut diagnostics, operations, completion) =
-            result.report.into_parts();
-        diagnostics.extend(self.diagnostics.into_iter().map(|diagnostic| {
-            glass_lint_core::project::Diagnostic::Project(
-                glass_lint_core::project::AnalysisDiagnostic::new(
-                    code.clone(),
-                    format!(
-                        "{}: {}",
-                        diagnostic.config_path.display(),
-                        diagnostic.message
-                    ),
-                    None,
-                ),
-            )
-        }));
-        Ok(glass_lint_core::project::AnalysisReport::new(
-            schema_version,
-            tool_version,
-            files,
-            diagnostics,
-            operations,
-            completion,
-        ))
+        let messages: Vec<String> = self
+            .diagnostics
+            .into_iter()
+            .map(|diagnostic| {
+                format!(
+                    "{}: {}",
+                    diagnostic.config_path.display(),
+                    diagnostic.message
+                )
+            })
+            .collect();
+        let report = result.report.with_project_diagnostics(&code, messages);
+        Ok(report)
     }
 }
 

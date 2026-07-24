@@ -470,6 +470,36 @@ impl AnalysisReport {
             self.completion,
         )
     }
+
+    /// Consume the report, append project-level diagnostics, and return the
+    /// updated report. The diagnostic code must be a valid project code.
+    #[must_use]
+    pub fn with_project_diagnostics(
+        mut self,
+        code: &DiagnosticCode,
+        messages: impl IntoIterator<Item = String>,
+    ) -> Self {
+        self.diagnostics.extend(messages.into_iter().map(|message| {
+            Diagnostic::Project(AnalysisDiagnostic::new(code.clone(), message, None))
+        }));
+        self
+    }
+
+    /// Convert the report to Partial completion status, recording the error
+    /// as a project diagnostic with the "incomplete_project" code.
+    #[must_use]
+    pub fn into_partial(mut self, reason: impl std::fmt::Display) -> Self {
+        let code = DiagnosticCode::new("incomplete_project")
+            .expect("incomplete_project is a valid diagnostic code");
+        self.diagnostics
+            .push(Diagnostic::Project(AnalysisDiagnostic::new(
+                code,
+                reason.to_string(),
+                None,
+            )));
+        self.completion = ReportCompletion::Partial;
+        self
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
