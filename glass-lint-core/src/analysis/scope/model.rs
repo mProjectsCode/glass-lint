@@ -265,7 +265,7 @@ impl BindingIndex {
     }
 
     pub(super) fn function_for_scope(&self, scope: ScopeId) -> Option<FunctionId> {
-        self.function_ids.get(scope.0).copied().flatten()
+        self.function_ids.get(scope.index()).copied().flatten()
     }
 
     pub(super) fn function_spans<'a>(

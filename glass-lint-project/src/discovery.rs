@@ -279,13 +279,15 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
                 let Ok(relative) = path.strip_prefix(base) else {
                     return false;
                 };
-                let relative_str = relative.to_string_lossy();
+                let Some(relative_str) = relative.to_str() else {
+                    return false;
+                };
                 config
                     .pattern_set
                     .is_included(&if relative_str.contains('\\') {
                         Cow::Owned(relative_str.replace('\\', "/"))
                     } else {
-                        relative_str
+                        Cow::Borrowed(relative_str)
                     })
             };
             walk::collect_files(

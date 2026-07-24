@@ -225,11 +225,12 @@ impl<'a> SourceAdmission<'a> {
         let relative = path
             .strip_prefix(&self.canonical_root)
             .expect("path was already confirmed inside root")
-            .to_string_lossy();
+            .to_str()
+            .ok_or_else(|| ProjectLoadError::UnsupportedSource(path.to_path_buf()))?;
         let normalized = if relative.contains('\\') {
             Cow::Owned(relative.replace('\\', "/"))
         } else {
-            relative
+            Cow::Borrowed(relative)
         };
         ProjectRelativePath::new(&normalized)
             .map_err(|_| ProjectLoadError::UnsupportedSource(path.to_path_buf()))
