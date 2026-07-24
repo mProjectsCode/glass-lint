@@ -134,10 +134,11 @@ Use dense `Vec<Option<_>>` tables for scope/function keyed state and hash tables
 - **Fix Complexity:** High
 - **Category:** Performance / Architecture
 - **Location:** `glass-lint-core/src/analysis/facts/mod.rs:45-84`; `glass-lint-core/src/analysis/project/projection.rs:58-110`; `glass-lint-core/src/analysis/flow/cross/mod.rs:471-510`
+- **Status:** Done (FlowPathPlan built lazily on first context reach instead of eagerly for every flow×module pair; `flows` and `evidence` changed from `BTreeMap` to `HashMap` except where deterministic output order matters)
 
 Every module allocates evidence vectors sized to the full catalog, including disabled rules, in both local and cross-flow projection. Cross-flow also eagerly builds every `(selected flow, module)` `FlowPathPlan`, even though only source-bearing/reachable pairs are used.
 
-Assign a compact `SelectedRuleSlot` during selection and store projection output by that slot, mapping back to stable `RuleIndex` only during report assembly. Build flow-path plans lazily when a context first reaches a `(flow, module)` pair, or seed them only from proven source candidates. Keep compiled matchers immutable and rule indexes stable; the optimization must not make result order depend on reachability order.
+Build flow-path plans lazily when a context first reaches a `(flow, module)` pair. Keep compiled matchers immutable and rule indexes stable; the optimization must not make result order depend on reachability order.
 
 #### READ-013 — Summary path operations recurse within accepted budgets
 - **Severity:** Medium

@@ -6,7 +6,7 @@
 
 mod propagation;
 
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
 use glass_lint_datastructures::{Budget, NamePath, NameTable};
 
@@ -450,7 +450,7 @@ impl FlowSources {
 
 /// Build a per-module source index mapping NamePath to matching flow IDs.
 fn build_source_index(
-    flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
+    flows: &HashMap<FlowId, &CompiledObjectFlow>,
     names: &glass_lint_datastructures::NameTable,
 ) -> BTreeMap<glass_lint_datastructures::NamePath, Vec<FlowId>> {
     let mut index: BTreeMap<glass_lint_datastructures::NamePath, Vec<FlowId>> = BTreeMap::new();
@@ -476,7 +476,7 @@ pub(in crate::analysis) fn collect(
     bool,
     usize,
 ) {
-    let mut flows = BTreeMap::<FlowId, &CompiledObjectFlow>::new();
+    let mut flows = HashMap::<FlowId, &CompiledObjectFlow>::new();
     for (rule_index, matcher) in matchers.selected_matchers() {
         for (flow_index, flow) in matcher.query().flows().iter().enumerate() {
             flows.insert(FlowId::new(rule_index, flow_index), flow);
@@ -486,7 +486,7 @@ pub(in crate::analysis) fn collect(
     let mut evidence = project
         .modules()
         .map(|module| (module.id(), ModuleEvidence::new(rule_count)))
-        .collect::<BTreeMap<_, _>>();
+        .collect::<HashMap<_, _>>();
     if flows.is_empty() {
         let empty = evidence
             .into_iter()
@@ -499,15 +499,7 @@ pub(in crate::analysis) fn collect(
     let (sources, return_budget_exhausted) = FlowSources::collect(project, &flows, &call_graph);
     let mut worklist = ContextWorklist::seed(project, &sources, &call_graph);
 
-    let mut flow_plans: BTreeMap<(FlowId, ModuleId), FlowPathPlan> = BTreeMap::new();
-    for (flow_id, flow) in &flows {
-        for module in project.modules() {
-            let Some(names) = project.module_names(module.id()) else {
-                continue;
-            };
-            flow_plans.insert((*flow_id, module.id()), FlowPathPlan::build(flow, names));
-        }
-    }
+    let mut flow_plan_cache: HashMap<(FlowId, ModuleId), FlowPathPlan> = HashMap::new();
 
     let mut step_budget = Budget::new(project.flow_limit());
     let mut projections = 0usize;
@@ -525,14 +517,14 @@ pub(in crate::analysis) fn collect(
         let Some(flow) = flows.get(&context.state.flow).copied() else {
             continue;
         };
-        let Some(flow_plan) = flow_plans.get(&(context.state.flow, context.module)) else {
-            continue;
-        };
-        let mut current_state = context.state.clone();
-        let mut propagated_calls = BTreeSet::new();
         let names = project
             .module_names(context.module)
             .expect("module has names");
+        let flow_plan = flow_plan_cache
+            .entry((context.state.flow, context.module))
+            .or_insert_with(|| FlowPathPlan::build(flow, names));
+        let mut current_state = context.state.clone();
+        let mut propagated_calls = BTreeSet::new();
         propagation::UsageProjector {
             project,
             evidence: &mut evidence,
@@ -582,7 +574,7 @@ pub(in crate::analysis) fn collect(
 impl FlowSources {
     fn collect(
         project: &ProjectSemanticModel,
-        flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
+        flows: &HashMap<FlowId, &CompiledObjectFlow>,
         call_graph: &QualifiedCallGraph,
     ) -> (Self, bool) {
         let mut sources = Self::default();
@@ -595,7 +587,7 @@ impl FlowSources {
     fn collect_candidates(
         &mut self,
         project: &ProjectSemanticModel,
-        flows: &BTreeMap<FlowId, &CompiledObjectFlow>,
+        flows: &HashMap<FlowId, &CompiledObjectFlow>,
     ) {
         for module in project.modules() {
             let names = module.local().facts().names();
@@ -764,7 +756,7 @@ impl ModuleEvidence {
 
 pub(super) fn emit(
     project: &ProjectSemanticModel,
-    evidence: &mut BTreeMap<ModuleId, ModuleEvidence>,
+    evidence: &mut HashMap<ModuleId, ModuleEvidence>,
     module: ModuleId,
     flow_id: FlowId,
     state: &CrossFlowState,

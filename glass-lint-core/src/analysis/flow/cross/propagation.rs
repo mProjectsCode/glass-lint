@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeSet, HashMap};
 
 use glass_lint_datastructures::NameTable;
 use smol_str::SmolStr;
@@ -19,7 +19,7 @@ use crate::{
 
 pub(super) struct UsageProjector<'a> {
     pub(super) project: &'a ProjectSemanticModel,
-    pub(super) evidence: &'a mut BTreeMap<ModuleId, super::ModuleEvidence>,
+    pub(super) evidence: &'a mut HashMap<ModuleId, super::ModuleEvidence>,
     pub(super) context: &'a CallContext,
     pub(super) effect: &'a FunctionEffect,
     pub(super) flow: &'a CompiledObjectFlow,
