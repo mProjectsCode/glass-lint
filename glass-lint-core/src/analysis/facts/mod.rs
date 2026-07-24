@@ -317,7 +317,7 @@ mod tests {
         .unwrap();
         let build = |matchers: Vec<&crate::api::compiler::rule::CompiledMatcherPlan>,
                      selected: &[usize]| {
-            let mut resolver = Resolver::collect(&parsed.program);
+            let mut resolver = Resolver::collect(&parsed.program, source);
             let _ = (matchers, selected);
             let mut builder = FactBuilder::new(&mut resolver);
             swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
@@ -357,7 +357,7 @@ mod tests {
             a.push(3);
         "#;
         let parsed = crate::parse(src, "char-index.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
+        let mut resolver = Resolver::collect(&parsed.program, src);
 
         let mut builder = FactBuilder::new(&mut resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);
@@ -402,7 +402,7 @@ mod tests {
             fetch.apply(null, ['/api']);
         ";
         let parsed = crate::parse(src, "unwrap.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
+        let mut resolver = Resolver::collect(&parsed.program, src);
 
         let mut builder = FactBuilder::new(&mut resolver);
         swc_ecma_visit::VisitWith::visit_with(&parsed.program, &mut builder);

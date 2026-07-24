@@ -173,7 +173,7 @@ impl Resolver<'_> {
     }
 
     #[cfg(test)]
-    pub(in crate::analysis) fn collect(program: &Program) -> Resolver<'static> {
+    pub(in crate::analysis) fn collect(program: &Program, source: &str) -> Resolver<'static> {
         let mut environment = Environment::default();
         environment
             .add_globals([
@@ -183,7 +183,11 @@ impl Resolver<'_> {
         environment
             .add_global_object("window")
             .expect("test global object is valid");
-        Self::collect_with_environment(program, &environment, SpanNormalizer::for_program(program))
+        Self::collect_with_environment(
+            program,
+            &environment,
+            SpanNormalizer::for_program(program, source),
+        )
     }
 
     #[cfg(test)]

@@ -348,7 +348,7 @@ mod tests {
 
     fn build_facts(src: &str, filename: &str) -> FactStream<crate::analysis::facts::Frozen> {
         let parsed = crate::parse(src, filename).expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
+        let mut resolver = Resolver::collect(&parsed.program, src);
         let mut builder = FactBuilder::new(&mut resolver);
         parsed.program.visit_with(&mut builder);
         builder.into_stream()
@@ -596,7 +596,7 @@ mod tests {
     fn string_literal_fact_is_emitted() {
         let src = r#"const x = "hello";"#;
         let parsed = crate::parse(src, "str.js").expect("source should parse");
-        let mut resolver = Resolver::collect(&parsed.program);
+        let mut resolver = Resolver::collect(&parsed.program, src);
         let mut builder = FactBuilder::new(&mut resolver);
         parsed.program.visit_with(&mut builder);
         let stream = builder.into_stream();

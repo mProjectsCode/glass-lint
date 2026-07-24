@@ -514,7 +514,7 @@ mod tests {
         let mut resolver = Resolver::collect_with_environment(
             &parsed.program,
             &environment,
-            crate::analysis::lowering::SpanNormalizer::for_program(&parsed.program),
+            crate::analysis::lowering::SpanNormalizer::for_program(&parsed.program, src),
         );
         let stream = build_test_stream(&parsed.program, &mut resolver);
 

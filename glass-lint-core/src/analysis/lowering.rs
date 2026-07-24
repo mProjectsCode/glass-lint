@@ -43,59 +43,6 @@ impl From<swc_common::Span> for ParserSpanKey {
     }
 }
 
-/// Compact bit set of non-boundary byte positions in non-ASCII source text.
-///
-/// Stores one bit per byte of the source: a set bit indicates that the byte
-/// at that position is a UTF-8 continuation byte and therefore NOT a valid
-/// character boundary. For ASCII text every byte is a valid boundary, so no
-/// map is needed.
-#[derive(Clone, Debug)]
-struct CharBoundaryMap {
-    /// Bit-packed invalid-boundary flags: bit `i` is set when byte `i` is a
-    /// UTF-8 continuation byte (0x80..=0xBF).
-    invalid: Vec<u8>,
-    /// Source length in bytes.
-    source_len: usize,
-}
-
-impl CharBoundaryMap {
-    /// Build a boundary map from non-ASCII source text. Returns `None` when
-    /// the source is entirely ASCII and every byte is a valid boundary.
-    fn from_source(source: &str) -> Option<Self> {
-        if source.is_ascii() {
-            return None;
-        }
-        let source_len = source.len();
-        let byte_count = source_len.div_ceil(8);
-        let mut invalid = vec![0u8; byte_count];
-        for (i, &byte) in source.as_bytes().iter().enumerate() {
-            if byte & 0xC0 == 0x80 {
-                invalid[i >> 3] |= 1 << (i & 7);
-            }
-        }
-        Some(Self {
-            invalid,
-            source_len,
-        })
-    }
-
-    /// Whether `pos` is a valid UTF-8 character boundary in the original
-    /// source text.
-    fn is_char_boundary(&self, pos: usize) -> bool {
-        if pos == 0 || pos == self.source_len {
-            return true;
-        }
-        if pos > self.source_len {
-            return false;
-        }
-        (self.invalid[pos >> 3] & (1 << (pos & 7))) == 0
-    }
-
-    fn len(&self) -> usize {
-        self.source_len
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 /// Converts SWC `BytePos` spans to zero-based `ByteRange` values relative to
 /// the authored source text. Validation ensures the result is within bounds
@@ -103,42 +50,21 @@ impl CharBoundaryMap {
 pub(in crate::analysis) struct SpanNormalizer {
     /// SWC `BytePos` value assigned to authored byte offset zero.
     start: u32,
-    /// Length of the authored source in bytes.
-    len: u32,
-    /// Compact invalid-boundary bit map for non-ASCII source text. `None`
-    /// when the source is ASCII or the source text is unavailable (test
-    /// constructors).
-    boundaries: Option<CharBoundaryMap>,
-    /// True when the source text is entirely ASCII; boundary checks are then
-    /// redundant since every byte position is a valid UTF-8 boundary.
-    is_ascii: bool,
+    /// Authored source text, used for UTF-8 boundary validation.
+    source: Arc<str>,
 }
 
 impl SpanNormalizer {
     pub(in crate::analysis) fn new(source_start: swc_common::BytePos, source: &str) -> Self {
-        let is_ascii = source.is_ascii();
-        let boundaries = if is_ascii {
-            None
-        } else {
-            CharBoundaryMap::from_source(source)
-        };
         Self {
             start: source_start.0,
-            len: u32::try_from(source.len()).unwrap_or(u32::MAX),
-            boundaries,
-            is_ascii,
+            source: Arc::from(source.to_owned()),
         }
     }
 
     #[cfg(test)]
-    pub(in crate::analysis) fn for_program(program: &Program) -> Self {
-        let span = program.span();
-        Self {
-            start: span.lo.0,
-            len: span.hi.0.saturating_sub(span.lo.0),
-            boundaries: None,
-            is_ascii: false,
-        }
+    pub(in crate::analysis) fn for_program(program: &Program, source: &str) -> Self {
+        Self::new(program.span().lo, source)
     }
 
     pub(in crate::analysis) fn normalize(
@@ -147,21 +73,14 @@ impl SpanNormalizer {
     ) -> Result<glass_lint_datastructures::ByteRange, InvalidParserSpan> {
         let offset = span.lo.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
         let end = span.hi.0.checked_sub(self.start).ok_or(InvalidParserSpan)?;
-        if end > self.len {
+        let source_len = u32::try_from(self.source.len()).unwrap_or(u32::MAX);
+        if end > source_len {
             return Err(InvalidParserSpan);
         }
-        if !self.is_ascii
-            && let Some(ref map) = self.boundaries
+        if !self.source.is_char_boundary(offset as usize)
+            || !self.source.is_char_boundary(end as usize)
         {
-            let offset = offset as usize;
-            let end = end as usize;
-            if offset > map.len()
-                || end > map.len()
-                || !map.is_char_boundary(offset)
-                || !map.is_char_boundary(end)
-            {
-                return Err(InvalidParserSpan);
-            }
+            return Err(InvalidParserSpan);
         }
         glass_lint_datastructures::ByteRange::new(offset, end).map_err(|_| InvalidParserSpan)
     }
