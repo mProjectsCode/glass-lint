@@ -5,6 +5,7 @@
 //! authoritative implementation here.
 
 use std::{
+    borrow::Cow,
     collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
@@ -224,9 +225,13 @@ impl<'a> SourceAdmission<'a> {
         let relative = path
             .strip_prefix(&self.canonical_root)
             .expect("path was already confirmed inside root")
-            .to_string_lossy()
-            .replace('\\', "/");
-        ProjectRelativePath::new(&relative)
+            .to_string_lossy();
+        let normalized = if relative.contains('\\') {
+            Cow::Owned(relative.replace('\\', "/"))
+        } else {
+            relative
+        };
+        ProjectRelativePath::new(&normalized)
             .map_err(|_| ProjectLoadError::UnsupportedSource(path.to_path_buf()))
     }
 

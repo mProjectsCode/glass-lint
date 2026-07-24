@@ -206,6 +206,8 @@ Extension checks convert the entire path to a lossy lowercase string, tsconfig m
 
 Check extensions from `file_name`/`extension` with ASCII-insensitive comparisons and normalize the relative identity once at admission. Let `AdmittedSourcePath` carry the slash-normalized match key alongside the canonical and typed relative paths so glob checks can borrow it. Preserve non-UTF-8 rejection and Windows separator behavior explicitly rather than relying on lossy conversion.
 
+- **Status:** Done (Extension checks use `file_name()` instead of full path; tsconfig membership and admission use `Cow` to defer backslash-replacement allocation in the common case)
+
 #### READ-019 — Project code must disassemble reports to add project-owned diagnostics
 - **Severity:** Medium
 - **Fix Complexity:** Medium

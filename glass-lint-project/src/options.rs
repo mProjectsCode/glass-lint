@@ -98,11 +98,16 @@ struct SourceExtensionSet(BTreeSet<String>);
 
 impl SourceExtensionSet {
     fn supports(&self, path: &Path) -> bool {
-        let name = path.to_string_lossy().to_ascii_lowercase();
-        self.0.iter().any(|extension| name.ends_with(extension))
-            && ![".d.ts", ".d.cts", ".d.mts"]
-                .iter()
-                .any(|suffix| name.ends_with(suffix))
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            return false;
+        };
+        let file_name = file_name.to_ascii_lowercase();
+        self.0
+            .iter()
+            .any(|extension| file_name.ends_with(extension))
+            && !(file_name.ends_with(".d.ts")
+                || file_name.ends_with(".d.cts")
+                || file_name.ends_with(".d.mts"))
     }
 }
 

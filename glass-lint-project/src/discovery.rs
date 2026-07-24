@@ -1,6 +1,7 @@
 //! Filesystem membership and source loading.
 
 use std::{
+    borrow::Cow,
     collections::BTreeSet,
     path::{Path, PathBuf},
     time::Instant,
@@ -278,9 +279,14 @@ impl<'adm, 'opt, 'budget> ProjectDiscovery<'adm, 'opt, 'budget> {
                 let Ok(relative) = path.strip_prefix(base) else {
                     return false;
                 };
+                let relative_str = relative.to_string_lossy();
                 config
                     .pattern_set
-                    .is_included(&relative.to_string_lossy().replace('\\', "/"))
+                    .is_included(&if relative_str.contains('\\') {
+                        Cow::Owned(relative_str.replace('\\', "/"))
+                    } else {
+                        relative_str
+                    })
             };
             walk::collect_files(
                 self.admission,
