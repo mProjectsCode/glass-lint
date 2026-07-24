@@ -197,9 +197,28 @@ impl ParsedTsconfig {
             }
         }
 
-        let references = match value.get("references") {
-            None | Some(Value::Null) => Vec::new(),
-            Some(Value::Array(arr)) => arr
+        let (references, ref_diagnostics) = parse_references(value.get("references"));
+        diagnostics.extend(ref_diagnostics);
+
+        Self {
+            extends,
+            files,
+            include,
+            exclude,
+            compiler_options_out_dir,
+            compiler_options_declaration_dir,
+            references,
+            diagnostics,
+        }
+    }
+}
+
+fn parse_references(value: Option<&Value>) -> (Vec<ReferenceEntry>, Vec<String>) {
+    match value {
+        None | Some(Value::Null) => (Vec::new(), Vec::new()),
+        Some(Value::Array(arr)) => {
+            let mut diagnostics = Vec::new();
+            let references = arr
                 .iter()
                 .filter_map(|reference| match reference {
                     Value::Object(object) => match object.get("path") {
@@ -224,26 +243,16 @@ impl ParsedTsconfig {
                         None
                     }
                 })
-                .collect(),
-            Some(other) => {
-                diagnostics.push(format!(
-                    "references: expected array, got {}",
-                    type_name(other)
-                ));
-                Vec::new()
-            }
-        };
-
-        Self {
-            extends,
-            files,
-            include,
-            exclude,
-            compiler_options_out_dir,
-            compiler_options_declaration_dir,
-            references,
-            diagnostics,
+                .collect();
+            (references, diagnostics)
         }
+        Some(other) => (
+            Vec::new(),
+            vec![format!(
+                "references: expected array, got {}",
+                type_name(other)
+            )],
+        ),
     }
 }
 
@@ -401,6 +410,9 @@ fn build_effective_config_inner(
     config_count: &mut usize,
     resource_budget: &mut ProjectResourceBudget,
 ) -> Result<(selection::MergedSelection, Vec<ReferenceEntry>), ProjectLoadError> {
+    // Sequential phases: deadine check, depth check, parse, extends
+    // resolution, merge. The extends resolution must live here because it
+    // mutates extends_chain and diagnostics that are owned by the caller.
     if let Some(deadline) = deadline
         && Instant::now() >= deadline
     {

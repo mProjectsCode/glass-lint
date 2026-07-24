@@ -38,6 +38,18 @@ pub struct ProfileRepetitionSummary {
 }
 
 impl ProfileRepetitionSummary {
+    pub fn zero() -> Self {
+        Self {
+            duration: Duration::ZERO,
+            findings: 0,
+            diagnostics: 0,
+            completion: ReportCompletion::Complete,
+            run_completions: Vec::new(),
+            operation_counts: ProfileOperationCounts::default(),
+            evidence_order_digest: String::new(),
+        }
+    }
+
     pub fn merge(&mut self, source: Self) {
         self.duration += source.duration;
         self.findings += source.findings;

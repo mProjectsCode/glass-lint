@@ -44,6 +44,10 @@ pub(in crate::analysis) fn collect(
     bool,
     usize,
 ) {
+    // Single worklist loop: setup, iteration with UsageProjector and
+    // CallPropagation per context, then final exhaustion handling.
+    // Extracting the loop body would require passing 12+ context fields
+    // through every call site.
     let mut flows = HashMap::<FlowId, &CompiledObjectFlow>::new();
     for (rule_index, matcher) in matchers.selected_matchers() {
         for (flow_index, flow) in matcher.query().flows().iter().enumerate() {

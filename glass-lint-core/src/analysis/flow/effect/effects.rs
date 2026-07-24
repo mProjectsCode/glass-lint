@@ -34,6 +34,10 @@ impl FunctionEffects {
     }
 
     #[allow(clippy::too_many_lines)]
+    // Single pass over the fact stream: the match dispatches each payload
+    // variant to an existing method on FunctionEffect. Extracting the
+    // dispatch into FunctionEffect would require threading `stream`,
+    // `budget`, and `value_provenance` through every call.
     pub(in crate::analysis) fn collect(stream: &FactStream<Frozen>, limit: usize) -> Self {
         let mut effects = Self::default();
         if !stream.is_valid() {

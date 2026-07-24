@@ -277,18 +277,7 @@ fn profile_loader_project(
         evidence_order_digest: String::new(),
         error: None,
     };
-    let mut repetitions = vec![
-        ProfileRepetitionSummary {
-            duration: Duration::ZERO,
-            findings: 0,
-            diagnostics: 0,
-            completion: ReportCompletion::Complete,
-            run_completions: Vec::new(),
-            operation_counts: ProfileOperationCounts::default(),
-            evidence_order_digest: String::new(),
-        };
-        config.repeat.get()
-    ];
+    let mut repetitions = vec![ProfileRepetitionSummary::zero(); config.repeat.get()];
     let mut phases = ProfilePhaseTimings::default();
     let mut counts = ProfileOperationCounts::default();
     let mut evidence_digests = Vec::new();
@@ -297,15 +286,7 @@ fn profile_loader_project(
     for iteration in 0..config.warm_up + config.repeat.get() {
         let repetition_start = Instant::now();
         let mut repetition = if iteration < config.warm_up {
-            ProfileRepetitionSummary {
-                duration: Duration::ZERO,
-                findings: 0,
-                diagnostics: 0,
-                completion: ReportCompletion::Complete,
-                run_completions: Vec::new(),
-                operation_counts: ProfileOperationCounts::default(),
-                evidence_order_digest: String::new(),
-            }
+            ProfileRepetitionSummary::zero()
         } else {
             repetitions[iteration - config.warm_up].clone()
         };
@@ -386,46 +367,17 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
     {
         bail!("verified manifest bytes changed during profile preparation");
     }
+    let warm_run = || {
+        for ProfileLinter(linter) in &linters {
+            let _ = admitted_project_run(&root, &prepared, linter, config.workers.get())?;
+        }
+        Ok(())
+    };
     let measured = MeasuredRepetitionAccumulator::measure(
         config.warm_up,
         config.repeat.get(),
-        || {
-            for ProfileLinter(linter) in &linters {
-                let _ = admitted_project_run(&root, &prepared, linter, config.workers.get())?;
-            }
-            Ok(())
-        },
-        || {
-            let mut repetition_findings = 0;
-            let mut repetition_diagnostics = 0;
-            let mut repetition_counts = ProfileOperationCounts::default();
-            let mut repetition_completion = ReportCompletion::Complete;
-            let mut run_completions = Vec::with_capacity(linters.len());
-            let mut evidence_digests = Vec::new();
-            for ProfileLinter(linter) in &linters {
-                let report = admitted_project_run(&root, &prepared, linter, config.workers.get())?;
-                accumulate_report(
-                    &report,
-                    &mut repetition_findings,
-                    &mut repetition_diagnostics,
-                    &mut repetition_counts,
-                    &mut evidence_digests,
-                );
-                if report.completion() == ReportCompletion::Partial {
-                    repetition_completion = ReportCompletion::Partial;
-                }
-                run_completions.push(report.completion());
-            }
-            Ok(ProfileRepetitionSummary {
-                duration: Duration::ZERO,
-                findings: repetition_findings,
-                diagnostics: repetition_diagnostics,
-                completion: repetition_completion,
-                run_completions,
-                operation_counts: repetition_counts,
-                evidence_order_digest: combined_digest(&evidence_digests),
-            })
-        },
+        warm_run,
+        || measure_admitted_repetition(&root, &prepared, &linters, config.workers.get()),
     )?;
     for repetition in &measured.repetitions {
         findings += repetition.findings;
@@ -459,6 +411,43 @@ fn profile_admitted_projects(config: &ProfileConfig) -> Result<ProfileSummary> {
         workload_results: Vec::new(),
         phase_timings,
         operation_counts,
+    })
+}
+
+fn measure_admitted_repetition(
+    root: &Path,
+    prepared: &[PreparedFile],
+    linters: &[ProfileLinter],
+    workers: usize,
+) -> Result<ProfileRepetitionSummary> {
+    let mut repetition_findings = 0;
+    let mut repetition_diagnostics = 0;
+    let mut repetition_counts = ProfileOperationCounts::default();
+    let mut repetition_completion = ReportCompletion::Complete;
+    let mut run_completions = Vec::with_capacity(linters.len());
+    let mut evidence_digests = Vec::new();
+    for ProfileLinter(linter) in linters {
+        let report = admitted_project_run(root, prepared, linter, workers)?;
+        accumulate_report(
+            &report,
+            &mut repetition_findings,
+            &mut repetition_diagnostics,
+            &mut repetition_counts,
+            &mut evidence_digests,
+        );
+        if report.completion() == ReportCompletion::Partial {
+            repetition_completion = ReportCompletion::Partial;
+        }
+        run_completions.push(report.completion());
+    }
+    Ok(ProfileRepetitionSummary {
+        duration: Duration::ZERO,
+        findings: repetition_findings,
+        diagnostics: repetition_diagnostics,
+        completion: repetition_completion,
+        run_completions,
+        operation_counts: repetition_counts,
+        evidence_order_digest: combined_digest(&evidence_digests),
     })
 }
 

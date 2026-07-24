@@ -171,24 +171,7 @@ pub fn render_adapter_comparison(report: &SuiteReport) -> String {
     for case in &report.cases {
         let counts: Vec<String> = tool_names
             .iter()
-            .map(|name| {
-                case.adapters.get(name).map_or_else(
-                    || "-".into(),
-                    |r| {
-                        if r.skipped {
-                            "skip".into()
-                        } else if r.operational_errors.is_empty() {
-                            r.findings.len().to_string()
-                        } else {
-                            format!(
-                                "{} ({} operational error(s))",
-                                r.findings.len(),
-                                r.operational_errors.len()
-                            )
-                        }
-                    },
-                )
-            })
+            .map(|name| tool_count_cell(case.adapters.get(name)))
             .collect();
         let _ = writeln!(out, "| {} | {} |", case.id, counts.join(" | "));
     }
@@ -207,41 +190,64 @@ pub fn render_adapter_comparison(report: &SuiteReport) -> String {
             case.id, case.description, case.source
         );
         for (tool, result) in &case.adapters {
-            if result.skipped {
-                let _ = writeln!(out, "\n### {tool} (skipped)");
-                if let Some(reason) = &result.skip_reason {
-                    let _ = writeln!(out, "\n{reason}");
-                }
-                continue;
-            }
-            let _ = writeln!(
-                out,
-                "\n### {tool} ({} finding(s), {} operational error(s))\n",
-                result.findings.len(),
-                result.operational_errors.len()
-            );
-            for error in &result.operational_errors {
-                let _ = writeln!(out, "- Operational error: {error}");
-            }
-            if !result.operational_errors.is_empty() {
-                out.push('\n');
-            }
-            if result.findings.is_empty() {
-                out.push_str("No findings.\n");
-            }
-            for finding in &result.findings {
-                let _ = writeln!(
-                    out,
-                    "- {} at {}:{} - {}",
-                    finding.rule_id(),
-                    finding.location().range().start().line(),
-                    finding.location().range().start().column(),
-                    finding.message()
-                );
-            }
+            write_adapter_details(tool, result, &mut out);
         }
     }
     out
+}
+
+fn tool_count_cell(result: Option<&ToolResult>) -> String {
+    result.map_or_else(
+        || "-".into(),
+        |r| {
+            if r.skipped {
+                "skip".into()
+            } else if r.operational_errors.is_empty() {
+                r.findings.len().to_string()
+            } else {
+                format!(
+                    "{} ({} operational error(s))",
+                    r.findings.len(),
+                    r.operational_errors.len()
+                )
+            }
+        },
+    )
+}
+
+fn write_adapter_details(tool: &str, result: &ToolResult, out: &mut String) {
+    if result.skipped {
+        let _ = writeln!(out, "\n### {tool} (skipped)");
+        if let Some(reason) = &result.skip_reason {
+            let _ = writeln!(out, "\n{reason}");
+        }
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "\n### {tool} ({} finding(s), {} operational error(s))\n",
+        result.findings.len(),
+        result.operational_errors.len()
+    );
+    for error in &result.operational_errors {
+        let _ = writeln!(out, "- Operational error: {error}");
+    }
+    if !result.operational_errors.is_empty() {
+        out.push('\n');
+    }
+    if result.findings.is_empty() {
+        out.push_str("No findings.\n");
+    }
+    for finding in &result.findings {
+        let _ = writeln!(
+            out,
+            "- {} at {}:{} - {}",
+            finding.rule_id(),
+            finding.location().range().start().line(),
+            finding.location().range().start().column(),
+            finding.message()
+        );
+    }
 }
 
 pub fn serialize_analysis_report(report: &AnalysisReport) -> Result<String> {

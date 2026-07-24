@@ -129,6 +129,10 @@ impl ModuleInterfaceBuilder {
     }
 
     fn collect_commonjs_export_entries(object: &ObjectLit) -> Option<Vec<CommonJsExportEntry>> {
+        // Single iterator pipeline mapping each property to an export entry.
+        // Extraction would not reduce complexity because the shared match
+        // context (property_name calls, CommonJsExportEntry construction)
+        // would need to be repeated in every helper.
         object
             .props
             .iter()

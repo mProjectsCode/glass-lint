@@ -117,18 +117,8 @@ pub fn verify_profile_manifest(
         fs::read(manifest_path).with_context(|| format!("read {}", manifest_path.display()))?;
     let manifest: ProfileManifest = serde_json::from_slice(&encoded)
         .with_context(|| format!("parse {}", manifest_path.display()))?;
-    if manifest.body.manifest_version != PROFILE_MANIFEST_VERSION {
-        bail!(
-            "unsupported profile manifest version {}",
-            manifest.body.manifest_version
-        );
-    }
-    if manifest.body.selection_algorithm_version != PROFILE_SELECTION_ALGORITHM_VERSION {
-        bail!(
-            "unsupported profile selection algorithm version {}",
-            manifest.body.selection_algorithm_version
-        );
-    }
+
+    verify_manifest_versions(&manifest)?;
     validate_root_label(&manifest.body.root_label)?;
     let actual_digest = digest_json(&manifest.body)?;
     if actual_digest != manifest.manifest_digest {
@@ -147,30 +137,7 @@ pub fn verify_profile_manifest(
         bail!("profile manifest byte total mismatch");
     }
 
-    let mut discovered = discover_profile_files(
-        std::slice::from_ref(&root),
-        &manifest.body.include,
-        &manifest.body.exclude,
-    )?;
-    if let Some(sample) = manifest.body.requested_sample_size {
-        sample_paths(&mut discovered, sample, manifest.body.seed);
-    }
-    let expected = discovered
-        .iter()
-        .map(|path| normalized_relative(&root, path))
-        .collect::<Result<Vec<_>>>()?;
-    let declared = manifest
-        .body
-        .files
-        .iter()
-        .map(|entry| validate_relative(&entry.path))
-        .collect::<Result<Vec<_>>>()?;
-    if declared.windows(2).any(|pair| pair[0] >= pair[1]) {
-        bail!("profile manifest paths must be sorted and unique");
-    }
-    if expected != declared {
-        bail!("profile manifest selected paths differ from the current corpus");
-    }
+    let declared = resolve_manifest_declared_paths(&root, &manifest)?;
 
     let mut paths = Vec::with_capacity(manifest.body.files.len());
     let mut seen = BTreeSet::new();
@@ -190,6 +157,53 @@ pub fn verify_profile_manifest(
         total_bytes: manifest.body.total_bytes,
         digest: manifest.manifest_digest,
     })
+}
+
+fn verify_manifest_versions(manifest: &ProfileManifest) -> Result<()> {
+    if manifest.body.manifest_version != PROFILE_MANIFEST_VERSION {
+        bail!(
+            "unsupported profile manifest version {}",
+            manifest.body.manifest_version
+        );
+    }
+    if manifest.body.selection_algorithm_version != PROFILE_SELECTION_ALGORITHM_VERSION {
+        bail!(
+            "unsupported profile selection algorithm version {}",
+            manifest.body.selection_algorithm_version
+        );
+    }
+    Ok(())
+}
+
+fn resolve_manifest_declared_paths(
+    root: &PathBuf,
+    manifest: &ProfileManifest,
+) -> Result<Vec<String>> {
+    let mut discovered = discover_profile_files(
+        std::slice::from_ref(root),
+        &manifest.body.include,
+        &manifest.body.exclude,
+    )?;
+    if let Some(sample) = manifest.body.requested_sample_size {
+        sample_paths(&mut discovered, sample, manifest.body.seed);
+    }
+    let expected = discovered
+        .iter()
+        .map(|path| normalized_relative(root, path))
+        .collect::<Result<Vec<_>>>()?;
+    let declared = manifest
+        .body
+        .files
+        .iter()
+        .map(|entry| validate_relative(&entry.path))
+        .collect::<Result<Vec<_>>>()?;
+    if declared.windows(2).any(|pair| pair[0] >= pair[1]) {
+        bail!("profile manifest paths must be sorted and unique");
+    }
+    if expected != declared {
+        bail!("profile manifest selected paths differ from the current corpus");
+    }
+    Ok(declared)
 }
 
 fn canonical_root(root: &Path) -> Result<PathBuf> {

@@ -26,6 +26,10 @@ pub struct MergedSelection {
 /// [`MergedSelection`] by consuming both (moving owned fields).
 /// No cloning of selection data occurs.
 pub fn merge_selection(child: ParsedTsconfig, parent: Option<MergedSelection>) -> MergedSelection {
+    // Destructure-and-merge in one pass: the destructuring binding of
+    // ParsedTsconfig paired with the field-by-field inheritance rule
+    // (child wins, then parent, then default) is clearest when every
+    // field is visible in the same scope.
     let ParsedTsconfig {
         extends: _,
         files: child_files,

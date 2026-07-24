@@ -9,6 +9,10 @@ pub(super) fn strongly_connected_components(
     adjacency: &BTreeMap<ModuleId, Vec<ModuleId>>,
     nodes: impl IntoIterator<Item = ModuleId>,
 ) -> Vec<Vec<ModuleId>> {
+    // Kosaraju's algorithm expressed as two sequential passes (forward order,
+    // reverse DFS). Splitting into sub-functions would isolate the phases
+    // but the shared `seen`/`order` state across both passes is clearest
+    // when visible in one function body.
     let nodes = nodes.into_iter().collect::<Vec<_>>();
     let mut seen = BTreeSet::new();
     let mut order = Vec::new();

@@ -134,50 +134,65 @@ impl AnalysisStatus {
     }
 }
 
+impl ParseFailureKind {
+    fn diagnostic(self) -> (DiagnosticKind, &'static str) {
+        match self {
+            Self::Syntax => (DiagnosticKind::SyntaxError, "source could not be parsed"),
+            Self::SourceTooLarge => (
+                DiagnosticKind::SourceTooLarge,
+                "source exceeds the analysis limit",
+            ),
+            Self::SyntaxDepth => (
+                DiagnosticKind::SyntaxDepthExceeded,
+                "source exceeds the nesting-depth analysis limit",
+            ),
+        }
+    }
+}
+
+impl AnalysisComponent {
+    fn budget_diagnostic(self) -> (DiagnosticKind, &'static str) {
+        match self {
+            Self::Facts => (
+                DiagnosticKind::FactsBudgetExhausted,
+                "semantic analysis exceeded its bounded fact budget",
+            ),
+            Self::Effects => (
+                DiagnosticKind::EffectsBudgetExhausted,
+                "function-effect extraction exceeded its bounded budget",
+            ),
+            Self::Flow => (
+                DiagnosticKind::FlowBudgetExhausted,
+                "qualified function-effect projection exceeded its bounded budget",
+            ),
+            Self::Linking => (
+                DiagnosticKind::LinkingBudgetExhausted,
+                "module linking exceeded its bounded budget",
+            ),
+        }
+    }
+}
+
 impl IncompleteReason {
     fn diagnostic(&self, scope: &StatusScope) -> AnalysisDiagnostic {
+        // Single match over all status variants: each arm pairs a diagnostic
+        // kind with a message template. Keeping them together ensures every
+        // variant maps to exactly one (code, message) pair without drift.
         let (code, message) = match self {
             Self::InvalidParserSpan => (
                 DiagnosticKind::InvalidParserSpan,
                 "parser produced a source range outside authored UTF-8 boundaries".into(),
             ),
-            Self::ParseFailure { kind } => match kind {
-                ParseFailureKind::Syntax => (
-                    DiagnosticKind::SyntaxError,
-                    "source could not be parsed".into(),
-                ),
-                ParseFailureKind::SourceTooLarge => (
-                    DiagnosticKind::SourceTooLarge,
-                    "source exceeds the analysis limit".into(),
-                ),
-                ParseFailureKind::SyntaxDepth => (
-                    DiagnosticKind::SyntaxDepthExceeded,
-                    "source exceeds the nesting-depth analysis limit".into(),
-                ),
-            },
+            Self::ParseFailure { kind } => {
+                let (code, text) = kind.diagnostic();
+                (code, text.into())
+            }
             Self::BudgetExhausted {
                 component,
                 limit,
                 observed,
             } => {
-                let (code, text) = match component {
-                    AnalysisComponent::Facts => (
-                        DiagnosticKind::FactsBudgetExhausted,
-                        "semantic analysis exceeded its bounded fact budget",
-                    ),
-                    AnalysisComponent::Effects => (
-                        DiagnosticKind::EffectsBudgetExhausted,
-                        "function-effect extraction exceeded its bounded budget",
-                    ),
-                    AnalysisComponent::Flow => (
-                        DiagnosticKind::FlowBudgetExhausted,
-                        "qualified function-effect projection exceeded its bounded budget",
-                    ),
-                    AnalysisComponent::Linking => (
-                        DiagnosticKind::LinkingBudgetExhausted,
-                        "module linking exceeded its bounded budget",
-                    ),
-                };
+                let (code, text) = component.budget_diagnostic();
                 (
                     code,
                     format!("{text}; limit={limit}, observed={observed:?}"),

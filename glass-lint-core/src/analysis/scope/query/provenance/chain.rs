@@ -43,11 +43,16 @@ impl FrozenScopeGraph {
         self.resolve_member_chain(member, &syntactic_chain)
     }
 
+    // Kept as a single linear algorithm: the prefix-backtracking loop and
+    // closing match over provenance share mutable symbol-path state.
     pub fn resolve_member_chain(
         &self,
         member: &MemberExpr,
         syntactic_chain: &SymbolPath,
     ) -> Option<SymbolPath> {
+        // Prefix-match loop followed by a fallback match over binding
+        // provenance variants. Extracting the fallback arm would move the
+        // suffix-building logic away from the variant dispatch it mirrors.
         if self.has_dynamic_lookup_at(member.span) {
             return None;
         }

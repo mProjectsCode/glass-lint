@@ -48,6 +48,9 @@ pub fn classify_declaration(
     pat: &Pat,
     derived_function_pattern: bool,
 ) -> DeclarationClassification {
+    // Match over Expr variants dispatching to per-shape helpers. The outer
+    // match stays in one function so the const-provenance fallback at the
+    // bottom catches every variant uniformly.
     let name = match pat {
         Pat::Ident(ident) => Some(ident.id.sym.to_string()),
         _ => None,

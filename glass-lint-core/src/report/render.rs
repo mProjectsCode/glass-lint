@@ -8,6 +8,12 @@ use glass_lint_datastructures::SourceRange;
 
 use crate::report::types::{self, Cell, PrettyFile, PrettyReport, PrettyReports};
 
+type RuleGroupEntry<'a> = (
+    &'a PrettyFile<'a>,
+    &'a crate::project::types::Finding,
+    Option<&'a crate::project::types::Evidence>,
+);
+
 /// Escape control characters before placing text in terminal-oriented output.
 pub fn visible_text(value: &str) -> String {
     value
@@ -169,8 +175,8 @@ impl PrettyReports<'_> {
         self.write_parse_diagnostics(wrote_group, f)
     }
 
-    #[allow(clippy::too_many_lines)]
-    fn write_rule_groups(&self, f: &mut fmt::Formatter<'_>) -> Result<bool, fmt::Error> {
+    #[allow(clippy::type_complexity)]
+    fn collect_rule_groups(&self) -> BTreeMap<&crate::RuleId, Vec<RuleGroupEntry<'_>>> {
         let mut groups = BTreeMap::new();
         for file in self.files {
             for finding in file.report.findings() {
@@ -187,98 +193,124 @@ impl PrettyReports<'_> {
                 }
             }
         }
+        groups
+    }
+
+    fn write_rule_groups(&self, f: &mut fmt::Formatter<'_>) -> Result<bool, fmt::Error> {
+        let mut groups = self.collect_rule_groups();
 
         let mut wrote_group = false;
         for entries in groups.values_mut() {
-            entries.sort_by(|left, right| {
-                let left_range = left.2.and_then(|evidence| evidence.location()).map_or_else(
-                    || left.1.location().range(),
-                    crate::project::SourceLocation::range,
-                );
-                let right_range = right
-                    .2
-                    .and_then(|evidence| evidence.location())
-                    .map_or_else(
-                        || right.1.location().range(),
-                        crate::project::SourceLocation::range,
-                    );
-                (
-                    left.0.filename,
-                    left_range.start().line(),
-                    left_range.start().column(),
-                    left_range.end().line(),
-                    left_range.end().column(),
-                )
-                    .cmp(&(
-                        right.0.filename,
-                        right_range.start().line(),
-                        right_range.start().column(),
-                        right_range.end().line(),
-                        right_range.end().column(),
-                    ))
-            });
+            entries.sort_by(|left, right| Self::cmp_group_entries(left, right));
             if wrote_group {
                 writeln!(f)?;
             }
             wrote_group = true;
-            let finding = entries[0].1;
-            writeln!(
-                f,
-                "{}[{}] {}",
-                PrettyReport::style(
-                    self.options.color,
-                    match finding.severity() {
-                        crate::Severity::Info => Style::new().green(),
-                        crate::Severity::Warning => Style::new().yellow(),
-                        crate::Severity::Error => Style::new().red(),
-                    },
-                    finding.severity().to_string(),
-                ),
-                PrettyReport::style(
-                    self.options.color,
-                    Style::new().cyan(),
-                    finding.rule_id().to_string(),
-                ),
-                visible_text(finding.message())
-            )?;
-
-            for (file, finding, evidence) in entries {
-                let range = evidence.and_then(|e| e.location()).map_or_else(
-                    || finding.location().range(),
-                    crate::project::SourceLocation::range,
-                );
-
-                let message = format!(
-                    "  {}:{}:{} - {}",
-                    visible_text(file.filename),
-                    range.start().line(),
-                    range.start().column(),
-                    evidence.map_or_else(
-                        || "match".to_string(),
-                        |e| format!("evidence: {}", visible_text(e.message())),
-                    ),
-                );
-
-                writeln!(
-                    f,
-                    "{}",
-                    PrettyReport::style(self.options.color, Style::new().dim(), message)
-                )?;
-                if evidence.is_none() || self.options.show_evidence_source {
-                    PrettyReport::new_with_cache(
-                        file.report,
-                        file.filename,
-                        file.source,
-                        self.options,
-                        &file.line_starts,
-                        &file.line_cache,
-                    )
-                    .excerpt(&range, 4, f)?;
-                }
-            }
+            self.write_rule_group_header(entries, f)?;
+            self.write_rule_group_entries(entries, f)?;
         }
 
         Ok(wrote_group)
+    }
+
+    fn cmp_group_entries(
+        left: &RuleGroupEntry<'_>,
+        right: &RuleGroupEntry<'_>,
+    ) -> std::cmp::Ordering {
+        let left_range = left.2.and_then(|evidence| evidence.location()).map_or_else(
+            || left.1.location().range(),
+            crate::project::SourceLocation::range,
+        );
+        let right_range = right
+            .2
+            .and_then(|evidence| evidence.location())
+            .map_or_else(
+                || right.1.location().range(),
+                crate::project::SourceLocation::range,
+            );
+        (
+            left.0.filename,
+            left_range.start().line(),
+            left_range.start().column(),
+            left_range.end().line(),
+            left_range.end().column(),
+        )
+            .cmp(&(
+                right.0.filename,
+                right_range.start().line(),
+                right_range.start().column(),
+                right_range.end().line(),
+                right_range.end().column(),
+            ))
+    }
+
+    fn write_rule_group_header(
+        &self,
+        entries: &[RuleGroupEntry<'_>],
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        let finding = entries[0].1;
+        writeln!(
+            f,
+            "{}[{}] {}",
+            PrettyReport::style(
+                self.options.color,
+                match finding.severity() {
+                    crate::Severity::Info => Style::new().green(),
+                    crate::Severity::Warning => Style::new().yellow(),
+                    crate::Severity::Error => Style::new().red(),
+                },
+                finding.severity().to_string(),
+            ),
+            PrettyReport::style(
+                self.options.color,
+                Style::new().cyan(),
+                finding.rule_id().to_string(),
+            ),
+            visible_text(finding.message())
+        )
+    }
+
+    fn write_rule_group_entries(
+        &self,
+        entries: &[RuleGroupEntry<'_>],
+        f: &mut fmt::Formatter<'_>,
+    ) -> fmt::Result {
+        for (file, finding, evidence) in entries {
+            let range = evidence.and_then(|e| e.location()).map_or_else(
+                || finding.location().range(),
+                crate::project::SourceLocation::range,
+            );
+
+            let message = format!(
+                "  {}:{}:{} - {}",
+                visible_text(file.filename),
+                range.start().line(),
+                range.start().column(),
+                evidence.map_or_else(
+                    || "match".to_string(),
+                    |e| format!("evidence: {}", visible_text(e.message())),
+                ),
+            );
+
+            writeln!(
+                f,
+                "{}",
+                PrettyReport::style(self.options.color, Style::new().dim(), message)
+            )?;
+            if evidence.is_none() || self.options.show_evidence_source {
+                PrettyReport::new_with_cache(
+                    file.report,
+                    file.filename,
+                    file.source,
+                    self.options,
+                    &file.line_starts,
+                    &file.line_cache,
+                )
+                .excerpt(&range, 4, f)?;
+            }
+        }
+        Ok(())
     }
 
     fn write_parse_diagnostics(

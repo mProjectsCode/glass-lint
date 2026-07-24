@@ -125,7 +125,12 @@ impl FactBuilder<'_, '_> {
     /// resolver's constant-evaluation path is intentionally not consulted so
     /// that non-constant children (variables, calls, etc.) keep their arena
     /// identity.
+    // Kept as a single dispatch match: each Expr arm recurses or delegates,
+    // and the object/array arms are the substantive branches.
     fn analyze_argument_tree(&mut self, expr: &Expr, path: PathId) -> (ValueId, ValueId, PathId) {
+        // Match over Expr variants; each arm is a self-contained builder step.
+        // Extracting per-variant helpers would add dispatch boilerplate without
+        // reducing overall complexity.
         match expr {
             Expr::Object(object) => {
                 let mut entries = Vec::new();

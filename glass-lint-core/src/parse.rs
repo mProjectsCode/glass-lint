@@ -220,7 +220,12 @@ pub fn parse_with_language_and_depth(
 /// tracked). The `?` character is excluded from member-depth reset so that
 /// optional chains like `a?.b?.c?.d` contribute their full member count.
 #[allow(clippy::too_many_lines)]
+// Kept as a single hot loop intentionally: this byte-level state machine
+// tracks nesting depth in a single tight pass for performance.
 fn syntax_depth(source: &str) -> usize {
+    // Manual byte-level state machine: the only way to measure nesting depth
+    // without parsing. Kept as one function because the template-literal and
+    // string-skipping state flow across all branches.
     let bytes = source.as_bytes();
     let mut depth = 0usize;
     let mut maximum = 0usize;

@@ -24,7 +24,12 @@ use crate::analysis::{
 impl ScopeCollector<'_> {
     /// Resolve a module export, namespace member, dynamic import, or require
     /// expression while preserving lexical shadowing checks.
+    // Kept as a single recursive match: each Expr arm follows a distinct
+    // provenance rule, and extracting individual arms would scatter the logic.
     pub(super) fn module_alias_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+        // Recursive dispatch over Expr variants. Each arm has a distinct
+        // resolution strategy; keeping them together makes the full recursion
+        // visible in one place.
         match expr {
             Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {
                 provenance @ (BindingProvenance::ModuleExport { .. }
@@ -218,6 +223,8 @@ impl ScopeCollector<'_> {
 
     /// Track an object returned from a rooted callable for later member use.
     pub(super) fn returned_object_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+        // Recursive match over Expr variants with shared call/member/ident
+        // resolution logic that is clearest when read as a single recursion.
         match expr {
             Expr::Call(call) => {
                 let Callee::Expr(callee) = &call.callee else {

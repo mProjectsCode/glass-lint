@@ -191,6 +191,8 @@ impl super::ProjectLinker {
 
     /// Resolve one local export into external, qualified, or conservative
     /// unknown identity without merging the exporting module's local scope.
+    // Kept as a single match: each export variant follows a distinct resolution
+    // path that is clearest when read side by side.
     fn resolve_export(
         &self,
         module: ModuleId,
@@ -380,6 +382,31 @@ impl super::ProjectLinker {
         if interface.is_unknown() {
             return Some(ExportResolution::Unknown);
         }
+        let (candidate, saw_unknown) = self.walk_star_exports(interface, module, name, visiting);
+        visiting.remove(&visit_key);
+
+        if let Some(resolved) = self.exports.resolve(module, name) {
+            return Some(resolved.clone());
+        }
+
+        let result = if saw_unknown { None } else { candidate };
+
+        self.lookup_cache
+            .borrow_mut()
+            .insert(module, name.clone(), result.clone());
+
+        result
+    }
+
+    /// Walk star exports from the given interface to find a candidate
+    /// resolution and whether any request was unresolvable.
+    fn walk_star_exports(
+        &self,
+        interface: &module::ModuleInterface,
+        module: ModuleId,
+        name: &SmolStr,
+        visiting: &mut BTreeSet<(ModuleId, SmolStr)>,
+    ) -> (Option<ExportResolution>, bool) {
         let mut candidate = None;
         let mut saw_unknown = false;
         for request_index in interface.star_exports() {
@@ -418,23 +445,11 @@ impl super::ProjectLinker {
                 {
                     candidate = Some(resolved);
                 }
-                Some(_) => return Some(ExportResolution::Ambiguous),
+                Some(_) => return (Some(ExportResolution::Ambiguous), false),
                 None => saw_unknown = true,
             }
         }
-        visiting.remove(&visit_key);
-
-        if let Some(resolved) = self.exports.resolve(module, name) {
-            return Some(resolved.clone());
-        }
-
-        let result = if saw_unknown { None } else { candidate };
-
-        self.lookup_cache
-            .borrow_mut()
-            .insert(module, name.clone(), result.clone());
-
-        result
+        (candidate, saw_unknown)
     }
 
     /// Resolve a named re-export through its authored request.

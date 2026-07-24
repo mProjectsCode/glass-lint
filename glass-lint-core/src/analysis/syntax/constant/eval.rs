@@ -125,7 +125,11 @@ impl EvalState {
         value
     }
 
+    // Kept as a single dispatch match: each arm delegates to a focused helper
+    // or returns directly. Splitting the match would scatter related Expr cases.
     fn evaluate_inner(&mut self, expr: &Expr, lookup: &impl Lookup) -> ConstValue {
+        // Single match over every Expr variant: each arm is self-contained and
+        // extracting them would add boilerplate without improving clarity.
         match expr {
             Expr::Lit(Lit::Str(value)) => {
                 ConstValue::bounded_string(value.value.to_string_lossy().to_string())
