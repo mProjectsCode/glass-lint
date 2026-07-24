@@ -17,7 +17,10 @@ use crate::analysis::{
         ScopeId, ScopeKind,
         collect::{
             PropertyAliasAssignment, RootedPropertyMutation,
-            analysis::{DeclarationClassification, DeclarationFacts},
+            analysis::{
+                DeclarationClassification, assignment_provenance, classify_declaration,
+                expression_is_mutable_static_object,
+            },
         },
     },
     syntax::{
@@ -47,10 +50,8 @@ impl ScopePass for ScopeCollector<'_> {
         let scope = self.binding_scope(var_decl.kind);
         for declarator in &var_decl.decls {
             let init = declarator.init.as_deref();
-            let facts = init.map(|init| DeclarationFacts::compute(self, init));
-            let mutable_object = facts
-                .as_ref()
-                .is_some_and(|facts| facts.is_mutable_static_object(var_decl.kind));
+            let mutable_object = init
+                .is_some_and(|init| expression_is_mutable_static_object(self, init, var_decl.kind));
             record_mutable_static_object(self, scope, mutable_object, declarator);
 
             // Stash pending function expression names so after_arrow /
@@ -80,8 +81,8 @@ impl ScopePass for ScopeCollector<'_> {
             let derived_function_pattern =
                 collect_derived_function_pattern(self, &declarator.name, init, scope);
 
-            if let Some(facts) = facts {
-                match facts.classify_declaration(&declarator.name, derived_function_pattern) {
+            if let Some(init) = init {
+                match classify_declaration(self, init, &declarator.name, derived_function_pattern) {
                     DeclarationClassification::Binding { name, provenance } => {
                         self.insert(scope, name, provenance);
                     }
@@ -100,8 +101,7 @@ impl ScopePass for ScopeCollector<'_> {
     fn visit_assign_expr(&mut self, assignment: &AssignExpr) {
         match &assignment.left {
             AssignTarget::Simple(SimpleAssignTarget::Ident(ident)) => {
-                let provenance =
-                    DeclarationFacts::compute(self, &assignment.right).assignment_provenance();
+                let provenance = assignment_provenance(self, &assignment.right);
                 if let Some((scope, ())) = self.stack.iter().rev().find_map(|scope| {
                     self.name_id(ident.id.sym.as_ref())
                         .is_some_and(|name| self.scopes[*scope].bindings.contains_key(&name))

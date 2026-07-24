@@ -24,8 +24,9 @@ This was a read-only review. No Rust source, tests, configuration, dependencies,
 - **Fix Complexity:** High
 - **Category:** Performance
 - **Location:** `glass-lint-core/src/analysis/scope/collect/analysis.rs:50-92`
+- **Status:** Done (`DeclarationFacts` and `DeclarationFactState` replaced with three syntax-directed free functions: `classify_declaration`, `expression_is_mutable_static_object`, and `assignment_provenance`. Each function matches on expression shape and runs only the relevant analyses — e.g., `Expr::Lit` calls only `const_provenance`, `Expr::Call` with require callee calls only `require_module_expr_name`, `.bind(...)` calls only `bound_callable_provenance`. Precedence rules, `DeclarationClassification`, `BindingProvenance`, `collect_derived_function_pattern`, and `record_mutable_static_object` are preserved. Updated caller in `visitor.rs` to use the new functions directly.)
 
-`DeclarationFacts::compute` invokes callable, module-alias, `require`, static-object, constant, returned-object, and rooted-path analysis for every initializer before classification knows which result it needs. These helpers recursively inspect many of the same expressions and repeat scope, binding, and provenance queries; common literals and aliases still pay for all seven paths.
+`DeclarationFacts::compute` invoked callable, module-alias, `require`, static-object, constant, returned-object, and rooted-path analysis for every initializer before classification knew which result it needed. These helpers recursively inspect many of the same expressions and repeat scope, binding, and provenance queries; common literals and aliases still pay for all seven paths.
 
 Replace the eager result bag with a syntax-directed `ExpressionClassification` that performs one coordinated walk and returns the mutually relevant facts. If a full unification is too risky initially, use lazy memoized fields in precedence order and compute mutability-only data only for `var`. Preserve the documented fail-closed precedence and add operation-count cases for many simple declarations, nested objects, and minified initializer shapes.
 
