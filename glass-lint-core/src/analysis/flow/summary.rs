@@ -178,19 +178,19 @@ impl<'a> SummaryPathStore<'a> {
         }
     }
 
-    fn find_edge_impl(&self, parent: u32, segment: &PathSegment) -> Option<u32> {
-        if let Some(child) = self.overlay.find_linked_edge(parent, segment) {
+    fn find_edge_impl(&self, parent: u32, segment: PathSegment) -> Option<u32> {
+        if let Some(child) = self.overlay.find_linked_edge(parent, &segment) {
             return Some(child);
         }
         if parent & OVERLAY_TAG == 0
-            && let Some(child) = self.frozen.store().find_edge(parent, segment)
+            && let Some(child) = self.frozen.store().find_edge(parent, &segment)
         {
             return Some(child);
         }
         None
     }
 
-    fn find_edge(&self, parent: SummaryPathId, segment: &PathSegment) -> Option<SummaryPathId> {
+    fn find_edge(&self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
         self.find_edge_impl(parent.0, segment).map(SummaryPathId)
     }
 
@@ -209,7 +209,7 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     fn append(&mut self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
-        if let Some(child) = self.find_edge(parent, &segment) {
+        if let Some(child) = self.find_edge(parent, segment) {
             return Some(child);
         }
         self.overlay_append(parent, segment)
@@ -223,10 +223,17 @@ impl<'a> SummaryPathStore<'a> {
         if suffix.is_empty() {
             return Some(prefix);
         }
-        let segment = self.segment_impl(suffix.0)?.clone();
-        let suffix_parent = self.parent_impl(suffix.0, suffix.is_frozen())?;
-        let parent_joined = self.join(prefix, SummaryPathId(suffix_parent))?;
-        self.append(parent_joined, segment)
+        let mut segments = Vec::new();
+        let mut current = suffix;
+        while !current.is_empty() {
+            segments.push(*self.segment_impl(current.0)?);
+            current = SummaryPathId(self.parent_impl(current.0, current.is_frozen())?);
+        }
+        let mut result = prefix;
+        for seg in segments.into_iter().rev() {
+            result = self.append(result, seg)?;
+        }
+        Some(result)
     }
 
     pub(super) fn without_first(&self, id: SummaryPathId) -> Option<SummaryPathId> {
@@ -235,13 +242,21 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     fn rebuild_without_first(&self, id: SummaryPathId) -> Option<SummaryPathId> {
-        let node_parent = self.parent_impl(id.0, id.is_frozen())?;
-        let segment = self.segment_impl(id.0)?.clone();
-        if node_parent == 0 {
-            return Some(SummaryPathId::EMPTY);
+        let mut segments = Vec::new();
+        let mut current = id;
+        loop {
+            let node_parent = self.parent_impl(current.0, current.is_frozen())?;
+            if node_parent == 0 {
+                break;
+            }
+            segments.push(*self.segment_impl(current.0)?);
+            current = SummaryPathId(node_parent);
         }
-        let parent = self.rebuild_without_first(SummaryPathId(node_parent))?;
-        self.find_edge(parent, &segment)
+        let mut result = SummaryPathId::EMPTY;
+        for seg in segments.into_iter().rev() {
+            result = self.find_edge(result, seg)?;
+        }
+        Some(result)
     }
 
     #[cfg(test)]
@@ -250,7 +265,7 @@ impl<'a> SummaryPathStore<'a> {
         let mut segments = Vec::with_capacity(depth as usize);
         let mut current = id;
         while !current.is_empty() {
-            segments.push(self.segment_impl(current.0)?.clone());
+            segments.push(*self.segment_impl(current.0)?);
             let next_parent = self.parent_impl(current.0, current.is_frozen())?;
             current = SummaryPathId(next_parent);
         }
@@ -266,9 +281,15 @@ impl<'a> SummaryPathStore<'a> {
         if id.is_empty() {
             return Some(());
         }
-        let parent = self.parent(id)?;
-        self.visit_segments(parent, visit)?;
-        visit(self.segment(id)?);
+        let mut segments = Vec::new();
+        let mut current = id;
+        while !current.is_empty() {
+            segments.push(*self.segment(current)?);
+            current = self.parent(current)?;
+        }
+        for seg in segments.into_iter().rev() {
+            visit(&seg);
+        }
         Some(())
     }
 }

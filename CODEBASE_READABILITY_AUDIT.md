@@ -150,6 +150,8 @@ Summary `join`, `rebuild_without_first`, and `visit_segments` recurse once per p
 
 Walk parent links iteratively into caller-owned/reusable scratch storage, then replay in forward order. Make `PathSegment` `Copy`—its current variants contain only copyable IDs—and offer a borrowing/reverse iterator where forward order is not required. Treat invalid parent chains and scratch-budget exhaustion as explicit fail-closed results.
 
+- **Status:** Done (PathSegment is Copy; join, rebuild_without_first, visit_segments converted from recursion to iterative parent-link walking)
+
 #### READ-014 — Public ID and path-store APIs do not enforce their documented invariants
 - **Severity:** Medium
 - **Fix Complexity:** High

@@ -36,7 +36,7 @@ impl PathId {
 }
 
 /// One static property or numeric index path segment.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PathSegment {
     /// Named property access.
     Property(NameId),
@@ -113,7 +113,7 @@ impl ParentPathStore {
         if !self.is_valid(parent) {
             return None;
         }
-        if let Some(path) = self.by_edge.get(&(parent, segment.clone())) {
+        if let Some(path) = self.by_edge.get(&(parent, segment)) {
             return Some(*path);
         }
         if self.nodes.len() >= self.max_nodes {
@@ -124,7 +124,7 @@ impl ParentPathStore {
         self.nodes.push(PathNode {
             parent,
             depth,
-            segment: Some(segment.clone()),
+            segment: Some(segment),
         });
         self.by_edge.insert((parent, segment), id);
         Some(id)
@@ -140,14 +140,14 @@ impl ParentPathStore {
         if self.node_count() >= self.max_nodes {
             return None;
         }
-        if let Some(path) = self.by_edge.get(&(parent, segment.clone())) {
+        if let Some(path) = self.by_edge.get(&(parent, segment)) {
             return Some(*path);
         }
         let id = u32::try_from(self.nodes.len()).ok()? | PathId::LINK_TAG;
         self.nodes.push(PathNode {
             parent,
             depth,
-            segment: Some(segment.clone()),
+            segment: Some(segment),
         });
         self.by_edge.insert((parent, segment), id);
         Some(id)
@@ -214,7 +214,7 @@ impl ParentPathStore {
 
     /// Looks up an edge by parent and segment in the canonical store.
     pub fn find_edge(&self, parent: u32, segment: &PathSegment) -> Option<u32> {
-        self.by_edge.get(&(parent, segment.clone())).copied()
+        self.by_edge.get(&(parent, *segment)).copied()
     }
 
     /// Looks up an edge by parent and segment.
@@ -234,7 +234,7 @@ impl ParentPathStore {
         let mut current = id;
         while current != 0 {
             let node = self.nodes.get(current as usize)?;
-            buf.push(self.segment(current)?.clone());
+            buf.push(*self.segment(current)?);
             current = node.parent;
         }
         buf.reverse();
@@ -273,15 +273,26 @@ impl ParentPathStore {
         self.rebuild_without_first(id)
     }
 
-    /// Recursive helper for [`without_first`](Self::without_first).
+    /// Helper for [`without_first`](Self::without_first).
+    ///
+    /// Walks parent links iteratively into scratch storage, then replays in
+    /// forward order.
     fn rebuild_without_first(&self, id: u32) -> Option<u32> {
-        let node = self.nodes.get(id as usize)?;
-        let segment = self.segment(id)?;
-        if node.parent == 0 {
-            return Some(0);
+        let mut segments = Vec::new();
+        let mut current = id;
+        loop {
+            let node = self.nodes.get(current as usize)?;
+            if node.parent == 0 {
+                break;
+            }
+            segments.push(*self.segment(current)?);
+            current = node.parent;
         }
-        let parent = self.rebuild_without_first(node.parent)?;
-        self.find_edge(parent, segment)
+        let mut result = 0;
+        for seg in segments.into_iter().rev() {
+            result = self.find_edge(result, &seg)?;
+        }
+        Some(result)
     }
 
     /// Returns an iterator over the segments of `id` from root to leaf.
@@ -325,7 +336,7 @@ impl Iterator for PathSegments {
     fn next(&mut self) -> Option<Self::Item> {
         let result = self.segments.get(self.index)?;
         self.index += 1;
-        Some(result.clone())
+        Some(*result)
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -680,7 +691,7 @@ mod tests {
         let mut names = NameTable::default();
         let mut store = ParentPathStore::new(100);
         let seg = PathSegment::Property(names.intern("x").unwrap());
-        let id = store.append(0, seg.clone()).unwrap();
+        let id = store.append(0, seg).unwrap();
         assert_eq!(store.find_edge(0, &seg), Some(id));
     }
 
@@ -731,7 +742,7 @@ mod tests {
         let mut store = ParentPathStore::new(100);
         let mut names = NameTable::default();
         let seg = PathSegment::Property(names.intern("x").unwrap());
-        let id1 = store.append(0, seg.clone()).unwrap();
+        let id1 = store.append(0, seg).unwrap();
         let id2 = store.append_linked(0, seg, 1).unwrap();
         // append_linked returns the *un-tagged* canonical id if the edge exists
         assert_eq!(id1, id2);
@@ -744,7 +755,7 @@ mod tests {
         let mut names = NameTable::default();
         let seg_a = PathSegment::Property(names.intern("a").unwrap());
         let seg_b = PathSegment::Property(names.intern("b").unwrap());
-        let a = store.append(0, seg_a.clone()).unwrap();
+        let a = store.append(0, seg_a).unwrap();
         let ab = store.append(a, seg_b).unwrap();
         let seg_c = PathSegment::Property(names.intern("c").unwrap());
         let abc = store.append(ab, seg_c).unwrap();
@@ -867,7 +878,7 @@ mod tests {
         let mut store = ParentPathStore::new(100);
         let mut names = NameTable::default();
         let seg = PathSegment::Property(names.intern("x").unwrap());
-        let id = store.append(0, seg.clone()).unwrap();
+        let id = store.append(0, seg).unwrap();
         assert_eq!(store.find_linked_edge(0, &seg), Some(id));
     }
 
