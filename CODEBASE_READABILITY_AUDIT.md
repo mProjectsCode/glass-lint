@@ -224,10 +224,7 @@ Give core's report type an owning transition such as `with_project_diagnostics` 
 - **Fix Complexity:** Medium
 - **Category:** Type Design / Simplification
 - **Location:** `glass-lint-core/src/analysis/facts/stream.rs:43-71`; `glass-lint-core/src/analysis/facts/stream.rs:262-299`
-
-Although `FactStream<Building>` and `FactStream<Frozen>` advertise compile-time phase safety, both store `Option<NameTable>` and `Option<ValueTable>`, and frozen accessors recover the invariant with `expect`. The issue set is also a `BTreeSet` for four fixed flags.
-
-Move phase-owned data into a phase trait/storage parameter or split shared tape storage from `BuildingFactStream` and `FrozenFactStream`. Represent fixed issue flags with a small bitset and make freeze consume building-only state into fields that are structurally present. Keep common access through a private shared storage type instead of weakening the phase invariant.
+- **Status:** Done (`Option<NameTable>` and `Option<ValueTable>` replaced with direct `NameTable`/`ValueTable` fields; `BTreeSet<FactStreamIssue>` replaced with `FactStreamIssueSet(u8)` bitset; `Ord`/`PartialOrd` removed from `FactStreamIssue`; `freeze` assigns fields directly instead of wrapping in `Some`; frozen accessors return `&self.names`/`&self.values` without `expect`.)
 
 ### Low Severity
 

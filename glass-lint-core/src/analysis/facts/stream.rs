@@ -18,12 +18,33 @@ use crate::analysis::{
     value::{FunctionId, ValueTable},
 };
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FactStreamIssue {
     BudgetExhausted,
     PathExhausted,
     InvalidParserSpan,
     NameExhausted,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct FactStreamIssueSet(u8);
+
+impl FactStreamIssueSet {
+    const fn new() -> Self {
+        Self(0)
+    }
+
+    fn insert(&mut self, issue: FactStreamIssue) {
+        self.0 |= 1 << (issue as u8);
+    }
+
+    fn contains(self, issue: FactStreamIssue) -> bool {
+        self.0 & (1 << (issue as u8)) != 0
+    }
+
+    fn is_empty(self) -> bool {
+        self.0 == 0
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -47,8 +68,8 @@ pub(in crate::analysis) struct Frozen;
 ///
 /// The `Phase` parameter distinguishes the mutable building phase
 /// ([`Building`]) from the frozen phase ([`Frozen`]). Names and values are
-/// always `None` during building; after
-/// [`freeze`](FactStream<Building>::freeze) they are always `Some`.
+/// always present; [`freeze`](FactStream<Building>::freeze) overwrites the
+/// building-phase defaults with the final name table and value arena.
 pub(in crate::analysis) struct FactStream<Phase = Building> {
     /// Dense facts in canonical visitor order.
     facts: Vec<SemanticFact>,
@@ -56,9 +77,9 @@ pub(in crate::analysis) struct FactStream<Phase = Building> {
     /// Interned property/index paths used by argument projections.
     paths: PathInterner,
     /// Frozen name table, set during `freeze`.
-    names: Option<NameTable>,
+    names: NameTable,
     /// Frozen value arena, set during `freeze`.
-    values: Option<ValueTable>,
+    values: ValueTable,
     /// Canonical function parameter bindings indexed by FunctionId. Populated
     /// during building; effects and summaries look up bindings here instead of
     /// cloning from inline fact payloads.
@@ -66,7 +87,7 @@ pub(in crate::analysis) struct FactStream<Phase = Building> {
     /// False after any ID, budget, or append invariant is violated.
     valid: bool,
     /// Typed construction outcomes that make the retained stream incomplete.
-    issues: std::collections::BTreeSet<FactStreamIssue>,
+    issues: FactStreamIssueSet,
     /// Phase marker, zero-sized.
     _phase: PhantomData<Phase>,
 }
@@ -84,19 +105,19 @@ impl<T> FactStream<T> {
     }
 
     pub(in crate::analysis) fn name_exhausted(&self) -> bool {
-        self.issues.contains(&FactStreamIssue::NameExhausted)
+        self.issues.contains(FactStreamIssue::NameExhausted)
     }
 
     pub(in crate::analysis) fn budget_exhausted(&self) -> bool {
-        self.issues.contains(&FactStreamIssue::BudgetExhausted)
+        self.issues.contains(FactStreamIssue::BudgetExhausted)
     }
 
     pub(in crate::analysis) fn path_exhausted(&self) -> bool {
-        self.issues.contains(&FactStreamIssue::PathExhausted)
+        self.issues.contains(FactStreamIssue::PathExhausted)
     }
 
     pub(in crate::analysis) fn invalid_parser_span(&self) -> bool {
-        self.issues.contains(&FactStreamIssue::InvalidParserSpan)
+        self.issues.contains(FactStreamIssue::InvalidParserSpan)
     }
 
     /// Look up a fact by its bounded dense identity.
@@ -171,11 +192,11 @@ impl FactStream<Building> {
             facts: Vec::new(),
             max_facts: max_facts.min(MAX_FACTS),
             paths: PathInterner::new(),
-            names: None,
-            values: None,
+            names: NameTable::default(),
+            values: ValueTable::default(),
             function_parameters: Vec::new(),
             valid: true,
-            issues: std::collections::BTreeSet::new(),
+            issues: FactStreamIssueSet::new(),
             _phase: PhantomData,
         }
     }
@@ -266,14 +287,12 @@ impl FactStream<Building> {
         names: NameTable,
         values: ValueTable,
     ) -> FactStream<Frozen> {
-        debug_assert!(self.names.is_none(), "names already frozen");
-        debug_assert!(self.values.is_none(), "values already frozen");
         FactStream {
             facts: self.facts,
             max_facts: self.max_facts,
             paths: self.paths,
-            names: Some(names),
-            values: Some(values),
+            names,
+            values,
             function_parameters: self.function_parameters,
             valid: self.valid,
             issues: self.issues,
@@ -287,16 +306,12 @@ impl FactStream<Building> {
 impl FactStream<Frozen> {
     /// Borrow the frozen name table.
     pub(in crate::analysis) fn names(&self) -> &NameTable {
-        self.names
-            .as_ref()
-            .expect("FactStream<Frozen> always has names")
+        &self.names
     }
 
     /// Borrow the frozen value arena for shape lookups by ValueId.
     pub(in crate::analysis) fn values(&self) -> &ValueTable {
-        self.values
-            .as_ref()
-            .expect("FactStream<Frozen> always has values")
+        &self.values
     }
 
     /// Resolve a `NameId` to a `&str` via the frozen name table.
