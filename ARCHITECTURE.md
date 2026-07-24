@@ -8,6 +8,10 @@ filesystem and policy layers, and thin command-line front ends.
 Arrows point from a crate to its workspace dependency:
 
 ```text
+glass-lint-datastructures
+
+glass-lint-core ───────────────────────> glass-lint-datastructures
+
 glass-lint-cli ─────────┬──> glass-lint-project ───> glass-lint-core
                         ├──> glass-lint-js ────────> glass-lint-core
                         ├──> glass-lint-obsidian ──> glass-lint-js ──> glass-lint-core
@@ -29,6 +33,7 @@ Production crates do not depend on either harness crate.
 
 | Crate | Owns | Does not own |
 |---|---|---|
+| [`glass-lint-datastructures`](glass-lint-datastructures/ARCHITECTURE.md) | Provider-neutral bounded data structures: interned names, sparse tables, path tries, fingerprints, and diagnostics | Semantic analysis, filesystem access, or provider policy |
 | [`glass-lint-core`](glass-lint-core/ARCHITECTURE.md) | Parsing, provider-neutral semantics, matchers, project linking, limits, and reports | Filesystem access, module resolution, host policy, profiles, or CLI behavior |
 | [`glass-lint-project`](glass-lint-project/ARCHITECTURE.md) | Discovery, source loading, project boundaries, `tsconfig` membership, and module resolution | Parsing, semantic matching, or provider policy |
 | [`glass-lint-js`](glass-lint-js/ARCHITECTURE.md) | `js:` rules, JavaScript runtime assumptions, profiles, and disclosures | Generic analysis or filesystem behavior |

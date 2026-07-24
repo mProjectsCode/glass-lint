@@ -1,7 +1,8 @@
 # Core architecture
 
-`glass-lint-core` is the provider-neutral semantic engine. It depends on no
-other workspace crate and performs no filesystem access.
+`glass-lint-core` is the provider-neutral semantic engine. It depends on
+[`glass-lint-datastructures`](../glass-lint-datastructures/ARCHITECTURE.md) for
+bounded storage primitives and performs no filesystem access.
 
 ## Pipeline
 

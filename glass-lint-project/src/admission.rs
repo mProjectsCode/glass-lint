@@ -39,11 +39,6 @@ impl FileBudget {
         self.count = next;
         Ok(())
     }
-
-    #[allow(dead_code)]
-    pub fn limit(&self) -> usize {
-        self.limit
-    }
 }
 
 /// A set of admitted source paths with a shared file-count budget.
@@ -79,16 +74,6 @@ impl AdmissionSet {
         self.paths.len()
     }
 
-    #[allow(dead_code)]
-    pub fn contains(&self, path: &AdmittedSourcePath) -> bool {
-        self.paths.contains(path)
-    }
-
-    #[allow(dead_code)]
-    pub fn limit(&self) -> usize {
-        self.budget.limit()
-    }
-
     pub fn into_path_bufs(self) -> Vec<PathBuf> {
         self.paths
             .into_iter()
@@ -98,11 +83,6 @@ impl AdmissionSet {
 
     pub fn into_admitted_paths(self) -> Vec<AdmittedSourcePath> {
         self.paths.into_iter().collect()
-    }
-
-    #[allow(dead_code)]
-    pub fn iter(&self) -> impl Iterator<Item = &AdmittedSourcePath> {
-        self.paths.iter()
     }
 }
 

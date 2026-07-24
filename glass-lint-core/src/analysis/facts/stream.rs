@@ -351,7 +351,7 @@ mod tests {
         let string = values.intern(Value::StaticString("from-arena".into()));
         let stream = FactStream::<Building>::new().freeze(NameTable::default(), values);
 
-        assert!(stream.name_exhausted() || !stream.name_exhausted()); // exists in both phases
+        assert!(!stream.name_exhausted());
         assert_eq!(stream.values().static_string(string), Some("from-arena"));
         assert!(stream.values().get(ValueId(u32::MAX)).is_none());
     }

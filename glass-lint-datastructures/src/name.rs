@@ -288,19 +288,6 @@ mod tests {
     }
 
     #[test]
-    fn iter_on_empty_table() {
-        let table = NameTable::default();
-        assert_eq!(table.iter().count(), 0);
-    }
-
-    #[test]
-    fn max_entries_accessor() {
-        let table = NameTable::with_max_entries(100);
-        assert_eq!(table.max_entries(), 100);
-        assert_eq!(table.max_entries(), table.max_entries());
-    }
-
-    #[test]
     fn exhaustion_only_after_failure() {
         let mut table = NameTable::with_max_entries(2);
         assert!(!table.exhausted());

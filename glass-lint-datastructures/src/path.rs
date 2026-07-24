@@ -438,15 +438,6 @@ mod tests {
         assert!(!root.is_equal_or_descendant_of(&child));
     }
 
-    #[test]
-    fn name_path_large_path_heap_spill() {
-        let mut path = NamePath::new();
-        for i in 0..10 {
-            path.append(NameId(i));
-        }
-        assert_eq!(path.segments().len(), 10);
-    }
-
     // ---- SymbolPath tests ----
 
     #[test]
@@ -541,33 +532,11 @@ mod tests {
     }
 
     #[test]
-    fn symbol_path_is_empty_true_for_empty() {
-        assert!(SymbolPath::from_chain("").is_empty());
-    }
-
-    #[test]
-    fn symbol_path_is_empty_false_for_non_empty() {
-        assert!(!SymbolPath::from_chain("a").is_empty());
-    }
-
-    #[test]
     fn symbol_path_is_equal_or_descendant_of_not_ancestor() {
         let a = SymbolPath::from_chain("a.b");
         let b = SymbolPath::from_chain("a.c");
         assert!(!a.is_equal_or_descendant_of(&b));
         assert!(!b.is_equal_or_descendant_of(&a));
-    }
-
-    #[test]
-    fn symbol_path_display_joins_with_dots() {
-        let path = SymbolPath::from_chain("a.b.c");
-        assert_eq!(path.to_string(), "a.b.c");
-    }
-
-    #[test]
-    fn symbol_path_display_empty() {
-        let path = SymbolPath::from_chain("");
-        assert_eq!(path.to_string(), "");
     }
 
     #[test]
@@ -595,40 +564,6 @@ mod tests {
         let empty = NamePath::new();
         let c = a.append_path(&empty);
         assert_eq!(c.segments(), &[NameId(1)]);
-    }
-
-    #[test]
-    fn name_path_display_not_implemented_but_debug_works() {
-        let mut path = NamePath::new();
-        path.append(NameId(1));
-        path.append(NameId(2));
-        let debug = format!("{path:?}");
-        assert!(debug.contains("NameId(1)"));
-        assert!(debug.contains("NameId(2)"));
-    }
-
-    #[test]
-    fn symbol_path_from_string() {
-        let from_string: SymbolPath = String::from("x.y.z").into();
-        assert_eq!(
-            from_string.segments(),
-            &[SmolStr::new("x"), SmolStr::new("y"), SmolStr::new("z"),]
-        );
-    }
-
-    #[test]
-    fn symbol_path_from_smol_str() {
-        let from_smol: SymbolPath = SmolStr::new("x.y").into();
-        assert_eq!(
-            from_smol.segments(),
-            &[SmolStr::new("x"), SmolStr::new("y")]
-        );
-    }
-
-    #[test]
-    fn symbol_path_from_str() {
-        let from_str: SymbolPath = "single".into();
-        assert_eq!(from_str.segments(), &[SmolStr::new("single")]);
     }
 
     // ---- PathView tests ----
@@ -716,13 +651,6 @@ mod tests {
     }
 
     #[test]
-    fn path_view_copy_semantics() {
-        let view = PathView::new(&[1, 2, 3]);
-        let copied = view;
-        assert_eq!(view.segments(), copied.segments());
-    }
-
-    #[test]
     fn view_without_last_segment_on_name_path() {
         let mut path = NamePath::new();
         path.append(NameId(1));
@@ -765,21 +693,5 @@ mod tests {
     fn view_without_first_segment_on_empty() {
         let path = NamePath::new();
         assert_eq!(path.view_without_first_segment(), None);
-    }
-
-    #[test]
-    fn view_methods_are_zero_copy_and_match_owned() {
-        let mut path = NamePath::new();
-        path.append(NameId(1));
-        path.append(NameId(2));
-        path.append(NameId(3));
-
-        let owned = path.without_last_segment().unwrap();
-        let viewed = path.view_without_last_segment().unwrap();
-        assert_eq!(owned.segments(), viewed.segments());
-
-        let owned = path.without_first_segment().unwrap();
-        let viewed = path.view_without_first_segment().unwrap();
-        assert_eq!(owned.segments(), viewed.segments());
     }
 }

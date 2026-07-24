@@ -57,9 +57,6 @@ pub(in crate::analysis) struct EffectCallId(pub(in crate::analysis) usize);
 /// the qualified function target are borrowed from the canonical fact stream
 /// through [`CallEffectRef`].
 pub(in crate::analysis) struct EffectCall {
-    /// Dense index of this call within the owning function's call table.
-    #[allow(dead_code)]
-    id: EffectCallId,
     /// Fact identity of the call event.
     event: FactId,
     /// Arguments projected to parameter paths.
@@ -161,11 +158,6 @@ impl EffectArgument {
 }
 
 impl EffectCall {
-    #[allow(dead_code)]
-    pub(in crate::analysis) fn id(&self) -> EffectCallId {
-        self.id
-    }
-
     pub(in crate::analysis) fn event(&self) -> FactId {
         self.event
     }
@@ -610,7 +602,6 @@ impl FunctionEffect {
         }
         if budget.try_push() {
             self.calls.push(EffectCall {
-                id: call_id,
                 event: fact.id,
                 arguments,
             });
@@ -914,18 +905,8 @@ mod tests {
         let effect = effects
             .get(FunctionId(1))
             .expect("effect for fn should exist");
-        let call = effect
-            .calls()
-            .iter()
-            .find(|c| {
-                c.arguments()
-                    .iter()
-                    .any(|a| a.index == 0 && a.value != ValueId::UNKNOWN)
-            })
-            .expect("appendChild call should exist");
-        let call_id = call.id();
         let by_index = effect
-            .call_argument(call_id, 0)
+            .call_argument(EffectCallId(0), 0)
             .expect("argument at index 0 should exist");
         assert_eq!(by_index.index(), 0);
     }
@@ -937,8 +918,7 @@ mod tests {
         let effect = effects
             .get(FunctionId(0))
             .expect("script effect should exist");
-        let call = effect.calls().first().expect("call should exist");
-        assert!(effect.call_argument(call.id(), 999).is_none());
+        assert!(effect.call_argument(EffectCallId(0), 999).is_none());
         assert!(effect.call_argument(EffectCallId(usize::MAX), 0).is_none());
     }
 }

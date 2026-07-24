@@ -330,16 +330,6 @@ impl SinkSet {
             ))
         });
     }
-
-    #[allow(dead_code)]
-    fn len(&self) -> usize {
-        self.set.len()
-    }
-
-    #[allow(dead_code)]
-    fn iter(&self) -> indexmap::set::Iter<'_, FunctionSinkSummary> {
-        self.set.iter()
-    }
 }
 
 impl<'a> IntoIterator for &'a SinkSet {
@@ -421,9 +411,6 @@ impl<'a> FunctionSummaries<'a> {
         for effect in effects.iter_effects() {
             if self.get(effect.id()).is_none() {
                 let params = effect.parameters(self.stream);
-                for param in params {
-                    self.paths.intern_frozen(param.path);
-                }
                 self.insert(FunctionSummary {
                     id: effect.id(),
                     parameter_count: params
