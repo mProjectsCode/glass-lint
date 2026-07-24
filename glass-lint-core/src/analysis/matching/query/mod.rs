@@ -1,5 +1,11 @@
+#[cfg(test)]
+use glass_lint_datastructures::ByteRange;
 use glass_lint_datastructures::NameTable;
+#[cfg(test)]
+use smol_str::SmolStr;
 
+#[cfg(test)]
+use crate::{analysis::facts::FactId, api::classification::MatchKind};
 use crate::{
     analysis::matching::{
         CandidateOccurrences, ClassificationEvidence, LinkedOccurrenceView, OccurrenceIndexes,
@@ -9,13 +15,6 @@ use crate::{
         EventPredicate, IdentityConstraint, QueryClause, QueryPlan, SubjectConstraint,
     },
 };
-
-#[cfg(test)]
-use glass_lint_datastructures::ByteRange;
-#[cfg(test)]
-use smol_str::SmolStr;
-#[cfg(test)]
-use crate::{analysis::facts::FactId, api::classification::MatchKind};
 
 mod view;
 use view::EventIndexView;
@@ -195,12 +194,7 @@ impl OccurrenceIndexes {
     }
 
     #[cfg(test)]
-    pub(super) fn record(
-        &mut self,
-        kind: MatchKind,
-        symbol: impl Into<SmolStr>,
-        span: ByteRange,
-    ) {
+    pub(super) fn record(&mut self, kind: MatchKind, symbol: impl Into<SmolStr>, span: ByteRange) {
         let symbol = symbol.into();
         match kind {
             MatchKind::Call => {

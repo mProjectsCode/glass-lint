@@ -8,24 +8,27 @@
 //! prevents a complete summary. Invalid summaries are not used for qualified
 //! propagation, preserving fail-closed behavior across module boundaries.
 
-mod types;
-mod function;
 mod effects;
+mod function;
+mod types;
 
 pub use effects::FunctionEffects;
 pub use function::FunctionEffect;
 #[cfg_attr(not(test), allow(unused_imports))]
-pub(in crate::analysis) use types::{
-    CallEffectRef, EffectCall, EffectCallId, EffectUse,
-};
+pub(in crate::analysis) use types::{CallEffectRef, EffectCall, EffectCallId, EffectUse};
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::analysis::{facts, flow::effect::types::CallEffectRef, resolution::Resolver};
-    use crate::analysis::facts::{FactId, FactPayload, FactStream, Frozen};
-    use crate::analysis::value::{FunctionId, ValueId};
     use glass_lint_datastructures::NamePath;
+
+    use super::*;
+    use crate::analysis::{
+        facts,
+        facts::{FactId, FactPayload, FactStream, Frozen},
+        flow::effect::types::CallEffectRef,
+        resolution::Resolver,
+        value::{FunctionId, ValueId},
+    };
 
     fn collect_effects(source: &str) -> (FactStream<Frozen>, FunctionEffects) {
         let parsed = crate::parse(source, "test.js").expect("source should parse");

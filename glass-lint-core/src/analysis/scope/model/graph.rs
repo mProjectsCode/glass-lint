@@ -1,23 +1,24 @@
-use hashbrown::{HashMap, HashSet};
-
 use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
+use hashbrown::{HashMap, HashSet};
 use smol_str::SmolStr;
 use swc_common::{BytePos, Span};
 
 use crate::{
     Environment,
     analysis::{
-        scope::collect::{PropertyAliasAssignment, RootedPropertyMutation},
-        scope::model::{
-            binding_index::BindingIndex,
-            frozen_assignments::FrozenAssignmentIndex,
-            id::{ScopedName, ScopeId},
-            mutation_index::MutationIndex,
-            name_env::NameEnvironment,
-            scope_index::LexicalScopeIndex,
-            types::{
-                AliasAssignment, BindingProvenance, LexicalScope, PropertyAliasFact, ScopeEffect,
-                ScopeKind, RootedPropertyMutationFact,
+        scope::{
+            collect::{PropertyAliasAssignment, RootedPropertyMutation},
+            model::{
+                binding_index::BindingIndex,
+                frozen_assignments::FrozenAssignmentIndex,
+                id::{ScopeId, ScopedName},
+                mutation_index::MutationIndex,
+                name_env::NameEnvironment,
+                scope_index::LexicalScopeIndex,
+                types::{
+                    AliasAssignment, BindingProvenance, LexicalScope, PropertyAliasFact,
+                    RootedPropertyMutationFact, ScopeEffect, ScopeKind,
+                },
             },
         },
         value::{BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId},

@@ -10,8 +10,7 @@ use crate::{
 fn collect_source(source: &str, flow: &ObjectFlowMatcher) -> Vec<Vec<ClassificationEvidence>> {
     let parsed = crate::parse(source, "fact-flow.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream =
-        crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+    let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(flow);
     let (evidence, _outcome) = collect_with_limits(
@@ -233,8 +232,7 @@ fn flow_evidence_is_anchored_at_the_sink_event() {
     let source = "const script = document.createElement('script'); script.src = url; document.head.appendChild(script);";
     let parsed = crate::parse(source, "flow-location.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream =
-        crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+    let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let sink_span = stream
         .facts()
@@ -279,11 +277,9 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
         .build()
         .unwrap();
     let source = "const input = document.createElement('input'); input.type = 'file';";
-    let parsed =
-        crate::parse(source, "flow-requirement-location.js").expect("source should parse");
+    let parsed = crate::parse(source, "flow-requirement-location.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream =
-        crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+    let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let configuration = stream
         .facts()
@@ -308,11 +304,11 @@ fn requirement_only_evidence_is_anchored_at_the_configuration_event() {
 #[test]
 fn object_limit_exhaustion_returns_exhausted_outcome() {
     let flow = script_flow();
-    let source = "const a = document.createElement('script'); const b = document.createElement('script');";
+    let source =
+        "const a = document.createElement('script'); const b = document.createElement('script');";
     let parsed = crate::parse(source, "obj-limit.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream =
-        crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+    let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(&flow);
     let limits = FlowLimits::test_new(1, 262_144, 65_536, 4096);
@@ -337,11 +333,11 @@ fn object_limit_exhaustion_returns_exhausted_outcome() {
 #[test]
 fn mutation_log_exhaustion_returns_exhausted_outcome() {
     let flow = script_flow();
-    let source = "const a = document.createElement('script'); const b = document.createElement('script');";
+    let source =
+        "const a = document.createElement('script'); const b = document.createElement('script');";
     let parsed = crate::parse(source, "mut-limit.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream =
-        crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+    let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(&flow);
     let limits = FlowLimits::test_new(65_536, 262_144, 65_536, 1);
@@ -358,11 +354,11 @@ fn mutation_log_exhaustion_returns_exhausted_outcome() {
 #[test]
 fn state_limit_exhaustion_returns_exhausted_outcome() {
     let flow = script_flow();
-    let source = "const a = document.createElement('script'); a.src = url; document.head.appendChild(a);";
+    let source =
+        "const a = document.createElement('script'); a.src = url; document.head.appendChild(a);";
     let parsed = crate::parse(source, "state-limit.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream =
-        crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+    let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(&flow);
     let limits = FlowLimits::test_new(65_536, 0, 65_536, 4096);
@@ -379,11 +375,11 @@ fn state_limit_exhaustion_returns_exhausted_outcome() {
 #[test]
 fn emission_limit_exhaustion_returns_exhausted_outcome() {
     let flow = script_flow();
-    let source = "const a = document.createElement('script'); a.src = url; document.head.appendChild(a);";
+    let source =
+        "const a = document.createElement('script'); a.src = url; document.head.appendChild(a);";
     let parsed = crate::parse(source, "emit-limit.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream =
-        crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
+    let stream = crate::analysis::facts::build::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     let flow = CompiledObjectFlow::from_matcher(&flow);
     let limits = FlowLimits::test_new(65_536, 262_144, 0, 4096);

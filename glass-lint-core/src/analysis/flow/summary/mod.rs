@@ -10,14 +10,14 @@
 //! a projected sink. Recursive propagation stops at a fixed point or its
 //! explicit round bound.
 //!
-//! Path storage uses one shared [`glass_lint_datastructures::ParentPathStore`] for the summary overlay.
-//! A [`SummaryPathId`] is either a frozen [`PathId`] reference (no copying)
-//! or an overlay node created during a join.  The overlay is bounded by
-//! [`MAX_OVERLAY_NODES`]; exhaustion fails closed.
+//! Path storage uses one shared [`glass_lint_datastructures::ParentPathStore`]
+//! for the summary overlay. A [`SummaryPathId`] is either a frozen [`PathId`]
+//! reference (no copying) or an overlay node created during a join.  The
+//! overlay is bounded by [`MAX_OVERLAY_NODES`]; exhaustion fails closed.
 
-pub(super) mod store;
-mod sink;
 mod parameter;
+mod sink;
+pub(super) mod store;
 mod summaries;
 
 pub(super) use store::SummaryPathStore;

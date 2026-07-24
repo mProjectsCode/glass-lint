@@ -4,11 +4,9 @@ use glass_lint_datastructures::NameId;
 use swc_common::{BytePos, Span};
 
 use crate::analysis::{
-    scope::model::types::AliasAssignment,
+    scope::model::{id::ScopeId, types::AliasAssignment},
     value::BindingVersion,
 };
-
-use crate::analysis::scope::model::id::ScopeId;
 
 /// Source-ordered assignment history frozen after collection.
 ///

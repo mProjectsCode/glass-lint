@@ -3,8 +3,7 @@ use std::{borrow::Borrow, fmt, ops::Deref};
 use smallvec::SmallVec;
 use smol_str::SmolStr;
 
-use crate::name::NameId;
-use crate::path::view::PathView;
+use crate::{name::NameId, path::view::PathView};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Path<S>(S);

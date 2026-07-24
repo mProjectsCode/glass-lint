@@ -3,6 +3,9 @@ use std::collections::BTreeMap;
 use glass_lint_datastructures::Budget;
 use smol_str::SmolStr;
 
+use super::types::{
+    EffectArgument, EffectCall, EffectCallId, EffectUse, ParameterRef, ReturnProjection,
+};
 use crate::analysis::{
     facts::{
         CallArgInfo, ControlKind, FactId, FactPayload, FactStream, Frozen, ParameterBinding,
@@ -11,8 +14,6 @@ use crate::analysis::{
     syntax::SymbolCallProvenance,
     value::{FunctionId, ValueId},
 };
-
-use super::types::{EffectArgument, EffectCall, EffectCallId, EffectUse, ParameterRef, ReturnProjection};
 
 #[derive(Clone, Debug)]
 pub struct FunctionEffect {

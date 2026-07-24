@@ -1,18 +1,19 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use hashbrown::HashMap;
 use glass_lint_datastructures::{NamePath, NameTable};
+use hashbrown::HashMap;
 
-use crate::analysis::flow::index::FlowId;
-use crate::analysis::facts::FactId;
-use crate::analysis::value::{FunctionId, ValueId};
-use crate::analysis::ProjectSemanticModel;
-use crate::api::compiler::CompiledObjectFlow;
-use crate::project::ModuleId;
-
-use super::graph::QualifiedCallGraph;
-use super::state::SourceBudget;
-use super::MAX_PENDING;
+use super::{MAX_PENDING, graph::QualifiedCallGraph, state::SourceBudget};
+use crate::{
+    analysis::{
+        ProjectSemanticModel,
+        facts::FactId,
+        flow::index::FlowId,
+        value::{FunctionId, ValueId},
+    },
+    api::compiler::CompiledObjectFlow,
+    project::ModuleId,
+};
 
 /// Local effect/value key used while composing source identities.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]

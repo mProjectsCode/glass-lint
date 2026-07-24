@@ -1,9 +1,9 @@
 //! Whitelisted inline callback binding and parameter projection.
 
-use hashbrown::HashMap;
 use std::collections::BTreeMap;
 
 use glass_lint_datastructures::{NameId, NameTable};
+use hashbrown::HashMap;
 use smol_str::SmolStr;
 use swc_common::Span;
 use swc_ecma_ast::{CallExpr, Callee, Expr, MemberExpr, Pat};

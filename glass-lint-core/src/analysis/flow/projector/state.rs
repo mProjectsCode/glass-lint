@@ -13,7 +13,6 @@ use std::{
 use super::history::{
     Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey, decrement_ref, increment_ref,
 };
-
 use crate::{
     analysis::{
         facts::ControlRegionId,

@@ -263,7 +263,9 @@ impl<T> FieldState for ParsedField<T> {
 
 // re-export selection types
 #[allow(unused_imports)]
-pub use selection::{CompiledTsconfigSelection, MergedSelection, TsconfigPatternSet, merge_selection};
+pub use selection::{
+    CompiledTsconfigSelection, MergedSelection, TsconfigPatternSet, merge_selection,
+};
 
 // ---------------------------------------------------------------------------
 // Cycle detection diagnostics

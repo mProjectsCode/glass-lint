@@ -6,21 +6,22 @@
 //! core's linker. Only internal targets become edges; all other outcomes are
 //! retained as diagnostics.
 
-mod scc;
-mod graph;
 mod export;
+mod graph;
+mod scc;
 
-use std::{
-    cell::RefCell,
-    collections::BTreeMap,
-};
+use std::{cell::RefCell, collections::BTreeMap};
 
 use glass_lint_datastructures::BudgetTracker;
 
 use super::state::{ExportLookupCache, ExportTable, ModuleGraph, SccPartition};
-use crate::analysis::{LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId, module};
-use crate::analysis::status::AnalysisStatus;
-use crate::project::AnalysisDiagnostic;
+use crate::{
+    analysis::{
+        LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId, module,
+        status::AnalysisStatus,
+    },
+    project::AnalysisDiagnostic,
+};
 
 // ---------------------------------------------------------------------------
 // LinkerOutcome

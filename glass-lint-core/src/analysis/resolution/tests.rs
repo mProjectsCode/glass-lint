@@ -53,9 +53,9 @@ fn const_value_follows_binding_chain_to_static_values() {
     let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
     let inner = resolver.values.intern(Value::StaticString("hello".into()));
-    let key = crate::analysis::value::BindingKey::new(
-        crate::analysis::value::BindingRoot::Global("test".into()),
-    );
+    let key = crate::analysis::value::BindingKey::new(crate::analysis::value::BindingRoot::Global(
+        "test".into(),
+    ));
     let id = resolver
         .values
         .intern(Value::Binding { key, target: inner });
@@ -71,9 +71,9 @@ fn const_value_materializes_static_arrays_with_nested_bindings() {
     let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
     let one = resolver.values.intern(Value::StaticNumber(1));
-    let key = crate::analysis::value::BindingKey::new(
-        crate::analysis::value::BindingRoot::Global("x".into()),
-    );
+    let key = crate::analysis::value::BindingKey::new(crate::analysis::value::BindingRoot::Global(
+        "x".into(),
+    ));
     let wrapped = resolver.values.intern(Value::Binding { key, target: one });
     let two = resolver.values.intern(Value::StaticNumber(2));
     let array = resolver
@@ -240,9 +240,9 @@ fn call_provenance_follows_binding_to_global() {
     let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
     let inner = resolver.values.intern(Value::Global("fetch".into()));
-    let key = crate::analysis::value::BindingKey::new(
-        crate::analysis::value::BindingRoot::Global("test".into()),
-    );
+    let key = crate::analysis::value::BindingKey::new(crate::analysis::value::BindingRoot::Global(
+        "test".into(),
+    ));
     let id = resolver
         .values
         .intern(Value::Binding { key, target: inner });

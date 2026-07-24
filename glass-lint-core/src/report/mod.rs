@@ -1,5 +1,5 @@
-mod types;
 mod render;
+mod types;
 
-pub use types::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};
 pub use render::visible_text;
+pub use types::{PrettyFile, PrettyOptions, PrettyReport, PrettyReports};

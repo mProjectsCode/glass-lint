@@ -2,16 +2,25 @@ use std::collections::BTreeSet;
 
 use hashbrown::HashMap;
 
-use crate::analysis::facts::FactId;
-use crate::analysis::flow::effect::{EffectUse, FunctionEffect};
-use crate::analysis::flow::index::FlowId;
-use crate::analysis::ProjectSemanticModel;
-use crate::api::classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence};
-use crate::api::compiler::CompiledObjectFlow;
-use crate::project::ModuleId;
-
-use super::state::{CallContext, CrossFlowState, EvidenceRole, QualifiedEvent};
-use super::MAX_RELATED_EVIDENCE;
+use super::{
+    MAX_RELATED_EVIDENCE,
+    state::{CallContext, CrossFlowState, EvidenceRole, QualifiedEvent},
+};
+use crate::{
+    analysis::{
+        ProjectSemanticModel,
+        facts::FactId,
+        flow::{
+            effect::{EffectUse, FunctionEffect},
+            index::FlowId,
+        },
+    },
+    api::{
+        classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},
+        compiler::CompiledObjectFlow,
+    },
+    project::ModuleId,
+};
 
 pub(super) fn effect_use_event(usage: &EffectUse) -> FactId {
     match usage {

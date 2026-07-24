@@ -1,15 +1,14 @@
 use hashbrown::HashMap;
 
-use crate::{
-    analysis::{
-        scope::{
-            FrozenAssignmentIndex, LexicalScope, ScopeGraph, ScopeGraphParts,
-            ScopeId, ScopedName,
-            collect::ScopeCollector,
-            collect::program::{ScopedProgram, ScopeCollectionIssue},
+use crate::analysis::{
+    scope::{
+        FrozenAssignmentIndex, LexicalScope, ScopeGraph, ScopeGraphParts, ScopeId, ScopedName,
+        collect::{
+            ScopeCollector,
+            program::{ScopeCollectionIssue, ScopedProgram},
         },
-        value::{BindingId, FunctionId},
     },
+    value::{BindingId, FunctionId},
 };
 
 impl ScopeCollector<'_> {
@@ -38,7 +37,11 @@ impl ScopeCollector<'_> {
         let mut function_ids = vec![None; scopes.len()];
         let mut next_function = 0u32;
         for (scope, lexical_scope) in scopes.iter().enumerate() {
-            if matches!(lexical_scope.kind, crate::analysis::scope::ScopeKind::Program | crate::analysis::scope::ScopeKind::Function) {
+            if matches!(
+                lexical_scope.kind,
+                crate::analysis::scope::ScopeKind::Program
+                    | crate::analysis::scope::ScopeKind::Function
+            ) {
                 function_ids[scope] = Some(FunctionId(next_function));
                 next_function = next_function.saturating_add(1);
             }

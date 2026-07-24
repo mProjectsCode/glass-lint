@@ -13,19 +13,23 @@ mod worklist;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use hashbrown::HashMap;
 use glass_lint_datastructures::Budget;
+use hashbrown::HashMap;
 
-use crate::analysis::ProjectSemanticModel;
-use crate::analysis::flow::index::FlowId;
-use crate::api::classification::ClassificationEvidence;
-use crate::api::compiler::{CompiledObjectFlow, CompiledRuleSelection};
-use crate::project::ModuleId;
-
-use self::evidence::ModuleEvidence;
-use self::graph::{FlowPathPlan, QualifiedCallGraph};
-use self::sources::FlowSources;
-use self::worklist::ContextWorklist;
+use self::{
+    evidence::ModuleEvidence,
+    graph::{FlowPathPlan, QualifiedCallGraph},
+    sources::FlowSources,
+    worklist::ContextWorklist,
+};
+use crate::{
+    analysis::{ProjectSemanticModel, flow::index::FlowId},
+    api::{
+        classification::ClassificationEvidence,
+        compiler::{CompiledObjectFlow, CompiledRuleSelection},
+    },
+    project::ModuleId,
+};
 
 const MAX_CONTEXTS: usize = 65_536;
 const MAX_SOURCE_REFINEMENT_ROUNDS: usize = 64;
@@ -137,16 +141,21 @@ pub(in crate::analysis) fn collect(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::sources::{FlowSources, SourceKey, SourceCandidate};
-    use super::state::{CallContext, CrossFlowState, QualifiedEvent, SourceBudget};
-    use super::worklist::ContextWorklist;
-    use crate::api::classification::RuleIndex;
-    use crate::analysis::flow::index::FlowId;
-    use crate::analysis::flow::requirements::RequirementSet;
-    use crate::analysis::value::{FunctionId, ValueId};
-    use crate::analysis::facts::FactId;
-    use crate::project::ModuleId;
+    use super::{
+        sources::{FlowSources, SourceCandidate, SourceKey},
+        state::{CallContext, CrossFlowState, QualifiedEvent, SourceBudget},
+        worklist::ContextWorklist,
+        *,
+    };
+    use crate::{
+        analysis::{
+            facts::FactId,
+            flow::{index::FlowId, requirements::RequirementSet},
+            value::{FunctionId, ValueId},
+        },
+        api::classification::RuleIndex,
+        project::ModuleId,
+    };
 
     fn key(module: u32, function: u32, value: u32) -> SourceKey {
         SourceKey::new(ModuleId::new(module), FunctionId(function), ValueId(value))

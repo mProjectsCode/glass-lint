@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+#[cfg(test)]
+use glass_lint_datastructures::NamePath;
 use smol_str::SmolStr;
 
 use crate::{
@@ -7,14 +9,11 @@ use crate::{
     api::classification::{ClassificationEvidence, MatchKind},
 };
 
-#[cfg(test)]
-use glass_lint_datastructures::NamePath;
-
 mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
 use occurrence::{CandidateOccurrences, ModuleOccurrences, Occurrence};
-mod indexes;
 mod identity_map;
+mod indexes;
 pub(in crate::analysis) use identity_map::ModuleIdentityMap;
 mod arguments;
 pub(in crate::analysis) use arguments::compute_constrained_evidence_from_stream_with_overlay;

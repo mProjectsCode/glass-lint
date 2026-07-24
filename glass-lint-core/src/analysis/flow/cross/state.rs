@@ -1,10 +1,12 @@
-use crate::analysis::facts::FactId;
-use crate::analysis::flow::index::FlowId;
-use crate::analysis::flow::requirements::RequirementSet;
-use crate::analysis::value::{FunctionId, ValueId};
-use crate::project::ModuleId;
-
 use super::MAX_SOURCE_REFINEMENT_ROUNDS;
+use crate::{
+    analysis::{
+        facts::FactId,
+        flow::{index::FlowId, requirements::RequirementSet},
+        value::{FunctionId, ValueId},
+    },
+    project::ModuleId,
+};
 
 #[derive(Clone, Copy)]
 pub(super) enum EvidenceRole {

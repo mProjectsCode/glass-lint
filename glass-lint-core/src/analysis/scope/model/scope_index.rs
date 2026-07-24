@@ -5,10 +5,11 @@ use swc_common::Span;
 
 use crate::analysis::scope::{
     collect::aliases::contains,
-    model::types::{BindingProvenance, LexicalScope, ScopeKind},
+    model::{
+        id::ScopeId,
+        types::{BindingProvenance, LexicalScope, ScopeKind},
+    },
 };
-
-use crate::analysis::scope::model::id::ScopeId;
 
 #[derive(Debug)]
 pub(super) struct LexicalScopeIndex {

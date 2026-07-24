@@ -3,9 +3,7 @@
 //! The provider owns Obsidian globals and rule profiles; matching and report
 //! primitives remain in the provider-neutral core crate.
 
-use glass_lint_core::{
-    Environment, LinterConfig, RuleCatalog, RuleMetadata,
-};
+use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleMetadata};
 
 mod catalog;
 mod rules;
@@ -173,5 +171,4 @@ mod tests {
         assert_eq!(findings[0].location().range().start().line(), 2);
         assert_eq!(findings[1].location().range().start().line(), 3);
     }
-
 }

@@ -1,10 +1,8 @@
-use crate::analysis::{
-    facts::{
-        build::{
-            CallArgInfo, CallExpr, CallUnwrap, Expr, ExprOrSpread, FactBuilder, MemberExpr, Span,
-            Spanned, effective_callee_expr, member_property_name,
-        },
-        FactKind, FactPayload,
+use crate::analysis::facts::{
+    FactKind, FactPayload,
+    build::{
+        CallArgInfo, CallExpr, CallUnwrap, Expr, ExprOrSpread, FactBuilder, MemberExpr, Span,
+        Spanned, effective_callee_expr, member_property_name,
     },
 };
 
@@ -69,10 +67,7 @@ impl FactBuilder<'_, '_> {
         self.try_emit_callable_wrapper_common(member, call.span(), &call.args);
     }
 
-    pub(super) fn try_unwrap_apply_args(
-        &mut self,
-        args_expr: &Expr,
-    ) -> Option<Vec<CallArgInfo>> {
+    pub(super) fn try_unwrap_apply_args(&mut self, args_expr: &Expr) -> Option<Vec<CallArgInfo>> {
         match args_expr {
             Expr::Array(array) => {
                 if array

@@ -2,14 +2,12 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::Budget;
 
+use super::{function::FunctionEffect, types::ParameterRef};
 use crate::analysis::{
     facts::{ControlKind, FactPayload, FactStream, Frozen, FunctionBoundary},
     flow::table::FunctionTable,
     value::FunctionId,
 };
-
-use super::function::FunctionEffect;
-use super::types::ParameterRef;
 
 #[derive(Clone, Debug, Default)]
 pub struct FunctionEffects {

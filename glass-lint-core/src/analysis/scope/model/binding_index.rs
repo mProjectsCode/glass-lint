@@ -5,7 +5,7 @@ use swc_common::{BytePos, Span};
 use crate::analysis::{
     scope::model::{
         frozen_assignments::FrozenAssignmentIndex,
-        id::{ScopedName, ScopeId},
+        id::{ScopeId, ScopedName},
         scope_index::LexicalScopeIndex,
         types::{AliasAssignment, BindingProvenance},
     },
@@ -51,14 +51,8 @@ impl BindingIndex {
         self.assignments.latest_at(scope, name, span)
     }
 
-    pub(super) fn binding_id_at(
-        &self,
-        scope: ScopeId,
-        name: NameId,
-    ) -> Option<BindingId> {
-        self.binding_ids
-            .get(&ScopedName::new(scope, name))
-            .copied()
+    pub(super) fn binding_id_at(&self, scope: ScopeId, name: NameId) -> Option<BindingId> {
+        self.binding_ids.get(&ScopedName::new(scope, name)).copied()
     }
 
     pub(super) fn parameter_alias_for(
@@ -104,21 +98,13 @@ impl BindingIndex {
             })
     }
 
-    pub(super) fn function_binding(
-        &self,
-        scope: ScopeId,
-        name: NameId,
-    ) -> Option<FunctionId> {
+    pub(super) fn function_binding(&self, scope: ScopeId, name: NameId) -> Option<FunctionId> {
         self.function_bindings
             .get(&ScopedName::new(scope, name))
             .copied()
     }
 
-    pub(super) fn function_alias(
-        &self,
-        scope: ScopeId,
-        name: NameId,
-    ) -> Option<FunctionId> {
+    pub(super) fn function_alias(&self, scope: ScopeId, name: NameId) -> Option<FunctionId> {
         self.function_aliases
             .get(&ScopedName::new(scope, name))
             .copied()

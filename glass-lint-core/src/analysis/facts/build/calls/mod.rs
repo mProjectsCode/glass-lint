@@ -1,12 +1,11 @@
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::CallExpr;
 
+use super::{Callee, Expr, ExprOrSpread, FactBuilder, ValueId, VisitWith};
 use crate::analysis::{
     facts::{CallArgInfo, CallUnwrap, FactKind, FactPayload},
     syntax::{effective_callee_expr, member_property_name},
 };
-
-use super::{Callee, Expr, ExprOrSpread, FactBuilder, ValueId, VisitWith};
 
 mod callee;
 mod pattern;

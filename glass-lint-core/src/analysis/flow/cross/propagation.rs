@@ -1,14 +1,15 @@
-use hashbrown::HashMap;
 use std::collections::BTreeSet;
 
 use glass_lint_datastructures::NameTable;
+use hashbrown::HashMap;
 use smol_str::SmolStr;
 
-use super::evidence::{effect_use_event, emit, usage_matches_context};
-use super::evidence::ModuleEvidence;
-use super::graph::{FlowPathPlan, QualifiedCallGraph};
-use super::state::{CallContext, CrossFlowState, QualifiedEvent};
-use super::worklist::ContextWorklist;
+use super::{
+    evidence::{ModuleEvidence, effect_use_event, emit, usage_matches_context},
+    graph::{FlowPathPlan, QualifiedCallGraph},
+    state::{CallContext, CrossFlowState, QualifiedEvent},
+    worklist::ContextWorklist,
+};
 use crate::{
     analysis::{
         ProjectSemanticModel,

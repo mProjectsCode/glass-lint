@@ -1,16 +1,15 @@
 use std::collections::{BTreeSet, VecDeque};
 
-use crate::analysis::flow::requirements::RequirementSet;
-use crate::analysis::value::FunctionId;
-use crate::analysis::ProjectSemanticModel;
-use crate::project::ModuleId;
-
-use super::graph::QualifiedCallGraph;
-use super::sources::{FlowSources, SourceKey};
-use super::state::CallContext;
-use super::state::CrossFlowState;
-use super::state::QualifiedEvent;
-use super::MAX_CONTEXTS;
+use super::{
+    MAX_CONTEXTS,
+    graph::QualifiedCallGraph,
+    sources::{FlowSources, SourceKey},
+    state::{CallContext, CrossFlowState, QualifiedEvent},
+};
+use crate::{
+    analysis::{ProjectSemanticModel, flow::requirements::RequirementSet, value::FunctionId},
+    project::ModuleId,
+};
 
 /// Deduplicating FIFO worklist for bounded interprocedural contexts.
 ///

@@ -1,6 +1,7 @@
-use super::store::ParentPathStore;
-use super::store::PathSegments;
-use super::types::{PathId, PathSegment, DEFAULT_MAX_PATH_NODES};
+use super::{
+    store::{ParentPathStore, PathSegments},
+    types::{DEFAULT_MAX_PATH_NODES, PathId, PathSegment},
+};
 
 #[derive(Debug)]
 pub struct PathInterner {

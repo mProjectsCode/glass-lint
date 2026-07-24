@@ -2,9 +2,7 @@ use swc_ecma_ast::Expr;
 
 use crate::analysis::{
     scope::{
-        BindingProvenance, ScopeId,
-        collect::ScopeCollector,
-        query::rooted::rooted_expr_chain_with,
+        BindingProvenance, ScopeId, collect::ScopeCollector, query::rooted::rooted_expr_chain_with,
     },
     syntax::member_root_identifier,
     value::BindingVersion,
@@ -29,13 +27,14 @@ impl ScopeCollector<'_> {
         let version = BindingVersion(*next);
         self.latest_assignments
             .record(&self.names, scope, name, provenance.clone());
-        self.assignments.push(crate::analysis::scope::AliasAssignment {
-            span,
-            scope,
-            name: name_id,
-            version,
-            provenance,
-        });
+        self.assignments
+            .push(crate::analysis::scope::AliasAssignment {
+                span,
+                scope,
+                name: name_id,
+                version,
+                provenance,
+            });
     }
 
     pub(super) fn visible_binding(&self, name: &str) -> Option<&BindingProvenance> {
@@ -71,11 +70,18 @@ impl ScopeCollector<'_> {
         self.scope_issues.is_empty() && self.visible_binding(name).is_none()
     }
 
-    pub(super) fn rooted_expr_name(&self, expr: &Expr) -> Option<glass_lint_datastructures::SymbolPath> {
+    pub(super) fn rooted_expr_name(
+        &self,
+        expr: &Expr,
+    ) -> Option<glass_lint_datastructures::SymbolPath> {
         rooted_expr_chain_with(self, expr)
     }
 
-    pub(super) fn invalidate_member_root(&mut self, member: &swc_ecma_ast::MemberExpr, span: swc_common::Span) {
+    pub(super) fn invalidate_member_root(
+        &mut self,
+        member: &swc_ecma_ast::MemberExpr,
+        span: swc_common::Span,
+    ) {
         let Some(root) = member_root_identifier(member) else {
             return;
         };

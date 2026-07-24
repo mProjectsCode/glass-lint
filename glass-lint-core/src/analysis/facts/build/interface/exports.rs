@@ -5,18 +5,17 @@ use swc_ecma_ast::{
     NamedExport,
 };
 
+use super::ModuleInterfaceBuilder;
 use crate::{
     analysis::{
         module::{
-            ModuleExport, ModuleRequestRole, ReExportBinding, DEFAULT_EXPORT, NAMESPACE_EXPORT,
+            DEFAULT_EXPORT, ModuleExport, ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,
         },
         resolution::Resolver,
         syntax::{collect_pat_bindings, module_export_name},
     },
     project::ResolutionRequestKind,
 };
-
-use super::ModuleInterfaceBuilder;
 
 impl ModuleInterfaceBuilder {
     pub(in crate::analysis::facts::build) fn record_export_decl(

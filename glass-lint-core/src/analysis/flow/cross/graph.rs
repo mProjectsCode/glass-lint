@@ -2,11 +2,11 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::{NamePath, NameTable};
 
-use crate::analysis::facts::FactId;
-use crate::analysis::value::FunctionId;
-use crate::analysis::ProjectSemanticModel;
-use crate::api::compiler::{CompiledObjectFlow, CompiledObjectRequirement};
-use crate::project::ModuleId;
+use crate::{
+    analysis::{ProjectSemanticModel, facts::FactId, value::FunctionId},
+    api::compiler::{CompiledObjectFlow, CompiledObjectRequirement},
+    project::ModuleId,
+};
 
 /// Pre-computed qualified call targets keyed by (caller_module,
 /// call_event_fact). Populated once and reused across all cross-flow phases.

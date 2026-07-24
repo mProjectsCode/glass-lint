@@ -13,12 +13,12 @@ mod call;
 mod constant;
 mod expression;
 
-use hashbrown::{HashMap, HashSet};
 use std::sync::Arc;
 
 use glass_lint_datastructures::{
     ByteRange, NameExhausted, NameId, NamePath, NameTable, SymbolPath,
 };
+use hashbrown::{HashMap, HashSet};
 use smol_str::SmolStr;
 #[cfg(test)]
 use swc_ecma_ast::Program;

@@ -2,10 +2,7 @@ use std::collections::BTreeMap;
 
 use smol_str::SmolStr;
 
-use crate::analysis::{
-    matching::occurrence::ModuleExportKey,
-    project::model::ExportResolution,
-};
+use crate::analysis::{matching::occurrence::ModuleExportKey, project::model::ExportResolution};
 
 #[derive(Clone, Debug, Default)]
 pub(in crate::analysis) struct ModuleIdentityMap {

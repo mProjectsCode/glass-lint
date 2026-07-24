@@ -1,16 +1,11 @@
 use indexmap::IndexSet;
 
+use super::store::SummaryPathStore;
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
-    flow::{
-        index::FlowId,
-        plan::BoundFlowPlan,
-        summary::store::SummaryPathId,
-    },
+    flow::{index::FlowId, plan::BoundFlowPlan, summary::store::SummaryPathId},
     value::{FunctionId, ValueId},
 };
-
-use super::store::SummaryPathStore;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(in crate::analysis::flow) struct FunctionSinkSummary {
@@ -250,7 +245,11 @@ impl FunctionSummary {
                     let Some(path) = paths.join(prefix_id, suffix_id) else {
                         continue;
                     };
-                    self.add_sink(FunctionSinkSummary::new(*flow_id, parameter.parameter_index, path));
+                    self.add_sink(FunctionSinkSummary::new(
+                        *flow_id,
+                        parameter.parameter_index,
+                        path,
+                    ));
                 }
             }
         }

@@ -1,8 +1,6 @@
-use crate::analysis::{
-    facts::{
-        build::{Expr, FactBuilder, Pat, PathId, PathSegmentInput, ValueId},
-        ParameterBinding,
-    },
+use crate::analysis::facts::{
+    ParameterBinding,
+    build::{Expr, FactBuilder, Pat, PathId, PathSegmentInput, ValueId},
 };
 
 impl FactBuilder<'_, '_> {

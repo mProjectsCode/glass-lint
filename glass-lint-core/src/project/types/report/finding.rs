@@ -1,6 +1,9 @@
 use crate::{
     RuleId, Severity,
-    project::{EvidenceList, types::{Evidence, SourceLocation}},
+    project::{
+        EvidenceList,
+        types::{Evidence, SourceLocation},
+    },
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

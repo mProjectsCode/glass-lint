@@ -1,8 +1,7 @@
 use smol_str::SmolStr;
 
-use crate::name::NameId;
-
 use super::*;
+use crate::name::NameId;
 
 #[test]
 fn name_path_empty() {

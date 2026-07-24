@@ -4,9 +4,7 @@
 //! the recommended/heuristic catalog profiles while delegating matching to
 //! core.
 
-use glass_lint_core::{
-    Environment, LinterConfig, RuleCatalog, RuleMetadata,
-};
+use glass_lint_core::{Environment, LinterConfig, RuleCatalog, RuleMetadata};
 
 mod rules;
 

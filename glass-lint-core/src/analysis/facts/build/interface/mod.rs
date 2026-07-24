@@ -23,7 +23,9 @@ impl ModuleInterfaceBuilder {
         }
     }
 
-    pub(in crate::analysis::facts::build) fn finish(self) -> crate::analysis::module::ModuleInterface {
+    pub(in crate::analysis::facts::build) fn finish(
+        self,
+    ) -> crate::analysis::module::ModuleInterface {
         self.interface
     }
 
@@ -31,7 +33,10 @@ impl ModuleInterfaceBuilder {
         self.interface.add_local(name);
     }
 
-    pub(in crate::analysis::facts::build) fn record_pattern_locals(&mut self, pattern: &swc_ecma_ast::Pat) {
+    pub(in crate::analysis::facts::build) fn record_pattern_locals(
+        &mut self,
+        pattern: &swc_ecma_ast::Pat,
+    ) {
         let mut names = std::collections::BTreeSet::new();
         collect_pat_bindings(pattern, &mut names);
         for name in names {

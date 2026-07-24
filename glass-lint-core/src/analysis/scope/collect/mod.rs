@@ -8,9 +8,8 @@
 //! source order. It deliberately models only callback forms whose argument-to-
 //! parameter mapping is unambiguous; uncertain calls leave parameters local.
 
-use hashbrown::{HashMap, HashSet};
-
 use glass_lint_datastructures::{NameId, NameTable};
+use hashbrown::{HashMap, HashSet};
 use history::AssignmentHistory;
 use smol_str::SmolStr;
 use swc_common::BytePos;
@@ -42,8 +41,8 @@ pub(super) mod traversal;
 pub(super) mod visitor;
 
 pub(super) use compact_pat::{CompactPat, compact_pat};
-pub(in crate::analysis) use program::{ScopedProgram, ScopeCollectionIssue};
 pub(super) use program::{PropertyAliasAssignment, RootedPropertyMutation};
+pub(in crate::analysis) use program::{ScopeCollectionIssue, ScopedProgram};
 pub(super) use shape::{ScopeShape, ScopeShapeTable};
 
 /// Mutable state shared by declaration prepass and source-order collection.

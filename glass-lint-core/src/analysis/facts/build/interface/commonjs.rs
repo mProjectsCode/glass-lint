@@ -2,15 +2,12 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{AssignExpr, Expr, Lit, ObjectLit, Prop, PropOrSpread};
 
+use super::ModuleInterfaceBuilder;
 use crate::analysis::{
-    module::{
-        ModuleExport, COMMONJS_EXPORTS, COMMONJS_MODULE,
-    },
+    module::{COMMONJS_EXPORTS, COMMONJS_MODULE, ModuleExport},
     resolution::Resolver,
     syntax::{member_property_name, property_name},
 };
-
-use super::ModuleInterfaceBuilder;
 
 impl ModuleInterfaceBuilder {
     pub(in crate::analysis::facts::build) fn record_commonjs_export(
@@ -43,8 +40,7 @@ impl ModuleInterfaceBuilder {
             return;
         };
         if !is_commonjs_name(&parent.obj, COMMONJS_MODULE, resolver)
-            || member_property_name(&parent.prop).as_deref()
-                != Some(COMMONJS_EXPORTS)
+            || member_property_name(&parent.prop).as_deref() != Some(COMMONJS_EXPORTS)
         {
             return;
         }
@@ -55,11 +51,7 @@ impl ModuleInterfaceBuilder {
         self.record_commonjs_property_export(assignment, Some(property), resolver);
     }
 
-    fn record_module_exports_assignment(
-        &mut self,
-        assignment: &AssignExpr,
-        resolver: &Resolver,
-    ) {
+    fn record_module_exports_assignment(&mut self, assignment: &AssignExpr, resolver: &Resolver) {
         if self.interface.has_exports() {
             self.interface.mark_unknown_exports();
             return;

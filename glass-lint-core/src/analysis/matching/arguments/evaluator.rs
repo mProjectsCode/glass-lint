@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 
+use super::identity::{call_identity_matches, member_identity_matches, member_subject_matches};
 use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo, CallUnwrap, FactPayload, SemanticFact},
@@ -14,10 +15,6 @@ use crate::{
     api::compiler::rule::{
         EventPredicate, IdentityConstraint, QueryClause, QueryConstraint, SubjectConstraint,
     },
-};
-
-use super::identity::{
-    call_identity_matches, member_identity_matches, member_subject_matches,
 };
 
 pub(super) struct PreparedClausePaths {
@@ -150,7 +147,10 @@ impl<'a> MatcherEvaluator<'a> {
         self.identities?.get_parts(module, export)
     }
 
-    pub(super) fn argument_with_overlay<'b>(&'b self, argument: &'b CallArgInfo) -> ArgumentView<'b> {
+    pub(super) fn argument_with_overlay<'b>(
+        &'b self,
+        argument: &'b CallArgInfo,
+    ) -> ArgumentView<'b> {
         let mut view = ArgumentView::new(argument);
         if let Some(result_identities) = self.result_identities
             && let Some(value) = result_identities

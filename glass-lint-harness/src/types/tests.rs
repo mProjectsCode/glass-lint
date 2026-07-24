@@ -1,9 +1,6 @@
 use super::*;
 
-fn resolution(
-    kind: AdapterResolutionKind,
-    result: AdapterResolutionResult,
-) -> AdapterResolution {
+fn resolution(kind: AdapterResolutionKind, result: AdapterResolutionResult) -> AdapterResolution {
     AdapterResolution {
         importer: "main.js".into(),
         kind,

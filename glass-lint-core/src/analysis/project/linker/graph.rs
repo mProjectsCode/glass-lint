@@ -8,8 +8,7 @@ use super::scc::{build_scc_dag_and_order, strongly_connected_components};
 use crate::{
     analysis::{
         LinkedModuleTarget,
-        project::model::MAX_SCC_SIZE,
-        project::state::SccPartition,
+        project::{model::MAX_SCC_SIZE, state::SccPartition},
         status::{IncompleteReason, ResolutionKind, StatusScope},
     },
     project::is_internal_module_request as is_internal_request,

@@ -68,8 +68,7 @@ fn declare_classify(
 ) -> (DeclarationClassification, Expr, VarDeclKind) {
     let parsed = crate::parse(source, "facts.js").expect("source should parse");
     let (pattern, expr, kind) = find_first_declarator(&parsed.program);
-    let classification =
-        classify_declaration(collector, &expr, &pattern, derived_function_pattern);
+    let classification = classify_declaration(collector, &expr, &pattern, derived_function_pattern);
     (classification, expr, kind)
 }
 

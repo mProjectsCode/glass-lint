@@ -1,5 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::{
+    sink::{FunctionSinkSummary, FunctionSummary},
+    store::SummaryPathStore,
+};
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
     flow::{
@@ -9,9 +13,6 @@ use crate::analysis::{
     },
     value::{FunctionId, ValueId},
 };
-
-use super::sink::{FunctionSinkSummary, FunctionSummary};
-use super::store::SummaryPathStore;
 
 #[derive(Debug)]
 pub struct FunctionSummaries<'a> {
@@ -249,7 +250,11 @@ fn try_project_sink(
 
 #[cfg(test)]
 mod tests {
-    use crate::analysis::{facts, flow::effect::FunctionEffects, flow::plan::BoundFlowPlan, resolution::Resolver};
+    use crate::analysis::{
+        facts,
+        flow::{effect::FunctionEffects, plan::BoundFlowPlan},
+        resolution::Resolver,
+    };
 
     #[test]
     fn same_name_siblings_are_keyed_by_function_id() {

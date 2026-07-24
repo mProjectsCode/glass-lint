@@ -1,29 +1,20 @@
-use hashbrown::{HashMap, HashSet};
-
 use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
+use hashbrown::{HashMap, HashSet};
 use smol_str::SmolStr;
 use swc_ecma_ast::{ArrowExpr, Expr, Function, ImportDecl, Pat, VarDeclKind};
 
-use crate::{
-    analysis::{
-        SemanticBudget,
-        scope::{
-            BindingProvenance, ScopeId, ScopeKind, ScopedName,
-            query::rooted::RootedExprContext,
-        },
-        syntax::{
-            function_prototype_builtin, is_function_constructor_member, member_property_name,
-        },
-    },
-};
-
 use super::{
+    ScopeCollector,
+    bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
+    compact_pat::{CompactPat, compact_pat},
     history::AssignmentHistory,
     plan::ScopePlan,
-    compact_pat::{CompactPat, compact_pat},
     program::ScopeCollectionIssue,
-    bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
-    ScopeCollector,
+};
+use crate::analysis::{
+    SemanticBudget,
+    scope::{BindingProvenance, ScopeId, ScopeKind, ScopedName, query::rooted::RootedExprContext},
+    syntax::{function_prototype_builtin, is_function_constructor_member, member_property_name},
 };
 
 impl ScopeCollector<'_> {

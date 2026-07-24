@@ -1,7 +1,4 @@
-use std::{
-    cell::RefCell,
-    collections::BTreeMap,
-};
+use std::{cell::RefCell, collections::BTreeMap};
 
 use console::measure_text_width;
 

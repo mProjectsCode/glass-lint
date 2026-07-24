@@ -1,11 +1,10 @@
 use glass_lint_datastructures::PathSegment;
 
+use super::store::{SummaryPathId, SummaryPathStore};
 use crate::analysis::{
     facts::{CallArgInfo, FactStream, Frozen, ParameterBinding},
     value::{Value, ValueId, ValueTable},
 };
-
-use super::store::{SummaryPathId, SummaryPathStore};
 
 impl ParameterBinding {
     pub(super) fn project_argument(

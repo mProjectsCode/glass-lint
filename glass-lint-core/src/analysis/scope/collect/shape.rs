@@ -64,7 +64,12 @@ impl ScopeShapeTable {
     }
 
     #[cfg(test)]
-    pub(crate) fn remaining(&self, parent: Option<ScopeId>, span_lo: BytePos, kind: ScopeKind) -> usize {
+    pub(crate) fn remaining(
+        &self,
+        parent: Option<ScopeId>,
+        span_lo: BytePos,
+        kind: ScopeKind,
+    ) -> usize {
         self.children
             .get(&ScopeShapeKey {
                 parent,

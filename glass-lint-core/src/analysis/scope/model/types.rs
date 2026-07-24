@@ -4,12 +4,11 @@ use glass_lint_datastructures::{NameId, NamePath, SymbolPath};
 use smol_str::SmolStr;
 use swc_common::Span;
 
+use super::ScopeId;
 use crate::analysis::{
     syntax::{SymbolCallProvenance, SymbolMemberProvenance, constant::ConstValue},
     value::{BindingKey, BindingVersion},
 };
-
-use super::ScopeId;
 
 #[derive(Debug, Clone)]
 /// A rooted property write that may invalidate a global/member identity.

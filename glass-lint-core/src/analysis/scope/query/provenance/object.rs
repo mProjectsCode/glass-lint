@@ -32,7 +32,10 @@ impl FrozenScopeGraph {
         }
     }
 
-    pub(super) fn module_member_for_member(&self, member: &MemberExpr) -> Option<(SmolStr, SmolStr)> {
+    pub(super) fn module_member_for_member(
+        &self,
+        member: &MemberExpr,
+    ) -> Option<(SmolStr, SmolStr)> {
         let mut members = vec![self.member_property_name(member)?];
         let (module, base) = self.collect_module_member(&member.obj, &mut members)?;
         Some((module, Self::join_module_member(base.as_ref(), &members)))

@@ -1,7 +1,7 @@
 use glass_lint_datastructures::SymbolPath;
 
 use crate::analysis::{
-    scope::query::{BindingKey, BindingProvenance, FrozenScopeGraph, Span, MemberExpr, contains},
+    scope::query::{BindingKey, BindingProvenance, FrozenScopeGraph, MemberExpr, Span, contains},
     syntax::{expression_name, member_root_identifier},
 };
 

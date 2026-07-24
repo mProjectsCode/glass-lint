@@ -1,12 +1,11 @@
 use std::collections::BTreeMap;
 
-use hashbrown::HashSet;
-
 use glass_lint_datastructures::{NameId, NamePath};
+use hashbrown::HashSet;
 
 use crate::analysis::{
     scope::model::{
-        id::{ScopedName, ScopeId},
+        id::{ScopeId, ScopedName},
         types::{PropertyAliasFact, RootedPropertyMutationFact, ScopeEffect},
     },
     value::BindingKey,

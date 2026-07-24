@@ -59,8 +59,7 @@ fn fact_ids_are_sequential_and_deterministic() {
     );
     assert_eq!(
         ids1,
-        (0..u32::try_from(ids1.len()).expect("test fact count fits in u32"))
-            .collect::<Vec<_>>(),
+        (0..u32::try_from(ids1.len()).expect("test fact count fits in u32")).collect::<Vec<_>>(),
         "IDs must be sequential from 0"
     );
 }

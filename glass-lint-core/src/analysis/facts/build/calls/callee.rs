@@ -22,7 +22,8 @@ pub(in crate::analysis::facts::build) struct ResolvedCallee {
     pub(in crate::analysis::facts::build) rooted_chain: Option<SymbolPath>,
     pub(in crate::analysis::facts::build) module_member: Option<SymbolMemberProvenance>,
     pub(in crate::analysis::facts::build) returned_member: Option<(SymbolPath, SymbolPath)>,
-    pub(in crate::analysis::facts::build) bound_arguments: Option<Vec<Option<crate::analysis::facts::build::BoundArgument>>>,
+    pub(in crate::analysis::facts::build) bound_arguments:
+        Option<Vec<Option<crate::analysis::facts::build::BoundArgument>>>,
     pub(in crate::analysis::facts::build) instance_class: Option<(SmolStr, SmolStr)>,
     pub(in crate::analysis::facts::build) target_function: Option<FunctionId>,
 }

@@ -14,8 +14,7 @@ use crate::{
             plan::BoundFlowPlan,
             projector::{
                 CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowState,
-                MatchKind, ObjectFlowProjector, ObjectId, ValueId,
-                history::ReportEvidenceKey,
+                MatchKind, ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,
                 state::FlowEvidence,
             },
             state::FlowStateKey,

@@ -317,11 +317,7 @@ impl EvalState {
         }
     }
 
-    fn member_property_name(
-        &mut self,
-        prop: &MemberProp,
-        lookup: &impl Lookup,
-    ) -> Option<SmolStr> {
+    fn member_property_name(&mut self, prop: &MemberProp, lookup: &impl Lookup) -> Option<SmolStr> {
         match prop {
             MemberProp::Ident(ident) => Some(ident.sym.to_smolstr()),
             MemberProp::PrivateName(name) => Some(format!("#{}", name.name).to_smolstr()),

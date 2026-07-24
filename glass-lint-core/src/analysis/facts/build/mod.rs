@@ -15,8 +15,6 @@ mod interface;
 mod state;
 mod visitor;
 
-use self::instance::InstanceCallable;
-
 use std::collections::BTreeMap;
 
 use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
@@ -31,6 +29,7 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
+use self::instance::InstanceCallable;
 use crate::analysis::{
     facts::{
         Building, CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactKind, FactPayload,
