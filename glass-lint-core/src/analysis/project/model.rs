@@ -2,8 +2,7 @@
 //! identities remain owned by their module; the overlay stores qualified
 //! resolution results rather than merging lexical arenas.
 
-use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::{cell::RefCell, collections::BTreeMap};
 
 use smol_str::SmolStr;
 
@@ -19,9 +18,7 @@ use crate::{
         local::{LocalArtifact, ProjectModule},
         module::ModuleRequestId,
         name::NameTable,
-        status::{
-            AnalysisStatus, IncompleteReason, ParseFailureKind, StatusScope,
-        },
+        status::{AnalysisStatus, IncompleteReason, ParseFailureKind, StatusScope},
         syntax::SymbolCallProvenance,
         value::{FunctionId, ValueId},
     },
@@ -456,5 +453,4 @@ impl ProjectSemanticModel {
             .collect();
         (results, outcome)
     }
-
 }

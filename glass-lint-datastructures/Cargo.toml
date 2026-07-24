@@ -1,0 +1,20 @@
+[package]
+name = "glass-lint-datastructures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+indexmap.workspace = true
+smol_str.workspace = true
+smallvec.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[features]
+default = []
+serde = ["smol_str/serde"]
+
+[lints]
+workspace = true

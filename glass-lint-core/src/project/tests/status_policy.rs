@@ -1,4 +1,4 @@
-use crate::{api::rule::Category, AnalysisLimits, project::tests::*};
+use crate::{AnalysisLimits, api::rule::Category, project::tests::*};
 
 fn configured_linter(limits: AnalysisLimits) -> crate::Linter {
     test_linter_with_selection(crate::RuleSelection::default(), limits)

@@ -1,5 +1,7 @@
-use crate::{api::rule::MatcherDecl, project::tests::*};
-use crate::api::rule::Category;
+use crate::{
+    api::rule::{Category, MatcherDecl},
+    project::tests::*,
+};
 
 #[test]
 #[allow(clippy::too_many_lines)]
@@ -375,7 +377,7 @@ fn commonjs_export_aliases_preserve_external_provenance_across_modules() {
     project.add_resolved(
         "helper.js",
         "const { request } = require('web'); exports.send = request;",
-        [        ResolverOutcome::External {
+        [ResolverOutcome::External {
             package: PackageSpecifier::new("web").unwrap(),
         }],
     );
@@ -421,7 +423,7 @@ fn namespace_imports_follow_star_reexports() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export { request };",
-        [        ResolverOutcome::External {
+        [ResolverOutcome::External {
             package: PackageSpecifier::new("web").unwrap(),
         }],
     );
@@ -473,7 +475,7 @@ fn static_dynamic_imports_follow_namespace_exports() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export { request };",
-        [        ResolverOutcome::External {
+        [ResolverOutcome::External {
             package: PackageSpecifier::new("web").unwrap(),
         }],
     );
@@ -521,7 +523,7 @@ fn anonymous_commonjs_functions_remain_callable_across_modules() {
     project.add_resolved(
         "helper.js",
         "const { request } = require('web'); exports.send = () => request();",
-        [        ResolverOutcome::External {
+        [ResolverOutcome::External {
             package: PackageSpecifier::new("web").unwrap(),
         }],
     );
@@ -571,7 +573,7 @@ fn returned_callable_provenance_crosses_an_exported_function() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export function get() { return request; }",
-        [        ResolverOutcome::External {
+        [ResolverOutcome::External {
             package: PackageSpecifier::new("web").unwrap(),
         }],
     );
@@ -621,7 +623,7 @@ fn linked_external_call_arguments_are_projected_after_reexports() {
     project.add_resolved(
         "helper.js",
         "import { request } from 'web'; export { request as send };",
-        [        ResolverOutcome::External {
+        [ResolverOutcome::External {
             package: PackageSpecifier::new("web").unwrap(),
         }],
     );

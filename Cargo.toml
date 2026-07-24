@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "glass-lint-core",
+    "glass-lint-datastructures",
     "glass-lint-obsidian",
     "glass-lint-js",
     "glass-lint-harness",

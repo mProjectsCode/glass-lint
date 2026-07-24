@@ -33,8 +33,8 @@ const MAX_SOURCE_REFINEMENT_ROUNDS: usize = 64;
 const MAX_PENDING: usize = 65_536;
 const MAX_RELATED_EVIDENCE: usize = 8;
 
-/// Pre-computed qualified call targets keyed by (caller_module, call_event_fact).
-/// Populated once and reused across all cross-flow phases.
+/// Pre-computed qualified call targets keyed by (caller_module,
+/// call_event_fact). Populated once and reused across all cross-flow phases.
 pub(super) struct QualifiedCallGraph {
     targets: BTreeMap<(ModuleId, FactId), (ModuleId, FunctionId)>,
 }
@@ -403,11 +403,7 @@ impl FlowSources {
     /// Build the adjacency index in one pass over all modules, effects, and
     /// calls.  Each edge records that the destination key should receive
     /// candidates from the source key when the source key changes.
-    fn build_adjacency(
-        &mut self,
-        project: &ProjectSemanticModel,
-        call_graph: &QualifiedCallGraph,
-    ) {
+    fn build_adjacency(&mut self, project: &ProjectSemanticModel, call_graph: &QualifiedCallGraph) {
         for module in project.modules() {
             let stream = module.local().facts().stream();
             for effect in module.local().effects().iter_effects() {

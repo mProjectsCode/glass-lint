@@ -1,6 +1,6 @@
 //! Obsidian metadata-map traversal rule definition.
 
-use glass_lint_core::rules::{Category, ArgumentMatcher, Confidence, MatcherDecl, Rule, Severity};
+use glass_lint_core::rules::{ArgumentMatcher, Category, Confidence, MatcherDecl, Rule, Severity};
 
 const METADATA_MAPS: [&str; 2] = [
     "app.metadataCache.resolvedLinks",

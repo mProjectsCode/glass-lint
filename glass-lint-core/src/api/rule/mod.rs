@@ -209,9 +209,8 @@ mod tests {
     use super::*;
 
     fn build(id: &str, category: &str) -> Result<Rule, RuleBuildError> {
-        let cat = Category::new(category).map_err(|_| {
-            RuleBuildError::InvalidCategory(category.trim().to_string())
-        })?;
+        let cat = Category::new(category)
+            .map_err(|_| RuleBuildError::InvalidCategory(category.trim().to_string()))?;
         Rule::builder(id)
             .description("rule")
             .category(cat)
@@ -328,9 +327,7 @@ mod tests {
             .unwrap();
         assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
 
-        let decl = MatcherDecl::builder()
-            .import_package("pkg/subpath")
-            .build();
+        let decl = MatcherDecl::builder().import_package("pkg/subpath").build();
         assert!(decl.is_err());
     }
 }

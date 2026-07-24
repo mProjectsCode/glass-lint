@@ -541,6 +541,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "glass-lint-datastructures"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "serde_json",
+ "smallvec",
+ "smol_str",
+]
+
+[[package]]
 name = "glass-lint-harness"
 version = "0.1.0"
 dependencies = [

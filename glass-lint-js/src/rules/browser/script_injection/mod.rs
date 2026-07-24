@@ -1,8 +1,8 @@
 //! Browser executable-script-injection rule definition.
 
-use glass_lint_core::rules::{Category, 
-    Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl, ObjectEventMatcher,
-    ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+use glass_lint_core::rules::{
+    Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
+    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
 };
 
 /// Detects rooted script elements whose executable content is configured and

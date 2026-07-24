@@ -18,7 +18,6 @@ use crate::{
 };
 
 impl ProjectSemanticModel {
-
     /// Resolve an authored module/export pair across all matching requests.
     /// Conflicting request answers are rejected as ambiguous.
     pub(in crate::analysis) fn resolve_imported_identity(
@@ -197,5 +196,4 @@ impl ProjectSemanticModel {
 
         result
     }
-
 }

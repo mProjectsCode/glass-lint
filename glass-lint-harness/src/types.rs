@@ -421,16 +421,14 @@ impl TryFrom<&AdapterResolution> for (ResolutionRequestKind, ResolverOutcome) {
                 path: ProjectRelativePath::new(path).map_err(|error| error.to_string())?,
             },
             AdapterResolutionResult::External { package } => ResolverOutcome::External {
-                package: PackageSpecifier::new(package.clone())
-                    .map_err(|e| e.to_string())?,
+                package: PackageSpecifier::new(package.clone()).map_err(|e| e.to_string())?,
             },
             AdapterResolutionResult::Builtin { name } => ResolverOutcome::Builtin {
                 name: BuiltinModuleName::new(name.clone()).map_err(|e| e.to_string())?,
             },
             AdapterResolutionResult::Missing => ResolverOutcome::Missing,
             AdapterResolutionResult::OutsideProject { path } => ResolverOutcome::OutsideProject {
-                path: NormalizedOutsidePath::new(path.clone())
-                    .map_err(|e| e.to_string())?,
+                path: NormalizedOutsidePath::new(path.clone()).map_err(|e| e.to_string())?,
             },
             AdapterResolutionResult::Unsupported { reason } => ResolverOutcome::Unsupported {
                 reason: reason.clone(),

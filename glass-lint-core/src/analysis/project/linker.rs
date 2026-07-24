@@ -316,9 +316,7 @@ impl ProjectLinker {
                             format!("module does not export `{imported}`"),
                             self.modules.get(&module.id()).and_then(|module| {
                                 Some(crate::project::SourceLocation::new(
-                                    ProjectRelativePath::from_normalized(
-                                        module.path().to_string(),
-                                    ),
+                                    ProjectRelativePath::from_normalized(module.path().to_string()),
                                     module.source_context().range(request.span()).ok()?,
                                 ))
                             }),
@@ -492,13 +490,13 @@ impl ProjectLinker {
                         export: NAMESPACE_EXPORT.into(),
                     },
                     Some(LinkedModuleTarget::External { package }) => ExportResolution::External {
-                            module: package.as_str().to_smolstr(),
-                            export: NAMESPACE_EXPORT.into(),
-                        },
-                        Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
-                            module: name.as_str().to_smolstr(),
-                            export: NAMESPACE_EXPORT.into(),
-                        },
+                        module: package.as_str().to_smolstr(),
+                        export: NAMESPACE_EXPORT.into(),
+                    },
+                    Some(LinkedModuleTarget::Builtin { name }) => ExportResolution::External {
+                        module: name.as_str().to_smolstr(),
+                        export: NAMESPACE_EXPORT.into(),
+                    },
                     _ => ExportResolution::Unknown,
                 }
             }

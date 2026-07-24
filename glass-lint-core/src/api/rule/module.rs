@@ -99,10 +99,7 @@ mod tests {
     #[test]
     fn package_patterns_reject_non_packages() {
         for value in ["", "pkg/", "pkg/subpath", "./pkg", "/pkg", "https://pkg"] {
-            assert!(
-                ModuleSpecifierPattern::package(value).is_err(),
-                "{value}"
-            );
+            assert!(ModuleSpecifierPattern::package(value).is_err(), "{value}");
         }
     }
 }

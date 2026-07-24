@@ -129,22 +129,13 @@ impl ExportLookupCache {
         }
     }
 
-    pub fn get(
-        &self,
-        module: ModuleId,
-        name: &SmolStr,
-    ) -> Option<&Option<ExportResolution>> {
-        // Construct a key for lookup without cloning name (BTreeMap::get needs owned key).
-        // A SmolStr clone is cheap (small-string optimization).
+    pub fn get(&self, module: ModuleId, name: &SmolStr) -> Option<&Option<ExportResolution>> {
+        // Construct a key for lookup without cloning name (BTreeMap::get needs owned
+        // key). A SmolStr clone is cheap (small-string optimization).
         self.entries.get(&(module, name.clone()))
     }
 
-    pub fn insert(
-        &mut self,
-        module: ModuleId,
-        name: SmolStr,
-        value: Option<ExportResolution>,
-    ) {
+    pub fn insert(&mut self, module: ModuleId, name: SmolStr, value: Option<ExportResolution>) {
         self.entries.insert((module, name), value);
     }
 }

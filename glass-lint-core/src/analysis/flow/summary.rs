@@ -440,8 +440,7 @@ impl<'a> FunctionSummaries<'a> {
         }
 
         // Seed worklist with all functions; first round processes every caller.
-        let mut worklist: BTreeSet<FunctionId> =
-            self.by_id.iter().map(|(id, _)| id).collect();
+        let mut worklist: BTreeSet<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
 
         for _ in 0..MAX_SUMMARY_ROUNDS {
             if worklist.is_empty() {

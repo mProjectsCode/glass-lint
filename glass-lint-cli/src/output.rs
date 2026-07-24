@@ -324,7 +324,10 @@ fn pretty_options(config: &Config) -> PrettyOptions {
 fn base_summary_line(summary: AnalysisReportSummary) -> String {
     format!(
         "{} file(s), {} finding(s), {} parse diagnostic(s), {} analysis diagnostic(s)",
-        summary.files(), summary.findings(), summary.parse_diagnostics(), summary.file_diagnostics()
+        summary.files(),
+        summary.findings(),
+        summary.parse_diagnostics(),
+        summary.file_diagnostics()
     )
 }
 

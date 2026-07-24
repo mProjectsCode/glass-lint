@@ -91,9 +91,8 @@ impl PartialEq<&str> for PackageSpecifier {
     }
 }
 
-
-
-/// A validated builtin module name (e.g., "node:fs", "node:path", "node:buffer").
+/// A validated builtin module name (e.g., "node:fs", "node:path",
+/// "node:buffer").
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct BuiltinModuleName(SmolStr);
 
@@ -142,8 +141,6 @@ impl PartialEq<&str> for BuiltinModuleName {
         self.as_str() == *other
     }
 }
-
-
 
 /// A normalized outside-project path.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -204,8 +201,6 @@ impl AsRef<std::path::Path> for NormalizedOutsidePath {
         std::path::Path::new(&self.0)
     }
 }
-
-
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct SourceFile {

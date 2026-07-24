@@ -1,8 +1,8 @@
 //! Browser remote-DOM-resource flow rule definition.
 
-use glass_lint_core::rules::{Category, 
-    Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl, ObjectEventMatcher,
-    ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
+use glass_lint_core::rules::{
+    Category, Confidence, FlowCompletion, FlowCondition, FlowSinkMatcher, MatcherDecl,
+    ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
 };
 
 /// Detects a script or image created by `document.createElement`, configured
