@@ -13,6 +13,7 @@ use std::collections::BTreeSet;
 
 use crate::project::{LinkedModuleTarget, ModuleId};
 
+mod budget;
 mod evidence;
 mod facts;
 pub mod flow;
@@ -27,6 +28,8 @@ mod scope;
 mod status;
 mod syntax;
 mod value;
+
+pub(in crate::analysis) use budget::SemanticBudget;
 
 pub use local::{
     ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, ProjectModule,

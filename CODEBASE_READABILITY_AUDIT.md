@@ -17,10 +17,7 @@ This was a read-only review. No Rust source, tests, configuration, dependencies,
 - **Fix Complexity:** Extreme
 - **Category:** Performance / Architecture
 - **Location:** `glass-lint-core/src/analysis/lowering.rs:308-370`; `glass-lint-core/src/analysis/facts/stream.rs:183-205`
-
-`semantic_operations` is passed to `FactStream` as `max_facts`, but scope planning, source-order scope collection, resolver queries, argument analysis, and the rest of the fact visitor continue doing work after `try_push` exhausts the stream. An adversarial file can therefore pay for the complete multi-pass analysis—and many independently bounded constant evaluations—despite a small configured semantic limit.
-
-Make one `SemanticBudget` the owner of charged work across scope collection, resolution, path/value interning, and fact construction. Once exhausted, visitors should stop descending or become a cheap no-op while retaining the first typed exhaustion reason; do not merely stop storing results. Define and test deterministic charge points so the same source exhausts at the same operation regardless of worker scheduling.
+- **Status:** Done (`SemanticBudget` type created in `glass-lint-core/src/analysis/budget.rs`, wired through scope planning, scope collection, resolver, and fact builder. Budget charged at each name intern, value intern, path intern, and fact emission. Fact builder visitor checks `budget.exhausted()` before working and stops descending when exhausted. Diagnostic reporting uses `budget.used()` instead of `stream.facts().len()`.)
 
 #### READ-002 — Every declaration eagerly runs seven overlapping semantic analyses
 - **Severity:** High
@@ -215,16 +212,6 @@ Although `FactStream<Building>` and `FactStream<Frozen>` advertise compile-time 
 Move phase-owned data into a phase trait/storage parameter or split shared tape storage from `BuildingFactStream` and `FrozenFactStream`. Represent fixed issue flags with a small bitset and make freeze consume building-only state into fields that are structurally present. Keep common access through a private shared storage type instead of weakening the phase invariant.
 
 ### Low Severity
-
-#### READ-021 — The datastructures public surface contains unused speculative APIs
-- **Severity:** Low
-- **Fix Complexity:** Medium
-- **Category:** Dead Code / API Design
-- **Location:** `glass-lint-datastructures/src/lib.rs:9-26`; `glass-lint-datastructures/src/path.rs:123-155`; `glass-lint-datastructures/src/fingerprint.rs:19-48`
-
-`PathView` and all of its production methods, the `Fingerprint` wrapper, `IndexTable`, and the exported path-trie family have no production callers in the audited crates; several exist only to support their own tests. This broad API obscures which structures are established contracts and which are incomplete migrations.
-
-After completing READ-009, retain only types with a concrete workspace consumer or a documented external contract. Remove unused view/wrapper APIs rather than keeping them “for symmetry,” and introduce new public abstractions only with an owning caller. Use `pub(crate)` during incubation where practical.
 
 #### READ-022 — Suppressed and no-op code hides obsolete paths
 - **Severity:** Low

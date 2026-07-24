@@ -21,7 +21,7 @@ use crate::analysis::{
     },
 };
 
-impl ScopeCollector {
+impl ScopeCollector<'_> {
     /// Resolve a module export, namespace member, dynamic import, or require
     /// expression while preserving lexical shadowing checks.
     pub(super) fn module_alias_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {

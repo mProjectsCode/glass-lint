@@ -78,9 +78,9 @@ impl InstanceCallable {
 /// matcher-independent module interface. The builder owns traversal state,
 /// call-result tracking, and instance-level callable resolution — all of
 /// which are discarded when `into_parts()` finalizes the stream.
-pub struct FactBuilder<'a> {
+pub struct FactBuilder<'builder, 'resolver> {
     /// Scope and provenance answers are prepared before this AST walk.
-    resolver: &'a mut Resolver,
+    resolver: &'builder mut Resolver<'resolver>,
     /// Facts are appended in source traversal order and never rewritten.
     stream: FactStream<Building>,
     /// Traversal-only state is kept separate from fact allocation and indexing.
@@ -94,7 +94,7 @@ pub struct FactBuilder<'a> {
     interface: interface::ModuleInterfaceBuilder,
 }
 
-impl<'a> FactBuilder<'a> {
+impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
     pub(super) fn name_path(&self, path: &SymbolPath) -> Option<NamePath> {
         self.resolver.name_path(path)
     }
@@ -111,11 +111,14 @@ impl<'a> FactBuilder<'a> {
     }
 
     #[cfg(test)]
-    pub(super) fn new(resolver: &'a mut Resolver) -> Self {
+    pub(super) fn new(resolver: &'builder mut Resolver<'resolver>) -> Self {
         Self::with_limit(resolver, crate::analysis::facts::MAX_FACTS)
     }
 
-    pub fn with_limit(resolver: &'a mut Resolver, max_facts: usize) -> Self {
+    pub fn with_limit(
+        resolver: &'builder mut Resolver<'resolver>,
+        max_facts: usize,
+    ) -> Self {
         Self {
             resolver,
             stream: FactStream::with_limit(max_facts),
@@ -131,6 +134,10 @@ impl<'a> FactBuilder<'a> {
     }
 
     fn append_path(&mut self, parent: PathId, segment: PathSegmentInput<'_>) -> PathId {
+        self.resolver.budget.try_charge();
+        if self.resolver.budget.exhausted() {
+            return PathId::EMPTY;
+        }
         let segment = match segment {
             PathSegmentInput::Property(name) => self
                 .intern_name(Some(name))
@@ -150,6 +157,7 @@ impl<'a> FactBuilder<'a> {
 
     fn intern_name(&mut self, name: Option<&str>) -> Option<glass_lint_datastructures::NameId> {
         name.and_then(|name| {
+            self.resolver.budget.try_charge();
             if let Ok(id) = self.resolver.intern_name(name) {
                 Some(id)
             } else {
@@ -160,6 +168,9 @@ impl<'a> FactBuilder<'a> {
     }
 
     fn emit(&mut self, kind: FactKind, span: Span, payload: FactPayload) {
+        if self.resolver.budget.exhausted() {
+            return;
+        }
         #[cfg(not(test))]
         let _ = kind;
         let scope = self.scope_at(span);
@@ -175,6 +186,7 @@ impl<'a> FactBuilder<'a> {
         let Some(span) = normalized_span else {
             return;
         };
+        self.resolver.budget.try_charge();
         let _ = self
             .stream
             .try_push(span, self.resolver.function_scope_at(scope), kind, payload);
@@ -323,7 +335,7 @@ impl<'a> FactBuilder<'a> {
 /// Build the canonical fact stream used by fact-construction tests.
 pub fn build_test_stream<'a>(
     program: &'a swc_ecma_ast::Program,
-    resolver: &'a mut Resolver,
+    resolver: &'a mut Resolver<'a>,
 ) -> FactStream<crate::analysis::facts::Frozen> {
     let mut builder = FactBuilder::new(resolver);
     program.visit_with(&mut builder);

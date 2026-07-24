@@ -11,7 +11,7 @@ use crate::analysis::facts::build::{
     member_property_name,
 };
 
-impl FactBuilder<'_> {
+impl FactBuilder<'_, '_> {
     /// Emit the write semantics for identifier, member, and destructuring
     /// assignments, including the module-interface consequences of CommonJS
     /// export writes.

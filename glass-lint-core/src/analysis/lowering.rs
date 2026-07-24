@@ -13,7 +13,7 @@ use swc_ecma_visit::VisitWith;
 use crate::{
     AnalysisLimits, Environment, ParseDiagnostic,
     analysis::{
-        LocatedSourceContext, SemanticArtifact,
+        LocatedSourceContext, SemanticArtifact, SemanticBudget,
         facts::{self, SemanticFacts},
         flow::effect::FunctionEffects,
         module,
@@ -231,9 +231,11 @@ fn check_facts_budget(
     stream: &facts::FactStream<facts::Building>,
     resolver: &resolution::Resolver,
     limits: &AnalysisLimits,
+    budget: &SemanticBudget,
 ) -> Option<IncompleteReason> {
     let name_exhausted = resolver.name_table_exhausted();
-    if stream.budget_exhausted()
+    if budget.exhausted()
+        || stream.budget_exhausted()
         || stream.path_exhausted()
         || (resolver.value_arena_exhausted() && !name_exhausted)
         || (!stream.is_structurally_valid() && !stream.name_exhausted())
@@ -241,7 +243,7 @@ fn check_facts_budget(
         Some(IncompleteReason::BudgetExhausted {
             component: AnalysisComponent::Facts,
             limit: limits.semantic_operations(),
-            observed: Some(stream.facts().len()),
+            observed: Some(budget.used()),
         })
     } else {
         None
@@ -312,10 +314,12 @@ impl LocalLowering<'_> {
             coordinates,
             name_limit,
         } = self;
+        let budget = SemanticBudget::new(limits.semantic_operations());
         let names = NameTable::with_max_entries(name_limit);
-        let scoped_program = ScopeGraph::collect_scoped_program(program, environment, names);
+        let scoped_program =
+            ScopeGraph::collect_scoped_program(program, environment, names, &budget);
         let (scope_graph, issues) = scoped_program.into_parts();
-        let mut resolver = resolution::Resolver::new(scope_graph, coordinates.clone());
+        let mut resolver = resolution::Resolver::new(scope_graph, coordinates.clone(), &budget);
 
         let mut builder =
             facts::build::FactBuilder::with_limit(&mut resolver, limits.semantic_operations());
@@ -335,7 +339,7 @@ impl LocalLowering<'_> {
             );
         }
 
-        if let Some(reason) = check_facts_budget(&stream, &resolver, limits) {
+        if let Some(reason) = check_facts_budget(&stream, &resolver, limits, &budget) {
             status.record(StatusScope::Project, reason);
         }
         if let Some(reason) = check_invalid_parser_span(&stream) {

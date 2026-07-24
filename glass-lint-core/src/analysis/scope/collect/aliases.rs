@@ -17,7 +17,7 @@ use crate::analysis::{
     syntax::property_name,
 };
 
-impl ScopeCollector {
+impl ScopeCollector<'_> {
     /// Record aliases introduced by a destructuring declaration.
     ///
     /// This deliberately stops at unsupported pattern forms. A partial

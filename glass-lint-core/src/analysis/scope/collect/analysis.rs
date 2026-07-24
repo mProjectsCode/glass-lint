@@ -210,14 +210,14 @@ mod tests {
     };
 
     /// Parse, predeclare, and visit a program; expose the final collector.
-    fn run(source: &str) -> ScopeCollector {
+    fn run(source: &str) -> ScopeCollector<'static> {
         let parsed = crate::parse(source, "facts.js").expect("source should parse");
         let names = glass_lint_datastructures::NameTable::default();
-        let planner = ScopePlanner::new(parsed.program.span(), names);
+        let planner = ScopePlanner::new_for_test(parsed.program.span(), names);
         let mut plan_traversal = ScopeTraversal::new(planner);
         parsed.program.visit_children_with(&mut plan_traversal);
         let plan = plan_traversal.into_pass().finish();
-        let collector = ScopeCollector::from_plan(plan);
+        let collector = ScopeCollector::from_plan_for_test(plan);
         let mut collect_traversal = ScopeTraversal::new(collector);
         parsed.program.visit_children_with(&mut collect_traversal);
         collect_traversal.into_pass()

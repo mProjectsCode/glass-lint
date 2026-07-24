@@ -29,6 +29,7 @@ use crate::{
             member_property_name, member_root_identifier, module_export_name, property_name,
         },
         value::{BindingId, BindingVersion, FunctionId},
+        SemanticBudget,
     },
 };
 
@@ -50,7 +51,7 @@ use plan::ScopePlan;
 /// The prepass establishes lexical binding identity; the normal visitor then
 /// reuses that scope tree while recording assignments and supported
 /// provenance at each use position.
-pub(super) struct ScopeCollector {
+pub(super) struct ScopeCollector<'a> {
     /// Lexical scopes in predeclaration/traversal order.
     pub(super) scopes: Vec<LexicalScope>,
     /// Current lexical path during AST traversal.
@@ -88,6 +89,8 @@ pub(super) struct ScopeCollector {
     scope_shapes: ScopeShapeTable,
     /// A phase mismatch is a conservative incomplete analysis, not a panic.
     scope_issues: Vec<ScopeCollectionIssue>,
+    /// Shared semantic budget charged for each name interning operation.
+    budget: &'a SemanticBudget,
     #[cfg(test)]
     scope_lookups: usize,
 }
@@ -260,9 +263,14 @@ fn compact_pat(pattern: &Pat) -> CompactPat {
     }
 }
 
-impl ScopeCollector {
-    pub(super) fn from_plan(plan: ScopePlan) -> Self {
-        Self {
+impl ScopeCollector<'_> {
+    #[cfg(test)]
+    pub(super) fn from_plan_for_test(plan: ScopePlan) -> ScopeCollector<'static> {
+        Self::from_plan(plan, Box::leak(Box::new(SemanticBudget::default())))
+    }
+
+    pub(super) fn from_plan(plan: ScopePlan, budget: &SemanticBudget) -> ScopeCollector<'_> {
+        ScopeCollector {
             scopes: plan.scopes,
             stack: vec![0],
             assignments: Vec::new(),
@@ -281,6 +289,7 @@ impl ScopeCollector {
             version_counters: BTreeMap::new(),
             scope_shapes: plan.scope_shapes,
             scope_issues: Vec::new(),
+            budget,
             #[cfg(test)]
             scope_lookups: 0,
         }
@@ -446,6 +455,7 @@ impl ScopeCollector {
         provenance: BindingProvenance,
     ) {
         let name = name.into();
+        self.budget.try_charge();
         let Ok(name) = self.names.intern(name.as_str()) else {
             self.name_exhausted = true;
             return;
@@ -457,12 +467,14 @@ impl ScopeCollector {
     fn intern_provenance_strings(&mut self, provenance: &BindingProvenance) {
         match provenance {
             BindingProvenance::StaticString(value) => {
+                self.budget.try_charge();
                 if self.names.intern(value.as_str()).is_err() {
                     self.name_exhausted = true;
                 }
             }
             BindingProvenance::StaticStringArray(values) => {
                 for value in values {
+                    self.budget.try_charge();
                     if self.names.intern(value.as_str()).is_err() {
                         self.name_exhausted = true;
                     }
@@ -557,6 +569,7 @@ impl ScopeCollector {
         name: &str,
         provenance: BindingProvenance,
     ) {
+        self.budget.try_charge();
         let Ok(name_id) = self.names.intern(name) else {
             self.name_exhausted = true;
             return;
@@ -692,7 +705,7 @@ impl ScopeCollector {
     }
 }
 
-impl RootedExprContext for ScopeCollector {
+impl RootedExprContext for ScopeCollector<'_> {
     fn rooted_ident_chain(&self, ident: &swc_ecma_ast::Ident) -> Option<SymbolPath> {
         match self.visible_binding(ident.sym.as_ref()) {
             Some(

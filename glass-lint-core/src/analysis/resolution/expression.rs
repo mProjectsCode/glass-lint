@@ -15,7 +15,7 @@ use crate::analysis::{
     value::MAX_VALUES,
 };
 
-impl Resolver {
+impl Resolver<'_> {
     /// Narrow query: return only the interned value ID for an identifier,
     /// avoiding a clone of the full `ResolvedValue` on cache hits.
     pub(in crate::analysis) fn resolve_ident_id(&mut self, ident: &Ident) -> ValueId {

@@ -16,6 +16,7 @@ use super::{ScopeShape, ScopeShapeTable, traversal::ScopePass};
 use crate::analysis::{
     scope::{BindingProvenance, LexicalScope, ScopeId, ScopeKind},
     syntax::{collect_pat_bindings, module_export_name},
+    SemanticBudget,
 };
 
 /// Immutable declaration result consumed by [`super::ScopeCollector`].
@@ -26,19 +27,33 @@ pub(in crate::analysis::scope) struct ScopePlan {
     pub(super) name_exhausted: bool,
 }
 
-pub(in crate::analysis::scope) struct ScopePlanner {
+pub(in crate::analysis::scope) struct ScopePlanner<'a> {
     names: NameTable,
     scopes: Vec<LexicalScope>,
     stack: Vec<usize>,
     scope_shapes: ScopeShapeTable,
     name_exhausted: bool,
+    budget: &'a SemanticBudget,
 }
 
-impl ScopePlanner {
+impl ScopePlanner<'_> {
+    #[cfg(test)]
+    pub(in crate::analysis::scope) fn new_for_test(
+        program_span: swc_common::Span,
+        names: NameTable,
+    ) -> ScopePlanner<'static> {
+        Self::new(
+            program_span,
+            names,
+            Box::leak(Box::new(SemanticBudget::default())),
+        )
+    }
+
     pub(in crate::analysis::scope) fn new(
         program_span: swc_common::Span,
         names: NameTable,
-    ) -> Self {
+        budget: &SemanticBudget,
+    ) -> ScopePlanner<'_> {
         let mut names = names;
         let mut name_exhausted = false;
         for name in [
@@ -50,11 +65,12 @@ impl ScopePlanner {
             "apply",
             "bind",
         ] {
+            budget.try_charge();
             if names.intern(name).is_err() {
                 name_exhausted = true;
             }
         }
-        Self {
+        ScopePlanner {
             names,
             scopes: vec![LexicalScope {
                 span: program_span,
@@ -66,6 +82,7 @@ impl ScopePlanner {
             stack: vec![0],
             scope_shapes: ScopeShapeTable::new(),
             name_exhausted,
+            budget,
         }
     }
 
@@ -84,6 +101,7 @@ impl ScopePlanner {
 
     fn insert(&mut self, scope: ScopeId, name: impl Into<SmolStr>, provenance: BindingProvenance) {
         let name = name.into();
+        self.budget.try_charge();
         let Ok(name_id) = self.names.intern(name.as_str()) else {
             self.name_exhausted = true;
             return;
@@ -183,7 +201,7 @@ impl ScopePlanner {
     }
 }
 
-impl ScopePass for ScopePlanner {
+impl ScopePass for ScopePlanner<'_> {
     fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
         self.push_scope(span, kind);
     }
@@ -197,24 +215,27 @@ impl ScopePass for ScopePlanner {
     }
 
     fn visit_ident(&mut self, ident: &Ident) {
+        self.budget.try_charge();
         if self.names.intern(ident.sym.as_ref()).is_err() {
             self.name_exhausted = true;
         }
     }
 
     fn visit_member_expr(&mut self, member: &MemberExpr) {
-        if let Some(property) = crate::analysis::syntax::member_property_name(&member.prop)
-            && self.names.intern(property.as_str()).is_err()
-        {
-            self.name_exhausted = true;
+        if let Some(property) = crate::analysis::syntax::member_property_name(&member.prop) {
+            self.budget.try_charge();
+            if self.names.intern(property.as_str()).is_err() {
+                self.name_exhausted = true;
+            }
         }
     }
 
     fn visit_prop_name(&mut self, property: &PropName) {
-        if let Some(property) = crate::analysis::syntax::property_name(property)
-            && self.names.intern(property.as_str()).is_err()
-        {
-            self.name_exhausted = true;
+        if let Some(property) = crate::analysis::syntax::property_name(property) {
+            self.budget.try_charge();
+            if self.names.intern(property.as_str()).is_err() {
+                self.name_exhausted = true;
+            }
         }
     }
 

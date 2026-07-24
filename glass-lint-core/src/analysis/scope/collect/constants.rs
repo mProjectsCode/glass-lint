@@ -12,7 +12,7 @@ use crate::analysis::{
     syntax::constant::{ConstValue, EvalState, Lookup},
 };
 
-impl Lookup for ScopeCollector {
+impl Lookup for ScopeCollector<'_> {
     /// Resolve only constant-shaped binding provenances from the current scope.
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
         let resolve = |key| self.names.resolve(key).map(SmolStr::new);

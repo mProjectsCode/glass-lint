@@ -26,7 +26,7 @@ use crate::analysis::{
     },
 };
 
-impl ScopePass for ScopeCollector {
+impl ScopePass for ScopeCollector<'_> {
     fn push_scope(&mut self, span: swc_common::Span, kind: ScopeKind) {
         self.push_scope(span, kind);
     }
@@ -55,15 +55,18 @@ impl ScopePass for ScopeCollector {
 
             // Stash pending function expression names so after_arrow /
             // after_function hooks can record function_scopes metadata.
-            if let (Pat::Ident(ident), Some(init)) = (&declarator.name, init)
-                && let Ok(name_id) = self.names.intern(ident.id.sym.as_ref())
-            {
-                if let Expr::Arrow(arrow) = init {
-                    self.pending_function_names
-                        .insert(arrow.span.lo, (scope, name_id));
-                } else if let Expr::Fn(func_expr) = init {
-                    self.pending_function_names
-                        .insert(func_expr.function.span.lo, (scope, name_id));
+            if let (Pat::Ident(ident), Some(init)) = (&declarator.name, init) {
+                self.budget.try_charge();
+                if let Ok(name_id) = self.names.intern(ident.id.sym.as_ref()) {
+                    if let Expr::Arrow(arrow) = init {
+                        self.pending_function_names
+                            .insert(arrow.span.lo, (scope, name_id));
+                    } else if let Expr::Fn(func_expr) = init {
+                        self.pending_function_names
+                            .insert(func_expr.function.span.lo, (scope, name_id));
+                    }
+                } else {
+                    self.name_exhausted = true;
                 }
             }
 
@@ -162,6 +165,7 @@ impl ScopePass for ScopeCollector {
                     DynamicEvaluation { span: call.span },
                 ));
             }
+            self.budget.try_charge();
             if let Ok(callee_name) = self.names.intern(callee.sym.as_ref()) {
                 self.calls.push((
                     self.current_scope(),
@@ -189,6 +193,7 @@ impl ScopePass for ScopeCollector {
 
     fn after_fn_decl(&mut self, fn_decl: &FnDecl, scope: ScopeId) {
         let parameters = Self::function_parameters(&fn_decl.function);
+        self.budget.try_charge();
         if let Ok(name_id) = self.names.intern(fn_decl.ident.sym.as_ref()) {
             let parent = self
                 .scopes

@@ -22,6 +22,8 @@ use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
+use crate::analysis::SemanticBudget;
+
 mod collect;
 mod provenance_const;
 mod query;
@@ -34,10 +36,12 @@ use provenance_const::provenance_to_const_value;
 impl ScopeGraph {
     #[cfg(test)]
     pub(super) fn collect(program: &Program) -> FrozenScopeGraph {
+        let budget = SemanticBudget::default();
         let scoped = Self::collect_scoped_program(
             program,
             &crate::Environment::default(),
             NameTable::default(),
+            &budget,
         );
         scoped.into_parts().0
     }
@@ -46,13 +50,14 @@ impl ScopeGraph {
         program: &Program,
         environment: &crate::Environment,
         names: NameTable,
+        budget: &SemanticBudget,
     ) -> collect::ScopedProgram {
-        let planner = ScopePlanner::new(program.span(), names);
+        let planner = ScopePlanner::new(program.span(), names, budget);
         let mut plan_traversal = ScopeTraversal::new(planner);
         program.visit_children_with(&mut plan_traversal);
         let plan = plan_traversal.into_pass().finish();
 
-        let collector = ScopeCollector::from_plan(plan);
+        let collector = ScopeCollector::from_plan(plan, budget);
         let mut collect_traversal = ScopeTraversal::new(collector);
         program.visit_children_with(&mut collect_traversal);
         collect_traversal.into_pass().freeze(environment)

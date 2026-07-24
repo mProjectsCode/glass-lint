@@ -3,15 +3,15 @@ use swc_ecma_visit::VisitWith;
 
 use super::{traversal::ScopeTraversal, *};
 
-fn collect(source: &str) -> ScopeCollector {
+fn collect(source: &str) -> ScopeCollector<'static> {
     let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");
     let names = glass_lint_datastructures::NameTable::default();
-    let planner = plan::ScopePlanner::new(parsed.program.span(), names);
+    let planner = plan::ScopePlanner::new_for_test(parsed.program.span(), names);
     let mut plan_traversal = ScopeTraversal::new(planner);
     parsed.program.visit_children_with(&mut plan_traversal);
     let plan = plan_traversal.into_pass().finish();
     let predeclared = plan.scope_shapes.shapes_len();
-    let collector = ScopeCollector::from_plan(plan);
+    let collector = ScopeCollector::from_plan_for_test(plan);
     let mut collect_traversal = ScopeTraversal::new(collector);
     parsed.program.visit_children_with(&mut collect_traversal);
     let collector = collect_traversal.into_pass();
@@ -44,14 +44,14 @@ fn scope_fingerprint(collector: &ScopeCollector) -> Vec<String> {
         .collect()
 }
 
-fn planned_scopes(span: Span, kinds: &[ScopeKind]) -> ScopeCollector {
+fn planned_scopes(span: Span, kinds: &[ScopeKind]) -> ScopeCollector<'static> {
     let names = glass_lint_datastructures::NameTable::default();
-    let mut planner = plan::ScopePlanner::new(span, names);
+    let mut planner = plan::ScopePlanner::new_for_test(span, names);
     for &kind in kinds {
         planner.push_scope(span, kind);
         planner.pop_scope();
     }
-    ScopeCollector::from_plan(planner.finish())
+    ScopeCollector::from_plan_for_test(planner.finish())
 }
 
 #[test]

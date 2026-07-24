@@ -10,7 +10,7 @@ use crate::analysis::resolution::{BindingKey, ConstValue, Resolver, Value, Value
 
 const MAX_CONST_DEPTH: usize = 32;
 
-impl Resolver {
+impl Resolver<'_> {
     /// Read a bounded constant value from the abstract value arena.
     ///
     /// The owned value arena remains stable across the entire recursive

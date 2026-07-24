@@ -13,7 +13,7 @@ use crate::analysis::{
     syntax::member_property_name,
 };
 
-impl ScopeCollector {
+impl ScopeCollector<'_> {
     /// Resolve the proven parameter aliases shared by all compatible calls to
     /// a helper. Conflicting call sites are discarded rather than merged:
     /// retaining an ambiguous alias would leak one caller's provenance into

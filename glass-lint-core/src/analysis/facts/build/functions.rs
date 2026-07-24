@@ -16,7 +16,7 @@ use crate::analysis::facts::{
     },
 };
 
-impl FactBuilder<'_> {
+impl FactBuilder<'_, '_> {
     /// Return the proven class provenance for the current non-static method.
     pub(super) fn current_class(&self) -> Option<(SmolStr, SmolStr)> {
         self.traversal.current_class()

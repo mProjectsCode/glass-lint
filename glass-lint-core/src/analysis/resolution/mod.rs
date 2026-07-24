@@ -38,6 +38,7 @@ use crate::analysis::{
         constant::{self as syntax_constant, ConstValue, EvalState, Lookup},
     },
     value::{BindingKey, Value, ValueId, ValueTable},
+    SemanticBudget,
 };
 
 #[derive(Debug, Clone)]
@@ -116,7 +117,7 @@ struct ResolverCache {
 /// to the versioned values consumed by matchers. Resolution is cached by
 /// source position; recursive lookups are guarded. Unknown values, cycles,
 /// and exhausted arena entries become local/unknown provenance.
-pub(super) struct Resolver {
+pub(super) struct Resolver<'a> {
     /// Scope/provenance seeds from the lexical collection pass.
     scopes: FrozenScopeGraph,
     /// SWC-to-domain span conversion and validation.
@@ -126,9 +127,11 @@ pub(super) struct Resolver {
     values: ValueTable,
     /// Resolution cache, fresh-object map, and recursion guard.
     cache: ResolverCache,
+    /// Shared semantic budget charged for each intern and resolution step.
+    pub(super) budget: &'a SemanticBudget,
 }
 
-impl Lookup for Resolver {
+impl Lookup for Resolver<'_> {
     fn ident(&self, ident: &Ident, _state: &mut EvalState) -> ConstValue {
         self.scopes.ident_value_seed(ident).constant
     }
@@ -149,7 +152,7 @@ impl Lookup for Resolver {
     }
 }
 
-impl Resolver {
+impl Resolver<'_> {
     /// Consume the resolver and return the name and value tables together,
     /// avoiding a clone of the name table.
     pub(in crate::analysis) fn into_parts(self) -> (NameTable, ValueTable) {
@@ -170,7 +173,7 @@ impl Resolver {
     }
 
     #[cfg(test)]
-    pub(in crate::analysis) fn collect(program: &Program) -> Self {
+    pub(in crate::analysis) fn collect(program: &Program) -> Resolver<'static> {
         let mut environment = Environment::default();
         environment
             .add_globals([
@@ -188,7 +191,7 @@ impl Resolver {
         program: &Program,
         environment: &Environment,
         coordinates: SpanNormalizer,
-    ) -> Self {
+    ) -> Resolver<'static> {
         use crate::analysis::name::MAX_NAMES;
 
         Self::collect_with_name_limit(program, environment, coordinates, MAX_NAMES)
@@ -200,25 +203,32 @@ impl Resolver {
         environment: &Environment,
         coordinates: SpanNormalizer,
         name_limit: usize,
-    ) -> Self {
+    ) -> Resolver<'static> {
+        let budget = SemanticBudget::default();
         let names = NameTable::with_max_entries(name_limit);
-        let scopes = ScopeGraph::collect_scoped_program(program, environment, names)
+        let scopes = ScopeGraph::collect_scoped_program(program, environment, names, &budget)
             .into_parts()
             .0;
-        Self::new(scopes, coordinates)
+        Self::new(scopes, coordinates, Box::leak(Box::new(SemanticBudget::default())))
     }
 
     /// Build a resolver with an externally-owned name table.
-    pub(super) fn new(scopes: FrozenScopeGraph, coordinates: SpanNormalizer) -> Self {
-        Self {
+    pub(super) fn new(
+        scopes: FrozenScopeGraph,
+        coordinates: SpanNormalizer,
+        budget: &SemanticBudget,
+    ) -> Resolver<'_> {
+        Resolver {
             scopes,
             coordinates,
             values: ValueTable::default(),
             cache: ResolverCache::default(),
+            budget,
         }
     }
 
     pub(super) fn intern_name(&mut self, name: &str) -> Result<NameId, NameExhausted> {
+        self.budget.try_charge();
         self.scopes.intern_name_mut(name).ok_or_else(|| {
             self.scopes.name_exhaustion().unwrap_or(NameExhausted {
                 limit: 0,
@@ -278,25 +288,34 @@ impl Resolver {
     pub(in crate::analysis) fn instance_member_available(&self, member: &MemberExpr) -> bool {
         self.scopes.instance_member_available_at(member)
     }
+
+    #[cfg(test)]
+    pub(super) fn new_for_test(
+        scopes: FrozenScopeGraph,
+        coordinates: SpanNormalizer,
+    ) -> Resolver<'static> {
+        Self::new(scopes, coordinates, Box::leak(Box::new(SemanticBudget::default())))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use glass_lint_datastructures::{NameId, NameTable};
 
-    use super::*;
-    use crate::analysis::{
-        lowering::SpanNormalizer,
-        scope::ScopeGraph,
-        syntax::{BudgetComponent, UnknownReason},
-        value::{MAX_VALUES, Value},
-    };
+use super::*;
+use crate::analysis::{
+    lowering::SpanNormalizer,
+    scope::ScopeGraph,
+    syntax::{BudgetComponent, UnknownReason},
+    value::{MAX_VALUES, Value},
+    SemanticBudget,
+};
 
     #[test]
     fn unknown_value_keeps_unsupported_and_exhausted_distinct() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
         assert_eq!(
             resolver.call_provenance_for_value(ValueId::UNKNOWN),
             SymbolCallProvenance::Unknown(UnknownReason::Unsupported)
@@ -309,11 +328,13 @@ mod tests {
         assert!(values.exhausted());
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
+        let budget = SemanticBudget::default();
         let resolver = Resolver {
             scopes,
             coordinates: SpanNormalizer::default(),
             values,
             cache: ResolverCache::default(),
+            budget: &budget,
         };
         assert_eq!(
             resolver.call_provenance_for_value(ValueId::UNKNOWN),
@@ -329,7 +350,7 @@ mod tests {
     fn const_value_follows_binding_chain_to_static_values() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let inner = resolver.values.intern(Value::StaticString("hello".into()));
         let key = crate::analysis::value::BindingKey::new(
@@ -347,7 +368,7 @@ mod tests {
     fn const_value_materializes_static_arrays_with_nested_bindings() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let one = resolver.values.intern(Value::StaticNumber(1));
         let key = crate::analysis::value::BindingKey::new(
@@ -373,7 +394,7 @@ mod tests {
     fn const_value_returns_unknown_for_uninterned_id() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let result = resolver.const_value(ValueId(u32::MAX));
         assert_eq!(result, ConstValue::Unknown);
@@ -386,7 +407,7 @@ mod tests {
         let key_str = names.intern("str").unwrap();
         let key_arr = names.intern("arr").unwrap();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let num_id = resolver.values.intern(Value::StaticNumber(42));
         let str_id = resolver.values.intern(Value::StaticString("val".into()));
@@ -416,7 +437,7 @@ mod tests {
     fn const_value_returns_unknown_for_unknown_name_in_object() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let val_id = resolver.values.intern(Value::StaticString("v".into()));
         let bad_name = NameId(u32::MAX);
@@ -432,7 +453,7 @@ mod tests {
     fn const_value_returns_unknown_for_deeply_nested_structure() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let leaf = resolver.values.intern(Value::StaticNumber(0));
         let mut current = leaf;
@@ -461,7 +482,7 @@ mod tests {
     fn const_value_materializes_large_flat_array() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let ids: Vec<_> = (0..100)
             .map(|i| resolver.values.intern(Value::StaticNumber(i)))
@@ -483,7 +504,7 @@ mod tests {
     fn const_value_follows_binding_chain_through_reassignment() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let inner = resolver.values.intern(Value::StaticString("first".into()));
         let key1 = crate::analysis::value::BindingKey::new(
@@ -516,7 +537,7 @@ mod tests {
     fn call_provenance_follows_binding_to_global() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let inner = resolver.values.intern(Value::Global("fetch".into()));
         let key = crate::analysis::value::BindingKey::new(
@@ -538,7 +559,7 @@ mod tests {
     fn call_provenance_follows_multi_level_binding_chain() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let mut resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let inner = resolver.values.intern(Value::ModuleExport {
             module: "mod".into(),
@@ -572,7 +593,7 @@ mod tests {
     fn value_exhaustion_distinguishes_unsupported_from_budget() {
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
-        let resolver = Resolver::new(scopes, SpanNormalizer::default());
+        let resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
         assert!(!resolver.value_arena_exhausted());
 
         let mut values = ValueTable::default();
@@ -582,11 +603,13 @@ mod tests {
         assert!(values.exhausted());
         let names = NameTable::default();
         let scopes = ScopeGraph::create_for_test(names).freeze();
+        let budget = SemanticBudget::default();
         let resolver = Resolver {
             scopes,
             coordinates: SpanNormalizer::default(),
             values,
             cache: ResolverCache::default(),
+            budget: &budget,
         };
         assert!(resolver.value_arena_exhausted());
     }

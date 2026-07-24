@@ -220,7 +220,7 @@ fn facts_effects_flow_and_link_limits_cover_below_at_above() {
     assert_limit_triplet(
         configured_linter,
         AnalysisLimits::set_semantic_operations,
-        7,
+        25,
         "semantic_budget_exhausted",
         Some("main.js"),
         facts,

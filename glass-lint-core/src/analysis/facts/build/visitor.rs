@@ -30,7 +30,7 @@ use crate::{
     project::ResolutionRequestKind,
 };
 
-impl Visit for FactBuilder<'_> {
+impl Visit for FactBuilder<'_, '_> {
     fn visit_ident(&mut self, ident: &Ident) {
         // References are intentionally emitted even when the resolver cannot
         // prove their value. Unknown facts preserve source locations while

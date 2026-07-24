@@ -19,7 +19,7 @@ use crate::analysis::{
     value::FunctionId,
 };
 
-impl FactBuilder<'_> {
+impl FactBuilder<'_, '_> {
     /// Record a direct, imported, optional, or callable-wrapper invocation in
     /// the canonical call shape used by all matchers.
     pub(super) fn record_call_expr(&mut self, call: &CallExpr) {

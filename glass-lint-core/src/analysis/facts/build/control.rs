@@ -15,7 +15,7 @@ use crate::analysis::{
     value::ValueId,
 };
 
-impl FactBuilder<'_> {
+impl FactBuilder<'_, '_> {
     /// Allocate the region identity shared by all markers for one construct.
     pub(super) fn next_control_region(&mut self) -> ControlRegionId {
         self.traversal.next_control_region()

@@ -11,7 +11,7 @@ use crate::analysis::{
     value::Value,
 };
 
-impl FactBuilder<'_> {
+impl FactBuilder<'_, '_> {
     /// Resolve one argument into the scalar, rooted, and statically addressable
     /// views consumed by call matchers and parameter-path flow.
     ///
