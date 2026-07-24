@@ -10,9 +10,12 @@ mod call_results;
 mod calls;
 mod control;
 mod functions;
+mod instance;
 mod interface;
 mod state;
 mod visitor;
+
+use self::instance::InstanceCallable;
 
 use std::collections::BTreeMap;
 
@@ -31,7 +34,7 @@ use swc_ecma_visit::{Visit, VisitWith};
 use crate::analysis::{
     facts::{
         Building, CallArgInfo, CallUnwrap, ControlKind, ControlRegionId, FactKind, FactPayload,
-        FactStream, FunctionBoundary, ParameterBinding,
+        FactStream, FunctionBoundary,
     },
     resolution::Resolver,
     scope::{BoundArgument, ScopeId},
@@ -40,36 +43,6 @@ use crate::analysis::{
     },
     value::{FunctionId, ValueId},
 };
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-/// A callable member extracted from a proven module-backed instance.
-pub(super) struct InstanceCallable {
-    module: SmolStr,
-    export: SmolStr,
-    member: SymbolPath,
-}
-
-impl InstanceCallable {
-    pub(super) fn new(
-        module: impl Into<SmolStr>,
-        export: impl Into<SmolStr>,
-        member: SymbolPath,
-    ) -> Self {
-        Self {
-            module: module.into(),
-            export: export.into(),
-            member,
-        }
-    }
-
-    pub(super) fn class_identity(&self) -> (SmolStr, SmolStr) {
-        (self.module.clone(), self.export.clone())
-    }
-
-    pub(super) fn member(&self) -> &SymbolPath {
-        &self.member
-    }
-}
 
 /// The single authoritative semantic fact builder.
 ///

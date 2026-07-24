@@ -1,59 +1,33 @@
-//! Rule-independent indexes built from one semantic model.
-//!
-//! Collection is intentionally separated from `evidence_for`: after scope
-//! predeclaration, one fact-building AST traversal feeds deterministic
-//! occurrence maps, then each rule selects from those maps.
-//! Constrained clauses and flow evidence remain per-rule because their
-//! predicates cannot be represented as a shared physical lookup key.
-//!
-//! Provenance levels stay in separate indexes so heuristic names cannot be
-//! mistaken for rooted or module-identified identities. All shared indexes
-//! are normalized before queries run.
-
 use std::collections::BTreeMap;
 
-use glass_lint_datastructures::NamePath;
 use smol_str::SmolStr;
 
 use crate::{
-    analysis::{
-        facts::{CallArgInfo, FactPayload, FactStream},
-        project::model::ExportResolution,
-        syntax::{SymbolCallProvenance, SymbolMemberProvenance},
-    },
+    analysis::project::model::ExportResolution,
     api::classification::{ClassificationEvidence, MatchKind},
 };
 
+#[cfg(test)]
+use glass_lint_datastructures::NamePath;
+
 mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
-use occurrence::{
-    CandidateOccurrences, InstanceMemberKey, ModuleOccurrences, NameOccurrences, Occurrence,
-    OccurrenceIndex, Occurrences, ReturnedMemberKey,
-};
+use occurrence::{CandidateOccurrences, ModuleOccurrences, Occurrence};
+mod indexes;
+mod identity_map;
+pub(in crate::analysis) use identity_map::ModuleIdentityMap;
 mod arguments;
 pub(in crate::analysis) use arguments::compute_constrained_evidence_from_stream_with_overlay;
 mod build;
 mod query;
 
 #[derive(Debug, Default)]
-/// Matcher-independent occurrence indexes projected from one fact stream.
-///
-/// The indexes are reusable across rule catalogs; constrained clauses and flow
-/// subplans are evaluated from facts because their predicates are not safe to
-/// collapse into a simple lookup key.
 pub struct OccurrenceIndexes {
     environment: crate::Environment,
-    // Each map represents a different confidence/provenance level. Do not
-    // collapse these into one index: a global spelling, rooted alias, and
-    // imported member have intentionally different matching semantics.
-    //
-    // The fields are deliberately grouped by semantic family rather than by
-    // the order in which facts are emitted. That makes it easier to audit a
-    // matcher query against the indexes it is allowed to consume.
-    call_indexes: CallIndexes,
-    members: MemberIndexes,
-    constructions: ConstructionIndexes,
-    literals: LiteralIndexes,
+    call_indexes: indexes::CallIndexes,
+    members: indexes::MemberIndexes,
+    constructions: indexes::ConstructionIndexes,
+    literals: indexes::LiteralIndexes,
     #[cfg(test)]
     test_names: glass_lint_datastructures::NameTable,
 }
@@ -62,180 +36,14 @@ type BorrowedModuleBuckets<'a> = BTreeMap<ModuleExportKey, Vec<&'a [Occurrence]>
 type BorrowedGlobalBuckets<'a> = BTreeMap<SmolStr, Vec<&'a [Occurrence]>>;
 
 #[derive(Debug, Default)]
-/// Project-link view layered over an immutable local occurrence index.
-///
-/// It stores only identity remaps, masks, and borrowed bucket slices. The
-/// source occurrence values remain owned by the local semantic index.
 pub(in crate::analysis) struct LinkedOccurrenceView<'a> {
     masked: std::collections::BTreeSet<ModuleExportKey>,
-    global_calls: BorrowedGlobalBuckets<'a>,
-    module_calls: BorrowedModuleBuckets<'a>,
-    member_calls: BorrowedModuleBuckets<'a>,
-    member_reads: BorrowedModuleBuckets<'a>,
-    module_classes: BorrowedModuleBuckets<'a>,
-    module_constructors: BorrowedModuleBuckets<'a>,
-}
-
-#[derive(Debug, Default)]
-/// Call occurrences partitioned by confidence/provenance level.
-///
-/// Each sub-index represents a different resolution provenance. A single call
-/// site may appear in more than one index when its identity can be established
-/// at multiple confidence levels (e.g. a rooted global alias).
-pub(super) struct CallIndexes {
-    /// Calls resolved through lexical name lookup (local or imported).
-    calls: NameOccurrences,
-    /// Calls resolved to a configured global binding.
-    global_calls: Occurrences,
-    /// Calls resolved to a module export identity.
-    module_calls: ModuleOccurrences,
-}
-
-impl CallIndexes {
-    pub(super) fn normalize(&mut self) {
-        self.calls.normalize();
-        self.global_calls.normalize();
-        self.module_calls.normalize();
-    }
-
-    #[cfg(test)]
-    pub(super) fn is_empty(&self) -> bool {
-        self.calls.is_empty() && self.global_calls.is_empty() && self.module_calls.is_empty()
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-/// Member call/read occurrences partitioned by provenance level.
-///
-/// Member chains are indexed at multiple confidence levels: syntactic (as
-/// written), rooted (following aliases to a known global), module-export
-/// (resolved through import/export), returned (from a known call result), and
-/// instance (on a known superclass).
-pub(super) struct MemberIndexes {
-    calls: OccurrenceIndex<NamePath>,
-    rooted_calls: OccurrenceIndex<NamePath>,
-    module_calls: ModuleOccurrences,
-    reads: OccurrenceIndex<NamePath>,
-    rooted_reads: OccurrenceIndex<NamePath>,
-    module_reads: ModuleOccurrences,
-    returned_calls: OccurrenceIndex<ReturnedMemberKey>,
-    returned_reads: OccurrenceIndex<ReturnedMemberKey>,
-    instance_calls: OccurrenceIndex<InstanceMemberKey>,
-}
-
-impl MemberIndexes {
-    pub(super) fn normalize(&mut self) {
-        self.calls.normalize();
-        self.rooted_calls.normalize();
-        self.module_calls.normalize();
-        self.reads.normalize();
-        self.rooted_reads.normalize();
-        self.module_reads.normalize();
-        self.returned_calls.normalize();
-        self.returned_reads.normalize();
-        self.instance_calls.normalize();
-    }
-
-    #[cfg(test)]
-    pub(super) fn is_empty(&self) -> bool {
-        self.calls.is_empty()
-            && self.rooted_calls.is_empty()
-            && self.module_calls.is_empty()
-            && self.reads.is_empty()
-            && self.rooted_reads.is_empty()
-            && self.module_reads.is_empty()
-            && self.returned_calls.is_empty()
-            && self.returned_reads.is_empty()
-            && self.instance_calls.is_empty()
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-/// Class and constructor occurrences partitioned by provenance.
-pub(super) struct ConstructionIndexes {
-    classes: Occurrences,
-    module_classes: ModuleOccurrences,
-    constructors: NameOccurrences,
-    global_constructors: Occurrences,
-    module_constructors: ModuleOccurrences,
-}
-
-impl ConstructionIndexes {
-    pub(super) fn normalize(&mut self) {
-        self.classes.normalize();
-        self.module_classes.normalize();
-        self.constructors.normalize();
-        self.global_constructors.normalize();
-        self.module_constructors.normalize();
-    }
-
-    #[cfg(test)]
-    pub(super) fn is_empty(&self) -> bool {
-        self.classes.is_empty()
-            && self.module_classes.is_empty()
-            && self.constructors.is_empty()
-            && self.global_constructors.is_empty()
-            && self.module_constructors.is_empty()
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-/// Import and static-string occurrence indexes.
-pub(super) struct LiteralIndexes {
-    imports: Occurrences,
-    strings: Occurrences,
-}
-
-impl LiteralIndexes {
-    pub(super) fn normalize(&mut self) {
-        self.imports.normalize();
-        self.strings.normalize();
-    }
-
-    #[cfg(test)]
-    pub(super) fn is_empty(&self) -> bool {
-        self.imports.is_empty() && self.strings.is_empty()
-    }
-}
-
-/// Imported identities indexed by borrowed module/export parts.
-///
-/// Occurrence indexes retain [`ModuleExportKey`] beside each event. This
-/// overlay is queried at high fan-out, so it owns each module/export string
-/// once and accepts borrowed lookups thereafter.
-#[derive(Clone, Debug, Default)]
-pub(in crate::analysis) struct ModuleIdentityMap {
-    modules: BTreeMap<SmolStr, BTreeMap<SmolStr, ExportResolution>>,
-}
-
-impl ModuleIdentityMap {
-    pub(in crate::analysis) fn new() -> Self {
-        Self::default()
-    }
-
-    pub(in crate::analysis) fn get(&self, key: &ModuleExportKey) -> Option<&ExportResolution> {
-        self.get_parts(key.module(), key.export())
-    }
-
-    pub(in crate::analysis) fn get_parts(
-        &self,
-        module: &str,
-        export: &str,
-    ) -> Option<&ExportResolution> {
-        self.modules.get(module)?.get(export)
-    }
-
-    pub(in crate::analysis) fn insert(
-        &mut self,
-        key: ModuleExportKey,
-        value: ExportResolution,
-    ) -> Option<ExportResolution> {
-        let (module, export) = key.into_parts();
-        self.modules
-            .entry(module)
-            .or_default()
-            .insert(export, value)
-    }
+    pub(super) global_calls: BorrowedGlobalBuckets<'a>,
+    pub(super) module_calls: BorrowedModuleBuckets<'a>,
+    pub(super) member_calls: BorrowedModuleBuckets<'a>,
+    pub(super) member_reads: BorrowedModuleBuckets<'a>,
+    pub(super) module_classes: BorrowedModuleBuckets<'a>,
+    pub(super) module_constructors: BorrowedModuleBuckets<'a>,
 }
 
 impl OccurrenceIndexes {
@@ -425,6 +233,7 @@ mod tests {
         Environment,
         analysis::{
             facts::{FactId, build::build_test_stream},
+            matching::occurrence::OccurrenceIndex,
             resolution::Resolver,
         },
         api::{compiler::rule::CompiledMatcherPlan, rule::MatcherDecl},
@@ -438,8 +247,6 @@ mod tests {
     #[test]
     fn typed_occurrence_index_is_deduplicated() {
         let mut index = OccurrenceIndex::<SmolStr>::default();
-        // Entries are pushed in monotonically increasing FactId order, matching
-        // the invariant that build_from_stream iterates facts in FactId order.
         index.push("fetch".into(), FactId(1), span(5, 11));
         index.push("fetch".into(), FactId(1), span(5, 11));
         index.push("fetch".into(), FactId(2), span(20, 26));
@@ -522,8 +329,6 @@ mod tests {
         index.build_from_stream(&stream);
         index.normalize_occurrences();
 
-        // Imports should have both 'mod' and 'other-mod' from import declarations,
-        // and 'fs' from require() call.
         assert!(
             index.literals.imports.get("mod").is_some(),
             "should have 'mod' import"
@@ -537,22 +342,18 @@ mod tests {
             "should have 'fs' require import"
         );
 
-        // String literal should be indexed.
         assert!(
             index.literals.strings.get("hello world").is_some(),
             "should have 'hello world' string literal"
         );
 
-        // Class declaration should be indexed.
         assert!(
             index.constructions.classes.get("MyClass").is_some(),
             "should have MyClass class"
         );
 
-        // Constructor call should be indexed.
         assert!(index.has_constructor("URL"), "should have URL constructor");
 
-        // foo() is an identifier call with module provenance.
         assert!(index.has_call("foo"), "should have foo call");
         assert!(
             index

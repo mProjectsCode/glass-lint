@@ -1,4 +1,4 @@
-use swc_common::Spanned;
+use swc_common::{Span, Spanned};
 use swc_ecma_visit::VisitWith;
 
 use super::{traversal::ScopeTraversal, *};

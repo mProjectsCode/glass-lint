@@ -8,11 +8,12 @@ use glass_lint_datastructures::{NamePath, NameTable};
 use smol_str::SmolStr;
 
 use crate::analysis::{
-    facts::{ClassFactRole, FactStream, Frozen, SemanticFact},
+    facts::{ClassFactRole, FactPayload, FactStream, Frozen, SemanticFact},
     matching::{
-        FactPayload, OccurrenceIndexes, SymbolCallProvenance, SymbolMemberProvenance,
+        OccurrenceIndexes,
         occurrence::{InstanceMemberKey, ModuleExportKey, ReturnedMemberKey},
     },
+    syntax::{SymbolCallProvenance, SymbolMemberProvenance},
 };
 
 impl OccurrenceIndexes {
