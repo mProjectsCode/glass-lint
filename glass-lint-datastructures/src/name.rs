@@ -8,7 +8,21 @@ pub const DEFAULT_MAX_NAMES: usize = 1 << 20;
 
 /// Opaque identifier for an interned name.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct NameId(pub u32);
+pub struct NameId(pub(crate) u32);
+
+impl NameId {
+    /// Construct from a raw value. Only use with IDs obtained from a store.
+    #[inline]
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    /// Return the raw `u32` value.
+    #[inline]
+    pub fn as_u32(self) -> u32 {
+        self.0
+    }
+}
 
 /// Error returned when the name table hits its maximum capacity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

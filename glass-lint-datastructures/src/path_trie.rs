@@ -7,7 +7,21 @@ pub const DEFAULT_MAX_PATH_NODES: usize = 1 << 20;
 
 /// Canonical identifier of a path node; zero is the empty path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PathId(pub u32);
+pub struct PathId(pub(crate) u32);
+
+impl PathId {
+    /// Construct from a raw value. Only use with IDs obtained from a store.
+    #[inline]
+    pub fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    /// Return the raw `u32` value.
+    #[inline]
+    pub fn as_u32(self) -> u32 {
+        self.0
+    }
+}
 
 impl PathId {
     /// Sentinel representing a path with no segments.
@@ -59,15 +73,29 @@ pub enum PathSegmentInput<'a> {
 /// A single node in a parent-linked path trie.
 #[derive(Debug, Clone)]
 pub struct PathNode {
+    parent: u32,
+    depth: u32,
+    segment: Option<PathSegment>,
+}
+
+impl PathNode {
     /// Parent path identifier (raw `u32`; may carry overlay tag in summary
     /// stores).
-    pub parent: u32,
+    pub fn parent(&self) -> u32 {
+        self.parent
+    }
+
     /// Number of segments from the root.
-    pub depth: u32,
+    pub fn depth(&self) -> u32 {
+        self.depth
+    }
+
     /// The segment that leads from `parent` to this node.
     ///
     /// `None` only for the root node (id 0).
-    pub segment: Option<PathSegment>,
+    pub fn segment(&self) -> Option<&PathSegment> {
+        self.segment.as_ref()
+    }
 }
 
 /// A bounded, parent-linked path trie.
@@ -305,18 +333,6 @@ impl ParentPathStore {
             segments: collected,
             index: 0,
         }
-    }
-
-    /// Access the raw node vector (read-only).
-    ///
-    /// Useful for iteration and debugging.
-    pub fn raw_nodes(&self) -> &[PathNode] {
-        &self.nodes
-    }
-
-    /// Access the edge map (read-only).
-    pub fn raw_edges(&self) -> &HashMap<(u32, PathSegment), u32> {
-        &self.by_edge
     }
 }
 
@@ -888,7 +904,7 @@ mod tests {
         let mut names = NameTable::default();
         let seg = PathSegment::Property(names.intern("x").unwrap());
         store.append(0, seg).unwrap();
-        assert_eq!(store.raw_nodes().len(), 2);
-        assert_eq!(store.raw_edges().len(), 1);
+        assert_eq!(store.nodes.len(), 2);
+        assert_eq!(store.by_edge.len(), 1);
     }
 }

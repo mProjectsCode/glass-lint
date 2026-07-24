@@ -157,6 +157,7 @@ Walk parent links iteratively into caller-owned/reusable scratch storage, then r
 - **Fix Complexity:** High
 - **Category:** Newtype / Encapsulation
 - **Location:** `glass-lint-datastructures/src/name.rs:9-18`; `glass-lint-datastructures/src/path_trie.rs:8-82`; `glass-lint-core/ARCHITECTURE.md:69-83`
+- **Status:** Done (`NameId` and `PathId` fields changed from `pub u32` to `pub(crate) u32`; `NameId::from_raw`/`as_u32` and `PathId::from_raw`/`as_u32` added; `PathNode` fields made private with accessor methods; `raw_nodes`/`raw_edges` removed (test accesses fields directly). External callers in `glass-lint-core` updated to use `from_raw`/`as_u32` instead of direct field access.)
 
 `NameId(pub u32)`, `PathId(pub u32)`, public `PathNode` fields, raw-`u32` store methods, and a shared high-bit tag allow callers to forge IDs and mix canonical or overlay stores. This contradicts the core invariant that `NameId` is opaque and artifact-local and makes validation depend on every caller remembering store provenance.
 

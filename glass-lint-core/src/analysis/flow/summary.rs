@@ -50,7 +50,7 @@ impl SummaryPathId {
     }
 
     fn from_path_id(id: PathId) -> Self {
-        Self(id.0)
+        Self(id.as_u32())
     }
 }
 
@@ -77,14 +77,14 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     pub(super) fn intern_frozen(&self, path: PathId) -> Option<SummaryPathId> {
-        if !self.frozen.store().is_valid(path.0) {
+        if !self.frozen.store().is_valid(path.as_u32()) {
             return None;
         }
         Some(SummaryPathId::from_path_id(path))
     }
 
     pub(super) fn resolve_frozen(&self, path: PathId) -> Option<SummaryPathId> {
-        if !self.frozen.store().is_valid(path.0) {
+        if !self.frozen.store().is_valid(path.as_u32()) {
             return None;
         }
         Some(SummaryPathId::from_path_id(path))
@@ -873,13 +873,13 @@ mod tests {
         let a = frozen.append(PathId::EMPTY, PathSegment::Index(0)).unwrap();
         let _b = frozen.append(a, PathSegment::Index(1)).unwrap();
         let _c = frozen.append(a, PathSegment::Index(2)).unwrap();
-        (frozen, a.0)
+        (frozen, a.as_u32())
     }
 
     #[test]
     fn frozen_path_is_referenced_without_copy() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
+        let a_id = PathId::from_raw(a_raw);
         let store = SummaryPathStore::new(&frozen);
         let s_id = store.intern_frozen(a_id).unwrap();
         assert_eq!(s_id, SummaryPathId::from_path_id(a_id));
@@ -891,15 +891,15 @@ mod tests {
     fn invalid_frozen_path_returns_none() {
         let (frozen, _) = make_frozen_paths();
         let store = SummaryPathStore::new(&frozen);
-        assert!(store.intern_frozen(PathId(u32::MAX)).is_none());
-        assert!(store.resolve_frozen(PathId(u32::MAX)).is_none());
+        assert!(store.intern_frozen(PathId::from_raw(u32::MAX)).is_none());
+        assert!(store.resolve_frozen(PathId::from_raw(u32::MAX)).is_none());
     }
 
     #[test]
     fn join_frozen_prefix_with_frozen_suffix_creates_overlay_node() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
-        let b_id = PathId(a_raw + 1);
+        let a_id = PathId::from_raw(a_raw);
+        let b_id = PathId::from_raw(a_raw + 1);
         let mut store = SummaryPathStore::new(&frozen);
         let prefix = store.intern_frozen(a_id).unwrap();
         let suffix = store.intern_frozen(b_id).unwrap();
@@ -914,7 +914,7 @@ mod tests {
     #[test]
     fn join_with_empty_is_identity() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
+        let a_id = PathId::from_raw(a_raw);
         let mut store = SummaryPathStore::new(&frozen);
         let prefix = store.intern_frozen(a_id).unwrap();
         assert_eq!(store.join(prefix, SummaryPathId::EMPTY), Some(prefix));
@@ -924,7 +924,7 @@ mod tests {
     #[test]
     fn frozen_reference_reused_by_multiple_summaries() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
+        let a_id = PathId::from_raw(a_raw);
         let store = SummaryPathStore::new(&frozen);
         let id1 = store.intern_frozen(a_id).unwrap();
         let id2 = store.intern_frozen(a_id).unwrap();
@@ -934,8 +934,8 @@ mod tests {
     #[test]
     fn starts_with_mixed_frozen_and_overlay() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
-        let b_id = PathId(a_raw + 1);
+        let a_id = PathId::from_raw(a_raw);
+        let b_id = PathId::from_raw(a_raw + 1);
         let mut store = SummaryPathStore::new(&frozen);
         let a = store.intern_frozen(a_id).unwrap();
         let b = store.intern_frozen(b_id).unwrap();
@@ -949,22 +949,22 @@ mod tests {
     #[test]
     fn matches_frozen_checks_identity() {
         let (_, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
+        let a_id = PathId::from_raw(a_raw);
         assert!(SummaryPathStore::matches_frozen(
             SummaryPathId::from_path_id(a_id),
             a_id
         ));
         assert!(!SummaryPathStore::matches_frozen(
             SummaryPathId::from_path_id(a_id),
-            PathId(a_raw + 10),
+            PathId::from_raw(a_raw + 10),
         ));
     }
 
     #[test]
     fn starts_with_frozen_checks_prefix() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
-        let b_id = PathId(a_raw + 1);
+        let a_id = PathId::from_raw(a_raw);
+        let b_id = PathId::from_raw(a_raw + 1);
         let mut store = SummaryPathStore::new(&frozen);
         let a = store.intern_frozen(a_id).unwrap();
         let b = store.intern_frozen(b_id).unwrap();
@@ -978,7 +978,7 @@ mod tests {
         let (frozen, a_raw) = make_frozen_paths();
         // ab = [Idx(0), Idx(1)]; after removing first, [Idx(1)] doesn't exist
         // standalone
-        let ab_id = PathId(a_raw + 1);
+        let ab_id = PathId::from_raw(a_raw + 1);
         let store = SummaryPathStore::new(&frozen);
         let s_ab = SummaryPathId::from_path_id(ab_id);
         assert!(store.without_first(s_ab).is_none());
@@ -987,8 +987,8 @@ mod tests {
     #[test]
     fn without_first_on_overlay() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
-        let b_id = PathId(a_raw + 1);
+        let a_id = PathId::from_raw(a_raw);
+        let b_id = PathId::from_raw(a_raw + 1);
         let mut store = SummaryPathStore::new(&frozen);
         let a = store.intern_frozen(a_id).unwrap();
         let b = store.intern_frozen(b_id).unwrap();
@@ -1002,7 +1002,7 @@ mod tests {
     #[test]
     fn owned_segments_on_frozen() {
         let (frozen, a_raw) = make_frozen_paths();
-        let ab_id = PathId(a_raw + 1);
+        let ab_id = PathId::from_raw(a_raw + 1);
         let store = SummaryPathStore::new(&frozen);
         let s_ab = SummaryPathId::from_path_id(ab_id);
         let segs = store.owned_segments(s_ab).unwrap();
@@ -1012,8 +1012,8 @@ mod tests {
     #[test]
     fn owned_segments_on_joined_overlay() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
-        let b_id = PathId(a_raw + 1);
+        let a_id = PathId::from_raw(a_raw);
+        let b_id = PathId::from_raw(a_raw + 1);
         let mut store = SummaryPathStore::new(&frozen);
         let a = store.intern_frozen(a_id).unwrap();
         let b = store.intern_frozen(b_id).unwrap();
@@ -1033,8 +1033,8 @@ mod tests {
     #[test]
     fn overlay_budget_exhaustion_fails_closed() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw);
-        let b_id = PathId(a_raw + 1);
+        let a_id = PathId::from_raw(a_raw);
+        let b_id = PathId::from_raw(a_raw + 1);
         let mut store = SummaryPathStore {
             frozen: &frozen,
             overlay: ParentPathStore::new(2),
@@ -1056,7 +1056,7 @@ mod tests {
     #[test]
     fn first_index_on_frozen_and_overlay() {
         let (frozen, a_raw) = make_frozen_paths();
-        let idx_id = PathId(a_raw);
+        let idx_id = PathId::from_raw(a_raw);
         let store = SummaryPathStore::new(&frozen);
         let s_idx = SummaryPathId::from_path_id(idx_id);
         assert_eq!(store.first_index(s_idx), Some(0));
@@ -1065,9 +1065,9 @@ mod tests {
     #[test]
     fn join_order_with_three_segments() {
         let (frozen, a_raw) = make_frozen_paths();
-        let a_id = PathId(a_raw); // [Idx(0)]
-        let b_id = PathId(a_raw + 1); // [Idx(0), Idx(1)]
-        let c_id = PathId(a_raw + 2); // [Idx(0), Idx(2)]
+        let a_id = PathId::from_raw(a_raw); // [Idx(0)]
+        let b_id = PathId::from_raw(a_raw + 1); // [Idx(0), Idx(1)]
+        let c_id = PathId::from_raw(a_raw + 2); // [Idx(0), Idx(2)]
         let mut store = SummaryPathStore::new(&frozen);
         let a = store.intern_frozen(a_id).unwrap();
         let b = store.intern_frozen(b_id).unwrap();

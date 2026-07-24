@@ -450,7 +450,7 @@ mod tests {
         let mut resolver = Resolver::new_for_test(scopes, SpanNormalizer::default());
 
         let val_id = resolver.values.intern(Value::StaticString("v".into()));
-        let bad_name = NameId(u32::MAX);
+        let bad_name = NameId::from_raw(u32::MAX);
         let obj_id = resolver
             .values
             .intern(Value::StaticObject(vec![(bad_name, val_id)]));
