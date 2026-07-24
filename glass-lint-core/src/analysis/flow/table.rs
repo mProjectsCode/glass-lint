@@ -1,108 +1,13 @@
 //! Dense tables for identities allocated by the fact builder.
+//!
+//! The generic [`IndexTable`] is owned by `glass-lint-datastructures`;
+//! this module provides a function-keyed specialization.
 
 use crate::analysis::value::FunctionId;
 
-#[derive(Debug, Clone)]
 /// Sparse dense-indexed storage for function identities.
 ///
 /// Missing slots are valid and represent functions that were not emitted or
 /// exceeded the enclosing analysis budget; callers must handle `None`.
-pub(in crate::analysis) struct FunctionTable<T> {
-    /// Values positioned by the numeric function identity.
-    values: Vec<Option<T>>,
-}
-
-impl<T> Default for FunctionTable<T> {
-    fn default() -> Self {
-        Self { values: Vec::new() }
-    }
-}
-
-impl<T> FunctionTable<T> {
-    /// Borrow a value for a function identity, if present.
-    pub(in crate::analysis) fn get(&self, id: FunctionId) -> Option<&T> {
-        self.values.get(usize::try_from(id.0).ok()?)?.as_ref()
-    }
-
-    /// Mutably borrow a value for a function identity, if present.
-    pub(in crate::analysis) fn get_mut(&mut self, id: FunctionId) -> Option<&mut T> {
-        self.values.get_mut(usize::try_from(id.0).ok()?)?.as_mut()
-    }
-
-    /// Insert a value and report whether its slot was previously vacant.
-    pub(in crate::analysis) fn insert(&mut self, id: FunctionId, value: T) -> bool {
-        let Some(index) = usize::try_from(id.0).ok() else {
-            return false;
-        };
-        if self.values.len() <= index {
-            self.values.resize_with(index + 1, || None);
-        }
-        let vacant = self.values[index].is_none();
-        self.values[index] = Some(value);
-        vacant
-    }
-
-    /// Borrow one entry immutably and another entry mutably in one call.
-    /// Returns `None` when the identities are equal or either slot is invalid.
-    pub(in crate::analysis) fn get_disjoint(
-        &mut self,
-        read: FunctionId,
-        write: FunctionId,
-    ) -> Option<(Option<&T>, Option<&mut T>)> {
-        if read == write {
-            return None;
-        }
-        let ri = usize::try_from(read.0).ok()?;
-        let wi = usize::try_from(write.0).ok()?;
-        if self.values.len() <= ri.max(wi) {
-            return Some((None, None));
-        }
-        if ri < wi {
-            let (left, right) = self.values.split_at_mut(wi);
-            let read_ref = left[ri].as_ref();
-            let write_ref = right[0].as_mut();
-            Some((read_ref, write_ref))
-        } else {
-            let (left, right) = self.values.split_at_mut(ri);
-            let write_ref = left[wi].as_mut();
-            let read_ref = right[0].as_ref();
-            Some((read_ref, write_ref))
-        }
-    }
-
-    /// Iterate present entries in ascending function-ID order.
-    pub(in crate::analysis) fn iter(&self) -> impl Iterator<Item = (FunctionId, &T)> {
-        self.values.iter().enumerate().filter_map(|(index, value)| {
-            value
-                .as_ref()
-                .map(|value| (FunctionId(u32::try_from(index).unwrap_or(u32::MAX)), value))
-        })
-    }
-
-    /// Iterate present values without exposing sparse slots.
-    pub(in crate::analysis) fn values(&self) -> impl Iterator<Item = &T> {
-        self.values.iter().filter_map(Option::as_ref)
-    }
-
-    /// Iterate present entries mutably in ascending function-ID order.
-    pub(in crate::analysis) fn iter_mut(&mut self) -> impl Iterator<Item = (FunctionId, &mut T)> {
-        self.values
-            .iter_mut()
-            .enumerate()
-            .filter_map(|(index, value)| {
-                value
-                    .as_mut()
-                    .map(|value| (FunctionId(u32::try_from(index).unwrap_or(u32::MAX)), value))
-            })
-    }
-
-    #[cfg(test)]
-    pub(in crate::analysis) fn len(&self) -> usize {
-        self.values.iter().filter(|value| value.is_some()).count()
-    }
-
-    /// Check whether an identity has a present value.
-    pub(in crate::analysis) fn contains(&self, id: FunctionId) -> bool {
-        self.get(id).is_some()
-    }
-}
+pub(in crate::analysis) type FunctionTable<T> =
+    glass_lint_datastructures::IndexTable<FunctionId, T>;

@@ -31,6 +31,18 @@ pub(in crate::analysis) struct BindingVersion(pub(in crate::analysis) u32);
 /// Stable identity of a function used by helper-flow summaries.
 pub(in crate::analysis) struct FunctionId(pub(in crate::analysis) u32);
 
+impl From<FunctionId> for u32 {
+    fn from(id: FunctionId) -> Self {
+        id.0
+    }
+}
+
+impl glass_lint_datastructures::IdIndex for FunctionId {
+    fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+}
+
 /// Compare two [`NamePath`]s using the environment's rooted-object alias
 /// policy.
 pub fn matches_global_object_alias_with(

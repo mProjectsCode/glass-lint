@@ -16,7 +16,7 @@ mod visitor;
 
 use std::collections::BTreeMap;
 
-use glass_lint_datastructures::{ByteRange, NamePath, SymbolPath};
+use glass_lint_datastructures::{ByteRange, NamePath, PathId, PathSegmentInput, SymbolPath};
 use smol_str::SmolStr;
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{
@@ -38,7 +38,7 @@ use crate::analysis::{
     syntax::{
         SymbolCallProvenance, SymbolMemberProvenance, effective_callee_expr, member_property_name,
     },
-    value::{PathId, PathSegmentInput, ValueId},
+    value::ValueId,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]

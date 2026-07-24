@@ -5,24 +5,23 @@
 //! bounded; exhaustion maps to an explicit unknown result (`ValueId::UNKNOWN`)
 //! rather than an invented ID or a panic.
 //!
-//! The layer is split into four concerns:
+//! The layer is split into two concerns:
 //! - `identity` — opaque handle types (`ValueId`, `FunctionId`, `BindingId`,
 //!   etc.) and `SymbolPath` for human-readable chain representation.
 //! - `arena` — bounded interning tables that map identities to their meanings.
-//! - `path` — compact path segments and interning for projection lookups.
+//!
+//! Path trie types (`PathId`, `PathSegment`, `ParentPathStore`,
+//! `PathInterner`) live in [`glass_lint_datastructures`] and are imported
+//! directly by callers.
 
 mod arena;
 mod identity;
-mod path;
 
 pub(in crate::analysis) use arena::{CallableValue, MAX_VALUES, ObjectId, Value, ValueTable};
 pub(in crate::analysis) use identity::{
     BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId, ValueId,
 };
 pub use identity::{matches_global_object_alias, matches_global_object_alias_with};
-pub(in crate::analysis) use path::{
-    ParentPathStore, PathId, PathInterner, PathSegment, PathSegmentInput,
-};
 
 #[cfg(test)]
 mod tests {

@@ -22,5 +22,7 @@ pub use diagnostic::{
 pub use fingerprint::{Fingerprint, fnv_init, fnv_write};
 pub use name::{NameExhausted, NameId, NameTable};
 pub use path::{NamePath, Path, PathView, SymbolPath};
-pub use path_trie::{ParentPathStore, PathId, PathInterner, PathNode, PathSegment, PathSegments};
+pub use path_trie::{
+    ParentPathStore, PathId, PathInterner, PathNode, PathSegment, PathSegmentInput, PathSegments,
+};
 pub use table::{IdIndex, IndexTable};

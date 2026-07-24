@@ -94,10 +94,7 @@ Make construction fallible and propagate the canonicalization error whenever a r
 - **Fix Complexity:** High
 - **Category:** Duplication / Architecture
 - **Location:** `glass-lint-core/src/analysis/value/path.rs:1-286`; `glass-lint-core/src/analysis/flow/table.rs:1-108`; `glass-lint-datastructures/src/path_trie.rs:1-427`; `glass-lint-datastructures/src/table.rs:1-157`
-
-Core retains near-copy implementations of the parent-linked path trie and dense function table while `glass-lint-datastructures` exports generic versions that have no production callers. Fixes to tagging, lookup, capacity, iteration, and disjoint borrowing can consequently diverge, and the supposed shared crate currently adds surface area without being the authority for its largest structures.
-
-Complete the migration in one change: `glass-lint-datastructures` should own the reusable bounded parent store and dense table, while core keeps analysis-specific semantic wrappers such as summary paths and function identities. Narrow the shared APIs to the operations core actually needs, migrate all callers, and delete both obsolete implementations and compatibility aliases. Do not preserve parallel paths for downstream convenience.
+- **Status:** Done (core's `value/path.rs` deleted; all callers in `facts/stream.rs`, `facts/build/mod.rs`, `facts/model.rs`, `flow/summary.rs`, `flow/effect.rs`, and test code import path trie types directly from `glass-lint-datastructures`; `FunctionTable` in `flow/table.rs` is a type alias for `IndexTable<FunctionId, T>`; `IdIndex` implemented for `FunctionId` in `identity.rs`; `PathSegmentInput` added to datastructures' public re-exports.)
 
 ### Medium Severity
 

@@ -10,7 +10,7 @@
 
 use std::{borrow::Cow, collections::BTreeMap};
 
-use glass_lint_datastructures::{Budget, NamePath, NameTable, SymbolPath};
+use glass_lint_datastructures::{Budget, NamePath, NameTable, PathId, SymbolPath};
 use smol_str::SmolStr;
 
 use crate::analysis::{
@@ -20,7 +20,7 @@ use crate::analysis::{
     },
     flow::table::FunctionTable,
     syntax::SymbolCallProvenance,
-    value::{FunctionId, PathId, ValueId},
+    value::{FunctionId, ValueId},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]

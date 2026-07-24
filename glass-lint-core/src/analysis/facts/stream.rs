@@ -11,11 +11,11 @@
 
 use std::marker::PhantomData;
 
-use glass_lint_datastructures::NameTable;
+use glass_lint_datastructures::{NameTable, PathId, PathInterner, PathSegment, PathSegmentInput};
 
 use crate::analysis::{
     facts::{FactId, FactKind, FactPayload, MAX_FACTS, ParameterBinding, SemanticFact},
-    value::{FunctionId, PathId, PathInterner, PathSegment, PathSegmentInput, ValueTable},
+    value::{FunctionId, ValueTable},
 };
 
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]

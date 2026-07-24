@@ -478,6 +478,8 @@ impl MatcherEvaluator<'_> {
 
 #[cfg(test)]
 mod tests {
+    use glass_lint_datastructures::PathId;
+
     use super::*;
     use crate::{
         Environment,
@@ -487,7 +489,7 @@ mod tests {
             matching::{ExportResolution, ModuleExportKey, OccurrenceIndexes},
             resolution::Resolver,
             syntax::SymbolCallProvenance,
-            value::{PathId, ValueId},
+            value::ValueId,
         },
         api::{
             classification::MatchKind,

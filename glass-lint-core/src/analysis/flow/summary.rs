@@ -17,6 +17,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use glass_lint_datastructures::{ParentPathStore, PathId, PathInterner, PathSegment};
+
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
     flow::{
@@ -25,9 +27,7 @@ use crate::analysis::{
         plan::BoundFlowPlan,
         table::FunctionTable,
     },
-    value::{
-        FunctionId, ParentPathStore, PathId, PathInterner, PathSegment, Value, ValueId, ValueTable,
-    },
+    value::{FunctionId, Value, ValueId, ValueTable},
 };
 
 const MAX_SUMMARY_ROUNDS: usize = 64;
