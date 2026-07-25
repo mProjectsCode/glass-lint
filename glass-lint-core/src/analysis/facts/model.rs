@@ -2,7 +2,8 @@
 //!
 //! Types have been moved to [`crate::analysis::model::fact`].
 
-pub use crate::analysis::model::fact::{
-    ArgumentView, CallArgInfo, CallUnwrap, ClassFactRole, ControlKind, ControlRegionId, FactId,
-    FactKind, FactPayload, FunctionBoundary, MAX_FACTS, ParameterBinding, SemanticFact,
+pub(in crate::analysis) use crate::analysis::model::fact::{
+    ArgumentView, Building, CallArgInfo, CallUnwrap, ClassFactRole, ControlKind, ControlRegionId,
+    FactId, FactKind, FactPayload, Frozen, FunctionBoundary, MAX_FACTS, ParameterBinding,
+    SemanticFact,
 };

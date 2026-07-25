@@ -11,7 +11,7 @@ pub(super) mod id;
 pub(super) mod mutation_index;
 pub(super) mod name_env;
 pub(super) mod scope_index;
-pub(super) mod types;
+mod types;
 
 pub(in crate::analysis) use frozen_assignments::FrozenAssignmentIndex;
 pub(in crate::analysis) use graph::{FrozenScopeGraph, ScopeGraph, ScopeGraphParts};

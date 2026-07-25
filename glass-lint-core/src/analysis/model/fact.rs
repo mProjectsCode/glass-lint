@@ -250,3 +250,12 @@ impl SemanticFact {
 }
 
 pub const MAX_FACTS: usize = 1 << 20;
+
+/// Marker type for the mutable building phase of [`FactStream`].
+#[derive(Debug)]
+pub(in crate::analysis) struct Building;
+
+/// Marker type for the immutable frozen phase of [`FactStream`].
+/// Accessors for names and values are only available in this phase.
+#[derive(Debug)]
+pub(in crate::analysis) struct Frozen;

@@ -33,7 +33,7 @@ mod model;
 mod stream;
 
 pub(in crate::analysis) use model::*;
-pub(in crate::analysis) use stream::{Building, FactStream, Frozen};
+pub(in crate::analysis) use stream::FactStream;
 
 /// Facts collected by the source-order visitor before names and values are
 /// frozen into the immutable semantic artifact.

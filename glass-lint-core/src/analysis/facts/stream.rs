@@ -15,6 +15,7 @@ use glass_lint_datastructures::{NameTable, PathId, PathInterner, PathSegment, Pa
 
 use crate::analysis::{
     facts::{FactId, FactKind, FactPayload, MAX_FACTS, ParameterBinding, SemanticFact},
+    model::fact::{Building, Frozen},
     value::{FunctionId, ValueTable},
 };
 
@@ -51,15 +52,6 @@ impl FactStreamIssueSet {
 pub(in crate::analysis) enum FactIssue {
     BudgetExhausted,
 }
-
-/// Marker type for the mutable building phase of [`FactStream`].
-#[derive(Debug)]
-pub(in crate::analysis) struct Building;
-
-/// Marker type for the immutable frozen phase of [`FactStream`].
-/// Accessors for names and values are only available in this phase.
-#[derive(Debug)]
-pub(in crate::analysis) struct Frozen;
 
 #[derive(Debug)]
 /// Canonical facts plus the path interner used by argument and flow queries.
