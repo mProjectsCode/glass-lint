@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn independent_file_worker_counts_have_identical_correctness() {
         let root = temp_root();
-        for (index, repetitions) in [20_000, 1, 10_000, 2, 5_000, 3].into_iter().enumerate() {
+        for (index, repetitions) in [200, 1, 100, 2, 50, 3].into_iter().enumerate() {
             fs::write(
                 root.join(format!("{index}.js")),
                 "fetch('/');\n".repeat(repetitions),

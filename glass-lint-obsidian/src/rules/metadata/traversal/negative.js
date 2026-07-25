@@ -36,3 +36,7 @@ function localObject(Object) {
     // @expect-no-error glass-lint rule=obsidian:metadata.traversal
     Object.keys(app.metadataCache.resolvedLinks);
 }
+
+// for...in over metadata maps is not detected (statement form, not a call)
+// @expect-no-error glass-lint rule=obsidian:metadata.traversal
+for (const key in app.metadataCache.resolvedLinks) {};

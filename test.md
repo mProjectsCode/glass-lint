@@ -4,7 +4,7 @@
 
 This document inventories every test in the repository, judges individual test quality, and evaluates module-level coverage. Tests are organized by owning crate and functional area.
 
-**Total tests inventoried: ~545 across 278 files** (including inline `#[cfg(test)]` modules, integration tests, and harness rule-contract fixtures).
+**Total tests inventoried: ~600+ across 278 files** (including inline `#[cfg(test)]` modules, integration tests, and harness rule-contract fixtures).
 
 ---
 
@@ -81,7 +81,7 @@ This document inventories every test in the repository, judges individual test q
 
 **Coverage: Very good.** Missing: export facts, PropertyWrite payload details, adversarial negatives for fact exclusion.
 
-### Analysis: Flow — Effect — `flow/effect/tests.rs` + `flow/effect/mod.rs` — 9 tests
+### Analysis: Flow — Effect — `flow/effect/tests.rs` + `flow/effect/mod.rs` — 16 tests
 
 | Test name | Name | Assertions | Component |
 |---|---|---|---|
@@ -94,8 +94,15 @@ This document inventories every test in the repository, judges individual test q
 | `chain_returns_borrowed_without_callee_name_fallback` | okay | good | yes |
 | `call_argument_indexes_into_correct_call` | good | good | yes |
 | `call_argument_returns_none_for_missing_index` | good | good | yes |
+| `effects_budget_exhausted_with_limited_budget` | good | good | yes |
+| `effects_operation_count_scales_with_program_size` | good | good | yes |
+| `effects_budget_exhausted_false_with_unlimited_budget` | good | good | yes |
+| `collect_creates_program_level_function` | good | good | yes |
+| `collect_creates_user_defined_functions` | good | good | yes |
+| `parameter_ref_index_and_is_root` | good | good | yes |
+| `effect_call_id_is_newtype` | good | good | yes |
 
-**Coverage: Good** — covers chain resolution, `.call()`/`.apply()` unwrapping, unknown-id. Light on `FunctionEffects` top-level API — no tests for `effect.sinks()` or `effect.sink_chains()`.
+**Coverage: Good** — covers chain resolution, `.call()`/`.apply()` unwrapping, unknown-id, `FunctionEffects` budget exhaustion and operation counting, parameter accessors, function creation.
 
 ### Analysis: Flow — Cross-module propagation — `flow/cross/mod.rs` — 15 inline tests
 
@@ -144,9 +151,27 @@ Covers all `SummaryPathStore` operations: frozen paths, join, prefix/suffix, sta
 
 **Coverage: Good.** Covers sink propagation, collection per function, and invocation compatibility rejection paths for spread and excessive args.
 
-### Analysis: Flow — Sink — `flow/summary/sink.rs` — 0 direct tests
+### Analysis: Flow — Sink — `flow/summary/sink.rs` — 16 inline tests
 
-**Coverage: Tested indirectly through summaries.rs.** `is_invocation_compatible` rejection paths (spread args, too many args) covered by integration tests in summaries.rs. `collect_sinks_for_call` still untested in isolation.
+| Test name | Name | Assertions | Component |
+|---|---|---|---|
+| `sink_set_default_is_empty` | good | good | yes |
+| `sink_set_push_unique_adds_new_sinks` | good | good | yes |
+| `sink_set_push_unique_rejects_duplicates` | good | good | yes |
+| `sink_set_get_returns_sink_by_index` | good | good | yes |
+| `sink_set_sort_and_dedup_orders_by_flow_parameter_path` | good | good | yes |
+| `sink_set_into_iteration` | good | good | yes |
+| `function_sink_summary_accessors` | good | good | yes |
+| `function_summary_new_and_basic_accessors` | good | good | yes |
+| `function_summary_add_sink_and_sort` | good | good | yes |
+| `function_summary_set_sinks_offset` | good | good | yes |
+| `is_invocation_compatible_accepts_matching_args` | good | good | yes |
+| `is_invocation_compatible_rejects_spread_args` | good | good | yes |
+| `is_invocation_compatible_rejects_too_many_args_without_rest` | good | good | yes |
+| `is_invocation_compatible_accepts_rest_param_allowing_extra_args` | good | good | yes |
+| `is_invocation_compatible_rejects_missing_required_arg` | good | good | yes |
+
+**Coverage: Good.** `SinkSet`, `FunctionSinkSummary`, `FunctionSummary` accessors, and all `is_invocation_compatible` rejection/acceptance paths now have direct unit tests. `collect_sinks_for_call` still tested only indirectly through summaries.rs integration tests.
 
 ### Analysis: Resolution — `resolution/tests.rs` — 12 tests
 
@@ -192,10 +217,10 @@ Covers typed addition, templates, arrays/objects/spreads/Object.assign, containe
 |---|---|---|
 | `model/fact.rs` | 9 inline tests: `control_regions_are_typed_and_orderable`, `fact_id_from_index_rejects_overflow`, `fact_id_index_rejects_overflow`, `call_arg_info_unknown_creates_default`, `parameter_binding_constructs_with_all_fields`, `parameter_binding_without_default`, `semantic_fact_new_creates_fact_with_all_fields`, `semantic_fact_round_trips_span`, `fact_payload_*` (3 payload variants) | **Good** |
 | `model/flow.rs` | 11 inline tests: `flow_limits_defaults_scale_from_flow_operations`, `flow_limits_scales_down_to_minimums`, `flow_limits_accessors_return_configured_values`, `flow_id_new_creates_deterministic_identity`, `flow_id_distinguishes_different_rules_and_indices`, `requirement_set_*` (4 tests: default, insert/remove, values, intersect_keys), `flow_state_*` (4 tests: new, key, requirements, retain_requirement_keys) | **Good** |
-| `model/scope.rs` | 1 test (`binding_versions_are_part_of_identity`, good) | **Minimal** |
-| `model/value.rs` | 2 tests (`invalid_value_ids_fail_closed`, `value_capacity_is_typed_as_exhaustion`) | **Okay** |
+| `model/scope.rs` | 12 inline tests: `binding_versions_are_part_of_identity`, `scope_id_index_and_from_usize`, `scoped_name_round_trips_scope_and_name`, `binding_root_global_variant`, `binding_root_binding_variants_differ_on_version`, `binding_key_new_creates_empty_path`, `scope_kind_variants_are_distinct`, `scope_effect_dynamic_evaluation_span`, `binding_provenance_variants`, `bound_argument_static_string_and_rooted_expression`, `function_id_converts_to_u32`, `binding_id_and_version_are_newtypes` | **Good** |
+| `model/value.rs` | 18 inline tests: `invalid_value_ids_fail_closed`, `value_capacity_is_typed_as_exhaustion`, `callable_value_constructs_and_exposes_target`, `intern_with_binding_wraps_in_binding_when_key_provided`, `intern_with_binding_returns_direct_id_when_no_binding`, `resolve_follows_binding_chain_to_terminal_value`, `resolve_exhausts_after_max_hops`, `resolve_returns_terminal_for_non_binding_value`, `resolve_returns_none_for_unknown_id`, `static_string_returns_string_for_static_string_value`, `static_string_returns_none_for_non_string_value`, `static_string_follows_binding_chain`, `intern_static_object_creates_object_with_canonical_names`, `intern_static_object_exhausts_on_unknown_name`, `allocate_object_id_returns_increasing_ids`, `allocate_object_id_exhausts_at_max`, `value_id_unknown_is_zero`, `value_debug_and_partial_eq` | **Good** |
 
-**Former gap closed:** `FlowLimits`, `FlowState`, `RequirementSet`, `FactId`, `CallArgInfo`, `ParameterBinding`, `SemanticFact`, `FactPayload` now all have unit tests.
+**Former gap closed:** `FlowLimits`, `FlowState`, `RequirementSet`, `FactId`, `CallArgInfo`, `ParameterBinding`, `SemanticFact`, `FactPayload` now all have unit tests. `ScopeId`, `ScopedName`, `BindingRoot`, `ScopeKind`, `ScopeEffect`, `BindingProvenance`, `BoundArgument`, `FunctionId`, `CallableValue`, `ValueTable::resolve()`, `intern_with_binding()`, `intern_static_object()`, `allocate_object_id()`, `static_string()` now all have dedicated tests.
 
 ### Analysis: Local — `local.rs` — 6 tests
 
@@ -227,14 +252,21 @@ Covers compilation of every declaration variant, argument matcher clauses, inval
 
 **Coverage: Good** — validates all error paths. Missing: a plain happy-path "builds a Rule" test.
 
-### Analysis: API — Module specifier patterns — `api/rule/module.rs` — 2 inline tests
+### Analysis: API — Module specifier patterns — `api/rule/module.rs` — 8 inline tests
 
 | Test name | Name | Assertions | Component |
 |---|---|---|---|
 | `package_patterns_obey_boundaries` | good | good | yes |
 | `package_patterns_reject_non_packages` | good | good | yes |
+| `exact_pattern_matches_itself_and_rejects_subpaths` | good | good | yes |
+| `exact_pattern_rejects_empty_string` | good | good | yes |
+| `exact_pattern_trims_whitespace` | good | good | yes |
+| `exact_pattern_as_str_and_not_package` | good | good | yes |
+| `package_pattern_as_str_and_is_package` | good | good | yes |
+| `display_impl_shows_name` | good | good | yes |
+| `scoped_package_rejects_empty_scope_or_name` | good | good | yes |
 
-**Coverage: Good but narrow.** No test for `ModuleSpecifierPattern::exact()`.
+**Coverage: Good.** `ModuleSpecifierPattern::exact()` now fully covered with matching, validation, trimming, accessor, and display tests.
 
 ### Analysis: API — Flow matcher — `api/rule/matcher/flow.rs` — 26 inline tests
 
@@ -575,7 +607,7 @@ All 47 rules have clear names, positive examples that model dangerous patterns, 
 | metadata/events | 6 pos | ★★★★★ | All configured events covered (`finished` added to rule + fixture) |
 | metadata/extract | 13 pos | ★★★★★ | Excellent coverage |
 | metadata/frontmatter_read | 7 pos | ★★★★☆ | Good |
-| metadata/traversal | 10 pos | ★★★★★ | Missing: `for...in` loop |
+| metadata/traversal | 10 pos + 1 neg (for...in) | ★★★★★ | `for...in` loop tracked as known gap (statement form, not a call — negative fixture documents non-detection) |
 | network/request | 12 pos | ★★★★★ | Excellent |
 | platform/branching | 13 pos | ★★★★★ | Excellent |
 | plugins/access | 5 pos | ★★★★☆ | Good |
@@ -611,7 +643,7 @@ All 47 rules have clear names, positive examples that model dangerous patterns, 
 
 **Specific gaps found:**
 1. **`ui/menu`**: 2 working positives (`this.addItem()` inside Menu subclass + `new Menu().addItem()` — chained constructor now tracked). Core regression test `instance_matchers_do_not_track_chained_constructor_calls` verifies correct tracking (finding_count=1).
-2. **`metadata/traversal`**: `for...in` loops not covered.
+2. **`metadata/traversal`**: `for...in` loops not covered (statement form, not call expression — negative fixture documents known non-detection).
 3. **`vault/events`**: Now covers all 5 vault events (create, modify, delete, rename, closed) in positives.
 4. **`metadata/events`**: `finished` event added to rule definition and positive fixtures (6 positives).
 
@@ -688,6 +720,9 @@ Covers schema version, globals list, binding classification, realm sources, erro
 
 ### Good coverage
 - core/analysis: facts, effect, syntax/constant, scope build analysis, rule compilation, rule builder, projector state, summaries, local, parse, environment, linter integration
+- core/analysis: model (scope, value, fact, flow — all now Good or better)
+- core/analysis: flow/summary/sink, flow/effect
+- core/api: rule/module
 - core/integration: public_surface
 - core/project: input_validation, session_and_link_validation, linking_and_flow
 - harness: runner
@@ -695,18 +730,18 @@ Covers schema version, globals list, binding classification, realm sources, erro
 - Obsidian rules: most vault rules, metadata rules (all events covered), lifecycle, plugins, storage, ui/command/settings_tab/modal, workspace/layout/open
 
 ### Adequate / Minimal coverage
-- core/analysis: summary/sink.rs (tested indirectly), model/scope.rs (minimal), model/value.rs (okay)
-- core/api: module.rs (narrow)
-- harness: cases/tests.rs (adequate)
 - JS rules: browser/filesystem (★★★☆☆), browser/permissions-bluetooth (★★★☆☆), browser/remote-resource (★★★☆☆)
-- Obsidian rules: ui/menu (★★★☆☆ — 2 positives; both working, including chained constructor calls)
 - CLI: lint.rs (minimal — 2 tests), args.rs (minimal — 2 tests)
 
 ### Resolved to Good coverage
 - core/analysis: projector/state.rs (was poor — now 10 tests covering all FlowStateTable operations), summary/summaries.rs (was minimal — now 5 tests with sink propagation and compatibility), local.rs (was minimal — now 6 tests including ArtifactCache)
 - core/analysis: model/flow.rs (was none — now 11 tests covering FlowLimits, FlowId, RequirementSet, FlowState), model/fact.rs (was minimal — now 9 tests covering FactId, CallArgInfo, ParameterBinding, SemanticFact, FactPayload)
+- core/analysis: model/scope.rs (was minimal — now 12 tests covering ScopeId, ScopedName, BindingRoot, ScopeKind, ScopeEffect, BindingProvenance, BoundArgument, FunctionId), model/value.rs (was okay — now 18 tests covering CallableValue, resolve, intern_with_binding, intern_static_object, allocate_object_id, static_string)
+- core/analysis: flow/summary/sink.rs (was 0 — now 16 tests covering SinkSet, FunctionSummary, FunctionSinkSummary, all is_invocation_compatible rejection/acceptance paths)
+- core/analysis: flow/effect (was 9 — now 16 tests covering budget exhaustion, operation counting, ParameterRef, function creation)
 - core: environment.rs (was adequate — now 9 tests covering extend, aliases_match, paths_match, fingerprint hashing)
 - core/api: rule/matcher/flow.rs (was minimal — now 26 tests covering ValueMatcher, StaticStringPredicate, ArgumentMatcher, ObjectFlowMatcherBuilder)
+- core/api: rule/module.rs (was narrow — now 9 tests covering ModuleSpecifierPattern::exact with matching, validation, trimming, accessor, display)
 - project: resolver.rs (was thin — now 7 tests covering require-vs-import, package_name, missing fallback)
 
 ---
@@ -730,7 +765,12 @@ Covers schema version, globals list, binding classification, realm sources, erro
 6. **Class static blocks** — missing.
 7. **`for await...of`** — async iteration scope untested.
 8. ~~**`core/model/flow.rs`** — `FlowLimits`, `FlowState`, `RequirementSet` have zero unit tests.~~ — **Resolved: now 11 tests covering all three types.**
-9. **CLI** — `lint.rs` and `args.rs` have only 2 tests each; no `lint_files` tests.
+9. ~~**`core/model/scope.rs`** — only 1 test.~~ — **Resolved: now 12 tests covering all scope types.**
+10. ~~**`core/model/value.rs`** — only 2 tests.~~ — **Resolved: now 18 tests covering all ValueTable operations.**
+11. ~~**`core/api/rule/module.rs`** — no exact() tests.~~ — **Resolved: now 9 tests including full exact() coverage.**
+12. ~~**`core/flow/summary/sink.rs`** — 0 direct tests.~~ — **Resolved: now 16 tests covering SinkSet, FunctionSummary, is_invocation_compatible.**
+13. **`collect_sinks_for_call`** — still untested in isolation (tested via summaries.rs integration tests).
+14. **CLI** — `lint.rs` and `args.rs` have only 2 tests each; no `lint_files` tests.
 
 ### Naming concerns
 

@@ -205,6 +205,7 @@ pub struct RootedPropertyMutationFact {
 #[cfg(test)]
 mod tests {
     use glass_lint_datastructures::NameTable;
+    use swc_common::{BytePos, Span};
 
     use super::*;
 
@@ -225,5 +226,114 @@ mod tests {
         });
         second.append_segment(value);
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn scope_id_index_and_from_usize() {
+        let id: ScopeId = 5usize.into();
+        assert_eq!(id.index(), 5);
+    }
+
+    #[test]
+    fn scoped_name_round_trips_scope_and_name() {
+        let mut names = NameTable::default();
+        let nid = names.intern("foo").unwrap();
+        let sn = ScopedName::new(ScopeId(3), nid);
+        assert_eq!(sn.scope(), ScopeId(3));
+        assert_eq!(sn.name(), nid);
+    }
+
+    #[test]
+    fn binding_root_global_variant() {
+        let a = BindingRoot::Global("window".into());
+        let b = BindingRoot::Global("window".into());
+        let c = BindingRoot::Global("document".into());
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn binding_root_binding_variants_differ_on_version() {
+        let a = BindingRoot::Binding {
+            function: FunctionId(1),
+            binding: BindingId(2),
+            version: BindingVersion(0),
+        };
+        let b = BindingRoot::Binding {
+            function: FunctionId(1),
+            binding: BindingId(2),
+            version: BindingVersion(1),
+        };
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn binding_key_new_creates_empty_path() {
+        let key = BindingKey::new(BindingRoot::Global("g".into()));
+        assert_eq!(
+            key,
+            BindingKey {
+                root: BindingRoot::Global("g".into()),
+                path: NamePath::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn scope_kind_variants_are_distinct() {
+        assert_ne!(ScopeKind::Program, ScopeKind::Function);
+        assert_ne!(ScopeKind::Function, ScopeKind::Block);
+        assert_ne!(ScopeKind::Block, ScopeKind::Dynamic);
+        assert_eq!(ScopeKind::Program, ScopeKind::Program);
+    }
+
+    #[test]
+    fn scope_effect_dynamic_evaluation_span() {
+        let span = Span::new(BytePos(10), BytePos(20));
+        let effect = ScopeEffect::DynamicEvaluation { span };
+        assert_eq!(effect.span(), span);
+    }
+
+    #[test]
+    fn binding_provenance_variants() {
+        let local = BindingProvenance::Local;
+        let alias = BindingProvenance::ValueAlias {
+            target: NamePath::new(),
+        };
+        let bound_callable = BindingProvenance::BoundCallable {
+            target: NamePath::new(),
+            bound_arguments: vec![Some(BoundArgument::StaticString("x".into()))],
+        };
+        let module_ns = BindingProvenance::ModuleNamespace {
+            module: "pkg".into(),
+        };
+        let static_string = BindingProvenance::StaticString("hello".into());
+        assert_eq!(local, BindingProvenance::Local);
+        assert_ne!(local, alias);
+        assert_ne!(alias, bound_callable);
+        assert_ne!(bound_callable, module_ns);
+        assert_ne!(module_ns, static_string);
+    }
+
+    #[test]
+    fn bound_argument_static_string_and_rooted_expression() {
+        let s = BoundArgument::StaticString("exact".into());
+        let r = BoundArgument::RootedExpression(NamePath::new());
+        assert_ne!(s, r);
+        assert_eq!(s, BoundArgument::StaticString("exact".into()));
+    }
+
+    #[test]
+    fn function_id_converts_to_u32() {
+        let id = FunctionId(42);
+        let raw: u32 = id.into();
+        assert_eq!(raw, 42);
+    }
+
+    #[test]
+    fn binding_id_and_version_are_newtypes() {
+        assert_ne!(BindingId(1), BindingId(2));
+        assert_ne!(BindingVersion(0), BindingVersion(1));
+        assert_eq!(BindingId(5), BindingId(5));
     }
 }

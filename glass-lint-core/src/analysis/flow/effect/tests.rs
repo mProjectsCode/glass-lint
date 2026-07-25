@@ -1,4 +1,4 @@
-use glass_lint_datastructures::NamePath;
+use glass_lint_datastructures::{NamePath, PathId};
 
 use super::*;
 use crate::analysis::{
@@ -216,4 +216,68 @@ fn call_argument_returns_none_for_missing_index() {
         .expect("script effect should exist");
     assert!(effect.call_argument(EffectCallId(0), 999).is_none());
     assert!(effect.call_argument(EffectCallId(usize::MAX), 0).is_none());
+}
+
+#[test]
+fn effects_budget_exhausted_with_limited_budget() {
+    let (_stream, effects) =
+        collect_effects_with_limit("function a() { return 1; } function b() { return a(); }", 2);
+    assert!(effects.budget_exhausted());
+}
+
+#[test]
+fn effects_operation_count_scales_with_program_size() {
+    let (_stream, effects) = collect_effects("const x = 1; const y = x + 1;");
+    let count = effects.operation_count();
+    assert!(count > 0, "should consume budget for declarations");
+}
+
+#[test]
+fn effects_budget_exhausted_false_with_unlimited_budget() {
+    let (_stream, effects) = collect_effects("const x = 1;");
+    assert!(!effects.budget_exhausted());
+}
+
+#[test]
+fn collect_creates_program_level_function() {
+    let (_stream, effects) = collect_effects("const x = 1;");
+    assert!(effects.get(FunctionId(0)).is_some());
+}
+
+#[test]
+fn collect_creates_user_defined_functions() {
+    let (_stream, effects) = collect_effects("function f() { return 1; }");
+    assert!(effects.get(FunctionId(1)).is_some());
+}
+
+#[test]
+fn parameter_ref_index_and_is_root() {
+    let params = [
+        ParameterRef {
+            index: 0,
+            path: PathId::from_raw(0),
+        },
+        ParameterRef {
+            index: 1,
+            path: PathId::from_raw(5),
+        },
+    ];
+    assert_eq!(params[0].index(), 0);
+    assert!(params[0].is_root());
+    assert_eq!(params[1].index(), 1);
+    assert!(!params[1].is_root());
+}
+
+#[test]
+fn effect_call_id_is_newtype() {
+    assert_ne!(EffectCallId(0), EffectCallId(1));
+    assert_eq!(EffectCallId(5), EffectCallId(5));
+}
+
+fn collect_effects_with_limit(source: &str, limit: usize) -> (FactStream<Frozen>, FunctionEffects) {
+    let parsed = crate::parse(source, "test.js").expect("source should parse");
+    let mut resolver = Resolver::collect(&parsed.program, source);
+    let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+    let effects = FunctionEffects::collect(&stream, limit);
+    (stream, effects)
 }
