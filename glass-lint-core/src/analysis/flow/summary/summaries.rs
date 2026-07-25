@@ -9,8 +9,8 @@ use crate::analysis::{
     flow::{
         effect::{EffectCall, FunctionEffects},
         plan::BoundFlowPlan,
-        table::FunctionTable,
     },
+    model::flow::FunctionTable,
     value::{FunctionId, ValueId},
 };
 

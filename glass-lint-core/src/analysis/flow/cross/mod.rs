@@ -23,7 +23,7 @@ use self::{
     worklist::ContextWorklist,
 };
 use crate::{
-    analysis::{ProjectSemanticModel, flow::index::FlowId},
+    analysis::{ProjectSemanticModel, model::flow::FlowId},
     api::{
         classification::ClassificationEvidence,
         compiler::{CompiledObjectFlow, CompiledRuleSelection},
@@ -154,7 +154,7 @@ mod tests {
     use crate::{
         analysis::{
             facts::FactId,
-            flow::{index::FlowId, requirements::RequirementSet},
+            model::flow::{FlowId, RequirementSet},
             value::{FunctionId, ValueId},
         },
         api::classification::RuleIndex,

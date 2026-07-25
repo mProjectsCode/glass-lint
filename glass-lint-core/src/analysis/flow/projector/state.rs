@@ -16,10 +16,7 @@ use super::history::{
 use crate::{
     analysis::{
         facts::ControlRegionId,
-        flow::{
-            index::FlowId,
-            state::{FlowState, FlowStateKey},
-        },
+        model::flow::{FlowId, FlowState, FlowStateKey},
         value::{ObjectId, ValueId},
     },
     api::classification::ClassificationEvidence,

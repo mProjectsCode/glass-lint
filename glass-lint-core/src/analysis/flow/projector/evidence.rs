@@ -10,16 +10,15 @@ use crate::{
     analysis::{
         facts::{FactStream, Frozen},
         flow::{
-            index::{FlowId, FlowLimits},
             plan::BoundFlowPlan,
             projector::{
                 CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowState,
                 MatchKind, ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,
                 state::FlowEvidence,
             },
-            state::FlowStateKey,
             summary::SummaryPathStore,
         },
+        model::flow::{FlowId, FlowLimits, FlowStateKey},
     },
     api::compiler::{CompiledObjectRequirement, CompiledObjectSinkArguments},
 };

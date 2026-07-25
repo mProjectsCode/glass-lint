@@ -3,7 +3,8 @@ use indexmap::IndexSet;
 use super::store::SummaryPathStore;
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
-    flow::{index::FlowId, plan::BoundFlowPlan, summary::store::SummaryPathId},
+    flow::{plan::BoundFlowPlan, summary::store::SummaryPathId},
+    model::flow::FlowId,
     value::{FunctionId, ValueId},
 };
 

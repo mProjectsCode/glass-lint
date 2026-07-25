@@ -13,15 +13,15 @@ use std::collections::BTreeSet;
 
 use crate::project::{LinkedModuleTarget, ModuleId};
 
+pub(crate) mod model;
+
 mod budget;
-mod evidence;
 mod facts;
 pub mod flow;
 mod local;
 mod lowering;
 mod matching;
 pub mod module;
-mod name;
 pub mod project;
 mod resolution;
 mod scope;

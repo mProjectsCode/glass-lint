@@ -7,7 +7,7 @@ use super::{
     state::{CallContext, CrossFlowState, QualifiedEvent},
 };
 use crate::{
-    analysis::{ProjectSemanticModel, flow::requirements::RequirementSet, value::FunctionId},
+    analysis::{ProjectSemanticModel, model::flow::RequirementSet, value::FunctionId},
     project::ModuleId,
 };
 

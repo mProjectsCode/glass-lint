@@ -16,11 +16,10 @@ use crate::{
         LocatedSourceContext, SemanticArtifact, SemanticBudget,
         facts::{self, SemanticFacts},
         flow::effect::FunctionEffects,
-        module,
-        name::MAX_NAMES,
-        resolution,
+        module, resolution,
         scope::ScopeGraph,
         status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
+        syntax::name::MAX_NAMES,
     },
     project::SourceFile,
 };

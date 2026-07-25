@@ -1,47 +1,15 @@
 //! Stable identities for bindings, functions, objects, and canonical paths.
 //!
-//! These types are intentionally opaque and orderable. Their equality is the
-//! semantic identity used by flow/index maps; formatting is provided only for
-//! human-readable symbol paths.
-//!
-//! `NamePath` and `SymbolPath` live in [`glass_lint_datastructures::path`];
-//! this module provides NameTable-dependent free functions that operate on
-//! them.
+//! Type definitions have been moved to [`crate::analysis::model::scope`] and
+//! [`crate::analysis::model::value`]. This module retains only the free
+//! identity-comparison functions.
 
-use glass_lint_datastructures::{NameId, NamePath, NameTable, SymbolPath};
+use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-/// Canonical ID for an abstract value in one analysis arena.
-pub(in crate::analysis) struct ValueId(pub(in crate::analysis) u32);
-
-impl ValueId {
-    /// Sentinel used whenever analysis cannot prove a value identity.
-    pub const UNKNOWN: Self = Self(0);
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-/// Stable identity for a lexical binding declaration.
-pub(in crate::analysis) struct BindingId(pub(in crate::analysis) u32);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-/// Monotonic version of a binding after a source-order assignment.
-pub(in crate::analysis) struct BindingVersion(pub(in crate::analysis) u32);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-/// Stable identity of a function used by helper-flow summaries.
-pub(in crate::analysis) struct FunctionId(pub(in crate::analysis) u32);
-
-impl From<FunctionId> for u32 {
-    fn from(id: FunctionId) -> Self {
-        id.0
-    }
-}
-
-impl glass_lint_datastructures::IdIndex for FunctionId {
-    fn from_raw(raw: u32) -> Self {
-        Self(raw)
-    }
-}
+pub use crate::analysis::model::{
+    scope::{BindingId, BindingKey, BindingRoot, BindingVersion, FunctionId},
+    value::ValueId,
+};
 
 /// Compare two [`NamePath`]s using the environment's rooted-object alias
 /// policy.
@@ -119,7 +87,7 @@ pub fn matches_global_object_alias(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 
     #[test]
     fn name_paths_use_the_same_table_for_checked_conversion() {
@@ -199,43 +167,5 @@ mod tests {
             NamePath::from_ids([this, client, bind, send])
         );
         assert!(!path.is_root());
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-/// Root identity plus versioned member path for alias/flow keys.
-pub(in crate::analysis) enum BindingRoot {
-    /// A lexical binding qualified by enclosing function and assignment
-    /// version.
-    Binding {
-        function: FunctionId,
-        binding: BindingId,
-        version: BindingVersion,
-    },
-    /// A configured/global root name.
-    Global(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-/// Canonical binding root with zero or more member segments.
-pub(in crate::analysis) struct BindingKey {
-    /// Stable root identity.
-    root: BindingRoot,
-    /// Artifact-local static member path from the root.
-    path: NamePath,
-}
-
-impl BindingKey {
-    /// Create a key with no member segments.
-    pub(in crate::analysis) fn new(root: BindingRoot) -> Self {
-        Self {
-            root,
-            path: NamePath::new(),
-        }
-    }
-
-    /// Extend the key with one static member segment.
-    pub(in crate::analysis) fn append_segment(&mut self, segment: NameId) {
-        self.path.append(segment);
     }
 }

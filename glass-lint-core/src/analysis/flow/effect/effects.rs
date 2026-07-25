@@ -5,7 +5,7 @@ use glass_lint_datastructures::Budget;
 use super::{function::FunctionEffect, types::ParameterRef};
 use crate::analysis::{
     facts::{ControlKind, FactPayload, FactStream, Frozen, FunctionBoundary},
-    flow::table::FunctionTable,
+    model::flow::FunctionTable,
     value::FunctionId,
 };
 

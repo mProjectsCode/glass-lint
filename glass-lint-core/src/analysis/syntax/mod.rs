@@ -11,6 +11,7 @@
 //! consumed by both the scope collector and the fact builder.
 
 pub(super) mod constant;
+pub(super) mod name;
 mod names;
 mod provenance;
 

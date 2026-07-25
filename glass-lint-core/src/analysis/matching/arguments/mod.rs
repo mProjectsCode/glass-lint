@@ -281,7 +281,7 @@ mod tests {
                 .all(|occ| !occ.span.is_empty())
         );
         let mut normalized = std::mem::take(&mut evidence[0]);
-        crate::analysis::evidence::normalize_evidence(&mut normalized, usize::MAX);
+        crate::analysis::matching::evidence::normalize_evidence(&mut normalized, usize::MAX);
         assert_eq!(normalized.len(), 1);
         assert_eq!(normalized[0].count, 2);
         assert_eq!(normalized[0].occurrences.len(), 2);

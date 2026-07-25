@@ -10,10 +10,8 @@ use crate::{
     analysis::{
         ProjectSemanticModel,
         facts::FactId,
-        flow::{
-            effect::{EffectUse, FunctionEffect},
-            index::FlowId,
-        },
+        flow::effect::{EffectUse, FunctionEffect},
+        model::flow::FlowId,
     },
     api::{
         classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},

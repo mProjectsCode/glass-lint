@@ -27,11 +27,10 @@ use crate::{
         },
         flow::{
             effect::{CallEffectRef, FunctionEffects},
-            index::FlowLimits,
             plan::BoundFlowPlan,
-            state::FlowState,
             summary::FunctionSummaries,
         },
+        model::flow::{FlowLimits, FlowState},
         value::{ObjectId, ValueId},
     },
     api::{

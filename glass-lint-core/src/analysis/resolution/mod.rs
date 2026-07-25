@@ -194,7 +194,7 @@ impl Resolver<'_> {
         environment: &Environment,
         coordinates: SpanNormalizer,
     ) -> Resolver<'static> {
-        use crate::analysis::name::MAX_NAMES;
+        use crate::analysis::syntax::name::MAX_NAMES;
 
         Self::collect_with_name_limit(program, environment, coordinates, MAX_NAMES)
     }

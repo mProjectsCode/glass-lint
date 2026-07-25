@@ -14,10 +14,10 @@ use crate::{
     analysis::{
         flow::{
             effect::FunctionEffects,
-            index::FlowLimits,
             projector::{self as object_flow, LocalFlowProjectionOutcome},
         },
         matching::{self, LinkedOccurrenceView, ModuleIdentityMap, OccurrenceIndexes},
+        model::flow::FlowLimits,
         module::ModuleInterface,
         project::model::ExportResolution,
         value::{ValueId, ValueTable},

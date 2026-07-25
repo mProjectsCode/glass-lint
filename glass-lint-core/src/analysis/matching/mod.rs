@@ -9,6 +9,7 @@ use crate::{
     api::classification::{ClassificationEvidence, MatchKind},
 };
 
+pub(super) mod evidence;
 mod occurrence;
 pub(in crate::analysis) use occurrence::ModuleExportKey;
 use occurrence::{CandidateOccurrences, ModuleOccurrences, Occurrence};

@@ -8,10 +8,11 @@ use std::collections::BTreeMap;
 
 use crate::{
     analysis::{
-        ModuleId, ProjectModule, ProjectSemanticModel, evidence,
+        ModuleId, ProjectModule, ProjectSemanticModel,
         facts::ProjectionPlan,
-        flow::{self, index::FlowLimits},
+        flow::{self},
         matching::{LinkedOccurrenceView, OccurrenceIndexes},
+        model::flow::FlowLimits,
         status::{AnalysisComponent, IncompleteReason, StatusScope},
     },
     api::{
@@ -168,7 +169,7 @@ impl ProjectMatcherModel<'_, '_> {
             evidence.extend_from_slice(projected);
         }
 
-        evidence::normalize_evidence(&mut evidence, evidence_limit);
+        crate::analysis::matching::evidence::normalize_evidence(&mut evidence, evidence_limit);
         evidence
     }
 }

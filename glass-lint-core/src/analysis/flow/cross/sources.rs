@@ -8,7 +8,7 @@ use crate::{
     analysis::{
         ProjectSemanticModel,
         facts::FactId,
-        flow::index::FlowId,
+        model::flow::FlowId,
         value::{FunctionId, ValueId},
     },
     api::compiler::CompiledObjectFlow,

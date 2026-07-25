@@ -27,7 +27,10 @@ struct EvidenceAccum {
 /// The `count` field retains the original total so callers can report how many
 /// events were found even when only a subset is shown.  Truncation applies
 /// both per group and to the total number of groups.
-pub(super) fn normalize_evidence(evidence: &mut Vec<ClassificationEvidence>, limit: usize) {
+pub(in crate::analysis) fn normalize_evidence(
+    evidence: &mut Vec<ClassificationEvidence>,
+    limit: usize,
+) {
     let mut acc: BTreeMap<EvidenceKey, EvidenceAccum> = BTreeMap::new();
 
     for item in evidence.drain(..) {

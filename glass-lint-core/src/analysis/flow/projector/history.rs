@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use crate::analysis::{
     facts::FactId,
-    flow::state::{FlowState, FlowStateKey},
+    model::flow::{FlowState, FlowStateKey},
     value::{ObjectId, ValueId},
 };
 

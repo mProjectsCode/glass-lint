@@ -11,10 +11,12 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::{NamePath, NameTable};
 
-use super::index::FlowId;
-use crate::api::{
-    classification::RuleIndex,
-    compiler::{CompiledObjectFlow, CompiledObjectRequirement},
+use crate::{
+    analysis::model::flow::FlowId,
+    api::{
+        classification::RuleIndex,
+        compiler::{CompiledObjectFlow, CompiledObjectRequirement},
+    },
 };
 
 #[derive(Debug, Clone)]
