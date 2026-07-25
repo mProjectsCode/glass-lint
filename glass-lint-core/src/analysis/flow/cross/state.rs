@@ -1,7 +1,7 @@
-use super::MAX_SOURCE_REFINEMENT_ROUNDS;
 use crate::{
     analysis::{
         facts::FactId,
+        flow::cross::MAX_SOURCE_REFINEMENT_ROUNDS,
         model::flow::{FlowId, RequirementSet},
         value::{FunctionId, ValueId},
     },

@@ -2,8 +2,8 @@ use smol_str::{SmolStr, ToSmolStr};
 use swc_common::{Span, Spanned};
 use swc_ecma_ast::{AssignExpr, Expr, Lit, ObjectLit, Prop, PropOrSpread};
 
-use super::ModuleInterfaceBuilder;
 use crate::analysis::{
+    facts::interface::ModuleInterfaceBuilder,
     module::{COMMONJS_EXPORTS, COMMONJS_MODULE, ModuleExport},
     resolution::Resolver,
     syntax::{member_property_name, property_name},

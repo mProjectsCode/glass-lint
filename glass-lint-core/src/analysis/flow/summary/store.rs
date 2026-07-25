@@ -274,7 +274,7 @@ impl<'a> SummaryPathStore<'a> {
 mod tests {
     use glass_lint_datastructures::{PathId, PathInterner, PathSegment};
 
-    use super::{SummaryPathId, SummaryPathStore};
+    use super::*;
 
     fn make_frozen_paths() -> (PathInterner, u32) {
         let mut frozen = PathInterner::new();

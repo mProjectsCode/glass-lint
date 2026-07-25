@@ -14,11 +14,12 @@ use std::{cell::RefCell, collections::BTreeMap};
 
 use glass_lint_datastructures::BudgetTracker;
 
-use super::state::{ExportLookupCache, ExportTable, ModuleGraph, SccPartition};
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
-        lowering::status::AnalysisStatus, module,
+        lowering::status::AnalysisStatus,
+        module,
+        project::state::{ExportLookupCache, ExportTable, ModuleGraph, SccPartition},
     },
     project::AnalysisDiagnostic,
 };

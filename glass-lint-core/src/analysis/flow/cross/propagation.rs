@@ -4,17 +4,19 @@ use glass_lint_datastructures::NameTable;
 use hashbrown::HashMap;
 use smol_str::SmolStr;
 
-use super::{
-    evidence::{ModuleEvidence, effect_use_event, emit, usage_matches_context},
-    graph::{FlowPathPlan, QualifiedCallGraph},
-    state::{CallContext, CrossFlowState, QualifiedEvent},
-    worklist::ContextWorklist,
-};
 use crate::{
     analysis::{
         ProjectSemanticModel,
         facts::FactId,
-        flow::effect::{CallEffectRef, EffectUse, FunctionEffect},
+        flow::{
+            cross::{
+                evidence::{ModuleEvidence, effect_use_event, emit, usage_matches_context},
+                graph::{FlowPathPlan, QualifiedCallGraph},
+                state::{CallContext, CrossFlowState, QualifiedEvent},
+                worklist::ContextWorklist,
+            },
+            effect::{CallEffectRef, EffectUse, FunctionEffect},
+        },
     },
     api::compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments},
     project::ModuleId,

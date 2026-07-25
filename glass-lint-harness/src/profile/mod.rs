@@ -32,7 +32,8 @@ mod tests {
 
     use glass_lint_core::project::ReportCompletion;
 
-    use super::{types::MeasuredRepetitionAccumulator, *};
+    use super::*;
+    use crate::profile::{metrics::median_duration, types::MeasuredRepetitionAccumulator};
 
     fn temp_root() -> crate::test_support::TempDir {
         crate::test_support::TempDir::new()
@@ -157,7 +158,7 @@ mod tests {
         }
         assert_eq!(measured.total_duration(), Duration::from_millis(10));
         assert_eq!(
-            super::metrics::median_duration(&measured.repetitions),
+            median_duration(&measured.repetitions),
             Duration::from_millis(3)
         );
     }

@@ -1,6 +1,6 @@
 use hashbrown::HashMap;
 
-use super::types::{PathId, PathSegment};
+use crate::{PathId, PathSegment};
 
 #[derive(Debug, Clone)]
 pub struct PathNode {

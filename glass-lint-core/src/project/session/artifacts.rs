@@ -5,14 +5,16 @@
 
 use std::{collections::BTreeMap, sync::Arc};
 
-use super::execution::ExecutionEvent;
 use crate::{
     ParseDiagnostic,
     analysis::{
         ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, LoweredSource,
         SharedSemanticArtifact, module::ModuleRequestId,
     },
-    project::{ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, SourceFile},
+    project::{
+        ProjectRelativePath, ResolutionRequest, ResolutionRequestKey, SourceFile,
+        session::{ExecutionEvent, ExecutionObserver},
+    },
 };
 
 /// Pre-computed index of authored requests for membership validation and
@@ -108,7 +110,7 @@ pub(super) fn insert_and_notify(
     cache: &ArtifactCacheHandle,
     key: ArtifactCacheKey,
     lowered: &LoweredSource,
-    observer: &dyn super::execution::ExecutionObserver,
+    observer: &dyn ExecutionObserver,
 ) {
     let evicted = cache.insert(
         key,

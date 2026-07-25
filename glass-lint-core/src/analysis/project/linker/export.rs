@@ -10,7 +10,10 @@ use crate::{
         LinkedModuleTarget, ModuleId,
         lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         module::{self, DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
-        project::model::{ExportResolution, MAX_EXPORT_DEPTH},
+        project::{
+            linker::ProjectLinker,
+            model::{ExportResolution, MAX_EXPORT_DEPTH},
+        },
         syntax::SymbolCallProvenance,
     },
     project::{
@@ -18,7 +21,7 @@ use crate::{
     },
 };
 
-impl super::ProjectLinker {
+impl ProjectLinker {
     /// Resolve exports via a topological walk of the SCC DAG.
     ///
     /// Single-node SCCs resolve in one pass because all dependencies belong

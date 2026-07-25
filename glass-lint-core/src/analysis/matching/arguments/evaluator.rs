@@ -3,11 +3,15 @@ use std::collections::BTreeMap;
 use glass_lint_datastructures::{NamePath, NameTable, SymbolPath};
 use smol_str::SmolStr;
 
-use super::identity::{call_identity_matches, member_identity_matches, member_subject_matches};
 use crate::{
     analysis::{
         facts::{ArgumentView, CallArgInfo, CallUnwrap, FactPayload, SemanticFact},
-        matching::ModuleIdentityMap,
+        matching::{
+            ModuleIdentityMap,
+            arguments::identity::{
+                call_identity_matches, member_identity_matches, member_subject_matches,
+            },
+        },
         project::model::ExportResolution,
         syntax::SymbolCallProvenance,
         value::{ValueId, ValueTable},

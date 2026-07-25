@@ -10,12 +10,12 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use super::history::{
-    Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey, decrement_ref, increment_ref,
-};
 use crate::{
     analysis::{
         facts::ControlRegionId,
+        flow::projector::history::{
+            Checkpoint, InverseDelta, MutationLog, ReportEvidenceKey, decrement_ref, increment_ref,
+        },
         model::flow::{FlowId, FlowState, FlowStateKey},
         value::{ObjectId, ValueId},
     },
@@ -381,30 +381,6 @@ impl<'a> FlowEvidence<'a> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn checkpoints_restore_divergent_mutation_paths() {
-        let mut table = FlowStateTable::new(262_144, 4096);
-        table.bind(ValueId(1), ObjectId(1));
-        let base = table.capture(true);
-
-        table.bind(ValueId(2), ObjectId(2));
-        let left = table.capture(true);
-        assert!(table.restore(base));
-        assert_eq!(table.object_for(ValueId(2)), None);
-
-        table.bind(ValueId(3), ObjectId(3));
-        assert!(table.restore(left));
-        assert_eq!(table.object_for(ValueId(2)), Some(ObjectId(2)));
-        assert_eq!(table.object_for(ValueId(3)), None);
-        assert!(table.restore(base));
-        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(1)));
-    }
-}
-
 #[derive(Debug, Clone)]
 /// Saved control construct state used to restore and join environments.
 pub(super) enum ControlFrame {
@@ -463,5 +439,29 @@ impl FlowEnvironment {
     /// Whether this snapshot represents a reachable execution path.
     pub(super) fn is_reachable(&self) -> bool {
         self.reachable
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn checkpoints_restore_divergent_mutation_paths() {
+        let mut table = FlowStateTable::new(262_144, 4096);
+        table.bind(ValueId(1), ObjectId(1));
+        let base = table.capture(true);
+
+        table.bind(ValueId(2), ObjectId(2));
+        let left = table.capture(true);
+        assert!(table.restore(base));
+        assert_eq!(table.object_for(ValueId(2)), None);
+
+        table.bind(ValueId(3), ObjectId(3));
+        assert!(table.restore(left));
+        assert_eq!(table.object_for(ValueId(2)), Some(ObjectId(2)));
+        assert_eq!(table.object_for(ValueId(3)), None);
+        assert!(table.restore(base));
+        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(1)));
     }
 }

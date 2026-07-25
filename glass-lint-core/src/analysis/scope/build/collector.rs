@@ -3,17 +3,20 @@ use hashbrown::{HashMap, HashSet};
 use smol_str::SmolStr;
 use swc_ecma_ast::{ArrowExpr, Expr, Function, ImportDecl, Pat, VarDeclKind};
 
-use super::{
-    ScopeCollector,
-    bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
-    compact_pat::{CompactPat, compact_pat},
-    history::AssignmentHistory,
-    plan::ScopePlan,
-    program::ScopeCollectionIssue,
-};
 use crate::analysis::{
     SemanticBudget,
-    scope::{BindingProvenance, ScopeId, ScopeKind, ScopedName, query::rooted::RootedExprContext},
+    scope::{
+        BindingProvenance, ScopeId, ScopeKind, ScopedName,
+        build::{
+            ScopeCollector,
+            bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
+            compact_pat::{CompactPat, compact_pat},
+            history::AssignmentHistory,
+            plan::ScopePlan,
+            program::ScopeCollectionIssue,
+        },
+        query::rooted::RootedExprContext,
+    },
     syntax::{function_prototype_builtin, is_function_constructor_member, member_property_name},
 };
 

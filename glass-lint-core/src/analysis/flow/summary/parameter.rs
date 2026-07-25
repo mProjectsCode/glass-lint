@@ -1,8 +1,8 @@
 use glass_lint_datastructures::PathSegment;
 
-use super::store::{SummaryPathId, SummaryPathStore};
 use crate::analysis::{
     facts::{CallArgInfo, FactStream, Frozen, ParameterBinding},
+    flow::summary::{SummaryPathStore, store::SummaryPathId},
     value::{Value, ValueId, ValueTable},
 };
 

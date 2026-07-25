@@ -9,7 +9,6 @@ use swc_ecma_ast::{
     ImportDecl, ObjectPatProp, Pat, SimpleAssignTarget, VarDecl, VarDeclKind,
 };
 
-use super::traversal::ScopePass;
 use crate::analysis::{
     scope::{
         ScopeCollector,
@@ -21,6 +20,7 @@ use crate::analysis::{
                 DeclarationClassification, assignment_provenance, classify_declaration,
                 expression_is_mutable_static_object,
             },
+            traversal::ScopePass,
         },
     },
     syntax::{

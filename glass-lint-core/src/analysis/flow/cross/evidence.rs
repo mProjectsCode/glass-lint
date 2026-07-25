@@ -2,15 +2,17 @@ use std::collections::BTreeSet;
 
 use hashbrown::HashMap;
 
-use super::{
-    MAX_RELATED_EVIDENCE,
-    state::{CallContext, CrossFlowState, EvidenceRole, QualifiedEvent},
-};
 use crate::{
     analysis::{
         ProjectSemanticModel,
         facts::FactId,
-        flow::effect::{EffectUse, FunctionEffect},
+        flow::{
+            cross::{
+                MAX_RELATED_EVIDENCE,
+                state::{CallContext, CrossFlowState, EvidenceRole, QualifiedEvent},
+            },
+            effect::{EffectUse, FunctionEffect},
+        },
         model::flow::FlowId,
     },
     api::{

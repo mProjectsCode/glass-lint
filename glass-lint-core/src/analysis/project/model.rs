@@ -7,11 +7,6 @@ use std::{cell::RefCell, collections::BTreeMap};
 use glass_lint_datastructures::NameTable;
 use smol_str::SmolStr;
 
-use super::{
-    linker::ProjectLinker,
-    projection::ProjectionOutcome,
-    state::{ExportLookupCache, ExportTable},
-};
 use crate::{
     analysis::{
         facts::{FactId, FactStream, Frozen, SemanticFact},
@@ -19,6 +14,11 @@ use crate::{
         local::{LocalArtifact, ProjectModule},
         lowering::status::{AnalysisStatus, IncompleteReason, ParseFailureKind, StatusScope},
         module::ModuleRequestId,
+        project::{
+            linker::ProjectLinker,
+            projection::ProjectionOutcome,
+            state::{ExportLookupCache, ExportTable},
+        },
         syntax::SymbolCallProvenance,
         value::{FunctionId, ValueId},
     },

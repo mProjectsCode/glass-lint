@@ -1,7 +1,8 @@
 use swc_common::{Span, Spanned};
 use swc_ecma_visit::VisitWith;
 
-use super::{traversal::ScopeTraversal, *};
+use super::*;
+use crate::analysis::scope::{ScopeKind, ScopeTraversal};
 
 fn collect(source: &str) -> ScopeCollector<'static> {
     let parsed = crate::parse(source, "scope-collector.js").expect("source should parse");

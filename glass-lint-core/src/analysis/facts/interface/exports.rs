@@ -5,9 +5,9 @@ use swc_ecma_ast::{
     NamedExport,
 };
 
-use super::ModuleInterfaceBuilder;
 use crate::{
     analysis::{
+        facts::interface::ModuleInterfaceBuilder,
         module::{
             DEFAULT_EXPORT, ModuleExport, ModuleRequestRole, NAMESPACE_EXPORT, ReExportBinding,
         },

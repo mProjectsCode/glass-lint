@@ -1,6 +1,5 @@
-use super::{
-    store::{ParentPathStore, PathSegments},
-    types::{DEFAULT_MAX_PATH_NODES, PathId, PathSegment},
+use crate::{
+    ParentPathStore, PathId, PathSegment, PathSegments, path_trie::DEFAULT_MAX_PATH_NODES,
 };
 
 #[derive(Debug)]

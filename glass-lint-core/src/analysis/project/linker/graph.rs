@@ -4,17 +4,23 @@ use std::collections::BTreeMap;
 
 use glass_lint_datastructures::Budget;
 
-use super::scc::{build_scc_dag_and_order, strongly_connected_components};
 use crate::{
     analysis::{
         LinkedModuleTarget,
         lowering::status::{IncompleteReason, ResolutionKind, StatusScope},
-        project::{model::MAX_SCC_SIZE, state::SccPartition},
+        project::{
+            linker::{
+                ProjectLinker,
+                scc::{build_scc_dag_and_order, strongly_connected_components},
+            },
+            model::MAX_SCC_SIZE,
+            state::SccPartition,
+        },
     },
-    project::is_internal_module_request as is_internal_request,
+    project::is_internal_module_request,
 };
 
-impl super::ProjectLinker {
+impl ProjectLinker {
     /// Convert internal resolution records into bounded graph edges, compute
     /// SCCs, build the SCC DAG, and compute the topological order.
     pub(super) fn collect_graph_edges(&mut self) {
@@ -26,7 +32,7 @@ impl super::ProjectLinker {
                     continue;
                 };
                 let Some(resolution) = self.resolutions.get(&request_id) else {
-                    if is_internal_request(request.specifier()) {
+                    if is_internal_module_request(request.specifier()) {
                         self.status.record(
                             StatusScope::File(module.path().clone()),
                             IncompleteReason::MissingInternalResolution {
@@ -43,7 +49,7 @@ impl super::ProjectLinker {
                         self.link_budget.mark_exhausted();
                     }
                 } else if matches!(resolution, LinkedModuleTarget::Missing)
-                    && is_internal_request(request.specifier())
+                    && is_internal_module_request(request.specifier())
                 {
                     self.status.record(
                         StatusScope::File(module.path().clone()),

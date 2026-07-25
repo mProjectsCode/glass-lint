@@ -3,11 +3,11 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use glass_lint_datastructures::{NamePath, NameTable};
 use hashbrown::HashMap;
 
-use super::{MAX_PENDING, graph::QualifiedCallGraph, state::SourceBudget};
 use crate::{
     analysis::{
         ProjectSemanticModel,
         facts::FactId,
+        flow::cross::{MAX_PENDING, QualifiedCallGraph, state::SourceBudget},
         model::flow::FlowId,
         value::{FunctionId, ValueId},
     },

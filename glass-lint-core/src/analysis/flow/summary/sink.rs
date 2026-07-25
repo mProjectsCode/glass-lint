@@ -1,9 +1,11 @@
 use indexmap::IndexSet;
 
-use super::store::SummaryPathStore;
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
-    flow::{planning::BoundFlowPlan, summary::store::SummaryPathId},
+    flow::{
+        planning::BoundFlowPlan,
+        summary::{SummaryPathStore, store::SummaryPathId},
+    },
     model::flow::FlowId,
     value::{FunctionId, ValueId},
 };

@@ -6,7 +6,7 @@ use swc_ecma_ast::{
 };
 use swc_ecma_visit::{Visit, VisitWith};
 
-use super::{ScopeId, ScopeKind};
+use crate::analysis::scope::{ScopeId, ScopeKind};
 
 /// Phase-specific policy for scope traversal.
 ///

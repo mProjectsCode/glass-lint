@@ -12,14 +12,16 @@ use swc_ecma_ast::{
     ArrowExpr, ClassDecl, FnDecl, Function, Ident, ImportDecl, MemberExpr, Pat, PropName, VarDecl,
 };
 
-use super::{
-    ScopeShape, ScopeShapeTable,
-    bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
-    traversal::ScopePass,
-};
 use crate::analysis::{
     SemanticBudget,
-    scope::{BindingProvenance, LexicalScope, ScopeId, ScopeKind},
+    scope::{
+        BindingProvenance, LexicalScope, ScopeId, ScopeKind,
+        build::{
+            ScopeShape, ScopeShapeTable,
+            bindings::{for_each_import_binding, for_each_pat_binding, var_binding_scope},
+            traversal::ScopePass,
+        },
+    },
 };
 
 /// Immutable declaration result consumed by [`super::ScopeCollector`].

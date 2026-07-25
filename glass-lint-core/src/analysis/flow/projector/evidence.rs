@@ -13,8 +13,8 @@ use crate::{
             planning::BoundFlowPlan,
             projector::{
                 CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowState,
-                MatchKind, ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,
-                state::FlowEvidence,
+                FlowStateTable, MatchKind, ObjectFlowProjector, ObjectId, ValueId,
+                history::ReportEvidenceKey, state::FlowEvidence,
             },
             summary::SummaryPathStore,
         },
@@ -200,7 +200,7 @@ impl ObjectFlowProjector<'_, '_> {
 #[allow(clippy::too_many_arguments)]
 pub(super) fn emit_if_ready(
     evidence: &mut FlowEvidence,
-    flow_state: &super::state::FlowStateTable,
+    flow_state: &FlowStateTable,
     plan: &BoundFlowPlan<'_>,
     limits: &FlowLimits,
     stream: &FactStream<Frozen>,

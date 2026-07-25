@@ -16,14 +16,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use glass_lint_datastructures::Budget;
 use hashbrown::HashMap;
 
-use self::{
-    evidence::ModuleEvidence,
-    graph::{FlowPathPlan, QualifiedCallGraph},
-    sources::FlowSources,
-    worklist::ContextWorklist,
-};
 use crate::{
-    analysis::{ProjectSemanticModel, model::flow::FlowId},
+    analysis::{
+        ProjectSemanticModel,
+        flow::cross::{
+            evidence::ModuleEvidence,
+            graph::{FlowPathPlan, QualifiedCallGraph},
+            sources::FlowSources,
+            worklist::ContextWorklist,
+        },
+        model::flow::FlowId,
+    },
     api::{
         classification::ClassificationEvidence,
         compiler::{CompiledObjectFlow, CompiledRuleSelection},
@@ -145,15 +148,14 @@ pub(in crate::analysis) fn collect(
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        sources::{FlowSources, SourceCandidate, SourceKey},
-        state::{CallContext, CrossFlowState, QualifiedEvent, SourceBudget},
-        worklist::ContextWorklist,
-        *,
-    };
+    use super::*;
     use crate::{
         analysis::{
             facts::FactId,
+            flow::cross::{
+                sources::{SourceCandidate, SourceKey},
+                state::{CallContext, CrossFlowState, QualifiedEvent, SourceBudget},
+            },
             model::flow::{FlowId, RequirementSet},
             value::{FunctionId, ValueId},
         },

@@ -1,13 +1,17 @@
 use std::collections::{BTreeSet, VecDeque};
 
-use super::{
-    MAX_CONTEXTS,
-    graph::QualifiedCallGraph,
-    sources::{FlowSources, SourceKey},
-    state::{CallContext, CrossFlowState, QualifiedEvent},
-};
 use crate::{
-    analysis::{ProjectSemanticModel, model::flow::RequirementSet, value::FunctionId},
+    analysis::{
+        ProjectSemanticModel,
+        flow::cross::{
+            MAX_CONTEXTS,
+            graph::QualifiedCallGraph,
+            sources::{FlowSources, SourceKey},
+            state::{CallContext, CrossFlowState, QualifiedEvent},
+        },
+        model::flow::RequirementSet,
+        value::FunctionId,
+    },
     project::ModuleId,
 };
 

@@ -16,10 +16,7 @@ use swc_common::BytePos;
 
 use crate::analysis::{
     SemanticBudget,
-    scope::{
-        AliasAssignment, BindingProvenance, LexicalScope, ScopeEffect, ScopeId, ScopeKind,
-        ScopedName,
-    },
+    scope::{AliasAssignment, BindingProvenance, LexicalScope, ScopeEffect, ScopeId, ScopedName},
 };
 
 pub(super) mod aliases;

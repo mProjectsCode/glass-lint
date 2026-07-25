@@ -8,9 +8,11 @@ use smol_str::SmolStr;
 use swc_common::Span;
 use swc_ecma_ast::{CallExpr, Callee, Expr, MemberExpr, Pat};
 
-use super::{CompactPat, compact_pat};
 use crate::analysis::{
-    scope::{BindingProvenance, ScopeId, ScopedName, build::ScopeCollector},
+    scope::{
+        BindingProvenance, ScopeId, ScopedName,
+        build::{CompactPat, ScopeCollector, compact_pat},
+    },
     syntax::member_property_name,
 };
 

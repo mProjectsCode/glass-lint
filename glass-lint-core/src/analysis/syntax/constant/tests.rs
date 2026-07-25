@@ -2,8 +2,10 @@ use std::collections::BTreeMap;
 
 use swc_ecma_ast::{Expr, ExprStmt, MemberExpr, Program, Stmt};
 
-use super::{ConstValue, EvalState, Lookup, evaluate};
-use crate::analysis::syntax::constant::types::{MAX_ARRAY_ITEMS, MAX_STRING_BYTES};
+use crate::analysis::syntax::constant::{
+    ConstValue, EvalState, Lookup, evaluate,
+    types::{MAX_ARRAY_ITEMS, MAX_STRING_BYTES},
+};
 
 #[derive(Default)]
 struct TestLookup {

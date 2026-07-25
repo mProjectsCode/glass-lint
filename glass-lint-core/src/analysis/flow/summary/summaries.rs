@@ -1,14 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{
-    sink::{FunctionSinkSummary, FunctionSummary},
-    store::SummaryPathStore,
-};
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
     flow::{
         effect::{EffectCall, FunctionEffects},
         planning::BoundFlowPlan,
+        summary::{
+            MAX_SUMMARY_ROUNDS, SummaryPathStore,
+            sink::{FunctionSinkSummary, FunctionSummary},
+        },
     },
     model::flow::FunctionTable,
     value::{FunctionId, ValueId},
@@ -109,7 +109,7 @@ impl<'a> FunctionSummaries<'a> {
 
         let mut worklist: BTreeSet<FunctionId> = self.by_id.iter().map(|(id, _)| id).collect();
 
-        for _ in 0..super::MAX_SUMMARY_ROUNDS {
+        for _ in 0..MAX_SUMMARY_ROUNDS {
             if worklist.is_empty() {
                 break;
             }
@@ -250,6 +250,7 @@ fn try_project_sink(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::analysis::{
         facts,
         flow::{effect::FunctionEffects, planning::BoundFlowPlan},
@@ -264,7 +265,7 @@ mod tests {
         let stream = facts::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
-        let summaries = super::FunctionSummaries::collect(&stream, &effects, &plan);
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
         assert!(summaries.by_id.len() >= 2);
         assert_eq!(
             summaries
