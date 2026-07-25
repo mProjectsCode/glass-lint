@@ -8,7 +8,7 @@ use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
     flow::{
         effect::{EffectCall, FunctionEffects},
-        plan::BoundFlowPlan,
+        planning::BoundFlowPlan,
     },
     model::flow::FunctionTable,
     value::{FunctionId, ValueId},
@@ -252,7 +252,7 @@ fn try_project_sink(
 mod tests {
     use crate::analysis::{
         facts,
-        flow::{effect::FunctionEffects, plan::BoundFlowPlan},
+        flow::{effect::FunctionEffects, planning::BoundFlowPlan},
         resolution::Resolver,
     };
 

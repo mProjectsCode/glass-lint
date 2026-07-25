@@ -8,9 +8,9 @@ use smol_str::{SmolStr, ToSmolStr};
 use crate::{
     analysis::{
         LinkedModuleTarget, ModuleId,
+        lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         module::{self, DEFAULT_EXPORT, ModuleRequestRole, NAMESPACE_EXPORT},
         project::model::{ExportResolution, MAX_EXPORT_DEPTH},
-        status::{AnalysisComponent, IncompleteReason, StatusScope},
         syntax::SymbolCallProvenance,
     },
     project::{

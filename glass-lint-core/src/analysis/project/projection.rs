@@ -11,9 +11,9 @@ use crate::{
         ModuleId, ProjectModule, ProjectSemanticModel,
         facts::ProjectionPlan,
         flow::{self},
+        lowering::status::{AnalysisComponent, IncompleteReason, StatusScope},
         matching::{LinkedOccurrenceView, OccurrenceIndexes},
         model::flow::FlowLimits,
-        status::{AnalysisComponent, IncompleteReason, StatusScope},
     },
     api::{
         classification::{ClassificationEvidence, RuleIndex},

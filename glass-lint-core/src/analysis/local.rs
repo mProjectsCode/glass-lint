@@ -19,8 +19,8 @@ use syntax::SymbolCallProvenance;
 use crate::{
     AnalysisLimits, Environment, SourceLanguage, SourceLineIndex,
     analysis::{
-        facts, flow::effect::FunctionEffects, module::ModuleInterface, status::AnalysisStatus,
-        syntax,
+        facts, flow::effect::FunctionEffects, lowering::status::AnalysisStatus,
+        module::ModuleInterface, syntax,
     },
     project::{ModuleId, ProjectRelativePath, SourceFile, SourceText},
 };

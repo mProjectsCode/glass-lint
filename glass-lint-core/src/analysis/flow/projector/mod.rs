@@ -27,7 +27,7 @@ use crate::{
         },
         flow::{
             effect::{CallEffectRef, FunctionEffects},
-            plan::BoundFlowPlan,
+            planning::BoundFlowPlan,
             summary::FunctionSummaries,
         },
         model::flow::{FlowLimits, FlowState},

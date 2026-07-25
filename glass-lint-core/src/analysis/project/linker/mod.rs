@@ -17,8 +17,7 @@ use glass_lint_datastructures::BudgetTracker;
 use super::state::{ExportLookupCache, ExportTable, ModuleGraph, SccPartition};
 use crate::{
     analysis::{
-        LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId, module,
-        status::AnalysisStatus,
+        LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId, lowering::status::AnalysisStatus, module,
     },
     project::AnalysisDiagnostic,
 };
@@ -105,9 +104,9 @@ impl ProjectLinker {
             self.status.extend(&file_status);
             if unknown {
                 self.status.record(
-                    crate::analysis::status::StatusScope::File(path),
-                    crate::analysis::status::IncompleteReason::UnsupportedModuleInterface {
-                        kind: crate::analysis::status::ModuleInterfaceKind::CommonJsExports,
+                    crate::analysis::lowering::status::StatusScope::File(path),
+                    crate::analysis::lowering::status::IncompleteReason::UnsupportedModuleInterface {
+                        kind: crate::analysis::lowering::status::ModuleInterfaceKind::CommonJsExports,
                     },
                 );
             }

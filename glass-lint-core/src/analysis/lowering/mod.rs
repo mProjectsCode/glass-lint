@@ -3,6 +3,9 @@
 //! Parser and AST details stop here. Downstream project analysis receives an
 //! immutable local artifact and its source map, never a parsed program.
 
+pub(super) mod budget;
+pub(super) mod status;
+
 use std::{collections::BTreeMap, sync::Arc};
 
 use glass_lint_datastructures::NameTable;
@@ -18,9 +21,9 @@ use crate::{
         flow::effect::FunctionEffects,
         module, resolution,
         scope::ScopeGraph,
-        status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         syntax::name::MAX_NAMES,
     },
+    analysis::lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
     project::SourceFile,
 };
 

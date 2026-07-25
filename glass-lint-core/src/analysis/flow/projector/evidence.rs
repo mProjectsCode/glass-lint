@@ -10,7 +10,7 @@ use crate::{
     analysis::{
         facts::{FactStream, Frozen},
         flow::{
-            plan::BoundFlowPlan,
+            planning::BoundFlowPlan,
             projector::{
                 CallArgInfo, ClassificationEvidence, CompiledObjectFlow, FactId, FlowState,
                 MatchKind, ObjectFlowProjector, ObjectId, ValueId, history::ReportEvidenceKey,

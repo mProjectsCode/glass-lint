@@ -12,6 +12,6 @@
 pub(super) mod cross;
 pub mod effect;
 pub(super) mod matcher;
-pub(super) mod plan;
+pub(super) mod planning;
 pub(super) mod projector;
 pub(super) mod summary;

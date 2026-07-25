@@ -16,22 +16,51 @@
 //! Binding IDs and assignment versions make position-sensitive queries
 //! possible without rebuilding the AST for each lookup.
 
+use std::collections::BTreeMap;
+
 use collect::{ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal};
-use glass_lint_datastructures::NameTable;
+use glass_lint_datastructures::{NameId, NameTable};
+use smol_str::SmolStr;
 use swc_common::Spanned;
 use swc_ecma_ast::Program;
 use swc_ecma_visit::VisitWith;
 
-use crate::analysis::SemanticBudget;
+use crate::analysis::{SemanticBudget, syntax::constant::ConstValue};
 
 mod collect;
-mod provenance_const;
 mod query;
 
 mod model;
 
 pub(in crate::analysis) use model::*;
-use provenance_const::provenance_to_const_value;
+
+pub(in crate::analysis) fn provenance_to_const_value(
+    provenance: &BindingProvenance,
+    resolve_name: &impl Fn(NameId) -> Option<SmolStr>,
+) -> ConstValue {
+    match provenance {
+        BindingProvenance::StaticString(value) => ConstValue::String(value.clone()),
+        BindingProvenance::StaticNumber(value) => ConstValue::NonNegativeInteger(*value),
+        BindingProvenance::StaticStringArray(values) => {
+            ConstValue::Array(values.iter().cloned().map(ConstValue::String).collect())
+        }
+        BindingProvenance::StaticObjectKeys(values) => ConstValue::Object(
+            values
+                .iter()
+                .filter_map(|key| resolve_name(*key))
+                .map(|key| (key, ConstValue::Unknown))
+                .collect::<BTreeMap<_, _>>(),
+        ),
+        BindingProvenance::StaticObjectValues(values) => ConstValue::Object(
+            values
+                .keys()
+                .filter_map(|key| resolve_name(*key))
+                .map(|key| (key, ConstValue::Unknown))
+                .collect::<BTreeMap<_, _>>(),
+        ),
+        _ => ConstValue::Unknown,
+    }
+}
 
 impl ScopeGraph {
     #[cfg(test)]
