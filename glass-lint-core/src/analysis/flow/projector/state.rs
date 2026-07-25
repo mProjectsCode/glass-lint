@@ -445,6 +445,8 @@ impl FlowEnvironment {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::model::fact::FactId;
+    use crate::api::classification::RuleIndex;
 
     #[test]
     fn checkpoints_restore_divergent_mutation_paths() {
@@ -463,5 +465,117 @@ mod tests {
         assert_eq!(table.object_for(ValueId(3)), None);
         assert!(table.restore(base));
         assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(1)));
+    }
+
+    #[test]
+    fn bind_updates_and_unbind_removes_aliases() {
+        let mut table = FlowStateTable::new(100, 100);
+        table.bind(ValueId(1), ObjectId(10));
+        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(10)));
+        assert!(table.has_alias_for(ObjectId(10)));
+
+        table.bind(ValueId(1), ObjectId(20));
+        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(20)));
+
+        let removed = table.unbind(ValueId(1));
+        assert_eq!(removed, Some(ObjectId(20)));
+        assert_eq!(table.object_for(ValueId(1)), None);
+        assert!(!table.has_alias_for(ObjectId(20)));
+    }
+
+    #[test]
+    fn object_for_returns_none_for_unbound_value() {
+        let table = FlowStateTable::new(100, 100);
+        assert_eq!(table.object_for(ValueId(99)), None);
+    }
+
+    #[test]
+    fn has_alias_for_false_when_no_aliases_exist() {
+        let table = FlowStateTable::new(100, 100);
+        assert!(!table.has_alias_for(ObjectId(1)));
+    }
+
+    #[test]
+    fn state_limit_rejects_insertion_beyond_capacity() {
+        let mut table = FlowStateTable::new(2, 100);
+        let state1 = FlowState::new(FlowId::new(RuleIndex::new(0), 0), FactId(1), ObjectId(1));
+        let state2 = FlowState::new(FlowId::new(RuleIndex::new(0), 1), FactId(2), ObjectId(2));
+        let state3 = FlowState::new(FlowId::new(RuleIndex::new(0), 2), FactId(3), ObjectId(3));
+        assert!(table.insert_state(state1));
+        assert!(table.insert_state(state2));
+        assert!(!table.insert_state(state3));
+        assert_eq!(table.state_count(), 2);
+    }
+
+    #[test]
+    fn remove_states_for_clears_all_object_states() {
+        let mut table = FlowStateTable::new(100, 100);
+        table.bind(ValueId(1), ObjectId(1));
+        table.bind(ValueId(2), ObjectId(1));
+        let s1 = FlowState::new(FlowId::new(RuleIndex::new(0), 0), FactId(1), ObjectId(1));
+        let s2 = FlowState::new(FlowId::new(RuleIndex::new(0), 1), FactId(2), ObjectId(2));
+        table.insert_state(s1);
+        table.insert_state(s2);
+        table.remove_states_for(ObjectId(1));
+        assert_eq!(
+            table
+                .states_for(ObjectId(1))
+                .count(),
+            0
+        );
+        assert_eq!(table.state_count(), 1);
+    }
+
+    #[test]
+    fn join_environments_keeps_only_common_aliases() {
+        let mut table = FlowStateTable::new(100, 100);
+        table.bind(ValueId(1), ObjectId(10));
+        table.bind(ValueId(2), ObjectId(20));
+        let env_a = table.capture(true);
+
+        table.bind(ValueId(2), ObjectId(30));
+        table.bind(ValueId(3), ObjectId(40));
+        let env_b = table.capture(true);
+
+        table.join_environments(&[env_a, env_b]);
+        assert_eq!(table.object_for(ValueId(1)), Some(ObjectId(10)));
+        assert_eq!(table.object_for(ValueId(2)), None);
+        assert_eq!(table.object_for(ValueId(3)), None);
+    }
+
+    #[test]
+    fn mutation_count_tracks_mutations() {
+        let mut table = FlowStateTable::new(100, 100);
+        assert_eq!(table.mutation_count(), 0);
+        table.bind(ValueId(1), ObjectId(10));
+        assert_eq!(table.mutation_count(), 1);
+        table.bind(ValueId(2), ObjectId(20));
+        assert_eq!(table.mutation_count(), 2);
+        table.unbind(ValueId(1));
+        assert_eq!(table.mutation_count(), 3);
+    }
+
+    #[test]
+    fn clear_removes_all_aliases_and_states() {
+        let mut table = FlowStateTable::new(100, 100);
+        table.bind(ValueId(1), ObjectId(10));
+        table.bind(ValueId(2), ObjectId(20));
+        let s = FlowState::new(FlowId::new(RuleIndex::new(0), 0), FactId(1), ObjectId(10));
+        table.insert_state(s);
+        table.clear();
+        assert_eq!(table.object_for(ValueId(1)), None);
+        assert_eq!(table.object_for(ValueId(2)), None);
+        assert_eq!(table.state_count(), 0);
+    }
+
+    #[test]
+    fn state_mut_allows_in_place_update() {
+        let mut table = FlowStateTable::new(100, 100);
+        let flow = FlowId::new(RuleIndex::new(0), 0);
+        let state = FlowState::new(flow, FactId(1), ObjectId(10));
+        table.insert_state(state);
+        table.state_mut(ObjectId(10), flow).unwrap().record_requirement(0, FactId(5));
+        let retrieved = table.state(ObjectId(10), flow).unwrap();
+        assert_eq!(retrieved.source_event(), FactId(1));
     }
 }

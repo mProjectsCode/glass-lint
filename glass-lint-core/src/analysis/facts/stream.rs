@@ -316,6 +316,23 @@ impl FactStream<Frozen> {
 }
 
 #[cfg(test)]
+impl Default for FactStream<Frozen> {
+    fn default() -> Self {
+        Self {
+            facts: Vec::new(),
+            max_facts: MAX_FACTS,
+            paths: PathInterner::default(),
+            names: NameTable::default(),
+            values: ValueTable::default(),
+            function_parameters: Vec::new(),
+            valid: true,
+            issues: FactStreamIssueSet::new(),
+            _phase: PhantomData,
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::analysis::value::{Value, ValueId, ValueTable};

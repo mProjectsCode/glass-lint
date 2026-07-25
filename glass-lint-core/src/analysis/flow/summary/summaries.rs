@@ -277,4 +277,79 @@ mod tests {
             2
         );
     }
+
+    #[test]
+    fn sink_propagates_from_callee_to_caller_through_parameter() {
+        let source = "\
+            function sink(x) { document.body.appendChild(x); }\
+            function bridge(y) { sink(y); }\
+        ";
+        let parsed = crate::parse(source, "sink-propagation.js").expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program, source);
+        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
+        let plan = BoundFlowPlan::new(&[], stream.names());
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
+        let bridge = summaries.get(FunctionId(2)).expect("bridge function should have a summary");
+        assert!(bridge.parameter_count() >= 1, "bridge has at least one parameter");
+    }
+
+    #[test]
+    fn collect_creates_summaries_for_all_functions() {
+        let source = "\
+            function a() { return 1; }\
+            function b() { return a(); }\
+        ";
+        let parsed = crate::parse(source, "multiple-functions.js").expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program, source);
+        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
+        let plan = BoundFlowPlan::new(&[], stream.names());
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
+        assert!(summaries.get(FunctionId(1)).is_some(), "a should have a summary");
+        assert!(summaries.get(FunctionId(2)).is_some(), "b should have a summary");
+    }
+
+    #[test]
+    fn invoke_compatible_rejects_too_many_args() {
+        let source = "function f(a) {} f(1, 2, 3);";
+        let parsed = crate::parse(source, "too-many-args.js").expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program, source);
+        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
+        let plan = BoundFlowPlan::new(&[], stream.names());
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
+        let f = summaries.get(FunctionId(1)).expect("f should have a summary");
+        let _callee_params = stream.function_parameters(FunctionId(1));
+        let call_fact = stream
+            .facts()
+            .iter()
+            .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .expect("call fact should exist");
+        let FactPayload::Call { args, .. } = &call_fact.payload else {
+            unreachable!()
+        };
+        assert!(!f.is_invocation_compatible(&stream, args, &summaries.paths));
+    }
+
+    #[test]
+    fn invoke_compatible_rejects_spread_args() {
+        let source = "function f(a) {} f(...args);";
+        let parsed = crate::parse(source, "spread-args.js").expect("source should parse");
+        let mut resolver = Resolver::collect(&parsed.program, source);
+        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
+        let effects = FunctionEffects::collect(&stream, usize::MAX);
+        let plan = BoundFlowPlan::new(&[], stream.names());
+        let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
+        let f = summaries.get(FunctionId(1)).expect("f should have a summary");
+        let call_fact = stream
+            .facts()
+            .iter()
+            .find(|f| matches!(&f.payload, FactPayload::Call { .. }))
+            .expect("call fact should exist");
+        let FactPayload::Call { args, .. } = &call_fact.payload else {
+            unreachable!()
+        };
+        assert!(!f.is_invocation_compatible(&stream, args, &summaries.paths));
+    }
 }

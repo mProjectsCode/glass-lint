@@ -213,14 +213,7 @@ mod tests {
     }
 
     #[test]
-    fn budget_tracker_mark_exhausted_then_is_exhausted() {
-        let tracker = BudgetTracker::default();
-        tracker.mark_exhausted();
-        assert!(tracker.is_exhausted());
-    }
-
-    #[test]
-    fn budget_tracker_stays_exhausted() {
+    fn tracker_idempotent_mark_exhausted() {
         let tracker = BudgetTracker::default();
         tracker.mark_exhausted();
         tracker.mark_exhausted();

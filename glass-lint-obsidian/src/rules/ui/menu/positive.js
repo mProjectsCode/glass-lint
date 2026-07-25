@@ -10,6 +10,11 @@ class TestMenu extends Menu {
     }
 }
 
+// Chained new-expression instances are a known regression: member_call_instance
+// does not track the result of `new Menu()` through the method call chain.
+// @expect-error glass-lint rule=obsidian:ui.menu
+new Menu().addItem(item);
+
 // Unproven bare receivers are intentionally excluded.
 // @expect-no-error glass-lint rule=obsidian:ui.menu
 menu.addItem(item);

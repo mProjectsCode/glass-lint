@@ -439,6 +439,13 @@ mod tests {
 
     fn assert_send_sync<T: Send + Sync>() {}
 
+    fn test_key(text: &str, version: &'static str) -> ArtifactCacheKey {
+        let source = crate::project::SourceFile::new("test.js", text).unwrap();
+        let env = crate::Environment::default();
+        let limits = crate::AnalysisLimits::default();
+        ArtifactCacheKey::for_engine_version(&source, &env, &limits, version)
+    }
+
     #[test]
     fn local_artifact_is_send_sync_and_cloneable() {
         assert_send_sync::<LocalArtifact>();
@@ -452,5 +459,96 @@ mod tests {
         let cloned = context.clone();
         assert!(Arc::ptr_eq(&context.lines, &cloned.lines));
         assert_eq!(Arc::strong_count(&context.lines), 2);
+    }
+
+    #[test]
+    fn artifact_cache_insert_then_get_hit() {
+        let mut cache = ArtifactCache::default();
+        let key = test_key("x = 1;", "1.0.0");
+        let fp = key.fingerprint();
+        let artifact = SharedSemanticArtifact {
+            semantic: Arc::new(SemanticArtifact::from_lowering(
+                crate::analysis::facts::SemanticFacts::default(),
+                BTreeMap::new(),
+                crate::analysis::flow::effect::FunctionEffects::default(),
+                crate::analysis::lowering::status::AnalysisStatus::default(),
+            )),
+        };
+        assert!(cache.get(fp, &key).is_none());
+        cache.insert(fp, key.clone(), artifact);
+        let retrieved = cache.get(fp, &key);
+        assert!(retrieved.is_some());
+    }
+
+    #[test]
+    fn artifact_cache_evicts_oldest_when_full() {
+        let mut cache = ArtifactCache::default();
+        let mut keys = Vec::new();
+        for i in 0..ArtifactCache::MAX_ENTRIES + 5 {
+            let text = format!("x = {i};");
+            let key = test_key(&text, "1.0.0");
+            let fp = key.fingerprint();
+            let artifact = SharedSemanticArtifact {
+                semantic: Arc::new(SemanticArtifact::from_lowering(
+                    crate::analysis::facts::SemanticFacts::default(),
+                    BTreeMap::new(),
+                    crate::analysis::flow::effect::FunctionEffects::default(),
+                    crate::analysis::lowering::status::AnalysisStatus::default(),
+                )),
+            };
+            let evicted = cache.insert(fp, key.clone(), artifact);
+            keys.push((fp, key));
+            if i >= ArtifactCache::MAX_ENTRIES {
+                assert!(evicted, "insert {i} should evict oldest");
+            }
+        }
+        let (oldest_fp, oldest_key) = &keys[0];
+        assert!(cache.get(*oldest_fp, oldest_key).is_none(), "oldest entry should be evicted");
+        let (newest_fp, newest_key) = keys.last().unwrap();
+        assert!(cache.get(*newest_fp, newest_key).is_some(), "newest entry should be present");
+    }
+
+    #[test]
+    fn artifact_cache_replacement_does_not_evict() {
+        let mut cache = ArtifactCache::default();
+        let key = test_key("x = 1;", "1.0.0");
+        let fp = key.fingerprint();
+        let artifact_a = SharedSemanticArtifact {
+            semantic: Arc::new(SemanticArtifact::from_lowering(
+                crate::analysis::facts::SemanticFacts::default(),
+                BTreeMap::new(),
+                crate::analysis::flow::effect::FunctionEffects::default(),
+                crate::analysis::lowering::status::AnalysisStatus::default(),
+            )),
+        };
+        let artifact_b = SharedSemanticArtifact {
+            semantic: Arc::new(SemanticArtifact::from_lowering(
+                crate::analysis::facts::SemanticFacts::default(),
+                BTreeMap::new(),
+                crate::analysis::flow::effect::FunctionEffects::default(),
+                crate::analysis::lowering::status::AnalysisStatus::default(),
+            )),
+        };
+        cache.insert(fp, key.clone(), artifact_a);
+        let evicted = cache.insert(fp, key, artifact_b);
+        assert!(!evicted, "replacing exact key should not evict");
+    }
+
+    #[test]
+    fn artifact_cache_miss_on_different_key() {
+        let mut cache = ArtifactCache::default();
+        let key_a = test_key("x = 1;", "1.0.0");
+        let key_b = test_key("y = 2;", "1.0.0");
+        let fp_a = key_a.fingerprint();
+        let artifact = SharedSemanticArtifact {
+            semantic: Arc::new(SemanticArtifact::from_lowering(
+                crate::analysis::facts::SemanticFacts::default(),
+                BTreeMap::new(),
+                crate::analysis::flow::effect::FunctionEffects::default(),
+                crate::analysis::lowering::status::AnalysisStatus::default(),
+            )),
+        };
+        cache.insert(fp_a, key_a, artifact);
+        assert!(cache.get(key_b.fingerprint(), &key_b).is_none(), "different key should not hit");
     }
 }

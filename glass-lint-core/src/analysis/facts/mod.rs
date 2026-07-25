@@ -475,6 +475,18 @@ impl SemanticFacts {
 }
 
 #[cfg(test)]
+#[allow(clippy::derivable_impls)]
+impl Default for SemanticFacts {
+    fn default() -> Self {
+        Self {
+            stream: FactStream::default(),
+            index: OccurrenceIndexes::default(),
+            interface: ModuleInterface::default(),
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use glass_lint_datastructures::ByteRange;
 

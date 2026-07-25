@@ -220,7 +220,7 @@ mod tests {
     };
 
     #[test]
-    fn range_sweep_removes_large_nested_and_duplicate_sets() {
+    fn remove_contained_ranges_keeps_only_largest() {
         let mut ranges = (1..=5_000)
             .map(|column| {
                 SourceRange::new(
@@ -239,7 +239,7 @@ mod tests {
     }
 
     #[test]
-    fn findings_are_sorted_without_cloning_rule_ids() {
+    fn findings_are_sorted_by_position() {
         let rule = Rule::builder("network.request")
             .description("Uses fetch")
             .category(Category::new("network").unwrap())
@@ -293,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn classify_with_evidence_limit_binds_record_once() {
+    fn classify_groups_findings_by_rule() {
         let rule = Rule::builder("network.request")
             .description("Uses fetch")
             .category(Category::new("network").unwrap())

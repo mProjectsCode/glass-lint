@@ -305,6 +305,31 @@ fn instance_matchers_respect_alias_scope_and_static_methods() {
 }
 
 #[test]
+fn instance_matchers_do_not_track_chained_constructor_calls() {
+    // Known regression: member_call_instance does not track instances created
+    // via chained `new` expressions.  Only variable-bound instances (this,
+    // self, variable aliases) match.  When the engine is fixed this should
+    // return 2 (one for this.registerThing(), one for new Child().registerThing()).
+    assert_count(
+        r#"
+        import { Base } from "framework";
+        class Child extends Base { run() { this.registerThing(); } }
+        new Child().registerThing();
+        "#,
+        rule("test.instance-chain")
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_instance("framework", "Base", "registerThing")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
+            .build()
+            .unwrap(),
+        2,
+    );
+}
+
+#[test]
 fn new_semantic_matchers_are_normalized_and_validated() {
     assert_count(
         r#"const value = app.workspace["getLeaf"](); value.openFile(file);"#,

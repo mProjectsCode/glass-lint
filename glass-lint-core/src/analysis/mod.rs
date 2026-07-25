@@ -32,44 +32,44 @@ pub use local::{
     SemanticArtifact, SharedSemanticArtifact,
 };
 pub(in crate::analysis) use lowering::budget::SemanticBudget;
-pub use lowering::{LoweredSource, Lowerer};
 pub(in crate::analysis) use project::model::ExportResolution;
+pub use lowering::{LoweredSource, Lowerer};
 pub use project::model::{ProjectSemanticModel, QualifiedRequestId, ResolvedLinkInput};
 pub use value::matches_global_object_alias;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::sync::Arc;
+
+use super::*;
     use crate::{
-        Environment,
-        api::{
-            compiler::{CompiledRuleRecord, CompiledRuleSelection, rule::CompiledMatcherPlan},
-            rule::MatcherDecl,
-        },
+        AnalysisLimits, Environment, Severity, analysis::{local::LocatedSourceContext, lowering::SpanNormalizer}, api::{
+            classification::RuleIndex, compiler::{CompiledRuleRecord, CompiledRuleSelection, rule::CompiledMatcherPlan}, rule::{Confidence, MatcherDecl},
+        }, project::SourceFile,
     };
 
     #[test]
     fn local_model_is_unchanged_by_matcher_projection() {
         let text = "fetch('/remote'); document.createElement('div');";
         let parsed = crate::parse(text, "projection-invariant.js").expect("source should parse");
-        let coordinates = lowering::SpanNormalizer::new(parsed.source_start, text);
+        let coordinates = SpanNormalizer::new(parsed.source_start, text);
         let local = lowering::lower_program(
             &parsed.program,
             &Environment::default(),
-            &crate::AnalysisLimits::default(),
+            &AnalysisLimits::default(),
             &coordinates,
         );
-        let source = crate::project::SourceFile::new(
+        let source = SourceFile::new(
             "projection-invariant.js",
             "fetch('/remote'); document.createElement('div');",
         )
         .unwrap();
         let project = ProjectSemanticModel::single(
             "projection-invariant.js",
-            local::LocatedSourceContext::new(&source),
+            LocatedSourceContext::new(&source),
             LocalArtifact::new(
-                local::LocatedSourceContext::new(&source),
-                std::sync::Arc::new(local),
+                LocatedSourceContext::new(&source),
+                Arc::new(local),
             ),
         );
         let before = format!(
@@ -87,11 +87,11 @@ mod tests {
             .build()
             .expect("valid matcher declaration")])
         .unwrap();
-        let selected = [crate::api::classification::RuleIndex::new(0)];
+        let selected = [RuleIndex::new(0)];
         let fetch_rule = CompiledRuleRecord {
             description: "fetch".into(),
-            severity: crate::Severity::Warning,
-            confidence: crate::api::rule::Confidence::High,
+            severity: Severity::Warning,
+            confidence: Confidence::High,
             matcher: fetch_plan,
         };
         let fetch_rules = [fetch_rule];
@@ -105,8 +105,8 @@ mod tests {
         .unwrap();
         let member_rule = CompiledRuleRecord {
             description: "member".into(),
-            severity: crate::Severity::Warning,
-            confidence: crate::api::rule::Confidence::High,
+            severity: Severity::Warning,
+            confidence: Confidence::High,
             matcher: member_plan,
         };
         let member_rules = [member_rule];

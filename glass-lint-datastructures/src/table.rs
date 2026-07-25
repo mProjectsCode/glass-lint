@@ -289,31 +289,20 @@ mod tests {
     }
 
     #[test]
-    fn iter_mut_allows_mutation() {
-        let mut table = IndexTable::new();
-        table.insert(TestId(0), "a");
-        table.insert(TestId(1), "b");
-        for (_, v) in table.iter_mut() {
-            *v = "x";
-        }
-        assert_eq!(table.get(TestId(0)), Some(&"x"));
-        assert_eq!(table.get(TestId(1)), Some(&"x"));
-    }
-
-    #[test]
-    fn iter_mut_yields_all_entries() {
+    fn iter_mut_covers_all_entries_and_allows_mutation() {
         let mut table = IndexTable::new();
         table.insert(TestId(0), "a");
         table.insert(TestId(2), "c");
-        let mut count = 0;
+        let mut seen = Vec::new();
         for (id, v) in table.iter_mut() {
-            count += 1;
-            assert!(*v == "a" || *v == "c");
-            if id == TestId(0) {
-                assert_eq!(*v, "a");
-            }
+            seen.push(id);
+            *v = "x";
         }
-        assert_eq!(count, 2);
+        assert_eq!(seen.len(), 2);
+        assert!(seen.contains(&TestId(0)));
+        assert!(seen.contains(&TestId(2)));
+        assert_eq!(table.get(TestId(0)), Some(&"x"));
+        assert_eq!(table.get(TestId(2)), Some(&"x"));
     }
 
     #[test]
