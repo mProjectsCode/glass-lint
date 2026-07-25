@@ -653,4 +653,260 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("once"));
     }
+
+    // ── ValueMatcher tests ────────────────────────────────────────
+
+    #[test]
+    fn value_matcher_any_value_kind_is_any() {
+        let m = ValueMatcher::any_value();
+        assert_eq!(m.kind(), &ValueMatcherKind::Any);
+    }
+
+    #[test]
+    fn value_matcher_static_string_default_is_any() {
+        let m = ValueMatcher::static_string();
+        assert_eq!(
+            m.kind(),
+            &ValueMatcherKind::StaticString(StaticStringPredicate::new(
+                StaticStringPredicateKind::Any
+            ))
+        );
+    }
+
+    #[test]
+    fn value_matcher_equals_creates_exact_predicate() {
+        let m = ValueMatcher::static_string().equals("hello");
+        assert_eq!(
+            m.kind(),
+            &ValueMatcherKind::StaticString(StaticStringPredicate::new(
+                StaticStringPredicateKind::Exact(vec!["hello".into()])
+            ))
+        );
+    }
+
+    #[test]
+    fn value_matcher_equals_any_creates_multi_exact() {
+        let m = ValueMatcher::static_string().equals_any(["a", "b"]);
+        assert_eq!(
+            m.kind(),
+            &ValueMatcherKind::StaticString(StaticStringPredicate::new(
+                StaticStringPredicateKind::Exact(vec!["a".into(), "b".into()])
+            ))
+        );
+    }
+
+    #[test]
+    fn value_matcher_starts_with_any_creates_prefix_predicate() {
+        let m = ValueMatcher::static_string().starts_with_any(["https://"]);
+        assert_eq!(
+            m.kind(),
+            &ValueMatcherKind::StaticString(StaticStringPredicate::new(
+                StaticStringPredicateKind::Prefix(vec!["https://".into()])
+            ))
+        );
+    }
+
+    #[test]
+    fn value_matcher_contains_any_creates_contains_any() {
+        let m = ValueMatcher::static_string().contains_any(["token", "secret"]);
+        assert_eq!(
+            m.kind(),
+            &ValueMatcherKind::StaticString(StaticStringPredicate::new(
+                StaticStringPredicateKind::ContainsAny(vec!["token".into(), "secret".into()])
+            ))
+        );
+    }
+
+    #[test]
+    fn value_matcher_contains_all_creates_contains_all() {
+        let m = ValueMatcher::static_string().contains_all(["required", "field"]);
+        assert_eq!(
+            m.kind(),
+            &ValueMatcherKind::StaticString(StaticStringPredicate::new(
+                StaticStringPredicateKind::ContainsAll(vec!["required".into(), "field".into()])
+            ))
+        );
+    }
+
+    // ── StaticStringPredicate tests ───────────────────────────────
+
+    #[test]
+    fn static_string_predicate_new_round_trips_kind() {
+        let p = StaticStringPredicate::new(StaticStringPredicateKind::Any);
+        assert!(matches!(p.kind, StaticStringPredicateKind::Any));
+    }
+
+    // ── ArgumentMatcher tests ─────────────────────────────────────
+
+    #[test]
+    fn argument_matcher_object_keys_holds_keys() {
+        let m = ArgumentMatcher::object_keys(["x", "y"]);
+        assert!(matches!(m.kind(), ArgumentMatcherKind::ObjectKeys(keys) if keys == &["x", "y"]));
+    }
+
+    #[test]
+    fn argument_matcher_rooted_expressions_holds_chains() {
+        let m = ArgumentMatcher::rooted_expressions(["document.body"]);
+        assert!(
+            matches!(m.kind(), ArgumentMatcherKind::RootedExpressions(chains) if chains == &["document.body"])
+        );
+    }
+
+    #[test]
+    fn argument_matcher_object_property_value_holds_property_and_matcher() {
+        let value = ValueMatcher::static_string().equals("file");
+        let m = ArgumentMatcher::object_property_value("type", value);
+        assert!(
+            matches!(m.kind(), ArgumentMatcherKind::ObjectPropertyValue { property, .. } if property == "type")
+        );
+    }
+
+    #[test]
+    fn argument_matcher_from_value_matcher_converts() {
+        let vm = ValueMatcher::any_value();
+        let m: ArgumentMatcher = vm.into();
+        assert!(matches!(m.kind(), ArgumentMatcherKind::Value(_)));
+    }
+
+    // ── ArgumentConstraint tests ──────────────────────────────────
+
+    #[test]
+    fn argument_constraint_new_holds_index_and_matcher() {
+        let m = ArgumentMatcher::object_keys(["k"]);
+        let c = ArgumentConstraint::new(2, m);
+        assert_eq!(c.index(), 2);
+        assert!(matches!(
+            c.matcher().kind(),
+            ArgumentMatcherKind::ObjectKeys(_)
+        ));
+    }
+
+    // ── ObjectSourceMatcher tests ─────────────────────────────────
+
+    #[test]
+    fn object_source_matcher_returned_by_has_expected_chain() {
+        let m = ObjectSourceMatcher::returned_by("foo.bar");
+        assert_eq!(m.chain(), "foo.bar");
+        assert!(m.arguments().is_empty());
+    }
+
+    #[test]
+    fn object_source_matcher_arg_adds_argument_constraint() {
+        let m = ObjectSourceMatcher::returned_by("foo.bar")
+            .arg(0, ValueMatcher::static_string().equals("val"));
+        assert_eq!(m.arguments().len(), 1);
+        assert_eq!(m.arguments()[0].index(), 0);
+    }
+
+    // ── ObjectEventMatcher / ObjectEventBuilder tests ─────────────
+
+    #[test]
+    fn object_event_property_write_holds_property_and_value() {
+        let value = ValueMatcher::any_value();
+        let event = ObjectEventMatcher::property_write("src", value);
+        assert!(
+            matches!(event.kind(), ObjectEventMatcherKind::PropertyWrite { property, .. } if property == "src")
+        );
+    }
+
+    #[test]
+    fn object_event_member_call_builds_with_args() {
+        let event: ObjectEventMatcher = ObjectEventMatcher::member_call("addEventListener")
+            .arg(0, ValueMatcher::static_string().equals("load"))
+            .build();
+        assert!(
+            matches!(event.kind(), ObjectEventMatcherKind::MemberCall { member, .. } if member == "addEventListener")
+        );
+    }
+
+    // ── FlowCondition tests ───────────────────────────────────────
+
+    #[test]
+    fn flow_condition_any_of_accepts_multiple_events() {
+        let condition = FlowCondition::any_of([
+            ObjectEventMatcher::property_write("a", ValueMatcher::any_value()),
+            ObjectEventMatcher::property_write("b", ValueMatcher::any_value()),
+        ]);
+        assert!(matches!(condition.kind(), FlowConditionKind::AnyOf(events) if events.len() == 2));
+    }
+
+    #[test]
+    fn flow_condition_all_of_accepts_multiple_events() {
+        let condition = FlowCondition::all_of([ObjectEventMatcher::property_write(
+            "x",
+            ValueMatcher::any_value(),
+        )]);
+        assert!(matches!(condition.kind(), FlowConditionKind::AllOf(events) if events.len() == 1));
+    }
+
+    #[test]
+    fn flow_condition_event_wraps_in_all_of() {
+        let condition = FlowCondition::event(ObjectEventMatcher::property_write(
+            "type",
+            ValueMatcher::static_string().equals("file"),
+        ));
+        assert!(matches!(condition.kind(), FlowConditionKind::AllOf(events) if events.len() == 1));
+    }
+
+    // ── FlowCompletion tests ──────────────────────────────────────
+
+    #[test]
+    fn flow_completion_configuration_has_no_sinks() {
+        let completion = FlowCompletion::configuration();
+        assert!(matches!(
+            completion.kind(),
+            FlowCompletionKind::Configuration
+        ));
+    }
+
+    #[test]
+    fn flow_completion_any_sink_holds_sink_matchers() {
+        let sink = FlowSinkMatcher::argument_of("target.appendChild", 0);
+        let completion = FlowCompletion::any_sink([sink]);
+        assert!(
+            matches!(completion.kind(), FlowCompletionKind::AnySink(sinks) if sinks.len() == 1)
+        );
+    }
+
+    // ── FlowSinkMatcher tests ─────────────────────────────────────
+
+    #[test]
+    fn flow_sink_matcher_argument_of_holds_chain_and_index() {
+        let sink = FlowSinkMatcher::argument_of("parent.appendChild", 0);
+        assert_eq!(sink.chain(), "parent.appendChild");
+        assert!(matches!(
+            sink.kind(),
+            FlowSinkMatcherKind::ArgumentOf { index: 0, .. }
+        ));
+    }
+
+    #[test]
+    fn flow_sink_matcher_any_argument_of_holds_chain() {
+        let sink = FlowSinkMatcher::any_argument_of("parent.appendChild");
+        assert_eq!(sink.chain(), "parent.appendChild");
+        assert!(matches!(
+            sink.kind(),
+            FlowSinkMatcherKind::AnyArgumentOf { .. }
+        ));
+    }
+
+    // ── ObjectFlowMatcher accessors ───────────────────────────────
+
+    #[test]
+    fn object_flow_matcher_accessors_return_configured_values() {
+        let source = ObjectSourceMatcher::returned_by("create");
+        let matcher = ObjectFlowMatcher::builder("test")
+            .source(source)
+            .configured_by(FlowCondition::event(ObjectEventMatcher::property_write(
+                "ready",
+                ValueMatcher::any_value(),
+            )))
+            .complete_at(FlowCompletion::configuration())
+            .build()
+            .unwrap();
+        assert_eq!(matcher.symbol(), "test");
+        assert_eq!(matcher.sources().len(), 1);
+        assert!(matcher.condition().is_some());
+        assert!(matcher.completion().is_some());
+    }
 }

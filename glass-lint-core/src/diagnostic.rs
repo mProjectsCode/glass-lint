@@ -199,7 +199,7 @@ mod tests {
     }
 
     #[test]
-    fn retained_ranges_reject_non_boundary_and_past_eof() {
+    fn try_range_rejects_non_character_boundary_and_out_of_bounds() {
         let source = "aé\r\n🙂z";
         let index = SourceLineIndex::new(source);
         let range = index.try_range(ByteRange::new(5, 10).unwrap()).unwrap();

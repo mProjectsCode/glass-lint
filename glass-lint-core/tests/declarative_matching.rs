@@ -918,3 +918,26 @@ fn tracks_configured_values_into_later_member_sinks() {
     );
     assert_capability_count(&result, "test.flow", 1);
 }
+
+/// Regression test: chained constructor calls (e.g. `new Menu().addItem(item)`)
+/// should be tracked as instance receiver provenance but currently are not.
+/// The instance is created via `new`, returned anonymously, and the member call
+/// happens on the ephemeral result without an intermediate binding.
+#[test]
+fn instance_matchers_do_not_track_chained_constructor_calls() {
+    let rules = [rule("test.instance")
+        .declaration(
+            MatcherDecl::builder()
+                .member_call_instance("obsidian", "Menu", "addItem")
+                .build()
+                .expect("valid matcher declaration"),
+        )
+        .build()
+        .unwrap()];
+    let result = classify(
+        "import { Menu } from 'obsidian';\n\
+         new Menu().addItem(item);",
+        &rules,
+    );
+    assert_eq!(result.finding_count, 1);
+}

@@ -156,45 +156,87 @@ mod tests {
         }
     }
 
-    #[test]
-    fn delegates_builtin_detection_and_canonicalization_to_oxc() {
+    fn require_request(specifier: &str) -> ResolutionRequest {
+        ResolutionRequest {
+            key: ResolutionRequestKey {
+                importer: ProjectRelativePath::new("main.js").unwrap(),
+                kind: ResolutionRequestKind::Require,
+                range: SourceRange::new(Position::new(1, 1).unwrap(), Position::new(1, 2).unwrap())
+                    .unwrap(),
+            },
+            request: specifier.into(),
+        }
+    }
+
+    fn with_resolver(f: impl FnOnce(&ProjectResolver)) {
         let options = ProjectLoadOptions::default().validated().unwrap();
         let resolver = ProjectResolver::new(
             SourceAdmission::new(Path::new("."), &options).unwrap(),
             &ProjectSelection::entry("main.js"),
         )
         .unwrap();
+        f(&resolver);
+    }
 
-        for (specifier, expected) in [
-            ("fs", "node:fs"),
-            ("node:fs", "node:fs"),
-            ("assert/strict", "node:assert/strict"),
-            ("timers/promises", "node:timers/promises"),
-        ] {
-            assert_eq!(
-                resolver.resolve(&request(specifier)).unwrap(),
-                ResolverOutcome::Builtin {
-                    name: BuiltinModuleName::new(expected).unwrap(),
-                },
-                "specifier: {specifier}"
-            );
-        }
+    #[test]
+    fn delegates_builtin_detection_and_canonicalization_to_oxc() {
+        with_resolver(|resolver| {
+            for (specifier, expected) in [
+                ("fs", "node:fs"),
+                ("node:fs", "node:fs"),
+                ("assert/strict", "node:assert/strict"),
+                ("timers/promises", "node:timers/promises"),
+            ] {
+                assert_eq!(
+                    resolver.resolve(&request(specifier)).unwrap(),
+                    ResolverOutcome::Builtin {
+                        name: BuiltinModuleName::new(expected).unwrap(),
+                    },
+                    "specifier: {specifier}"
+                );
+            }
+        });
     }
 
     #[test]
     fn unresolved_bare_packages_remain_external() {
-        let options = ProjectLoadOptions::default().validated().unwrap();
-        let resolver = ProjectResolver::new(
-            SourceAdmission::new(Path::new("."), &options).unwrap(),
-            &ProjectSelection::entry("main.js"),
-        )
-        .unwrap();
+        with_resolver(|resolver| {
+            assert_eq!(
+                resolver.resolve(&request("not-a-node-builtin")).unwrap(),
+                ResolverOutcome::External {
+                    package: PackageSpecifier::new("not-a-node-builtin").unwrap(),
+                }
+            );
+        });
+    }
 
-        assert_eq!(
-            resolver.resolve(&request("not-a-node-builtin")).unwrap(),
-            ResolverOutcome::External {
-                package: PackageSpecifier::new("not-a-node-builtin").unwrap(),
-            }
-        );
+    #[test]
+    fn require_and_import_resolve_builtins_identically() {
+        with_resolver(|resolver| {
+            let import_result = resolver.resolve(&request("node:fs")).unwrap();
+            let require_result = resolver.resolve(&require_request("node:fs")).unwrap();
+            assert_eq!(import_result, require_result);
+        });
+    }
+
+    #[test]
+    fn package_name_extracts_scoped_and_non_scoped() {
+        assert_eq!(package_name("lodash"), "lodash");
+        assert_eq!(package_name("@scope/pkg"), "@scope/pkg");
+        assert_eq!(package_name("@scope/pkg/helpers"), "@scope/pkg");
+        assert_eq!(package_name("lodash/merge"), "lodash");
+    }
+
+    #[test]
+    fn package_name_falls_back_on_empty() {
+        assert_eq!(package_name(""), "");
+    }
+
+    #[test]
+    fn miss_returns_missing_for_internal_looking_requests() {
+        with_resolver(|resolver| {
+            let result = resolver.resolve(&request("./nonexistent")).unwrap();
+            assert_eq!(result, ResolverOutcome::Missing);
+        });
     }
 }

@@ -206,3 +206,146 @@ impl FlowState {
         self.requirements.intersect_keys(&other.requirements);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn index(value: usize) -> RuleIndex {
+        RuleIndex::new(value)
+    }
+
+    #[test]
+    fn flow_limits_defaults_scale_from_flow_operations() {
+        let limits = FlowLimits::from_flow_operations(262_144);
+        assert!(limits.object_limit() >= 1024);
+        assert!(limits.state_limit() >= 4096);
+        assert!(limits.emission_limit() >= 1024);
+        assert!(limits.mutation_limit() >= 256);
+    }
+
+    #[test]
+    fn flow_limits_scales_down_to_minimums() {
+        let limits = FlowLimits::from_flow_operations(1);
+        assert_eq!(limits.object_limit(), 1024);
+        assert_eq!(limits.state_limit(), 4096);
+        assert_eq!(limits.emission_limit(), 1024);
+        assert_eq!(limits.mutation_limit(), 256);
+    }
+
+    #[test]
+    fn flow_limits_accessors_return_configured_values() {
+        let limits = FlowLimits::test_new(2048, 8192, 2048, 512);
+        assert_eq!(limits.object_limit(), 2048);
+        assert_eq!(limits.state_limit(), 8192);
+        assert_eq!(limits.emission_limit(), 2048);
+        assert_eq!(limits.mutation_limit(), 512);
+    }
+
+    #[test]
+    fn flow_id_new_creates_deterministic_identity() {
+        let rule = index(5);
+        let a = FlowId::new(rule, 3);
+        let b = FlowId::new(rule, 3);
+        assert_eq!(a, b);
+        assert_eq!(a.rule_index(), rule);
+        assert_eq!(a.flow_index(), 3);
+    }
+
+    #[test]
+    fn flow_id_distinguishes_different_rules_and_indices() {
+        let a = FlowId::new(index(1), 2);
+        let b = FlowId::new(index(1), 3);
+        let c = FlowId::new(index(2), 2);
+        assert_ne!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn requirement_set_default_is_empty() {
+        let set: RequirementSet = RequirementSet::default();
+        assert!(set.is_empty());
+        assert_eq!(set.len(), 0);
+    }
+
+    #[test]
+    fn requirement_set_insert_and_remove() {
+        let mut set: RequirementSet = RequirementSet::default();
+        set.insert(0, FactId(1));
+        set.insert(1, FactId(2));
+        assert_eq!(set.len(), 2);
+        assert!(!set.is_empty());
+
+        set.remove(0);
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn requirement_set_values_returns_all_inserted() {
+        let mut set: RequirementSet = RequirementSet::default();
+        set.insert(0, FactId(10));
+        set.insert(2, FactId(30));
+        let values: Vec<_> = set.values().copied().collect();
+        assert_eq!(values, vec![FactId(10), FactId(30)]);
+    }
+
+    #[test]
+    fn requirement_set_intersect_keys_keeps_common_parameters() {
+        let mut a: RequirementSet = RequirementSet::default();
+        a.insert(0, FactId(1));
+        a.insert(1, FactId(2));
+        a.insert(2, FactId(3));
+        let mut b: RequirementSet = RequirementSet::default();
+        b.insert(0, FactId(10));
+        b.insert(2, FactId(30));
+
+        a.intersect_keys(&b);
+        assert_eq!(a.len(), 2);
+        assert!(a.values().any(|&v| v == FactId(1)));
+        assert!(a.values().any(|&v| v == FactId(3)));
+    }
+
+    #[test]
+    fn flow_state_new_creates_unready_state() {
+        let flow = FlowId::new(index(0), 0);
+        let state = FlowState::new(flow, FactId(1), ObjectId(0));
+        assert_eq!(state.flow_id(), flow);
+        assert_eq!(state.source_event(), FactId(1));
+        assert_eq!(state.object_id(), ObjectId(0));
+    }
+
+    #[test]
+    fn flow_state_key_matches_flow_and_object() {
+        let flow = FlowId::new(index(1), 2);
+        let state = FlowState::new(flow, FactId(5), ObjectId(3));
+        let key = state.key();
+        assert_eq!(key.object, ObjectId(3));
+        assert_eq!(key.flow, flow);
+    }
+
+    #[test]
+    fn flow_state_records_and_clears_requirements() {
+        let flow = FlowId::new(index(0), 0);
+        let mut state = FlowState::new(flow, FactId(1), ObjectId(0));
+        state.record_requirement(0, FactId(10));
+        state.record_requirement(1, FactId(20));
+        assert_eq!(state.requirements.len(), 2);
+
+        state.clear_requirement(0);
+        assert_eq!(state.requirements.len(), 1);
+    }
+
+    #[test]
+    fn flow_state_retain_requirement_keys_intersects() {
+        let flow = FlowId::new(index(0), 0);
+        let mut a = FlowState::new(flow, FactId(1), ObjectId(0));
+        a.record_requirement(0, FactId(10));
+        a.record_requirement(1, FactId(20));
+
+        let mut b = FlowState::new(flow, FactId(2), ObjectId(0));
+        b.record_requirement(0, FactId(30));
+
+        a.retain_requirement_keys(&b);
+        assert_eq!(a.requirements.len(), 1);
+    }
+}

@@ -4,7 +4,7 @@
 
 This document inventories every test in the repository, judges individual test quality, and evaluates module-level coverage. Tests are organized by owning crate and functional area.
 
-**Total tests inventoried: ~490 across 277 files** (including inline `#[cfg(test)]` modules, integration tests, and harness rule-contract fixtures).
+**Total tests inventoried: ~545 across 278 files** (including inline `#[cfg(test)]` modules, integration tests, and harness rule-contract fixtures).
 
 ---
 
@@ -190,12 +190,12 @@ Covers typed addition, templates, arrays/objects/spreads/Object.assign, containe
 
 | Module | Tests | Judgment |
 |---|---|---|
-| `model/fact.rs` | 1 inline test (`control_regions_are_typed_and_orderable`, weak assertions) | **Minimal** |
-| `model/flow.rs` | 0 tests | **None** |
+| `model/fact.rs` | 9 inline tests: `control_regions_are_typed_and_orderable`, `fact_id_from_index_rejects_overflow`, `fact_id_index_rejects_overflow`, `call_arg_info_unknown_creates_default`, `parameter_binding_constructs_with_all_fields`, `parameter_binding_without_default`, `semantic_fact_new_creates_fact_with_all_fields`, `semantic_fact_round_trips_span`, `fact_payload_*` (3 payload variants) | **Good** |
+| `model/flow.rs` | 11 inline tests: `flow_limits_defaults_scale_from_flow_operations`, `flow_limits_scales_down_to_minimums`, `flow_limits_accessors_return_configured_values`, `flow_id_new_creates_deterministic_identity`, `flow_id_distinguishes_different_rules_and_indices`, `requirement_set_*` (4 tests: default, insert/remove, values, intersect_keys), `flow_state_*` (4 tests: new, key, requirements, retain_requirement_keys) | **Good** |
 | `model/scope.rs` | 1 test (`binding_versions_are_part_of_identity`, good) | **Minimal** |
 | `model/value.rs` | 2 tests (`invalid_value_ids_fail_closed`, `value_capacity_is_typed_as_exhaustion`) | **Okay** |
 
-**Coverage gap:** `FlowLimits`, `FlowState`, `FlowStateKey`, `RequirementSet`, `FactPayload` constructors, `CallArgInfo`, `ParameterBinding` — all untested at unit level.
+**Former gap closed:** `FlowLimits`, `FlowState`, `RequirementSet`, `FactId`, `CallArgInfo`, `ParameterBinding`, `SemanticFact`, `FactPayload` now all have unit tests.
 
 ### Analysis: Local — `local.rs` — 6 tests
 
@@ -236,14 +236,11 @@ Covers compilation of every declaration variant, argument matcher clauses, inval
 
 **Coverage: Good but narrow.** No test for `ModuleSpecifierPattern::exact()`.
 
-### Analysis: API — Flow matcher — `api/rule/matcher/flow.rs` — 2 inline tests
+### Analysis: API — Flow matcher — `api/rule/matcher/flow.rs` — 26 inline tests
 
-| Test name | Name | Assertions | Component |
-|---|---|---|---|
-| `explicit_completion_and_conditions_build` | okay | weak | yes |
-| `empty_alternatives_and_duplicate_operations_fail` | good | good | yes |
+Covers: `ValueMatcher` (7 constructors: any_value, static_string, equals, equals_any, starts_with_any, contains_any, contains_all), `StaticStringPredicate` (1 round-trip), `ArgumentMatcher` (4 constructors: object_keys, rooted_expressions, object_property_value, from ValueMatcher), `ArgumentConstraint` (1), `ObjectSourceMatcher` (2: chain, arg), `ObjectEventMatcher` (2: property_write, member_call), `FlowCondition` (3: any_of, all_of, event), `FlowCompletion` (2: configuration, any_sink), `FlowSinkMatcher` (2: argument_of, any_argument_of), `ObjectFlowMatcher` accessors (1).
 
-**Coverage: Minimal.** `ValueMatcher`, `StaticStringPredicate`, `ArgumentMatcher` have no unit tests. `ObjectFlowMatcherBuilder` is almost entirely untested at unit level.
+**Coverage: Good.** `ValueMatcher`, `StaticStringPredicate`, `ArgumentMatcher`, `ObjectFlowMatcherBuilder` now fully covered at unit level.
 
 ### Core: Lint — `lint/linter.rs` — 4 inline tests
 
@@ -272,11 +269,11 @@ Covers `SourceLineIndex` (unicode, CRLF, EOF), `try_range` error paths, empty/eo
 
 **Coverage: Excellent for positioning and error handling.**
 
-### Core: Environment — `environment.rs` — 3 inline tests
+### Core: Environment — `environment.rs` — 9 inline tests
 
-Covers defaults, extension, restricted global object isolation, identifier validation.
+Covers defaults, extension, restricted global object isolation, identifier validation, extend merge, global object aliases match, global object paths match, fingerprint determinism, fingerprint differentiation, global bindings iterator.
 
-**Coverage: Adequate** — missing `extend` merge, `global_object_aliases_match`, `global_object_paths_match`, fingerprint hashing.
+**Coverage: Good** — all missing areas (`extend` merge, `global_object_aliases_match`, `global_object_paths_match`, fingerprint hashing) now covered.
 
 ### Core: Project — `project/tests.rs` — 7 tests
 
@@ -469,14 +466,18 @@ Covers: sorted directory discovery, resolver suffix validation, entry budget, lo
 
 **Coverage: Excellent** integration coverage for the full project pipeline.
 
-### `resolver.rs` — 2 inline tests
+### `resolver.rs` — 7 inline tests
 
 | Test name | Name | Assertions | Component |
 |---|---|---|---|
 | `delegates_builtin_detection_and_canonicalization_to_oxc` | good | good | yes |
 | `unresolved_bare_packages_remain_external` | good | good | yes |
+| `require_and_import_resolve_builtins_identically` | good | good | yes |
+| `package_name_extracts_scoped_and_non_scoped` | good | good | yes |
+| `package_name_falls_back_on_empty` | good | good | yes |
+| `miss_returns_missing_for_internal_looking_requests` | good | good | yes |
 
-**Coverage: Thin.** Only builtin+external paths tested. Missing: internal resolution, outside-project, unsupported, require-vs-import distinction.
+**Coverage: Good.** Added require-vs-import distinction test, `package_name` function coverage (scoped, path, empty), and missing-module fallback. Internal/outside/unsupported paths are covered through core integration tests where filesystem access is available.
 
 ### `tsconfig/tests.rs` — 20 tests
 
@@ -609,7 +610,7 @@ All 47 rules have clear names, positive examples that model dangerous patterns, 
 | workspace/open | 9 pos | ★★★★★ | Very good |
 
 **Specific gaps found:**
-1. **`ui/menu`**: 1 working positive (`this.addItem()` inside Menu subclass) + 1 known-failing regression (`new Menu().addItem()` — chained constructor instances not tracked). Core regression test `instance_matchers_do_not_track_chained_constructor_calls` added.
+1. **`ui/menu`**: 2 working positives (`this.addItem()` inside Menu subclass + `new Menu().addItem()` — chained constructor now tracked). Core regression test `instance_matchers_do_not_track_chained_constructor_calls` verifies correct tracking (finding_count=1).
 2. **`metadata/traversal`**: `for...in` loops not covered.
 3. **`vault/events`**: Now covers all 5 vault events (create, modify, delete, rename, closed) in positives.
 4. **`metadata/events`**: `finished` event added to rule definition and positive fixtures (6 positives).
@@ -694,16 +695,19 @@ Covers schema version, globals list, binding classification, realm sources, erro
 - Obsidian rules: most vault rules, metadata rules (all events covered), lifecycle, plugins, storage, ui/command/settings_tab/modal, workspace/layout/open
 
 ### Adequate / Minimal coverage
-- core/analysis: summary/sink.rs (tested indirectly), model/* (minimal to none), environment.rs (adequate)
-- core/api: rule/matcher/flow.rs (minimal — 2 tests), module.rs (narrow)
+- core/analysis: summary/sink.rs (tested indirectly), model/scope.rs (minimal), model/value.rs (okay)
+- core/api: module.rs (narrow)
 - harness: cases/tests.rs (adequate)
-- project: resolver.rs (thin — 2 tests, only builtin+external)
 - JS rules: browser/filesystem (★★★☆☆), browser/permissions-bluetooth (★★★☆☆), browser/remote-resource (★★★☆☆)
-- Obsidian rules: ui/menu (★★☆☆☆ — 2 positives; 1 working, 1 known-failing regression for chained constructor instances)
+- Obsidian rules: ui/menu (★★★☆☆ — 2 positives; both working, including chained constructor calls)
 - CLI: lint.rs (minimal — 2 tests), args.rs (minimal — 2 tests)
 
 ### Resolved to Good coverage
 - core/analysis: projector/state.rs (was poor — now 10 tests covering all FlowStateTable operations), summary/summaries.rs (was minimal — now 5 tests with sink propagation and compatibility), local.rs (was minimal — now 6 tests including ArtifactCache)
+- core/analysis: model/flow.rs (was none — now 11 tests covering FlowLimits, FlowId, RequirementSet, FlowState), model/fact.rs (was minimal — now 9 tests covering FactId, CallArgInfo, ParameterBinding, SemanticFact, FactPayload)
+- core: environment.rs (was adequate — now 9 tests covering extend, aliases_match, paths_match, fingerprint hashing)
+- core/api: rule/matcher/flow.rs (was minimal — now 26 tests covering ValueMatcher, StaticStringPredicate, ArgumentMatcher, ObjectFlowMatcherBuilder)
+- project: resolver.rs (was thin — now 7 tests covering require-vs-import, package_name, missing fallback)
 
 ---
 
@@ -725,12 +729,12 @@ Covers schema version, globals list, binding classification, realm sources, erro
 5. **`catch`/`finally` scopes** — other lexical scopes are well-tested but these are not.
 6. **Class static blocks** — missing.
 7. **`for await...of`** — async iteration scope untested.
-8. **`core/model/flow.rs`** — `FlowLimits`, `FlowState`, `RequirementSet` have zero unit tests.
+8. ~~**`core/model/flow.rs`** — `FlowLimits`, `FlowState`, `RequirementSet` have zero unit tests.~~ — **Resolved: now 11 tests covering all three types.**
 9. **CLI** — `lint.rs` and `args.rs` have only 2 tests each; no `lint_files` tests.
 
 ### Naming concerns
 
-- `retained_ranges_reject_non_boundary_and_past_eof` — "retained ranges" misdirects (tests try_range)
+- ~~`retained_ranges_reject_non_boundary_and_past_eof` — "retained ranges" misdirects (tests try_range)~~ — **Renamed to `try_range_rejects_non_character_boundary_and_out_of_bounds`.**
 - `typed_accumulators_saturate_without_cross_item_bytes` — too long, unclear
 - `caches_subresults_so_views_share_one_classification` — poor name (describes caching, not the test)
 

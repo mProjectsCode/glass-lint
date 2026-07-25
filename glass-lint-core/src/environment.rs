@@ -440,4 +440,114 @@ mod tests {
         assert!(environment.add_global("window.fetch").is_err());
         assert!(environment.add_global_object("").is_err());
     }
+
+    #[test]
+    fn extend_merges_bindings_and_objects() {
+        let mut base = Environment::default();
+        base.add_global("alpha").unwrap();
+        base.add_global_object("win1").unwrap();
+
+        let mut other = Environment::default();
+        other.add_global("beta").unwrap();
+        other.add_global_object("win2").unwrap();
+
+        base.extend(&other);
+        assert!(base.is_global("alpha"));
+        assert!(base.is_global("beta"));
+        assert!(base.global_objects().any(|n| n == "win1"));
+        assert!(base.global_objects().any(|n| n == "win2"));
+    }
+
+    #[test]
+    fn extend_configured_globals_wins_over_restricted() {
+        let mut base = Environment::default();
+        base.add_global_object_with_members("shared", ["fetch"])
+            .unwrap();
+
+        let mut other = Environment::default();
+        other.add_global_object("shared").unwrap();
+
+        base.extend(&other);
+        // After extend, "shared" becomes ConfiguredGlobals, so members
+        // resolve against global bindings. "fetch" is not a default global.
+        assert!(!base.is_global_member("shared", "fetch"));
+        assert!(base.is_global_member("shared", "Array"));
+    }
+
+    #[test]
+    fn global_object_aliases_match_configured_globals() {
+        let mut env = Environment::default();
+        env.add_global_object("window").unwrap();
+        env.add_global_object("self").unwrap();
+        env.add_global_object_with_members("foreign", ["eval"])
+            .unwrap();
+
+        assert!(env.global_object_aliases_match("window", "self"));
+        assert!(!env.global_object_aliases_match("window", "foreign"));
+        assert!(env.global_object_aliases_match("window", "window"));
+    }
+
+    #[test]
+    fn global_object_paths_match_aliases() {
+        let mut env = Environment::default();
+        env.add_global("fetch").unwrap();
+        env.add_global_object("window").unwrap();
+        env.add_global_object("self").unwrap();
+
+        let window_fetch: Vec<SmolStr> = vec!["window".into(), "fetch".into()];
+        let self_fetch: Vec<SmolStr> = vec!["self".into(), "fetch".into()];
+        assert!(env.global_object_paths_match(&window_fetch, &self_fetch));
+    }
+
+    #[test]
+    fn global_object_paths_match_identical_paths() {
+        let env = Environment::default();
+        let path: Vec<SmolStr> = vec!["Math".into()];
+        assert!(env.global_object_paths_match(&path, &path));
+    }
+
+    #[test]
+    fn global_object_paths_match_rejects_different_paths() {
+        let env = Environment::default();
+        let left: Vec<SmolStr> = vec!["Math".into()];
+        let right: Vec<SmolStr> = vec!["JSON".into()];
+        assert!(!env.global_object_paths_match(&left, &right));
+    }
+
+    #[test]
+    fn fingerprint_is_deterministic() {
+        let mut a = Environment::default();
+        a.add_globals(["fetch", "navigator"]).unwrap();
+        let mut b = Environment::default();
+        b.add_globals(["navigator", "fetch"]).unwrap();
+
+        let mut ha = 0u64;
+        let mut hb = 0u64;
+        a.write_fingerprint_bytes(&mut ha);
+        b.write_fingerprint_bytes(&mut hb);
+        assert_eq!(ha, hb);
+    }
+
+    #[test]
+    fn fingerprint_differs_for_different_environments() {
+        let mut a = Environment::default();
+        a.add_global("fetch").unwrap();
+        let b = Environment::default();
+
+        let mut ha = 0u64;
+        let mut hb = 0u64;
+        a.write_fingerprint_bytes(&mut ha);
+        b.write_fingerprint_bytes(&mut hb);
+        assert_ne!(ha, hb);
+    }
+
+    #[test]
+    fn global_bindings_iterator_returns_configured_names() {
+        let mut env = Environment::default();
+        env.add_globals(["alpha", "beta"]).unwrap();
+        let names: Vec<&str> = env.global_bindings().collect();
+        assert!(names.contains(&"alpha"));
+        assert!(names.contains(&"beta"));
+        assert!(names.contains(&"Math"));
+    }
 }
