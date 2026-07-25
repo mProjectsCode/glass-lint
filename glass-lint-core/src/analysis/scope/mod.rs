@@ -18,7 +18,7 @@
 
 use std::collections::BTreeMap;
 
-use collect::{ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal};
+use build::{ScopeCollector, plan::ScopePlanner, traversal::ScopeTraversal};
 use glass_lint_datastructures::{NameId, NameTable};
 use smol_str::SmolStr;
 use swc_common::Spanned;
@@ -27,12 +27,22 @@ use swc_ecma_visit::VisitWith;
 
 use crate::analysis::{SemanticBudget, syntax::constant::ConstValue};
 
-mod collect;
+mod binding_index;
+mod build;
+mod frozen_assignments;
+mod graph;
+mod mutation_index;
+mod name_env;
 mod query;
+mod scope_index;
 
-mod model;
+pub(in crate::analysis) use frozen_assignments::FrozenAssignmentIndex;
+pub(in crate::analysis) use graph::{FrozenScopeGraph, ScopeGraph, ScopeGraphParts};
 
-pub(in crate::analysis) use model::*;
+pub(in crate::analysis) use crate::analysis::model::scope::{
+    AliasAssignment, BindingProvenance, BoundArgument, IdentValueSeed, LexicalScope,
+    MemberValueSeed, ScopeEffect, ScopeId, ScopeKind, ScopedName,
+};
 
 pub(in crate::analysis) fn provenance_to_const_value(
     provenance: &BindingProvenance,
@@ -80,7 +90,7 @@ impl ScopeGraph {
         environment: &crate::Environment,
         names: NameTable,
         budget: &SemanticBudget,
-    ) -> collect::ScopedProgram {
+    ) -> build::ScopedProgram {
         let planner = ScopePlanner::new(program.span(), names, budget);
         let mut plan_traversal = ScopeTraversal::new(planner);
         program.visit_children_with(&mut plan_traversal);

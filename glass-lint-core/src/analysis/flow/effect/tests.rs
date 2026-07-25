@@ -11,7 +11,7 @@ use crate::analysis::{
 fn collect_effects(source: &str) -> (FactStream<Frozen>, FunctionEffects) {
     let parsed = crate::parse(source, "test.js").expect("source should parse");
     let mut resolver = Resolver::collect(&parsed.program, source);
-    let stream = facts::build::build_test_stream(&parsed.program, &mut resolver);
+    let stream = facts::build_test_stream(&parsed.program, &mut resolver);
     let effects = FunctionEffects::collect(&stream, usize::MAX);
     (stream, effects)
 }
@@ -48,9 +48,8 @@ fn chain_owned_resolves_direct_call_with_rooted_or_syntactic_chain() {
 
 #[test]
 fn chain_owned_falls_back_to_callee_name_for_alias_call() {
-    let (stream, _effects) = collect_effects(
-        "function fetch(url) { return url; } const alias = fetch; alias('/api');",
-    );
+    let (stream, _effects) =
+        collect_effects("function fetch(url) { return url; } const alias = fetch; alias('/api');");
     let names = stream.names();
     let call_facts: Vec<_> = stream
         .facts()

@@ -232,7 +232,7 @@ mod tests {
     use crate::{
         Environment,
         analysis::{
-            facts::{FactId, build::build_test_stream},
+            facts::{FactId, build_test_stream},
             matching::occurrence::OccurrenceIndex,
             resolution::Resolver,
         },

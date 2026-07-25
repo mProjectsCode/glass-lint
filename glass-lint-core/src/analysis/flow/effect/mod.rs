@@ -8,8 +8,7 @@
 //! prevents a complete summary. Invalid summaries are not used for qualified
 //! propagation, preserving fail-closed behavior across module boundaries.
 
-use std::borrow::Cow;
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use glass_lint_datastructures::{Budget, NamePath, NameTable, PathId, SymbolPath};
 use smol_str::SmolStr;

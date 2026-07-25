@@ -19,11 +19,11 @@ use crate::{
         LocatedSourceContext, SemanticArtifact, SemanticBudget,
         facts::{self, SemanticFacts},
         flow::effect::FunctionEffects,
+        lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
         module, resolution,
         scope::ScopeGraph,
         syntax::name::MAX_NAMES,
     },
-    analysis::lowering::status::{AnalysisComponent, AnalysisStatus, IncompleteReason, StatusScope},
     project::SourceFile,
 };
 
@@ -243,7 +243,7 @@ impl LocalLowering<'_> {
         let mut resolver = resolution::Resolver::new(scope_graph, coordinates.clone(), &budget);
 
         let mut builder =
-            facts::build::FactBuilder::with_limit(&mut resolver, limits.semantic_operations());
+            facts::FactBuilder::with_limit(&mut resolver, limits.semantic_operations());
         VisitWith::visit_with(program, &mut builder);
 
         let built = builder.into_built_facts();

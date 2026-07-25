@@ -261,7 +261,7 @@ mod tests {
         let source = "function first(x) { document.body.appendChild(x); } function second(x) { console.log(x); }";
         let parsed = crate::parse(source, "summary-siblings.js").expect("source should parse");
         let mut resolver = Resolver::collect(&parsed.program, source);
-        let stream = facts::build::build_test_stream(&parsed.program, &mut resolver);
+        let stream = facts::build_test_stream(&parsed.program, &mut resolver);
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let summaries = super::FunctionSummaries::collect(&stream, &effects, &plan);

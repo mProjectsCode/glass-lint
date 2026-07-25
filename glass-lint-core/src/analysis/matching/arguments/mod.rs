@@ -89,7 +89,7 @@ mod tests {
     use crate::{
         Environment,
         analysis::{
-            facts::{CallArgInfo, FactStream, Frozen, build::build_test_stream},
+            facts::{CallArgInfo, FactStream, Frozen, build_test_stream},
             lowering::SpanNormalizer,
             matching::{ExportResolution, ModuleExportKey, OccurrenceIndexes},
             resolution::Resolver,

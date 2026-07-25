@@ -27,11 +27,11 @@ mod scope;
 mod syntax;
 mod value;
 
-pub(in crate::analysis) use lowering::budget::SemanticBudget;
 pub use local::{
     ArtifactCacheHandle, ArtifactCacheKey, LocalArtifact, LocatedSourceContext, ProjectModule,
     SemanticArtifact, SharedSemanticArtifact,
 };
+pub(in crate::analysis) use lowering::budget::SemanticBudget;
 pub use lowering::{LoweredSource, Lowerer};
 pub(in crate::analysis) use project::model::ExportResolution;
 pub use project::model::{ProjectSemanticModel, QualifiedRequestId, ResolvedLinkInput};

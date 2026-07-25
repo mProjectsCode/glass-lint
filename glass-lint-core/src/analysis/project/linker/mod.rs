@@ -17,7 +17,8 @@ use glass_lint_datastructures::BudgetTracker;
 use super::state::{ExportLookupCache, ExportTable, ModuleGraph, SccPartition};
 use crate::{
     analysis::{
-        LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId, lowering::status::AnalysisStatus, module,
+        LinkedModuleTarget, ModuleId, ProjectModule, QualifiedRequestId,
+        lowering::status::AnalysisStatus, module,
     },
     project::AnalysisDiagnostic,
 };

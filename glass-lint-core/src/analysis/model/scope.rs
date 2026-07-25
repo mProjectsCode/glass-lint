@@ -122,7 +122,9 @@ impl ScopeEffect {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BindingProvenance {
     Local,
-    ValueAlias { target: NamePath },
+    ValueAlias {
+        target: NamePath,
+    },
     BoundCallable {
         target: NamePath,
         bound_arguments: Vec<Option<BoundArgument>>,
@@ -132,9 +134,16 @@ pub enum BindingProvenance {
         export: SmolStr,
         bound_arguments: Vec<Option<BoundArgument>>,
     },
-    ReturnedObject { source: NamePath },
-    ModuleExport { module: SmolStr, export: SmolStr },
-    ModuleNamespace { module: SmolStr },
+    ReturnedObject {
+        source: NamePath,
+    },
+    ModuleExport {
+        module: SmolStr,
+        export: SmolStr,
+    },
+    ModuleNamespace {
+        module: SmolStr,
+    },
     StaticString(String),
     StaticNumber(usize),
     StaticStringArray(Vec<String>),
@@ -187,8 +196,7 @@ pub struct RootedPropertyMutationFact {
     pub span: Span,
     pub scope: ScopeId,
     pub property: Option<NameId>,
-} 
-
+}
 
 #[cfg(test)]
 mod tests {
