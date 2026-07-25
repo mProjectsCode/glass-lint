@@ -6,6 +6,18 @@ use crate::analysis::scope::query::{
 };
 
 impl FrozenScopeGraph {
+    pub(in crate::analysis) fn constructed_instance_at(
+        &self,
+        ident: &Ident,
+    ) -> Option<(smol_str::SmolStr, smol_str::SmolStr)> {
+        match self.binding_at(ident.sym.as_ref(), ident.span)? {
+            BindingProvenance::ConstructedInstance { module, export } => {
+                Some((module.clone(), export.clone()))
+            }
+            _ => None,
+        }
+    }
+
     /// Resolve the binding provenance visible at a use position.
     pub(in crate::analysis) fn binding_at(
         &self,

@@ -20,7 +20,8 @@ pub fn expression_is_mutable_static_object(
 
 pub fn assignment_provenance(collector: &ScopeCollector, expr: &Expr) -> BindingProvenance {
     collector
-        .bound_callable_provenance(expr)
+        .constructed_instance_provenance(expr)
+        .or_else(|| collector.bound_callable_provenance(expr))
         .or_else(|| collector.module_alias_provenance(expr))
         .or_else(|| collector.returned_object_provenance(expr))
         .or_else(|| collector.const_provenance(expr))

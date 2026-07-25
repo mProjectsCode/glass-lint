@@ -32,8 +32,8 @@ pub use local::{
     SemanticArtifact, SharedSemanticArtifact,
 };
 pub(in crate::analysis) use lowering::budget::SemanticBudget;
-pub(in crate::analysis) use project::model::ExportResolution;
 pub use lowering::{LoweredSource, Lowerer};
+pub(in crate::analysis) use project::model::ExportResolution;
 pub use project::model::{ProjectSemanticModel, QualifiedRequestId, ResolvedLinkInput};
 pub use value::matches_global_object_alias;
 
@@ -41,11 +41,16 @@ pub use value::matches_global_object_alias;
 mod tests {
     use std::sync::Arc;
 
-use super::*;
+    use super::*;
     use crate::{
-        AnalysisLimits, Environment, Severity, analysis::{local::LocatedSourceContext, lowering::SpanNormalizer}, api::{
-            classification::RuleIndex, compiler::{CompiledRuleRecord, CompiledRuleSelection, rule::CompiledMatcherPlan}, rule::{Confidence, MatcherDecl},
-        }, project::SourceFile,
+        AnalysisLimits, Environment, Severity,
+        analysis::{local::LocatedSourceContext, lowering::SpanNormalizer},
+        api::{
+            classification::RuleIndex,
+            compiler::{CompiledRuleRecord, CompiledRuleSelection, rule::CompiledMatcherPlan},
+            rule::{Confidence, MatcherDecl},
+        },
+        project::SourceFile,
     };
 
     #[test]
@@ -67,10 +72,7 @@ use super::*;
         let project = ProjectSemanticModel::single(
             "projection-invariant.js",
             LocatedSourceContext::new(&source),
-            LocalArtifact::new(
-                LocatedSourceContext::new(&source),
-                Arc::new(local),
-            ),
+            LocalArtifact::new(LocatedSourceContext::new(&source), Arc::new(local)),
         );
         let before = format!(
             "{:?}",

@@ -150,5 +150,3 @@ fn local_class_lookalikes_do_not_match_module_class_or_constructor() {
         0,
     );
 }
-
-

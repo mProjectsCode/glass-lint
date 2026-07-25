@@ -305,11 +305,7 @@ fn instance_matchers_respect_alias_scope_and_static_methods() {
 }
 
 #[test]
-fn instance_matchers_do_not_track_chained_constructor_calls() {
-    // Known regression: member_call_instance does not track instances created
-    // via chained `new` expressions.  Only variable-bound instances (this,
-    // self, variable aliases) match.  When the engine is fixed this should
-    // return 2 (one for this.registerThing(), one for new Child().registerThing()).
+fn instance_matchers_track_chained_constructor_calls() {
     assert_count(
         r#"
         import { Base } from "framework";
@@ -326,6 +322,91 @@ fn instance_matchers_do_not_track_chained_constructor_calls() {
             .build()
             .unwrap(),
         2,
+    );
+}
+
+#[test]
+fn constructed_instance_origins_follow_supported_aliases_and_wrappers() {
+    assert_count(
+        r#"
+        import { Base } from "framework";
+        class Child extends Base { run() { this.registerThing(); } }
+        new Child().registerThing();
+        new Base().registerThing();
+        const direct = new Base();
+        direct.registerThing();
+        const alias = direct;
+        alias.registerThing();
+        let changed = new Base();
+        changed.registerThing();
+        changed = local;
+        changed.registerThing();
+        (new Base()).registerThing();
+        new Base()?.registerThing();
+        const framework = require("framework");
+        new framework.Base().registerThing();
+        "#,
+        rule("test.instance-constructed-aliases")
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_instance("framework", "Base", "registerThing")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
+            .build()
+            .unwrap(),
+        9,
+    );
+}
+
+#[test]
+fn constructed_instance_origins_follow_supported_helper_arguments() {
+    assert_count(
+        r#"
+        import { Base } from "framework";
+        function use(value) { value.registerThing(); }
+        use(new Base());
+        use(new Base());
+        "#,
+        rule("test.instance-constructed-helper")
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_instance("framework", "Base", "registerThing")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
+            .build()
+            .unwrap(),
+        1,
+    );
+}
+
+#[test]
+fn constructed_instance_origins_fail_closed_for_lookalikes_and_joined_paths() {
+    assert_count(
+        r#"
+        class Base { registerThing() {} }
+        new Base().registerThing();
+        function shadowed(Base) { new Base().registerThing(); }
+        const C = local;
+        let value = flag ? new C() : local;
+        value.registerThing();
+        let branch;
+        if (flag) { branch = new C(); }
+        branch.registerThing();
+        const dynamic = getConstructor();
+        new dynamic().registerThing();
+        "#,
+        rule("test.instance-constructed-negative")
+            .declaration(
+                MatcherDecl::builder()
+                    .member_call_instance("framework", "Base", "registerThing")
+                    .build()
+                    .expect("valid matcher declaration"),
+            )
+            .build()
+            .unwrap(),
+        0,
     );
 }
 

@@ -445,8 +445,7 @@ impl FlowEnvironment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::model::fact::FactId;
-    use crate::api::classification::RuleIndex;
+    use crate::{analysis::model::fact::FactId, api::classification::RuleIndex};
 
     #[test]
     fn checkpoints_restore_divergent_mutation_paths() {
@@ -517,12 +516,7 @@ mod tests {
         table.insert_state(s1);
         table.insert_state(s2);
         table.remove_states_for(ObjectId(1));
-        assert_eq!(
-            table
-                .states_for(ObjectId(1))
-                .count(),
-            0
-        );
+        assert_eq!(table.states_for(ObjectId(1)).count(), 0);
         assert_eq!(table.state_count(), 1);
     }
 
@@ -574,7 +568,10 @@ mod tests {
         let flow = FlowId::new(RuleIndex::new(0), 0);
         let state = FlowState::new(flow, FactId(1), ObjectId(10));
         table.insert_state(state);
-        table.state_mut(ObjectId(10), flow).unwrap().record_requirement(0, FactId(5));
+        table
+            .state_mut(ObjectId(10), flow)
+            .unwrap()
+            .record_requirement(0, FactId(5));
         let retrieved = table.state(ObjectId(10), flow).unwrap();
         assert_eq!(retrieved.source_event(), FactId(1));
     }

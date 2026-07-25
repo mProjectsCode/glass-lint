@@ -503,9 +503,15 @@ mod tests {
             }
         }
         let (oldest_fp, oldest_key) = &keys[0];
-        assert!(cache.get(*oldest_fp, oldest_key).is_none(), "oldest entry should be evicted");
+        assert!(
+            cache.get(*oldest_fp, oldest_key).is_none(),
+            "oldest entry should be evicted"
+        );
         let (newest_fp, newest_key) = keys.last().unwrap();
-        assert!(cache.get(*newest_fp, newest_key).is_some(), "newest entry should be present");
+        assert!(
+            cache.get(*newest_fp, newest_key).is_some(),
+            "newest entry should be present"
+        );
     }
 
     #[test]
@@ -549,6 +555,9 @@ mod tests {
             )),
         };
         cache.insert(fp_a, key_a, artifact);
-        assert!(cache.get(key_b.fingerprint(), &key_b).is_none(), "different key should not hit");
+        assert!(
+            cache.get(key_b.fingerprint(), &key_b).is_none(),
+            "different key should not hit"
+        );
     }
 }

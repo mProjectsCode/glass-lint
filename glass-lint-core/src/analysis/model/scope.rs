@@ -144,6 +144,10 @@ pub enum BindingProvenance {
     ModuleNamespace {
         module: SmolStr,
     },
+    ConstructedInstance {
+        module: SmolStr,
+        export: SmolStr,
+    },
     StaticString(String),
     StaticNumber(usize),
     StaticStringArray(Vec<String>),

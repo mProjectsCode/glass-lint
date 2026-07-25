@@ -290,8 +290,13 @@ mod tests {
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
-        let bridge = summaries.get(FunctionId(2)).expect("bridge function should have a summary");
-        assert!(bridge.parameter_count() >= 1, "bridge has at least one parameter");
+        let bridge = summaries
+            .get(FunctionId(2))
+            .expect("bridge function should have a summary");
+        assert!(
+            bridge.parameter_count() >= 1,
+            "bridge has at least one parameter"
+        );
     }
 
     #[test]
@@ -306,8 +311,14 @@ mod tests {
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
-        assert!(summaries.get(FunctionId(1)).is_some(), "a should have a summary");
-        assert!(summaries.get(FunctionId(2)).is_some(), "b should have a summary");
+        assert!(
+            summaries.get(FunctionId(1)).is_some(),
+            "a should have a summary"
+        );
+        assert!(
+            summaries.get(FunctionId(2)).is_some(),
+            "b should have a summary"
+        );
     }
 
     #[test]
@@ -319,7 +330,9 @@ mod tests {
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
-        let f = summaries.get(FunctionId(1)).expect("f should have a summary");
+        let f = summaries
+            .get(FunctionId(1))
+            .expect("f should have a summary");
         let _callee_params = stream.function_parameters(FunctionId(1));
         let call_fact = stream
             .facts()
@@ -341,7 +354,9 @@ mod tests {
         let effects = FunctionEffects::collect(&stream, usize::MAX);
         let plan = BoundFlowPlan::new(&[], stream.names());
         let summaries = FunctionSummaries::collect(&stream, &effects, &plan);
-        let f = summaries.get(FunctionId(1)).expect("f should have a summary");
+        let f = summaries
+            .get(FunctionId(1))
+            .expect("f should have a summary");
         let call_fact = stream
             .facts()
             .iter()

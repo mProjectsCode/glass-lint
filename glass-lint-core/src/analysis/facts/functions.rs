@@ -139,6 +139,10 @@ impl FactBuilder<'_, '_> {
             .super_class
             .as_deref()
             .and_then(|expr| self.resolver.class_provenance(expr));
+        if let Some(provenance) = provenance.clone() {
+            let value = self.resolver.resolve_ident_id(&class_decl.ident);
+            self.class_origins.insert(value, provenance);
+        }
         self.emit(
             FactKind::Declaration,
             class_decl.ident.span(),

@@ -22,6 +22,18 @@ use crate::analysis::{
 };
 
 impl ScopeCollector<'_> {
+    pub(super) fn constructed_instance_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
+        let Expr::New(new_expr) = expr else {
+            return None;
+        };
+        match self.module_alias_provenance(&new_expr.callee)? {
+            BindingProvenance::ModuleExport { module, export } => {
+                Some(BindingProvenance::ConstructedInstance { module, export })
+            }
+            _ => None,
+        }
+    }
+
     /// Resolve a module export, namespace member, dynamic import, or require
     /// expression while preserving lexical shadowing checks.
     // Kept as a single recursive match: each Expr arm follows a distinct
@@ -154,7 +166,8 @@ impl ScopeCollector<'_> {
 
     /// Resolve the strict provenance forms accepted for a call argument.
     pub(super) fn argument_provenance(&self, expr: &Expr) -> Option<BindingProvenance> {
-        self.module_alias_provenance(expr)
+        self.constructed_instance_provenance(expr)
+            .or_else(|| self.module_alias_provenance(expr))
             .or_else(|| self.returned_object_provenance(expr))
             .or_else(|| match expr {
                 Expr::Ident(ident) => match self.visible_binding(ident.sym.as_ref())? {

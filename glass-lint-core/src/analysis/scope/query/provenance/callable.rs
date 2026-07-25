@@ -67,6 +67,7 @@ impl FrozenScopeGraph {
             Some(
                 BindingProvenance::Local
                 | BindingProvenance::ModuleNamespace { .. }
+                | BindingProvenance::ConstructedInstance { .. }
                 | BindingProvenance::ReturnedObject { .. }
                 | BindingProvenance::StaticString(_)
                 | BindingProvenance::StaticNumber(_)

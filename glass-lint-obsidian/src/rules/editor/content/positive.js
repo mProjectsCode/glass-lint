@@ -31,3 +31,6 @@ class TestEditor extends Editor {
     this["getValue"]();
   }
 }
+
+// Constructed receivers use the shared instance provenance path.
+new Editor().getValue(); // @expect-error glass-lint rule=obsidian:editor.content

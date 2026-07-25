@@ -35,15 +35,23 @@ impl FactBuilder<'_, '_> {
     }
 
     pub(super) fn record_if(&mut self, stmt: &IfStmt) {
+        let incoming = self.instance_origins.clone();
+        let incoming_classes = self.class_origins.clone();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::BranchStart, region);
         stmt.test.visit_with(self);
         self.emit_control(stmt.cons.span(), ControlKind::BranchThen, region);
         stmt.cons.visit_with(self);
+        let then_origins = self.instance_origins.clone();
+        self.instance_origins = incoming.clone();
         if let Some(alt) = &stmt.alt {
             self.emit_control(alt.span(), ControlKind::BranchElse, region);
             alt.visit_with(self);
+            self.retain_common_instance_origins(&then_origins);
+        } else {
+            self.instance_origins = incoming;
         }
+        self.class_origins = incoming_classes;
         self.emit_control(stmt.span(), ControlKind::BranchEnd, region);
     }
 
@@ -51,6 +59,8 @@ impl FactBuilder<'_, '_> {
         if let Some(init) = &stmt.init {
             init.visit_with(self);
         }
+        let incoming = self.instance_origins.clone();
+        let incoming_classes = self.class_origins.clone();
         let region = self.next_control_region();
         self.emit_control(
             stmt.span(),
@@ -65,6 +75,8 @@ impl FactBuilder<'_, '_> {
             self.emit_control(stmt.span(), ControlKind::LoopUpdate, region);
             update.visit_with(self);
         }
+        self.instance_origins = incoming;
+        self.class_origins = incoming_classes;
         self.emit_control(stmt.span(), ControlKind::LoopEnd, region);
     }
 
@@ -102,13 +114,19 @@ impl FactBuilder<'_, '_> {
         // Each loop receives one region so flow can invalidate state at the
         // back edge without pretending that an arbitrary number of iterations
         // was unrolled.
+        let incoming = self.instance_origins.clone();
+        let incoming_classes = self.class_origins.clone();
         let region = self.next_control_region();
         self.emit_control(span, ControlKind::LoopStart { guaranteed }, region);
         visit_body(self);
+        self.instance_origins = incoming;
+        self.class_origins = incoming_classes;
         self.emit_control(span, ControlKind::LoopEnd, region);
     }
 
     pub(super) fn record_switch(&mut self, stmt: &SwitchStmt) {
+        let incoming = self.instance_origins.clone();
+        let incoming_classes = self.class_origins.clone();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::SwitchStart, region);
         stmt.discriminant.visit_with(self);
@@ -121,11 +139,16 @@ impl FactBuilder<'_, '_> {
                 region,
             );
             case.visit_with(self);
+            self.instance_origins = incoming.clone();
         }
+        self.instance_origins = incoming;
+        self.class_origins = incoming_classes;
         self.emit_control(stmt.span(), ControlKind::SwitchEnd, region);
     }
 
     pub(super) fn record_try(&mut self, stmt: &TryStmt) {
+        let incoming = self.instance_origins.clone();
+        let incoming_classes = self.class_origins.clone();
         let region = self.next_control_region();
         self.emit_control(stmt.span(), ControlKind::TryStart, region);
         stmt.block.visit_with(self);
@@ -137,17 +160,35 @@ impl FactBuilder<'_, '_> {
             self.emit_control(finalizer.span(), ControlKind::FinallyStart, region);
             finalizer.visit_with(self);
         }
+        self.instance_origins = incoming;
+        self.class_origins = incoming_classes;
         self.emit_control(stmt.span(), ControlKind::TryEnd, region);
     }
 
     pub(super) fn record_conditional(&mut self, expr: &CondExpr) {
+        let incoming = self.instance_origins.clone();
+        let incoming_classes = self.class_origins.clone();
         let region = self.next_control_region();
         self.emit_control(expr.span(), ControlKind::BranchStart, region);
         expr.test.visit_with(self);
         self.emit_control(expr.cons.span(), ControlKind::BranchThen, region);
         expr.cons.visit_with(self);
+        self.instance_origins = incoming.clone();
         self.emit_control(expr.alt.span(), ControlKind::BranchElse, region);
         expr.alt.visit_with(self);
+        self.instance_origins = incoming;
+        self.class_origins = incoming_classes;
         self.emit_control(expr.span(), ControlKind::BranchEnd, region);
+    }
+
+    fn retain_common_instance_origins(
+        &mut self,
+        other: &std::collections::BTreeMap<
+            crate::analysis::value::ValueId,
+            (smol_str::SmolStr, smol_str::SmolStr),
+        >,
+    ) {
+        self.instance_origins
+            .retain(|value, origin| other.get(value) == Some(origin));
     }
 }

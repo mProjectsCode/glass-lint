@@ -111,11 +111,19 @@ impl FactBuilder<'_, '_> {
             .resolver
             .member_expression_chain(member)
             .and_then(|chain| self.name_path(&chain));
-        let instance_class = self
-            .resolver
-            .instance_member_available(member)
-            .then(|| self.instance_class_for_receiver(&member.obj))
-            .flatten();
+        let receiver_origin = self.instance_origin_for_expr(&member.obj);
+        let instance_class = receiver_origin.or_else(|| {
+            self.resolver
+                .instance_member_available(member)
+                .then(|| self.instance_class_for_receiver(&member.obj))
+                .flatten()
+        });
+        let syntactic_path = syntactic_path.or_else(|| {
+            instance_class.as_ref().and_then(|_| {
+                member_property_name(&member.prop)
+                    .and_then(|property| self.name_path(&property.into()))
+            })
+        });
         let receiver = Some(self.resolver.resolve_expr_id(&member.obj));
         let callee_span = self.byte_range(member.span)?;
         let target_function = self.resolver.function_id_for_expr(&member.obj);
@@ -130,7 +138,13 @@ impl FactBuilder<'_, '_> {
         &mut self,
         receiver: &Expr,
     ) -> Option<(SmolStr, SmolStr)> {
-        if self.traversal.in_static_method() || self.traversal.in_function() {
+        if self.traversal.in_static_method() {
+            return None;
+        }
+        if let Some(origin) = self.instance_origin_for_expr(receiver) {
+            return Some(origin);
+        }
+        if self.traversal.in_function() {
             return None;
         }
         let is_this = matches!(receiver, Expr::This(_))
@@ -142,6 +156,79 @@ impl FactBuilder<'_, '_> {
                 .as_ref()
                 .is_some_and(|chain| chain.eq_chain("this"));
         if is_this { self.current_class() } else { None }
+    }
+
+    /// Resolve a receiver through the bounded constructed-value map. The
+    /// constructor expression is resolved lazily because a member call asks
+    /// about its receiver before the visitor descends into that receiver.
+    pub(in crate::analysis::facts) fn instance_origin_for_expr(
+        &mut self,
+        expr: &Expr,
+    ) -> Option<(SmolStr, SmolStr)> {
+        match expr {
+            Expr::New(new_expr) => {
+                let value = self.resolver.resolve_expr_id(expr);
+                if let Some(origin) = self.instance_origins.get(&value).cloned() {
+                    return Some(origin);
+                }
+                let origin = self.instance_origin_for_constructor(&new_expr.callee)?;
+                self.instance_origins.insert(value, origin.clone());
+                Some(origin)
+            }
+            Expr::Ident(ident) => {
+                let value = self.resolver.resolve_ident_id(ident);
+                self.instance_origins
+                    .get(&value)
+                    .cloned()
+                    .or_else(|| self.resolver.constructed_instance_provenance(ident))
+            }
+            Expr::Paren(paren) => self.instance_origin_for_expr(&paren.expr),
+            Expr::Seq(sequence) => sequence
+                .exprs
+                .last()
+                .and_then(|expr| self.instance_origin_for_expr(expr)),
+            Expr::TsAs(value) => self.instance_origin_for_expr(&value.expr),
+            Expr::TsNonNull(value) => self.instance_origin_for_expr(&value.expr),
+            Expr::TsSatisfies(value) => self.instance_origin_for_expr(&value.expr),
+            Expr::TsTypeAssertion(value) => self.instance_origin_for_expr(&value.expr),
+            _ => None,
+        }
+    }
+
+    pub(in crate::analysis::facts) fn instance_origin_for_constructor(
+        &mut self,
+        constructor: &Expr,
+    ) -> Option<(SmolStr, SmolStr)> {
+        self.constructor_origin_for_expr(constructor)
+    }
+
+    pub(in crate::analysis::facts) fn constructor_origin_for_expr(
+        &mut self,
+        constructor: &Expr,
+    ) -> Option<(SmolStr, SmolStr)> {
+        self.resolver.class_provenance(constructor).or_else(|| {
+            let value = self.resolver.resolve_expr_id(constructor);
+            self.class_origins
+                .get(&value)
+                .cloned()
+                .or_else(|| match constructor {
+                    Expr::Class(class_expr) => class_expr
+                        .class
+                        .super_class
+                        .as_deref()
+                        .and_then(|expr| self.resolver.class_provenance(expr)),
+                    Expr::Paren(paren) => self.constructor_origin_for_expr(&paren.expr),
+                    Expr::Seq(sequence) => sequence
+                        .exprs
+                        .last()
+                        .and_then(|expr| self.constructor_origin_for_expr(expr)),
+                    Expr::TsAs(value) => self.constructor_origin_for_expr(&value.expr),
+                    Expr::TsNonNull(value) => self.constructor_origin_for_expr(&value.expr),
+                    Expr::TsSatisfies(value) => self.constructor_origin_for_expr(&value.expr),
+                    Expr::TsTypeAssertion(value) => self.constructor_origin_for_expr(&value.expr),
+                    _ => None,
+                })
+        })
     }
 
     pub(in crate::analysis::facts) fn instance_callable_for_expr(

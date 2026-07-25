@@ -115,6 +115,7 @@ impl FrozenScopeGraph {
                 BindingProvenance::Local
                 | BindingProvenance::ModuleExport { .. }
                 | BindingProvenance::ModuleNamespace { .. }
+                | BindingProvenance::ConstructedInstance { .. }
                 | BindingProvenance::BoundModuleCallable { .. }
                 | BindingProvenance::StaticString(_)
                 | BindingProvenance::StaticNumber(_)

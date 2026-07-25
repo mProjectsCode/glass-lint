@@ -83,6 +83,12 @@ pub struct FactBuilder<'builder, 'resolver> {
     call_results: call_results::CallResultTable,
     /// Proven callable members extracted from the current module instance.
     instance_callables: BTreeMap<ValueId, InstanceCallable>,
+    /// Proven module/export identity of constructed object values. This is
+    /// traversal state, not a matcher-specific index: aliases use the same
+    /// value IDs and binding versions as the rest of the fact builder.
+    instance_origins: BTreeMap<ValueId, (SmolStr, SmolStr)>,
+    /// Local class values whose superclass is a proven module export.
+    class_origins: BTreeMap<ValueId, (SmolStr, SmolStr)>,
     /// Module requests and export slots collected during the same canonical
     /// walk as the semantic facts, owned by a focused interface builder.
     interface: interface::ModuleInterfaceBuilder,
@@ -116,6 +122,8 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
             instance_callables: BTreeMap::new(),
+            instance_origins: BTreeMap::new(),
+            class_origins: BTreeMap::new(),
             interface: interface::ModuleInterfaceBuilder::new(),
         }
     }

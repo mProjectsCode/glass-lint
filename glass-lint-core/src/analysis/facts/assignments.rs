@@ -56,8 +56,16 @@ impl FactBuilder<'_, '_> {
         assignment.right.visit_with(self);
         let target = self.resolver.resolve_ident_id(&ident.id);
         self.instance_callables.remove(&target);
+        self.instance_origins.remove(&target);
+        self.class_origins.remove(&target);
         if let Some(callable) = self.instance_callable_for_expr(&assignment.right) {
             self.instance_callables.insert(target, callable);
+        }
+        if let Some(origin) = self.instance_origin_for_expr(&assignment.right) {
+            self.instance_origins.insert(target, origin);
+        }
+        if let Some(origin) = self.constructor_origin_for_expr(&assignment.right) {
+            self.class_origins.insert(target, origin);
         }
         self.emit(
             FactKind::Assignment,

@@ -295,6 +295,13 @@ impl Resolver<'_> {
         self.scopes.instance_member_available_at(member)
     }
 
+    pub(in crate::analysis) fn constructed_instance_provenance(
+        &self,
+        ident: &Ident,
+    ) -> Option<(SmolStr, SmolStr)> {
+        self.scopes.constructed_instance_at(ident)
+    }
+
     #[cfg(test)]
     pub(super) fn new_for_test(
         scopes: FrozenScopeGraph,
