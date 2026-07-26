@@ -158,6 +158,13 @@ impl MatcherDeclBuilder {
         }
     }
 
+    fn is_chain_malformed(chain: &str) -> bool {
+        chain.trim().is_empty()
+            || chain.contains("..")
+            || chain.starts_with('.')
+            || chain.ends_with('.')
+    }
+
     fn set_identity_event(
         &mut self,
         identity: IdentityConstraint,
@@ -185,6 +192,10 @@ impl MatcherDeclBuilder {
     /// Global call, e.g. `fetch(...)`.
     pub fn call_global(mut self, name: impl Into<String>) -> Self {
         let name: SmolStr = name.into().into();
+        if name.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::Global {
                 name: name.clone(),
@@ -199,6 +210,10 @@ impl MatcherDeclBuilder {
     /// Heuristic spelling call.
     pub fn call_heuristic(mut self, name: impl Into<String>) -> Self {
         let name: SmolStr = name.into().into();
+        if name.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::Any {
                 name: name.clone(),
@@ -212,8 +227,12 @@ impl MatcherDeclBuilder {
 
     /// Module-export call.
     pub fn call_module(mut self, module: impl Into<String>, export: impl Into<String>) -> Self {
-        let export: SmolStr = export.into().into();
         let module: SmolStr = module.into().into();
+        let export: SmolStr = export.into().into();
+        if module.trim().is_empty() || export.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::ModuleExport {
                 module: module.clone(),
@@ -247,6 +266,10 @@ impl MatcherDeclBuilder {
     /// Rooted member call, e.g. `document.createElement(...)`.
     pub fn member_call_rooted(mut self, chain: impl Into<String>) -> Self {
         let chain_str: String = chain.into();
+        if Self::is_chain_malformed(&chain_str) {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let path = SymbolPath::from(chain_str.as_str());
         self.set_identity_event(
             IdentityConstraint::Rooted { path: path.clone() },
@@ -259,6 +282,10 @@ impl MatcherDeclBuilder {
     /// Heuristic member call.
     pub fn member_call_heuristic(mut self, chain: impl Into<String>) -> Self {
         let chain_str: String = chain.into();
+        if Self::is_chain_malformed(&chain_str) {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let path = SymbolPath::from(chain_str.as_str());
         let name: SmolStr = chain_str.as_str().into();
         self.set_identity_event(
@@ -280,6 +307,10 @@ impl MatcherDeclBuilder {
     ) -> Self {
         let module: SmolStr = module.into().into();
         let member_str: String = member.into();
+        if module.trim().is_empty() || Self::is_chain_malformed(&member_str) {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let path = SymbolPath::from(member_str.as_str());
         self.set_identity_event(
             IdentityConstraint::ModuleNamespace {
@@ -301,6 +332,11 @@ impl MatcherDeclBuilder {
         let module: SmolStr = module.into().into();
         let export: SmolStr = export.into().into();
         let member: SmolStr = member.into().into();
+        if module.trim().is_empty() || export.trim().is_empty() || Self::is_chain_malformed(&member)
+        {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let constructor = IdentityConstraint::ModuleExport {
             module: module.clone(),
             export: export.clone(),
@@ -324,6 +360,10 @@ impl MatcherDeclBuilder {
         member: impl Into<String>,
     ) -> Self {
         let member_str: String = member.into();
+        if Self::is_chain_malformed(&member_str) {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let path = SymbolPath::from(member_str.as_str());
         match ModuleSpecifierPattern::package(module) {
             Ok(module) => {
@@ -342,6 +382,10 @@ impl MatcherDeclBuilder {
     /// Rooted member read.
     pub fn member_read_rooted(mut self, chain: impl Into<String>) -> Self {
         let chain_str: String = chain.into();
+        if Self::is_chain_malformed(&chain_str) {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let path = SymbolPath::from(chain_str.as_str());
         self.set_identity_event(
             IdentityConstraint::Rooted { path: path.clone() },
@@ -359,6 +403,10 @@ impl MatcherDeclBuilder {
     ) -> Self {
         let module: SmolStr = module.into().into();
         let member_str: String = member.into();
+        if module.trim().is_empty() || Self::is_chain_malformed(&member_str) {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let path = SymbolPath::from(member_str.as_str());
         self.set_identity_event(
             IdentityConstraint::ModuleNamespace {
@@ -378,6 +426,10 @@ impl MatcherDeclBuilder {
     ) -> Self {
         let source = source.into();
         let member: SmolStr = member.into().into();
+        if Self::is_chain_malformed(&source) || Self::is_chain_malformed(&member) {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let producer = IdentityConstraint::Rooted {
             path: SymbolPath::from(source.as_str()),
         };
@@ -402,6 +454,10 @@ impl MatcherDeclBuilder {
     ) -> Self {
         let source = source.into();
         let member: SmolStr = member.into().into();
+        if Self::is_chain_malformed(&source) || Self::is_chain_malformed(&member) {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let producer = IdentityConstraint::Rooted {
             path: SymbolPath::from(source.as_str()),
         };
@@ -424,6 +480,10 @@ impl MatcherDeclBuilder {
         member: impl Into<String>,
     ) -> Self {
         let member_str: String = member.into();
+        if Self::is_chain_malformed(&member_str) {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         let path = SymbolPath::from(member_str.as_str());
         match ModuleSpecifierPattern::package(module) {
             Ok(module) => {
@@ -442,6 +502,10 @@ impl MatcherDeclBuilder {
     /// Import exact module specifier.
     pub fn import_exact(mut self, module: impl Into<String>) -> Self {
         let module_str: String = module.into();
+        if module_str.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::LiteralString {
                 predicate: module_str.clone(),
@@ -470,6 +534,10 @@ impl MatcherDeclBuilder {
     /// Static string reference.
     pub fn string_contains(mut self, value: impl Into<String>) -> Self {
         let value_str: String = value.into();
+        if value_str.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::LiteralString {
                 predicate: value_str.clone(),
@@ -483,6 +551,10 @@ impl MatcherDeclBuilder {
     /// Heuristic class reference.
     pub fn class_heuristic(mut self, name: impl Into<String>) -> Self {
         let name: SmolStr = name.into().into();
+        if name.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::Any {
                 name: name.clone(),
@@ -498,6 +570,10 @@ impl MatcherDeclBuilder {
     pub fn class_module(mut self, module: impl Into<String>, export: impl Into<String>) -> Self {
         let module: SmolStr = module.into().into();
         let export: SmolStr = export.into().into();
+        if module.trim().is_empty() || export.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::ModuleExport {
                 module: module.clone(),
@@ -512,6 +588,10 @@ impl MatcherDeclBuilder {
     /// Global constructor, e.g. `new URL(...)`.
     pub fn constructor_global(mut self, name: impl Into<String>) -> Self {
         let name: SmolStr = name.into().into();
+        if name.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::Global {
                 name: name.clone(),
@@ -526,6 +606,10 @@ impl MatcherDeclBuilder {
     /// Heuristic constructor.
     pub fn constructor_heuristic(mut self, name: impl Into<String>) -> Self {
         let name: SmolStr = name.into().into();
+        if name.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::Any {
                 name: name.clone(),
@@ -545,6 +629,10 @@ impl MatcherDeclBuilder {
     ) -> Self {
         let module: SmolStr = module.into().into();
         let export: SmolStr = export.into().into();
+        if module.trim().is_empty() || export.trim().is_empty() {
+            self.validation_error = Some(MatcherBuildError::EmptyChain);
+            return self;
+        }
         self.set_identity_event(
             IdentityConstraint::ModuleExport {
                 module: module.clone(),

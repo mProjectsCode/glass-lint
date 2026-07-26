@@ -46,29 +46,43 @@ impl ProjectSemanticModel {
                 else {
                     continue;
                 };
-                let Some(returned) = target
-                    .returns()
-                    .iter()
-                    .find(|returned| returned.parameter().is_none())
-                else {
+                if target.is_invalid() {
                     continue;
-                };
-                let resolution = match returned.provenance() {
-                    SymbolCallProvenance::ModuleExport { module, export } => {
-                        self.resolve_imported_identity(target_module, module, export)
+                }
+                let mut resolution: Option<ExportResolution> = None;
+                let mut conflict = false;
+                for returned in target.returns() {
+                    if returned.parameter().is_some() {
+                        continue;
                     }
-                    SymbolCallProvenance::Global { name } => {
-                        ExportResolution::Global { name: name.clone() }
+                    let r = match returned.provenance() {
+                        SymbolCallProvenance::ModuleExport { module, export } => {
+                            self.resolve_imported_identity(target_module, module, export)
+                        }
+                        SymbolCallProvenance::Global { name } => {
+                            ExportResolution::Global { name: name.clone() }
+                        }
+                        SymbolCallProvenance::Local => self
+                            .module_fact_stream(target_module)
+                            .and_then(|stream| stream.values().static_string(returned.value()))
+                            .map_or(ExportResolution::Unknown, |value| {
+                                ExportResolution::StaticString {
+                                    value: value.to_owned(),
+                                }
+                            }),
+                        SymbolCallProvenance::Unknown(_) => ExportResolution::Unknown,
+                    };
+                    match resolution {
+                        None => resolution = Some(r),
+                        Some(ref prev) if prev != &r => {
+                            conflict = true;
+                        }
+                        _ => {}
                     }
-                    SymbolCallProvenance::Local => self
-                        .module_fact_stream(target_module)
-                        .and_then(|stream| stream.values().static_string(returned.value()))
-                        .map_or(ExportResolution::Unknown, |value| {
-                            ExportResolution::StaticString {
-                                value: value.to_owned(),
-                            }
-                        }),
-                    SymbolCallProvenance::Unknown(_) => ExportResolution::Unknown,
+                }
+                let resolution = match resolution {
+                    Some(r) if !conflict => r,
+                    _ => ExportResolution::Unknown,
                 };
                 identities.insert(cref.result(), resolution);
             }

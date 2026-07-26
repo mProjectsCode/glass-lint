@@ -104,11 +104,12 @@ mod tests {
             },
             rule::{ArgumentConstraint, MatcherDecl, ValueMatcher},
         },
+        project::SourceText,
     };
 
     fn stream(source: &str, environment: &Environment) -> FactStream<Frozen> {
         let parsed = crate::parse(source, "constrained.js").unwrap();
-        let coordinates = SpanNormalizer::new(parsed.source_start, source);
+        let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
         let mut resolver =
             Resolver::collect_with_environment(&parsed.program, environment, coordinates);
         build_test_stream(&parsed.program, &mut resolver)

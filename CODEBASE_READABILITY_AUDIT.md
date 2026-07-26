@@ -2,7 +2,7 @@
 
 ## Summary
 
-This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. The most important correctness risks are control-insensitive assignment provenance, exceptional-path identity leakage, star-export ambiguity being overwritten, and tsconfig inheritance being rebased to the wrong directory. The most important boundedness risks are an unbounded function-summary pass, an export cache whose supplied capacity is ignored, and public dense-ID structures that can be driven into enormous sparse allocations.
+This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 11 have been fixed (2 High, 8 Medium, 1 Low), leaving 21 open (14 High, 7 Medium). The most important correctness risks are control-insensitive assignment provenance, exceptional-path identity leakage, star-export ambiguity being overwritten, and tsconfig inheritance being rebased to the wrong directory. The most important boundedness risks are an unbounded function-summary pass, an export cache whose supplied capacity is ignored, and public dense-ID structures that can be driven into enormous sparse allocations.
 
 The existing `profile.json.gz` was also inspected against its matching profiling binary. It is supporting rather than dispositive evidence because it does not carry a reproducible workload manifest, but roughly half of the main worker's samples include `FactBuilder` statement traversal, with resolver/name operations prominent below it. That agrees with the static conclusion that lowering work inside `FactBuilder`, interning, and resolver-owned indexes deserves priority.
 
@@ -65,6 +65,7 @@ Every finite integral numeric literal handled as a static index is converted wit
 #### READ-007 — Local lowering performs avoidable full-source copying and eager column indexing
 - **Severity:** Medium
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-core/src/analysis/lowering/mod.rs:48-88`
 
@@ -81,8 +82,9 @@ Every finite integral numeric literal handled as a static index is converted wit
 #### READ-009 — Valid alias chains silently stop resolving after 16 bindings
 - **Severity:** Medium
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Other
-- **Location:** `glass-lint-core/src/analysis/model/value.rs:127-150`
+- **Location:** `glass-lint-core/src/analysis/model/value.rs:127-140`
 
 `ValueTable::resolve` returns `None` after an undocumented fixed 16 binding hops, even though construction permits longer acyclic alias chains and no incomplete status is recorded. A valid chain of local aliases can therefore lose a static value or strict identity solely because it crosses this hidden threshold. Since binding targets are arena-owned and should form a backward DAG, resolve to the root with checked cycle detection/path compression or a configured semantic budget. If a hard cap remains, return a typed unknown reason and surface it consistently in analysis status.
 
@@ -97,6 +99,7 @@ Every finite integral numeric literal handled as a static index is converted wit
 #### READ-011 — Matcher builders silently normalize malformed identity paths
 - **Severity:** Medium
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** API
 - **Location:** `glass-lint-core/src/api/rule/decl.rs:161-195`
 
@@ -140,8 +143,9 @@ Return and argument analysis push destination keys into adjacency vectors withou
 #### READ-016 — Call-result identity selects the first return from an invalid effect
 - **Severity:** High
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Architecture
-- **Location:** `glass-lint-core/src/analysis/project/identities.rs:22-75`
+- **Location:** `glass-lint-core/src/analysis/project/identities.rs:22-90`
 
 `call_result_identities` does not check `target.is_invalid()` and uses the first parameter-independent return, ignoring other returns with conflicting provenance. A conditionally returning helper can therefore assign its caller the identity of one arbitrary branch even though the effect pass explicitly marked the function unsafe. Reject invalid target effects and join every reachable return, accepting an identity only when all proven candidates agree. Cover multiple returns, branch order reversal, unknown returns, parameter projections, and one unambiguous helper.
 
@@ -166,8 +170,9 @@ For absolute paths, every `..` component is discarded instead of popping the pre
 #### READ-019 — `IndexTable` can allocate billions of empty slots
 - **Severity:** High
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Encapsulation
-- **Location:** `glass-lint-datastructures/src/table.rs:33-68`
+- **Location:** `glass-lint-datastructures/src/table.rs:33-75`
 
 `insert` resizes directly to any caller-supplied `u32` ID with no capacity or density validation, so a forged or sparse ID can request roughly four billion `Option<T>` slots. `len` and `is_empty` then scan the entire allocated capacity. Require an explicit maximum/dense-ID allocator or return a typed insertion error when an index is outside the admitted range, and maintain occupied length incrementally. Keep the O(1) table for trusted dense owners, but do not make that trust an undocumented generic precondition.
 
@@ -234,6 +239,7 @@ Every non-builtin error for a bare request becomes `ResolverOutcome::External`, 
 #### READ-028 — `SourceCorpus` resets shared budgets for each root
 - **Severity:** Medium
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Architecture
 - **Location:** `glass-lint-project/src/corpus.rs:136-193`
 

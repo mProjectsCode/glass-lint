@@ -8,7 +8,7 @@ use crate::{SourceLanguage, project::types::ProjectRelativePath};
 ///
 /// The public project DTO still serializes as a string, but every internal
 /// consumer clones only this cheap handle instead of copying the source.
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub struct SourceText(Arc<str>);
 
 impl SourceText {

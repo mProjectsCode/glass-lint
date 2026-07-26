@@ -24,7 +24,7 @@ use crate::{
         scope::ScopeGraph,
         syntax::name::MAX_NAMES,
     },
-    project::SourceFile,
+    project::{SourceFile, SourceText},
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -53,20 +53,20 @@ pub(in crate::analysis) struct SpanNormalizer {
     /// SWC `BytePos` value assigned to authored byte offset zero.
     start: u32,
     /// Authored source text, used for UTF-8 boundary validation.
-    source: Arc<str>,
+    source: SourceText,
 }
 
 impl SpanNormalizer {
-    pub(in crate::analysis) fn new(source_start: swc_common::BytePos, source: &str) -> Self {
+    pub(in crate::analysis) fn new(source_start: swc_common::BytePos, source: &SourceText) -> Self {
         Self {
             start: source_start.0,
-            source: Arc::from(source.to_owned()),
+            source: source.clone(),
         }
     }
 
     #[cfg(test)]
     pub(in crate::analysis) fn for_program(program: &Program, source: &str) -> Self {
-        Self::new(program.span().lo, source)
+        Self::new(program.span().lo, &SourceText::from(source))
     }
 
     pub(in crate::analysis) fn normalize(
@@ -127,7 +127,7 @@ impl<'a> Lowerer<'a> {
             source.language(),
             self.limits.syntax_depth(),
         )?;
-        let coordinates = SpanNormalizer::new(parsed.source_start, source.source().as_str());
+        let coordinates = SpanNormalizer::new(parsed.source_start, source.source());
         let semantic = lower_program(&parsed.program, self.environment, self.limits, &coordinates);
         Ok(LoweredSource {
             source: LocatedSourceContext::new(source),
@@ -309,7 +309,7 @@ mod tests {
 
     #[test]
     fn swc_span_is_normalized_to_zero_based_byte_range_once() {
-        let normalizer = SpanNormalizer::new(BytePos(40), "aé\r\n");
+        let normalizer = SpanNormalizer::new(BytePos(40), &SourceText::from("aé\r\n"));
         assert_eq!(
             normalizer.normalize(Span::new(BytePos(40), BytePos(43))),
             Ok(glass_lint_datastructures::ByteRange::new(0, 3).unwrap())
@@ -330,7 +330,7 @@ mod tests {
     fn name_exhaustion_invalidates_indexes_and_effects_with_an_accurate_status() {
         let source = "function helper(options) { return options.send; } helper({ send: 1 });";
         let parsed = crate::parse(source, "name-exhaustion.js").expect("source should parse");
-        let coordinates = SpanNormalizer::new(parsed.source_start, source);
+        let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(source));
         let artifact = lower_program_with_name_limit(
             &parsed.program,
             &crate::Environment::default(),
@@ -369,7 +369,10 @@ mod tests {
     fn invalid_parser_span_records_incomplete_without_fake_location() {
         let source = "fetch('/remote');";
         let parsed = crate::parse::parse(source, "main.js").unwrap();
-        let invalid = SpanNormalizer::new(BytePos(parsed.source_start.0 + 100), source);
+        let invalid = SpanNormalizer::new(
+            BytePos(parsed.source_start.0 + 100),
+            &SourceText::from(source),
+        );
         let artifact = lower_program(
             &parsed.program,
             &crate::Environment::default(),

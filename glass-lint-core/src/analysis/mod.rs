@@ -50,14 +50,14 @@ mod tests {
             compiler::{CompiledRuleRecord, CompiledRuleSelection, rule::CompiledMatcherPlan},
             rule::{Confidence, MatcherDecl},
         },
-        project::SourceFile,
+        project::{SourceFile, SourceText},
     };
 
     #[test]
     fn local_model_is_unchanged_by_matcher_projection() {
         let text = "fetch('/remote'); document.createElement('div');";
         let parsed = crate::parse(text, "projection-invariant.js").expect("source should parse");
-        let coordinates = SpanNormalizer::new(parsed.source_start, text);
+        let coordinates = SpanNormalizer::new(parsed.source_start, &SourceText::from(text));
         let local = lowering::lower_program(
             &parsed.program,
             &Environment::default(),

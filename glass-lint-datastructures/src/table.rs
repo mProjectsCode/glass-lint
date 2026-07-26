@@ -15,16 +15,28 @@ pub trait IdIndex: Copy + Into<u32> {
 /// `Vec<Option<T>>` where the index corresponds to the identifier.  This
 /// offers O(1) lookup and efficient iteration over present entries, but is
 /// not space-efficient for very sparse populations.
+///
+/// Insertion refuses IDs at or above [`MAX_TABLE_CAPACITY`] to prevent
+/// uncontrolled allocation from forged or sparse identifiers.
 #[derive(Debug, Clone)]
 pub struct IndexTable<I, T> {
     values: Vec<Option<T>>,
+    occupied: usize,
     _marker: PhantomData<I>,
 }
+
+/// The maximum index accepted by [`IndexTable::insert`].
+///
+/// Equal to 2^20, which accommodates legitimate dense ID ranges while
+/// preventing the 4-billion-element allocation that a forged `u32` ID
+/// could otherwise request.
+pub const MAX_TABLE_CAPACITY: usize = 1_048_576;
 
 impl<I: IdIndex, T> Default for IndexTable<I, T> {
     fn default() -> Self {
         Self {
             values: Vec::new(),
+            occupied: 0,
             _marker: PhantomData,
         }
     }
@@ -50,8 +62,9 @@ impl<I: IdIndex, T> IndexTable<I, T> {
 
     /// Inserts `value` at `id`.
     ///
-    /// Returns `true` if the slot was vacant, `false` if it was occupied or
-    /// the id could not be converted to a `usize`.
+    /// Returns `true` if the slot was vacant, `false` if it was occupied,
+    /// the id was at or above [`MAX_TABLE_CAPACITY`], or the id could not
+    /// be converted to a `usize`.
     ///
     /// The vector grows automatically to accommodate the id.
     pub fn insert(&mut self, id: I, value: T) -> bool {
@@ -59,11 +72,17 @@ impl<I: IdIndex, T> IndexTable<I, T> {
         let Some(index) = usize::try_from(raw).ok() else {
             return false;
         };
+        if index >= MAX_TABLE_CAPACITY {
+            return false;
+        }
         if self.values.len() <= index {
             self.values.resize_with(index + 1, || None);
         }
         let vacant = self.values[index].is_none();
         self.values[index] = Some(value);
+        if vacant {
+            self.occupied += 1;
+        }
         vacant
     }
 
@@ -131,7 +150,7 @@ impl<I: IdIndex, T> IndexTable<I, T> {
 
     /// The number of occupied slots.
     pub fn len(&self) -> usize {
-        self.values.iter().filter(|value| value.is_some()).count()
+        self.occupied
     }
 
     /// Returns `true` if no slots are occupied.
@@ -142,6 +161,7 @@ impl<I: IdIndex, T> IndexTable<I, T> {
     /// Removes all values from the table, keeping the allocated storage.
     pub fn clear(&mut self) {
         self.values.clear();
+        self.occupied = 0;
     }
 
     /// Shrinks the internal vector to the highest occupied index + 1.
@@ -399,5 +419,22 @@ mod tests {
         table.insert(TestId(0), "a");
         let cloned = table.clone();
         assert_eq!(cloned.get(TestId(0)), Some(&"a"));
+    }
+
+    #[test]
+    fn insert_rejects_id_at_max_capacity() {
+        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        assert!(!table.insert(
+            TestId(u32::try_from(MAX_TABLE_CAPACITY).unwrap()),
+            "overflow"
+        ));
+        assert_eq!(table.len(), 0);
+    }
+
+    #[test]
+    fn insert_rejects_id_beyond_max_capacity() {
+        let mut table: IndexTable<TestId, &str> = IndexTable::new();
+        assert!(!table.insert(TestId(u32::MAX), "far"));
+        assert_eq!(table.len(), 0);
     }
 }

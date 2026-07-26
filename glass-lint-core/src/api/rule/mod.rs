@@ -290,20 +290,10 @@ mod tests {
 
     #[test]
     fn rejects_empty_and_incomplete_matchers() {
-        let rule = Rule::builder("network.fetch")
-            .description("rule")
-            .category(Category::new("network").unwrap())
-            .severity(Severity::Info)
-            .confidence(Confidence::High)
-            .declaration(
-                MatcherDecl::builder()
-                    .call_global("")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
-            .build()
-            .unwrap();
-        assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
+        assert!(matches!(
+            MatcherDecl::builder().call_global("").build(),
+            Err(MatcherBuildError::EmptyChain)
+        ));
 
         assert!(
             ObjectFlowMatcher::builder("incomplete")
@@ -312,20 +302,10 @@ mod tests {
                 .is_err()
         );
 
-        let rule = Rule::builder("class.invalid-global")
-            .description("rule")
-            .category(Category::new("classes").unwrap())
-            .severity(Severity::Info)
-            .confidence(Confidence::High)
-            .declaration(
-                MatcherDecl::builder()
-                    .class_heuristic("")
-                    .build()
-                    .expect("valid matcher declaration"),
-            )
-            .build()
-            .unwrap();
-        assert!(crate::RuleCatalog::new("test", vec![rule]).is_err());
+        assert!(matches!(
+            MatcherDecl::builder().class_heuristic("").build(),
+            Err(MatcherBuildError::EmptyChain)
+        ));
 
         let decl = MatcherDecl::builder().import_package("pkg/subpath").build();
         assert!(decl.is_err());

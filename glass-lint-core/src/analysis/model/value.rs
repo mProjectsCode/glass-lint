@@ -130,13 +130,20 @@ impl ValueTable {
 
     pub fn resolve(&self, id: ValueId) -> Option<&Value> {
         let mut value = self.get(id)?;
-        for _ in 0..16 {
+        let mut visited = smallvec::SmallVec::<[ValueId; 8]>::new();
+        visited.push(id);
+        loop {
             match value {
-                Value::Binding { target, .. } => value = self.get(*target)?,
+                Value::Binding { target, .. } => {
+                    if visited.contains(target) {
+                        return None;
+                    }
+                    visited.push(*target);
+                    value = self.get(*target)?;
+                }
                 _ => return Some(value),
             }
         }
-        None
     }
 
     pub fn static_string(&self, id: ValueId) -> Option<&str> {
@@ -229,10 +236,11 @@ mod tests {
     }
 
     #[test]
-    fn resolve_exhausts_after_max_hops() {
+    fn resolve_follows_long_chain() {
         let mut table = ValueTable::default();
-        let mut prev = table.intern(Value::StaticNumber(0));
-        for i in 1..=17 {
+        let terminal = table.intern(Value::StaticString("target".into()));
+        let mut prev = terminal;
+        for i in 1..=20 {
             let key = BindingKey::new(crate::analysis::model::scope::BindingRoot::Binding {
                 function: FunctionId(0),
                 binding: crate::analysis::model::scope::BindingId(i),
@@ -240,7 +248,10 @@ mod tests {
             });
             prev = table.intern(Value::Binding { key, target: prev });
         }
-        assert!(table.resolve(prev).is_none());
+        assert_eq!(
+            table.resolve(prev),
+            Some(&Value::StaticString("target".into()))
+        );
     }
 
     #[test]

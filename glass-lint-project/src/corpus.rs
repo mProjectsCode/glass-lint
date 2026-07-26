@@ -147,6 +147,10 @@ impl SourceCorpus {
         mut include: impl FnMut(&Path) -> bool,
     ) -> Result<Vec<PathBuf>, ProjectLoadError> {
         let mut admitted = AdmissionSet::new(self.options.max_files());
+        let mut budget = ProjectResourceBudget::new(
+            self.options.max_visited_entries(),
+            self.options.max_project_source_bytes(),
+        );
         for root in roots {
             if let Some(canonical_root) = &self.canonical_root
                 && root != canonical_root
@@ -172,10 +176,6 @@ impl SourceCorpus {
             if !metadata.is_dir() {
                 return Err(ProjectLoadError::CorpusRootNotFileOrDir(root.clone()));
             }
-            let mut budget = ProjectResourceBudget::new(
-                self.options.max_visited_entries(),
-                self.options.max_project_source_bytes(),
-            );
             walk::collect_files(
                 &admission,
                 root,
