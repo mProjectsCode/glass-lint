@@ -98,16 +98,25 @@ struct SourceExtensionSet(BTreeSet<String>);
 
 impl SourceExtensionSet {
     fn supports(&self, path: &Path) -> bool {
-        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
             return false;
         };
-        let file_name = file_name.to_ascii_lowercase();
-        self.0
-            .iter()
-            .any(|extension| file_name.ends_with(extension))
-            && !(file_name.ends_with(".d.ts")
-                || file_name.ends_with(".d.cts")
-                || file_name.ends_with(".d.mts"))
+        // Case-insensitive suffix check without allocating a lowered copy.
+        let matched = self.0.iter().any(|ext| {
+            name.len() >= ext.len() && name[(name.len() - ext.len())..].eq_ignore_ascii_case(ext)
+        });
+        if !matched {
+            return false;
+        }
+        // Reject declaration files (they are not source).
+        for decl in [".d.ts", ".d.cts", ".d.mts"] {
+            if name.len() >= decl.len()
+                && name[(name.len() - decl.len())..].eq_ignore_ascii_case(decl)
+            {
+                return false;
+            }
+        }
+        true
     }
 }
 

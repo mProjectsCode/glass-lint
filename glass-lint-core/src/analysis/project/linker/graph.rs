@@ -1,7 +1,5 @@
 //! Module graph edge construction and SCC decomposition.
 
-use std::collections::BTreeMap;
-
 use glass_lint_datastructures::Budget;
 
 use crate::{
@@ -89,17 +87,12 @@ impl ProjectLinker {
             self.link_budget.mark_exhausted();
             self.scc_partition = SccPartition {
                 components,
-                dag: BTreeMap::new(),
                 order: Vec::new(),
             };
             return;
         }
 
-        let (dag, order) = build_scc_dag_and_order(self.graph.forward(), &components);
-        self.scc_partition = SccPartition {
-            components,
-            dag,
-            order,
-        };
+        let (_, order) = build_scc_dag_and_order(self.graph.forward(), &components);
+        self.scc_partition = SccPartition { components, order };
     }
 }

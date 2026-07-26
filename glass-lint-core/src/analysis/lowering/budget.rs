@@ -42,11 +42,6 @@ impl SemanticBudget {
     pub fn used(&self) -> usize {
         self.used.get()
     }
-
-    #[allow(dead_code)]
-    pub fn limit(&self) -> usize {
-        self.limit
-    }
 }
 
 impl Default for SemanticBudget {

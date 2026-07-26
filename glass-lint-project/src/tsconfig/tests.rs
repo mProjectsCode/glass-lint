@@ -1,5 +1,3 @@
-use std::time::{Duration, Instant};
-
 use super::*;
 use crate::tests::TempProject;
 
@@ -8,11 +6,7 @@ fn default_budget() -> ConfigTraversalBudget {
 }
 
 fn default_resource_budget() -> ProjectResourceBudget {
-    ProjectResourceBudget::new(
-        250_000,
-        512 * 1024 * 1024,
-        Instant::now() + Duration::from_secs(3600),
-    )
+    ProjectResourceBudget::new(250_000, 512 * 1024 * 1024)
 }
 
 #[test]

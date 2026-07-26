@@ -6,7 +6,7 @@
 
 use smol_str::SmolStr;
 
-use crate::analysis::{facts::ControlRegionId, scope::ScopeId, value::FunctionId};
+use crate::analysis::{facts::ControlRegionId, value::FunctionId};
 
 #[derive(Debug)]
 /// Ephemeral nesting state that affects how the current syntax is interpreted.
@@ -19,9 +19,7 @@ pub(super) struct TraversalState {
     function_depth: usize,
     /// Number of static class methods currently being visited.
     static_method_depth: usize,
-    /// Current scope cached during traversal (avoids span-based binary search).
-    #[allow(dead_code)]
-    current_scope: ScopeId,
+
     /// Current function cached during traversal (avoids while-loop scope
     /// climb).
     current_function: FunctionId,
@@ -34,7 +32,7 @@ impl Default for TraversalState {
             class_stack: Vec::new(),
             function_depth: 0,
             static_method_depth: 0,
-            current_scope: ScopeId::from(0),
+
             current_function: FunctionId(0),
         }
     }

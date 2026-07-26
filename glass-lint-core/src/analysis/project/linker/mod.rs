@@ -73,7 +73,6 @@ impl ProjectLinker {
             graph: ModuleGraph::default(),
             scc_partition: SccPartition {
                 components: Vec::new(),
-                dag: BTreeMap::new(),
                 order: Vec::new(),
             },
             exports: ExportTable::default(),

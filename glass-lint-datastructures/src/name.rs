@@ -50,28 +50,25 @@ impl NameTable {
     /// Returns `Err(NameExhausted)` when the table has reached its capacity
     /// limit.
     pub fn intern(&mut self, name: &str) -> Result<NameId, NameExhausted> {
-        let (idx, inserted) = self.names.insert_full(name.to_smolstr());
-        let Ok(id) = u32::try_from(idx).map(NameId) else {
-            if inserted {
-                self.names.pop();
-            }
+        if let Some(idx) = self.names.get_index_of(name) {
+            return Ok(NameId(u32::try_from(idx).expect("index fits in u32")));
+        }
+        if self.names.len() >= self.max_entries {
             self.exhausted = true;
             return Err(NameExhausted {
                 limit: self.max_entries,
-                attempted: idx.saturating_add(1),
+                attempted: self.names.len().saturating_add(1),
             });
-        };
-        if !inserted {
-            return Ok(id);
         }
-        if idx >= self.max_entries {
+        let (idx, _) = self.names.insert_full(name.to_smolstr());
+        let Ok(id) = u32::try_from(idx).map(NameId) else {
             self.names.pop();
             self.exhausted = true;
             return Err(NameExhausted {
                 limit: self.max_entries,
                 attempted: idx.saturating_add(1),
             });
-        }
+        };
         Ok(id)
     }
 

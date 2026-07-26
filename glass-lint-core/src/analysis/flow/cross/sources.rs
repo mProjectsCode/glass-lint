@@ -114,6 +114,10 @@ impl FlowSources {
                 }
             }
         }
+        for dests in self.adjacency.values_mut() {
+            dests.sort_unstable();
+            dests.dedup();
+        }
     }
 }
 

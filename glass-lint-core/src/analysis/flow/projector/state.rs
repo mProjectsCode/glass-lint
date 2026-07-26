@@ -148,6 +148,7 @@ impl FlowStateTable {
         self.states.len()
     }
 
+    #[allow(dead_code)]
     pub(super) fn mutation_count(&self) -> usize {
         self.log.node_count()
     }

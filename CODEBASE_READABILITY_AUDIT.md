@@ -47,6 +47,7 @@ Every branch, loop, switch, conditional, and `try` clones the full `instance_ori
 #### READ-005 — Name interning constructs an owned key before checking for a hit
 - **Severity:** Medium
 - **Fix Complexity** Low
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-datastructures/src/name.rs:47-75`
 
@@ -55,6 +56,7 @@ Every branch, loop, switch, conditional, and `try` clones the full `instance_ori
 #### READ-006 — Numeric constant conversion round-trips through text
 - **Severity:** Medium
 - **Fix Complexity** Low
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-core/src/analysis/syntax/constant/types.rs:12-18`
 
@@ -113,6 +115,7 @@ Each `BorrowedOccurrenceIter::next` scans the head of every base/overlay bucket 
 #### READ-013 — Cross-flow adjacency retains duplicate edges
 - **Severity:** Medium
 - **Fix Complexity** Low
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-core/src/analysis/flow/cross/sources.rs:70-117`
 
@@ -239,6 +242,7 @@ Every non-builtin error for a bare request becomes `ResolverOutcome::External`, 
 #### READ-029 — Filesystem admission repeats allocation and metadata work
 - **Severity:** Medium
 - **Fix Complexity** Low
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-project/src/options.rs:95-111`
 
@@ -265,6 +269,7 @@ Project options accept arbitrary source suffixes, but `SourceFile` always infers
 #### READ-032 — Dead state and suppressions obscure the real phase model
 - **Severity:** Low
 - **Fix Complexity** Low
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-core/src/analysis/facts/state.rs:14-40`
 

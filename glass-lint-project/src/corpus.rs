@@ -4,7 +4,6 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    time::{Duration, Instant},
 };
 
 use crate::{
@@ -176,7 +175,6 @@ impl SourceCorpus {
             let mut budget = ProjectResourceBudget::new(
                 self.options.max_visited_entries(),
                 self.options.max_project_source_bytes(),
-                Instant::now() + Duration::from_secs(3600),
             );
             walk::collect_files(
                 &admission,

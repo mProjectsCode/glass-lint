@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use crate::error::ProjectLoadError;
 
 /// Per-load resource budget that governs discovery, reading, and loading.
@@ -17,18 +15,15 @@ pub struct ProjectResourceBudget {
     max_config_bytes: u64,
     /// Cumulative tsconfig byte counter.
     config_bytes: u64,
-    /// Deadline after which the load must stop.
-    deadline: Instant,
 }
 
 impl ProjectResourceBudget {
-    pub fn new(max_visited: usize, max_config_bytes: u64, deadline: Instant) -> Self {
+    pub fn new(max_visited: usize, max_config_bytes: u64) -> Self {
         Self {
             max_visited,
             visited: 0,
             max_config_bytes,
             config_bytes: 0,
-            deadline,
         }
     }
 
@@ -52,13 +47,6 @@ impl ProjectResourceBudget {
             });
         }
         Ok(())
-    }
-
-    /// Check deadline; returns Timeout if expired.
-    pub fn check_deadline(&self) -> Result<(), ProjectLoadError> {
-        (Instant::now() <= self.deadline)
-            .then_some(())
-            .ok_or(ProjectLoadError::Timeout)
     }
 
     pub fn max_visited(&self) -> usize {

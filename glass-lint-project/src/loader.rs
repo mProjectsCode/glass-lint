@@ -229,7 +229,6 @@ impl ProjectLoader {
         let mut budget = ProjectResourceBudget::new(
             self.options.max_visited_entries(),
             self.options.max_project_source_bytes(),
-            deadline,
         );
         let paths = ProjectPaths::from_selection(&self.options, selection, deadline, &mut budget)?;
         metrics.timings.record_discovery(discovery_start.elapsed());

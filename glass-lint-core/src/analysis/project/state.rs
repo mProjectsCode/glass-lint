@@ -48,8 +48,6 @@ impl ModuleGraph {
 #[derive(Debug)]
 pub(in crate::analysis) struct SccPartition {
     pub components: Vec<Vec<ModuleId>>,
-    #[allow(dead_code)]
-    pub dag: BTreeMap<usize, Vec<usize>>,
     pub order: Vec<usize>,
 }
 

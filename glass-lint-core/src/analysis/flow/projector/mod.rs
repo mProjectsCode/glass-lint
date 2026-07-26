@@ -41,18 +41,12 @@ use crate::{
 
 /// Exhaustion state and bounded counters returned by local flow projection.
 #[derive(Debug, Clone, Copy, Default)]
-#[allow(dead_code)]
 pub(in crate::analysis) struct LocalFlowProjectionOutcome {
     /// Whether any budget was exhausted during projection.
     pub exhausted: bool,
     /// Object identities allocated.
+    #[allow(dead_code)]
     pub objects_used: u32,
-    /// Projected state entries.
-    pub states_used: usize,
-    /// Evidence emissions recorded.
-    pub emissions_used: usize,
-    /// Mutation log entries written.
-    pub mutations_used: usize,
 }
 
 /// Push flow evidence directly into an externally-owned per-rule vec,
@@ -333,9 +327,6 @@ impl<'rules, 'stream> ObjectFlowProjector<'rules, 'stream> {
         LocalFlowProjectionOutcome {
             exhausted,
             objects_used: self.next_object_id,
-            states_used: self.flow_state.state_count(),
-            emissions_used: self.flow_evidence.emitted_count(),
-            mutations_used: self.flow_state.mutation_count(),
         }
     }
 }

@@ -48,6 +48,7 @@ impl MutationLog {
         }
     }
 
+    #[allow(dead_code)]
     pub(super) fn node_count(&self) -> usize {
         self.nodes.len()
     }

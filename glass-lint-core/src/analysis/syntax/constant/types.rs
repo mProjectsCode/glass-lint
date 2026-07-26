@@ -10,11 +10,21 @@ pub(super) const MAX_ARRAY_ITEMS: usize = 256;
 pub(super) const MAX_OBJECT_KEYS: usize = 256;
 
 /// Convert a finite, integral, non-negative number into a bounded index type.
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    clippy::float_cmp,
+    clippy::cast_precision_loss
+)]
 pub(in crate::analysis) fn non_negative_integer(value: f64) -> Option<usize> {
     if !value.is_finite() || value < 0.0 || value.fract() != 0.0 {
         return None;
     }
-    value.to_string().parse().ok()
+    let n = value as usize;
+    if n as f64 != value {
+        return None;
+    }
+    Some(n)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
