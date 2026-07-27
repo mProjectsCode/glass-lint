@@ -247,6 +247,7 @@ impl LocalJobExecutor for ThreadLocalJobExecutor {
 
 #[cfg(test)]
 #[derive(Clone, Copy)]
+#[cfg_attr(not(feature = "serde"), allow(dead_code))]
 pub enum ControlledReleaseOrder {
     Forward,
     Reverse,
@@ -254,9 +255,11 @@ pub enum ControlledReleaseOrder {
 }
 
 #[cfg(test)]
+#[cfg_attr(not(feature = "serde"), allow(dead_code))]
 pub struct ControlledLocalJobExecutor(pub ControlledReleaseOrder);
 
 #[cfg(test)]
+#[cfg_attr(not(feature = "serde"), allow(dead_code))]
 impl LocalJobExecutor for ControlledLocalJobExecutor {
     fn execute(
         &self,

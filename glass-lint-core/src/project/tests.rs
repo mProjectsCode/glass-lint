@@ -9,7 +9,7 @@ use crate::{
         ObjectEventMatcher, ObjectFlowMatcher, ObjectSourceMatcher, Rule, Severity, ValueMatcher,
     },
     project::{
-        session::{ControlledReleaseOrder, CountingExecutionObserver, outstanding_job_bound},
+        session::{CountingExecutionObserver, outstanding_job_bound},
         *,
     },
 };
@@ -107,6 +107,8 @@ fn consuming_resolution_rejects_unknown_and_duplicate_outcomes() {
 #[cfg(feature = "serde")]
 #[test]
 fn controlled_release_orders_produce_identical_full_report() {
+    use crate::project::session::ControlledReleaseOrder;
+
     let limits = crate::AnalysisLimits::default()
         .with_semantic_operations(40)
         .unwrap();

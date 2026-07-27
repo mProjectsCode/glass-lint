@@ -359,6 +359,7 @@ impl<'a> ProjectCollection<'a> {
     }
 
     #[cfg(test)]
+    #[cfg_attr(not(feature = "serde"), allow(dead_code))]
     pub(super) fn analyze_sources_controlled(
         &mut self,
         sources: impl IntoIterator<Item = SourceFile>,

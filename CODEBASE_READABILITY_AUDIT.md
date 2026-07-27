@@ -111,6 +111,7 @@ Builder methods accept empty global names and member chains, while `SymbolPath::
 #### READ-012 — Borrowed occurrence merging is O(bucket count × occurrence count)
 - **Severity:** Medium
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Complexity
 - **Location:** `glass-lint-core/src/analysis/matching/occurrence.rs:62-133`
 
