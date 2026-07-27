@@ -357,6 +357,145 @@ fn single_level_extends_merges_correctly() {
 }
 
 // ---------------------------------------------------------------------------
+// Integration tests: build_effective_config with invalid fields
+// ---------------------------------------------------------------------------
+
+#[test]
+fn build_effective_config_invalid_files_null_no_broad_fallback() {
+    let project = TempProject::new("tsconfig-invalid-files-null");
+    project.write("tsconfig.json", r#"{"files":null}"#);
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
+    let (config, _) = build_effective_config(
+        &project.root().join("tsconfig.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        default_budget(),
+        &mut config_count,
+        &mut resource_budget,
+    )
+    .unwrap();
+
+    // Must NOT fall back to **/* — all paths rejected
+    assert!(!config.pattern_set.is_included("src/main.ts"));
+    assert!(!config.pattern_set.is_included("index.ts"));
+    assert!(!config.pattern_set.is_included("any/file.ts"));
+    // Diagnostic emitted for null files field
+    assert!(diagnostics.iter().any(|d| d.message.contains("files")));
+}
+
+#[test]
+fn build_effective_config_invalid_include_false_no_broad_fallback() {
+    let project = TempProject::new("tsconfig-invalid-include-false");
+    project.write("tsconfig.json", r#"{"include":false}"#);
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
+    let (config, _) = build_effective_config(
+        &project.root().join("tsconfig.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        default_budget(),
+        &mut config_count,
+        &mut resource_budget,
+    )
+    .unwrap();
+
+    // Must NOT fall back to **/*
+    assert!(!config.pattern_set.is_included("src/main.ts"));
+    assert!(!config.pattern_set.is_included("lib/util.ts"));
+    assert!(!config.pattern_set.is_included("any/file.ts"));
+    // Diagnostic emitted for invalid include
+    assert!(diagnostics.iter().any(|d| d.message.contains("include")));
+}
+
+#[test]
+fn build_effective_config_invalid_include_object_no_broad_fallback() {
+    let project = TempProject::new("tsconfig-invalid-include-obj");
+    project.write("tsconfig.json", r#"{"include":{"src":"bad"}}"#);
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
+    let (config, _) = build_effective_config(
+        &project.root().join("tsconfig.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        default_budget(),
+        &mut config_count,
+        &mut resource_budget,
+    )
+    .unwrap();
+
+    // Must NOT fall back to **/*
+    assert!(!config.pattern_set.is_included("src/main.ts"));
+    assert!(!config.pattern_set.is_included("index.ts"));
+    assert!(diagnostics.iter().any(|d| d.message.contains("include")));
+}
+
+#[test]
+fn build_effective_config_invalid_include_null_no_broad_fallback() {
+    let project = TempProject::new("tsconfig-invalid-include-null");
+    project.write("tsconfig.json", r#"{"include":null}"#);
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
+    let (config, _) = build_effective_config(
+        &project.root().join("tsconfig.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        default_budget(),
+        &mut config_count,
+        &mut resource_budget,
+    )
+    .unwrap();
+
+    // Must NOT fall back to **/*
+    assert!(!config.pattern_set.is_included("src/main.ts"));
+    assert!(!config.pattern_set.is_included("index.ts"));
+    assert!(diagnostics.iter().any(|d| d.message.contains("include")));
+}
+
+#[test]
+fn build_effective_config_invalid_parent_extends_propagates_fail_closed() {
+    let project = TempProject::new("tsconfig-invalid-parent-extends");
+    project.write("base.json", r#"{"include":false}"#);
+    project.write(
+        "tsconfig.json",
+        r#"{"extends":"./base.json","include":["src/**/*"]}"#,
+    );
+
+    let mut diagnostics = Vec::new();
+    let mut config_count = 0;
+    let mut resource_budget = default_resource_budget();
+    let (config, _) = build_effective_config(
+        &project.root().join("tsconfig.json"),
+        project.root(),
+        None,
+        &mut diagnostics,
+        default_budget(),
+        &mut config_count,
+        &mut resource_budget,
+    )
+    .unwrap();
+
+    // Parent's invalid include propagates — child's valid include still
+    // rejected because fail-closed flag is inherited from the parent.
+    assert!(!config.pattern_set.is_included("src/main.ts"));
+    assert!(!config.pattern_set.is_included("lib/util.ts"));
+    // Diagnostic emitted for the base config's invalid include
+    assert!(diagnostics.iter().any(|d| d.message.contains("include")));
+}
+
+// ---------------------------------------------------------------------------
 // ConfigTraversalBudget tests
 // ---------------------------------------------------------------------------
 

@@ -201,7 +201,8 @@ Inheritance merges raw `files`, `include`, `exclude`, `outDir`, and `declaration
 
 #### READ-022 — Malformed tsconfig selection fields fail open
 - **Severity:** High
-- **Fix Complexity** Medium
+- **Fix Complexity:** Medium
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-project/src/tsconfig/selection.rs:25-95`
 
