@@ -16,10 +16,16 @@ use crate::tsconfig::{ParsedField, ParsedTsconfig};
 /// This is an intermediate type produced during config inheritance.
 /// It exists only during construction and is consumed by
 /// [`CompiledTsconfigSelection::compile`].
+///
+/// When a membership-controlling field (`files` or `include`) carried a
+/// `WrongType` or `Null` value in the parsed config, the merge marks it as
+/// invalid so that compilation can fail closed rather than broadening
+/// membership by falling back to `**/*`.
 pub struct MergedSelection {
     pub files: Option<Vec<String>>,
     pub include: Vec<String>,
     pub exclude: Vec<String>,
+    pub invalid_controlling_field: bool,
 }
 
 /// Merge a child [`ParsedTsconfig`] with an optional parent
@@ -42,23 +48,34 @@ pub fn merge_selection(child: ParsedTsconfig, parent: Option<MergedSelection>) -
     } = child;
 
     let has_parent = parent.is_some();
-    let (parent_files, parent_include, parent_exclude) = match parent {
-        Some(m) => (m.files, m.include, m.exclude),
-        None => (None, Vec::new(), Vec::new()),
+    let (parent_files, parent_include, parent_exclude, parent_invalid) = match parent {
+        Some(m) => (m.files, m.include, m.exclude, m.invalid_controlling_field),
+        None => (None, Vec::new(), Vec::new(), false),
     };
 
-    let files = child_files.ok().or(parent_files);
+    // Track whether a controlling field was invalid so that compilation can
+    // fail closed instead of broadening membership via `**/*` fallback.
+    let files_invalid = !matches!(child_files, ParsedField::Present(_) | ParsedField::Absent);
+    let include_invalid = !matches!(child_include, ParsedField::Present(_) | ParsedField::Absent);
+    let invalid_controlling_field = parent_invalid || files_invalid || include_invalid;
 
-    let (include, exclude) = if files.is_some() {
+    let files = if files_invalid {
+        Some(Vec::new())
+    } else {
+        child_files.ok().or(parent_files)
+    };
+
+    let (include, exclude) = if files.is_some() && !files_invalid {
         (Vec::new(), Vec::new())
     } else {
-        // Distinguish Absent (inherit or default) from Present (use as-is
-        // even when empty) so an explicit empty array is not collapsed
-        // with an absent field.
-        let include = match child_include {
-            ParsedField::Present(v) => v,
-            _ if has_parent => parent_include,
-            _ => vec!["**/*".to_string()],
+        let include = if include_invalid {
+            Vec::new()
+        } else {
+            match child_include {
+                ParsedField::Present(v) => v,
+                _ if has_parent => parent_include,
+                _ => vec!["**/*".to_string()],
+            }
         };
 
         let mut exclude = match child_exclude {
@@ -91,6 +108,7 @@ pub fn merge_selection(child: ParsedTsconfig, parent: Option<MergedSelection>) -
         files,
         include,
         exclude,
+        invalid_controlling_field,
     }
 }
 
@@ -123,9 +141,10 @@ impl CompiledTsconfigSelection {
             files,
             include,
             exclude,
+            invalid_controlling_field,
         } = merged;
 
-        let pattern_set = TsconfigPatternSet::new(&include, &exclude);
+        let pattern_set = TsconfigPatternSet::new(&include, &exclude, invalid_controlling_field);
         let pattern_diagnostics = pattern_set
             .invalid_patterns()
             .map(|pattern| format!("invalid glob pattern `{pattern}`"))
@@ -146,11 +165,16 @@ impl CompiledTsconfigSelection {
 
 /// Validated, normalized, and compiled include/exclude patterns. Provides
 /// allocation-free borrowed matching against canonical project-relative paths.
+///
+/// When a membership-controlling field was invalid in the parsed config, the
+/// entire pattern set is treated as empty so that no source is admitted until
+/// the config is corrected.
 #[derive(Clone, Debug)]
 pub struct TsconfigPatternSet {
     includes: Vec<glob::Pattern>,
     excludes: Vec<glob::Pattern>,
     invalid: Vec<String>,
+    fail_closed: bool,
 }
 
 fn matches_relative(pattern: &glob::Pattern, relative: &str) -> bool {
@@ -163,7 +187,11 @@ fn matches_relative(pattern: &glob::Pattern, relative: &str) -> bool {
 }
 
 impl TsconfigPatternSet {
-    pub(in crate::tsconfig) fn new(includes: &[String], excludes: &[String]) -> Self {
+    pub(in crate::tsconfig) fn new(
+        includes: &[String],
+        excludes: &[String],
+        fail_closed: bool,
+    ) -> Self {
         let normalize = |pattern: &str| -> String {
             let normalized = pattern.replace('\\', "/");
             if normalized.ends_with('/') {
@@ -193,6 +221,7 @@ impl TsconfigPatternSet {
             includes,
             excludes,
             invalid,
+            fail_closed,
         }
     }
 
@@ -203,8 +232,11 @@ impl TsconfigPatternSet {
     /// Returns true when `relative` (a slash-normalized path relative to the
     /// config base) matches at least one include pattern and matches no exclude
     /// pattern. The path is borrowed; no allocation occurs.
+    ///
+    /// When any membership-controlling field was invalid the set returns false
+    /// for every path, failing closed instead of broadening membership.
     pub fn is_included(&self, relative: &str) -> bool {
-        if !self.invalid.is_empty() {
+        if self.fail_closed || !self.invalid.is_empty() {
             return false;
         }
         let has_include_match = self

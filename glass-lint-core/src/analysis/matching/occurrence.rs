@@ -4,7 +4,10 @@
 //! deduplicated within each key. Queries can therefore borrow stable slices
 //! and emit evidence without repeating normalization policy.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, BTreeSet, binary_heap::BinaryHeap},
+};
 
 use glass_lint_datastructures::{ByteRange, NameId, NamePath, SymbolPath};
 use smol_str::SmolStr;
@@ -62,21 +65,113 @@ impl<'a> IntoIterator for CandidateOccurrences<'a> {
 /// Deterministically merges normalized occurrence slices without owning any
 /// occurrence values. A `base` slice and borrowed `overlay` buckets are merged
 /// without allocating a combined bucket vector.
+///
+/// When only one bucket is present a zero-allocation cursor fast path is used.
+/// For multiple buckets a binary-heap k-way merge avoids O(k) scans per item.
 #[derive(Clone, Debug)]
 pub(in crate::analysis) struct BorrowedOccurrenceIter<'a> {
     base: Option<&'a [Occurrence]>,
     overlay: &'a [&'a [Occurrence]],
-    positions: Vec<usize>,
+    state: MergeState,
+}
+
+/// Internal k-way merge or single-cursor state.
+#[derive(Clone, Debug)]
+enum MergeState {
+    /// Single bucket: cursor at (bucket_index, position_in_bucket).
+    Cursor(usize, usize),
+    /// Multiple buckets: min-heap with per-bucket positions.
+    Multi {
+        positions: Vec<usize>,
+        heap: BinaryHeap<Reverse<MergeItem>>,
+    },
+}
+
+/// One candidate occurrence tracked by the heap, ordered by
+/// (event, start, end, bucket) for deterministic tie-breaking.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct MergeItem {
+    event: FactId,
+    start: u32,
+    end: u32,
+    bucket: usize,
+    occurrence: Occurrence,
+}
+
+impl Ord for MergeItem {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.event, self.start, self.end, self.bucket).cmp(&(
+            other.event,
+            other.start,
+            other.end,
+            other.bucket,
+        ))
+    }
+}
+
+impl PartialOrd for MergeItem {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<'a> BorrowedOccurrenceIter<'a> {
     pub(super) fn new(base: Option<&'a [Occurrence]>, overlay: &'a [&'a [Occurrence]]) -> Self {
         let num_buckets = overlay.len() + usize::from(base.is_some());
+        let state = if num_buckets <= 1 {
+            MergeState::Cursor(0, 0)
+        } else {
+            let mut heap = BinaryHeap::with_capacity(num_buckets);
+            let positions = vec![0; num_buckets];
+            for i in 0..num_buckets {
+                let slice = bucket_slice(base, overlay, i);
+                push_candidate(&mut heap, i, slice, 0);
+            }
+            MergeState::Multi { positions, heap }
+        };
         Self {
             base,
             overlay,
-            positions: vec![0; num_buckets],
+            state,
         }
+    }
+}
+
+/// Return the slice for a given logical bucket index, matching the
+/// indexing convention used by [`BorrowedOccurrenceIter`]:
+///
+/// | has\_base | index 0 | index ≥ 1 |
+/// |---|---|---|
+/// | true  | base          | overlay\[index-1\] |
+/// | false | overlay\[0\]  | overlay\[index\]   |
+fn bucket_slice<'a>(
+    base: Option<&'a [Occurrence]>,
+    overlay: &'a [&'a [Occurrence]],
+    index: usize,
+) -> Option<&'a [Occurrence]> {
+    match (base, index) {
+        (Some(base), 0) => Some(base),
+        (Some(_), n) => overlay.get(n - 1).copied(),
+        (None, n) => overlay.get(n).copied(),
+    }
+}
+
+/// Push the element at `position` from `slice` onto the heap as a candidate.
+fn push_candidate(
+    heap: &mut BinaryHeap<Reverse<MergeItem>>,
+    bucket: usize,
+    slice: Option<&[Occurrence]>,
+    position: usize,
+) {
+    let Some(slice) = slice else { return };
+    if let Some(&occurrence) = slice.get(position) {
+        heap.push(Reverse(MergeItem {
+            event: occurrence.event,
+            start: occurrence.span.start(),
+            end: occurrence.span.end(),
+            bucket,
+            occurrence,
+        }));
     }
 }
 
@@ -84,52 +179,22 @@ impl Iterator for BorrowedOccurrenceIter<'_> {
     type Item = Occurrence;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let has_base = self.base.is_some();
-        let next = (0..self.positions.len())
-            .filter_map(|index| {
-                let bucket = if has_base {
-                    if index == 0 {
-                        self.base?
-                    } else {
-                        self.overlay.get(index - 1)?
-                    }
-                } else {
-                    self.overlay.get(index)?
-                };
-                let position = self.positions[index];
-                bucket.get(position).map(|occurrence| {
-                    (
-                        occurrence.event,
-                        occurrence.span.start(),
-                        occurrence.span.end(),
-                        index,
-                        *occurrence,
-                    )
-                })
-            })
-            .min_by_key(|(event, start, end, index, _)| (*event, *start, *end, *index));
-        let (_, _, _, chosen_index, occurrence) = next?;
-        if has_base && chosen_index == 0 {
-            if let Some(base) = self.base
-                && self.positions[0] < base.len()
-                && base[self.positions[0]] == occurrence
-            {
-                self.positions[0] += 1;
+        match &mut self.state {
+            MergeState::Cursor(bucket, pos) => {
+                let slice = bucket_slice(self.base, self.overlay, *bucket)?;
+                let occurrence = *slice.get(*pos)?;
+                *pos += 1;
+                Some(occurrence)
             }
-        } else {
-            let overlay_index = if has_base {
-                chosen_index - 1
-            } else {
-                chosen_index
-            };
-            if let Some(bucket) = self.overlay.get(overlay_index)
-                && self.positions[chosen_index] < bucket.len()
-                && bucket[self.positions[chosen_index]] == occurrence
-            {
-                self.positions[chosen_index] += 1;
+            MergeState::Multi { positions, heap } => {
+                let Reverse(item) = heap.pop()?;
+                let bucket = item.bucket;
+                let slice = bucket_slice(self.base, self.overlay, bucket);
+                positions[bucket] += 1;
+                push_candidate(heap, bucket, slice, positions[bucket]);
+                Some(item.occurrence)
             }
         }
-        Some(occurrence)
     }
 }
 

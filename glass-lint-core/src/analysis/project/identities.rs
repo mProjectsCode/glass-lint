@@ -139,9 +139,11 @@ impl ProjectSemanticModel {
         identities
     }
 
-    /// Walk the resolved export table and star-export chains in a single pass,
-    /// collecting member identities directly into the identity map without
-    /// temporary sets or repeated lookups.
+    /// Walk the resolved export table and star-export chains, collecting
+    /// member identities directly into the identity map. Direct exports from
+    /// the exporting module are authoritative. Star-exported names from
+    /// different sources that disagree are marked ambiguous rather than
+    /// allowing the last visited child to silently overwrite earlier ones.
     fn collect_exported_identities(
         &self,
         module: ModuleId,
@@ -154,6 +156,7 @@ impl ProjectSemanticModel {
         }
 
         // Collect all resolved entries from the export table for this module.
+        // These are authoritative direct/named exports and always win.
         if let Some(exports) = self.exports.module_exports(module) {
             for (name, resolved) in exports.iter() {
                 identities.insert(
@@ -164,6 +167,9 @@ impl ProjectSemanticModel {
         }
 
         // Follow star exports to include re-exported member identities.
+        // Collect each child's entries into a temp map, then merge with
+        // conflict detection so that overlapping names produce Ambiguous
+        // instead of whichever child happens to be visited last.
         if let Some(project_module) = self.modules.get(&module) {
             for request_index in project_module.local().interface().star_exports() {
                 let Some(request) = project_module.local().interface().request(*request_index)
@@ -174,7 +180,18 @@ impl ProjectSemanticModel {
                     continue;
                 };
                 if let Some(LinkedModuleTarget::Internal { id, .. }) = self.resolutions.get(&key) {
-                    self.collect_exported_identities(*id, prefix, visiting, identities);
+                    let mut child_entries = ModuleIdentityMap::new();
+                    self.collect_exported_identities(*id, prefix, visiting, &mut child_entries);
+                    for (child_key, child_value) in child_entries.into_entries() {
+                        // Insert and check whether a prior entry exists with
+                        // a conflicting value. Direct exports (already in the
+                        // map) always win; conflicting star exports become
+                        // ambiguous.
+                        let prev = identities.insert(child_key.clone(), child_value.clone());
+                        if prev.is_some_and(|p| p != child_value) {
+                            identities.insert(child_key, ExportResolution::Ambiguous);
+                        }
+                    }
                 }
             }
         }

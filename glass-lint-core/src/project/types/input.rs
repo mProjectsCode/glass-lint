@@ -48,10 +48,21 @@ pub struct PackageSpecifier(SmolStr);
 impl PackageSpecifier {
     pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
         let inner = s.into();
-        if inner.trim().is_empty() {
+        let trimmed = inner.trim();
+        if trimmed.is_empty() || trimmed.contains('\0') {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
-        Ok(Self(inner))
+        // Package specifiers must not look like relative paths.
+        if trimmed.starts_with('.') || trimmed.starts_with('/') || trimmed.starts_with('\\') {
+            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+        }
+        // Scoped packages must have the full @scope/name form.
+        if let Some(after_at) = trimmed.strip_prefix('@')
+            && (!after_at.contains('/') || after_at.starts_with('/') || after_at.is_empty())
+        {
+            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+        }
+        Ok(Self(SmolStr::from(trimmed)))
     }
 
     pub fn as_str(&self) -> &str {
@@ -99,10 +110,18 @@ pub struct BuiltinModuleName(SmolStr);
 impl BuiltinModuleName {
     pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
         let inner = s.into();
-        if inner.trim().is_empty() {
+        let trimmed = inner.trim();
+        if trimmed.is_empty() || trimmed.contains('\0') {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
-        Ok(Self(inner))
+        if !trimmed.starts_with("node:") {
+            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+        }
+        let name = &trimmed[5..];
+        if name.is_empty() || name.contains('\0') {
+            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+        }
+        Ok(Self(SmolStr::from(trimmed)))
     }
 
     pub fn as_str(&self) -> &str {
@@ -149,10 +168,8 @@ pub struct NormalizedOutsidePath(SmolStr);
 impl NormalizedOutsidePath {
     pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
         let inner = s.into();
-        if inner.trim().is_empty() {
-            return Err(ProjectInputError::InvalidTarget(inner.to_string()));
-        }
-        Ok(Self(inner))
+        let normalized = crate::project::input::normalize_outside_target(inner.as_str())?;
+        Ok(Self(SmolStr::from(normalized)))
     }
 
     pub(crate) fn from_validated(inner: impl Into<SmolStr>) -> Self {

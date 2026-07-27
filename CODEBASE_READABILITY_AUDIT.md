@@ -2,7 +2,7 @@
 
 ## Summary
 
-This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 14 have been fixed (2 High, 11 Medium, 1 Low), leaving 18 open (14 High, 4 Medium). The most important correctness risks are control-insensitive assignment provenance, exceptional-path identity leakage, star-export ambiguity being overwritten, and tsconfig inheritance being rebased to the wrong directory. The most important boundedness risks are an unbounded function-summary pass, an export cache whose supplied capacity is ignored, and public dense-ID structures that can be driven into enormous sparse allocations.
+This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 17 have been fixed (5 High, 11 Medium, 1 Low), leaving 15 open (11 High, 4 Medium). The most important remaining correctness risks are control-insensitive assignment provenance, exceptional-path identity leakage, and tsconfig inheritance being rebased to the wrong directory. The most important remaining boundedness risks are an unbounded function-summary pass and public dense-ID structures that can be driven into enormous sparse allocations.
 
 The existing `profile.json.gz` was also inspected against its matching profiling binary. It is supporting rather than dispositive evidence because it does not carry a reproducible workload manifest, but roughly half of the main worker's samples include `FactBuilder` statement traversal, with resolver/name operations prominent below it. That agrees with the static conclusion that lowering work inside `FactBuilder`, interning, and resolver-owned indexes deserves priority.
 
@@ -128,6 +128,7 @@ Return and argument analysis push destination keys into adjacency vectors withou
 #### READ-014 — The export lookup cache ignores its capacity and forces `RefCell` mutation
 - **Severity:** High
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Encapsulation
 - **Location:** `glass-lint-core/src/analysis/project/state.rs:120-140`
 
@@ -136,6 +137,7 @@ Return and argument analysis push destination keys into adjacency vectors withou
 #### READ-015 — Namespace collection overwrites star-export ambiguity
 - **Severity:** High
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/project/identities.rs:128-169`
 
@@ -153,6 +155,7 @@ Return and argument analysis push destination keys into adjacency vectors withou
 #### READ-017 — Outside-path normalization corrupts absolute parents and accepts drive paths
 - **Severity:** High
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Newtype
 - **Location:** `glass-lint-core/src/project/input.rs:23-79`
 

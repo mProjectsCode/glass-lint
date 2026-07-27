@@ -84,6 +84,7 @@ fn pattern_set_compilation_and_matching() {
     let ps = TsconfigPatternSet::new(
         &["src/**/*".to_string(), "lib/**/*".to_string()],
         &["**/*.test.ts".to_string()],
+        false,
     );
     assert!(ps.is_included("src/main.ts"));
     assert!(ps.is_included("lib/util.ts"));
@@ -94,14 +95,14 @@ fn pattern_set_compilation_and_matching() {
 
 #[test]
 fn pattern_set_trailing_slash() {
-    let ps = TsconfigPatternSet::new(&["src/".to_string()], &[]);
+    let ps = TsconfigPatternSet::new(&["src/".to_string()], &[], false);
     assert!(ps.is_included("src/main.ts"));
     assert!(!ps.is_included("lib/main.ts"));
 }
 
 #[test]
 fn pattern_set_no_slash_matches_basename() {
-    let ps = TsconfigPatternSet::new(&["*.ts".to_string()], &[]);
+    let ps = TsconfigPatternSet::new(&["*.ts".to_string()], &[], false);
     assert!(ps.is_included("foo.ts"));
     assert!(ps.is_included("src/bar.ts"));
     assert!(!ps.is_included("foo.js"));
@@ -141,6 +142,59 @@ fn merge_selection_explicit_files() {
         Some(vec!["src/main.ts".to_string(), "src/util.ts".to_string()])
     );
     assert!(config.include.is_empty());
+}
+
+#[test]
+fn pattern_set_invalid_controlling_field_rejects_everything() {
+    let ps = TsconfigPatternSet::new(&["src/**/*".to_string()], &[], true);
+    assert!(!ps.is_included("src/main.ts"));
+    assert!(!ps.is_included("lib/util.ts"));
+    assert!(!ps.is_included("any/file.ts"));
+}
+
+#[test]
+fn merge_selection_invalid_files_fails_closed() {
+    let child = ParsedTsconfig::parse(r#"{"files":null}"#).unwrap();
+    let merged = merge_selection(child, None);
+    assert!(merged.invalid_controlling_field);
+    assert_eq!(merged.files, Some(Vec::<String>::new()));
+}
+
+#[test]
+fn merge_selection_invalid_include_fails_closed() {
+    let child = ParsedTsconfig::parse(r#"{"include":false}"#).unwrap();
+    let merged = merge_selection(child, None);
+    assert!(merged.invalid_controlling_field);
+    assert!(merged.include.is_empty());
+}
+
+#[test]
+fn merge_selection_invalid_include_does_not_fall_back_to_star_star() {
+    let child = ParsedTsconfig::parse(r#"{"include":{"src":"bad"}}"#).unwrap();
+    let merged = merge_selection(child, None);
+    assert!(merged.invalid_controlling_field);
+    assert!(
+        merged.include.is_empty(),
+        "include should be empty, got {:#?}",
+        merged.include
+    );
+}
+
+#[test]
+fn merge_selection_invalid_parent_propagates_to_child() {
+    let parent = merge_selection(ParsedTsconfig::parse(r#"{"include":false}"#).unwrap(), None);
+    assert!(parent.invalid_controlling_field);
+
+    let child = merge_selection(
+        ParsedTsconfig::parse(r#"{"include":["src/**/*"]}"#).unwrap(),
+        Some(parent),
+    );
+    assert!(
+        child.invalid_controlling_field,
+        "parent invalidity should propagate even when child is valid"
+    );
+    // Child's valid include should still be used for compilation, but the
+    // fail-closed flag from the parent's invalid field means no source matches.
 }
 
 #[test]

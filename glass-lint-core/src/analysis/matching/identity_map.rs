@@ -37,4 +37,14 @@ impl ModuleIdentityMap {
             .or_default()
             .insert(export, value)
     }
+
+    pub(in crate::analysis) fn into_entries(self) -> Vec<(ModuleExportKey, ExportResolution)> {
+        let mut entries = Vec::new();
+        for (module, exports) in self.modules {
+            for (export, value) in exports {
+                entries.push((ModuleExportKey::new(module.clone(), export), value));
+            }
+        }
+        entries
+    }
 }

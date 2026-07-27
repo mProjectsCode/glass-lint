@@ -181,7 +181,7 @@ fn outside_project_targets_accept_normalized_absolute_paths() {
         "main.js",
         "import value from './outside';",
         [ResolverOutcome::OutsideProject {
-            path: NormalizedOutsidePath::new("/other/./dependency.js").unwrap(),
+            path: NormalizedOutsidePath::new("/other/dependency.js").unwrap(),
         }],
     );
     let report = project.finish();

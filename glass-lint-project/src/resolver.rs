@@ -83,9 +83,22 @@ impl<'a> ProjectResolver<'a> {
             Err(ResolveError::Builtin { resolved, .. }) => Ok(ResolverOutcome::Builtin {
                 name: BuiltinModuleName::new(resolved)?,
             }),
-            Err(_) if is_internal_module_request(&request.request) => Ok(ResolverOutcome::Missing),
-            Err(_) => Ok(ResolverOutcome::External {
-                package: PackageSpecifier::new(package_name(&request.request))?,
+            // Deliberate not-found: bare packages remain external, internal
+            // requests become missing.
+            Err(ResolveError::NotFound(_) | ResolveError::MatchedAliasNotFound(..))
+                if is_internal_module_request(&request.request) =>
+            {
+                Ok(ResolverOutcome::Missing)
+            }
+            Err(ResolveError::NotFound(_) | ResolveError::MatchedAliasNotFound(..)) => {
+                Ok(ResolverOutcome::External {
+                    package: PackageSpecifier::new(package_name(&request.request))?,
+                })
+            }
+            // All other resolver errors (I/O, specifier, config, etc.) are
+            // operational or invalid — fail closed as unsupported.
+            Err(other) => Ok(ResolverOutcome::Unsupported {
+                reason: format!("resolution failed: {other}"),
             }),
         }
     }
