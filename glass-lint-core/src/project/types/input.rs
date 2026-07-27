@@ -223,9 +223,38 @@ impl SourceFile {
         })
     }
 
+    /// Construct with an explicit language, ignoring the filename extension.
+    pub fn with_language(
+        path: impl Into<String>,
+        source: impl Into<String>,
+        language: SourceLanguage,
+    ) -> Result<Self, ProjectInputError> {
+        let path = path.into();
+        let path = ProjectRelativePath::new(&path)?;
+        Ok(Self {
+            language,
+            path,
+            source: source.into().into(),
+        })
+    }
+
     /// Construct from a validated project-relative path without re-parsing.
     pub fn from_relative(path: ProjectRelativePath, source: impl Into<SourceText>) -> Self {
         let language = SourceLanguage::from_filename(&path);
+        Self {
+            path,
+            language,
+            source: source.into(),
+        }
+    }
+
+    /// Construct from a validated project-relative path with an explicit
+    /// language, ignoring the filename extension.
+    pub fn from_relative_with_language(
+        path: ProjectRelativePath,
+        source: impl Into<SourceText>,
+        language: SourceLanguage,
+    ) -> Self {
         Self {
             path,
             language,

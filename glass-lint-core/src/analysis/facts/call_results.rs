@@ -1,7 +1,6 @@
 //! Named storage for call-site results emitted during one fact pass.
 
-use std::collections::BTreeMap;
-
+use hashbrown::HashMap;
 use swc_common::Span;
 
 use crate::analysis::{lowering::ParserSpanKey, value::ValueId};
@@ -9,7 +8,7 @@ use crate::analysis::{lowering::ParserSpanKey, value::ValueId};
 #[derive(Debug, Default)]
 /// Deterministic per-pass table connecting call resolution with its emitted
 /// call fact and later assignments that consume the returned value.
-pub(super) struct CallResultTable(BTreeMap<ParserSpanKey, ValueId>);
+pub(super) struct CallResultTable(HashMap<ParserSpanKey, ValueId>);
 
 impl CallResultTable {
     /// Look up the value identity previously assigned to a call span.

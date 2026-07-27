@@ -1,5 +1,4 @@
-use glass_lint_datastructures::{NameId, NamePath, NameTable};
-use indexmap::IndexSet;
+use glass_lint_datastructures::{FastIndexSet, NameId, NamePath, NameTable};
 use smol_str::SmolStr;
 
 use crate::analysis::model::scope::{BindingKey, FunctionId};
@@ -56,7 +55,7 @@ pub const MAX_VALUES: usize = 65_536;
 
 #[derive(Debug, Clone)]
 pub struct ValueTable {
-    values: IndexSet<Value>,
+    values: FastIndexSet<Value>,
     next_object: u32,
     exhausted: bool,
 }
@@ -64,7 +63,7 @@ pub struct ValueTable {
 impl Default for ValueTable {
     fn default() -> Self {
         Self {
-            values: IndexSet::from([Value::Unknown]),
+            values: core::iter::once(Value::Unknown).collect(),
             next_object: 0,
             exhausted: false,
         }

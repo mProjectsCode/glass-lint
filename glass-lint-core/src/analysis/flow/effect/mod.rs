@@ -8,9 +8,10 @@
 //! prevents a complete summary. Invalid summaries are not used for qualified
 //! propagation, preserving fail-closed behavior across module boundaries.
 
-use std::{borrow::Cow, collections::BTreeMap};
+use std::borrow::Cow;
 
 use glass_lint_datastructures::{Budget, NamePath, NameTable, PathId, SymbolPath};
+use hashbrown::HashMap;
 use smol_str::SmolStr;
 
 use crate::analysis::{
@@ -265,8 +266,8 @@ pub struct FunctionEffect {
     uses: Vec<EffectUse>,
     returns: Vec<ReturnProjection>,
     invalid: bool,
-    value_roots: BTreeMap<ValueId, ValueId>,
-    parameter_index: BTreeMap<ValueId, ParameterRef>,
+    value_roots: HashMap<ValueId, ValueId>,
+    parameter_index: HashMap<ValueId, ParameterRef>,
 }
 
 impl FunctionEffect {
@@ -447,7 +448,7 @@ impl FunctionEffect {
         &mut self,
         value: ValueId,
         provenance: &SymbolCallProvenance,
-        value_provenance: &mut BTreeMap<ValueId, SymbolCallProvenance>,
+        value_provenance: &mut HashMap<ValueId, SymbolCallProvenance>,
     ) {
         value_provenance.insert(value, provenance.clone());
         if value != ValueId::UNKNOWN {
@@ -458,7 +459,7 @@ impl FunctionEffect {
     fn record_return(
         &mut self,
         value: ValueId,
-        value_provenance: &BTreeMap<ValueId, SymbolCallProvenance>,
+        value_provenance: &HashMap<ValueId, SymbolCallProvenance>,
         stream: &FactStream<Frozen>,
         budget: &mut Budget,
     ) {
@@ -518,7 +519,7 @@ impl FunctionEffects {
             return effects;
         }
         let mut budget = Budget::new(limit);
-        let mut value_provenance = BTreeMap::new();
+        let mut value_provenance = HashMap::new();
 
         if budget.try_push() {
             effects.by_id.insert(
@@ -529,8 +530,8 @@ impl FunctionEffects {
                     uses: Vec::new(),
                     returns: Vec::new(),
                     invalid: false,
-                    value_roots: BTreeMap::new(),
-                    parameter_index: BTreeMap::new(),
+                    value_roots: HashMap::new(),
+                    parameter_index: HashMap::new(),
                 },
             );
         }

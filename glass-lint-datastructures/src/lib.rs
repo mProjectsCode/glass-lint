@@ -6,6 +6,14 @@
 //! Every structure enforces its invariants at construction time and is designed
 //! for deterministic, bounded, allocation-conscious analysis.
 
+use hashbrown::DefaultHashBuilder;
+use indexmap::IndexSet;
+
+/// An [`IndexSet`] that uses [`DefaultHashBuilder`] (AHash) instead of the
+/// default SipHash-based `RandomState`, providing faster hash-computation at
+/// the cost of reduced DoS resistance.
+pub type FastIndexSet<V> = IndexSet<V, DefaultHashBuilder>;
+
 pub mod budget;
 pub mod diagnostic;
 pub mod fingerprint;

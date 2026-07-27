@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 
 use glass_lint_datastructures::NameTable;
+use hashbrown::HashMap;
 
 use crate::{
     analysis::{
@@ -82,13 +83,13 @@ pub struct FactBuilder<'builder, 'resolver> {
     /// Call results are retained for effective-call and value-flow projections.
     call_results: call_results::CallResultTable,
     /// Proven callable members extracted from the current module instance.
-    instance_callables: BTreeMap<ValueId, InstanceCallable>,
+    instance_callables: HashMap<ValueId, InstanceCallable>,
     /// Proven module/export identity of constructed object values. This is
     /// traversal state, not a matcher-specific index: aliases use the same
     /// value IDs and binding versions as the rest of the fact builder.
-    instance_origins: BTreeMap<ValueId, (SmolStr, SmolStr)>,
+    instance_origins: HashMap<ValueId, (SmolStr, SmolStr)>,
     /// Local class values whose superclass is a proven module export.
-    class_origins: BTreeMap<ValueId, (SmolStr, SmolStr)>,
+    class_origins: HashMap<ValueId, (SmolStr, SmolStr)>,
     /// Module requests and export slots collected during the same canonical
     /// walk as the semantic facts, owned by a focused interface builder.
     interface: interface::ModuleInterfaceBuilder,
@@ -121,9 +122,9 @@ impl<'builder, 'resolver> FactBuilder<'builder, 'resolver> {
             stream: FactStream::with_limit(max_facts),
             traversal: state::TraversalState::default(),
             call_results: call_results::CallResultTable::default(),
-            instance_callables: BTreeMap::new(),
-            instance_origins: BTreeMap::new(),
-            class_origins: BTreeMap::new(),
+            instance_callables: HashMap::new(),
+            instance_origins: HashMap::new(),
+            class_origins: HashMap::new(),
             interface: interface::ModuleInterfaceBuilder::new(),
         }
     }

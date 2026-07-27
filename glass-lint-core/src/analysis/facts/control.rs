@@ -183,7 +183,7 @@ impl FactBuilder<'_, '_> {
 
     fn retain_common_instance_origins(
         &mut self,
-        other: &std::collections::BTreeMap<
+        other: &hashbrown::HashMap<
             crate::analysis::value::ValueId,
             (smol_str::SmolStr, smol_str::SmolStr),
         >,

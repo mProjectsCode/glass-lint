@@ -1,7 +1,10 @@
-use indexmap::IndexSet;
+use hashbrown::DefaultHashBuilder;
 use smol_str::{SmolStr, ToSmolStr};
 
-use crate::path::{NamePath, SymbolPath};
+use crate::{
+    FastIndexSet,
+    path::{NamePath, SymbolPath},
+};
 
 /// The default maximum number of names in a [`NameTable`].
 pub const DEFAULT_MAX_NAMES: usize = 1 << 20;
@@ -39,7 +42,7 @@ pub struct NameExhausted {
 /// optimisation.
 #[derive(Clone, Debug)]
 pub struct NameTable {
-    names: IndexSet<SmolStr>,
+    names: FastIndexSet<SmolStr>,
     max_entries: usize,
     exhausted: bool,
 }
@@ -151,7 +154,7 @@ impl NameTable {
 impl Default for NameTable {
     fn default() -> Self {
         Self {
-            names: IndexSet::new(),
+            names: FastIndexSet::with_hasher(DefaultHashBuilder::default()),
             max_entries: DEFAULT_MAX_NAMES,
             exhausted: false,
         }
@@ -162,7 +165,7 @@ impl NameTable {
     /// Creates a table with a custom capacity limit.
     pub fn with_max_entries(max_entries: usize) -> Self {
         Self {
-            names: IndexSet::new(),
+            names: FastIndexSet::with_hasher(DefaultHashBuilder::default()),
             max_entries,
             exhausted: false,
         }

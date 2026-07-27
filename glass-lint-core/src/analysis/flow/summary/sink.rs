@@ -1,4 +1,4 @@
-use indexmap::IndexSet;
+use glass_lint_datastructures::FastIndexSet;
 
 use crate::analysis::{
     facts::{CallArgInfo, FactId, FactPayload, FactStream, Frozen, ParameterBinding},
@@ -41,7 +41,7 @@ impl FunctionSinkSummary {
 
 #[derive(Debug, Clone, Default)]
 pub(in crate::analysis::flow) struct SinkSet {
-    set: IndexSet<FunctionSinkSummary>,
+    set: FastIndexSet<FunctionSinkSummary>,
 }
 
 impl SinkSet {

@@ -374,6 +374,10 @@ struct LoadProgress {
 }
 
 impl LoadProgress {
+    fn source_bytes(&self) -> u64 {
+        self.source_bytes
+    }
+
     fn add_requests(&mut self, count: usize, limit: usize) -> Result<(), ProjectLoadError> {
         self.requests = self
             .requests
@@ -526,6 +530,23 @@ impl<'a> ProjectLoadState<'a> {
             if !self.admitted.admit(admitted)? {
                 continue;
             }
+
+            // Check the cumulative byte budget against the on-disk size
+            // before reading, so a file at the boundary is rejected
+            // without wasting I/O.
+            let md =
+                std::fs::metadata(admitted.as_ref()).map_err(|source| ProjectLoadError::Io {
+                    path: admitted.as_ref().to_path_buf(),
+                    source,
+                })?;
+            if self.progress.source_bytes().saturating_add(md.len()) > source_limit {
+                byte_error = Some(ProjectLoadError::ProjectSourceTooLarge {
+                    bytes: self.progress.source_bytes().saturating_add(md.len()),
+                    limit: source_limit,
+                });
+                break;
+            }
+
             let source = self.admission.load_admitted_source_file(admitted)?;
             let source_bytes = u64::try_from(source.source().len())
                 .unwrap_or_else(|_| source_limit.saturating_add(1));

@@ -2,7 +2,7 @@
 
 ## Summary
 
-This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 11 have been fixed (2 High, 8 Medium, 1 Low), leaving 21 open (14 High, 7 Medium). The most important correctness risks are control-insensitive assignment provenance, exceptional-path identity leakage, star-export ambiguity being overwritten, and tsconfig inheritance being rebased to the wrong directory. The most important boundedness risks are an unbounded function-summary pass, an export cache whose supplied capacity is ignored, and public dense-ID structures that can be driven into enormous sparse allocations.
+This audit covers all Rust production modules and the relevant tests in `glass-lint-core`, `glass-lint-datastructures`, and `glass-lint-project` (about 50,000 lines total). It found 32 actionable issues: 16 High, 15 Medium, and 1 Low severity. 14 have been fixed (2 High, 11 Medium, 1 Low), leaving 18 open (14 High, 4 Medium). The most important correctness risks are control-insensitive assignment provenance, exceptional-path identity leakage, star-export ambiguity being overwritten, and tsconfig inheritance being rebased to the wrong directory. The most important boundedness risks are an unbounded function-summary pass, an export cache whose supplied capacity is ignored, and public dense-ID structures that can be driven into enormous sparse allocations.
 
 The existing `profile.json.gz` was also inspected against its matching profiling binary. It is supporting rather than dispositive evidence because it does not carry a reproducible workload manifest, but roughly half of the main worker's samples include `FactBuilder` statement traversal, with resolver/name operations prominent below it. That agrees with the static conclusion that lowering work inside `FactBuilder`, interning, and resolver-owned indexes deserves priority.
 
@@ -74,6 +74,7 @@ Every finite integral numeric literal handled as a static index is converted wit
 #### READ-008 — Lookup-only lowering indexes use ordered trees for dense local IDs
 - **Severity:** Medium
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-core/src/analysis/flow/effect/mod.rs:261-269`
 
@@ -223,6 +224,7 @@ The reference graph deduplicates referenced configs, but every `build_effective_
 #### READ-026 — Aggregate source bytes are admitted only after full reads
 - **Severity:** Medium
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Architecture
 - **Location:** `glass-lint-project/src/loader.rs:505-565`
 
@@ -257,6 +259,7 @@ Every support check allocates a lowercase filename and linearly scans suffixes; 
 #### READ-030 — Custom source suffixes cannot select an explicit parser language
 - **Severity:** Medium
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** API
 - **Location:** `glass-lint-core/src/parse.rs:31-57`
 
