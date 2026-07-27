@@ -49,20 +49,39 @@ impl PackageSpecifier {
     pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
         let inner = s.into();
         let trimmed = inner.trim();
-        if trimmed.is_empty() || trimmed.contains('\0') {
+        if trimmed.is_empty() || trimmed.contains('\0') || trimmed.contains(char::is_whitespace) {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
         // Package specifiers must not look like relative paths.
         if trimmed.starts_with('.') || trimmed.starts_with('/') || trimmed.starts_with('\\') {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
-        // Scoped packages must have the full @scope/name form.
-        if let Some(after_at) = trimmed.strip_prefix('@')
-            && (!after_at.contains('/') || after_at.starts_with('/') || after_at.is_empty())
-        {
+        // Scoped packages must have the full @scope/name form, each a single
+        // segment (no further slashes).
+        if let Some(after_at) = trimmed.strip_prefix('@') {
+            let slash_pos = after_at.find('/');
+            match slash_pos {
+                // No slash: bare @scope is incomplete.
+                None => {
+                    return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+                }
+                Some(pos) => {
+                    // Scope part must be non-empty (not starting with /).
+                    if pos == 0 {
+                        return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+                    }
+                    // Name part must be a single non-empty segment.
+                    let name_part = &after_at[pos + 1..];
+                    if name_part.is_empty() || name_part.contains('/') {
+                        return Err(ProjectInputError::InvalidTarget(inner.to_string()));
+                    }
+                }
+            }
+        } else if trimmed.contains('/') {
+            // Non-scoped packages must not contain a slash.
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
-        Ok(Self(SmolStr::from(trimmed)))
+        Ok(Self(trimmed.into()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -111,17 +130,17 @@ impl BuiltinModuleName {
     pub fn new(s: impl Into<SmolStr>) -> Result<Self, ProjectInputError> {
         let inner = s.into();
         let trimmed = inner.trim();
-        if trimmed.is_empty() || trimmed.contains('\0') {
+        if trimmed.is_empty() || trimmed.contains('\0') || trimmed.contains(char::is_whitespace) {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
         if !trimmed.starts_with("node:") {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
         let name = &trimmed[5..];
-        if name.is_empty() || name.contains('\0') {
+        if name.is_empty() || name.contains('\0') || name.contains(char::is_whitespace) {
             return Err(ProjectInputError::InvalidTarget(inner.to_string()));
         }
-        Ok(Self(SmolStr::from(trimmed)))
+        Ok(Self(trimmed.into()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -427,3 +446,194 @@ impl std::fmt::Display for ProjectInputError {
 }
 
 impl std::error::Error for ProjectInputError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── PackageSpecifier ──────────────────────────────────────────
+
+    #[test]
+    fn package_specifier_rejects_empty() {
+        assert!(PackageSpecifier::new("").is_err());
+    }
+
+    #[test]
+    fn package_specifier_rejects_whitespace_only() {
+        assert!(PackageSpecifier::new("  ").is_err());
+        assert!(PackageSpecifier::new("\t").is_err());
+    }
+
+    #[test]
+    fn package_specifier_strips_surrounding_whitespace() {
+        let pkg = PackageSpecifier::new("  lodash  ").unwrap();
+        assert_eq!(pkg.as_str(), "lodash");
+    }
+
+    #[test]
+    fn package_specifier_rejects_interior_whitespace() {
+        assert!(PackageSpecifier::new("lodash foo").is_err());
+        assert!(PackageSpecifier::new("lodash\tfoo").is_err());
+    }
+
+    #[test]
+    fn package_specifier_rejects_nul() {
+        assert!(PackageSpecifier::new("lod\0ash").is_err());
+    }
+
+    #[test]
+    fn package_specifier_rejects_relative_syntax() {
+        assert!(PackageSpecifier::new("./foo").is_err());
+        assert!(PackageSpecifier::new("../foo").is_err());
+        assert!(PackageSpecifier::new("/foo").is_err());
+        assert!(PackageSpecifier::new("\\foo").is_err());
+    }
+
+    #[test]
+    fn package_specifier_rejects_non_scoped_with_slash() {
+        assert!(PackageSpecifier::new("lodash/fp").is_err());
+        assert!(PackageSpecifier::new("a/b/c").is_err());
+    }
+
+    #[test]
+    fn package_specifier_rejects_bare_at() {
+        assert!(PackageSpecifier::new("@").is_err());
+    }
+
+    #[test]
+    fn package_specifier_rejects_scoped_missing_name() {
+        assert!(PackageSpecifier::new("@scope/").is_err());
+    }
+
+    #[test]
+    fn package_specifier_rejects_scoped_missing_scope() {
+        assert!(PackageSpecifier::new("@/name").is_err());
+    }
+
+    #[test]
+    fn package_specifier_rejects_scoped_double_slash() {
+        assert!(PackageSpecifier::new("@scope//name").is_err());
+    }
+
+    #[test]
+    fn package_specifier_accepts_valid_scoped() {
+        let pkg = PackageSpecifier::new("@angular/core").unwrap();
+        assert_eq!(pkg.as_str(), "@angular/core");
+    }
+
+    #[test]
+    fn package_specifier_accepts_valid_bare() {
+        let pkg = PackageSpecifier::new("lodash").unwrap();
+        assert_eq!(pkg.as_str(), "lodash");
+        let pkg = PackageSpecifier::new("express").unwrap();
+        assert_eq!(pkg.as_str(), "express");
+    }
+
+    #[test]
+    fn package_specifier_equality_with_str() {
+        let pkg = PackageSpecifier::new("lodash").unwrap();
+        assert_eq!(pkg, "lodash");
+    }
+
+    // ── BuiltinModuleName ─────────────────────────────────────────
+
+    #[test]
+    fn builtin_rejects_empty() {
+        assert!(BuiltinModuleName::new("").is_err());
+    }
+
+    #[test]
+    fn builtin_rejects_whitespace_only() {
+        assert!(BuiltinModuleName::new("  ").is_err());
+    }
+
+    #[test]
+    fn builtin_strips_surrounding_whitespace() {
+        let name = BuiltinModuleName::new("  node:fs  ").unwrap();
+        assert_eq!(name.as_str(), "node:fs");
+    }
+
+    #[test]
+    fn builtin_rejects_interior_whitespace() {
+        assert!(BuiltinModuleName::new("node: fs").is_err());
+        assert!(BuiltinModuleName::new("node:f s").is_err());
+        assert!(BuiltinModuleName::new("no de:fs").is_err());
+        assert!(BuiltinModuleName::new("node :fs").is_err());
+    }
+
+    #[test]
+    fn builtin_rejects_nul() {
+        assert!(BuiltinModuleName::new("node:f\0s").is_err());
+    }
+
+    #[test]
+    fn builtin_rejects_missing_prefix() {
+        assert!(BuiltinModuleName::new("fs").is_err());
+        assert!(BuiltinModuleName::new("nodefs").is_err());
+        assert!(BuiltinModuleName::new("Node:fs").is_err());
+        assert!(BuiltinModuleName::new("NODE:fs").is_err());
+    }
+
+    #[test]
+    fn builtin_rejects_empty_name() {
+        assert!(BuiltinModuleName::new("node:").is_err());
+    }
+
+    #[test]
+    fn builtin_accepts_valid_names() {
+        let name = BuiltinModuleName::new("node:fs").unwrap();
+        assert_eq!(name.as_str(), "node:fs");
+        let name = BuiltinModuleName::new("node:path").unwrap();
+        assert_eq!(name.as_str(), "node:path");
+        let name = BuiltinModuleName::new("node:buffer").unwrap();
+        assert_eq!(name.as_str(), "node:buffer");
+    }
+
+    #[test]
+    fn builtin_equality_with_str() {
+        let name = BuiltinModuleName::new("node:fs").unwrap();
+        assert_eq!(name, "node:fs");
+    }
+
+    // ── NormalizedOutsidePath ─────────────────────────────────────
+
+    #[test]
+    fn outside_path_rejects_empty() {
+        assert!(NormalizedOutsidePath::new("").is_err());
+    }
+
+    #[test]
+    fn outside_path_rejects_nul() {
+        assert!(NormalizedOutsidePath::new("foo\0bar").is_err());
+    }
+
+    #[test]
+    fn outside_path_normalizes_backslashes() {
+        let path = NormalizedOutsidePath::new("a\\b\\c").unwrap();
+        assert_eq!(path.as_str(), "a/b/c");
+    }
+
+    #[test]
+    fn outside_path_normalizes_dot_segments() {
+        let path = NormalizedOutsidePath::new("a/./b").unwrap();
+        assert_eq!(path.as_str(), "a/b");
+    }
+
+    #[test]
+    fn outside_path_normalizes_relative_parent() {
+        let path = NormalizedOutsidePath::new("a/b/../c").unwrap();
+        assert_eq!(path.as_str(), "a/c");
+    }
+
+    #[test]
+    fn outside_path_preserves_absolute() {
+        let path = NormalizedOutsidePath::new("/a/b").unwrap();
+        assert_eq!(path.as_str(), "/a/b");
+    }
+
+    #[test]
+    fn outside_path_identity_round_trip() {
+        let path = NormalizedOutsidePath::new("/usr/lib/node_modules/foo").unwrap();
+        assert_eq!(path.as_str(), "/usr/lib/node_modules/foo");
+    }
+}

@@ -7,8 +7,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::project::{
-    NormalizedOutsidePath, ProjectInputError, ProjectRelativePath, ResolutionRequestKey,
-    ResolverOutcome,
+    BuiltinModuleName, NormalizedOutsidePath, PackageSpecifier, ProjectInputError,
+    ProjectRelativePath, ResolutionRequestKey, ResolverOutcome,
 };
 
 /// Validate the root path that anchors project-relative normalization.
@@ -82,6 +82,12 @@ pub fn normalize_outside_target(path: &str) -> Result<String, ProjectInputError>
 pub fn normalize_result(result: &mut ResolverOutcome) -> Result<(), ProjectInputError> {
     match result {
         ResolverOutcome::Internal { path } => *path = normalize_relative(path.as_str())?,
+        ResolverOutcome::External { package } => {
+            *package = PackageSpecifier::new(package.as_str())?;
+        }
+        ResolverOutcome::Builtin { name } => {
+            *name = BuiltinModuleName::new(name.as_str())?;
+        }
         ResolverOutcome::OutsideProject { path } => {
             let normalized = normalize_outside_target(path.as_str())?;
             *path = NormalizedOutsidePath::from_validated(normalized);
