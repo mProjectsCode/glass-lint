@@ -237,6 +237,7 @@ Each file is admitted and fully allocated before `record_source_bytes` checks th
 #### READ-027 — Resolver failures for bare requests are all classified as external
 - **Severity:** High
 - **Fix Complexity** Medium
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-project/src/resolver.rs:67-90`
 

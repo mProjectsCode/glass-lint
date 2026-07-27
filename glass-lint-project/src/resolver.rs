@@ -91,9 +91,12 @@ impl<'a> ProjectResolver<'a> {
                 Ok(ResolverOutcome::Missing)
             }
             Err(ResolveError::NotFound(_) | ResolveError::MatchedAliasNotFound(..)) => {
-                Ok(ResolverOutcome::External {
-                    package: PackageSpecifier::new(package_name(&request.request))?,
-                })
+                match PackageSpecifier::new(package_name(&request.request)) {
+                    Ok(package) => Ok(ResolverOutcome::External { package }),
+                    Err(e) => Ok(ResolverOutcome::Unsupported {
+                        reason: format!("invalid package specifier in not-found request: {e}"),
+                    }),
+                }
             }
             // All other resolver errors (I/O, specifier, config, etc.) are
             // operational or invalid — fail closed as unsupported.
@@ -115,8 +118,11 @@ impl<'a> ProjectResolver<'a> {
                         )?,
                     }
                 } else {
-                    ResolverOutcome::External {
-                        package: PackageSpecifier::new(package_name(request))?,
+                    match PackageSpecifier::new(package_name(request)) {
+                        Ok(package) => ResolverOutcome::External { package },
+                        Err(e) => ResolverOutcome::Unsupported {
+                            reason: format!("invalid package specifier: {e}"),
+                        },
                     }
                 }
             }
@@ -126,8 +132,11 @@ impl<'a> ProjectResolver<'a> {
                         reason: format!("excluded target `{}`", path.as_ref().display()),
                     }
                 } else {
-                    ResolverOutcome::External {
-                        package: PackageSpecifier::new(package_name(request))?,
+                    match PackageSpecifier::new(package_name(request)) {
+                        Ok(package) => ResolverOutcome::External { package },
+                        Err(e) => ResolverOutcome::Unsupported {
+                            reason: format!("invalid package specifier: {e}"),
+                        },
                     }
                 }
             }
@@ -250,6 +259,43 @@ mod tests {
         with_resolver(|resolver| {
             let result = resolver.resolve(&request("./nonexistent")).unwrap();
             assert_eq!(result, ResolverOutcome::Missing);
+        });
+    }
+
+    #[test]
+    fn malformed_scoped_package_returns_unsupported_not_external() {
+        with_resolver(|resolver| {
+            for specifier in ["@", "@/", "@scope"] {
+                let result = resolver.resolve(&request(specifier)).unwrap();
+                assert!(
+                    matches!(result, ResolverOutcome::Unsupported { .. }),
+                    "specifier `{specifier}` should be Unsupported, got {result:?}"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn empty_specifier_returns_unsupported() {
+        with_resolver(|resolver| {
+            let result = resolver.resolve(&request("")).unwrap();
+            assert!(
+                matches!(result, ResolverOutcome::Unsupported { .. }),
+                "empty specifier should be Unsupported, got {result:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn ordinary_absent_bare_package_stays_external() {
+        with_resolver(|resolver| {
+            for specifier in ["nonexistent-pkg", "@scope/pkg"] {
+                let result = resolver.resolve(&request(specifier)).unwrap();
+                assert!(
+                    matches!(result, ResolverOutcome::External { .. }),
+                    "specifier `{specifier}` should be External, got {result:?}"
+                );
+            }
         });
     }
 }
