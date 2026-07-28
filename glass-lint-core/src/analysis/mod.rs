@@ -25,6 +25,7 @@ pub mod project;
 mod resolution;
 mod scope;
 mod syntax;
+pub mod trace;
 mod value;
 
 pub use local::{

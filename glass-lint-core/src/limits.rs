@@ -14,6 +14,7 @@ pub enum AnalysisLimitError {
     EvidenceItems,
     LinkOperations,
     FlowOperations,
+    TraceNodes,
 }
 
 impl fmt::Display for AnalysisLimitError {
@@ -25,6 +26,7 @@ impl fmt::Display for AnalysisLimitError {
             Self::EvidenceItems => write!(f, "evidence_items must be positive"),
             Self::LinkOperations => write!(f, "link_operations must be positive"),
             Self::FlowOperations => write!(f, "flow_operations must be positive"),
+            Self::TraceNodes => write!(f, "trace_nodes must be positive"),
         }
     }
 }
@@ -62,6 +64,7 @@ pub struct AnalysisLimits {
     evidence_items: PositiveLimit,
     link_operations: PositiveLimit,
     flow_operations: PositiveLimit,
+    trace_nodes: PositiveLimit,
 }
 
 const fn default_syntax_depth() -> usize {
@@ -82,6 +85,9 @@ const fn default_link_operations() -> usize {
 const fn default_flow_operations() -> usize {
     262_144
 }
+const fn default_trace_nodes() -> usize {
+    65_536
+}
 
 impl Default for AnalysisLimits {
     fn default() -> Self {
@@ -92,6 +98,7 @@ impl Default for AnalysisLimits {
             evidence_items: PositiveLimit::new(default_evidence_items()).unwrap(),
             link_operations: PositiveLimit::new(default_link_operations()).unwrap(),
             flow_operations: PositiveLimit::new(default_flow_operations()).unwrap(),
+            trace_nodes: PositiveLimit::new(default_trace_nodes()).unwrap(),
         }
     }
 }
@@ -105,6 +112,7 @@ impl AnalysisLimits {
         evidence_items: usize,
         link_operations: usize,
         flow_operations: usize,
+        trace_nodes: usize,
     ) -> Result<Self, AnalysisLimitError> {
         Ok(Self {
             syntax_depth: PositiveLimit::new(syntax_depth)
@@ -119,6 +127,8 @@ impl AnalysisLimits {
                 .map_err(|()| AnalysisLimitError::LinkOperations)?,
             flow_operations: PositiveLimit::new(flow_operations)
                 .map_err(|()| AnalysisLimitError::FlowOperations)?,
+            trace_nodes: PositiveLimit::new(trace_nodes)
+                .map_err(|()| AnalysisLimitError::TraceNodes)?,
         })
     }
 
@@ -144,6 +154,10 @@ impl AnalysisLimits {
 
     pub fn flow_operations(&self) -> usize {
         self.flow_operations.get()
+    }
+
+    pub fn trace_nodes(&self) -> usize {
+        self.trace_nodes.get()
     }
 
     /// Builder-style override, validated (may return an error for zero).
@@ -183,6 +197,12 @@ impl AnalysisLimits {
         Ok(self)
     }
 
+    pub fn with_trace_nodes(mut self, value: usize) -> Result<Self, AnalysisLimitError> {
+        self.trace_nodes =
+            PositiveLimit::new(value).map_err(|()| AnalysisLimitError::TraceNodes)?;
+        Ok(self)
+    }
+
     /// Test-only: set a field directly (caller must ensure positivity).
     #[cfg(test)]
     pub fn set_syntax_depth(&mut self, value: usize) {
@@ -218,6 +238,11 @@ impl AnalysisLimits {
         self.flow_operations =
             PositiveLimit::new(value).expect("test setter requires positive value");
     }
+
+    #[cfg(test)]
+    pub fn set_trace_nodes(&mut self, value: usize) {
+        self.trace_nodes = PositiveLimit::new(value).expect("test setter requires positive value");
+    }
 }
 
 /// Manual deserializer that validates every field, rejecting zero.
@@ -243,6 +268,8 @@ impl<'de> Deserialize<'de> for AnalysisLimits {
             link_operations: usize,
             #[serde(default = "default_flow_operations")]
             flow_operations: usize,
+            #[serde(default = "default_trace_nodes")]
+            trace_nodes: usize,
         }
         let raw = Raw::deserialize(deserializer)?;
         Self::new(
@@ -252,6 +279,7 @@ impl<'de> Deserialize<'de> for AnalysisLimits {
             raw.evidence_items,
             raw.link_operations,
             raw.flow_operations,
+            raw.trace_nodes,
         )
         .map_err(serde::de::Error::custom)
     }
@@ -289,6 +317,10 @@ mod tests {
                 AnalysisLimitError::FlowOperations,
                 AnalysisLimits::with_flow_operations,
             ),
+            (
+                AnalysisLimitError::TraceNodes,
+                AnalysisLimits::with_trace_nodes,
+            ),
         ] {
             assert_eq!(zero_fn(defaults.clone(), 0), Err(variant));
         }
@@ -296,43 +328,48 @@ mod tests {
 
     #[test]
     fn constructor_rejects_zero() {
-        let ok = AnalysisLimits::new(1, 1, 1, 1, 1, 1);
+        let ok = AnalysisLimits::new(1, 1, 1, 1, 1, 1, 1);
         assert!(ok.is_ok());
         assert_eq!(
-            AnalysisLimits::new(0, 1, 1, 1, 1, 1),
+            AnalysisLimits::new(0, 1, 1, 1, 1, 1, 1),
             Err(AnalysisLimitError::SyntaxDepth)
         );
         assert_eq!(
-            AnalysisLimits::new(1, 0, 1, 1, 1, 1),
+            AnalysisLimits::new(1, 0, 1, 1, 1, 1, 1),
             Err(AnalysisLimitError::SemanticOperations)
         );
         assert_eq!(
-            AnalysisLimits::new(1, 1, 0, 1, 1, 1),
+            AnalysisLimits::new(1, 1, 0, 1, 1, 1, 1),
             Err(AnalysisLimitError::EffectOperations)
         );
         assert_eq!(
-            AnalysisLimits::new(1, 1, 1, 0, 1, 1),
+            AnalysisLimits::new(1, 1, 1, 0, 1, 1, 1),
             Err(AnalysisLimitError::EvidenceItems)
         );
         assert_eq!(
-            AnalysisLimits::new(1, 1, 1, 1, 0, 1),
+            AnalysisLimits::new(1, 1, 1, 1, 0, 1, 1),
             Err(AnalysisLimitError::LinkOperations)
         );
         assert_eq!(
-            AnalysisLimits::new(1, 1, 1, 1, 1, 0),
+            AnalysisLimits::new(1, 1, 1, 1, 1, 0, 1),
             Err(AnalysisLimitError::FlowOperations)
+        );
+        assert_eq!(
+            AnalysisLimits::new(1, 1, 1, 1, 1, 1, 0),
+            Err(AnalysisLimitError::TraceNodes)
         );
     }
 
     #[test]
     fn accessors_return_configured_values() {
-        let limits = AnalysisLimits::new(10, 20, 30, 40, 50, 60).unwrap();
+        let limits = AnalysisLimits::new(10, 20, 30, 40, 50, 60, 70).unwrap();
         assert_eq!(limits.syntax_depth(), 10);
         assert_eq!(limits.semantic_operations(), 20);
         assert_eq!(limits.effect_operations(), 30);
         assert_eq!(limits.evidence_items(), 40);
         assert_eq!(limits.link_operations(), 50);
         assert_eq!(limits.flow_operations(), 60);
+        assert_eq!(limits.trace_nodes(), 70);
     }
 
     #[cfg(feature = "serde")]

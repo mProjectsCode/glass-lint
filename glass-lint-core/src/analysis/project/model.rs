@@ -2,7 +2,7 @@
 //! identities remain owned by their module; the overlay stores qualified
 //! resolution results rather than merging lexical arenas.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Mutex};
 
 use glass_lint_datastructures::NameTable;
 use smol_str::SmolStr;
@@ -20,6 +20,7 @@ use crate::{
             state::{ExportTable, LinkingSession},
         },
         syntax::SymbolCallProvenance,
+        trace::TraceArena,
         value::{FunctionId, ValueId},
     },
     api::{
@@ -204,6 +205,8 @@ pub struct ProjectSemanticModel {
     pub(super) diagnostics: Vec<AnalysisDiagnostic>,
     pub(super) status: AnalysisStatus,
     pub(super) flow_limit: usize,
+    pub(super) trace_limit: usize,
+    pub(super) trace_arena: Mutex<TraceArena>,
 }
 
 impl ProjectSemanticModel {
@@ -238,6 +241,8 @@ impl ProjectSemanticModel {
             diagnostics: Vec::new(),
             status,
             flow_limit: limits.flow_operations(),
+            trace_limit: limits.trace_nodes(),
+            trace_arena: Mutex::new(TraceArena::new(limits.trace_nodes())),
         }
     }
 
@@ -266,6 +271,8 @@ impl ProjectSemanticModel {
             diagnostics: outcome.diagnostics,
             status: outcome.status,
             flow_limit: limits.flow_operations(),
+            trace_limit: limits.trace_nodes(),
+            trace_arena: Mutex::new(TraceArena::new(limits.trace_nodes())),
         }
     }
 
@@ -398,6 +405,15 @@ impl ProjectSemanticModel {
 
     pub(in crate::analysis) fn flow_limit(&self) -> usize {
         self.flow_limit
+    }
+
+    #[allow(dead_code)]
+    pub(in crate::analysis) fn trace_limit(&self) -> usize {
+        self.trace_limit
+    }
+
+    pub fn trace_arena(&self) -> &Mutex<TraceArena> {
+        &self.trace_arena
     }
 
     /// Return deterministic phase and evidence operation counts.

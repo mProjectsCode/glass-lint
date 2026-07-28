@@ -95,8 +95,10 @@ impl ProjectSemanticModel {
             })
             .collect();
 
-        let (cross, cross_exhausted, projection_count) =
-            flow::cross::collect(self, &matchers, &mut session);
+        let (cross, cross_exhausted, projection_count) = {
+            let mut arena = self.trace_arena.lock().unwrap();
+            flow::cross::collect(self, &matchers, &mut session, &mut arena)
+        };
         let exhausted = local_exhausted || cross_exhausted;
         let outcome = ProjectionOutcome {
             flow_exhausted: exhausted,

@@ -7,19 +7,16 @@ use crate::{
         ProjectSemanticModel,
         facts::FactId,
         flow::{
-            cross::{
-                MAX_RELATED_EVIDENCE,
-                state::{CallContext, CrossFlowState, EvidenceRole, QualifiedEvent},
-            },
+            cross::state::{CallContext, CrossFlowState},
             effect::{EffectUse, FunctionEffect},
         },
-        model::flow::FlowId,
+        trace::{QualifiedEvent as TraceQualifiedEvent, TraceArena},
     },
     api::{
-        classification::{ClassificationEvidence, MatchKind, RelatedClassificationEvidence},
+        classification::{ClassificationEvidence, MatchKind},
         compiler::CompiledObjectFlow,
     },
-    project::ModuleId,
+    project::{EvidenceRole, ModuleId},
 };
 
 pub(super) fn effect_use_event(usage: &EffectUse) -> FactId {
@@ -92,14 +89,16 @@ impl ModuleEvidence {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(super) fn emit(
     project: &ProjectSemanticModel,
     evidence: &mut HashMap<ModuleId, ModuleEvidence>,
     module: ModuleId,
-    flow_id: FlowId,
+    flow_id: crate::analysis::model::flow::FlowId,
     state: &CrossFlowState,
     event: FactId,
     flow: &CompiledObjectFlow,
+    arena: &mut TraceArena,
 ) {
     let Some(values) = evidence.get_mut(&module) else {
         return;
@@ -113,6 +112,41 @@ pub(super) fn emit(
         .map_or_else(glass_lint_datastructures::ByteRange::empty, |fact| {
             fact.span
         });
+
+    // Build the trace chain in execution order: source -> requirements -> sink.
+    // Each node's parent is the previous step in execution order.
+    // The last node (sink) is the trace head stored in the occurrence.
+    // reconstruct_trace walks parent links backward and reverses.
+
+    // Step 1: source event (first in execution order, no parent)
+    let source_node = arena.intern(
+        None,
+        TraceQualifiedEvent::new(state.source.module, state.source.fact),
+        EvidenceRole::Source,
+    );
+
+    // Step 2: requirement events (each has the previous step as parent)
+    let mut tail = source_node;
+    for req in state.requirements.values() {
+        tail = match arena.intern(
+            tail,
+            TraceQualifiedEvent::new(req.module, req.fact),
+            EvidenceRole::Requirement,
+        ) {
+            Some(id) => Some(id),
+            None => break,
+        };
+    }
+
+    // Step 3: sink event (last in execution order, becomes the trace head)
+    let trace_head = tail.and_then(|prev| {
+        arena.intern(
+            Some(prev),
+            TraceQualifiedEvent::new(module, event),
+            EvidenceRole::Sink,
+        )
+    });
+
     values.evidence[rule_idx].push(ClassificationEvidence {
         kind: MatchKind::CallArgument,
         symbol: flow.evidence_symbol(),
@@ -122,44 +156,8 @@ pub(super) fn emit(
             crate::api::classification::ClassificationEvidenceOccurrence {
                 span,
                 fact: Some(event.0),
+                trace: trace_head,
             },
         ],
-        related: related_evidence(state, module, event),
     });
-}
-
-pub(super) fn related_evidence(
-    state: &CrossFlowState,
-    sink_module: ModuleId,
-    sink_event: FactId,
-) -> Vec<RelatedClassificationEvidence> {
-    let mut related = vec![related_event(&state.source, EvidenceRole::Source)];
-    related.extend(
-        state
-            .requirements
-            .values()
-            .map(|event| related_event(event, EvidenceRole::Requirement)),
-    );
-    related.push(RelatedClassificationEvidence {
-        module: sink_module.get(),
-        event: sink_event.0,
-        kind: MatchKind::CallArgument,
-        symbol: EvidenceRole::Sink.label().into(),
-    });
-    let mut seen = BTreeSet::new();
-    related.retain(|item| seen.insert((item.module, item.event, item.kind, item.symbol.clone())));
-    related.truncate(MAX_RELATED_EVIDENCE);
-    related
-}
-
-pub(super) fn related_event(
-    event: &QualifiedEvent,
-    role: EvidenceRole,
-) -> RelatedClassificationEvidence {
-    RelatedClassificationEvidence {
-        module: event.module.get(),
-        event: event.fact.0,
-        kind: MatchKind::CallArgument,
-        symbol: role.label().into(),
-    }
 }

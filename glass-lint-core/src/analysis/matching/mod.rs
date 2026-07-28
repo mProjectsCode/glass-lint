@@ -208,6 +208,7 @@ pub(super) fn push_owned_evidence(
             |occurrence| crate::api::classification::ClassificationEvidenceOccurrence {
                 span: occurrence.span(),
                 fact: Some(occurrence.event().0),
+                trace: None,
             },
         )
         .collect();
@@ -220,7 +221,6 @@ pub(super) fn push_owned_evidence(
         count: u32::try_from(occurrences.len()).unwrap_or(u32::MAX),
         truncated: false,
         occurrences,
-        related: Vec::new(),
     });
 }
 

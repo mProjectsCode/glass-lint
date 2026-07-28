@@ -8,23 +8,6 @@ use crate::{
     project::ModuleId,
 };
 
-#[derive(Clone, Copy)]
-pub(super) enum EvidenceRole {
-    Source,
-    Requirement,
-    Sink,
-}
-
-impl EvidenceRole {
-    pub(super) fn label(self) -> &'static str {
-        match self {
-            Self::Source => "flow source",
-            Self::Requirement => "flow requirement",
-            Self::Sink => "flow sink",
-        }
-    }
-}
-
 #[derive(Debug)]
 /// Fixed-point budget for propagating source identities through helper calls.
 pub(super) struct SourceBudget {

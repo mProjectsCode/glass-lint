@@ -255,9 +255,9 @@ fn emit_state(
                                 fact.span
                             }),
                         fact: Some(anchor.0),
+                        trace: None,
                     },
                 ],
-                related: Vec::new(),
             },
         );
     }

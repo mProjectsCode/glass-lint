@@ -8,6 +8,10 @@ use glass_lint_datastructures::ByteRange;
 
 use crate::api::rule::Severity;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+/// Internal index into the bounded trace arena.
+pub struct TraceNodeId(pub(crate) u32);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 /// Stable position of a rule within a validated catalog.
 pub struct RuleIndex(usize);
@@ -46,30 +50,19 @@ pub struct ClassificationEvidence {
     pub count: u32,
     /// Whether the serialized occurrence list omits additional matches.
     pub truncated: bool,
-    /// Primary occurrences with their optional canonical fact identity.
+    /// Primary occurrences with their optional canonical fact identity
+    /// and trace head into the interned trace arena.
     pub occurrences: Vec<ClassificationEvidenceOccurrence>,
-    /// Related evidence from linked modules or flow projections.
-    pub related: Vec<RelatedClassificationEvidence>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// A source span and the fact that established it, when available.
+/// A source span, the fact that established it, and an optional trace head
+/// into the interned trace arena.
 pub struct ClassificationEvidenceOccurrence {
     pub span: ByteRange,
     pub fact: Option<u32>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-/// Cross-module evidence related to a primary occurrence.
-pub struct RelatedClassificationEvidence {
-    /// Stable project module ID containing the related event.
-    pub module: u32,
-    /// Canonical fact/event ID within that module.
-    pub event: u32,
-    /// Related occurrence kind.
-    pub kind: MatchKind,
-    /// Related matched symbol/chain.
-    pub symbol: String,
+    /// Head of the evidence trace chain in the arena, if available.
+    pub trace: Option<TraceNodeId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

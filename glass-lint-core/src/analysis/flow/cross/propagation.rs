@@ -17,6 +17,7 @@ use crate::{
             },
             effect::{CallEffectRef, EffectUse, FunctionEffect},
         },
+        trace::TraceArena,
     },
     api::compiler::{CompiledObjectFlow, CompiledObjectRequirement, CompiledObjectSinkArguments},
     project::ModuleId,
@@ -34,6 +35,7 @@ pub(super) struct UsageProjector<'a> {
     pub(super) propagated: &'a mut BTreeSet<FactId>,
     pub(super) worklist: &'a mut ContextWorklist,
     pub(super) names: &'a NameTable,
+    pub(super) arena: &'a mut TraceArena,
 }
 
 impl UsageProjector<'_> {
@@ -168,6 +170,7 @@ impl UsageProjector<'_> {
                 self.state,
                 event,
                 self.flow,
+                self.arena,
             );
         }
     }
@@ -185,6 +188,7 @@ impl UsageProjector<'_> {
                 state,
                 event,
                 self.flow,
+                self.arena,
             );
         }
     }

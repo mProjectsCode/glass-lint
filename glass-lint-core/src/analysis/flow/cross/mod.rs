@@ -27,6 +27,7 @@ use crate::{
         },
         model::flow::FlowId,
         project::state::LinkingSession,
+        trace::TraceArena,
     },
     api::{
         classification::ClassificationEvidence,
@@ -38,12 +39,11 @@ use crate::{
 const MAX_CONTEXTS: usize = 65_536;
 const MAX_SOURCE_REFINEMENT_ROUNDS: usize = 64;
 const MAX_PENDING: usize = 65_536;
-const MAX_RELATED_EVIDENCE: usize = 8;
-
 pub(in crate::analysis) fn collect(
     project: &ProjectSemanticModel,
     matchers: &CompiledRuleSelection<'_>,
     session: &mut LinkingSession,
+    arena: &mut TraceArena,
 ) -> (
     BTreeMap<ModuleId, Vec<Vec<ClassificationEvidence>>>,
     bool,
@@ -114,6 +114,7 @@ pub(in crate::analysis) fn collect(
             propagated: &mut propagated_calls,
             worklist: &mut worklist,
             names,
+            arena,
         }
         .project();
         propagation::CallPropagation {

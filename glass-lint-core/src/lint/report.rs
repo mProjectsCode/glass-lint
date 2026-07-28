@@ -4,8 +4,11 @@ use glass_lint_datastructures::{Position, SourceRange};
 
 use crate::{
     AnalysisLimits, ParseDiagnostic, REPORT_VERSION,
-    analysis::{ProjectSemanticModel, ResolvedLinkInput, project::projection::ProjectionOutcome},
-    api::classification::{ClassificationResult, MatchedCapability, RuleIndex},
+    analysis::{
+        ProjectSemanticModel, ResolvedLinkInput, project::projection::ProjectionOutcome,
+        trace::TraceArena,
+    },
+    api::classification::{ClassificationResult, MatchedCapability, RuleIndex, TraceNodeId},
     diagnostic::SourceLineIndex,
     lint::catalog::RuleCatalog,
     project::{
@@ -185,50 +188,90 @@ impl<'a> ReportAssembly<'a> {
                 scan += 1;
             }
         }
+        let arena = project.trace_arena().lock().unwrap();
         ranges
             .into_iter()
             .enumerate()
             .map(|(retained_idx, range)| {
-                let mut steps: Vec<EvidenceStep> = groups[retained_idx]
-                    .iter()
-                    .flat_map(|(ev_idx, item_range)| {
-                        let ev = &evidence_items[*ev_idx];
-                        let mut item_steps = vec![EvidenceStep::new(
-                            EvidenceRole::Occurrence,
-                            format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
-                            SourceLocation::new(path.clone(), (*item_range).clone()),
-                        )];
-                        for related in &ev.related {
-                            if let Some(location) =
-                                project.fact_location(ModuleId::new(related.module), related.event)
-                            {
-                                item_steps.push(EvidenceStep::new(
-                                    EvidenceRole::Occurrence,
-                                    related.symbol.clone(),
-                                    location,
-                                ));
-                            }
-                        }
-                        item_steps
-                    })
-                    .collect();
-                if steps.is_empty() {
-                    steps.push(EvidenceStep::new(
+                let mut traces: Vec<EvidenceTrace> = Vec::new();
+                for (ev_idx, item_range) in &groups[retained_idx] {
+                    let ev = &evidence_items[*ev_idx];
+                    let occ_found = ev
+                        .occurrences
+                        .iter()
+                        .find(|o| lines.try_range(o.span).ok().as_ref() == Some(item_range));
+                    let steps = occ_found.map_or_else(
+                        || Some(Self::fallback_trace(ev, path, item_range)),
+                        |o| {
+                            o.trace.map_or_else(
+                                || Some(Self::fallback_trace(ev, path, item_range)),
+                                |trace_id| Self::resolve_trace(&arena, trace_id, project, path),
+                            )
+                        },
+                    );
+                    if let Some(s) = steps
+                        && !s.is_empty()
+                    {
+                        traces.push(EvidenceTrace::new(s));
+                    }
+                }
+                if traces.is_empty() {
+                    traces.push(EvidenceTrace::new(vec![EvidenceStep::new(
                         EvidenceRole::Occurrence,
                         "match".into(),
                         SourceLocation::new(path.clone(), range.clone()),
-                    ));
+                    )]));
                 }
                 Finding::new(
                     rule_id.clone(),
                     label.to_string(),
                     severity,
                     SourceLocation::new(path.clone(), range),
-                    EvidenceTraces::new(vec![EvidenceTrace::new(steps)]),
+                    EvidenceTraces::new(traces),
                     MatchCertainty::Definite,
                 )
             })
             .collect()
+    }
+
+    /// Resolve a trace chain from the arena into evidence steps.
+    /// Returns None if any required step cannot be resolved.
+    fn resolve_trace(
+        arena: &TraceArena,
+        head: TraceNodeId,
+        project: &ProjectSemanticModel,
+        _path: &ProjectRelativePath,
+    ) -> Option<Vec<EvidenceStep>> {
+        let raw = arena.reconstruct_trace(head);
+        if raw.is_empty() {
+            return None;
+        }
+        let mut steps = Vec::with_capacity(raw.len());
+        for (qe, role) in &raw {
+            let location = project.fact_location(qe.module, qe.fact.0)?;
+            let message = match role {
+                EvidenceRole::Source => "flow source".into(),
+                EvidenceRole::Requirement => "flow requirement".into(),
+                EvidenceRole::Sink => "flow sink".into(),
+                EvidenceRole::Occurrence => "occurrence".into(),
+                _ => "evidence".into(),
+            };
+            steps.push(EvidenceStep::new(*role, message, location));
+        }
+        Some(steps)
+    }
+
+    /// Create a single-step fallback trace for evidence without arena traces.
+    fn fallback_trace(
+        ev: &crate::api::classification::ClassificationEvidence,
+        path: &ProjectRelativePath,
+        range: &SourceRange,
+    ) -> Vec<EvidenceStep> {
+        vec![EvidenceStep::new(
+            EvidenceRole::Occurrence,
+            format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
+            SourceLocation::new(path.clone(), range.clone()),
+        )]
     }
 
     fn initialize_project_files(

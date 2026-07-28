@@ -2,14 +2,12 @@
 
 use std::collections::BTreeMap;
 
-use crate::api::classification::{
-    ClassificationEvidence, MatchKind, RelatedClassificationEvidence,
-};
+use crate::api::classification::{ClassificationEvidence, MatchKind};
 #[cfg(test)]
 use crate::api::rule::Rule;
 
 /// Internal key that owns its data once and is used across all accumulators,
-/// avoiding string clones for separate count, related, and occurrence maps.
+/// avoiding string clones for separate count and occurrence maps.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct EvidenceKey(MatchKind, String);
 
@@ -17,7 +15,6 @@ struct EvidenceKey(MatchKind, String);
 struct EvidenceAccum {
     total_count: usize,
     occurrences_truncated: bool,
-    related: Vec<RelatedClassificationEvidence>,
     occurrences: Vec<crate::api::classification::ClassificationEvidenceOccurrence>,
 }
 
@@ -38,11 +35,9 @@ pub(in crate::analysis) fn normalize_evidence(
         let accum = acc.entry(key).or_insert_with(|| EvidenceAccum {
             total_count: 0,
             occurrences_truncated: false,
-            related: Vec::new(),
             occurrences: Vec::new(),
         });
         accum.total_count = accum.total_count.saturating_add(item.count as usize);
-        accum.related.extend(item.related);
         for occurrence in item.occurrences {
             if !occurrence.span.is_empty() {
                 accum.occurrences.push(occurrence);
@@ -50,8 +45,9 @@ pub(in crate::analysis) fn normalize_evidence(
         }
     }
 
-    // Sort and deduplicate occurrences within each key, then apply the
-    // per-group occurrence limit directly so caller-owned storage is reused.
+    // Sort and deduplicate occurrences within each key by span, fact, and
+    // trace identity so that distinct traces at the same location are
+    // preserved.
     for accum in acc.values_mut() {
         accum.occurrences.sort_by_key(|occurrence| {
             (
@@ -60,7 +56,9 @@ pub(in crate::analysis) fn normalize_evidence(
                 occurrence.fact.unwrap_or(u32::MAX),
             )
         });
-        accum.occurrences.dedup();
+        accum
+            .occurrences
+            .dedup_by(|a, b| a.span == b.span && a.fact == b.fact && a.trace == b.trace);
         if accum.occurrences.len() > limit {
             accum.occurrences.truncate(limit);
             accum.occurrences_truncated = true;
@@ -69,9 +67,6 @@ pub(in crate::analysis) fn normalize_evidence(
 
     // Build evidence items sorted by (first_span, kind, symbol) so the
     // global group limit selects the earliest groups in a stable order.
-    // This replaces the old flat-vec / rebuild cycle that cloned every
-    // string-bearing key for each occurrence and then looked back into the
-    // accumulator map.
     let mut sorted: Vec<ClassificationEvidence> = acc
         .into_iter()
         .map(|(key, accum)| ClassificationEvidence {
@@ -80,7 +75,6 @@ pub(in crate::analysis) fn normalize_evidence(
             count: u32::try_from(accum.total_count).unwrap_or(u32::MAX),
             truncated: accum.occurrences_truncated,
             occurrences: accum.occurrences,
-            related: accum.related,
         })
         .collect();
     sorted.sort_by(|left, right| {
@@ -133,10 +127,10 @@ mod tests {
                     |position| crate::api::classification::ClassificationEvidenceOccurrence {
                         span: ByteRange::new(*position, *position + 1).unwrap(),
                         fact: Some(*position),
+                        trace: None,
                     },
                 )
                 .collect(),
-            related: Vec::new(),
         }
     }
 

@@ -190,24 +190,25 @@ fn collapses_contained_ranges_for_same_rule() {
             .column(),
         36
     );
-    assert_eq!(report.files()[0].findings()[0].evidence().traces().len(), 1);
-    assert_eq!(
-        report.files()[0].findings()[0].evidence().traces()[0]
+    assert_eq!(report.files()[0].findings()[0].evidence().traces().len(), 2);
+    assert!(
+        !report.files()[0].findings()[0].evidence().traces()[0]
             .steps()
-            .len(),
-        2
+            .is_empty()
     );
     assert!(
-        report.files()[0].findings()[0].evidence().traces()[0]
+        !report.files()[0].findings()[0].evidence().traces()[1]
             .steps()
-            .iter()
-            .all(|step| {
-                report.files()[0].findings()[0]
-                    .location()
-                    .range()
-                    .contains(&step.location().range())
-            })
+            .is_empty()
     );
+    for trace in report.files()[0].findings()[0].evidence().traces() {
+        assert!(trace.steps().iter().all(|step| {
+            report.files()[0].findings()[0]
+                .location()
+                .range()
+                .contains(&step.location().range())
+        }));
+    }
 }
 
 #[test]
