@@ -166,10 +166,13 @@ Centralize linked-target-to-export-resolution conversion in one helper used by n
 - **Fix Complexity** Medium
 - **Category:** Architecture
 - **Location:** `glass-lint-core/src/analysis/project/identities.rs:142-200`
+- **Status:** Fixed
 
 The method documents direct exports as authoritative, inserts them first, then inserts each star-exported child and changes any conflicting previous value to `Ambiguous`. A module with a direct `foo` and `export *` from a module containing another `foo` therefore loses the direct export that should win.
 
-Make the resolved fixed-point `ExportTable` the sole input to namespace expansion, eliminating the second star-edge walk. Preserve direct-export precedence in that table and mark only conflicting star-derived candidates ambiguous before exposing the namespace. Recommendation: test direct-versus-star precedence, two conflicting stars, cycles, and traversal-order independence against the final namespace identity.
+`collect_exported_identities` now collects star-exported entries into a temporary map with star-vs-star conflict detection first, then inserts authoritative direct/named exports from the export table after, so direct exports always win. Star-exported entries are merged into the identity map only for keys not already set by a direct export.
+
+**Check:** `cargo test -p glass-lint-core --lib` passes, and `make ci` passed on 2026-07-28.
 
 #### READ-013 — An immutable project model contains a mutable `RefCell` lookup cache
 - **Severity:** Medium

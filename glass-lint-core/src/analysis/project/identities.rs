@@ -194,21 +194,10 @@ impl ProjectSemanticModel {
             return;
         }
 
-        // Collect all resolved entries from the export table for this module.
-        // These are authoritative direct/named exports and always win.
-        if let Some(exports) = self.exports.module_exports(module) {
-            for (name, resolved) in exports.iter() {
-                identities.insert(
-                    ModuleExportKey::new(prefix.clone(), name.clone()),
-                    resolved.clone(),
-                );
-            }
-        }
-
-        // Follow star exports to include re-exported member identities.
-        // Collect each child's entries into a temp map, then merge with
-        // conflict detection so that overlapping names produce Ambiguous
-        // instead of whichever child happens to be visited last.
+        // Collect star-exported entries first into a temp map with
+        // star-vs-star conflict detection, so that conflicting star-derived
+        // names are marked Ambiguous before direct exports are considered.
+        let mut star_entries = ModuleIdentityMap::new();
         if let Some(project_module) = self.modules.get(&module) {
             for request_index in project_module.local().interface().star_exports() {
                 let Some(request) = project_module.local().interface().request(*request_index)
@@ -222,16 +211,30 @@ impl ProjectSemanticModel {
                     let mut child_entries = ModuleIdentityMap::new();
                     self.collect_exported_identities(*id, prefix, visiting, &mut child_entries);
                     for (child_key, child_value) in child_entries.into_entries() {
-                        // Insert and check whether a prior entry exists with
-                        // a conflicting value. Direct exports (already in the
-                        // map) always win; conflicting star exports become
-                        // ambiguous.
-                        let prev = identities.insert(child_key.clone(), child_value.clone());
+                        let prev = star_entries.insert(child_key.clone(), child_value.clone());
                         if prev.is_some_and(|p| p != child_value) {
-                            identities.insert(child_key, ExportResolution::Ambiguous);
+                            star_entries.insert(child_key, ExportResolution::Ambiguous);
                         }
                     }
                 }
+            }
+        }
+
+        // Insert resolved export-table entries (authoritative direct/named
+        // exports) after star exports so they always win.
+        if let Some(exports) = self.exports.module_exports(module) {
+            for (name, resolved) in exports.iter() {
+                identities.insert(
+                    ModuleExportKey::new(prefix.clone(), name.clone()),
+                    resolved.clone(),
+                );
+            }
+        }
+
+        // Merge star-exported entries, preserving direct exports.
+        for (key, value) in star_entries.into_entries() {
+            if identities.get(&key).is_none() {
+                identities.insert(key, value);
             }
         }
 
