@@ -15,6 +15,7 @@ The three-crate test run passed: 393 core unit tests plus integration tests, 181
 #### READ-001 — The syntax-depth prepass mis-tokenizes valid regex and escaped templates
 - **Severity:** High
 - **Fix Complexity** High
+- **Status:** ✅ Fixed
 - **Category:** Other
 - **Location:** `glass-lint-core/src/parse.rs:214-339`
 

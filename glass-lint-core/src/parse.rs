@@ -211,21 +211,25 @@ pub fn parse_with_language_and_depth(
         })
 }
 
-/// Count delimiter and member-chain nesting while ignoring comments and
-/// quoted strings. It is a conservative lexical guard; parser validity is
-/// still decided by SWC.
+/// Count delimiter and member-chain nesting while ignoring comments,
+/// quoted strings, template content, and regex literals. It is a
+/// conservative lexical guard; parser validity is still decided by SWC.
 ///
 /// Template literals use a state machine: 0 = outside template, 1 = inside
 /// template content (skipped), >= 2 = inside `${...}` expression (nesting
 /// tracked). The `?` character is excluded from member-depth reset so that
 /// optional chains like `a?.b?.c?.d` contribute their full member count.
+///
+/// Regex literals are detected by examining the preceding byte context to
+/// distinguish `/regex/` from division, then skipping content (including
+/// character classes and escapes) without counting dots or delimiters.
 #[allow(clippy::too_many_lines)]
 // Kept as a single hot loop intentionally: this byte-level state machine
 // tracks nesting depth in a single tight pass for performance.
 fn syntax_depth(source: &str) -> usize {
     // Manual byte-level state machine: the only way to measure nesting depth
-    // without parsing. Kept as one function because the template-literal and
-    // string-skipping state flow across all branches.
+    // without parsing. Kept as one function because the template-literal,
+    // regex, and string-skipping state flow across all branches.
     let bytes = source.as_bytes();
     let mut depth = 0usize;
     let mut maximum = 0usize;
@@ -234,9 +238,16 @@ fn syntax_depth(source: &str) -> usize {
     let mut quote = None;
     let mut template_expr_depth = 0usize;
     let mut template_depth_stack: Vec<usize> = Vec::new();
+    let mut in_regex = false;
+    let mut in_regex_char_class = false;
     while index < bytes.len() {
         let byte = bytes[index];
+        // ---- template content (skip mode) ----
         if template_expr_depth == 1 {
+            if byte == b'\\' && bytes.get(index + 1) == Some(&b'`') {
+                index += 2;
+                continue;
+            }
             if byte == b'$' && bytes.get(index + 1) == Some(&b'{') {
                 template_expr_depth = 2;
                 depth = depth.saturating_add(1);
@@ -252,6 +263,7 @@ fn syntax_depth(source: &str) -> usize {
             index += 1;
             continue;
         }
+        // ---- string literals ----
         if let Some(delimiter) = quote {
             if byte == b'\\' {
                 index = index.saturating_add(2);
@@ -263,6 +275,31 @@ fn syntax_depth(source: &str) -> usize {
             index += 1;
             continue;
         }
+        // ---- regex literal content ----
+        if in_regex {
+            if byte == b'\\' {
+                index += 2;
+                continue;
+            }
+            if byte == b'[' && !in_regex_char_class {
+                in_regex_char_class = true;
+                index += 1;
+                continue;
+            }
+            if byte == b']' && in_regex_char_class {
+                in_regex_char_class = false;
+                index += 1;
+                continue;
+            }
+            if byte == b'/' && !in_regex_char_class {
+                in_regex = false;
+                index += 1;
+                continue;
+            }
+            index += 1;
+            continue;
+        }
+        // ---- template expression state (depth tracking) ----
         if template_expr_depth >= 2 {
             if byte == b'$' && bytes.get(index + 1) == Some(&b'{') {
                 template_expr_depth += 1;
@@ -284,30 +321,50 @@ fn syntax_depth(source: &str) -> usize {
                 continue;
             }
         }
+        // ---- template literal start ----
         if template_expr_depth == 0 && byte == b'`' {
             template_expr_depth = 1;
             index += 1;
             continue;
         }
+        // ---- string start ----
         if matches!(byte, b'\'' | b'"') {
             quote = Some(byte);
             index += 1;
             continue;
         }
-        if byte == b'/' && bytes.get(index + 1) == Some(&b'/') {
-            index = bytes[index..]
-                .iter()
-                .position(|b| *b == b'\n')
-                .map_or(bytes.len(), |p| index + p + 1);
-            continue;
+        // ---- comments, division assignment, and regex ----
+        if byte == b'/' {
+            match bytes.get(index + 1) {
+                Some(b'/') => {
+                    index = bytes[index..]
+                        .iter()
+                        .position(|b| *b == b'\n')
+                        .map_or(bytes.len(), |p| index + p + 1);
+                    continue;
+                }
+                Some(b'*') => {
+                    index = bytes[index + 2..]
+                        .windows(2)
+                        .position(|w| w == b"*/")
+                        .map_or(bytes.len(), |p| index + p + 4);
+                    continue;
+                }
+                Some(b'=') => {
+                    member_depth = 0;
+                    index += 2;
+                    continue;
+                }
+                _ => {
+                    if is_regex_start(bytes, index) {
+                        in_regex = true;
+                        index += 1;
+                        continue;
+                    }
+                }
+            }
         }
-        if byte == b'/' && bytes.get(index + 1) == Some(&b'*') {
-            index = bytes[index + 2..]
-                .windows(2)
-                .position(|w| w == b"*/")
-                .map_or(bytes.len(), |p| index + p + 4);
-            continue;
-        }
+        // ---- member depth ----
         if byte == b'.' {
             member_depth = member_depth.saturating_add(1);
             maximum = maximum.max(member_depth);
@@ -328,6 +385,7 @@ fn syntax_depth(source: &str) -> usize {
         ) {
             member_depth = 0;
         }
+        // ---- nesting depth ----
         if matches!(byte, b'(' | b'[' | b'{') {
             depth = depth.saturating_add(1);
             maximum = maximum.max(depth);
@@ -337,6 +395,53 @@ fn syntax_depth(source: &str) -> usize {
         index += 1;
     }
     maximum
+}
+
+/// Determine whether `/` at `index` starts a regex literal (rather than
+/// being a division operator or `/=`) by examining the last non-whitespace
+/// byte before it.
+///
+/// Returns `true` (regex) after operators, punctuation like `( , ; = !`,
+/// or after keywords `return`, `typeof`, `instanceof`, `void`, `delete`,
+/// `throw`, `case`, `in`, `of`. Returns `false` (division) after value-like
+/// tokens: `)]}` identifiers, numbers, strings, and template endings.
+fn is_regex_start(bytes: &[u8], index: usize) -> bool {
+    let mut i = index;
+    while i > 0 {
+        i -= 1;
+        let b = bytes[i];
+        if !b.is_ascii_whitespace() {
+            match b {
+                b')' | b']' | b'}' | b'"' | b'\'' | b'`' => return false,
+                b if b.is_ascii_alphanumeric() || b == b'_' || b == b'$' => {
+                    let word_end = i + 1;
+                    while i > 0 {
+                        let prev = bytes[i - 1];
+                        if prev.is_ascii_alphanumeric() || prev == b'_' || prev == b'$' {
+                            i -= 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    let word = std::str::from_utf8(&bytes[i..word_end]).unwrap_or("");
+                    return !matches!(
+                        word,
+                        "return"
+                            | "typeof"
+                            | "instanceof"
+                            | "void"
+                            | "delete"
+                            | "throw"
+                            | "case"
+                            | "in"
+                            | "of"
+                    );
+                }
+                _ => return true,
+            }
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -404,5 +509,122 @@ mod tests {
     fn regex_not_mistaken_for_comment() {
         let source = "const re = /abc/; use(re);";
         assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_with_dots_does_not_inflate_member_depth() {
+        let source = "const re = /a.b.c.d.e.f.g.h.i.j/;";
+        assert!(parse(source, "regex.js").is_ok());
+        let depth = syntax_depth(source);
+        assert!(
+            depth < 5,
+            "regex with many dots should not create large member depth, got {depth}"
+        );
+    }
+
+    #[test]
+    fn regex_with_escapes_and_parens() {
+        let source = "const re = /\\(\\)\\[\\]\\.\\//;";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_character_class_does_not_leak_dots() {
+        let source = "const re = /[a.b/c.d]/;";
+        assert!(parse(source, "regex.js").is_ok());
+        let depth = syntax_depth(source);
+        assert!(
+            depth < 5,
+            "regex char class with dots should not inflate depth, got {depth}"
+        );
+    }
+
+    #[test]
+    fn division_operator_not_mistaken_for_regex() {
+        let source = "const result = a / b / c;";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn division_assignment_not_mistaken_for_regex() {
+        let source = "x /= 2; y /= 3;";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn escaped_backtick_in_template() {
+        let source = r"const str = `\`${inner}\``;";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_after_equals_and_parens() {
+        let source = "str.match(/\\d+\\.\\d+/); const re = /a\\.b/;";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_after_return_keyword() {
+        let source = "function f() { return /\\d+\\.\\w+/; }";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_after_typeof() {
+        let source = "typeof /abc/";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_after_throw() {
+        let source = "throw /error pattern/;";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_after_void() {
+        let source = "void /pattern/";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_at_statement_start() {
+        let source = "/pattern/.test(value);";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_after_bang() {
+        let source = "!/[a-z]+/.test(str)";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_after_comma_and_semicolon() {
+        let source = "a, /pattern/; /another/;";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn regex_mixed_with_comments() {
+        let source = "const re = /* before */ /a.b/; // after\nvalue;";
+        assert!(parse(source, "regex.js").is_ok());
+    }
+
+    #[test]
+    fn hostile_depth_still_rejected() {
+        let mut source = "(".repeat(MAX_SYNTAX_DEPTH + 1);
+        source.push('0');
+        source.push_str(&")".repeat(MAX_SYNTAX_DEPTH + 1));
+        let Err(error) = parse(&source, "deep.js") else {
+            panic!("deep input unexpectedly parsed")
+        };
+        assert_eq!(error.code.as_str(), "syntax_depth_exceeded");
+    }
+
+    #[test]
+    fn valid_deep_expression_far_from_limit_passes() {
+        let source = "((((((((((((((((((((0))))))))))))))))))))";
+        assert!(parse(source, "deep.js").is_ok());
     }
 }
