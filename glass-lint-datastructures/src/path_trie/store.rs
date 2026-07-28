@@ -55,14 +55,6 @@ impl ParentPathStore {
         }
     }
 
-    /// Construct a `PathId` from a raw `u32` value without validating
-    /// node existence. The resulting `PathId` is suitable for edge-key
-    /// lookups but should not be passed to methods that index into the
-    /// node store unless the caller can independently guarantee validity.
-    pub fn raw_path_id(&self, raw: u32) -> PathId {
-        PathId(raw)
-    }
-
     pub fn is_valid(&self, id: PathId) -> bool {
         let idx = id.untag().0 as usize;
         idx < self.nodes.len()
@@ -89,19 +81,22 @@ impl ParentPathStore {
         Some(PathId(id))
     }
 
-    pub fn append_linked(
+    /// Insert an edge and child node without validating that `parent` exists
+    /// in this store. Finds existing edges before checking capacity. The
+    /// caller must supply a valid `depth`. No `LINK_TAG` is set.
+    pub fn insert_edge(
         &mut self,
         parent: PathId,
         segment: PathSegment,
         depth: u32,
     ) -> Option<PathId> {
-        if self.node_count() >= self.max_nodes {
-            return None;
-        }
         if let Some(path) = self.by_edge.get(&(parent.0, segment)) {
             return Some(PathId(*path));
         }
-        let id = u32::try_from(self.nodes.len()).ok()? | PathId::LINK_TAG;
+        if self.nodes.len() >= self.max_nodes {
+            return None;
+        }
+        let id = u32::try_from(self.nodes.len()).ok()?;
         self.nodes.push(PathNode {
             parent: parent.0,
             depth,
@@ -165,10 +160,6 @@ impl ParentPathStore {
         self.by_edge.get(&(parent.0, *segment)).copied().map(PathId)
     }
 
-    pub fn find_linked_edge(&self, parent: PathId, segment: &PathSegment) -> Option<PathId> {
-        self.find_edge(parent, segment)
-    }
-
     pub fn collect_segments(&self, id: PathId, buf: &mut Vec<PathSegment>) -> Option<()> {
         buf.clear();
         let mut current = id;
@@ -225,13 +216,13 @@ impl ParentPathStore {
         Some(result)
     }
 
-    pub fn segments(&self, id: PathId) -> PathSegments {
+    pub fn segments(&self, id: PathId) -> Option<PathSegments> {
         let mut collected = Vec::new();
-        self.collect_segments(id, &mut collected);
-        PathSegments {
+        self.collect_segments(id, &mut collected)?;
+        Some(PathSegments {
             segments: collected,
             index: 0,
-        }
+        })
     }
 }
 

@@ -290,26 +290,6 @@ fn collect_segments_on_root_returns_empty() {
 }
 
 #[test]
-fn append_linked_returns_tagged_id() {
-    let mut store = ParentPathStore::new(100);
-    let mut names = NameTable::default();
-    let seg = PathSegment::Property(names.intern("x").unwrap());
-    let id = store.append_linked(PathId(0), seg, 1).unwrap();
-    assert!(id.is_linked());
-}
-
-#[test]
-fn append_linked_reuses_existing_edge() {
-    let mut store = ParentPathStore::new(100);
-    let mut names = NameTable::default();
-    let seg = PathSegment::Property(names.intern("x").unwrap());
-    let id1 = store.append(PathId(0), seg).unwrap();
-    let id2 = store.append_linked(PathId(0), seg, 1).unwrap();
-    assert_eq!(id1, id2);
-    assert!(!id2.is_linked());
-}
-
-#[test]
 fn first_segment_of_returns_deepest_ancestor() {
     let mut store = ParentPathStore::new(100);
     let mut names = NameTable::default();
@@ -383,20 +363,20 @@ fn segments_iterator_returns_all_segments() {
         PathSegment::Property(names.lookup("b").unwrap()),
         PathSegment::Property(names.lookup("c").unwrap()),
     ];
-    let collected: Vec<_> = paths.segments(abc).collect();
+    let collected: Vec<_> = paths.segments(abc).unwrap().collect();
     assert_eq!(collected, expected);
 }
 
 #[test]
 fn segments_iterator_on_root_is_empty() {
     let paths = PathInterner::new();
-    assert_eq!(paths.segments(PathId::EMPTY).count(), 0);
+    assert_eq!(paths.segments(PathId::EMPTY).unwrap().count(), 0);
 }
 
 #[test]
-fn segments_iterator_on_invalid_is_empty() {
+fn segments_iterator_on_invalid_is_none() {
     let paths = PathInterner::new();
-    assert_eq!(paths.segments(PathId(u32::MAX)).count(), 0);
+    assert!(paths.segments(PathId(u32::MAX)).is_none());
 }
 
 #[test]
@@ -407,7 +387,7 @@ fn exact_size_iterator() {
         .append(PathId::EMPTY, property(&mut names, "a"))
         .unwrap();
     let ab = paths.append(a, property(&mut names, "b")).unwrap();
-    let mut iter = paths.segments(ab);
+    let mut iter = paths.segments(ab).unwrap();
     assert_eq!(iter.len(), 2);
     let _ = iter.next();
     assert_eq!(iter.len(), 1);
@@ -428,15 +408,6 @@ fn path_id_empty_checks() {
     assert!(PathId::EMPTY.is_empty());
     assert!(!PathId::EMPTY.is_linked());
     assert_eq!(PathId::EMPTY.untag(), PathId::EMPTY);
-}
-
-#[test]
-fn find_linked_edge_delegates() {
-    let mut store = ParentPathStore::new(100);
-    let mut names = NameTable::default();
-    let seg = PathSegment::Property(names.intern("x").unwrap());
-    let id = store.append(PathId(0), seg).unwrap();
-    assert_eq!(store.find_linked_edge(PathId(0), &seg), Some(id));
 }
 
 #[test]

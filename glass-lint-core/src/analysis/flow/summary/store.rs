@@ -162,7 +162,7 @@ impl<'a> SummaryPathStore<'a> {
 
     fn find_edge_impl(&self, parent: u32, segment: PathSegment) -> Option<u32> {
         if let Some(pid) = self.overlay.checked_id(parent)
-            && let Some(child) = self.overlay.find_linked_edge(pid, &segment)
+            && let Some(child) = self.overlay.find_edge(pid, &segment)
         {
             return Some(child.as_u32());
         }
@@ -184,14 +184,20 @@ impl<'a> SummaryPathStore<'a> {
         parent: SummaryPathId,
         segment: PathSegment,
     ) -> Option<SummaryPathId> {
+        let parent_id = if parent.0 & OVERLAY_TAG != 0 {
+            self.overlay.checked_id(parent.0)?
+        } else {
+            self.frozen.checked_id(parent.0)?
+        };
+        if let Some(child) = self.overlay.find_edge(parent_id, &segment) {
+            return Some(SummaryPathId(child.as_u32() | OVERLAY_TAG));
+        }
         if self.overlay.node_count() >= self.overlay.max_nodes() {
             return None;
         }
         let depth = self.depth(parent)?.checked_add(1)?;
-        let parent_id = self.overlay.raw_path_id(parent.0);
-        self.overlay
-            .append_linked(parent_id, segment, depth)
-            .map(|id| SummaryPathId(id.as_u32()))
+        let child = self.overlay.insert_edge(parent_id, segment, depth)?;
+        Some(SummaryPathId(child.as_u32() | OVERLAY_TAG))
     }
 
     fn append(&mut self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {

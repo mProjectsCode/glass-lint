@@ -61,7 +61,7 @@ impl PathInterner {
         self.concat_with_buffer(prefix, suffix, &mut buf)
     }
 
-    pub fn segments(&self, path: PathId) -> PathSegments {
+    pub fn segments(&self, path: PathId) -> Option<PathSegments> {
         self.store.segments(path)
     }
 

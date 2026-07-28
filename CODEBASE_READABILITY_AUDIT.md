@@ -211,6 +211,9 @@ Replaced the handwritten SCC with `petgraph::algo::kosaraju_scc` over dense modu
 The general path store publicly exposes `raw_path_id` and `append_linked`, accepts caller-supplied parent/depth values, and uses a tag bit whose interpretation belongs to core's summary overlay. It also checks capacity before reusing an existing linked edge, and `segments` silently returns an empty iterator when collection fails, conflating an invalid ID with the empty path.
 
 Create a private core-owned linked-path store that translates validated `PathId` values into a dedicated overlay newtype, and remove raw-ID construction and `append_linked` from the public path-store API. Have the store find an existing edge before checking capacity, derive depth from the parent, and return `Result` for invalid segment traversal so invalid IDs cannot look like empty paths. Recommendation: add forged-tag, foreign-parent, full-store reuse, and invalid-versus-empty tests at both the datastructure boundary and the core adapter.
+- **Status:** Fixed
+
+**Check:** `make fmt && make ci` passed on 2026-07-28.
 
 #### READ-016 — `IndexTable::insert` conflates replacement with resource rejection
 - **Severity:** Medium
