@@ -15,15 +15,15 @@ impl PathInterner {
     }
 
     pub fn append(&mut self, parent: PathId, segment: PathSegment) -> Option<PathId> {
-        self.store.append(parent.0, segment).map(PathId)
+        self.store.append(parent, segment)
     }
 
     pub fn depth(&self, path: PathId) -> Option<u32> {
-        self.store.depth(path.0)
+        self.store.depth(path)
     }
 
     pub fn starts_with(&self, path: PathId, prefix: PathId) -> bool {
-        self.store.starts_with(path.0, prefix.0)
+        self.store.starts_with(path, prefix)
     }
 
     pub fn store(&self) -> &ParentPathStore {
@@ -31,15 +31,15 @@ impl PathInterner {
     }
 
     pub fn last(&self, path: PathId) -> Option<&PathSegment> {
-        self.store.last(path.0)
+        self.store.last(path)
     }
 
     pub fn first_index(&self, path: PathId) -> Option<u32> {
-        self.store.first_index(path.0)
+        self.store.first_index(path)
     }
 
     pub fn without_first(&self, path: PathId) -> Option<PathId> {
-        self.store.without_first(path.0).map(PathId)
+        self.store.without_first(path)
     }
 
     pub fn concat_with_buffer(
@@ -48,7 +48,7 @@ impl PathInterner {
         suffix: PathId,
         buf: &mut Vec<PathSegment>,
     ) -> Option<PathId> {
-        self.store.collect_segments(suffix.0, buf)?;
+        self.store.collect_segments(suffix, buf)?;
         let mut result = prefix;
         for segment in buf.drain(..) {
             result = self.append(result, segment)?;
@@ -62,7 +62,7 @@ impl PathInterner {
     }
 
     pub fn segments(&self, path: PathId) -> PathSegments {
-        self.store.segments(path.0)
+        self.store.segments(path)
     }
 
     pub fn node_count(&self) -> usize {
@@ -70,11 +70,7 @@ impl PathInterner {
     }
 
     pub fn checked_id(&self, raw: u32) -> Option<PathId> {
-        if self.store.is_valid(raw) {
-            Some(PathId(raw))
-        } else {
-            None
-        }
+        self.store.checked_id(raw)
     }
 }
 

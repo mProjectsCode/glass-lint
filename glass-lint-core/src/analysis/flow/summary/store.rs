@@ -38,21 +38,21 @@ impl<'a> SummaryPathStore<'a> {
 
     pub(super) fn is_valid(&self, id: SummaryPathId) -> bool {
         if id.is_frozen() {
-            self.frozen.store().is_valid(id.0)
+            self.frozen.checked_id(id.0).is_some()
         } else {
-            self.overlay.is_valid(id.0 & !OVERLAY_TAG)
+            self.overlay.checked_id(id.0 & !OVERLAY_TAG).is_some()
         }
     }
 
     pub(super) fn intern_frozen(&self, path: PathId) -> Option<SummaryPathId> {
-        if !self.frozen.store().is_valid(path.as_u32()) {
+        if !self.frozen.store().is_valid(path) {
             return None;
         }
         Some(SummaryPathId::from_path_id(path))
     }
 
     pub(super) fn resolve_frozen(&self, path: PathId) -> Option<SummaryPathId> {
-        if !self.frozen.store().is_valid(path.as_u32()) {
+        if !self.frozen.store().is_valid(path) {
             return None;
         }
         Some(SummaryPathId::from_path_id(path))
@@ -60,9 +60,11 @@ impl<'a> SummaryPathStore<'a> {
 
     fn depth_impl(&self, id: u32, is_frozen: bool) -> Option<u32> {
         if is_frozen {
-            self.frozen.store().depth(id)
+            let pid = self.frozen.checked_id(id)?;
+            self.frozen.store().depth(pid)
         } else {
-            self.overlay.depth(id & !OVERLAY_TAG)
+            let pid = self.overlay.checked_id(id & !OVERLAY_TAG)?;
+            self.overlay.depth(pid)
         }
     }
 
@@ -70,17 +72,19 @@ impl<'a> SummaryPathStore<'a> {
         self.depth_impl(id.0, id.is_frozen())
     }
 
-    fn parent_impl(&self, id: u32, is_frozen: bool) -> Option<u32> {
+    fn parent_impl(&self, id: u32, is_frozen: bool) -> Option<PathId> {
         if is_frozen {
-            self.frozen.store().parent(id)
+            let pid = self.frozen.checked_id(id)?;
+            self.frozen.store().parent(pid)
         } else {
-            self.overlay.parent(id & !OVERLAY_TAG)
+            let pid = self.overlay.checked_id(id & !OVERLAY_TAG)?;
+            self.overlay.parent(pid)
         }
     }
 
     fn parent(&self, id: SummaryPathId) -> Option<SummaryPathId> {
-        let raw = self.parent_impl(id.0, id.is_frozen())?;
-        Some(SummaryPathId(raw))
+        let parent_id = self.parent_impl(id.0, id.is_frozen())?;
+        Some(SummaryPathId(parent_id.as_u32()))
     }
 
     pub(super) fn starts_with(&self, id: SummaryPathId, prefix: SummaryPathId) -> bool {
@@ -116,10 +120,15 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     fn segment_impl(&self, raw_id: u32) -> Option<&PathSegment> {
-        if raw_id == 0 || raw_id & OVERLAY_TAG == 0 {
-            self.frozen.store().segment(raw_id)
+        if raw_id == 0 {
+            return None;
+        }
+        if raw_id & OVERLAY_TAG == 0 {
+            let pid = self.frozen.checked_id(raw_id)?;
+            self.frozen.store().segment(pid)
         } else {
-            self.overlay.segment(raw_id & !OVERLAY_TAG)
+            let pid = self.overlay.checked_id(raw_id & !OVERLAY_TAG)?;
+            self.overlay.segment(pid)
         }
     }
 
@@ -128,10 +137,15 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     fn first_segment_of_impl(&self, raw_id: u32) -> Option<&PathSegment> {
-        if raw_id == 0 || raw_id & OVERLAY_TAG == 0 {
-            self.frozen.store().first_segment_of(raw_id)
+        if raw_id == 0 {
+            return None;
+        }
+        if raw_id & OVERLAY_TAG == 0 {
+            let pid = self.frozen.checked_id(raw_id)?;
+            self.frozen.store().first_segment_of(pid)
         } else {
-            self.overlay.first_segment_of(raw_id & !OVERLAY_TAG)
+            let pid = self.overlay.checked_id(raw_id & !OVERLAY_TAG)?;
+            self.overlay.first_segment_of(pid)
         }
     }
 
@@ -147,13 +161,16 @@ impl<'a> SummaryPathStore<'a> {
     }
 
     fn find_edge_impl(&self, parent: u32, segment: PathSegment) -> Option<u32> {
-        if let Some(child) = self.overlay.find_linked_edge(parent, &segment) {
-            return Some(child);
+        if let Some(pid) = self.overlay.checked_id(parent)
+            && let Some(child) = self.overlay.find_linked_edge(pid, &segment)
+        {
+            return Some(child.as_u32());
         }
         if parent & OVERLAY_TAG == 0
-            && let Some(child) = self.frozen.store().find_edge(parent, &segment)
+            && let Some(pid) = self.frozen.checked_id(parent)
+            && let Some(child) = self.frozen.store().find_edge(pid, &segment)
         {
-            return Some(child);
+            return Some(child.as_u32());
         }
         None
     }
@@ -171,9 +188,10 @@ impl<'a> SummaryPathStore<'a> {
             return None;
         }
         let depth = self.depth(parent)?.checked_add(1)?;
+        let parent_id = self.overlay.raw_path_id(parent.0);
         self.overlay
-            .append_linked(parent.0, segment, depth)
-            .map(SummaryPathId)
+            .append_linked(parent_id, segment, depth)
+            .map(|id| SummaryPathId(id.as_u32()))
     }
 
     fn append(&mut self, parent: SummaryPathId, segment: PathSegment) -> Option<SummaryPathId> {
@@ -195,7 +213,7 @@ impl<'a> SummaryPathStore<'a> {
         let mut current = suffix;
         while !current.is_empty() {
             segments.push(*self.segment_impl(current.0)?);
-            current = SummaryPathId(self.parent_impl(current.0, current.is_frozen())?);
+            current = SummaryPathId(self.parent_impl(current.0, current.is_frozen())?.as_u32());
         }
         let mut result = prefix;
         for seg in segments.into_iter().rev() {
@@ -214,11 +232,11 @@ impl<'a> SummaryPathStore<'a> {
         let mut current = id;
         loop {
             let node_parent = self.parent_impl(current.0, current.is_frozen())?;
-            if node_parent == 0 {
+            if node_parent.is_empty() {
                 break;
             }
             segments.push(*self.segment_impl(current.0)?);
-            current = SummaryPathId(node_parent);
+            current = SummaryPathId(node_parent.as_u32());
         }
         let mut result = SummaryPathId::EMPTY;
         for seg in segments.into_iter().rev() {
@@ -235,7 +253,7 @@ impl<'a> SummaryPathStore<'a> {
         while !current.is_empty() {
             segments.push(*self.segment_impl(current.0)?);
             let next_parent = self.parent_impl(current.0, current.is_frozen())?;
-            current = SummaryPathId(next_parent);
+            current = SummaryPathId(next_parent.as_u32());
         }
         segments.reverse();
         Some(segments)

@@ -229,19 +229,19 @@ fn parent_lookup() {
         .append(PathId::EMPTY, property(&mut names, "a"))
         .unwrap();
     let ab = paths.append(a, property(&mut names, "b")).unwrap();
-    assert_eq!(paths.store().parent(ab.0), Some(a.0));
+    assert_eq!(paths.store().parent(ab), Some(a));
 }
 
 #[test]
 fn parent_of_root_points_to_self() {
     let paths = PathInterner::new();
-    assert_eq!(paths.store().parent(PathId::EMPTY.0), Some(0));
+    assert_eq!(paths.store().parent(PathId::EMPTY), Some(PathId::EMPTY));
 }
 
 #[test]
 fn parent_of_invalid_is_none() {
     let paths = PathInterner::new();
-    assert_eq!(paths.store().parent(u32::MAX), None);
+    assert_eq!(paths.store().parent(PathId(u32::MAX)), None);
 }
 
 #[test]
@@ -249,8 +249,8 @@ fn find_edge_on_existing() {
     let mut names = NameTable::default();
     let mut store = ParentPathStore::new(100);
     let seg = PathSegment::Property(names.intern("x").unwrap());
-    let id = store.append(0, seg).unwrap();
-    assert_eq!(store.find_edge(0, &seg), Some(id));
+    let id = store.append(PathId(0), seg).unwrap();
+    assert_eq!(store.find_edge(PathId(0), &seg), Some(id));
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn find_edge_on_missing() {
     let mut names = NameTable::default();
     let store = ParentPathStore::new(100);
     let seg = PathSegment::Property(names.intern("x").unwrap());
-    assert_eq!(store.find_edge(0, &seg), None);
+    assert_eq!(store.find_edge(PathId(0), &seg), None);
 }
 
 #[test]
@@ -271,7 +271,7 @@ fn collect_segments_multi_segment() {
     let ab = paths.append(a, property(&mut names, "b")).unwrap();
     let abc = paths.append(ab, property(&mut names, "c")).unwrap();
     let mut buf = Vec::new();
-    paths.store().collect_segments(abc.0, &mut buf).unwrap();
+    paths.store().collect_segments(abc, &mut buf).unwrap();
     assert_eq!(buf.len(), 3);
     assert_eq!(buf[0], PathSegment::Property(names.lookup("a").unwrap()));
     assert_eq!(buf[1], PathSegment::Property(names.lookup("b").unwrap()));
@@ -282,7 +282,10 @@ fn collect_segments_multi_segment() {
 fn collect_segments_on_root_returns_empty() {
     let paths = PathInterner::new();
     let mut buf = vec![PathSegment::Index(99)];
-    paths.store().collect_segments(0, &mut buf).unwrap();
+    paths
+        .store()
+        .collect_segments(PathId::EMPTY, &mut buf)
+        .unwrap();
     assert!(buf.is_empty());
 }
 
@@ -291,8 +294,8 @@ fn append_linked_returns_tagged_id() {
     let mut store = ParentPathStore::new(100);
     let mut names = NameTable::default();
     let seg = PathSegment::Property(names.intern("x").unwrap());
-    let id = store.append_linked(0, seg, 1).unwrap();
-    assert!(PathId(id).is_linked());
+    let id = store.append_linked(PathId(0), seg, 1).unwrap();
+    assert!(id.is_linked());
 }
 
 #[test]
@@ -300,10 +303,10 @@ fn append_linked_reuses_existing_edge() {
     let mut store = ParentPathStore::new(100);
     let mut names = NameTable::default();
     let seg = PathSegment::Property(names.intern("x").unwrap());
-    let id1 = store.append(0, seg).unwrap();
-    let id2 = store.append_linked(0, seg, 1).unwrap();
+    let id1 = store.append(PathId(0), seg).unwrap();
+    let id2 = store.append_linked(PathId(0), seg, 1).unwrap();
     assert_eq!(id1, id2);
-    assert!(!PathId(id2).is_linked());
+    assert!(!id2.is_linked());
 }
 
 #[test]
@@ -312,7 +315,7 @@ fn first_segment_of_returns_deepest_ancestor() {
     let mut names = NameTable::default();
     let seg_a = PathSegment::Property(names.intern("a").unwrap());
     let seg_b = PathSegment::Property(names.intern("b").unwrap());
-    let a = store.append(0, seg_a).unwrap();
+    let a = store.append(PathId(0), seg_a).unwrap();
     let ab = store.append(a, seg_b).unwrap();
     let seg_c = PathSegment::Property(names.intern("c").unwrap());
     let abc = store.append(ab, seg_c).unwrap();
@@ -322,7 +325,7 @@ fn first_segment_of_returns_deepest_ancestor() {
 #[test]
 fn first_segment_of_root_returns_none() {
     let store = ParentPathStore::new(100);
-    assert_eq!(store.first_segment_of(0), None);
+    assert_eq!(store.first_segment_of(PathId::EMPTY), None);
 }
 
 #[test]
@@ -330,14 +333,14 @@ fn is_valid_returns_true_for_existing_ids() {
     let mut store = ParentPathStore::new(100);
     let mut names = NameTable::default();
     let seg = PathSegment::Property(names.intern("x").unwrap());
-    let id = store.append(0, seg).unwrap();
+    let id = store.append(PathId(0), seg).unwrap();
     assert!(store.is_valid(id));
 }
 
 #[test]
 fn is_valid_returns_false_for_out_of_range() {
     let store = ParentPathStore::new(100);
-    assert!(!store.is_valid(999));
+    assert!(!store.is_valid(PathId(999)));
 }
 
 #[test]
@@ -356,8 +359,8 @@ fn max_nodes_limits_growth() {
     let mut names = NameTable::default();
     let seg_a = PathSegment::Property(names.intern("a").unwrap());
     let seg_b = PathSegment::Property(names.intern("b").unwrap());
-    assert!(store.append(0, seg_a).is_some());
-    assert!(store.append(0, seg_b).is_none());
+    assert!(store.append(PathId(0), seg_a).is_some());
+    assert!(store.append(PathId(0), seg_b).is_none());
 }
 
 #[test]
@@ -432,8 +435,8 @@ fn find_linked_edge_delegates() {
     let mut store = ParentPathStore::new(100);
     let mut names = NameTable::default();
     let seg = PathSegment::Property(names.intern("x").unwrap());
-    let id = store.append(0, seg).unwrap();
-    assert_eq!(store.find_linked_edge(0, &seg), Some(id));
+    let id = store.append(PathId(0), seg).unwrap();
+    assert_eq!(store.find_linked_edge(PathId(0), &seg), Some(id));
 }
 
 #[test]
@@ -441,6 +444,6 @@ fn raw_nodes_and_edges_accessors() {
     let mut store = ParentPathStore::new(100);
     let mut names = NameTable::default();
     let seg = PathSegment::Property(names.intern("x").unwrap());
-    store.append(0, seg).unwrap();
+    store.append(PathId(0), seg).unwrap();
     assert_eq!(store.node_count(), 2);
 }

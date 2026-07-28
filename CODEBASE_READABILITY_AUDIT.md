@@ -196,6 +196,7 @@ For absolute paths, every `..` component is discarded instead of popping the pre
 #### READ-020 — `ParentPathStore` exposes two incompatible ID domains
 - **Severity:** High
 - **Fix Complexity** Extreme
+- **Status:** ✅ Fixed
 - **Category:** API
 - **Location:** `glass-lint-datastructures/src/path_trie/store.rs:46-208`
 
