@@ -1,9 +1,6 @@
 use crate::{
     RuleId, Severity,
-    project::{
-        EvidenceList,
-        types::{Evidence, SourceLocation},
-    },
+    project::types::{EvidenceTraces, SourceLocation},
 };
 
 /// Whether a finding's identity proof holds for all modeled paths reaching the
@@ -26,7 +23,7 @@ pub struct Finding {
     message: String,
     severity: Severity,
     location: SourceLocation,
-    evidence: EvidenceList,
+    evidence: EvidenceTraces,
     certainty: MatchCertainty,
 }
 
@@ -36,7 +33,7 @@ impl Finding {
         message: String,
         severity: Severity,
         location: SourceLocation,
-        evidence: EvidenceList,
+        evidence: EvidenceTraces,
         certainty: MatchCertainty,
     ) -> Self {
         Self {
@@ -65,15 +62,11 @@ impl Finding {
         &self.location
     }
 
-    pub fn evidence(&self) -> &EvidenceList {
+    pub fn evidence(&self) -> &EvidenceTraces {
         &self.evidence
     }
 
     pub fn certainty(&self) -> MatchCertainty {
         self.certainty
-    }
-
-    pub fn set_shared_evidence(&mut self, shared: std::sync::Arc<[Evidence]>) {
-        self.evidence.set_shared(shared);
     }
 }

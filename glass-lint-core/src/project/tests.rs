@@ -248,10 +248,11 @@ fn session_uses_project_analysis_and_preserves_single_file_findings() {
         "a.js"
     );
     assert_eq!(
-        project.files()[0].findings()[0].evidence()[0]
+        project.files()[0].findings()[0].evidence().traces()[0].steps()[0]
             .location()
-            .map(|location| location.path().as_str()),
-        Some("a.js")
+            .path()
+            .as_str(),
+        "a.js"
     );
 }
 

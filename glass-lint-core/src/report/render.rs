@@ -8,11 +8,7 @@ use glass_lint_datastructures::SourceRange;
 
 use crate::report::types::{self, Cell, PrettyFile, PrettyReport, PrettyReports};
 
-type RuleGroupEntry<'a> = (
-    &'a PrettyFile<'a>,
-    &'a crate::project::types::Finding,
-    Option<&'a crate::project::types::Evidence>,
-);
+type RuleGroupEntry<'a> = (&'a PrettyFile<'a>, &'a crate::project::types::Finding);
 
 /// Escape control characters before placing text in terminal-oriented output.
 pub fn visible_text(value: &str) -> String {
@@ -175,22 +171,12 @@ impl PrettyReports<'_> {
         self.write_parse_diagnostics(wrote_group, f)
     }
 
-    #[allow(clippy::type_complexity)]
     fn collect_rule_groups(&self) -> BTreeMap<&crate::RuleId, Vec<RuleGroupEntry<'_>>> {
         let mut groups = BTreeMap::new();
         for file in self.files {
             for finding in file.report.findings() {
                 let entries = groups.entry(finding.rule_id()).or_insert_with(Vec::new);
-                if finding.evidence().is_empty() {
-                    entries.push((file, finding, None));
-                } else {
-                    entries.extend(
-                        finding
-                            .evidence()
-                            .iter()
-                            .map(|evidence| (file, finding, Some(evidence))),
-                    );
-                }
+                entries.push((file, finding));
             }
         }
         groups
@@ -217,17 +203,8 @@ impl PrettyReports<'_> {
         left: &RuleGroupEntry<'_>,
         right: &RuleGroupEntry<'_>,
     ) -> std::cmp::Ordering {
-        let left_range = left.2.and_then(|evidence| evidence.location()).map_or_else(
-            || left.1.location().range(),
-            crate::project::SourceLocation::range,
-        );
-        let right_range = right
-            .2
-            .and_then(|evidence| evidence.location())
-            .map_or_else(
-                || right.1.location().range(),
-                crate::project::SourceLocation::range,
-            );
+        let left_range = left.1.location().range();
+        let right_range = right.1.location().range();
         (
             left.0.filename,
             left_range.start().line(),
@@ -250,9 +227,13 @@ impl PrettyReports<'_> {
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
         let finding = entries[0].1;
+        let certainty_label = match finding.certainty() {
+            crate::project::types::MatchCertainty::Definite => "definite",
+            crate::project::types::MatchCertainty::Possible => "possible path",
+        };
         writeln!(
             f,
-            "{}[{}] {}",
+            "{}[{}] ({}) {}",
             PrettyReport::style(
                 self.options.color,
                 match finding.severity() {
@@ -267,6 +248,7 @@ impl PrettyReports<'_> {
                 Style::new().cyan(),
                 finding.rule_id().to_string(),
             ),
+            PrettyReport::style(self.options.color, Style::new().dim(), certainty_label,),
             visible_text(finding.message())
         )
     }
@@ -276,21 +258,15 @@ impl PrettyReports<'_> {
         entries: &[RuleGroupEntry<'_>],
         f: &mut fmt::Formatter<'_>,
     ) -> fmt::Result {
-        for (file, finding, evidence) in entries {
-            let range = evidence.and_then(|e| e.location()).map_or_else(
-                || finding.location().range(),
-                crate::project::SourceLocation::range,
-            );
+        for (file, finding) in entries {
+            let range = finding.location().range();
 
             let message = format!(
                 "  {}:{}:{} - {}",
                 visible_text(file.filename),
                 range.start().line(),
                 range.start().column(),
-                evidence.map_or_else(
-                    || "match".to_string(),
-                    |e| format!("evidence: {}", visible_text(e.message())),
-                ),
+                "match",
             );
 
             writeln!(
@@ -298,7 +274,7 @@ impl PrettyReports<'_> {
                 "{}",
                 PrettyReport::style(self.options.color, Style::new().dim(), message)
             )?;
-            if evidence.is_none() || self.options.show_evidence_source {
+            if self.options.show_evidence_source {
                 PrettyReport::new_with_cache(
                     file.report,
                     file.filename,
@@ -308,6 +284,47 @@ impl PrettyReports<'_> {
                     &file.line_cache,
                 )
                 .excerpt(&range, 4, f)?;
+            }
+
+            // Render traces when there are multiple or when steps have details
+            let traces = finding.evidence();
+            if traces.traces().len() > 1
+                || traces.traces().first().is_some_and(|t| t.steps().len() > 1)
+            {
+                for (trace_idx, trace) in traces.traces().iter().enumerate() {
+                    if traces.traces().len() > 1 {
+                        writeln!(
+                            f,
+                            "    {}",
+                            PrettyReport::style(
+                                self.options.color,
+                                Style::new().dim(),
+                                format!("trace {}:", trace_idx + 1),
+                            )
+                        )?;
+                    }
+                    for step in trace.steps() {
+                        let step_loc = step.location();
+                        writeln!(
+                            f,
+                            "      {}:{} - {}",
+                            visible_text(step_loc.path().as_str()),
+                            step_loc.range().start().line(),
+                            visible_text(step.message()),
+                        )?;
+                    }
+                }
+            }
+            if traces.truncated() {
+                writeln!(
+                    f,
+                    "    {}",
+                    PrettyReport::style(
+                        self.options.color,
+                        Style::new().dim(),
+                        "... additional traces omitted",
+                    )
+                )?;
             }
         }
         Ok(())

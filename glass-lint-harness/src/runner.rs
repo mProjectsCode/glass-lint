@@ -188,19 +188,20 @@ mod tests {
     use crate::types::ToolSelector;
 
     fn finding() -> Finding {
+        let location = glass_lint_core::project::SourceLocation::new(
+            glass_lint_core::project::ProjectRelativePath::new("main.js").unwrap(),
+            glass_lint_datastructures::SourceRange::new(
+                glass_lint_datastructures::Position::new(2, 3).unwrap(),
+                glass_lint_datastructures::Position::new(2, 4).unwrap(),
+            )
+            .unwrap(),
+        );
         Finding::new(
             glass_lint_core::RuleId::parse("test:a.b").unwrap(),
             "text".into(),
             Severity::Warning,
-            glass_lint_core::project::SourceLocation::new(
-                glass_lint_core::project::ProjectRelativePath::new("main.js").unwrap(),
-                glass_lint_datastructures::SourceRange::new(
-                    glass_lint_datastructures::Position::new(2, 3).unwrap(),
-                    glass_lint_datastructures::Position::new(2, 4).unwrap(),
-                )
-                .unwrap(),
-            ),
-            Vec::new().into_iter().collect(),
+            location.clone(),
+            glass_lint_core::project::EvidenceTraces::fallback(location),
             glass_lint_core::project::MatchCertainty::Definite,
         )
     }

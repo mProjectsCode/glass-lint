@@ -70,23 +70,25 @@ fn emits_one_located_finding_per_match() {
             .line(),
         2
     );
-    assert_eq!(report.files()[0].findings()[0].evidence().len(), 1);
-    assert_eq!(report.files()[0].findings()[1].evidence().len(), 1);
+    assert_eq!(report.files()[0].findings()[0].evidence().traces().len(), 1);
+    assert_eq!(report.files()[0].findings()[1].evidence().traces().len(), 1);
     assert_eq!(
-        report.files()[0].findings()[0].evidence()[0].message(),
+        report.files()[0].findings()[0].evidence().traces()[0].steps()[0].message(),
         "call of \"fetch\""
     );
     assert_eq!(
-        report.files()[0].findings()[0].evidence()[0]
+        report.files()[0].findings()[0].evidence().traces()[0].steps()[0]
             .location()
-            .map(glass_lint_core::project::SourceLocation::range),
-        Some(report.files()[0].findings()[0].location().range())
+            .range()
+            .start(),
+        report.files()[0].findings()[0].location().range().start()
     );
     assert_eq!(
-        report.files()[0].findings()[1].evidence()[0]
+        report.files()[0].findings()[1].evidence().traces()[0].steps()[0]
             .location()
-            .map(glass_lint_core::project::SourceLocation::range),
-        Some(report.files()[0].findings()[1].location().range())
+            .range()
+            .start(),
+        report.files()[0].findings()[1].location().range().start()
     );
 }
 
@@ -121,14 +123,14 @@ fn findings_only_carry_evidence_for_their_own_location() {
     );
 
     assert_eq!(report.files()[0].findings().len(), 2);
-    assert_eq!(report.files()[0].findings()[0].evidence().len(), 1);
+    assert_eq!(report.files()[0].findings()[0].evidence().traces().len(), 1);
     assert_eq!(
-        report.files()[0].findings()[0].evidence()[0].message(),
+        report.files()[0].findings()[0].evidence().traces()[0].steps()[0].message(),
         "member_call of \"app.vault.create\""
     );
-    assert_eq!(report.files()[0].findings()[1].evidence().len(), 1);
+    assert_eq!(report.files()[0].findings()[1].evidence().traces().len(), 1);
     assert_eq!(
-        report.files()[0].findings()[1].evidence()[0].message(),
+        report.files()[0].findings()[1].evidence().traces()[0].steps()[0].message(),
         "member_call of \"app.vault.createFolder\""
     );
 }
@@ -188,18 +190,22 @@ fn collapses_contained_ranges_for_same_rule() {
             .column(),
         36
     );
-    assert_eq!(report.files()[0].findings()[0].evidence().len(), 2);
+    assert_eq!(report.files()[0].findings()[0].evidence().traces().len(), 1);
+    assert_eq!(
+        report.files()[0].findings()[0].evidence().traces()[0]
+            .steps()
+            .len(),
+        2
+    );
     assert!(
-        report.files()[0].findings()[0]
-            .evidence()
+        report.files()[0].findings()[0].evidence().traces()[0]
+            .steps()
             .iter()
-            .all(|evidence| {
-                evidence.location().is_some_and(|location| {
-                    report.files()[0].findings()[0]
-                        .location()
-                        .range()
-                        .contains(&location.range())
-                })
+            .all(|step| {
+                report.files()[0].findings()[0]
+                    .location()
+                    .range()
+                    .contains(&step.location().range())
             })
     );
 }
@@ -365,13 +371,8 @@ fn evidence_ranges_and_snippets_are_populated_for_unicode_source() {
         "// é\nfetch('/x');",
         "unicode.js",
     );
-    let evidence = &report.files()[0].findings()[0].evidence()[0];
-    assert_eq!(
-        evidence
-            .location()
-            .map(|location| location.range().start().line()),
-        Some(2)
-    );
+    let step = &report.files()[0].findings()[0].evidence().traces()[0].steps()[0];
+    assert_eq!(step.location().range().start().line(), 2);
 }
 
 #[test]

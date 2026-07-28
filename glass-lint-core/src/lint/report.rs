@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
 
 use glass_lint_datastructures::{Position, SourceRange};
 
@@ -9,8 +9,9 @@ use crate::{
     diagnostic::SourceLineIndex,
     lint::catalog::RuleCatalog,
     project::{
-        AnalysisReport, Diagnostic, EvidenceList, FileReport, Finding, MatchCertainty, ModuleId,
-        ProjectInputError, ProjectRelativePath, SourceFile, SourceLocation,
+        AnalysisReport, Diagnostic, EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces,
+        FileReport, Finding, MatchCertainty, ModuleId, ProjectInputError, ProjectRelativePath,
+        SourceFile, SourceLocation,
     },
 };
 
@@ -127,40 +128,20 @@ impl<'a> ReportAssembly<'a> {
     ) -> Vec<Finding> {
         let lines = &module.source_context().lines;
         let path = module.path();
-        let mut by_rule: BTreeMap<RuleIndex, (Vec<Finding>, Vec<crate::project::Evidence>)> =
-            BTreeMap::new();
+        let mut rule_findings: BTreeMap<RuleIndex, Vec<Finding>> = BTreeMap::new();
         for capability in classification.capabilities() {
-            let related: Vec<_> = capability
-                .evidence()
-                .iter()
-                .flat_map(|evidence| &evidence.related)
-                .filter_map(|related| {
-                    let mut evidence =
-                        project.fact_location(ModuleId::new(related.module), related.event)?;
-                    evidence.set_message(related.symbol.clone());
-                    Some(evidence)
-                })
-                .collect();
-            let cap_findings = self.findings_for_capability(capability, lines, path);
-            let (rule_findings, rule_related) = by_rule.entry(capability.rule_index).or_default();
-            rule_findings.extend(cap_findings);
-            rule_related.extend(related);
+            let cap_findings = self.findings_for_capability(project, capability, lines, path);
+            rule_findings
+                .entry(capability.rule_index)
+                .or_default()
+                .extend(cap_findings);
         }
-        let mut result = Vec::new();
-        for (_, (mut rule_findings, related)) in by_rule {
-            if !related.is_empty() {
-                let shared: Arc<[crate::project::Evidence]> = related.into();
-                for finding in &mut rule_findings {
-                    finding.set_shared_evidence(Arc::clone(&shared));
-                }
-            }
-            result.append(&mut rule_findings);
-        }
-        result
+        rule_findings.into_values().flatten().collect()
     }
 
     fn findings_for_capability(
         &self,
+        project: &ProjectSemanticModel,
         capability: &MatchedCapability,
         lines: &SourceLineIndex,
         path: &ProjectRelativePath,
@@ -188,7 +169,7 @@ impl<'a> ReportAssembly<'a> {
         let entries: Vec<(SourceRange, usize)> = by_range.into_iter().collect();
         let mut ranges: Vec<SourceRange> = entries.iter().map(|(r, _)| r.clone()).collect();
         crate::lint::ranges::remove_contained_ranges(&mut ranges);
-        let label: Arc<str> = Arc::from(capability.label());
+        let label = capability.label();
         let severity = capability.severity();
         let mut groups: Vec<Vec<(usize, &SourceRange)>> = vec![Vec::new(); ranges.len()];
         let mut entry_cursor = 0usize;
@@ -208,24 +189,42 @@ impl<'a> ReportAssembly<'a> {
             .into_iter()
             .enumerate()
             .map(|(retained_idx, range)| {
-                let local_evidence: EvidenceList = groups[retained_idx]
+                let mut steps: Vec<EvidenceStep> = groups[retained_idx]
                     .iter()
-                    .map(|(ev_idx, item_range)| {
+                    .flat_map(|(ev_idx, item_range)| {
                         let ev = &evidence_items[*ev_idx];
-                        crate::project::Evidence::new(
+                        let mut item_steps = vec![EvidenceStep::new(
+                            EvidenceRole::Occurrence,
                             format!("{} of \"{}\"", ev.kind().as_str(), ev.symbol()),
-                            ev.count,
-                            ev.truncated,
-                            Some(SourceLocation::new(path.clone(), (*item_range).clone())),
-                        )
+                            SourceLocation::new(path.clone(), (*item_range).clone()),
+                        )];
+                        for related in &ev.related {
+                            if let Some(location) =
+                                project.fact_location(ModuleId::new(related.module), related.event)
+                            {
+                                item_steps.push(EvidenceStep::new(
+                                    EvidenceRole::Occurrence,
+                                    related.symbol.clone(),
+                                    location,
+                                ));
+                            }
+                        }
+                        item_steps
                     })
                     .collect();
+                if steps.is_empty() {
+                    steps.push(EvidenceStep::new(
+                        EvidenceRole::Occurrence,
+                        "match".into(),
+                        SourceLocation::new(path.clone(), range.clone()),
+                    ));
+                }
                 Finding::new(
                     rule_id.clone(),
                     label.to_string(),
                     severity,
                     SourceLocation::new(path.clone(), range),
-                    local_evidence,
+                    EvidenceTraces::new(vec![EvidenceTrace::new(steps)]),
                     MatchCertainty::Definite,
                 )
             })
@@ -313,7 +312,14 @@ impl<'a> ReportAssembly<'a> {
             .map(|f| {
                 f.findings()
                     .iter()
-                    .map(|finding| finding.evidence().len())
+                    .map(|finding| {
+                        finding
+                            .evidence()
+                            .traces()
+                            .iter()
+                            .map(|t| t.steps().len())
+                            .sum::<usize>()
+                    })
                     .sum::<usize>()
             })
             .sum();

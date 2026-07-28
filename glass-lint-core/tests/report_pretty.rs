@@ -5,7 +5,10 @@
 
 use glass_lint_core::{
     PrettyFile, PrettyOptions, PrettyReport, PrettyReports, RuleId, Severity,
-    project::{Evidence, FileReport, Finding, MatchCertainty, ProjectRelativePath, SourceLocation},
+    project::{
+        EvidenceRole, EvidenceStep, EvidenceTrace, EvidenceTraces, FileReport, Finding,
+        MatchCertainty, ProjectRelativePath, SourceLocation,
+    },
 };
 use glass_lint_datastructures::{Position, SourceRange};
 
@@ -35,23 +38,23 @@ fn file(findings: Vec<Finding>) -> FileReport {
     FileReport::new(path("main.js"), findings, Vec::new())
 }
 
+fn step(message: &str, range: SourceRange) -> EvidenceStep {
+    EvidenceStep::new(EvidenceRole::Occurrence, message.into(), location(range))
+}
+
 #[test]
 fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
-    let range = |line| range(line, 1, 6);
+    let range_at = |line| range(line, 1, 6);
     let finding = |line| {
         Finding::new(
             RuleId::parse("test:fetch").unwrap(),
             "Uses fetch".into(),
             Severity::Warning,
-            location(range(line)),
-            vec![Evidence::new(
-                "call of \"fetch\"".into(),
-                1,
-                false,
-                Some(location(range(line))),
-            )]
-            .into_iter()
-            .collect(),
+            location(range_at(line)),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
+                "call of \"fetch\"",
+                range_at(line),
+            )])]),
             MatchCertainty::Definite,
         )
     };
@@ -73,14 +76,14 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
         )
         .to_string(),
         concat!(
-            "warning[test:fetch] Uses fetch\n",
-            "  a.js:1:1 - evidence: call of \"fetch\"\n",
+            "warning[test:fetch] (definite) Uses fetch\n",
+            "  a.js:1:1 - match\n",
             "    fetch('/a1');\n",
             "    ^^^^^\n",
-            "  a.js:2:1 - evidence: call of \"fetch\"\n",
+            "  a.js:2:1 - match\n",
             "    fetch('/a2');\n",
             "    ^^^^^\n",
-            "  b.js:1:1 - evidence: call of \"fetch\"\n",
+            "  b.js:1:1 - match\n",
             "    fetch('/b');\n",
             "    ^^^^^\n",
         )
@@ -89,22 +92,15 @@ fn groups_by_rule_then_sorts_evidence_by_file_and_location() {
 
 #[test]
 fn can_hide_source_excerpts_for_evidence_rows() {
-    let range = range(1, 1, 6);
+    let r = range(1, 1, 6);
     let report = FileReport::new(
         path("main.js"),
         vec![Finding::new(
             RuleId::parse("test:fetch").unwrap(),
             "Uses fetch".into(),
             Severity::Warning,
-            location(range.clone()),
-            vec![Evidence::new(
-                "call of fetch".into(),
-                1,
-                false,
-                Some(location(range)),
-            )]
-            .into_iter()
-            .collect(),
+            location(r.clone()),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step("call of fetch", r)])]),
             MatchCertainty::Definite,
         )],
         vec![],
@@ -125,7 +121,7 @@ fn can_hide_source_excerpts_for_evidence_rows() {
 
     assert_eq!(
         rendered,
-        "warning[test:fetch] Uses fetch\n  main.js:1:1 - evidence: call of fetch\n"
+        "warning[test:fetch] (definite) Uses fetch\n  main.js:1:1 - match\n"
     );
 }
 
@@ -159,7 +155,10 @@ fn renders_terminal_controls_visibly() {
             "message\u{1b}[31m".into(),
             Severity::Warning,
             location(range(1, 1, 2)),
-            Vec::new().into_iter().collect(),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
+                "call of fetch",
+                range(1, 1, 2),
+            )])]),
             MatchCertainty::Definite,
         )],
         vec![],
@@ -186,7 +185,10 @@ fn bounds_long_excerpt() {
             "long line".into(),
             Severity::Warning,
             location(range(1, 201, 206)),
-            Vec::new().into_iter().collect(),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
+                "call of fetch",
+                range(1, 201, 206),
+            )])]),
             MatchCertainty::Definite,
         )],
         vec![],
@@ -221,7 +223,10 @@ fn renders_tabs_and_wide_unicode_within_the_display_budget() {
             "unicode".into(),
             Severity::Info,
             location(range(1, 9, 12)),
-            Vec::new().into_iter().collect(),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
+                "unicode match",
+                range(1, 9, 12),
+            )])]),
             MatchCertainty::Definite,
         )],
         vec![],
@@ -256,7 +261,10 @@ fn renders_missing_source_lines_without_panicking() {
             "missing".into(),
             Severity::Error,
             location(range(99, 1, 2)),
-            Vec::new().into_iter().collect(),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
+                "missing call",
+                range(99, 1, 2),
+            )])]),
             MatchCertainty::Definite,
         )],
         vec![],
@@ -270,7 +278,7 @@ fn renders_missing_source_lines_without_panicking() {
         &line_starts,
     )
     .to_string();
-    assert!(rendered.contains("error[test:missing] missing"));
+    assert!(rendered.contains("error[test:missing] (definite) missing"));
     assert!(rendered.contains("main.js:99:1 - match"));
 }
 
@@ -283,7 +291,10 @@ fn renders_colored_findings_when_enabled() {
             "colored".into(),
             Severity::Error,
             location(range(1, 1, 2)),
-            Vec::new().into_iter().collect(),
+            EvidenceTraces::new(vec![EvidenceTrace::new(vec![step(
+                "color match",
+                range(1, 1, 2),
+            )])]),
             MatchCertainty::Definite,
         )],
         vec![],

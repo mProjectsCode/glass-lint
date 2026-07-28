@@ -5,8 +5,9 @@ use crate::{
     RuleCatalog, RuleId, Severity,
     api::rule::{Category, Confidence, MatcherDecl, Rule, Severity as RuleSeverity},
     project::{
-        AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, Evidence, FileReport, Finding,
-        MatchCertainty, ProjectRelativePath, SourceFile, SourceLocation,
+        AnalysisDiagnostic, AnalysisOperationCounts, Diagnostic, EvidenceRole, EvidenceStep,
+        EvidenceTrace, EvidenceTraces, FileReport, Finding, MatchCertainty, ProjectRelativePath,
+        SourceFile, SourceLocation,
     },
 };
 
@@ -31,20 +32,24 @@ fn finding() -> Finding {
             ProjectRelativePath::new("src/é.js").unwrap(),
             range(2, 4, 12),
         ),
-        vec![
-            Evidence::new(
+        EvidenceTraces::new(vec![EvidenceTrace::new(vec![
+            EvidenceStep::new(
+                EvidenceRole::Occurrence,
                 "source".into(),
-                1,
-                false,
-                Some(SourceLocation::new(
+                SourceLocation::new(
                     ProjectRelativePath::new("src/é.js").unwrap(),
                     range(1, 1, 3),
-                )),
+                ),
             ),
-            Evidence::new("context".into(), 1, false, None),
-        ]
-        .into_iter()
-        .collect(),
+            EvidenceStep::new(
+                EvidenceRole::Occurrence,
+                "context".into(),
+                SourceLocation::new(
+                    ProjectRelativePath::new("src/é.js").unwrap(),
+                    range(1, 1, 3),
+                ),
+            ),
+        ])]),
         MatchCertainty::Definite,
     )
 }
@@ -60,14 +65,19 @@ fn qualifies_findings_and_preserves_missing_evidence_ranges() {
     assert_eq!(file.path().as_str(), "src/é.js");
     assert_eq!(file.findings()[0].location().path().as_str(), "src/é.js");
     assert_eq!(
-        file.findings()[0].evidence()[0]
+        file.findings()[0].evidence().traces()[0].steps()[0]
             .location()
-            .unwrap()
             .path()
             .as_str(),
         "src/é.js"
     );
-    assert!(file.findings()[0].evidence()[1].location().is_none());
+    assert_eq!(
+        file.findings()[0].evidence().traces()[0].steps()[1]
+            .location()
+            .path()
+            .as_str(),
+        "src/é.js"
+    );
 }
 
 fn report(path: &str, completion: ReportCompletion) -> AnalysisReport {
@@ -240,22 +250,40 @@ fn combine_reports_rejects_tool_version_mismatch() {
 }
 
 #[test]
-fn shared_evidence_is_set_without_cloning_into_local() {
-    let mut project_finding = finding();
-    let shared: std::sync::Arc<[Evidence]> = vec![Evidence::new(
+fn shared_evidence_path_is_replaced_by_inline_steps() {
+    let first = EvidenceStep::new(
+        EvidenceRole::Occurrence,
         "related".into(),
-        1,
-        false,
-        Some(SourceLocation::new(
-            ProjectRelativePath::new("dep.js").unwrap(),
-            range(3, 1, 2),
-        )),
-    )]
-    .into();
-    project_finding.set_shared_evidence(std::sync::Arc::clone(&shared));
+        SourceLocation::new(ProjectRelativePath::new("dep.js").unwrap(), range(3, 1, 2)),
+    );
+    let traces = EvidenceTraces::new(vec![EvidenceTrace::new(vec![
+        EvidenceStep::new(
+            EvidenceRole::Occurrence,
+            "source".into(),
+            SourceLocation::new(
+                ProjectRelativePath::new("src/é.js").unwrap(),
+                range(1, 1, 3),
+            ),
+        ),
+        first,
+    ])]);
+    let project_finding = Finding::new(
+        RuleId::parse("js:network.request").unwrap(),
+        "request detected".into(),
+        Severity::Warning,
+        SourceLocation::new(
+            ProjectRelativePath::new("src/é.js").unwrap(),
+            range(2, 4, 12),
+        ),
+        traces,
+        MatchCertainty::Definite,
+    );
 
-    assert_eq!(project_finding.evidence().len(), 3);
-    assert_eq!(project_finding.evidence()[2].message(), "related");
+    assert_eq!(project_finding.evidence().traces()[0].steps().len(), 2);
+    assert_eq!(
+        project_finding.evidence().traces()[0].steps()[1].message(),
+        "related"
+    );
 }
 
 #[test]
@@ -327,7 +355,11 @@ fn finding_serialization_includes_certainty() {
         "test".into(),
         Severity::Warning,
         SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
-        Vec::new().into_iter().collect(),
+        EvidenceTraces::new(vec![EvidenceTrace::new(vec![EvidenceStep::new(
+            EvidenceRole::Occurrence,
+            "test evidence".into(),
+            SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
+        )])]),
         MatchCertainty::Definite,
     );
     let json = serde_json::to_value(&finding).unwrap();
@@ -338,7 +370,11 @@ fn finding_serialization_includes_certainty() {
         "test".into(),
         Severity::Warning,
         SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
-        Vec::new().into_iter().collect(),
+        EvidenceTraces::new(vec![EvidenceTrace::new(vec![EvidenceStep::new(
+            EvidenceRole::Occurrence,
+            "test evidence".into(),
+            SourceLocation::new(ProjectRelativePath::new("main.js").unwrap(), range(1, 1, 2)),
+        )])]),
         MatchCertainty::Possible,
     );
     let json = serde_json::to_value(&possible).unwrap();

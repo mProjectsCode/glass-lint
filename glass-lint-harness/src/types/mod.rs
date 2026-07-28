@@ -5,8 +5,9 @@ use std::collections::BTreeMap;
 use glass_lint_core::{
     RuleId, Severity,
     project::{
-        BuiltinModuleName, Finding, MatchCertainty, NormalizedOutsidePath, PackageSpecifier,
-        ProjectRelativePath, ResolutionRequestKind, ResolverOutcome,
+        BuiltinModuleName, EvidenceTraces, Finding, MatchCertainty, NormalizedOutsidePath,
+        PackageSpecifier, ProjectRelativePath, ResolutionRequestKind, ResolverOutcome,
+        SourceLocation,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -494,12 +495,13 @@ impl<'de> serde::Deserialize<'de> for AdapterResponse {
                 .map_err(serde::de::Error::custom)?;
             let rule_id =
                 glass_lint_core::RuleId::parse(&fp.rule_id).map_err(serde::de::Error::custom)?;
+            let location = SourceLocation::new(path, fp.location.range);
             findings.push(Finding::new(
                 rule_id,
                 fp.message,
                 fp.severity,
-                glass_lint_core::project::SourceLocation::new(path, fp.location.range),
-                std::iter::empty().collect(),
+                location.clone(),
+                EvidenceTraces::fallback(location),
                 fp.certainty.unwrap_or(MatchCertainty::Definite),
             ));
         }

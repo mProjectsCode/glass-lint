@@ -41,5 +41,5 @@ pub mod rules {
 #[cfg(test)]
 pub(crate) use parse::parse;
 
-pub const REPORT_VERSION: u32 = 5;
+pub const REPORT_VERSION: u32 = 6;
 pub const MAX_SOURCE_BYTES: usize = 8 * 1024 * 1024;

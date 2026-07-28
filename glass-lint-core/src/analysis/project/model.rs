@@ -321,19 +321,19 @@ impl ProjectSemanticModel {
             })
     }
 
-    /// Convert a module/fact identity into reportable related evidence.
-    pub fn fact_location(&self, module: ModuleId, fact: u32) -> Option<crate::project::Evidence> {
+    /// Convert a module/fact identity into a source location for related
+    /// evidence.
+    pub fn fact_location(
+        &self,
+        module: ModuleId,
+        fact: u32,
+    ) -> Option<crate::project::SourceLocation> {
         let module = self.modules.get(&module)?;
         let fact = module.local().facts().stream().fact(FactId(fact))?;
         let range = module.source_context().range(fact.span).ok()?;
-        Some(crate::project::Evidence::new(
-            "related semantic path event".into(),
-            1,
-            false,
-            Some(crate::project::SourceLocation::new(
-                module.path().clone(),
-                range,
-            )),
+        Some(crate::project::SourceLocation::new(
+            module.path().clone(),
+            range,
         ))
     }
 
